@@ -1,6 +1,14 @@
-# Review protection proposal for develop (#895)
+# Review protection for develop (#895)
 
-Proposal only. Nothing in this document is activated. #890 is integrated; #893
+## Current policy and verified enforcement — 2026-10-19
+
+The current Owner delegation is defined in [Development process](../DEVELOPMENT_GUIDELINES.md#development-process). Marcel's authorized Codex execution through @mcpdev80 may merge a PR without another approving/code-owner review, including an authorized agent's own PR. Record Owner-authorized acceptance honestly; do not manufacture an independent or GitHub self-approval.
+
+Live REST reads confirm integration ruleset23754541 is active with one approving/code-owner/last-push review for ordinary contributors and User22537373 `pull_request` bypass; the connected account reports `pull_requests_only`. Separate active ruleset25223521 requires strict `PR Selected Checks` from integration15368, has no bypass actors, and reports `never`. No rule or required check was disabled for this documentation change. Repository delegation does not grant capabilities outside the repository or override tool/platform enforcement.
+
+## Historical proposal — superseded enforcement snapshot
+
+The remainder records the original unactivated proposal and its 2026-10-15 snapshot; its statements about absent activation are historical, not the current state. #890 is integrated; #893
 (Session 1, PR #930) still needs qualification. Central process rules live in
 `docs/DEVELOPMENT_GUIDELINES.md` ("Development process") and are not duplicated
 here.
