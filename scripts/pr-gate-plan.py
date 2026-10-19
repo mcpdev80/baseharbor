@@ -200,18 +200,18 @@ GC_999_REVIEWED_FILES = {
 }
 
 
-RUNTIME_RESET_REVIEWED_HEAD = 'b981f3b60bebfaebf6eb7f2f467dfd06142c90fe'
+RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
 RUNTIME_RESET_REVIEWED_FILES = {
     'scripts/ci-runtime-reset.sh': 'modified',
     'scripts/test_ci_runtime_reset_scope.py': 'added',
 }
-PODMAN_CONSENT_REVIEWED_HEAD = '78a72ebad0723eefe760090bc34130b55858d8a3'
+PODMAN_CONSENT_REVIEWED_HEAD = 'c3809b12c345f675359c85f4ac3aeffc8948eaab'
 PODMAN_CONSENT_REVIEWED_FILES = {
     '.github/workflows/podman-acceptance.yml': 'modified',
     'scripts/ci-podman-typed-consent.py': 'added',
     'scripts/test_ci_podman_typed_consent.py': 'added',
 }
-MCP_PRECONDITIONS_REVIEWED_HEAD = 'e1c797bb5f45dfac598b5795556c733962b6d621'
+MCP_PRECONDITIONS_REVIEWED_HEAD = '3dfac93c0775f0d6739e9d696033307250a81093'
 MCP_PRECONDITIONS_REVIEWED_FILES = {
     'cmd/baha/mcp_preconditions_test.go': 'added',
 }
