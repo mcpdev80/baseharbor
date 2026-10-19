@@ -425,7 +425,7 @@ jobs:
           name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-evidence
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 30
 
   pr_plan:
     name: PR · Trusted Plan
