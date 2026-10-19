@@ -393,12 +393,13 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                 self.assertEqual('resolved', planned['coverage_status'])
                 self.assertEqual([], planned['selected_gates'])
                 expected_checks = {c['id'] for c in
-                                   planner.CI_CHECKS + planner.CODE_CHECKS +
-                                   planner.CLI_CHECKS + planner.DOC_CHECKS +
-                                   [wizard_check('wizard-registration-tests'),
-                                    wizard_check('wizard-machine-adapter-tests'),
-                                    wizard_check('wizard-provider-choice-tests'),
-                                    wizard_check('wizard-core921-tests')]}
+                                    planner.CI_CHECKS + planner.CODE_CHECKS +
+                                    planner.CLI_CHECKS + planner.DOC_CHECKS +
+                                    planner.WIZARD_BASE_CHECKS +
+                                    [wizard_check('wizard-registration-tests'),
+                                     wizard_check('wizard-machine-adapter-tests'),
+                                     wizard_check('wizard-provider-choice-tests'),
+                                     wizard_check('wizard-core921-tests')]}
                 self.assertEqual(expected_checks,
                                  {c['id'] for c in planned['required_validation_checks']})
                 # The affected families must actually be selected to run.
@@ -406,35 +407,6 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                               {c['id'] for c in planned['required_validation_checks']})
                 self.assertIn('wizard-core921-tests',
                               {c['id'] for c in planned['required_validation_checks']})
-
-    def test_mutated_reviewed_head_and_dirty_merge_chain_do_not_resolve(self):
-        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(rspec)
-        rspec.loader.exec_module(resolver)
-        with tempfile.TemporaryDirectory() as temporary:
-            global root
-            root = Path(temporary)
-            def git(*args):
-                result = subprocess.run(['git', '-C', str(root), *args],
-                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                self.assertEqual(0, result.returncode, result.stderr)
-                return result.stdout.strip()
-            self._checkout_and_git(git)
-            # Same structure as the positive case, but the reviewed head is a
-            # dirty unreviewed change (content written directly on the source
-            # branch without a clean baseline). head merges source into the
-            # trusted baseline; integration is a separate two-parent merge of
-            # target and head with exact parent order. The merge-chain proof is
-            # forced to fail, so the clause cannot resolve despite the exact
-            # reviewed file set.
-            reviewed = self._make_reviewed_head(git, 'unreviewed dirty content\n', 'dirty unreviewed core-921 production bundle')
-            target, head, integration = self._merge_integration(git, None, None)
-            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
-                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=lambda a, b, c=None: False):
-                actual = resolver.resolve_pr_diff(root, target, head, integration)
-                self.assertFalse(actual['broad_required'], actual['reasons'])
-                planned = planner.plan(actual, REQ, MAP)
-                self.assertEqual('unresolved', planned['coverage_status'])
 
     def test_changed_status_and_extra_path_do_not_resolve(self):
         rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
@@ -512,7 +484,10 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
     def test_real_unreviewed_commit_on_reviewed_bundle_fails_real_verifier(self):
         # A follow-up unreviewed commit on top of the exact reviewed bundle must
         # stay unresolved under the REAL ancestry verifier (no stubbed proof),
-        # because the reviewed head is no longer an ancestor of the PR head.
+        # because the reviewed head is no longer an ancestor of the PR head. The
+        # verifier runs against the fixture's own temporary repository, so the
+        # fixture HEADs exist there and the rejection is caused by ancestry, not
+        # by a missing commit in the verification path.
         rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
         resolver = importlib.util.module_from_spec(rspec)
         rspec.loader.exec_module(resolver)
@@ -533,14 +508,20 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
             git('add', '.')
             git('commit', '-qm', 'unreviewed follow-up on reviewed bundle')
             unreviewed_head = git('rev-parse', 'HEAD')
-            # Sanity: the real verifier rejects the unreviewed head as an
-            # ancestor of itself, proving the verifier is not stubbed to False.
+            # Sanity: the real verifier (against the fixture's own repository)
+            # rejects the unreviewed head as an ancestor of itself, proving the
+            # verifier is not stubbed to False.
             self.assertFalse(planner.core752_reviewed_merge_chain(
                 unreviewed_head, unreviewed_head, reviewed, root))
             target, head, integration = self._merge_integration(git, None, None)
-            # Real ancestry verifier (not stubbed): the clause must fail closed
-            # because the reviewed head is not an ancestor of the PR head.
-            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed):
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            # Real ancestry verifier against the fixture repository (not stubbed,
+            # not run against '.'): the clause fails closed because the reviewed
+            # head is not an ancestor of the PR head.
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
                 self.assertFalse(actual['broad_required'], actual['reasons'])
                 planned = planner.plan(actual, REQ, MAP)
@@ -584,6 +565,47 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
             with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
                  patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', planned['coverage_status'])
+
+    def test_wrong_status_only_stays_unresolved(self):
+        # The path set is byte-identical to the reviewed bundle and the merge is
+        # a clean trusted-target merge, but one reviewed file is reported with
+        # the wrong status (reviewed as 'modified', reported as 'added'). The
+        # exact-match contract rejects it purely by status mutation even though
+        # the ancestry proof would otherwise pass. The ancestry verifier runs
+        # against the fixture's own repository, so this rejection is caused by
+        # the status flip, not by a missing commit or broken merge.
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            global root
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            self._checkout_and_git(git)
+            reviewed = self._make_reviewed_head(git, 'reviewed\n', 'reviewed core-921 production registration bundle')
+            target, head, integration = self._merge_integration(git, None, None)
+            actual = resolver.resolve_pr_diff(root, target, head, integration)
+            # Flip one reviewed 'modified' path to the wrong 'added' status; the
+            # path inventory and tree are otherwise unchanged.
+            flipped = [dict(change, status='added') if change['path'] == 'cmd/baha/mcp_tools.go'
+                       else change for change in actual['changes']]
+            actual['changes'] = flipped
+            # Sanity: the real verifier still accepts the clean merge, so the
+            # ancestry proof is not what fails the clause in this fixture.
+            self.assertTrue(planner.core752_reviewed_merge_chain(
+                target, head, reviewed, root))
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
                 self.assertFalse(actual['broad_required'], actual['reasons'])
                 planned = planner.plan(actual, REQ, MAP)
                 self.assertEqual('unresolved', planned['coverage_status'])

@@ -683,10 +683,11 @@ def plan(diff, requirements, mapping):
         require(CODE_CHECKS)
         require(CLI_CHECKS)
         require(DOC_CHECKS)
+        require(WIZARD_BASE_CHECKS)
         require([wizard_check('wizard-registration-tests'),
-                 wizard_check('wizard-machine-adapter-tests'),
-                 wizard_check('wizard-provider-choice-tests'),
-                 wizard_check('wizard-core921-tests')])
+                  wizard_check('wizard-machine-adapter-tests'),
+                  wizard_check('wizard-provider-choice-tests'),
+                  wizard_check('wizard-core921-tests')])
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
                 'mapping_schema': mapping['schema'], 'release': release,
                 'coverage_status': 'resolved', 'unresolved_coverage': [],
