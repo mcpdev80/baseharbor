@@ -199,6 +199,32 @@ GC_999_REVIEWED_FILES = {
     'scripts/test_artifact_gc.py': 'modified',
 }
 
+
+RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
+RUNTIME_RESET_REVIEWED_FILES = {
+    'scripts/ci-runtime-reset.sh': 'modified',
+    'scripts/test_ci_runtime_reset_scope.py': 'added',
+}
+PODMAN_CONSENT_REVIEWED_HEAD = 'c3809b12c345f675359c85f4ac3aeffc8948eaab'
+PODMAN_CONSENT_REVIEWED_FILES = {
+    '.github/workflows/podman-acceptance.yml': 'modified',
+    'scripts/ci-podman-typed-consent.py': 'added',
+    'scripts/test_ci_podman_typed_consent.py': 'added',
+}
+MCP_PRECONDITIONS_REVIEWED_HEAD = '3dfac93c0775f0d6739e9d696033307250a81093'
+MCP_PRECONDITIONS_REVIEWED_FILES = {
+    'cmd/baha/mcp_preconditions_test.go': 'added',
+}
+
+EVIDENCE_RETENTION_REVIEWED_HEAD = '2e3325e142995aedd3d69a2e5569452127cbc58f'
+EVIDENCE_RETENTION_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    '.github/workflows/podman-acceptance.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
 CORE_982_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_actions_summary.py': 'added',
@@ -440,6 +466,15 @@ def plan(diff, requirements, mapping):
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
+        (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed scoped-reset source'),
+        (PODMAN_CONSENT_REVIEWED_HEAD, PODMAN_CONSENT_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed operations-bound consent source'),
+        (MCP_PRECONDITIONS_REVIEWED_HEAD, MCP_PRECONDITIONS_REVIEWED_FILES,
+         WIZARD_BASE_CHECKS + [wizard_check(CORE_754_TEST_CHECK)],
+         'reviewed MCP precondition tests'),
         (CORE_751_REVIEWED_HEAD, INSPECT_IMPORT_CANDIDATE_FILES,
          INSPECT_CHECKS, 'core-751 reviewed import evidence'),
         (CORE_991_REVIEWED_HEAD, CORE_991_REVIEWED_FILES,
