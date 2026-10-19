@@ -19,7 +19,7 @@ import (
 func TestExpectedPreconditionsShareTypedCLIMCPErrors(t *testing.T) {
 	cases := []struct {
 		name string
-		err error
+		err  error
 		want machine.ErrorCode
 	}{
 		{"workspace model", development.ErrWorkspaceModelMissing, machine.ErrorSourceMissing},
