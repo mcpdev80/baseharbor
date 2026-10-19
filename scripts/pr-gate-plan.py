@@ -190,6 +190,15 @@ INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
 CORE_751_REVIEWED_HEAD = 'cf0a19bc4c8f398d7ee3fc07a635833168081ff5'
 CORE_991_REVIEWED_HEAD = 'eeda633071714a0b43551ab947ad036ffaac1b1b'
 CORE_982_REVIEWED_HEAD = '0ab44b7edb94618489cb505cf897ff7e6d73da6c'
+# Independently qualified GC candidate is bound to its immutable full SHA.
+# Any follow-up contents, changed file inventory or rename stays unresolved.
+GC_999_REVIEWED_HEAD = '31089e281390c58189199b25d22925c590ab228d'
+GC_999_REVIEWED_FILES = {
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
 CORE_982_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_actions_summary.py': 'added',
@@ -439,6 +448,9 @@ def plan(diff, requirements, mapping):
         (CORE_982_REVIEWED_HEAD, CORE_982_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed core-894 Actions summary presentation'),
+        (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed exact #999 GC evidence retention candidate'),
     ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
