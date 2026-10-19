@@ -958,6 +958,8 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(resolver_spec)
         resolver_spec.loader.exec_module(resolver)
         for reviewed_name, files, expected_checks in (
+            ('EVIDENCE_RETENTION_REVIEWED_HEAD', planner.EVIDENCE_RETENTION_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES,
@@ -1057,6 +1059,7 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
 
     def test_missing_extra_rename_delete_changed_status_and_unverified_inputs_block(self):
         for sha_name, files in (
+            ('EVIDENCE_RETENTION_REVIEWED_HEAD', planner.EVIDENCE_RETENTION_REVIEWED_FILES),
             ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES),
             ('PODMAN_CONSENT_REVIEWED_HEAD', planner.PODMAN_CONSENT_REVIEWED_FILES),
             ('MCP_PRECONDITIONS_REVIEWED_HEAD', planner.MCP_PRECONDITIONS_REVIEWED_FILES),
@@ -1144,6 +1147,20 @@ if (not result.wasSuccessful() or result.skipped or
             'test_helper_runs_from_application_workdir_using_checkout_root',
             'test_actual_lifecycle_shell_fragment_uses_fresh_consent_per_operation',
             'test_workflow_uses_fresh_operation_bound_consent_for_full_lifecycle',
+        })
+
+    def test_reviewed_retention_runs_all_seven_gc_regressions(self):
+        path = ROOT / 'test_artifact_gc.py'
+        if not path.exists() or 'def test_pr_provenance_and_native_evidence_keep_review_window(' not in path.read_text():
+            self.skipTest('retention suite belongs only to its exact reviewed candidate')
+        self.run_candidate_suite('test_artifact_gc.py', {
+            'test_qualification_outcomes_and_branches_survive_gc',
+            'test_artifact_gc_retains_active_refs_and_deletes_inactive',
+            'test_pr_evidence_artifacts_are_not_ephemeral',
+            'test_gc_discovery_failure_never_deletes',
+            'test_candidate_sha_and_second_page_fail_closed',
+            'test_pr_event_is_read_only_and_never_enters_cleanup',
+            'test_pr_provenance_and_native_evidence_keep_review_window',
         })
 
 if __name__ == '__main__':

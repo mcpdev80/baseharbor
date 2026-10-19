@@ -216,6 +216,15 @@ MCP_PRECONDITIONS_REVIEWED_FILES = {
     'cmd/baha/mcp_preconditions_test.go': 'added',
 }
 
+EVIDENCE_RETENTION_REVIEWED_HEAD = '2e3325e142995aedd3d69a2e5569452127cbc58f'
+EVIDENCE_RETENTION_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    '.github/workflows/podman-acceptance.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
 CORE_982_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_actions_summary.py': 'added',
@@ -457,6 +466,8 @@ def plan(diff, requirements, mapping):
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed scoped-reset source'),
         (PODMAN_CONSENT_REVIEWED_HEAD, PODMAN_CONSENT_REVIEWED_FILES,
