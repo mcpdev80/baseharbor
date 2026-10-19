@@ -961,6 +961,8 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('GC_999_REVIEWED_HEAD', planner.GC_999_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
         ):
             with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
