@@ -328,6 +328,136 @@ class RegistrationBootstrapPolicyTests(unittest.TestCase):
                 self.assertEqual('unresolved', planner.plan(bad, REQ, MAP)['coverage_status'])
 
 
+class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
+    def _checkout_and_git(self, git):
+        git('init', '-q')
+        git('config', 'user.name', 'core-921 fixture')
+        git('config', 'user.email', 'fixture@example.test')
+
+    def _make_reviewed_head(self, git, content, msg):
+        # Trusted shared baseline for the files that exist on develop (modified
+        # paths only); added paths are created fresh on the reviewed branch.
+        for path in {path for path, status in planner.CORE_921_PRODUCTION_REVIEWED_FILES.items() if status == 'modified'}:
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text('baseline\n')
+        git('add', '.')
+        git('commit', '-qm', 'trusted shared baseline')
+        git('branch', 'trusted')
+        git('checkout', '-qb', 'source')
+        for path, status in planner.CORE_921_PRODUCTION_REVIEWED_FILES.items():
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text(content)
+        git('add', '.')
+        git('commit', '-qm', msg)
+        return git('rev-parse', 'HEAD')
+
+    def _merge_integration(self, git, target, head):
+        git('checkout', '-q', 'trusted')
+        (root / 'accepted-policy.txt').write_text('target policy\n')
+        git('add', '.')
+        git('commit', '-qm', 'advance trusted target')
+        target = git('rev-parse', 'HEAD')
+        git('checkout', '-q', 'source')
+        git('merge', '--no-ff', '-qm', 'clean trusted-target integration', 'trusted')
+        head = git('rev-parse', 'HEAD')
+        git('checkout', '-q', 'trusted')
+        git('merge', '--no-ff', '-qm', 'verified PR integration', 'source')
+        integration = git('rev-parse', 'HEAD')
+        return target, head, integration
+
+    def test_exact_reviewed_bundle_resolves_with_full_check_set(self):
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            global root
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            self._checkout_and_git(git)
+            reviewed = self._make_reviewed_head(git, 'independently reviewed\n', 'reviewed core-921 production registration bundle')
+            target, head, integration = self._merge_integration(git, None, None)
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+                actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                self.assertEqual(target, actual['merge_base_sha'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('resolved', planned['coverage_status'])
+                self.assertEqual([], planned['selected_gates'])
+                self.assertEqual({c['id'] for c in planner.CI_CHECKS + planner.CODE_CHECKS + planner.CLI_CHECKS + planner.DOC_CHECKS},
+                                 {c['id'] for c in planned['required_validation_checks']})
+
+    def test_mutated_reviewed_head_and_dirty_merge_chain_do_not_resolve(self):
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            global root
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            self._checkout_and_git(git)
+            # Same structure as the positive case, but the reviewed head is a
+            # dirty unreviewed change (content written directly on the source
+            # branch without a clean baseline). head merges source into the
+            # trusted baseline; integration is a separate two-parent merge of
+            # target and head with exact parent order. The merge-chain proof is
+            # forced to fail, so the clause cannot resolve despite the exact
+            # reviewed file set.
+            reviewed = self._make_reviewed_head(git, 'unreviewed dirty content\n', 'dirty unreviewed core-921 production bundle')
+            target, head, integration = self._merge_integration(git, None, None)
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=lambda a, b, c=None: False):
+                actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', planned['coverage_status'])
+
+    def test_changed_status_and_extra_path_do_not_resolve(self):
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            global root
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            self._checkout_and_git(git)
+            # Reviewed bundle with a corrupted added handler: an added path is
+            # instead deleted, so the changed set is no longer exact and the
+            # clause must fail closed even on a clean trusted-target merge.
+            reviewed = self._make_reviewed_head(git, 'reviewed\n', 'reviewed core-921 production registration bundle')
+            git('checkout', '-q', 'source')
+            (root / 'cmd/baha/registration_921_test.go').unlink()
+            git('add', '.')
+            git('commit', '-qm', 'corrupted core-921 production bundle')
+            target, head, integration = self._merge_integration(git, None, None)
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+                actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', planned['coverage_status'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', planned['coverage_status'])
+
+
 class MappingTests(unittest.TestCase):
     def test_documentation_requires_validation_but_zero_release_gates(self):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',

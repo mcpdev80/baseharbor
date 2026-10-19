@@ -312,6 +312,33 @@ REGISTRATION_CI_REVIEWED_FILES = {
     'scripts/test_pr_registration_ci.py': 'added',
 }
 
+# core-921 reviewed production registration coverage: the exact shared
+# handlers, the golden contract/registry, CLI/MCP parity sources and the six
+# EN/DE reference docs. Individually reviewed, not task acceptance of the
+# handlers; the immutable commit and exact statuses bind this bundle.
+# Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
+# TODO(core-921): 756b22dc8967d0daa7393065cd5bc15f262c7050 is the REJECTED
+# #998 candidate and MUST NOT resolve coverage. This HEAD pin stays as a
+# placeholder until the final independently re-reviewed #998 SHA is set; the
+# exact-match clause below is therefore inert for every head that is not the
+# final reviewed candidate. Do not activate this clause before that pin is set.
+CORE_921_PRODUCTION_REVIEWED_HEAD = '756b22dc8967d0daa7393065cd5bc15f262c7050'  # TODO(core-921): replace with final re-reviewed #998 SHA
+CORE_921_PRODUCTION_REVIEWED_FILES = {
+    'cmd/baha/app_registration_921.go': 'added',
+    'cmd/baha/commands.go': 'modified',
+    'cmd/baha/machine_coverage.go': 'modified',
+    'cmd/baha/mcp_tools.go': 'modified',
+    'cmd/baha/registration_921_test.go': 'added',
+    'contracts/machine/v1/control.golden.json': 'modified',
+    'docs/cli/command-index.md': 'modified',
+    'docs/de/cli/command-index.md': 'modified',
+    'docs/de/reference/cli-machine-coverage.md': 'modified',
+    'docs/de/reference/mcp.md': 'modified',
+    'docs/reference/cli-machine-coverage.md': 'modified',
+    'docs/reference/mcp.md': 'modified',
+    'internal/machine/contract.go': 'modified',
+}
+
 # Proposed exact qualification for core-917 (#975). This record becomes an
 # authority only after independent policy review and integration into develop.
 # Source inspection: PR review 5555616115. Focused + Docker/Podman evidence:
@@ -623,6 +650,38 @@ def plan(diff, requirements, mapping):
                     'integration does not accept registration task or future handler changes.'),
                 'reasons': ['independently reviewed exact #974 registration CI source; '
                             'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
+    # core-921 reviewed production registration coverage. No path-only approval:
+    # the exact shared registration handlers, the golden contract/registry, the
+    # CLI/MCP parity sources and the six EN/DE reference docs must arrive as this
+    # complete reviewed status set on a clean trusted-target merge. Unrelated
+    # changes after the review commit fail closed; the normal merge proof checks
+    # each merge tree. This is a shared-source coverage binding, not task
+    # acceptance or authorization of future handler edits.
+    # Guard: inert while CORE_921_PRODUCTION_REVIEWED_HEAD is the placeholder
+    # rejected candidate 756b22dc; it can never resolve coverage for a head
+    # that is not the final independently re-reviewed #998 SHA.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
+            set(paths) == set(CORE_921_PRODUCTION_REVIEWED_FILES) and
+            all(ch.get('status') == CORE_921_PRODUCTION_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], CORE_921_PRODUCTION_REVIEWED_HEAD)):
+        require(CI_CHECKS)
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(DOC_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Require every listed validation; exact reviewed '
+                    'source integration does not accept registration task or future handler changes.'),
+                'reasons': ['independently reviewed exact core-921 production registration '
+                            'bundle; mandatory CI/source/CLI/documentation checks on the complete '
+                            'reviewed file set and clean trusted-target merge']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
     if (valid and not diff['broad_required'] and not unresolved and
