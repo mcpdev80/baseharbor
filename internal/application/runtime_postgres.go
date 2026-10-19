@@ -141,7 +141,7 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 type BackendProbeKind string
 
 const (
-	BackendProbeSQLSelectOne          BackendProbeKind = "sql.select-one"
+	BackendProbeSQLSelectOne         BackendProbeKind = "sql.select-one"
 	BackendProbeSQLConsumerInventory BackendProbeKind = "sql.consumer-inventory"
 	BackendProbeCachePing            BackendProbeKind = "cache.ping"
 	BackendProbeDurableKeyValueRW    BackendProbeKind = "database.key-value.write-read"
