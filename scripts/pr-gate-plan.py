@@ -198,6 +198,20 @@ GC_999_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_artifact_gc.py': 'modified',
 }
+# Binding-PR self-qualification: #1007 re-pins the core-921 coverage binding to
+# the reviewed #998 head 6931ba9c while its own diff changes CI-execution
+# scripts (pr-check-runner, pr-gate-plan, test_pr_gate_plan). The binding-PR
+# head is bound to its own immutable full SHA as the reviewed anchor for these
+# three files; any follow-up contents, changed file inventory or rename stay
+# unresolved. This mirrors the #1005/#999 self-qualification pattern: the
+# changed CI-execution files get explicit CI_CHECKS qualification rather than
+# the catch-all ci-executor-unresolved classifier.
+BINDING_PR_1007_REVIEWED_HEAD = '706b524489f8410091902e595df50427f80a4eab'
+BINDING_PR_1007_REVIEWED_FILES = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+}
 
 
 RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
@@ -524,8 +538,10 @@ def plan(diff, requirements, mapping):
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed core-894 Actions summary presentation'),
         (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed exact #999 GC evidence retention candidate'),
+          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+          'reviewed exact #999 GC evidence retention candidate'),
+        (BINDING_PR_1007_REVIEWED_HEAD, BINDING_PR_1007_REVIEWED_FILES,
+          CI_CHECKS, 'reviewed #1007 binding-PR CI-execution self-qualification'),
     ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and

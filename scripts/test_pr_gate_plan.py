@@ -1258,7 +1258,9 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('GC_999_REVIEWED_HEAD', planner.GC_999_REVIEWED_FILES,
-             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
+            ('BINDING_PR_1007_REVIEWED_HEAD', planner.BINDING_PR_1007_REVIEWED_FILES,
+              {c['id'] for c in planner.CI_CHECKS}),
         ):
             with self.subTest(reviewed=reviewed_name), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
@@ -1352,6 +1354,7 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
             ('CORE_751_REVIEWED_HEAD', planner.INSPECT_IMPORT_CANDIDATE_FILES),
             ('CORE_991_REVIEWED_HEAD', planner.CORE_991_REVIEWED_FILES),
             ('CORE_982_REVIEWED_HEAD', planner.CORE_982_REVIEWED_FILES),
+            ('BINDING_PR_1007_REVIEWED_HEAD', planner.BINDING_PR_1007_REVIEWED_FILES),
         ):
             changes = [{'path': path, 'status': status} for path, status in files.items()]
             cases = [changes[:-1],
