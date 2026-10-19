@@ -180,5 +180,55 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
 
 
+    def test_stale_event_base_rejected_and_normal_target_integration_restores_diff(self):
+        self.branch('feature')
+        self.write('feature.txt', 'reviewed feature\\n')
+        head = self.commit('feature')
+        self.git('switch', '-q', 'main')
+        self.write('target-only.txt', 'trusted target advance\\n')
+        target = self.commit('trusted target advance')
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               input_data='GitHub exact integration\\n')
+        stale = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
+        self.assertTrue(stale['broad_required'])
+        self.assertEqual('integration_sha_mismatch', stale['reasons'][0]['code'])
+        self.git('switch', '-q', 'feature')
+        self.git('merge', '--no-ff', '-qm', 'normal trusted target merge', target)
+        merged = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', target, merged).splitlines()[0]
+        current = self.git('commit-tree', tree, '-p', target, '-p', merged,
+                           input_data='new exact GitHub integration\\n')
+        actual = resolver.resolve_pr_diff(self.root, target, merged, current)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        self.assertEqual(target, actual['merge_base_sha'])
+        self.assertEqual([{'path': 'feature.txt', 'status': 'added'}],
+                         actual['changes'])
+
+    def test_reversed_exact_parents_rejected_even_with_clean_tree(self):
+        self.branch('feature')
+        self.write('feature.txt', 'feature\\n')
+        head = self.commit('feature')
+        tree = self.git('merge-tree', '--write-tree', self.initial, head).splitlines()[0]
+        reversed_merge = self.git('commit-tree', tree, '-p', head, '-p', self.initial,
+                                  input_data='reversed parents\\n')
+        result = resolver.resolve_pr_diff(self.root, self.initial, head, reversed_merge)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+
+    def test_extra_parent_rejected_even_with_clean_tree(self):
+        self.branch('feature')
+        self.write('feature.txt', 'feature\\n')
+        head = self.commit('feature')
+        tree = self.git('merge-tree', '--write-tree', self.initial, head).splitlines()[0]
+        extra = self.git('commit-tree', tree, '-p', self.initial,
+                        input_data='unrelated side input\\n')
+        integration = self.git('commit-tree', tree, '-p', self.initial, '-p', head,
+                               '-p', extra, input_data='extra parent\\n')
+        result = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+
+
 if __name__ == '__main__':
     unittest.main()
