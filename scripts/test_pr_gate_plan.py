@@ -457,6 +457,45 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                 planned = planner.plan(actual, REQ, MAP)
                 self.assertEqual('unresolved', planned['coverage_status'])
 
+    def test_mutated_status_and_extra_missing_path_do_not_resolve(self):
+        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            global root
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            self._checkout_and_git(git)
+            # Reviewed 15-file bundle, then two corruptions that each break the
+            # exact-match contract: a modified handler file is instead marked as
+            # an added path (wrong status) and one reference doc is dropped
+            # (missing path). The changed set is no longer the exact reviewed
+            # set, so the clause fails closed even on a clean trusted-target
+            # merge chain.
+            reviewed = self._make_reviewed_head(git, 'reviewed\n', 'reviewed core-921 production registration bundle')
+            git('checkout', '-q', 'source')
+            (root / 'cmd/baha/mcp_tools.go').write_text('reviewed and re-added\n')
+            git('add', '.')
+            git('commit', '-qm', 'reviewed re-added handler')
+            git('checkout', '-q', 'source')
+            (root / 'docs/reference/mcp.md').unlink()
+            git('add', '.')
+            git('commit', '-qm', 'dropped reference doc')
+            target, head, integration = self._merge_integration(git, None, None)
+            actual_proof = planner.core752_reviewed_merge_chain
+            def proof(target_sha, head_sha, reviewed_sha=None):
+                return actual_proof(target_sha, head_sha, reviewed_sha, root)
+            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
+                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+                actual = resolver.resolve_pr_diff(root, target, head, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                planned = planner.plan(actual, REQ, MAP)
+                self.assertEqual('unresolved', planned['coverage_status'])
+
 
 class MappingTests(unittest.TestCase):
     def test_documentation_requires_validation_but_zero_release_gates(self):

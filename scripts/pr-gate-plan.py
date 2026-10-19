@@ -317,13 +317,16 @@ REGISTRATION_CI_REVIEWED_FILES = {
 # EN/DE reference docs. Individually reviewed, not task acceptance of the
 # handlers; the immutable commit and exact statuses bind this bundle.
 # Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
-# TODO(core-921): 756b22dc8967d0daa7393065cd5bc15f262c7050 is the REJECTED
-# #998 candidate and MUST NOT resolve coverage. This HEAD pin stays as a
-# placeholder until the final independently re-reviewed #998 SHA is set; the
-# exact-match clause below is therefore inert for every head that is not the
-# final reviewed candidate. Do not activate this clause before that pin is set.
-CORE_921_PRODUCTION_REVIEWED_HEAD = '756b22dc8967d0daa7393065cd5bc15f262c7050'  # TODO(core-921): replace with final re-reviewed #998 SHA
+# FINAL reviewed head 08d8f498fd82992e762d764967ac892721d9adeb after fresh
+# independent full-source + delta re-review of the corrected #998 source
+# (o4-998-rereview.md). The path/status set below is the exact two-dot diff
+# origin/develop..08d8f498 for these 15 core-921 registration files; the three
+# unrelated process-doc changes in that diff (DEVELOPMENT_GUIDELINES,
+# review-protection) are NOT part of the registration bundle.
+CORE_921_PRODUCTION_REVIEWED_HEAD = '08d8f498fd82992e762d764967ac892721d9adeb'
 CORE_921_PRODUCTION_REVIEWED_FILES = {
+    'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_provider_choice.go': 'modified',
     'cmd/baha/app_registration_921.go': 'added',
     'cmd/baha/commands.go': 'modified',
     'cmd/baha/machine_coverage.go': 'modified',
@@ -657,9 +660,10 @@ def plan(diff, requirements, mapping):
     # changes after the review commit fail closed; the normal merge proof checks
     # each merge tree. This is a shared-source coverage binding, not task
     # acceptance or authorization of future handler edits.
-    # Guard: inert while CORE_921_PRODUCTION_REVIEWED_HEAD is the placeholder
-    # rejected candidate 756b22dc; it can never resolve coverage for a head
-    # that is not the final independently re-reviewed #998 SHA.
+    # Bound to the final independently re-reviewed #998 head 08d8f498 (exact
+    # two-dot diff origin/develop..08d8f498 for these 15 core-921
+    # registration files); an exact reviewed-file/status set on a clean
+    # trusted-target merge only.
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
             len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
