@@ -1452,15 +1452,17 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     self.assertEqual({p: s for p, s in
                                       planner.BINDING_PR_1007_REVIEWED_FILES.items()},
                                      {c['path']: c['status'] for c in actual['changes']})
+                    _ancestry = planner.core752_binding_linear_ancestry
                     with patch.object(planner, 'BINDING_PR_1007_REVIEWED_HEAD', h), \
-                           patch.object(planner, 'BINDING_PR_1007_LINEAR_PARENT', target):
-                        proof_ancestry = planner.core752_binding_linear_ancestry
-                        with patch.object(
-                        planner, 'core752_binding_linear_ancestry',
-                        side_effect=lambda base, current, single_parent,
-                        repository=root: proof_ancestry(
-                        base, current, single_parent, repository)):
-                            planned = planner.plan(actual, REQ, MAP)
+                            patch.object(planner, 'BINDING_PR_1007_LINEAR_PARENT', target), \
+                            patch.object(planner, 'core752_binding_content_sha256',
+                                         side_effect=lambda path, head_sha:
+                                         planner.BINDING_PR_1007_REVIEWED_CONTENT_SHA256.get(path)), \
+                            patch.object(planner, 'core752_binding_linear_ancestry',
+                                         side_effect=lambda base, current, single_parent,
+                                         repository=root: _ancestry(base, current,
+                                         single_parent, repository)):
+                        planned = planner.plan(actual, REQ, MAP)
                     self.assertEqual('resolved', planned['coverage_status'], planned)
                     self.assertEqual([], planned['unresolved_coverage'])
                     self.assertEqual([], planned['selected_gates'])
@@ -1483,6 +1485,221 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                 with patch.object(planner, 'BINDING_PR_1007_REVIEWED_HEAD', h):
                     forged_planned = planner.plan(forged_actual, REQ, MAP)
                 self.assertEqual('unresolved', forged_planned['coverage_status'], forged_planned)
+
+
+class BindingPR1007ContentHashAnchoringTests(unittest.TestCase):
+    # #1007 binding-PR clause (a): content-hash anchoring. The clause binds only
+    # when the reviewed head sha matches, the changed set and statuses match, the
+    # content of each reviewed file at head_sha equals its pinned content sha256
+    # (the blob contents, which avoids the self-reference paradox of binding a
+    # commit to its own commit sha), and the linear head's merge base with the
+    # target base is exactly that base along a clean first-parent line. These
+    # tests build a real git fixture and verify every clause against real blobs.
+    def _make_fixture(self, root, head_content, extra_head=False):
+        resolver_spec = importlib.util.spec_from_file_location(
+            'make_fixture_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        def git(*args):
+            result = subprocess.run(['git', '-C', str(root), *args],
+                                    text=True, capture_output=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            return result.stdout.strip()
+        git('init', '-q')
+        git('config', 'user.name', 'Binding fixture')
+        git('config', 'user.email', 'fixture@example.test')
+        for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+            (root / path).parent.mkdir(parents=True, exist_ok=True)
+            (root / path).write_text('baseline content\n')
+        git('add', '.')
+        git('commit', '--allow-empty', '-qm', 'develop baseline')
+        git('branch', 'trusted')
+        target = git('rev-parse', 'trusted')
+        git('checkout', '-q', 'trusted')
+        for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+            (root / path).write_text(head_content)
+        git('add', '.')
+        git('commit', '-qm', 'binding linear head')
+        head = git('rev-parse', 'HEAD')
+        self.assertEqual(target, git('merge-base', head, target))
+        if extra_head:
+            (root / 'extra-binding-file.py').write_text('not reviewed\n')
+            git('add', '.')
+            git('commit', '-qm', 'extra reviewed file')
+            head = git('rev-parse', 'HEAD')
+        tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integrated = git('commit-tree', tree, '-p', target, '-p', head,
+                         '-m', 'binding integration')
+        actual = resolver.resolve_pr_diff(root, target, head, integrated)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        self.assertEqual(target, actual['merge_base_sha'])
+        return target, head, actual
+
+    def _plan_with_real_proofs(self, target, head, actual, root,
+                               reviewed_parent=None, reviewed_head=None):
+        _ancestry = planner.core752_binding_linear_ancestry
+        _content = planner.core752_binding_content_sha256
+        with patch.object(planner, 'BINDING_PR_1007_REVIEWED_HEAD',
+                          reviewed_head), \
+                patch.object(planner, 'BINDING_PR_1007_LINEAR_PARENT',
+                             reviewed_parent), \
+                patch.object(planner, 'core752_binding_content_sha256',
+                             side_effect=lambda path, head_sha, repository=root:
+                             _content(path, head_sha, repository)), \
+                patch.object(planner, 'core752_binding_linear_ancestry',
+                             side_effect=lambda base, current, single_parent,
+                             repository=root: _ancestry(base, current,
+                             single_parent, repository)):
+            return planner.plan(actual, REQ, MAP)
+
+    def _reviewed_blob_contents(self, head_sha):
+        # Read the exact reviewed blob contents from the real baseharbor
+        # worktree (the repo that holds the reviewed head) so the fixture head
+        # carries content whose sha256 equals the pinned constants.
+        worktree = (ROOT / '..').resolve()
+        contents = {}
+        for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+            result = subprocess.run(['git', '-C', str(worktree), 'cat-file', 'blob',
+                                     head_sha + ':' + path],
+                                    text=True, capture_output=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            contents[path] = result.stdout
+        return contents
+
+    def test_exact_content_set_and_base_anchored_lineage_resolves(self):
+        # Positive: the fixture head carries the exact reviewed content copied
+        # from the real reviewed head, so each reviewed blob's sha256 at head
+        # equals the pinned constant, and the head branches from the target base.
+        # The clause resolves only then.
+        reviewed = self._reviewed_blob_contents(
+            planner.BINDING_PR_1007_REVIEWED_HEAD)
+        resolver_spec = importlib.util.spec_from_file_location(
+            'binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # Baseline content differs from the reviewed content so the head commit
+            # is a real change; the head rewrites each file to the exact reviewed
+            # content (whose sha256 equals the pinned constants).
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text('baseline content\n')
+            def git(*args):
+                res = subprocess.run(['git', '-C', str(root), *args],
+                                     text=True, capture_output=True)
+                self.assertEqual(0, res.returncode, res.stderr)
+                return res.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Binding fixture')
+            git('config', 'user.email', 'fixture@example.test')
+            git('add', '.')
+            git('commit', '--allow-empty', '-qm', 'develop baseline')
+            git('branch', 'trusted')
+            target = git('rev-parse', 'trusted')
+            git('checkout', '-q', 'trusted')
+            # Rewrite each reviewed file with the exact reviewed content at head.
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                (root / path).write_text(reviewed[path])
+            git('add', '.')
+            git('commit', '-qm', 'binding linear head')
+            head = git('rev-parse', 'HEAD')
+            self.assertEqual(target, git('merge-base', head, target))
+            parents = git('rev-list', '--parents', '-n', '1', head).split()
+            self.assertEqual(2, len(parents))
+            self.assertEqual(target, parents[1])
+            tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+            integrated = git('commit-tree', tree, '-p', target, '-p', head,
+                             '-m', 'binding integration')
+            actual = resolver.resolve_pr_diff(root, target, head, integrated)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                self.assertEqual(planner.BINDING_PR_1007_REVIEWED_CONTENT_SHA256[path],
+                                 planner.core752_binding_content_sha256(path, head,
+                                                                        repository=root))
+            planned = self._plan_with_real_proofs(target, head, actual, root, reviewed_parent=target, reviewed_head=head)
+            self.assertEqual('resolved', planned['coverage_status'], planned)
+            self.assertEqual([], planned['unresolved_coverage'])
+            self.assertEqual([], planned['selected_gates'])
+            self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+                             {c['id'] for c in planned['required_validation_checks']})
+
+    def test_same_files_different_content_stays_unresolved(self):
+        # Same three reviewed files, same changed set and statuses, but the
+        # content at head differs from the pinned content sha256: the content
+        # anchor rejects it even though the head-sha and lineage checks would
+        # otherwise pass.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target, head, actual = self._make_fixture(root, 'modified content\n')
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                actual_sha = planner.core752_binding_content_sha256(path, head)
+                self.assertNotEqual(
+                    planner.BINDING_PR_1007_REVIEWED_CONTENT_SHA256[path], actual_sha)
+            planned = self._plan_with_real_proofs(target, head, actual, root, reviewed_parent=target, reviewed_head=head)
+            self.assertEqual('unresolved', planned['coverage_status'], planned)
+            self.assertTrue(planned['unresolved_coverage'])
+
+    def test_off_base_lineage_stays_unresolved(self):
+        # A head whose content matches the reviewed content but whose merge base
+        # with the target base is not exactly the target base (a second linear
+        # commit sits between the base and the head) is rejected by the
+        # base-anchored ancestry check. The diff against the base then also
+        # carries the intermediate commit's change, so the changed set no longer
+        # equals the exact reviewed file map either.
+        reviewed = self._reviewed_blob_contents(
+            planner.BINDING_PR_1007_REVIEWED_HEAD)
+        resolver_spec = importlib.util.spec_from_file_location(
+            'off_base_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args],
+                                        text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Binding fixture')
+            git('config', 'user.email', 'fixture@example.test')
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text('baseline content\n')
+            git('add', '.')
+            git('commit', '--allow-empty', '-qm', 'base')
+            git('branch', 'trusted')
+            target = git('rev-parse', 'trusted')
+            # A side branch off the base: the head's single 1st parent is a side
+            # commit, not the base itself. The diff content matches the reviewed
+            # files, but the linear head does not branch directly from the base,
+            # so the base-anchored ancestry (single parent == target) fails.
+            git('checkout', '-q', '-b', 'side')
+            # One commit that moves the side line off the base so the head's
+            # single 1st parent is the side commit, not the base itself.
+            (root / 'scripts/pr-check-runner.py').write_text('side change\n')
+            git('add', '.')
+            git('commit', '-qm', 'side commit off base')
+            for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+                (root / path).write_text(reviewed[path])
+            git('add', '.')
+            git('commit', '-qm', 'side head with reviewed content')
+            head = git('rev-parse', 'HEAD')
+            side_parent = git('rev-list', '--parents', '-n', '1', head).split()[1]
+            self.assertNotEqual(target, side_parent)
+            parents = git('rev-list', '--parents', '-n', '1', head).split()
+            self.assertEqual(2, len(parents))
+            self.assertEqual(side_parent, parents[1])
+            self.assertEqual(target, git('merge-base', head, target))
+            tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+            integrated = git('commit-tree', tree, '-p', target, '-p', head,
+                              '-m', 'integration')
+            actual = resolver.resolve_pr_diff(root, target, head, integrated)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            planned = self._plan_with_real_proofs(target, head, actual, root,
+                                                   reviewed_parent=target,
+                                                   reviewed_head=head)
+            self.assertEqual('unresolved', planned['coverage_status'], planned)
 
 
 class CopiedTrustedTreeReviewTests(unittest.TestCase):

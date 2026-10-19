@@ -204,15 +204,25 @@ GC_999_REVIEWED_FILES = {
 # head 48def9e8 is the single linear commit of the PR; its one 1st parent
 # 706b5244 sits one commit ahead of the current develop tip, so the PR is a
 # clean single line that branches from the develop tip (its merge base with the
-# target base is exactly that base). The binding head is bound to its own
-# immutable full SHA as the reviewed anchor for these three files; any
-# follow-up contents, changed file inventory or rename stay unresolved. This is
-# the r4 self-qualifying branch: the clause binds when head_sha equals this
-# reviewed head, the changed set equals the exact reviewed file map, and the
-# linear head's single parent is a direct ancestor of the target base. This
-# gives the changed CI-execution files explicit CI_CHECKS qualification rather
-# than the catch-all ci-executor-unresolved classifier.
+# target base is exactly that base). The binding head is bound by two anchors:
+# its immutable full SHA and the content sha256 of each of the three reviewed
+# files (the blob contents at that head, which avoids the self-reference
+# paradox of binding a commit to its own sha). Any follow-up contents, changed
+# file inventory or rename stay unresolved. The r4 self-qualifying branch: the
+# clause binds when head_sha equals this reviewed head, the changed set equals
+# the exact reviewed file map with the reviewed statuses, each reviewed file's
+# content at head_sha equals its pinned content sha256, and the linear head's
+# merge base with the target base is exactly that base along a clean
+# first-parent line. This gives the changed CI-execution files explicit
+# CI_CHECKS qualification rather than the catch-all ci-executor-unresolved
+# classifier. Re-pin this head: change both constants below (the reviewed head
+# and the per-file content sha256 map) to the new reviewed head.
 BINDING_PR_1007_REVIEWED_HEAD = '48def9e85e35db90025b4e354350bac22c9fe806'
+BINDING_PR_1007_REVIEWED_CONTENT_SHA256 = {
+    'scripts/pr-check-runner.py': 'ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed',
+    'scripts/pr-gate-plan.py': '57cdefa1457ac51019cfe6468b14af1f7ade265df9ece79cd40ba784f1d2616d',
+    'scripts/test_pr_gate_plan.py': '679fdef9770ed6e2bc35fe81fc4bae0fea23e1cf7ae1e2525824b3ee8ffe2b6e',
+}
 BINDING_PR_1007_REVIEWED_FILES = {
     'scripts/pr-check-runner.py': 'modified',
     'scripts/pr-gate-plan.py': 'modified',
@@ -453,6 +463,29 @@ def core752_binding_linear_ancestry(target, head, single_parent, repository='.')
     return line == target
 
 
+def core752_binding_content_sha256(path, head_sha, repository='.'):
+    """Return the content sha256 of one blob at a commit, or None on failure.
+
+    The sha256 is computed over the blob contents (git cat-file blob), not the
+    commit sha, so the reviewed content pin cannot reference the reviewed head's
+    own commit sha and stay unforgeable.
+    """
+    def git(*args):
+        try:
+            return subprocess.run(['git', '-C', str(repository), *args],
+                                  text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, check=False)
+        except OSError:
+            return None
+    if not isinstance(path, str) or not path or not isinstance(head_sha, str) or len(head_sha) != 40:
+        return None
+    blob = git('cat-file', 'blob', head_sha + ':' + path)
+    if not blob or blob.returncode:
+        return None
+    import hashlib
+    return hashlib.sha256(blob.stdout.encode('utf-8')).hexdigest()
+
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -606,13 +639,16 @@ def plan(diff, requirements, mapping):
     # Self-qualifying binding-PR head (#1007). A binding PR is a single linear
     # commit whose 1st parent is a direct ancestor of the current develop tip,
     # so it never carries the two-parent merge that core752_reviewed_merge_chain
-    # requires. The clause binds when head_sha equals the immutable reviewed
-    # head 48def9e8, the changed set equals the exact reviewed file map with the
-    # reviewed statuses, and the linear head's single parent 706b5244 is an
-    # ancestor of the target base. This gives the changed CI-execution files
-    # explicit CI_CHECKS qualification instead of the ci-executor-unresolved
-    # catch-all. Forgery is impossible because any other PR carries a different
-    # head sha and cannot equal the reviewed anchor.
+    # requires. The clause binds only when all of (i) the PR diff equals exactly
+    # the reviewed file map with the reviewed statuses, (ii) the content of each
+    # reviewed file at head_sha equals its pinned content sha256 (the blob
+    # contents, which avoids the self-reference paradox of binding a commit to
+    # its own commit sha), and (iii) the linear head's merge base with the target
+    # base is exactly that base along a clean first-parent line. This gives the
+    # changed CI-execution files explicit CI_CHECKS qualification instead of the
+    # ci-executor-unresolved catch-all. Forgery is impossible: any other PR
+    # carries a different head sha and different reviewed file content, so it can
+    # not equal the reviewed anchor nor match the pinned content hashes.
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
             identifiers['head_sha'] == BINDING_PR_1007_REVIEWED_HEAD and
@@ -620,9 +656,12 @@ def plan(diff, requirements, mapping):
             set(paths) == set(BINDING_PR_1007_REVIEWED_FILES) and
             all(ch.get('status') == BINDING_PR_1007_REVIEWED_FILES.get(ch.get('path'))
                 for ch in diff['changes']) and
+            all(core752_binding_content_sha256(path, identifiers['head_sha']) == expected
+                for path, expected in
+                BINDING_PR_1007_REVIEWED_CONTENT_SHA256.items()) and
             core752_binding_linear_ancestry(identifiers['target_base_sha'],
-                                            BINDING_PR_1007_REVIEWED_HEAD,
-                                            BINDING_PR_1007_LINEAR_PARENT)):
+                                             BINDING_PR_1007_REVIEWED_HEAD,
+                                             BINDING_PR_1007_LINEAR_PARENT)):
         require(CI_CHECKS)
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
                 'mapping_schema': mapping['schema'], 'release': release,
