@@ -66,15 +66,18 @@ app:
   name: backup-cli
   environment: dev
 services:
-  postgres:
+  sql:
     enabled: true
-  redis:
+  cache:
     enabled: false
   secrets:
     enabled: true
 `
 	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := application.ParseYAML(manifest); err != nil {
+		t.Fatalf("fixture manifest must parse through the shipped capability parser: %v", err)
 	}
 	var output bytes.Buffer
 	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
@@ -274,4 +277,60 @@ func runOwnedBackupCoreFixture(t *testing.T, ctx context.Context,
 		return err
 	}
 	return ready(ctx)
+}
+
+// TestBackupFixtureManifestMatchesCapabilityContract keeps the disaster-recovery
+// fixture manifest in lockstep with the shipped v1 capability grammar without
+// starting any runtime. It fails closed if the manifest reverts to legacy
+// postgres/redis service keys that the parser rejects.
+func TestBackupFixtureManifestMatchesCapabilityContract(t *testing.T) {
+	manifest := `version: 1
+app:
+  name: backup-cli
+  environment: dev
+services:
+  sql:
+    enabled: true
+  cache:
+    enabled: false
+  secrets:
+    enabled: true
+`
+	m, err := application.ParseYAML(manifest)
+	if err != nil {
+		t.Fatalf("fixture manifest must parse through the shipped capability parser: %v", err)
+	}
+	if m.Name != "backup-cli" || m.Environment != "dev" {
+		t.Fatalf("unexpected parsed application identity: name=%q environment=%q", m.Name, m.Environment)
+	}
+	if !m.Services.SQL {
+		t.Fatalf("fixture must request the sql capability")
+	}
+	if m.Services.Cache {
+		t.Fatalf("fixture must not enable the cache capability")
+	}
+	if !m.Services.Secrets {
+		t.Fatalf("fixture must request the secrets capability")
+	}
+}
+
+// TestBackupFixtureManifestRejectsLegacyCapabilityKeys proves the shipped parser
+// refuses the legacy postgres/redis service keys so the fixture can never drift
+// back to them. No runtime is started.
+func TestBackupFixtureManifestRejectsLegacyCapabilityKeys(t *testing.T) {
+	legacy := `version: 1
+app:
+  name: backup-cli
+  environment: dev
+services:
+  postgres:
+    enabled: true
+  redis:
+    enabled: false
+  secrets:
+    enabled: true
+`
+	if _, err := application.ParseYAML(legacy); err == nil {
+		t.Fatalf("parser must reject legacy postgres/redis service keys")
+	}
 }
