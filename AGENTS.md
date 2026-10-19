@@ -1,5 +1,9 @@
 # BaseHarbor: start here
 
+## Owner-delegated Maintainer execution
+
+Marcel's explicit implementation/acceptance/merge instructions authorize Codex acting through @mcpdev80 to use the existing PR-only review exception without another reviewer, self-approval or repeated confirmation. Follow the central [development process](docs/DEVELOPMENT_GUIDELINES.md#development-process), record Owner-authorized acceptance honestly, and preserve actual Required Checks, evidence and the assigned scope.
+
 BaseHarbor is a Go CLI (`baha`) that provisions, connects and verifies application
 infrastructure on the developer's own Targets. Applications declare capabilities;
 Target bindings select replaceable providers. Docker/Compose and rootless
