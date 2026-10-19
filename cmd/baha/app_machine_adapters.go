@@ -9,12 +9,48 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // appMachineError exposes stable machine codes without leaking internal errors.
 type appMachineError struct{ Code string }
 
 func (e *appMachineError) Error() string { return "application machine: " + e.Code }
+
+// classifyAppMachineError maps the private adapter classification (conflict,
+// cancel, denied, unsupported, partial) onto the shared typed machine error
+// owner so the public CLI/JSON/MCP boundary surfaces a concrete Code,
+// CauseCode and remediation instead of the internal_error fallthrough. Every
+// origin keeps its fail-closed semantics; no guard is weakened.
+func classifyAppMachineError(err *appMachineError) *machine.Error {
+	switch err.Code {
+	case "conflict":
+		return machine.NewError(machine.ErrorConflict,
+			"application machine: "+err.Code,
+			"Resubmit with the exact proposed intent, a matching snapshot revision and the current provider-consequence consent, or correct the deployment Target.",
+			false)
+	case "cancel":
+		return machine.NewError(machine.ErrorRuntimeUnavailable,
+			"application machine: "+err.Code,
+			"Retry after confirming the local runtime and providers are responsive.",
+			true)
+	case "denied", "unsupported":
+		return machine.NewError(machine.ErrorPolicyDenied,
+			"application machine: "+err.Code,
+			"Review ownership, authorization or provider support for this Target and retry.",
+			false)
+	case "partial":
+		return machine.NewError(machine.ErrorVerificationFailed,
+			"application machine: "+err.Code,
+			"Inspect the partial change evidence and complete or roll back the affected provider operations.",
+			true)
+	default:
+		return machine.NewError(machine.ErrorInternal,
+			"application machine: "+err.Code,
+			"Capture the reported machine code and investigate the underlying provider operation.",
+			false)
+	}
+}
 
 type appMachineRead func(context.Context, string) (GuidedReadContext, error)
 

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -108,6 +110,23 @@ func TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional(t *testing.T) {
 			t.Fatalf("expected snake_case field %q in edit schema: %s", snake, string(payload))
 		}
 	}
+	// The edit tool schema root must never force the apply-only proposal/consent,
+	// so propose is a valid schema entry without them.
+	var root struct {
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(payload, &root); err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range root.Required {
+		if required == "proposal" || required == "consent" {
+			t.Fatalf("proposal/consent must be optional for propose at the schema root: %s", string(payload))
+		}
+	}
+	if !containsString(root.Required, "desired") {
+		t.Fatalf("schema root must require only the Target-bound desired intent: %s", string(payload))
+	}
+	// desired.target is the only required nested field; desired.choices.requirement is required.
 	var document struct {
 		Properties map[string]struct {
 			Required []string `json:"required"`
@@ -116,7 +135,6 @@ func TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional(t *testing.T) {
 	if err := json.Unmarshal(payload, &document); err != nil {
 		t.Fatal(err)
 	}
-	// desired.target is the only required nested field; desired.choices.requirement is required.
 	desired := document.Properties["desired"]
 	requireDesiredTarget := false
 	for _, required := range desired.Required {
@@ -126,12 +144,6 @@ func TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional(t *testing.T) {
 	}
 	if !requireDesiredTarget {
 		t.Fatalf("desired.target must be required: %s", string(payload))
-	}
-	// The top-level contract is never forced to carry the apply-only proposal/consent.
-	for _, required := range document.Properties["app.edit"].Required {
-		if required == "proposal" || required == "consent" {
-			t.Fatalf("proposal/consent must be optional for propose: %s", string(payload))
-		}
 	}
 }
 
@@ -143,42 +155,64 @@ func TestCore921MCPProposeReachesHandlerWithZeroWrites(t *testing.T) {
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 	registerTestDeployment(t, configureTestTarget(t), m, root, application.RepositoryManifestName)
 
-	records, err := deployment.ListDeployments("docker-dev")
-	if err != nil {
-		t.Fatal(err)
+	manifestPath := application.RepositoryManifestName
+	sourceBefore, readErr := os.ReadFile(manifestPath)
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
-	before := len(records)
+	recordsBefore, listErr := deployment.ListDeployments("docker-dev")
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	beforeBytes := deploymentSnapshot(t)
 
 	session := workspaceMutationClient(t)
-	// A validly structured propose (correct target and snapshot) reaches the
-	// real edit handler. It fails closed on an empty requirements intent with a
-	// typed conflict, never mutating state.
-	snapshot := "a7233bf01898e926fcb6e6f10aab17209dee43ea09470278d4ed1e08f9f2d5ce"
-	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+	// A validly structured propose (correct target, empty requirements intent)
+	// reaches the real edit handler. It fails closed on the missing snapshot with
+	// a typed conflict, never mutating state.
+	result, callErr := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "baseharbor.app.edit",
 		Arguments: map[string]any{
 			"target":  "docker-dev",
 			"phase":   "propose",
-			"desired": map[string]any{"target": "docker-dev", "snapshot_revision": snapshot},
+			"desired": map[string]any{"target": "docker-dev", "snapshot_revision": "stale-snapshot-0"},
 		},
 	})
-	if err == nil && result != nil && !result.IsError {
-		t.Fatal("empty-requirements propose unexpectedly succeeded")
+	if callErr != nil {
+		t.Fatalf("propose call failed: %v", callErr)
 	}
 	if result == nil || !result.IsError {
-		t.Fatal("valid-structure propose must still fail closed on an empty requirements intent")
+		t.Fatal("valid-structure propose must still fail closed on the stale-snapshot intent")
 	}
-	payload, _ := json.Marshal(result.StructuredContent)
-	if !strings.Contains(string(payload), "conflict") {
-		t.Fatalf("handler did not classify empty-requirements propose as a conflict: %s", string(payload))
+	// The public boundary classifies the stale-snapshot mismatch through the
+	// typed machine error owner, not as internal_error.
+	var payload struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	raw, _ := json.Marshal(result.StructuredContent)
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("error payload not structured: %v", err)
+	}
+	if payload.Error.Code != "conflict" {
+		t.Fatalf("stale-snapshot propose must classify as conflict, got %q (payload: %s)", payload.Error.Code, string(raw))
 	}
 
-	records, err = deployment.ListDeployments("docker-dev")
-	if err != nil {
-		t.Fatal(err)
+	// Zero writes: the manifest bytes and every deployment record are byte-identical.
+	sourceAfter, afterErr := os.ReadFile(manifestPath)
+	if afterErr != nil {
+		t.Fatal(afterErr)
 	}
-	if len(records) != before {
-		t.Fatalf("propose wrote deployment state: before=%d after=%d", before, len(records))
+	if !bytes.Equal(sourceBefore, sourceAfter) {
+		t.Fatal("propose mutated the application manifest")
+	}
+	recordsAfter, _ := deployment.ListDeployments("docker-dev")
+	if len(recordsAfter) != len(recordsBefore) {
+		t.Fatalf("propose changed deployment records: before=%d after=%d", len(recordsBefore), len(recordsAfter))
+	}
+	if !deploymentSnapshotEqual(t, beforeBytes, deploymentSnapshot(t)) {
+		t.Fatal("propose mutated deployment state at the byte level")
 	}
 }
 
@@ -194,6 +228,11 @@ func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceBefore, readErr := os.ReadFile(application.RepositoryManifestName)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	beforeBytes := deploymentSnapshot(t)
 
 	session := workspaceMutationClient(t)
 	ctx := context.Background()
@@ -251,12 +290,65 @@ func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
 		"desired": map[string]any{"target": "docker-dev"},
 	}, "validation_failed")
 
-	// The empty-requirements classify (conflict) also proves no writes.
-	recordsAfter, err := deployment.ListDeployments("docker-dev")
-	if err != nil {
-		t.Fatal(err)
+	// Apply without a matching typed proposal/consent fails closed through the
+	// typed machine error owner as validation_failed: the apply phase demands
+	// the exact proposal and fresh consent before any snapshot comparison, so the
+	// consent gate is the reachable typed boundary here (the stale-snapshot
+	// conflict only fires after a valid proposal/consent round-trip). Either way
+	// the public boundary surfaces a concrete code, not internal_error.
+	structuredCode("apply-missing-snapshot", map[string]any{
+		"target":  "docker-dev",
+		"phase":   "apply",
+		"desired": map[string]any{"target": "docker-dev", "snapshot_revision": "stale-snapshot-9"},
+	}, "validation_failed")
+
+	// The handler-level negatives wrote nothing: manifest bytes and deployment
+	// state are byte-identical before and after.
+	sourceAfter, afterErr := os.ReadFile(application.RepositoryManifestName)
+	if afterErr != nil {
+		t.Fatal(afterErr)
+	}
+	if !bytes.Equal(sourceBefore, sourceAfter) {
+		t.Fatal("handler-level negatives mutated the application manifest")
+	}
+	recordsAfter, listErr := deployment.ListDeployments("docker-dev")
+	if listErr != nil {
+		t.Fatal(listErr)
 	}
 	if len(recordsAfter) != len(recordsBefore) {
 		t.Fatalf("handler-level negatives wrote deployment state: before=%d after=%d", len(recordsBefore), len(recordsAfter))
 	}
+	if !deploymentSnapshotEqual(t, beforeBytes, deploymentSnapshot(t)) {
+		t.Fatal("handler-level negatives changed deployment state at the byte level")
+	}
+}
+
+// deploymentSnapshot marshals every deployment record for the target into a
+// stable byte string so a zero-write assertion compares actual persisted state,
+// not merely a record count.
+func deploymentSnapshot(t *testing.T) []byte {
+	t.Helper()
+	records, err := deployment.ListDeployments("docker-dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Slice(records, func(i, j int) bool {
+		return records[i].Identity.DeploymentID < records[j].Identity.DeploymentID
+	})
+	var buf bytes.Buffer
+	for _, record := range records {
+		raw, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buf.Write(raw)
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes()
+}
+
+// deploymentSnapshotEqual reports byte-level equality of two deployment snapshots.
+func deploymentSnapshotEqual(t *testing.T, before, after []byte) bool {
+	t.Helper()
+	return bytes.Equal(before, after)
 }
