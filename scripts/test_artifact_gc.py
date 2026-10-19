@@ -34,6 +34,11 @@ class ArtifactGC(unittest.TestCase):
                 for i, branch, outcome in [(1, core, 'success'), (2, core, 'failure'),
                                             (3, templates, 'cancelled'),
                                             (4, ordinary, 'failure')]]
+        # Old completed PR CI evidence must survive even after its source
+        # branch is no longer active; disposable diagnostic runs still go.
+        runs.append(dict(id=5, path='.github/workflows/ci.yml',
+                         head_branch='merged/old-pr', status='completed',
+                         conclusion='success', updated_at='2020-01-01T00:00:00Z'))
         deleted = []
 
         def request(req):
@@ -97,6 +102,34 @@ class ArtifactGC(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             exec(compile(source, 'artifact-gc-artifacts.yml', 'exec'), {})
         self.assertEqual(deleted, ['actions/artifacts/3', 'actions/artifacts/4'])
+
+    def test_pr_evidence_artifacts_are_not_ephemeral(self):
+        workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /
+                                   '.github/workflows/artifact-gc.yml').read_text())
+        shell = workflow['jobs']['artifacts']['steps'][0]['run']
+        source = shell.split("python3 - <<'PY'\n", 1)[1].rsplit('\nPY', 1)[0]
+        deleted = []
+        artifacts = [dict(id=i, name=name, created_at='2020-01-01T00:00:00Z',
+                          workflow_run={'id': i}) for i, name in enumerate((
+            'ci-evidence-older', 'docker-runtime-evidence-older',
+            'podman-evidence-older', 'targeted-disposable'), start=1)]
+        def request(req):
+            path = req.full_url.split('/example/core/', 1)[-1]
+            if req.get_method() == 'DELETE':
+                deleted.append(path)
+                return Response(status=204)
+            if path.startswith('actions/artifacts?'):
+                return Response({'artifacts': artifacts if path.endswith('page=1') else []})
+            if path.startswith('pulls?') or path.startswith('branches?'):
+                return Response([])
+            if path.startswith('actions/runs/'):
+                return Response({'status': 'completed', 'head_branch': 'diag/old'})
+            raise AssertionError(path)
+        with patch.dict(os.environ, {'REPOSITORY': 'example/core', 'GH_TOKEN': 'test-only'}), \
+                patch.object(urllib.request, 'urlopen', request), \
+                contextlib.redirect_stdout(io.StringIO()):
+            exec(compile(source, 'artifact-gc.yml', 'exec'), {})
+        self.assertEqual(deleted, ['actions/artifacts/4'])
 
     def test_gc_discovery_failure_never_deletes(self):
         workflow = yaml.safe_load((pathlib.Path(__file__).resolve().parents[1] /

@@ -142,5 +142,123 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
                 runner.execute_validation('wizard-app-edit-load-tests', root)
 
+    def test_core918_native_security_executor_missing_skip_failed(self):
+        names = ["TestNativeSQLInventoryRejectsUnverifiedMaterialRegardlessOfKnownPath","TestNativeSQLInventoryKnownFilesRequireActualInspection","TestNativeSQLGeneratedProjectionRequiresProtectedAncestorAndSource","TestNativeSQLProductionMaterialGateRejectsOversizedAndBrokenPublicSources"]
+        check = 'wizard-core918-native-sql-safety-tests'
+        self.assertEqual(tuple('^' + n for n in names),
+                         runner.WIZARD_TEST_FAMILIES[check])
+        self.assertEqual([{'check': check}],
+                         runner.matrix({'required_validation_checks': [{'id': check}]})['include'])
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'go.mod').write_text('module example.com/nativefixture' + chr(10) * 2 + 'go 1.25' + chr(10))
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            fixture = pkg / 'safety_test.go'
+            def prepare(missing=None, skipped=None, failed=None):
+                lines = ['package main', 'import "testing"']
+                for name in names:
+                    if name == missing:
+                        continue
+                    body = 't.Skip("skip")' if name == skipped else 't.Fatal("failure")' if name == failed else ''
+                    lines.append('func %s(t *testing.T) { %s }' % (name, body))
+                fixture.write_text(chr(10).join(lines) + chr(10))
+            prepare()
+            self.assertEqual(names, runner.execute_validation(check, root))
+            for name in names:
+                with self.subTest(missing=name):
+                    prepare(missing=name)
+                    with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                        runner.execute_validation(check, root)
+            prepare(skipped=names[0])
+            with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
+                runner.execute_validation(check, root)
+            prepare(failed=names[0])
+            with self.assertRaisesRegex(RuntimeError, 'test execution failed'):
+                runner.execute_validation(check, root)
+
+class Core754MCPExecutionTests(unittest.TestCase):
+    def test_exact_two_tests_are_mandatory_in_existing_runner(self):
+        profile = runner.WIZARD_TEST_FAMILIES['wizard-core754-mcp-tests']
+        self.assertEqual((r'^TestExpectedPreconditionsShareTypedCLIMCPErrors$',
+                          r'^TestMCPReadEntryExpectedPreconditions$'), profile)
+        self.assertEqual([{'check': 'wizard-core754-mcp-tests'}],
+                         runner.matrix({'required_validation_checks': [{'id': 'wizard-core754-mcp-tests'}]})['include'])
+
+    def test_actual_go_regex_selection_and_execution(self):
+        # No project imports or toolchain download; Go's regexp engine is
+        # exercised by the actual runner on an isolated package.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.com/core754fixture\n\ngo 1.22\n')
+            pkg = root / 'cmd' / 'baha'
+            pkg.mkdir(parents=True)
+            (pkg / 'core754_test.go').write_text(
+                'package main\n\nimport "testing"\n\n'
+                'func TestExpectedPreconditionsShareTypedCLIMCPErrors(t *testing.T) {}\n'
+                'func TestMCPReadEntryExpectedPreconditions(t *testing.T) {}\n'
+                'func TestExpectedPreconditionsShareTypedCLIMCPErrorsExtra(t *testing.T) { t.Fatal("extra matched") }\n'
+                'func TestMCPReadEntryExpectedPreconditionsExtra(t *testing.T) { t.Fatal("extra matched") }\n')
+            self.assertEqual(
+                ['TestExpectedPreconditionsShareTypedCLIMCPErrors',
+                 'TestMCPReadEntryExpectedPreconditions'],
+                runner.execute_validation('wizard-core754-mcp-tests', root))
+
+    def test_actual_workflow_loads_runner_from_trusted_base(self):
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github' / 'workflows' / 'ci.yml').read_text()
+        self.assertIn('wizard-*-tests)', workflow)
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', workflow)
+        self.assertIn('python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION"', workflow)
+        self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
+
+    def test_both_required_families_execute_or_block(self):
+        from subprocess import CompletedProcess
+        from unittest.mock import patch
+        names = ('TestExpectedPreconditionsShareTypedCLIMCPErrors',
+                 'TestMCPReadEntryExpectedPreconditions')
+        def run_case(missing=None, skipped=None, failed=None):
+            seen = []
+            def fake_run(args, **kwargs):
+                pattern = args[args.index('-list') + 1] if '-list' in args else args[args.index('-run') + 1]
+                name = next(name for name in names if name in pattern)
+                if '-list' in args:
+                    return CompletedProcess(args, 0, '' if name == missing else name + '\n', '')
+                seen.append(name)
+                status = 'SKIP' if name == skipped else 'FAIL' if name == failed else 'PASS'
+                output = '=== RUN   ' + name + '\n--- ' + status + ': ' + name + ' (0.00s)\n'
+                return CompletedProcess(args, 1 if name == failed else 0, output, '')
+            with patch.object(runner.subprocess, 'run', side_effect=fake_run):
+                if missing:
+                    with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                elif skipped:
+                    with self.assertRaisesRegex(RuntimeError, 'required test skipped'):
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                elif failed:
+                    with self.assertRaisesRegex(RuntimeError, 'test execution failed'):
+                        runner.execute_validation('wizard-core754-mcp-tests', '.')
+                else:
+                    self.assertEqual(list(names), runner.execute_validation('wizard-core754-mcp-tests', '.'))
+            return seen
+        self.assertEqual(list(names), run_case())
+        for name in names:
+            with self.subTest(missing=name):
+                self.assertEqual(list(names[:names.index(name)]), run_case(missing=name))
+            with self.subTest(skipped=name):
+                self.assertEqual(list(names[:names.index(name)+1]), run_case(skipped=name))
+            with self.subTest(failed=name):
+                self.assertEqual(list(names[:names.index(name)+1]), run_case(failed=name))
+
+    def test_missing_and_skipped_mandatory_tests_block(self):
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        listed = CompletedProcess([], 0, 'TestExpectedPreconditionsShareTypedCLIMCPErrors\n', '')
+        with patch.object(runner.subprocess, 'run', return_value=listed):
+            with self.assertRaisesRegex(RuntimeError, 'did not execute'):
+                runner.execute_validation('wizard-core754-mcp-tests', '.')
+        with patch.object(runner.subprocess, 'run', return_value=CompletedProcess([], 0, '', '')):
+            with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
+                runner.execute_validation('wizard-core754-mcp-tests', '.')
 if __name__ == '__main__':
     unittest.main()

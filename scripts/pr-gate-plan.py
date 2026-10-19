@@ -176,6 +176,40 @@ INSPECT_RECONCILE_REVIEWED = frozenset([
     'internal/repositoryinspect/reconcile.go',
     'internal/repositoryinspect/reconcile_default_instance_test.go',
 ])
+# core-751 prospective scope is explicit but never a path-only qualification.
+# Source review and immutable commit binding must precede resolved coverage.
+INSPECT_IMPORT_CANDIDATE_FILES = {
+    'internal/repositoryinspect/capability_detection_runtime.go': 'modified',
+    'internal/repositoryinspect/capability_detection_js_context.go': 'added',
+    'internal/repositoryinspect/capability_import_detection_test.go': 'added',
+}
+INSPECT_IMPORT_REQUIRED_IDS = frozenset(check['id'] for check in INSPECT_CHECKS)
+
+# Independently reviewed exact candidates: commit ancestry and complete diff
+# status are both mandatory, never a reusable path-only allowlist.
+CORE_751_REVIEWED_HEAD = 'cf0a19bc4c8f398d7ee3fc07a635833168081ff5'
+CORE_991_REVIEWED_HEAD = 'eeda633071714a0b43551ab947ad036ffaac1b1b'
+CORE_982_REVIEWED_HEAD = '0ab44b7edb94618489cb505cf897ff7e6d73da6c'
+# Independently qualified GC candidate is bound to its immutable full SHA.
+# Any follow-up contents, changed file inventory or rename stays unresolved.
+GC_999_REVIEWED_HEAD = '31089e281390c58189199b25d22925c590ab228d'
+GC_999_REVIEWED_FILES = {
+    '.github/workflows/artifact-gc.yml': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_artifact_gc.py': 'modified',
+}
+
+CORE_982_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_pr_actions_summary.py': 'added',
+}
+CORE_991_REVIEWED_FILES = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_check_runner.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+}
+
 # Independently reviewed immutable source and trusted merge-base for core-893 PR #930.
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
@@ -268,6 +302,35 @@ CORE_917_REVIEWED_FILES = {
 }
 CORE_917_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
+# Proposed independent core-918 qualification: immutable reviewed source, exact
+# 21-file diff (including 15 previously unresolved paths), and only verified
+# normal trusted-target merges. This record is NOT a reusable file allowlist.
+CORE_918_REVIEWED_HEAD = '95eed33e6a3852c21b8dc1a25ccc17e601f38da8'
+CORE_918_REVIEWED_FILES = {
+    'cmd/baha/app_apply.go': 'modified',
+    'cmd/baha/app_apply_lifecycle.go': 'modified',
+    'cmd/baha/app_apply_result.go': 'added',
+    'cmd/baha/app_apply_result_test.go': 'added',
+    'cmd/baha/app_edit.go': 'added',
+    'cmd/baha/app_edit_apply.go': 'added',
+    'cmd/baha/app_edit_apply_result.go': 'added',
+    'cmd/baha/app_edit_apply_test.go': 'added',
+    'cmd/baha/app_edit_test.go': 'added',
+    'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_machine_adapters_test.go': 'modified',
+    'cmd/baha/application_native_backend_impact.go': 'modified',
+    'cmd/baha/application_native_backend_impact_test.go': 'added',
+    'cmd/baha/application_native_backend_observation.go': 'modified',
+    'cmd/baha/application_native_sql_projection.go': 'added',
+    'cmd/baha/application_native_sql_projection_unix.go': 'added',
+    'cmd/baha/application_native_sql_projection_windows.go': 'added',
+    'cmd/baha/application_provider_impact.go': 'modified',
+    'internal/application/backend_probe_test.go': 'modified',
+    'internal/application/runtime_backend_probe.go': 'modified',
+    'internal/application/runtime_postgres.go': 'modified',
+}
+CORE_918_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -306,6 +369,11 @@ def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
         head = previous
     return False
 
+
+# Execution of this reviewed test candidate is not content qualification.
+CORE_754_TEST_HEAD = '5a3813385af5392a9be3095bd038424a4f9950b7'
+CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
+CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
@@ -369,6 +437,39 @@ def plan(diff, requirements, mapping):
     def require(checks):
         for check in checks:
             validations[check['id']] = check
+    # Exact source hashes bind all content, including individual file status.
+    # Each clean develop merge is proved by the existing Git tree/ancestry owner.
+    for reviewed, expected, checks, label in (
+        (CORE_751_REVIEWED_HEAD, INSPECT_IMPORT_CANDIDATE_FILES,
+         INSPECT_CHECKS, 'core-751 reviewed import evidence'),
+        (CORE_991_REVIEWED_HEAD, CORE_991_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed core-754/core-918 trusted CI integration'),
+        (CORE_982_REVIEWED_HEAD, CORE_982_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed core-894 Actions summary presentation'),
+        (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed exact #999 GC evidence retention candidate'),
+    ):
+        if (valid and not diff['broad_required'] and not unresolved and
+                identifiers['integration_sha'] is not None and
+                len(paths) == len(expected) and set(paths) == set(expected) and
+                all(ch.get('status') == expected.get(ch.get('path'))
+                    for ch in diff['changes']) and
+                core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                             identifiers['head_sha'], reviewed)):
+            require(checks)
+            return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                    'mapping_schema': mapping['schema'], 'release': release,
+                    'coverage_status': 'resolved', 'unresolved_coverage': [],
+                    'broad_required': False, 'selected_gates': [],
+                    'required_validation_checks': [validations[k] for k in sorted(validations)],
+                    'validation_contract': ('Every listed test must execute and PASS on the '
+                        'authenticated current integration. Missing, skipped and failed '
+                        'validations block in the existing trusted final verifier.'),
+                    'reasons': [label + ': exact source hash, complete changed status '
+                                'set and proven clean trusted-target merge only']}
     # Reuse the existing content/ancestry proof for strict target updates.
     # Resolver validation proves the current PR integration parents and tree;
     # this rule only covers the immutable reviewed source and clean target merges.
@@ -399,6 +500,37 @@ def plan(diff, requirements, mapping):
                 'reasons': ['exact core-917 source reviewed in #975 review 5555616115; '
                             'New/controller/Guided/owner contracts and both native lifecycle gates; '
                             'qualification evidence run 38995396298, not a path-wide exemption']}
+    # Independently reviewed full Edit/Apply source and exact statuses only.
+    # No path-only approval: the normal trusted-target merge proof checks each
+    # merge tree; unrelated changes after the review commit fail closed.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_918_REVIEWED_FILES) and
+            set(paths) == set(CORE_918_REVIEWED_FILES) and
+            all(change.get('status') == CORE_918_REVIEWED_FILES.get(change.get('path'))
+                for change in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], CORE_918_REVIEWED_HEAD)):
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(WIZARD_BASE_CHECKS)
+        require([wizard_check('wizard-app-edit-tests'),
+                 wizard_check('wizard-machine-adapter-tests'),
+                 wizard_check('wizard-core918-native-sql-safety-tests')])
+        absent = sorted(CORE_918_REQUIRED_GATES - available)
+        if absent:
+            unresolved.append('reviewed core-918 required gates absent: ' + ', '.join(absent))
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(CORE_918_REQUIRED_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('All checks and both native lifecycle gates must pass for '
+                                        'the currently verified integration; missing/failed/skipped '
+                                        'results fail closed.'),
+                'reasons': ['Exact 21-file core-918 candidate, reviewed source SHA and '
+                            'clean trusted-target integration only; no file-wide exemption']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
     if (valid and not diff['broad_required'] and
@@ -502,6 +634,17 @@ def plan(diff, requirements, mapping):
                 require(DOC_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('shared registration rename/delete/type change needs independent review: ' + path)
+        elif path == CORE_754_TEST_PATH:
+            area = 'core754-mcp-test-unresolved'
+            require(WIZARD_BASE_CHECKS)
+            require([wizard_check(CORE_754_TEST_CHECK)])
+            if (len(paths) != 1 or path_status.get(path) != 'added' or
+                    not (identifiers['head_sha'] == CORE_754_TEST_HEAD or
+                         core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                                      identifiers['head_sha'],
+                                                      CORE_754_TEST_HEAD))):
+                unresolved.append('core-754 test source differs from exact reviewed candidate')
+            unresolved.append('core-754 MCP test content requires independent source qualification: ' + path)
         elif path in {
             'cmd/baha/commands.go',
             'cmd/baha/app_commands.go',
@@ -554,6 +697,12 @@ def plan(diff, requirements, mapping):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path in INSPECT_IMPORT_CANDIDATE_FILES:
+            area = 'inspect-import-unreviewed-source'
+            require(INSPECT_CHECKS)
+            if path_status.get(path) != INSPECT_IMPORT_CANDIDATE_FILES[path]:
+                unresolved.append('import detector status requires source review: ' + path)
+            unresolved.append('import detector requires independent immutable source binding: ' + path)
         elif path in INSPECT_RECONCILE_REVIEWED:
             area = 'inspect-reconciliation'
             require(INSPECT_CHECKS)

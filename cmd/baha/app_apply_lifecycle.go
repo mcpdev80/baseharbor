@@ -41,6 +41,14 @@ func newApplicationApplyExecution(ctx context.Context, store application.Store, 
 	if err != nil {
 		return nil, err
 	}
+	return newApplicationApplyExecutionFromResolved(ctx, resolved, out, errOut)
+}
+
+// newApplicationApplyExecutionFromResolved separates resolution (which may run
+// before the Target lifecycle lock) from printing and assembly, so an in-lock
+// source mutation can rebuild the execution from its authoritative re-read
+// without duplicate human output.
+func newApplicationApplyExecutionFromResolved(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (*applicationApplyExecution, error) {
 	m := resolved.Manifest
 	term := cli.NewTerminal(ctx, out, errOut)
 	term.Header(m.Name, m.Environment)

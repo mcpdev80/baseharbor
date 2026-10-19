@@ -141,9 +141,10 @@ func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, sto
 type BackendProbeKind string
 
 const (
-	BackendProbeSQLSelectOne      BackendProbeKind = "sql.select-one"
-	BackendProbeCachePing         BackendProbeKind = "cache.ping"
-	BackendProbeDurableKeyValueRW BackendProbeKind = "database.key-value.write-read"
+	BackendProbeSQLSelectOne          BackendProbeKind = "sql.select-one"
+	BackendProbeSQLConsumerInventory BackendProbeKind = "sql.consumer-inventory"
+	BackendProbeCachePing            BackendProbeKind = "cache.ping"
+	BackendProbeDurableKeyValueRW    BackendProbeKind = "database.key-value.write-read"
 )
 
 type BackendProbe struct {
@@ -166,6 +167,48 @@ func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files Runtim
 		}
 	}
 	return executor
+}
+
+// SQLConsumerInventory reports a real credential-bound query, not a proposed
+// binding. User-object and large-object counts describe only the selected DB.
+type SQLConsumerInventory struct {
+	Consumer string
+	Instance string
+	Empty    bool
+	Evidence string
+}
+
+func ObserveSQLConsumerInventory(ctx context.Context, executor BackendProbeExecutor, files RuntimeFiles, m Manifest, instance string) (SQLConsumerInventory, error) {
+	var result SQLConsumerInventory
+	if executor == nil || UsesSharedPostgreSQL(m) {
+		return result, errors.New("application-scoped SQL probe executor required")
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return result, err
+	}
+	wantUser, wantDB := values[postgresRuntimeKey(instance, "USER")], values[postgresRuntimeKey(instance, "DB")]
+	if wantUser == "" || wantDB == "" || wantDB != postgresDatabaseName(m, instance) {
+		return result, errors.New("SQL consumer identity/database inventory unavailable")
+	}
+	out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeSQLConsumerInventory, Instance: instance, Database: wantDB})
+	if err != nil {
+		return result, errors.New("protected SQL consumer inventory query failed")
+	}
+	fields := strings.Split(strings.TrimSpace(out), "|")
+	if len(fields) != 4 || fields[0] != wantUser || fields[1] != wantDB {
+		return result, errors.New("SQL consumer identity or database differs from protected runtime owner")
+	}
+	objects, err1 := strconv.ParseUint(fields[2], 10, 64)
+	largeObjects, err2 := strconv.ParseUint(fields[3], 10, 64)
+	if err1 != nil || err2 != nil {
+		return result, errors.New("SQL consumer catalog inventory could not be verified")
+	}
+	result.Consumer = "application/" + m.ApplicationID + "/" + m.Environment
+	result.Instance = instance
+	result.Empty = objects == 0 && largeObjects == 0
+	result.Evidence = "native TLS-verified SELECT with protected application-scoped SQL user/database, system catalog object and large-object inventory"
+	return result, nil
 }
 
 func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
