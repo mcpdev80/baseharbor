@@ -4,14 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestAppBackupGuidedRuntimeFixtureSelectsNativeTarget(t *testing.T) {
@@ -224,5 +229,266 @@ func TestAppBackupOwnedCoreCleanupAfterLaterAbort(t *testing.T) {
 	}
 	if _, err := os.Stat(foreign); err != nil {
 		t.Fatalf("unrelated sentinel removed: %v", err)
+	}
+}
+
+// Each operation first reaches its real fail-closed authority without consent.
+// Only that invocation's valid typed plan can authorize one retry; stale plans
+// and unrelated failures are returned, never refreshed in an approval loop.
+func runBackupFixtureWithConsent(ctx context.Context, operation string, run func(context.Context) error) error {
+	if operation != "apply" && operation != "destroy" && operation != "restore" {
+		return errors.New("unsupported backup fixture operation")
+	}
+	ctx = withProviderChangeConsent(machineNoninteractiveContext(ctx), nil)
+	err := run(ctx)
+	if err == nil {
+		return nil
+	}
+	ack, consentErr := backupFixtureConsent(operation, err)
+	if consentErr != nil {
+		return consentErr
+	}
+	return run(withProviderChangeConsent(ctx, ack))
+}
+
+func backupFixtureConsent(operation string, cause error) (*application.ProviderChangeConsent, error) {
+	var failure *machine.Error
+	if !errors.As(cause, &failure) || failure.Code != machine.ErrorApprovalRequired ||
+		(failure.CauseCode != "impact-confirmation-required" && failure.CauseCode != "data-deletion-consent-required") {
+		return nil, cause
+	}
+	var ack application.ProviderChangeConsent
+	switch plan := failure.Details.(type) {
+	case application.ProviderImpactPlan:
+		if operation != "apply" && operation != "destroy" || plan.Destructive {
+			return nil, cause
+		}
+		ack = application.ProviderChangeConsent{PlanID: plan.PlanID, First: true, Second: plan.ConfirmationsRequired == 2}
+		if err := application.ValidateProviderChangeConsent(plan, ack); err != nil {
+			return nil, err
+		}
+	case applicationDestructionPlan:
+		// This opt-in recovery test explicitly authorizes replacement of its
+		// own selected data, separately from retirement's retain-data consent.
+		if operation != "restore" || plan.Scope.Owner.Owner != "application-restore" || !plan.Scope.Destructive {
+			return nil, cause
+		}
+		ack = application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: plan.Scope.ConfirmationsRequired == 2, DeleteData: true}
+		if err := application.ValidateProviderImpactScopeConsent(plan.Scope, ack); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, cause
+	}
+	return &ack, nil
+}
+
+// Read the existing consumer binding on every phase, including after restore.
+// Neither the physical provider project nor a bootstrap database role is guessed.
+func backupFixtureSQL(ctx context.Context, resolved resolvedApplication, seed bool) (string, error) {
+	_, binding, err := resolveAccessBinding(ctx, resolved.Store, resolved.Manifest.Name, "postgres", "default")
+	if err != nil {
+		return "", errors.New("backup fixture SQL consumer binding unavailable")
+	}
+	config, err := backupFixtureSQLConfig(binding)
+	if err != nil {
+		return "", err
+	}
+	conn, err := pgx.ConnectConfig(ctx, config)
+	if err != nil {
+		return "", errors.New("backup fixture protected SQL consumer connection failed")
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = conn.Close(closeCtx)
+	}()
+	if seed {
+		if _, err := conn.Exec(ctx, "CREATE TABLE recovery_probe(value text); INSERT INTO recovery_probe(value) VALUES ('survived');"); err != nil {
+			return "", errors.New("backup fixture SQL consumer seed failed")
+		}
+	}
+	var user, database, value string
+	if err := conn.QueryRow(ctx, "SELECT current_user, current_database(), value FROM recovery_probe").Scan(&user, &database, &value); err != nil {
+		return "", errors.New("backup fixture SQL consumer readback failed")
+	}
+	if user != binding.Username || database != binding.Database {
+		return "", errors.New("backup fixture SQL consumer identity differs from the current binding")
+	}
+	return value, nil
+}
+
+func backupFixtureSQLConfig(binding application.ServiceBinding) (*pgx.ConnConfig, error) {
+	uri, err := url.Parse(binding.URI)
+	if err != nil || uri.Query().Get("sslmode") != "verify-ca" && uri.Query().Get("sslmode") != "verify-full" {
+		return nil, errors.New("backup fixture SQL verified TLS required")
+	}
+	config, err := pgx.ParseConfig(binding.URI)
+	if err != nil || config.TLSConfig == nil || config.Host != binding.Host ||
+		fmt.Sprint(config.Port) != binding.Port || config.User != binding.Username ||
+		config.Database != binding.Database || config.Password != binding.Password ||
+		binding.Username == "" || binding.Database == "" || binding.Password == "" {
+		return nil, errors.New("backup fixture SQL URI does not match its protected TLS consumer binding")
+	}
+	for _, fallback := range config.Fallbacks {
+		if fallback.TLSConfig == nil {
+			return nil, errors.New("backup fixture SQL plaintext fallback refused")
+		}
+	}
+	return config, nil
+}
+
+func TestGuidedBackupFixtureRegressionSuite(t *testing.T) {
+	for _, scenario := range []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{"native Target selection", TestAppBackupGuidedRuntimeFixtureSelectsNativeTarget},
+		{"invalid runtime", TestAppBackupGuidedRuntimeFixtureRejectsInvalidRuntime},
+		{"selected Core state", TestAppBackupCoreStateUsesSelectedTargetForNativeRuntimes},
+		{"cleanup every exit", TestAppBackupOwnedCoreFixtureCleanupOnEveryExit},
+		{"bounded cleanup", TestAppBackupOwnedCoreCleanupContextIsBounded},
+		{"cleanup later abort", TestAppBackupOwnedCoreCleanupAfterLaterAbort},
+		{"manifest contract", TestBackupFixtureManifestMatchesCapabilityContract},
+		{"legacy manifest rejection", TestBackupFixtureManifestRejectsLegacyCapabilityKeys},
+	} {
+		t.Run(scenario.name, scenario.run)
+	}
+}
+
+func TestGuidedBackupFixtureConsentIsFreshAndDoesNotRetryStalePlans(t *testing.T) {
+	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
+	for _, operation := range []string{"apply", "destroy"} {
+		t.Run(operation, func(t *testing.T) {
+			plan := application.ProviderImpactPlan{
+				Version:               application.ProviderImpactVersion,
+				PlanID:                operation + "-current",
+				Target:                "isolated-fixture",
+				ConfirmationsRequired: 2,
+			}
+			for _, stale := range []bool{false, true} {
+				calls := 0
+				err := runBackupFixtureWithConsent(t.Context(), operation, func(ctx context.Context) error {
+					calls++
+					ack, err := invocationProviderChangeConsent(ctx)
+					if err != nil {
+						return err
+					}
+					if calls == 1 {
+						if ack != nil {
+							t.Fatal("initial operation inherited consent")
+						}
+						return providerImpactConsentError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+					}
+					if ack == nil || ack.PlanID != plan.PlanID || ack.DeleteData {
+						t.Fatal("wrong operation plan or implicit deletion consent")
+					}
+					current := plan
+					if stale {
+						current.PlanID = "changed-after-preview"
+					}
+					return providerImpactConsentError(current, application.ValidateProviderChangeConsent(current, *ack))
+				})
+				if calls != 2 || (err != nil) != stale {
+					t.Fatalf("calls=%d error=%v stale=%t", calls, err, stale)
+				}
+				if stale {
+					var change *application.ProviderChangeError
+					if !errors.As(err, &change) || change.Code != "stale-impact-consent" {
+						t.Fatal("stale cause lost")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestGuidedBackupFixtureRestoreRequiresItsOwnDestructiveScope(t *testing.T) {
+	r := retainedNativeBackendFixture(t)
+	data := applicationRestoreData{manifest: r.Manifest, archiveRevision: strings.Repeat("a", 64)}
+	plan, err := buildApplicationRestorePlan(t.Context(), r, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := applicationDestructionPlanError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+	ack, err := backupFixtureConsent("restore", cause)
+	if err != nil || ack == nil || !ack.First || !ack.Second || !ack.DeleteData || ack.PlanID != plan.Scope.PlanID {
+		t.Fatalf("explicit fixture restore scope missing: %v", err)
+	}
+	if err := authorizeApplicationRestore(withProviderChangeConsent(t.Context(), ack), r, data, io.Discard); err != nil {
+		t.Fatal("actual restore authority rejected current explicit consent", err)
+	}
+	data.archiveRevision = strings.Repeat("b", 64)
+	if err := authorizeApplicationRestore(withProviderChangeConsent(t.Context(), ack), r, data, io.Discard); err == nil {
+		t.Fatal("changed archive reused restore approval")
+	}
+	for _, operation := range []string{"apply", "destroy"} {
+		if got, err := backupFixtureConsent(operation, cause); err == nil || got != nil {
+			t.Fatal("another operation inherited destructive restore approval")
+		}
+	}
+	plan.Scope.PlanID = "tampered"
+	if got, err := backupFixtureConsent("restore", applicationDestructionPlanError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})); err == nil || got != nil {
+		t.Fatal("invalid restore scope accepted")
+	}
+}
+
+func TestGuidedBackupFixtureConsentPreservesUnrelatedFailures(t *testing.T) {
+	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
+	want := errors.New("unrelated fixture failure")
+	calls := 0
+	err := runBackupFixtureWithConsent(t.Context(), "apply", func(context.Context) error {
+		calls++
+		return want
+	})
+	if calls != 1 || !errors.Is(err, want) {
+		t.Fatal("unrelated failure was retried or replaced")
+	}
+	for _, plan := range []application.ProviderImpactPlan{
+		{Version: application.ProviderImpactVersion, PlanID: "destructive", ConfirmationsRequired: 2, Destructive: true},
+		{Version: application.ProviderImpactVersion, PlanID: "", ConfirmationsRequired: 2},
+		{Version: application.ProviderImpactVersion, PlanID: "invalid-stages", ConfirmationsRequired: 3},
+	} {
+		cause := providerImpactConsentError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+		if ack, err := backupFixtureConsent("apply", cause); err == nil || ack != nil {
+			t.Fatal("invalid or destructive apply implicitly acknowledged")
+		}
+	}
+	cause := &machine.Error{Code: machine.ErrorApprovalRequired, CauseCode: "impact-confirmation-required", Details: map[string]string{"plan_id": "untyped"}}
+	if ack, err := backupFixtureConsent("apply", cause); err == nil || ack != nil {
+		t.Fatal("untyped details accepted")
+	}
+}
+
+func TestGuidedBackupFixtureSQLConfigUsesActualConsumerAndVerifiedTLS(t *testing.T) {
+	binding := application.ServiceBinding{
+		Host:     "sql.example.invalid",
+		Port:     "6432",
+		Username: "application_role",
+		Database: "actual_database",
+		Password: "private-fixture-sentinel",
+		URI:      "postgresql://application_role:private-fixture-sentinel@sql.example.invalid:6432/actual_database?sslmode=verify-full",
+	}
+	cfg, err := backupFixtureSQLConfig(binding)
+	if err != nil || cfg == nil || cfg.TLSConfig == nil || cfg.TLSConfig.InsecureSkipVerify {
+		t.Fatal("verified consumer configuration unavailable")
+	}
+	for _, mutate := range []func(*application.ServiceBinding){
+		func(b *application.ServiceBinding) { b.Username = "another_role" },
+		func(b *application.ServiceBinding) { b.Database = "another_database" },
+		func(b *application.ServiceBinding) { b.Password = "another_password" },
+		func(b *application.ServiceBinding) { b.Host = "another.example.invalid" },
+		func(b *application.ServiceBinding) { b.Port = "5432" },
+		func(b *application.ServiceBinding) { b.URI = strings.ReplaceAll(b.URI, "verify-full", "disable") },
+		func(b *application.ServiceBinding) { b.URI = strings.ReplaceAll(b.URI, "verify-full", "prefer") },
+		func(b *application.ServiceBinding) { b.URI = strings.ReplaceAll(b.URI, "verify-full", "require") },
+		func(b *application.ServiceBinding) { b.URI = "invalid%private-fixture-sentinel" },
+	} {
+		bad := binding
+		mutate(&bad)
+		got, err := backupFixtureSQLConfig(bad)
+		if got != nil || err == nil || strings.Contains(err.Error(), binding.Password) {
+			t.Fatal("invalid SQL binding accepted or credential disclosed")
+		}
 	}
 }

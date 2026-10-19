@@ -35,6 +35,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	}
 
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
+	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
 	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
 	if err := runOwnedBackupCoreFixture(t, ctx,
 		func(startCtx context.Context) error {
@@ -56,10 +57,6 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 		}); err != nil {
 		t.Fatalf("guided Core start / authenticated OpenBao readiness: %v", err)
 	}
-	compose, _, err := openBaoRuntime(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	manifest := `version: 1
 app:
@@ -80,7 +77,10 @@ services:
 		t.Fatalf("fixture manifest must parse through the shipped capability parser: %v", err)
 	}
 	var output bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runBackupFixtureWithConsent(ctx, "apply", func(callCtx context.Context) error {
+		output.Reset()
+		return runWithIO(callCtx, []string{"app", "apply"}, &output, &output)
+	}); err != nil {
 		t.Fatalf("app apply: %v\n%s", err, output.String())
 	}
 
@@ -94,8 +94,8 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := compose.ExecProject(ctx, application.RuntimeProjectName(m), files.Compose, files.Env, "postgres", "psql", "-U", "baseharbor", "-d", "backup_cli_dev", "-v", "ON_ERROR_STOP=1", "-c", "CREATE TABLE recovery_probe(value text); INSERT INTO recovery_probe(value) VALUES ('survived');"); err != nil {
-		t.Fatalf("seed postgres: %v", err)
+	if _, err := backupFixtureSQL(ctx, resolved, true); err != nil {
+		t.Fatalf("seed SQL through the actual consumer binding: %v", err)
 	}
 	secretService := applicationsecret.New(resolved.Store)
 	if err := secretService.Set(ctx, m.Name, "API_TOKEN", []byte("provider-key-v1")); err != nil {
@@ -141,11 +141,17 @@ services:
 	}
 
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &output, &output); err != nil {
+	if err := runBackupFixtureWithConsent(ctx, "destroy", func(callCtx context.Context) error {
+		output.Reset()
+		return runWithIO(callCtx, []string{"app", "destroy", "--yes"}, &output, &output)
+	}); err != nil {
 		t.Fatalf("app destroy: %v\n%s", err, output.String())
 	}
 	output.Reset()
-	if err := runWithIO(ctx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output); err != nil {
+	if err := runBackupFixtureWithConsent(ctx, "restore", func(callCtx context.Context) error {
+		output.Reset()
+		return runWithIO(callCtx, []string{"app", "restore", backupPath, "--password-file", passwordPath}, &output, &output)
+	}); err != nil {
 		t.Fatalf("app restore: %v\n%s", err, output.String())
 	}
 	restoreOutput := output.String()
@@ -180,7 +186,7 @@ services:
 	if err != nil {
 		t.Fatal(err)
 	}
-	query, err := compose.ExecProject(ctx, application.RuntimeProjectName(resolved.Manifest), files.Compose, files.Env, "postgres", "psql", "-U", "baseharbor", "-d", "backup_cli_dev", "-tAc", "SELECT value FROM recovery_probe")
+	query, err := backupFixtureSQL(ctx, resolved, false)
 	if err != nil {
 		t.Fatalf("verify postgres: %v", err)
 	}
@@ -193,7 +199,7 @@ services:
 		t.Fatalf("verify restored secret: %v", err)
 	}
 	if !bytes.Equal(secretValue, []byte("provider-key-v1")) {
-		t.Fatalf("restored secret = %q", secretValue)
+		t.Fatal("restored secret differs from the expected protected value")
 	}
 	tokenAfter, err := os.ReadFile(application.RuntimeIdentityTokenPath(files))
 	if err != nil {
