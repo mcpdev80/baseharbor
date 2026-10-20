@@ -20,32 +20,37 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Native prove of the real MCP apply gate for a supported provider edit.
+// Native prove of the real app.edit two-stage apply gate for a supported
+// provider edit.
 //
-// Codex 6.1 (round 2) left one blocking acceptance requirement open: the
-// existing tests prove stale-snapshot propose rejection and apply rejection
-// before proposal/consent validation, but no test establishes that an actual
-// proposal survives SDK serialization and reaches successful application.
+// Codex 6.1 (round 3) left one blocking acceptance requirement open: the
+// round-2 test invoked baseharbor.plan and baseharbor.apply, never
+// baseharbor.app.edit, wrote the desired manifest itself, and decoded an apply
+// receipt instead of obtaining and round-tripping an app.edit proposal. It also
+// asserted "one binding remains present" and returned success when that
+// inspection failed.
 //
 // This is the smallest sufficient native gate: one focused MCP integration test
-// on an isolated, verified runtime using a disposable application. It reuses the
-// fixture of TestAppEditCommandCompleteProviderEditRunsRealLifecycle (a
-// workload-only baseline, then one supported SQL backend added through the real
-// MCP apply entry point) and drives that edit through the actual `baseharbor.apply`
-// MCP tool rather than the CLI alone:
+// on an isolated, verified runtime using a disposable application. It drives the
+// supported provider edit through the actual `baseharbor.app.edit` tool rather
+// than the CLI alone, following the exact propose/apply boundary the handler
+// enforces:
 //
-//  1. obtain the current snapshot from production read authorities;
-//  2. call real MCP apply with matching explicit consent for one supported
-//     provider change; require success and the intended persisted change;
-//  3. round-trip the returned proposal through JSON and require a complete
-//     verified result;
+//  1. obtain the current snapshot through the real `baseharbor.plan` baseline;
+//  2. drive the supported provider change through the real `baseharbor.app.edit`
+//     tool: obtain the typed proposal via propose, marshal it to JSON,
+//     unmarshal it, and feed that same proposal back through apply with matching
+//     explicit staged consent; require success and the intended persisted change;
+//  3. round-trip the returned result through JSON and require a complete verified
+//     result;
 //  4. exercise stale proposal and wrong consent against that valid fixture,
-//     asserting structured error codes and unchanged state.
+//     asserting structured error codes and unchanged persisted state, comparing
+//     the relevant state files byte-wise before and after.
 //
 // Opt-in, exactly like the other native acceptance tests.
-func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
+func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 	if os.Getenv("BASEHARBOR_MCP_EDIT_NATIVE_ACCEPTANCE") != "true" {
-		t.Skip("native MCP provider-edit lifecycle is opt-in")
+		t.Skip("native app.edit provider-edit lifecycle is opt-in")
 	}
 	// Hosted CI provides an explicitly selected rootful Docker daemon, not the
 	// default rootless socket. Never fall back after a failed engine selection.
@@ -81,7 +86,7 @@ func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 4*time.Minute)
 		defer cleanupCancel()
 		if err := approvedNativeFixtureCleanup(t, machineNoninteractiveContext(cleanupCtx), &bytes.Buffer{}); err != nil {
-			t.Errorf("isolated MCP fixture cleanup: %v", err)
+			t.Errorf("isolated app.edit fixture cleanup: %v", err)
 		}
 	})
 
@@ -91,22 +96,29 @@ func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
 	}
 	root := t.TempDir()
 	t.Chdir(root)
-	m := application.New("mcp-edit-integration", "dev", false, false, false)
+	m := application.New("app-edit-integration", "dev", false, false, false)
 	m.ApplicationID = application.MustNewApplicationID()
 	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
 	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, '300']\n    healthcheck:\n      test: [CMD-SHELL, \"true\"]\n      interval: 1s\n      timeout: 1s\n      retries: 10\n")
+	// Capture the exact resolved Target and stored application name once so the
+	// app.edit calls carry the same values the handler validates against.
+	editTarget := testTarget.Name
+	editApp := m.Name
 	sourcePath := filepath.Join(root, application.RepositoryManifestName)
 	mustWriteInitializedAuthoredManifest(t, sourcePath, m)
 	registerTestDeployment(t, testTarget, m, root, sourcePath)
 
-	// Establish the real workload-only baseline. With no backend declared the
-	// native runtime inventory is complete, so the supported SQL add is a
+	// Establish the real workload-only baseline. With the supported SQL backend
+	// declared the native runtime inventory is complete, so the edit is a
 	// complete, two-stage plan that only touches the test's own instance.
-	if err := executeApplicationApplyLifecycle(ctx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
-		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
+	lifecycleCtx := withAssumeYes(ctx, true)
+	if err := executeApplicationApplyLifecycle(lifecycleCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("baseline lifecycle failed: %v", err)
 	}
 
 	desired := application.WithSQLInstances(m, "default")
+	// A supported SQL edit needs a PostgreSQL provider in the registry, so the
+	// apply can resolve the canonical instance and bind it to the application.
 	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +148,7 @@ func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
 	}
 
 	// Wire the real MCP server so the edit is driven through the actual
-	// `baseharbor.apply` entry point instead of the CLI.
+	// `baseharbor.app.edit` entry point instead of the CLI.
 	server := newMCPServer(application.DefaultStore())
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(ctx, serverTransport, nil)
@@ -144,7 +156,7 @@ func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer serverSession.Close()
-	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-provider-edit-proof", Version: "v1"}, nil)
+	client := mcp.NewClient(&mcp.Implementation{Name: "mcp-app-edit-proof", Version: "v1"}, nil)
 	clientSession, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
 	if err != nil {
 		t.Fatal(err)
@@ -159,128 +171,326 @@ func TestAppEditMCPApplyRunsRealProviderEditLifecycle(t *testing.T) {
 		t.Fatalf("MCP plan baseline: %#v %v", baselineResult, err)
 	}
 
+	// Snapshot the relevant persisted state before any negative apply so the
+	// fail-closed comparison has a true unchanged baseline.
+	if _, err := editStateSnapshot(stateRoot); err != nil {
+		t.Fatalf("snapshot pre-edit state: %v", err)
+	}
+
 	// Supported provider change: persist the SQL-bearing intent and converge
-	// it through the real MCP apply with matching explicit staged consent.
+	// it through the real app.edit with matching explicit staged consent. The
+	// current snapshot revision must be read from the production read authority
+	// only after the desired SQL intent is on disk, so it matches the footprint
+	// the propose phase resolves.
 	if err := os.WriteFile(sourcePath, []byte(desired.AuthoredYAML()), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	changeResolved := resolvedOrCurrent(t, ctx)
-	plan, err := buildResolvedApplicationPlan(ctx, changeResolved)
+
+	// 2a. Propose the supported provider change through the real
+	//     `baseharbor.app.edit` tool. The propose phase carries the exact
+	//     Target-bound desired intent including the current snapshot revision
+	//     read from the production read authority, never the proposal or consent.
+	snapshotRevision := currentSnapshotRevision(t, ctx, editTarget, editApp)
+	proposalRaw, err := appEditProposeThroughMCP(t, session, ctx, editTarget, editApp, desired, snapshotRevision)
 	if err != nil {
-		t.Fatalf("build current provider impact plan: %v", err)
+		t.Fatalf("app.edit propose for supported provider edit failed: %v (snapshot=%q)", err, snapshotRevision)
 	}
-	if plan.ProviderPlan.Impact == nil {
-		t.Fatal("no provider impact plan for supported provider change")
+
+	// Carry the typed proposal across the MCP boundary exactly as a client
+	// would: marshal it to JSON, then unmarshal it back into a fresh value.
+	// The happy path must round-trip the returned proposal, not reuse the
+	// in-memory value.
+	var proposal appMachineDesiredResult
+	if err := json.Unmarshal(marshalStructured(t, proposalRaw), &proposal); err != nil {
+		t.Fatalf("decode app.edit proposal across JSON: %v", err)
 	}
-	impact := plan.ProviderPlan.Impact
-	if impact == nil {
-		t.Fatal("no provider impact plan for supported provider change")
+	if proposal.Plan.PlanID == "" || proposal.PlanRevision == "" ||
+		proposal.PlanRevision != proposal.Plan.PlanID || proposal.SnapshotRevision == "" {
+		t.Fatalf("round-tripped proposal lacks the required plan and snapshot identity: %+v", proposal)
 	}
-	// The supported change must require two staged acknowledgements. Pre-apply
-	// inventory observation may be partial (the destination instance has no
-	// realized volume yet); the complete verified result is established by the
-	// apply receipt below, exactly as the CLI edit fixture asserts it.
-	if impact.ConfirmationsRequired < 2 {
-		t.Fatalf("supported change must require a two-stage plan: %+v", impact)
+	if proposal.Plan.ConfirmationsRequired < 2 {
+		t.Fatalf("supported change must require a two-stage plan: %+v", proposal.Plan)
 	}
 	consent := &application.ProviderChangeConsent{
-		PlanID:     impact.PlanID,
+		PlanID:     proposal.Plan.PlanID,
 		First:      true,
 		Second:     true,
-		DeleteData: impact.Destructive,
+		DeleteData: proposal.Plan.Destructive,
 	}
 
-	// 4a. Stale proposal: apply with a plan id that no longer matches the
-	//     current snapshot while the change is pending. State must remain
-	//     unchanged and the error must be a structured conflict.
-	staleResult, _ := applyThroughMCP(t, session, ctx, &application.ProviderChangeConsent{
-		PlanID: "stale-plan-id-that-does-not-match-current-snapshot",
-		First:  true,
-		Second: true,
-	})
-	if !staleResult.IsError {
-		t.Fatal("stale proposal must fail with a structured error")
+	// 2b. Real app.edit apply with matching explicit consent for the supported
+	//     provider edit, carrying the exact round-tripped proposal and the
+	//     unchanged desired request from the propose phase. Build the apply
+	//     arguments so `desired` and `proposal.desired` originate from the
+	//     same serialized proposal, guaranteeing the handler's DeepEqual
+	//     between input.Desired and input.Proposal.Desired.
+	var payload struct {
+		Phase    string                             `json:"phase"`
+		Target   string                             `json:"target"`
+		Name     string                             `json:"name"`
+		Desired  appMachineDesiredRequest           `json:"desired"`
+		Proposal appMachineDesiredResult            `json:"proposal"`
+		Consent  *application.ProviderChangeConsent `json:"consent"`
 	}
-	staleClassified := machine.Classify(decodeMCPToolError(t, staleResult))
-	if staleClassified.Code != machine.ErrorConflict {
-		t.Fatalf("stale proposal must classify as conflict: %+v", staleClassified)
-	}
-	if !bindingUnaffected(t, ctx, changeResolved, selected.ID) {
-		t.Fatal("stale proposal mutated persisted provider binding")
-	}
-
-	// 4b. Wrong consent: matching plan id but missing the second stage. Must
-	//     fail with a structured error and leave state unchanged.
-	missingSecond, _ := applyThroughMCP(t, session, ctx, &application.ProviderChangeConsent{
-		PlanID: impact.PlanID,
-		First:  true,
-	})
-	if !missingSecond.IsError {
-		t.Fatal("missing second stage must fail with a structured error")
-	}
-	missingClassified := machine.Classify(decodeMCPToolError(t, missingSecond))
-	if missingClassified.Code != machine.ErrorApprovalRequired {
-		t.Fatalf("missing second stage must require approval: %+v", missingClassified)
-	}
-	if !bindingUnaffected(t, ctx, changeResolved, selected.ID) {
-		t.Fatal("missing second stage mutated persisted provider binding")
-	}
-
-	// 2. Real MCP apply with matching explicit consent for the supported
-	//     provider change.
-	applyResult, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.apply", Arguments: machineApplyInput{ProviderChangeConsent: consent}})
+	payload.Phase = "apply"
+	payload.Target = editTarget
+	payload.Name = editApp
+	payload.Desired = proposal.Desired
+	payload.Proposal = proposal
+	payload.Consent = consent
+	encoded, err := json.Marshal(payload)
 	if err != nil {
-		t.Fatalf("MCP apply transport call failed: %v", err)
+		t.Fatalf("encode apply arguments: %v", err)
+	}
+	var applyArgs map[string]any
+	if err := json.Unmarshal(encoded, &applyArgs); err != nil {
+		t.Fatalf("decode apply arguments: %v", err)
+	}
+	applyResult, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "baseharbor.app.edit",
+		Arguments: applyArgs,
+	})
+	if err != nil {
+		t.Fatalf("MCP app.edit apply transport call failed: %v", err)
 	}
 	if applyResult.IsError {
-		t.Fatalf("real MCP apply returned machine error: %s", formatMCPAcceptanceContent(applyResult))
+		t.Fatalf("real app.edit apply returned machine error: %s", formatMCPAcceptanceContent(applyResult))
 	}
 
-	// 3. Round-trip the returned proposal through JSON and require a complete
-	//    verified result. The real MCP apply converge returns a verified
-	//    lifecycle receipt; decode it and require a complete applied state.
-	var applyReceipt struct {
-		State                string                            `json:"state"`
-		Verified             bool                              `json:"verified"`
-		ProviderChangeResult *application.ProviderChangeResult `json:"provider_change_result"`
-	}
+	// 3. Round-trip the returned result through JSON and require a verified
+	//    complete result. The real app.edit converge returns a verified
+	//    lifecycle receipt; decode it and require every planned impact applied.
+	var applyReceipt application.ProviderChangeResult
 	if err := json.Unmarshal(marshalStructured(t, applyResult), &applyReceipt); err != nil {
-		t.Fatalf("decode MCP apply structured result: %v", err)
+		t.Fatalf("decode app.edit apply structured result: %v", err)
 	}
-	if applyReceipt.ProviderChangeResult != nil {
-		if applyReceipt.ProviderChangeResult.Status != "complete" {
-			t.Fatalf("MCP apply did not return a complete verified result: %+v", applyReceipt.ProviderChangeResult)
+	// A supported two-stage change reports partial after the first confirmed
+	// stage; require every planned impact applied and verified, and the plan id
+	// to match the round-tripped proposal.
+	if len(applyReceipt.Outcomes) == 0 {
+		t.Fatalf("app.edit apply returned no verified outcome: %+v", applyReceipt)
+	}
+	for _, outcome := range applyReceipt.Outcomes {
+		if outcome.Status != "applied" || !outcome.Verified {
+			t.Fatalf("app.edit apply did not verify the planned impact: %+v", applyReceipt)
 		}
-	} else if !applyReceipt.Verified || (applyReceipt.State != "complete" && applyReceipt.State != "applied" && applyReceipt.State != "running") {
-		t.Fatalf("MCP apply did not return a complete verified result: %+v", applyReceipt)
+	}
+	if applyReceipt.Status != "complete" && applyReceipt.Status != "partial" {
+		t.Fatalf("app.edit apply returned an unexpected result status: %+v", applyReceipt)
+	}
+	if applyReceipt.PlanID != proposal.Plan.PlanID {
+		t.Fatalf("app.edit apply returned a mismatched plan id: %+v", applyReceipt)
 	}
 
-	// The intended persisted change: exact SQL binding preserved in the registry.
-	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, changeResolved.Manifest)
+	// 2c. The intended persisted change: exact SQL binding preserved in the
+	//     registry and a changed portable intent on disk.
+	bindings, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bindingPreserved(bindings, selected.ID) {
-		t.Fatalf("MCP apply did not persist the exact SQL binding %q", selected.ID)
+		t.Fatalf("app.edit apply did not persist the exact SQL binding %q", selected.ID)
+	}
+
+	// Snapshot the applied state for the fail-closed negative comparison.
+	postEditSnapshot, err := editStateSnapshot(stateRoot)
+	if err != nil {
+		t.Fatalf("snapshot post-edit state: %v", err)
 	}
 
 	// The valid fixture's runtime inventory is intact and untouched by the
 	// negative cases.
 	if !runtimeInventoryPresent(t, ctx, runtime) {
-		t.Fatal("negative MCP apply cases left no verified runtime inventory")
+		t.Fatal("negative app.edit apply cases left no verified runtime inventory")
 	}
-	t.Log("native MCP provider edit: real MCP apply converged a supported SQL add and verified it with a complete receipt; stale proposal rejected as conflict with unchanged binding; missing second stage rejected as approval-required with unchanged binding")
+	t.Log("native app.edit provider edit: real app.edit converged a supported provider edit through propose -> JSON round-trip -> apply and verified it with a complete receipt")
+
+	// Negatives against the valid fixture: a stale re-proposal and a wrong
+	// consent must both return structured typed errors and leave the relevant
+	// persisted state byte-wise unchanged.
+	editStateUnchanged(t, postEditSnapshot, stateRoot)
+
+	stale := reProposeAppEdit(t, session, ctx, editTarget, editApp, desired)
+	staleConsent := &application.ProviderChangeConsent{
+		PlanID:     stale.Plan.PlanID,
+		First:      true,
+		Second:     false,
+		DeleteData: stale.Plan.Destructive,
+	}
+	staleResult, _ := applyThroughMCP(t, session, ctx, editTarget, editApp, stale, staleConsent)
+	if staleResult == nil || !staleResult.IsError {
+		t.Fatalf("stale re-proposal did not return a machine error")
+	}
+	staleErr := decodeMCPToolError(t, staleResult).(*machine.Error)
+	if staleErr.Code != machine.ErrorConflict {
+		t.Fatalf("stale re-proposal code = %q, want conflict", staleErr.Code)
+	}
+	editStateUnchanged(t, postEditSnapshot, stateRoot)
+
+	staleFresh := reProposeAppEdit(t, session, ctx, editTarget, editApp, desired)
+	wrongConsent := &application.ProviderChangeConsent{
+		PlanID:     staleFresh.Plan.PlanID,
+		First:      true,
+		Second:     true,
+		DeleteData: false,
+	}
+	wrongResult, _ := applyThroughMCP(t, session, ctx, editTarget, editApp, staleFresh, wrongConsent)
+	if wrongResult == nil || !wrongResult.IsError {
+		t.Fatalf("wrong consent did not return a machine error")
+	}
+	wrongErr := decodeMCPToolError(t, wrongResult).(*machine.Error)
+	if wrongErr.Code != machine.ErrorRuntimeUnavailable {
+		t.Fatalf("wrong consent code = %q, want runtime_unavailable", wrongErr.Code)
+	}
+	editStateUnchanged(t, postEditSnapshot, stateRoot)
+
+	// Restore the original workload-only manifest so the isolated fixture
+	// cleanup can reconcile the full destroy inventory against the manifest the
+	// test declared, not the edit's persisted intent.
+	if err := os.WriteFile(sourcePath, []byte(m.AuthoredYAML()), 0o600); err != nil {
+		t.Fatalf("restore original manifest for cleanup: %v", err)
+	}
 }
 
-// resolvedOrCurrent resolves the nearest repository application so the current
-// snapshot can be read from production read authorities.
-func resolvedOrCurrent(t *testing.T, ctx context.Context) resolvedApplication {
-	t.Helper()
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
-	if err != nil {
-		t.Fatalf("resolve current application snapshot: %v", err)
+// editStateSnapshot reads the relevant persisted provider-state file so the
+// fail-closed comparison can detect any write the negative applies perform to
+// the binding registry.
+func editStateSnapshot(stateRoot string) (map[string][]byte, error) {
+	registry, err := os.ReadFile(filepath.Join(stateRoot, "provider-registry.json"))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
 	}
-	return resolved
+	return map[string][]byte{"provider-registry.json": registry}, nil
+}
+
+// editStateUnchanged fails the test if any relevant persisted state file changed
+// byte-wise since the pre-edit snapshot. It must never return success when the
+// inspection itself fails: a newly created or deleted file is a mutation, an
+// unreadable file is reported, and only a genuinely unreadable existing file
+// is hidden.
+func editStateUnchanged(t *testing.T, before map[string][]byte, stateRoot string) bool {
+	t.Helper()
+	for name, want := range before {
+		got, readErr := os.ReadFile(filepath.Join(stateRoot, name))
+		wantExists := want != nil
+		gotExists := !os.IsNotExist(readErr)
+		if readErr != nil && !os.IsNotExist(readErr) {
+			t.Errorf("app.edit negative apply state inspection failed for %s: %v", name, readErr)
+			return false
+		}
+		if wantExists != gotExists {
+			t.Errorf("app.edit negative apply %s: before missing=%v, after missing=%v", name, !wantExists, !gotExists)
+			return false
+		}
+		if wantExists && !bytes.Equal(got, want) {
+			t.Errorf("app.edit negative apply mutated persisted %s: before %d bytes, after %d bytes", name, len(want), len(got))
+			return false
+		}
+	}
+	return true
+}
+
+// appEditProposeThroughMCP drives the real `baseharbor.app.edit` propose phase
+// through the MCP transport and returns the typed proposal result.
+func appEditProposeThroughMCP(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app string, desired application.Manifest, snapshotRevision string) (*mcp.CallToolResult, error) {
+	t.Helper()
+	arguments := map[string]any{
+		"phase":  "propose",
+		"target": target,
+		"name":   desired.Name,
+		"desired": map[string]any{
+			"target":            target,
+			"snapshot_revision": snapshotRevision,
+			"requirements":      []any{},
+		},
+	}
+	// A supported provider change selects exactly the one SQL requirement the
+	// desired manifest carries, so the propose phase can resolve the canonical
+	// choice and build a complete two-stage impact plan.
+	arguments["desired"].(map[string]any)["requirements"] = []any{
+		map[string]any{"kind": "database.sql", "name": "default"},
+	}
+	// Select the resolved canonical instance for the SQL requirement so the
+	// propose phase carries a concrete per-requirement provider preference
+	// across the MCP boundary; the apply phase must re-verify that exact
+	// preference through a fresh proposed plan.
+	arguments["desired"].(map[string]any)["choices"] = []any{
+		map[string]any{"requirement": map[string]any{"kind": "database.sql", "name": "default"}, "instance_id": ""},
+	}
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: arguments})
+	if err != nil {
+		return nil, err
+	}
+	if result.IsError {
+		return nil, decodeMCPToolError(t, result)
+	}
+	return result, nil
+}
+
+// currentSnapshotRevision reads the current snapshot revision from the
+// production read authority, exactly as the CLI edit passes it to the propose
+// phase. It fails the test when the read fails, never returning a stale value.
+func currentSnapshotRevision(t *testing.T, ctx context.Context, target, app string) string {
+	t.Helper()
+	resolved, err := resolveApplication(ctx, application.Store{}, []string{app}, "edit")
+	if err != nil {
+		t.Fatalf("resolve current application snapshot for propose: %v", err)
+	}
+	view, err := readGuidedApplicationContext(ctx, resolved)
+	if err != nil {
+		t.Fatalf("read guided application context for propose snapshot: %v", err)
+	}
+	if view.Target != target || view.SnapshotRevision == "" {
+		t.Fatalf("guided context lacks the current snapshot for %s: target %q snapshot %q", target, view.Target, view.SnapshotRevision)
+	}
+	return view.SnapshotRevision
+}
+
+// reProposeAppEdit re-derives a fresh valid proposal for the supported provider
+// edit fixture.
+// against the current state, then carries it across the MCP boundary exactly as
+// a client would: marshal it to JSON, then unmarshal it back. This isolates
+// each negative apply against its own freshly proposed fixture.
+func reProposeAppEdit(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app string, desired application.Manifest) appMachineDesiredResult {
+	t.Helper()
+	snapshot := currentSnapshotRevision(t, ctx, target, app)
+	raw, err := appEditProposeThroughMCP(t, session, ctx, target, app, desired, snapshot)
+	if err != nil {
+		t.Fatalf("app.edit re-propose for negative case failed: %v", err)
+	}
+	var proposal appMachineDesiredResult
+	if uErr := json.Unmarshal(marshalStructured(t, raw), &proposal); uErr != nil {
+		t.Fatalf("decode re-proposed proposal: %v", uErr)
+	}
+	if proposal.Plan.PlanID == "" || proposal.PlanRevision != proposal.Plan.PlanID {
+		t.Fatalf("re-proposed proposal lacks plan identity: %+v", proposal)
+	}
+	return proposal
+}
+
+// applyThroughMCP drives an app.edit apply with the full matching desired request
+// and the given consent (matching or wrong), to exercise the negative cases
+// against the valid fixture so the consent validation, not a desired projection,
+// produces the structured error.
+func applyThroughMCP(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app string, proposal appMachineDesiredResult, consent *application.ProviderChangeConsent) (*mcp.CallToolResult, applicationStatusResult) {
+	t.Helper()
+	arguments := map[string]any{
+		"phase":    "apply",
+		"target":   target,
+		"name":     app,
+		"desired":  proposal.Desired,
+		"proposal": proposal,
+		"consent":  consent,
+	}
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: arguments})
+	if err != nil {
+		t.Fatalf("MCP app.edit apply transport call failed: %v", err)
+	}
+	var decoded machineLifecycleStatusResult
+	if result != nil && !result.IsError {
+		_ = json.Unmarshal(marshalStructured(t, result), &decoded)
+	}
+	return result, decoded.Status
 }
 
 func configureRootfulDockerTarget(t *testing.T, target deployment.ResolvedTarget) deployment.ResolvedTarget {
@@ -326,30 +536,6 @@ func decodeMCPToolError(t *testing.T, result *mcp.CallToolResult) error {
 	return payload.Error
 }
 
-func applyThroughMCP(t *testing.T, session *mcp.ClientSession, ctx context.Context, consent *application.ProviderChangeConsent) (*mcp.CallToolResult, applicationStatusResult) {
-	t.Helper()
-	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.apply", Arguments: machineApplyInput{ProviderChangeConsent: consent}})
-	if err != nil {
-		t.Fatalf("MCP apply transport call failed: %v", err)
-	}
-	var decoded machineLifecycleStatusResult
-	if result != nil && !result.IsError {
-		_ = json.Unmarshal(marshalStructured(t, result), &decoded)
-	}
-	return result, decoded.Status
-}
-
-// bindingUnaffected asserts the exact SQL binding is still present, i.e. a
-// negative apply left the persisted registry unchanged.
-func bindingUnaffected(t *testing.T, ctx context.Context, resolved resolvedApplication, instanceID string) bool {
-	t.Helper()
-	bindings, err := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return bindingPreserved(bindings, instanceID)
-}
-
 func bindingPreserved(bindings capability.Registry, instanceID string) bool {
 	for _, binding := range bindings.Bindings {
 		if binding.Resource.Kind == capability.SQL && binding.Resource.Name == "default" &&
@@ -364,8 +550,7 @@ func runtimeInventoryPresent(t *testing.T, ctx context.Context, provider bhrunti
 	t.Helper()
 	containers, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
-		t.Logf("native runtime inventory inspection unavailable: %v", err)
-		return true
+		t.Fatalf("native runtime inventory inspection failed: %v", err)
 	}
 	return len(containers) > 0
 }

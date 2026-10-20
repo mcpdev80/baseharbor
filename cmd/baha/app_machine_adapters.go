@@ -400,9 +400,19 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 	}
 	if fresh.ApplicationID != req.Proposal.ApplicationID ||
 		fresh.SnapshotRevision != req.Proposal.SnapshotRevision ||
-		fresh.PlanRevision != req.Proposal.PlanRevision ||
-		!reflect.DeepEqual(fresh.Plan, req.Proposal.Plan) ||
-		!reflect.DeepEqual(fresh.Requirements, req.Proposal.Requirements) ||
+		fresh.PlanRevision != req.Proposal.PlanRevision {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	// The fresh plan must equal the proposed plan by VALUE, not pointer identity:
+	// a JSON round-trip (MCP client) produces a distinct *ProviderRealization
+	// After-pointer, which reflect.DeepEqual would flag as a divergence even
+	// though the resolved impact is identical. Compare serialized forms instead.
+	freshPlan, freshErr := json.Marshal(fresh.Plan)
+	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
+	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	if !reflect.DeepEqual(fresh.Requirements, req.Proposal.Requirements) ||
 		!reflect.DeepEqual(fresh.Preferences, req.Proposal.Preferences) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
