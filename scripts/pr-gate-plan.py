@@ -327,11 +327,12 @@ REGISTRATION_CI_REVIEWED_FILES = {
 # Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
 # FINAL reviewed head after fresh independent full-source + delta re-review of
 # the corrected #998 source (o4-998-rereview.md), corrected to the typed-error
-# delta head 6931ba9c (o8-998-delta.md). The path/status set below is the exact
-# two-dot diff origin/develop..6931ba9c for these 16 core-921 registration
-# files; the three unrelated process-doc changes in that diff (DEVELOPMENT_
-# GUIDELINES, review-protection) are NOT part of the registration bundle.
-CORE_921_PRODUCTION_REVIEWED_HEAD = '6931ba9c8e604419ae0afb7ff52dbdd20da840f8'
+# delta head 89d3ddef (re-pin from the #998 reviewed head 6931ba9c). The
+# path/status set below is the exact two-dot diff origin/develop..89d3ddef
+# for these 16 core-921 registration files; the three unrelated process-doc
+# changes in that diff (DEVELOPMENT_GUIDELINES x2, review-protection) are NOT
+# part of the registration bundle.
+CORE_921_PRODUCTION_REVIEWED_HEAD = '89d3ddef6e77cad9b8035dce0b2a4dbe403c2951'
 CORE_921_PRODUCTION_REVIEWED_FILES = {
     'cmd/baha/app_machine_adapters.go': 'modified',
     'cmd/baha/app_provider_choice.go': 'modified',
@@ -882,10 +883,10 @@ def plan(diff, requirements, mapping, repository='.'):
     # changes after the review commit fail closed; the normal merge proof checks
     # each merge tree. This is a shared-source coverage binding, not task
     # acceptance or authorization of future handler edits.
-    # Bound to the final independently re-reviewed #998 head 6931ba9c (exact
-    # two-dot diff origin/develop..6931ba9c for these 16 core-921
-    # registration files); an exact reviewed-file/status set on a clean
-    # trusted-target merge only.
+    # Bound to the final independently re-reviewed #998 head 89d3ddef (re-pin
+    # from the reviewed head 6931ba9c; exact two-dot diff origin/develop..89d3ddef
+    # for these 16 core-921 registration files); an exact reviewed-file/status
+    # set on a clean trusted-target merge only.
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
             len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
