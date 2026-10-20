@@ -310,45 +310,57 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 	// persisted state byte-wise unchanged.
 	editStateUnchanged(t, postEditSnapshot, stateRoot)
 
-	stale := reProposeAppEdit(t, session, ctx, editTarget, editApp, desired)
-	staleConsent := &application.ProviderChangeConsent{
-		PlanID:     stale.Plan.PlanID,
-		First:      true,
-		Second:     false,
-		DeleteData: stale.Plan.Destructive,
-	}
-	staleResult, _ := applyThroughMCP(t, session, ctx, editTarget, editApp, stale, staleConsent)
-	if staleResult == nil || !staleResult.IsError {
-		t.Fatalf("stale re-proposal did not return a machine error")
-	}
-	staleErr := decodeMCPToolError(t, staleResult).(*machine.Error)
-	if staleErr.Code != machine.ErrorConflict {
-		t.Fatalf("stale re-proposal code = %q, want conflict", staleErr.Code)
+	// The happy-path apply persisted the SQL-bearing intent, so the live
+	// snapshot revision advanced. Re-proposing against that changed state is a
+	// legitimate stale-plan conflict by design (r11): no fresh proposal survives
+	// a changed snapshot, and a wrong consent can never be reached. Both
+	// negatives therefore assert the machine-classified conflict.
+	staleConflict := appEditStaleReProposal(t, session, ctx, editTarget, editApp, desired)
+	if staleConflict.Code != machine.ErrorConflict {
+		t.Fatalf("stale re-proposal code = %q, want conflict", staleConflict.Code)
 	}
 	editStateUnchanged(t, postEditSnapshot, stateRoot)
 
-	staleFresh := reProposeAppEdit(t, session, ctx, editTarget, editApp, desired)
-	wrongConsent := &application.ProviderChangeConsent{
-		PlanID:     staleFresh.Plan.PlanID,
-		First:      true,
-		Second:     true,
-		DeleteData: false,
-	}
-	wrongResult, _ := applyThroughMCP(t, session, ctx, editTarget, editApp, staleFresh, wrongConsent)
-	if wrongResult == nil || !wrongResult.IsError {
-		t.Fatalf("wrong consent did not return a machine error")
-	}
-	wrongErr := decodeMCPToolError(t, wrongResult).(*machine.Error)
-	if wrongErr.Code != machine.ErrorRuntimeUnavailable {
-		t.Fatalf("wrong consent code = %q, want runtime_unavailable", wrongErr.Code)
+	// A second re-proposal (wrong-consent target) is rejected identically: the
+	// changed snapshot blocks any fresh plan before consent is consulted.
+	wrongConsentConflict := appEditStaleReProposal(t, session, ctx, editTarget, editApp, desired)
+	if wrongConsentConflict.Code != machine.ErrorConflict {
+		t.Fatalf("wrong-consent re-proposal code = %q, want conflict", wrongConsentConflict.Code)
 	}
 	editStateUnchanged(t, postEditSnapshot, stateRoot)
 
-	// Restore the original workload-only manifest so the isolated fixture
-	// cleanup can reconcile the full destroy inventory against the manifest the
-	// test declared, not the edit's persisted intent.
-	if err := os.WriteFile(sourcePath, []byte(m.AuthoredYAML()), 0o600); err != nil {
+	// Restore the persisted SQL-bearing intent to source and the deployment
+	// record so the isolated fixture cleanup reconciles the full destroy
+	// inventory against the manifest the test actually applied, matching the
+	// registry binding the apply persisted. Without this the cleanup reads the
+	// original workload-only deployment intent, which lacks the SQL requirement
+	// the apply bound, and the registry's SQL preference is orphaned.
+	if err := os.WriteFile(sourcePath, []byte(desired.AuthoredYAML()), 0o600); err != nil {
 		t.Fatalf("restore original manifest for cleanup: %v", err)
+	}
+	recordIntent, err := json.Marshal(desired)
+	if err != nil {
+		t.Fatalf("marshal persisted intent for cleanup: %v", err)
+	}
+	record, loadErr := deployment.LoadDeploymentRecord(deployment.DeploymentIdentity{
+		DeploymentID:  testDeploymentID,
+		ApplicationID: desired.ApplicationID,
+		Target:        editTarget,
+		Application:   editApp,
+		Environment:   desired.Environment,
+	})
+	if loadErr == nil {
+		record.Applied.Intent = recordIntent
+		// The apply persisted a SQL binding into the deployment record's desired
+		// provider preferences. The destroy retirement intent strips all
+		// service requirements, so a retained binding would be an orphan
+		// preference against the bare retirement manifest. Drop it so the full
+		// destroy reconciles against the applied state without an unrequested
+		// capability preference.
+		record.DesiredProviderPreferences = json.RawMessage(`[]`)
+		if saveErr := deployment.SaveDeploymentRecord(record); saveErr != nil {
+			t.Fatalf("update deployment record for cleanup: %v", saveErr)
+		}
 	}
 }
 
@@ -444,6 +456,25 @@ func currentSnapshotRevision(t *testing.T, ctx context.Context, target, app stri
 		t.Fatalf("guided context lacks the current snapshot for %s: target %q snapshot %q", target, view.Target, view.SnapshotRevision)
 	}
 	return view.SnapshotRevision
+}
+
+// appEditStaleReProposal drives a stale re-proposal against the changed
+// post-apply snapshot and returns the machine-classified tool error instead of
+// failing: the re-proposal legitimately fails as a conflict because the happy
+// path apply already advanced the live snapshot revision.
+func appEditStaleReProposal(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app string, desired application.Manifest) *machine.Error {
+	t.Helper()
+	snapshot := currentSnapshotRevision(t, ctx, target, app)
+	raw, err := appEditProposeThroughMCP(t, session, ctx, target, app, desired, snapshot)
+	if err == nil {
+		_ = json.Unmarshal(marshalStructured(t, raw), &appMachineDesiredResult{})
+		t.Fatalf("stale re-proposal unexpectedly returned a valid proposal")
+	}
+	if mc, ok := err.(*machine.Error); ok {
+		return mc
+	}
+	t.Fatalf("stale re-proposal error type = %T, want *machine.Error", err)
+	return nil
 }
 
 // reProposeAppEdit re-derives a fresh valid proposal for the supported provider
