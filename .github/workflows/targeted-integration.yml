@@ -558,7 +558,7 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef5f85d4a467287 # v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
@@ -578,55 +578,6 @@ jobs:
         env:
           BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
         run: go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' -count=1 -v
-
-  app_backup_restore_podman:
-    # Focused Podman opt-in: native backup/restore acceptance on Podman/Quadlet.
-    # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
-    # token/certificate regeneration and automatic owned cleanup) without
-    # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman' }}
-    name: Application backup · podman
-    runs-on: ubuntu-26.04
-    timeout-minutes: 45
-    env:
-      BASEHARBOR_TEST_RUNTIME: podman
-      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
-      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-
-    steps:
-      - name: Checkout exact candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ inputs.ref || github.sha }}
-
-      - name: Resolve tested commit
-        id: tested_ref
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef5f85d4a467287 # v7
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Prepare verified rootless Podman
-        timeout-minutes: 5
-        run: bash scripts/ci-core-rootless-runtime.sh
-
-      - name: Build BaseHarbor
-        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
-
-      - name: Application backup and restore on Podman
-        env:
-          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
-        run: |
-          set -euo pipefail
-          $RUNNER_TEMP/baha target create podman-backup-restore \
-            --provider podman --access podman-backup-restore \
-            --reference local --default
-          go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
-            -count=1 -v -timeout 30m
 
       - name: Metrics ingestion
         if: inputs.gate == 'metrics'
@@ -732,6 +683,55 @@ jobs:
         if: always()
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
+
+  app_backup_restore_podman:
+    # Focused Podman opt-in: native backup/restore acceptance on Podman/Quadlet.
+    # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
+    # token/certificate regeneration and automatic owned cleanup) without
+    # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman' }}
+    name: Application backup · podman
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve tested commit
+        id: tested_ref
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prepare verified rootless Podman
+        timeout-minutes: 5
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Build BaseHarbor
+        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
+
+      - name: Application backup and restore on Podman
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: |
+          set -euo pipefail
+          $RUNNER_TEMP/baha target create podman-backup-restore \
+            --provider podman --access podman-backup-restore \
+            --reference local --default
+          go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
+            -count=1 -v -timeout 30m
 
   core_bootstrap:
     if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
