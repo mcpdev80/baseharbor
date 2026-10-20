@@ -2,6 +2,7 @@
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -456,6 +457,16 @@ def load_binding_qualification_record(target_base_sha, repository='',
     evaluation context (repository, target branch) is compared against the
     record when evaluate_context is set, and the complete inventory plus
     file_hashes are verified. Any failure returns None so the caller fails
+    closed.
+
+    context_repository/context_target_branch are the authenticated evaluation
+    context supplied by the caller, not by the candidate PR. On GitHub Actions
+    these are the runner-provided pull_request inputs
+    GITHUB_REPOSITORY (owner/name) and GITHUB_BASE_REF (target branch): the
+    runner sets them and the PR author cannot alter them, so they identify the
+    repository and target branch whose revision is actually being evaluated.
+    The caller MUST never trust a value coming from the candidate branch; a
+    blank context means the authenticated context is unknown and must fail
     closed.
     """
     def git(*args):
@@ -1172,8 +1183,25 @@ def main():
     parser.add_argument('--requirements', type=Path, default=ROOT / 'release-requirements.json')
     parser.add_argument('--mapping', type=Path, default=ROOT / 'pr-gate-map-v1.json')
     args = parser.parse_args()
-    result = plan(json.loads(args.diff.read_text()), json.loads(args.requirements.read_text()),
-                  json.loads(args.mapping.read_text()))
+    diff = json.loads(args.diff.read_text())
+    requirements = json.loads(args.requirements.read_text())
+    mapping = json.loads(args.mapping.read_text())
+    # Authenticated evaluation context comes from the runner, never from the
+    # candidate PR. On GitHub Actions the runner sets GITHUB_REPOSITORY
+    # (owner/name) and GITHUB_BASE_REF (target branch) in the pull_request
+    # context; these cannot be altered by the PR author. A blank value means
+    # the authenticated context is unknown, which must fail closed: an empty
+    # context yields an unresolved plan, never a trusted one.
+    context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
+    context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
+    if not context_repository or not context_target_branch:
+        raise SystemExit(
+            'refusing to qualify without authenticated runner context: '
+            'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'
+            % (context_repository, context_target_branch))
+    result = plan(diff, requirements, mapping,
+                  context_repository=context_repository,
+                  context_target_branch=context_target_branch)
     print(json.dumps(result, indent=2, sort_keys=True))
 
 

@@ -1,6 +1,7 @@
 """Trusted diff-to-check planner contract and fail-closed regression fixtures."""
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -1792,6 +1793,140 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         planned = self._run(target, head, actual, root)
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
+
+# main() entrypoint must source the authenticated evaluation context from the
+# runner environment, never from the candidate PR, and must fail closed when
+# either value is absent. These tests drive planner.main() with monkeypatched
+# os.environ and a real diff file.
+class MainRunnerContextEntrypointTests(unittest.TestCase):
+    RECORD_PATH = 'docs/internal/ci-binding-qualifications.md'
+
+    def setUp(self):
+        import json
+        import hashlib
+        self._root = Path(tempfile.mkdtemp())
+        resolver_spec = importlib.util.spec_from_file_location(
+            'main_ctx_resolver', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+
+        def git(*args):
+            result = subprocess.run(['git', '-C', str(self._root), *args],
+                                    text=True, capture_output=True)
+            self.assertEqual(0, result.returncode, result.stderr)
+            return result.stdout.strip()
+
+        git('init', '-q')
+        git('config', 'user.name', 'Binding fixture')
+        git('config', 'user.email', 'fixture@example.test')
+        for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+            (self._root / path).parent.mkdir(parents=True, exist_ok=True)
+            (self._root / path).write_text('baseline\n')
+        git('add', '.')
+        git('commit', '--allow-empty', '-qm', 'develop baseline')
+        git('branch', 'develop')
+        git('checkout', '-q', '-b', 'candidate')
+        for path in planner.BINDING_PR_1007_REVIEWED_FILES:
+            (self._root / path).write_text('reviewed\n')
+        git('add', '.')
+        git('commit', '-qm', 'candidate head H')
+        self._head = git('rev-parse', 'HEAD')
+        git('checkout', '-q', 'develop')
+        import hashlib
+        files = dict(planner.BINDING_PR_1007_REVIEWED_FILES)
+        hashes = {path: hashlib.sha256(
+            subprocess.run(['git', '-C', str(self._root), 'cat-file',
+                            'blob', f'{self._head}:{path}'],
+                           capture_output=True).stdout).hexdigest()
+                  for path in files}
+        rec = {'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
+               'reviewed_head': self._head, 'files': files,
+               'file_hashes': hashes,
+               'required_checks': [c['id'] for c in planner.CI_CHECKS]}
+        (self._root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (self._root / self.RECORD_PATH).write_text(
+            '```json\n' + json.dumps(rec) + '\n```\n')
+        git('add', '.')
+        git('commit', '-qm', 'trusted base policy for #1007')
+        self._target = git('rev-parse', 'develop')
+        tree = git('merge-tree', '--write-tree', self._target, self._head).splitlines()[0]
+        integrated = git('commit-tree', tree, '-p', self._target, '-p', self._head,
+                         '-m', 'binding integration')
+        self._actual = resolver.resolve_pr_diff(self._root, self._target, self._head, integrated)
+
+    def _run_main(self, environ, *, extra_args=None):
+        import json
+        import io
+        import contextlib
+        diff_path = self._root / 'diff.json'
+        diff_path.write_text(json.dumps(self._actual))
+        previous = os.getcwd()
+        os.chdir(str(self._root))
+        saved = dict(os.environ)
+        code = None
+        msg = None
+        buf = io.StringIO()
+        argv_snapshot = sys.argv
+        try:
+            os.environ.pop('GITHUB_REPOSITORY', None)
+            os.environ.pop('GITHUB_BASE_REF', None)
+            os.environ.update(environ)
+            sys.argv = ['pr-gate-plan.py',
+                        '--diff', str(diff_path),
+                        '--requirements', str(ROOT / 'release-requirements.json'),
+                        '--mapping', str(ROOT / 'pr-gate-map-v1.json')]
+            if extra_args:
+                sys.argv.extend(extra_args)
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                planner.main()
+        except SystemExit as exit:
+            code = exit.code
+            if isinstance(exit.code, str):
+                msg = exit.code
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+            sys.argv = argv_snapshot
+            os.chdir(previous)
+        return code, buf.getvalue(), msg
+
+    def test_matching_runner_context_resolves(self):
+        # Context matches the record exactly -> plan resolves via the binding clause.
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+            'GITHUB_BASE_REF': 'develop',
+        })
+        self.assertIsNone(code)
+        self.assertIn('"coverage_status": "resolved"', out)
+
+    def test_empty_context_fails_closed(self):
+        # Missing runner context must be rejected before plan() runs: the
+        # entrypoint refuses to qualify with an unknown authenticated context.
+        code, out, msg = self._run_main({})
+        self.assertNotEqual(0, code)
+        self.assertIn('authenticated runner context', out or msg or '')
+        self.assertNotIn('"coverage_status"', out)
+
+    def test_empty_repository_fails_closed(self):
+        code, out, msg = self._run_main({'GITHUB_BASE_REF': 'develop'})
+        self.assertNotEqual(0, code)
+        self.assertIn('authenticated runner context', out or msg or '')
+
+    def test_empty_target_branch_fails_closed(self):
+        code, out, msg = self._run_main({'GITHUB_REPOSITORY': 'mcpdev80/baseharbor'})
+        self.assertNotEqual(0, code)
+        self.assertIn('authenticated runner context', out or msg or '')
+
+    def test_wrong_repository_fails_closed(self):
+        # Non-empty but wrong repository: plan() runs and fails closed on the
+        # repository mismatch rather than resolving.
+        code, out, msg = self._run_main({
+            'GITHUB_REPOSITORY': 'other-org/baseharbor',
+            'GITHUB_BASE_REF': 'develop',
+        })
+        self.assertIsNone(code)
+        self.assertNotIn('"coverage_status": "resolved"', out)
+        self.assertIn('"coverage_status": "unresolved"', out)
 
 class CopiedTrustedTreeReviewTests(unittest.TestCase):
     def test_conflict_resolution_needs_fresh_review_then_clean_merges_work(self):
