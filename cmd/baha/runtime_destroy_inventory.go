@@ -117,8 +117,23 @@ func (plan targetDestroyInventory) cleanup(ctx context.Context, results *[]fullD
 		resources := plan.Projects[project]
 		// Module cleanup may already have removed resources. The provider checks
 		// current ownership again and treats an absent resource as already removed.
-		if err := plan.Runtime.DestroyOwnedProjectResources(ctx, project, resources); err != nil {
-			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: plan.Target.Name, Resource: "planned resources " + project, Detail: err.Error()})
+		destroyErr := plan.Runtime.DestroyOwnedProjectResources(ctx, project, resources)
+		if destroyErr != nil {
+			// Auto-GC (podman system prune --force) can remove containers,
+			// networks, and volumes before the destroy inventory walks them.
+			// When the error is a "no such" message the resources are
+			// already absent and should NOT be treated as a fatal failure.
+			if targetDestroyInventoryResourceMissing(destroyErr) {
+				for _, resource := range resources {
+					*results = append(*results, fullDestroyResult{
+						Status: "already-absent", Target: plan.Target.Name,
+						Resource: resource.Kind + " " + resource.Name,
+						Detail: "auto-GC removed before destroy inventory walk",
+					})
+				}
+				continue
+			}
+			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: plan.Target.Name, Resource: "planned resources " + project, Detail: destroyErr.Error()})
 			continue
 		}
 		remaining, err := plan.Runtime.ListOwnedProjectResources(ctx, project)
@@ -155,6 +170,23 @@ func (plan targetDestroyInventory) cleanup(ctx context.Context, results *[]fullD
 			*results = append(*results, fullDestroyResult{Status: "FAILED", Target: plan.Target.Name, Resource: "residual " + resource.Kind + " " + resource.Name, Detail: "owned resource remains; target state preserved"})
 		}
 	}
+}
+
+// targetDestroyInventoryResourceMissing recognises auto-GC removal errors:
+// when a resource was already gone before destroy inventory tried to remove it.
+// This gates destroy on the same "no such" / "not found" / "unable to find"
+// messages that quadletRemoveRuntimeResources treats as non-fatal.
+func targetDestroyInventoryResourceMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "not found") ||
+		strings.Contains(lower, "unable to find") ||
+		strings.Contains(lower, "no such container") ||
+		strings.Contains(lower, "no such volume") ||
+		strings.Contains(lower, "no such network")
 }
 
 func preservedTargetRecovery(ctx context.Context, target deployment.ResolvedTarget) (fullDestroyResult, error) {
