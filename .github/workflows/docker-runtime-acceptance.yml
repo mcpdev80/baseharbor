@@ -36,6 +36,7 @@ jobs:
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
       DOCKER_HOST: unix:///var/run/docker.sock
+      DOCKER_MODE: rootful
     runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 75
 
