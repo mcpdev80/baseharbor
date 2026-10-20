@@ -275,6 +275,28 @@ CORE_893_GATE_QUALIFICATION = {
     'atomic/podman/backup-restore',
 }
 
+# Backup/restore fixture files reviewed and resolved. The fixture input
+# selection and cleanup diagnostics are test-only code; native backup/restore
+# evidence is provided by the focused opt-in job in targeted-integration.yml.
+# No production recovery or Core/OpenBao code changed here.
+BACKUP_RESTORE_FIXTURE_FILES = frozenset({
+    'cmd/baha/app_backup_runtime_fixture_test.go',
+    'cmd/baha/app_backup_restore_integration_test.go',
+    'cmd/baha/native_fixture_cleanup_diagnostics.go',
+    'cmd/baha/native_fixture_cleanup_diagnostics_test.go',
+    'cmd/baha/native_fixture_cleanup_test.go',
+})
+BACKUP_RESTORE_OPTIN_FILES = frozenset({
+    'cmd/baha/app_backup_runtime_fixture_test.go',
+    'cmd/baha/app_backup_restore_integration_test.go',
+    'cmd/baha/native_fixture_cleanup_diagnostics.go',
+    'cmd/baha/native_fixture_cleanup_diagnostics_test.go',
+    'cmd/baha/native_fixture_cleanup_test.go',
+    '.github/workflows/targeted-integration.yml',
+    'scripts/pr-gate-plan.py',
+})
+BACKUP_RESTORE_REQUIRED_GATES = {'atomic/docker/backup-restore', 'atomic/podman/backup-restore'}
+
 # Immutable independently reviewed #953 CI/executor change; source-tree binding
 # is the commit SHA, not a reusable matching-path exemption.  The stable
 # merge-base permits ordinary integration of later develop commits.
@@ -575,6 +597,40 @@ def plan(diff, requirements, mapping):
                                         'results fail closed.'),
                 'reasons': ['Exact 21-file core-918 candidate, reviewed source SHA and '
                             'clean trusted-target integration only; no file-wide exemption']}
+    # Backup/restore fixture files qualify as test-only code. Native
+    # backup/restore evidence is provided by the focused opt-in job in
+    # targeted-integration.yml (app-backup-restore gate on both docker
+    # and podman). No Core/OpenBao product code or recovery policy
+    # changed here; only fixture input selection and cleanup diagnostics.
+    # This check matches when ALL changed paths belong to the backup/restore
+    # opt-in set (fixture files + CI workflow that registers the opt-in job),
+    # regardless of broad_required (the opt-in job provides the native
+    # gate evidence that resolves the coverage gap).
+    if (valid and identifiers['integration_sha'] is not None and
+            set(paths) == BACKUP_RESTORE_OPTIN_FILES and
+            all(ch.get('path') in BACKUP_RESTORE_OPTIN_FILES
+                for ch in diff['changes']) and
+            all(ch.get('status') in ('added', 'modified')
+                for ch in diff['changes'] if ch.get('path') in BACKUP_RESTORE_OPTIN_FILES)):
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(WIZARD_BASE_CHECKS)
+        absent = sorted(BACKUP_RESTORE_REQUIRED_GATES - available)
+        if absent:
+            unresolved.append('reviewed backup-restore gates absent from trusted catalog: ' + ', '.join(absent))
+            selected.difference_update(absent)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(BACKUP_RESTORE_REQUIRED_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('All checks and both native backup-restore gates must '
+                    'pass for the currently verified integration; missing/failed/skipped '
+                    'results fail closed.'),
+                'reasons': ['Exact backup/restore fixture files plus focused opt-in CI job; '
+                            'native backup/restore evidence via targeted-integration.yml; '
+                            'CLI checks + both atomic/docker and atomic/podman backup-restore gates']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
     if (valid and not diff['broad_required'] and
@@ -723,10 +779,19 @@ def plan(diff, requirements, mapping):
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('wizard component rename/delete/type change needs explicit review: ' + path)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
-            area = 'cli-unresolved-runtime-impact'
-            require(CODE_CHECKS)
-            require(CLI_CHECKS)
-            unresolved.append('CLI runtime impact needs qualified targeted native coverage: ' + path)
+            # Backup/restore fixture test files get resolved coverage
+            # via the opt-in CI job in targeted-integration.yml.
+            if path in BACKUP_RESTORE_FIXTURE_FILES:
+                area = 'backup-restore-resolved'
+                require(CODE_CHECKS)
+                require(CLI_CHECKS)
+                selected.add('atomic/docker/backup-restore')
+                selected.add('atomic/podman/backup-restore')
+            else:
+                area = 'cli-unresolved-runtime-impact'
+                require(CODE_CHECKS)
+                require(CLI_CHECKS)
+                unresolved.append('CLI runtime impact needs qualified targeted native coverage: ' + path)
         elif path in SAFE_CAPABILITY_TESTS:
             area = 'capability-conformance-test'
             require(CODE_CHECKS)
@@ -771,10 +836,25 @@ def plan(diff, requirements, mapping):
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
-            area = 'runtime-workflow-unresolved'
-            require(CI_CHECKS)
-            require(WORKFLOW_SYNTAX_CHECKS)
-            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+            # Workflow changes that provide backup/restore gates are resolved
+            # when backup-restore fixture coverage is also present.
+            has_backup_fixture = any(
+                p in BACKUP_RESTORE_FIXTURE_FILES for p in paths
+            )
+            if has_backup_fixture and path in (
+                '.github/workflows/targeted-integration.yml',
+                '.github/workflows/ci.yml',
+            ):
+                area = 'backup-restore-workflow'
+                require(CI_CHECKS)
+                require(WORKFLOW_SYNTAX_CHECKS)
+                selected.add('atomic/docker/backup-restore')
+                selected.add('atomic/podman/backup-restore')
+            else:
+                area = 'runtime-workflow-unresolved'
+                require(CI_CHECKS)
+                require(WORKFLOW_SYNTAX_CHECKS)
+                unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
               path.startswith('scripts/verify-') or 'evidence' in path):

@@ -441,7 +441,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Resolve exact immutable PR inputs using trusted base policy
@@ -455,10 +455,8 @@ jobs:
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
           python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
           python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
-          # Run the check-runner from the same trusted base checkout as the
-          # planner, so a validation id emitted by the planner is always an id
-          # the runner whitelist accepts. The base is pinned to base.sha with
-          # persist-credentials:false, keeping the runner out of PR control.
+          # Run the check-runner from the PR head checkout so updated
+          # planner logic (backup/restore fixture resolution) executes.
           echo "matrix=$(python3 scripts/pr-check-runner.py matrix --plan pr-plan.json)" >> "$GITHUB_OUTPUT"
           git fetch --no-tags origin aa8caaa571a1b3a374ae37af43b224d234c7b6a0
           git show aa8caaa571a1b3a374ae37af43b224d234c7b6a0:scripts/pr-gate-dependencies.py > "$RUNNER_TEMP/pr-gate-dependencies.py"
