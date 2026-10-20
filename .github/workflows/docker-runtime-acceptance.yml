@@ -261,3 +261,67 @@ jobs:
         if: always()
         shell: bash
         run: bash scripts/ci-runtime-reset.sh docker
+
+
+  mcp-edit-native:
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_MCP_EDIT_NATIVE_ACCEPTANCE: "true"
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset Docker runtime
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Report runner and Docker inventory
+        id: inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=${{ runner.name }}"
+          echo "source=${{ github.sha }}"
+          echo "::group::Docker inventory"
+          docker version --format '{{.Server.Version}}' 2>/dev/null || true
+          docker compose version 2>/dev/null || true
+          docker ps -q | wc -l | xargs echo "containers before test:"
+          echo "::endgroup::"
+
+      - name: Execute app.edit native provider-edit lifecycle
+        id: app_edit_native
+        env:
+          BASEHARBOR_MCP_EDIT_NATIVE_ACCEPTANCE: "true"
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner=${{ runner.name }} ubuntu-24.04"
+          echo "source=${{ github.sha }}"
+          echo "job=mcp-edit-native"
+          echo "::group::native app.edit provider-edit lifecycle"
+          BASEHARBOR_TEST_RUNTIME=docker \
+            BASEHARBOR_MCP_EDIT_NATIVE_ACCEPTANCE=true \
+            BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application \
+            BASEHARBOR_PROVIDER_VALKEY_SCOPE=application \
+            go test ./cmd/baha \
+              -run '^TestAppEditMCPAppEditRunsRealProviderEditLifecycle$' \
+              -count=1 -v -timeout 35m
+          echo "outcome=$?"
+          echo "::endgroup::"
+
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        run: bash scripts/ci-runtime-reset.sh docker
