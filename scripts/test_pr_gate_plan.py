@@ -1405,7 +1405,7 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
     # revision and never from the candidate branch. These tests build real git
     # fixtures: a develop line that may or may not carry the policy file, a
     # candidate head H with the reviewed content, and a clean integration merge.
-    RECORD_PATH = 'scripts/ci-binding-qualifications.json'
+    RECORD_PATH = 'docs/internal/ci-binding-qualifications.md'
 
     def _record(self, reviewed_head_sha, repository='mcpdev80/baseharbor',
                 target_branch='develop', required_checks=None):
@@ -1427,10 +1427,15 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
     def _blob_sha(self, head, path):
         out = subprocess.run(['git', '-C', str(self._repo_root), 'cat-file',
                               'blob', f'{head}:{path}'],
-                             text=True, capture_output=True)
+                              text=True, capture_output=True)
         self.assertEqual(0, out.returncode, out.stderr)
         import hashlib
         return hashlib.sha256(out.stdout.encode('utf-8')).hexdigest()
+
+    def _record_blob(self, rec):
+        # The loader reads docs/internal/ci-binding-qualifications.md and
+        # extracts exactly one fenced JSON block from the blob.
+        return '```json\n' + json.dumps(rec) + '\n```\n'
 
     def _build(self, root, *, base_carries_record=True, record=None,
                head_content='reviewed\n'):
@@ -1466,7 +1471,7 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         if base_carries_record:
             rec = record if record is not None else self._record(head)
             (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
-            (root / self.RECORD_PATH).write_text(json.dumps(rec))
+            (root / self.RECORD_PATH).write_text(self._record_blob(rec))
             git('add', '.')
             git('commit', '-qm', 'trusted base policy for #1007')
         target = git('rev-parse', 'develop')
@@ -1484,7 +1489,9 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         previous = os.getcwd()
         os.chdir(str(root))
         try:
-            return planner.plan(actual, REQ, MAP)
+            return planner.plan(actual, REQ, MAP,
+                                context_repository='mcpdev80/baseharbor',
+                                context_target_branch='develop')
         finally:
             os.chdir(previous)
 
@@ -1520,6 +1527,45 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         head = git('rev-parse', 'HEAD')
         return baseline, head, root
 
+    def _resolve_with_record(self, root, record_factory, *, base_carries_record=True,
+                             head_content='reviewed\n',
+                             context_repository='mcpdev80/baseharbor',
+                             context_target_branch='develop'):
+        # Build a base line and a candidate head H once, optionally write a
+        # custom policy record onto the base, then resolve the plan.
+        # record_factory(head) receives the reviewed head H and returns a dict
+        # or a raw blob str to persist as the policy record.
+        baseline, head, root = self._build_base_with_candidate(root, head_content)
+        git = lambda *a: subprocess.run(['git', '-C', str(root), *a],
+                                        text=True, capture_output=True).stdout.strip()
+        if base_carries_record:
+            record = record_factory(head)
+            blob = record if isinstance(record, str) else self._record_blob(record)
+            git('checkout', '-q', 'develop')
+            (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+            (root / self.RECORD_PATH).write_text(blob)
+            git('add', '.'); git('commit', '-qm', 'record on base')
+            target = git('rev-parse', 'HEAD')
+        else:
+            target = baseline
+        resolver_spec = importlib.util.spec_from_file_location(
+            'resolve_record', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(resolver_spec)
+        resolver_spec.loader.exec_module(resolver)
+        tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integrated = git('commit-tree', tree, '-p', target, '-p', head,
+                         '-m', 'integration')
+        actual = resolver.resolve_pr_diff(root, target, head, integrated)
+        import os
+        previous = os.getcwd()
+        os.chdir(str(root))
+        try:
+            return planner.plan(actual, REQ, MAP,
+                                context_repository=context_repository,
+                                context_target_branch=context_target_branch)
+        finally:
+            os.chdir(previous)
+
     def test_record_present_matching_head_resolves(self):
         target, head, actual, root = self._build(
             Path(tempfile.mkdtemp()), head_content='reviewed\n')
@@ -1535,6 +1581,70 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         target, head, actual, root = self._build(
             Path(tempfile.mkdtemp()), base_carries_record=False)
         planned = self._run(target, head, actual, root)
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertTrue(planned['unresolved_coverage'])
+
+    def test_single_block_positive_resolves(self):
+        # Exactly one fenced JSON block with matching context resolves.
+        tmp = Path(tempfile.mkdtemp())
+        planned = self._resolve_with_record(
+            tmp, lambda head: self._record(head))
+        self.assertEqual('resolved', planned['coverage_status'], planned)
+        self.assertEqual([], planned['unresolved_coverage'])
+
+    def test_zero_block_fails_closed(self):
+        # A base blob with no fenced JSON block fails closed.
+        tmp = Path(tempfile.mkdtemp())
+        planned = self._resolve_with_record(
+            tmp, lambda _head: 'no fenced json here, just prose\n')
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertTrue(planned['unresolved_coverage'])
+
+    def test_two_blocks_fails_closed(self):
+        # Two fenced JSON blocks fail closed: the loader requires exactly one.
+        tmp = Path(tempfile.mkdtemp())
+
+        def two_blocks(_head):
+            return ('```json\n' + json.dumps(self._record(_head)) + '\n```\n'
+                    + '```json\n' + json.dumps(
+                        {**self._record(_head),
+                         'required_checks': ['ci-policy']}) + '\n```\n')
+        planned = self._resolve_with_record(tmp, two_blocks)
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertTrue(planned['unresolved_coverage'])
+
+    def test_key_set_mismatch_fails_closed(self):
+        # files and file_hashes have differing key sets fails closed.
+        tmp = Path(tempfile.mkdtemp())
+        # Build the record then drop a hash key so files/file_hashes differ.
+        def key_set_record(head):
+            record = self._record(head)
+            del record['file_hashes']['scripts/test_pr_gate_plan.py']
+            return record
+        planned = self._resolve_with_record(tmp, key_set_record)
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertTrue(planned['unresolved_coverage'])
+
+    def test_wrong_repository_identity_fails_closed(self):
+        # The record's repository differs from the authenticated context.
+        tmp = Path(tempfile.mkdtemp())
+        wrong_repo = lambda head: self._record(head)
+        def repo_record(head):
+            record = self._record(head)
+            record['repository'] = 'other-org/baseharbor'
+            return record
+        planned = self._resolve_with_record(tmp, repo_record)
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertTrue(planned['unresolved_coverage'])
+
+    def test_wrong_target_branch_identity_fails_closed(self):
+        # The record's target_branch differs from the authenticated context.
+        tmp = Path(tempfile.mkdtemp())
+        def branch_record(head):
+            record = self._record(head)
+            record['target_branch'] = 'main'
+            return record
+        planned = self._resolve_with_record(tmp, branch_record)
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
 
@@ -1571,7 +1681,8 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         head = git('rev-parse', 'HEAD')
         # Policy file lives only on the candidate head, not the base.
         rec = self._record(head)
-        (root / self.RECORD_PATH).write_text(json.dumps(rec))
+        (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (root / self.RECORD_PATH).write_text(self._record_blob(rec))
         git('add', '.')
         git('commit', '-qm', 'candidate self-declared pins')
         tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
@@ -1591,7 +1702,8 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         base, head, root = self._build_base_with_candidate(tmp, head_content='reviewed\n')
         good = self._record(head)
         good['reviewed_head'] = '0' * 40
-        (root / self.RECORD_PATH).write_text(json.dumps(good))
+        (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (root / self.RECORD_PATH).write_text(self._record_blob(good))
         git = lambda *a: subprocess.run(['git', '-C', str(root), *a],
                                         text=True, capture_output=True).stdout.strip()
         git('add', '.'); git('commit', '-qm', 'wrong the pinned head')
@@ -1616,7 +1728,8 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         base, head, root = self._build_base_with_candidate(tmp, head_content='reviewed\n')
         record = self._record(head)
         record['file_hashes'] = {path: 'f' * 64 for path in record['file_hashes']}
-        (root / self.RECORD_PATH).write_text(json.dumps(record))
+        (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (root / self.RECORD_PATH).write_text(self._record_blob(record))
         git = lambda *a: subprocess.run(['git', '-C', str(root), *a],
                                         text=True, capture_output=True).stdout.strip()
         git('add', '.'); git('commit', '-qm', 'corrupt the hashes')
@@ -1667,7 +1780,8 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         head = git('rev-parse', 'HEAD')
         rec = self._record(head)
         git('checkout', '-q', 'develop')
-        (root / self.RECORD_PATH).write_text(json.dumps(rec))
+        (root / self.RECORD_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (root / self.RECORD_PATH).write_text(self._record_blob(rec))
         git('add', '.')
         git('commit', '-qm', 'trusted base policy for #1007')
         target = git('rev-parse', 'develop')

@@ -2,6 +2,7 @@
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -439,17 +440,23 @@ def core752_binding_linear_ancestry(target, head, single_parent, repository='.')
     return line == target
 
 
-def load_binding_qualification_record(target_base_sha, repository='.'):
-    """Load the #1007 binding-PR qualification record from the trusted base.
+def load_binding_qualification_record(target_base_sha, repository='',
+                                      context_repository='', context_target_branch='',
+                                      evaluate_context=False):
+    """Load and strictly validate the #1007 binding-PR qualification record.
 
     The reviewed final candidate H and its file hashes live in a separate,
     independently reviewed prerequisite policy file on the trusted target base,
-    never on the candidate PR branch. The record (repository, target_branch,
-    reviewed_head, path/status inventory, full file hashes and required checks)
-    is read exclusively from the authenticated base revision via
-    ``git show <target_base>:scripts/ci-binding-qualifications.json`` and parsed
-    as JSON. Any failure - unreadable blob, bad revision, unparsable or missing
-    fields - returns None so the caller fails closed.
+    never on the candidate PR branch. The record lives at the exact path
+    ``docs/internal/ci-binding-qualifications.md`` and is read exclusively from
+    the authenticated base revision via
+    ``git show <target_base>:docs/internal/ci-binding-qualifications.md``. The
+    blob must contain exactly one fenced JSON block: zero or more than one
+    block fails closed. The block is parsed and validated, the authenticated
+    evaluation context (repository, target branch) is compared against the
+    record when evaluate_context is set, and the complete inventory plus
+    file_hashes are verified. Any failure returns None so the caller fails
+    closed.
     """
     def git(*args):
         try:
@@ -460,26 +467,73 @@ def load_binding_qualification_record(target_base_sha, repository='.'):
             return None
     if not isinstance(target_base_sha, str) or len(target_base_sha) != 40:
         return None
-    record_file = 'scripts/ci-binding-qualifications.json'
-    out = git('show', target_base_sha + ':' + record_file)
-    if not out or out.returncode or not out.stdout.strip():
+    record_path = 'docs/internal/ci-binding-qualifications.md'
+    out = git('show', target_base_sha + ':' + record_path)
+    if not out or out.returncode or out.stdout is None:
+        return None
+    block = _extract_single_json_block(out.stdout)
+    if block is None:
         return None
     try:
-        record = json.loads(out.stdout)
+        record = json.loads(block)
     except (ValueError, TypeError):
         return None
-    if not _valid_binding_record(record):
+    if not _valid_binding_record(record, context_repository=context_repository,
+                                 context_target_branch=context_target_branch,
+                                 evaluate_context=evaluate_context):
         return None
     return record
 
 
-def _valid_binding_record(record):
-    """True only for a well-formed binding qualification record."""
+def _extract_single_json_block(blob):
+    """Return the single fenced JSON block in the blob, or None on ambiguity.
+
+    Accepts zero or any fence style (``` or ~~~) with an optional json
+    language hint. Exactly one block is required: zero or two-or-more blocks
+    fail closed and return None.
+    """
+    if not isinstance(blob, str):
+        return None
+    lines = blob.splitlines()
+    fence_pattern = re.compile(r'^\s*(`{3,}|~{3,})\s*(?:json)?\s*$')
+    blocks = []
+    i = 0
+    while i < len(lines):
+        match = fence_pattern.match(lines[i])
+        if match and i + 1 < len(lines):
+            fence = match.group(1)[0]
+            end = i + 1
+            while end < len(lines) and not fence_pattern.match(lines[end]):
+                end += 1
+            if end < len(lines):
+                blocks.append('\n'.join(lines[i + 1:end]))
+                i = end + 1
+                continue
+        i += 1
+    if len(blocks) != 1:
+        return None
+    return blocks[0]
+
+
+def _valid_binding_record(record, context_repository='', context_target_branch='',
+                          evaluate_context=False):
+    """True only for a well-formed binding qualification record.
+
+    The record must supply the authenticated evaluation context
+    (repository, target branch), the reviewed head, a non-empty file inventory
+    and its full hash set whose key sets are identical, plus required checks.
+    A partial inventory (fewer hashes than files) fails closed. When
+    evaluate_context is set the record's repository and target_branch must
+    equal the authenticated evaluation context exactly; a mismatch fails
+    closed.
+    """
     if not isinstance(record, dict):
         return False
-    required = ('repository', 'target_branch', 'reviewed_head',
-                'files', 'file_hashes', 'required_checks')
-    if not all(record.get(key) is not None for key in required):
+    if not all(isinstance(record.get(key), str) for key in
+               ('repository', 'target_branch')):
+        return False
+    if not all(record.get(key) is not None for key in
+               ('reviewed_head', 'files', 'file_hashes', 'required_checks')):
         return False
     if not isinstance(record['reviewed_head'], str) or \
             len(record['reviewed_head']) != 40:
@@ -488,7 +542,12 @@ def _valid_binding_record(record):
         return False
     if not isinstance(record['file_hashes'], dict) or not record['file_hashes']:
         return False
+    if set(record['files']) != set(record['file_hashes']):
+        return False
     if not isinstance(record['required_checks'], list) or not record['required_checks']:
+        return False
+    if evaluate_context and (record['repository'] != context_repository or
+                             record['target_branch'] != context_target_branch):
         return False
     return True
 
@@ -644,7 +703,8 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
-def plan(diff, requirements, mapping, repository='.'):
+def plan(diff, requirements, mapping, repository='.',
+         context_repository='', context_target_branch=''):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
@@ -737,7 +797,8 @@ def plan(diff, requirements, mapping, repository='.'):
     # reviewed final candidate H and its file hashes are frozen in a separate,
     # independently reviewed prerequisite policy file on the trusted target
     # base; the record is loaded there and never from the candidate branch. The
-    # clause binds only when the record parses from the base, head_sha equals H
+    # clause binds only when the record parses from the base, its repository and
+    # target branch match the authenticated evaluation context, head_sha equals H
     # (the binding PR is a single linear commit, so head_sha == H is the anchor;
     # a follow-up edit has a different sha and fails), the complete diff
     # inventory equals the record's file/status map, every reviewed file's
@@ -745,7 +806,10 @@ def plan(diff, requirements, mapping, repository='.'):
     # stay exactly [target_base, head]. For a branch that is still the unfrozen
     # H candidate (the policy file is not yet on develop), this correctly
     # returns unresolved until the prerequisite policy PR lands.
-    record = load_binding_qualification_record(identifiers['target_base_sha'])
+    record = load_binding_qualification_record(
+        identifiers['target_base_sha'], repository=repository,
+        context_repository=context_repository,
+        context_target_branch=context_target_branch, evaluate_context=True)
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
             record is not None and
