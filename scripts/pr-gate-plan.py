@@ -198,31 +198,6 @@ GC_999_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_artifact_gc.py': 'modified',
 }
-# Binding-PR self-qualification: #1007 re-pins the core-921 coverage binding to
-# the reviewed #998 head a66e5de6 while its own diff changes CI-execution
-# scripts (pr-check-runner, pr-gate-plan, test_pr_gate_plan). The binding-PR
-# head 48def9e8 is the single linear commit of the PR; its one 1st parent
-# 706b5244 sits one commit ahead of the current develop tip, so the PR is a
-# clean single line that branches from the develop tip (its merge base with the
-# target base is exactly that base). The binding head is bound by two anchors:
-# its immutable full SHA and the content sha256 of each of the three reviewed
-# files (the blob contents at that head, which avoids the self-reference
-# paradox of binding a commit to its own sha). Any follow-up contents, changed
-# file inventory or rename stay unresolved. The r4 self-qualifying branch: the
-# clause binds when head_sha equals this reviewed head, the changed set equals
-# the exact reviewed file map with the reviewed statuses, each reviewed file's
-# content at head_sha equals its pinned content sha256, and the linear head's
-# merge base with the target base is exactly that base along a clean
-# first-parent line. This gives the changed CI-execution files explicit
-# CI_CHECKS qualification rather than the catch-all ci-executor-unresolved
-# classifier. Re-pin this head: change both constants below (the reviewed head
-# and the per-file content sha256 map) to the new reviewed head.
-BINDING_PR_1007_REVIEWED_HEAD = '48def9e85e35db90025b4e354350bac22c9fe806'
-BINDING_PR_1007_REVIEWED_CONTENT_SHA256 = {
-    'scripts/pr-check-runner.py': 'ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed',
-    'scripts/pr-gate-plan.py': '57cdefa1457ac51019cfe6468b14af1f7ade265df9ece79cd40ba784f1d2616d',
-    'scripts/test_pr_gate_plan.py': '679fdef9770ed6e2bc35fe81fc4bae0fea23e1cf7ae1e2525824b3ee8ffe2b6e',
-}
 BINDING_PR_1007_REVIEWED_FILES = {
     'scripts/pr-check-runner.py': 'modified',
     'scripts/pr-gate-plan.py': 'modified',
@@ -463,12 +438,17 @@ def core752_binding_linear_ancestry(target, head, single_parent, repository='.')
     return line == target
 
 
-def core752_binding_content_sha256(path, head_sha, repository='.'):
-    """Return the content sha256 of one blob at a commit, or None on failure.
+def load_binding_qualification_record(target_base_sha, repository='.'):
+    """Load the #1007 binding-PR qualification record from the trusted base.
 
-    The sha256 is computed over the blob contents (git cat-file blob), not the
-    commit sha, so the reviewed content pin cannot reference the reviewed head's
-    own commit sha and stay unforgeable.
+    The reviewed final candidate H and its file hashes live in a separate,
+    independently reviewed prerequisite policy file on the trusted target base,
+    never on the candidate PR branch. The record (repository, target_branch,
+    reviewed_head, path/status inventory, full file hashes and required checks)
+    is read exclusively from the authenticated base revision via
+    ``git show <target_base>:scripts/ci-binding-qualifications.json`` and parsed
+    as JSON. Any failure - unreadable blob, bad revision, unparsable or missing
+    fields - returns None so the caller fails closed.
     """
     def git(*args):
         try:
@@ -477,13 +457,102 @@ def core752_binding_content_sha256(path, head_sha, repository='.'):
                                   stderr=subprocess.PIPE, check=False)
         except OSError:
             return None
-    if not isinstance(path, str) or not path or not isinstance(head_sha, str) or len(head_sha) != 40:
+    if not isinstance(target_base_sha, str) or len(target_base_sha) != 40:
         return None
-    blob = git('cat-file', 'blob', head_sha + ':' + path)
-    if not blob or blob.returncode:
+    record_file = 'scripts/ci-binding-qualifications.json'
+    out = git('show', target_base_sha + ':' + record_file)
+    if not out or out.returncode or not out.stdout.strip():
         return None
-    import hashlib
-    return hashlib.sha256(blob.stdout.encode('utf-8')).hexdigest()
+    try:
+        record = json.loads(out.stdout)
+    except (ValueError, TypeError):
+        return None
+    if not _valid_binding_record(record):
+        return None
+    return record
+
+
+def _valid_binding_record(record):
+    """True only for a well-formed binding qualification record."""
+    if not isinstance(record, dict):
+        return False
+    required = ('repository', 'target_branch', 'reviewed_head',
+                'files', 'file_hashes', 'required_checks')
+    if not all(record.get(key) is not None for key in required):
+        return False
+    if not isinstance(record['reviewed_head'], str) or \
+            len(record['reviewed_head']) != 40:
+        return False
+    if not isinstance(record['files'], dict) or not record['files']:
+        return False
+    if not isinstance(record['file_hashes'], dict) or not record['file_hashes']:
+        return False
+    if not isinstance(record['required_checks'], list) or not record['required_checks']:
+        return False
+    return True
+
+
+def _binding_inventory_matches(diff, record):
+    """True only when the complete diff equals the record's file/status map.
+
+    Every changed path must appear in the record with the exact reviewed
+    status, and there may be no extra changed path. A partial match, an extra
+    file or a renamed/deleted change of a reviewed file fails this.
+    """
+    files = record.get('files')
+    if not isinstance(files, dict) or not files:
+        return False
+    changes = diff.get('changes')
+    if not isinstance(changes, list):
+        return False
+    changed = []
+    for change in changes:
+        status = change.get('status')
+        if status in ('added', 'deleted', 'modified', 'type_changed'):
+            changed.append(change.get('path'))
+        elif status in ('renamed', 'copied'):
+            new_path = change.get('new_path')
+            if isinstance(new_path, str):
+                changed.append(new_path)
+        else:
+            return False
+    if sorted(changed) != sorted(files):
+        return False
+    status_by_path = {change.get('path'): change.get('status') for change in changes}
+    for path, expected_status in files.items():
+        if status_by_path.get(path) != expected_status:
+            return False
+    return True
+
+
+def _binding_content_hashes_verified(head_sha, record, repository='.'):
+    """True only when each reviewed file's content at head_sha matches its pin.
+
+    The hashes come from the trusted base record (sha256 of the blob at the
+    frozen reviewed head H), so they cannot be forged from the candidate
+    branch. A missing blob or a mismatched hash fails this.
+    """
+    hashes = record.get('file_hashes')
+    if not isinstance(hashes, dict) or not hashes:
+        return False
+    def git(*args):
+        try:
+            return subprocess.run(['git', '-C', str(repository), *args],
+                                  text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, check=False)
+        except OSError:
+            return None
+    if not isinstance(head_sha, str) or len(head_sha) != 40:
+        return False
+    for path, expected in hashes.items():
+        out = git('cat-file', 'blob', head_sha + ':' + path)
+        if not out or out.returncode or not out.stdout:
+            return False
+        import hashlib
+        digest = hashlib.sha256(out.stdout.encode('utf-8')).hexdigest()
+        if digest != expected:
+            return False
+    return True
 
 
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
@@ -525,6 +594,33 @@ def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     return False
 
 
+def core752_clean_integration_parents(target, head, integration, repository='.'):
+    """True only when the integration commit's parents are exactly [target, head].
+
+    Preserves the exact integration parents from the guard set: the first parent
+    is the trusted target base and the second is the reviewed head, with no extra
+    or reordered parents. This rejects forged integrations that relabel the
+    target after merge calculations.
+    """
+    def git(*args):
+        try:
+            return subprocess.run(['git', '-C', str(repository), *args],
+                                  text=True, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, check=False)
+        except OSError:
+            return None
+    if not all(isinstance(x, str) and len(x) == 40
+               for x in (target, head, integration)):
+        return False
+    parents = git('rev-list', '--parents', '-n', '1', integration)
+    if not parents or parents.returncode:
+        return False
+    fields = parents.stdout.strip().split()
+    if len(fields) != 3 or fields[1] != target or fields[2] != head:
+        return False
+    return True
+
+
 # Execution of this reviewed test candidate is not content qualification.
 CORE_754_TEST_HEAD = '5a3813385af5392a9be3095bd038424a4f9950b7'
 CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
@@ -547,7 +643,7 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
-def plan(diff, requirements, mapping):
+def plan(diff, requirements, mapping, repository='.'):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
@@ -636,42 +732,40 @@ def plan(diff, requirements, mapping):
                         'validations block in the existing trusted final verifier.'),
                     'reasons': [label + ': exact source hash, complete changed status '
                                 'set and proven clean trusted-target merge only']}
-    # Self-qualifying binding-PR head (#1007). A binding PR is a single linear
-    # commit whose 1st parent is a direct ancestor of the current develop tip,
-    # so it never carries the two-parent merge that core752_reviewed_merge_chain
-    # requires. The clause binds only when all of (i) the PR diff equals exactly
-    # the reviewed file map with the reviewed statuses, (ii) the content of each
-    # reviewed file at head_sha equals its pinned content sha256 (the blob
-    # contents, which avoids the self-reference paradox of binding a commit to
-    # its own commit sha), and (iii) the linear head's merge base with the target
-    # base is exactly that base along a clean first-parent line. This gives the
-    # changed CI-execution files explicit CI_CHECKS qualification instead of the
-    # ci-executor-unresolved catch-all. Forgery is impossible: any other PR
-    # carries a different head sha and different reviewed file content, so it can
-    # not equal the reviewed anchor nor match the pinned content hashes.
+    # Binding-PR self-qualification via trusted base policy (#1007). The
+    # reviewed final candidate H and its file hashes are frozen in a separate,
+    # independently reviewed prerequisite policy file on the trusted target
+    # base; the record is loaded there and never from the candidate branch. The
+    # clause binds only when the record parses from the base, head_sha equals H
+    # (the binding PR is a single linear commit, so head_sha == H is the anchor;
+    # a follow-up edit has a different sha and fails), the complete diff
+    # inventory equals the record's file/status map, every reviewed file's
+    # content at head_sha equals the record's hash, and the integration parents
+    # stay exactly [target_base, head]. For a branch that is still the unfrozen
+    # H candidate (the policy file is not yet on develop), this correctly
+    # returns unresolved until the prerequisite policy PR lands.
+    record = load_binding_qualification_record(identifiers['target_base_sha'])
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
-            identifiers['head_sha'] == BINDING_PR_1007_REVIEWED_HEAD and
-            len(paths) == len(BINDING_PR_1007_REVIEWED_FILES) and
-            set(paths) == set(BINDING_PR_1007_REVIEWED_FILES) and
-            all(ch.get('status') == BINDING_PR_1007_REVIEWED_FILES.get(ch.get('path'))
-                for ch in diff['changes']) and
-            all(core752_binding_content_sha256(path, identifiers['head_sha']) == expected
-                for path, expected in
-                BINDING_PR_1007_REVIEWED_CONTENT_SHA256.items()) and
-            core752_binding_linear_ancestry(identifiers['target_base_sha'],
-                                             BINDING_PR_1007_REVIEWED_HEAD,
-                                             BINDING_PR_1007_LINEAR_PARENT)):
-        require(CI_CHECKS)
+            record is not None and
+            identifiers['head_sha'] == record['reviewed_head'] and
+            _binding_inventory_matches(diff, record) and
+            _binding_content_hashes_verified(
+                identifiers['head_sha'], record, repository) and
+            core752_clean_integration_parents(
+                identifiers['target_base_sha'], identifiers['head_sha'],
+                identifiers['integration_sha'])):
+        require([{'id': check} for check in record['required_checks']])
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
                 'mapping_schema': mapping['schema'], 'release': release,
                 'coverage_status': 'resolved', 'unresolved_coverage': [],
                 'broad_required': False, 'selected_gates': [],
                 'required_validation_checks': [validations[k] for k in sorted(validations)],
                 "validation_contract": ("Every listed test must execute and PASS on the authenticated current integration. Missing, skipped and failed validations block in the existing trusted final verifier."),
-                'reasons': ['reviewed #1007 binding-PR CI-execution self-qualification: '
-                            'exact source hash, complete changed status set and linear head '
-                            'whose single parent is an ancestor of the target base only']}
+                'reasons': ['reviewed #1007 binding-PR qualification via trusted base '
+                            'policy record: head equals the frozen reviewed candidate, '
+                            'complete diff inventory and content hashes verified, clean '
+                            'trusted-target merge with parents [target_base, head] only']}
     # Reuse the existing content/ancestry proof for strict target updates.
     # Resolver validation proves the current PR integration parents and tree;
     # this rule only covers the immutable reviewed source and clean target merges.
