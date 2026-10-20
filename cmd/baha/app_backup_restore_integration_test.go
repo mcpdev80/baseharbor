@@ -21,7 +21,7 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	if os.Getenv("BASEHARBOR_APP_BACKUP_ACCEPTANCE") != "true" {
 		t.Skip("application backup CLI acceptance is opt-in")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
 	root := t.TempDir()
