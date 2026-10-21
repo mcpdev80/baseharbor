@@ -3,10 +3,12 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 spec = importlib.util.spec_from_file_location('resume', pathlib.Path(__file__).with_name('pre-release-resume.py'))
@@ -913,6 +915,46 @@ class WorkflowIntegrationTests(unittest.TestCase):
             subprocess.run(['bash', '-euo', 'pipefail', '-c', script], env=env, check=True)
             data = json.loads((pathlib.Path(root) / 'reference-journey-evidence/manifest.json').read_text())
             resume.validate_manifest(data, 'journey/docker', 1, 'a' * 40, 'b' * 40, 1)
+
+
+class ApprovalConsumerOriginTests(unittest.TestCase):
+    def test_approval_main_requires_exact_consumer_origin_for_ecosystem_releases(self):
+        candidate = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        demo = 'b' * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            for tag in ('v0.4.24', 'v0.4.25', 'v0.4.26'):
+                requirements = resume.GitInputs(pathlib.Path.cwd(), temporary).requirements(candidate, tag)
+                coverage = {'schema': 'baseharbor.pre-release.coverage/v2',
+                            'candidate_sha': candidate, 'demo_ref': demo, 'tag': tag,
+                            'required': [gate['id'] for gate in requirements], 'pending': [],
+                            'requirements_digest': resume.digest(requirements),
+                            'proofs': [{'gate': gate['id']} for gate in requirements]}
+                for consumer in ('c' * 40, '', 'main', 'f' * 39, 'g' * 40):
+                    with self.subTest(tag=tag, consumer=consumer):
+                        output = pathlib.Path(temporary) / (tag + '-' + (consumer or 'missing'))
+                        args = ['pre-release-resume.py', 'approve', '--candidate', candidate,
+                                '--demo', demo, '--tag', tag, '--demo-repo', temporary,
+                                '--output', str(output), '--runs', str(output / 'absent-runs')]
+                        environment = {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1',
+                                       'BASEHARBOR_CONSUMER_REF': consumer,
+                                       'BASEHARBOR_PUBLIC_EVIDENCE_FILE': '',
+                                       'BASEHARBOR_PRIVATE_EVIDENCE_FILE': '',
+                                       'BASEHARBOR_PRIVATE_EVIDENCE_JSON': ''}
+                        # Authentication/collection is tested separately. Exercise the real
+                        # approval entry point and coverage checks after complete collection.
+                        with patch('sys.argv', args), patch.dict(os.environ, environment), \
+                                patch.object(resume, 'collect', return_value=coverage), \
+                                patch('sys.stdout', new_callable=io.StringIO):
+                            if consumer == 'c' * 40:
+                                resume.main()
+                                approved = json.loads((output / 'release-approved.json').read_text())
+                                self.assertEqual(approved['consumer_ref'], consumer)
+                                self.assertEqual(approved['gate_count'], len(requirements))
+                                self.assertEqual(approved['requirements_digest'], resume.digest(requirements))
+                            else:
+                                with self.assertRaisesRegex(ValueError, 'immutable complete consumer origin'):
+                                    resume.main()
+                                self.assertFalse((output / 'release-approved.json').exists())
 
 
 if __name__ == '__main__':
