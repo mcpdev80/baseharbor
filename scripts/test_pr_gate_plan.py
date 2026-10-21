@@ -1,6 +1,9 @@
 """Trusted diff-to-check planner contract and fail-closed regression fixtures."""
 import importlib.util
+import copy
+import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -1280,6 +1283,154 @@ if (not result.wasSuccessful() or result.skipped or
             'test_pr_event_is_read_only_and_never_enters_cleanup',
             'test_pr_provenance_and_native_evidence_keep_review_window',
         })
+
+class TrustedBindingActivationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Fixture')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.files = {path: 'modified' for path in (
+            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+            'scripts/test_pr_gate_plan.py')}
+        for path in self.files:
+            file = self.root / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(b'base\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'base')
+        self.base = self.git('rev-parse', 'HEAD')
+        for path in self.files:
+            (self.root / path).write_bytes(b'reviewed\r\n')
+        self.git('commit', '-qam', 'reviewed candidate')
+        self.head = self.git('rev-parse', 'HEAD')
+        self.record = {
+            'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
+            'reviewed_head': self.head, 'files': self.files,
+            'file_hashes': {p: hashlib.sha256(b'reviewed\r\n').hexdigest()
+                            for p in self.files},
+            'required_checks': [c['id'] for c in planner.CI_CHECKS],
+        }
+        spec = importlib.util.spec_from_file_location('binding_resolver', ROOT / 'pr-diff-base.py')
+        self.resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.resolver)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def resolved(self, record=None, raw=None, head=None):
+        self.git('checkout', '-q', '--detach', self.base)
+        if raw is None:
+            raw = '```json\n' + json.dumps(self.record if record is None else record) + '\n```\n'
+        path = self.root / 'docs/internal/ci-binding-qualifications.md'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(raw)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted qualification')
+        target = self.git('rev-parse', 'HEAD')
+        head = head or self.head
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               '-m', 'actual PR integration')
+        return self.resolver.resolve_pr_diff(self.root, target, head, integration)
+
+    def checks(self, diff, repository='mcpdev80/baseharbor', branch='develop'):
+        return planner.trusted_binding_checks(diff, self.root, repository, branch)
+
+    def test_real_git_exact_candidate_and_raw_crlf_blobs_select_all_checks(self):
+        actual = self.resolved()
+        self.assertEqual(planner.CI_CHECKS, self.checks(actual))
+        old = Path.cwd()
+        try:
+            os.chdir(self.root)
+            with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+                                         'GITHUB_BASE_REF': 'develop'}):
+                result = planner.plan(actual, REQ, MAP)
+        finally:
+            os.chdir(old)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+                         {c['id'] for c in result['required_validation_checks']})
+
+    def test_untrusted_missing_and_wrong_context_fail_closed(self):
+        actual = self.resolved()
+        for repository, branch in (('', ''), ('other/repo', 'develop'),
+                                    ('mcpdev80/baseharbor', 'main')):
+            with self.subTest(repository=repository, branch=branch):
+                self.assertIsNone(self.checks(actual, repository, branch))
+        # Candidate adds its own record: target still has no trusted record.
+        candidate_target = actual['target_base_sha']
+        forged = self.resolver.resolve_pr_diff(self.root, self.base, candidate_target)
+        self.assertIsNone(self.checks(forged))
+        missing = copy.deepcopy(actual)
+        missing['target_base_sha'] = self.base
+        self.assertIsNone(self.checks(missing))
+
+    def test_malformed_incomplete_or_weakened_records_fail_closed(self):
+        variants = []
+        for key, value in (
+                ('repository', 'other/repo'), ('target_branch', 'main'),
+                ('reviewed_head', '0' * 40), ('files', {}),
+                ('file_hashes', {}), ('required_checks', ['ci-policy']),
+                ('required_checks', ['ci-policy'] * 3),
+                ('required_checks', ['unknown', 'ci-policy', 'pr-planner-tests']),
+                ('required_checks', [[], 'ci-policy', 'pr-planner-tests'])):
+            record = copy.deepcopy(self.record)
+            record[key] = value
+            variants.append(record)
+        for path in self.files:
+            record = copy.deepcopy(self.record)
+            record['file_hashes'][path] = '0' * 64
+            variants.append(record)
+        record = copy.deepcopy(self.record)
+        record['files']['cmd/baha/mcp_tools.go'] = 'modified'
+        record['file_hashes']['cmd/baha/mcp_tools.go'] = '0' * 64
+        variants.append(record)
+        for record in variants:
+            with self.subTest(record=record):
+                self.assertIsNone(self.checks(self.resolved(record)))
+        raw = '```json\n' + json.dumps(self.record) + '\n```\n'
+        for malformed in ('no record', raw + raw, raw.replace('"repository":',
+                '"repository": "other/repo", "repository":', 1),
+                '```json\n{invalid}\n```\n'):
+            with self.subTest(raw=malformed):
+                self.assertIsNone(self.checks(self.resolved(raw=malformed)))
+
+    def test_forged_inventory_integration_and_followup_content_fail_closed(self):
+        actual = self.resolved()
+        variants = []
+        for key, value in (('integration_sha', None), ('integration_sha', '0' * 40),
+                           ('merge_base_sha', '0' * 40), ('head_sha', '0' * 40)):
+            changed = copy.deepcopy(actual)
+            changed[key] = value
+            variants.append(changed)
+        for changes in (actual['changes'][:1], actual['changes'] * 2,
+                        actual['changes'] + paths('extra.py'),
+                        [{'status': 'deleted', 'path': p} for p in self.files],
+                        [{'status': 'renamed', 'old_path': p, 'new_path': p + '.new'}
+                         for p in self.files]):
+            changed = copy.deepcopy(actual)
+            changed['changes'] = changes
+            variants.append(changed)
+        # Correct parent IDs with a forged tree must still block.
+        bad_tree = self.git('rev-parse', self.base + '^{tree}')
+        changed = copy.deepcopy(actual)
+        changed['integration_sha'] = self.git('commit-tree', bad_tree,
+            '-p', actual['target_base_sha'], '-p', self.head, '-m', 'forged tree')
+        variants.append(changed)
+        for changed in variants:
+            with self.subTest(diff=changed):
+                self.assertIsNone(self.checks(changed))
+        self.git('checkout', '-q', '--detach', self.head)
+        (self.root / 'scripts/pr-check-runner.py').write_text('unreviewed followup\n')
+        self.git('commit', '-qam', 'unreviewed followup')
+        followup = self.git('rev-parse', 'HEAD')
+        self.assertIsNone(self.checks(self.resolved(head=followup)))
+
 
 if __name__ == '__main__':
     unittest.main()
