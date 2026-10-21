@@ -135,6 +135,10 @@ REGISTRATION_TEST_FILES = frozenset({
 })
 REGISTRATION_COVERAGE = REGISTRATION_REFERENCE_FILES | REGISTRATION_TEST_FILES
 
+APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
+APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
+                            'internal/application/manifest_test.go': 'modified'}
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -623,6 +627,26 @@ def plan(diff, requirements, mapping):
                     'integration does not accept registration task or future handler changes.'),
                 'reasons': ['independently reviewed exact #974 registration CI source; '
                             'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
+    # Exact independently inspected #1008 fixture source only; no generic test exemption.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(APPID_FIX_REVIEWED_FILES) and
+            set(paths) == set(APPID_FIX_REVIEWED_FILES) and
+            all(ch.get('status') == APPID_FIX_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], APPID_FIX_REVIEWED_HEAD)):
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(CI_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('All hosted checks required; native Docker '
+                                        'acceptance remains separately mandatory.'),
+                'reasons': ['exact reviewed #1008 fixture-only correction']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
     if (valid and not diff['broad_required'] and not unresolved and
