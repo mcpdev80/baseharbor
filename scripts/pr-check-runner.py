@@ -17,6 +17,15 @@ WIZARD_TEST_FAMILIES = {
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
+    # core-921 reviewed production registration regressions; each family distinct
+    # and must actually RUN/PASS (never a combined OR that can hide a miss).
+    'wizard-core921-tests': (
+        r'^TestCore921ActualCommandTreeHelpAndReadOnlyEntry$',
+        r'^TestCore921MCPRealDiscoveryAndRejectIncompleteEdit$',
+        r'^TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional$',
+        r'^TestCore921MCPProposeReachesHandlerWithZeroWrites$',
+        r'^TestCore921MCPEditHandlerLevelNegatives$',
+    ),
     'wizard-core918-native-sql-safety-tests': (
         r'^TestNativeSQLInventoryRejectsUnverifiedMaterialRegardlessOfKnownPath',
         r'^TestNativeSQLInventoryKnownFilesRequireActualInspection',
