@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
@@ -103,7 +102,10 @@ services:
 	if _, err := backupFixtureSQL(ctx, resolved, true); err != nil {
 		t.Fatalf("seed SQL through the actual consumer binding: %v", err)
 	}
-	secretService := applicationsecret.New(resolved.Store)
+	secretService, err := resolvedApplicationSecretService(ctx, resolved)
+	if err != nil {
+		t.Fatalf("resolve seeded secret's actual application runtime: %v", err)
+	}
 	if err := secretService.Set(ctx, m.Name, "API_TOKEN", []byte("provider-key-v1")); err != nil {
 		t.Fatalf("seed secret: %v", err)
 	}
@@ -199,7 +201,10 @@ services:
 	if string(bytes.TrimSpace([]byte(query))) != "survived" {
 		t.Fatalf("restored postgres value = %q", query)
 	}
-	secretService = applicationsecret.New(resolved.Store)
+	secretService, err = resolvedApplicationSecretService(ctx, resolved)
+	if err != nil {
+		t.Fatalf("resolve restored secret's actual application runtime: %v", err)
+	}
 	secretValue, err := secretService.Get(ctx, resolved.Manifest.Name, "API_TOKEN")
 	if err != nil {
 		t.Fatalf("verify restored secret: %v", err)

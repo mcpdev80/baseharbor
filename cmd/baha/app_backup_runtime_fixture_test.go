@@ -351,8 +351,98 @@ func TestGuidedBackupFixtureRegressionSuite(t *testing.T) {
 		{"cleanup later abort", TestAppBackupOwnedCoreCleanupAfterLaterAbort},
 		{"manifest contract", TestBackupFixtureManifestMatchesCapabilityContract},
 		{"legacy manifest rejection", TestBackupFixtureManifestRejectsLegacyCapabilityKeys},
+		{"resolved secret owner", TestGuidedBackupFixtureSecretsUseResolvedDeploymentScope},
 	} {
 		t.Run(scenario.name, scenario.run)
+	}
+}
+
+func TestGuidedBackupFixtureSecretsUseResolvedDeploymentScope(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "podman")
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "unrelated-platform-state"))
+	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	target, err := effectiveTarget(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(root, "bin")
+	if err := os.MkdirAll(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	calls := filepath.Join(root, "runtime-calls")
+	t.Setenv("BACKUP_FIXTURE_RUNTIME_CALLS", calls)
+	for name, script := range map[string]string{
+		"podman-system-generator": "#!/bin/sh\nexit 0\n",
+		"podman":                  "#!/bin/sh\nif [ \"$1\" = version ]; then exit 0; fi\nprintf '%s\\n' \"$*\" >> \"$BACKUP_FIXTURE_RUNTIME_CALLS\"\nexit 97\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin)
+	coreRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coreFiles, err := bhruntime.EnsureFilesForProjectAndResources(coreRoot,
+		targetRuntimeProjectName(target), bhruntime.SharedResourceProjectName(target.Name),
+		bhruntime.Ports{Postgres: 15432, OpenBao: 18200}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := filepath.Join(root, "repository")
+	if err := os.MkdirAll(repository, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repository)
+	m := application.New("backup-cli", "dev", true, false, true)
+	source := filepath.Join(repository, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, source, m)
+	record := registerTestDeployment(t, target, m, repository, source)
+	resolved, err := resolveApplication(t.Context(), application.DefaultStore(), nil, "backup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resolved.FromRepository || resolved.Manifest.ApplicationID != m.ApplicationID ||
+		resolved.DeploymentIdentity != record.Identity || resolved.Store.Namespace != target.Name ||
+		resolved.Store.Root != filepath.Join(resolved.DeploymentStateRoot, "state") {
+		t.Fatal("repository resolution lost its actual application UUID, Target or deployment owner")
+	}
+	if _, _, err := resolved.Store.Load(m.Name); err == nil {
+		t.Fatal("fixture must exercise a canonical deployment without a legacy name-store entry")
+	}
+	files := application.RuntimeFilesFor(resolved.Store, m)
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{files.Compose, files.Env} {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service, err := resolvedApplicationSecretService(t.Context(), resolved)
+	if err != nil {
+		t.Fatal("actual resolved secret owner rejected the repository deployment", err)
+	}
+	if err := service.Set(t.Context(), "other-application", "API_TOKEN", []byte("fixture-only")); err == nil ||
+		!strings.Contains(err.Error(), "does not match resolved secret scope") {
+		t.Fatal("another application escaped the resolved secret scope")
+	}
+	for _, operation := range []string{"set", "get"} {
+		if operation == "set" {
+			err = service.Set(t.Context(), m.Name, "API_TOKEN", []byte("fixture-only"))
+		} else {
+			_, err = service.Get(t.Context(), m.Name, "API_TOKEN")
+		}
+		if err == nil || strings.Contains(err.Error(), "not found") {
+			t.Fatalf("%s did not reach the selected runtime from the resolved deployment: %v", operation, err)
+		}
+	}
+	data, err := os.ReadFile(calls)
+	if err != nil || !strings.Contains(string(data), coreFiles.Project) ||
+		strings.Contains(string(data), "unrelated-platform-state") {
+		t.Fatalf("secret operations did not use the actual selected Core runtime: %v", err)
 	}
 }
 
