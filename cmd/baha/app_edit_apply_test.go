@@ -183,6 +183,12 @@ func TestAppEditApplyStalePlanAndWrongConsentWriteNothing(t *testing.T) {
 	}
 }
 
+func TestGuidedAppEditRefusalAndPartialResult(t *testing.T) {
+	t.Run("refusal-without-execution", TestAppEditApplyRefusalHasNoExecutionResult)
+	t.Run("authorization-and-partial-execution", TestAppEditApplyForeignOwnerAndPartialActualResult)
+	t.Run("destructive-and-shared-admission", TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics)
+}
+
 func TestAppEditApplyRefusalHasNoExecutionResult(t *testing.T) {
 	before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
 	after := append(append([]capability.Requirement(nil), before...), capability.Requirement{Kind: capability.KeyValue, Name: "cache"})
