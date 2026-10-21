@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -209,9 +210,6 @@ BINDING_PR_1007_REVIEWED_FILES = {
     'scripts/pr-gate-plan.py': 'modified',
     'scripts/test_pr_gate_plan.py': 'modified',
 }
-# The single 1st parent of the binding head 48def9e8; the linear head's ancestry
-# meets the target base by walking to this parent.
-BINDING_PR_1007_LINEAR_PARENT = '706b524489f8410091902e595df50427f80a4eab'
 
 
 RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
@@ -410,226 +408,6 @@ CORE_918_REVIEWED_FILES = {
 }
 CORE_918_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
-def core752_binding_linear_ancestry(target, head, single_parent, repository='.'):
-    """True only for the exact linear binding head that branches from the target base.
-
-    A binding PR (#1007) is a single linear commit with exactly one 1st parent.
-    It qualifies only when its merge base with the current target base is exactly
-    that base, i.e. the linear head branches directly from the tip of the target
-    line. This proves the reviewed head reaches the target base along a single
-    clean ancestry line, so no other PR's head can qualify and a forged off-base
-    head is rejected. The immutable head-sha comparison in the clause is what
-    rejects any follow-up commit, which keeps the merge-base check permissive.
-    """
-    def git(*args):
-        try:
-            return subprocess.run(['git', '-C', str(repository), *args],
-                                  text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, check=False)
-        except OSError:
-            return None
-    if not all(isinstance(x, str) and len(x) == 40 for x in (target, head, single_parent)):
-        return False
-    parents = git('rev-list', '--parents', '-n', '1', head)
-    if not parents or parents.returncode:
-        return False
-    fields = parents.stdout.strip().split()
-    # A binding PR is a single linear commit: head followed by exactly its one
-    # 1st parent. A two-parent merge or any extra parent is rejected.
-    if len(fields) != 2 or fields[0] != head or fields[1] != single_parent:
-        return False
-    merge_base = git('merge-base', head, target)
-    if not merge_base or merge_base.returncode:
-        return False
-    line = merge_base.stdout.strip()
-    return line == target
-
-
-def load_binding_qualification_record(target_base_sha, repository='',
-                                      context_repository='', context_target_branch='',
-                                      evaluate_context=False):
-    """Load and strictly validate the #1007 binding-PR qualification record.
-
-    The reviewed final candidate H and its file hashes live in a separate,
-    independently reviewed prerequisite policy file on the trusted target base,
-    never on the candidate PR branch. The record lives at the exact path
-    ``docs/internal/ci-binding-qualifications.md`` and is read exclusively from
-    the authenticated base revision via
-    ``git show <target_base>:docs/internal/ci-binding-qualifications.md``. The
-    blob must contain exactly one fenced JSON block: zero or more than one
-    block fails closed. The block is parsed and validated, the authenticated
-    evaluation context (repository, target branch) is compared against the
-    record when evaluate_context is set, and the complete inventory plus
-    file_hashes are verified. Any failure returns None so the caller fails
-    closed.
-
-    context_repository/context_target_branch are the authenticated evaluation
-    context supplied by the caller, not by the candidate PR. On GitHub Actions
-    these are the runner-provided pull_request inputs
-    GITHUB_REPOSITORY (owner/name) and GITHUB_BASE_REF (target branch): the
-    runner sets them and the PR author cannot alter them, so they identify the
-    repository and target branch whose revision is actually being evaluated.
-    The caller MUST never trust a value coming from the candidate branch; a
-    blank context means the authenticated context is unknown and must fail
-    closed.
-    """
-    def git(*args):
-        try:
-            return subprocess.run(['git', '-C', str(repository), *args],
-                                  text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, check=False)
-        except OSError:
-            return None
-    if not isinstance(target_base_sha, str) or len(target_base_sha) != 40:
-        return None
-    record_path = 'docs/internal/ci-binding-qualifications.md'
-    out = git('show', target_base_sha + ':' + record_path)
-    if not out or out.returncode or out.stdout is None:
-        return None
-    block = _extract_single_json_block(out.stdout)
-    if block is None:
-        return None
-    try:
-        record = json.loads(block)
-    except (ValueError, TypeError):
-        return None
-    if not _valid_binding_record(record, context_repository=context_repository,
-                                 context_target_branch=context_target_branch,
-                                 evaluate_context=evaluate_context):
-        return None
-    return record
-
-
-def _extract_single_json_block(blob):
-    """Return the single fenced JSON block in the blob, or None on ambiguity.
-
-    Accepts zero or any fence style (``` or ~~~) with an optional json
-    language hint. Exactly one block is required: zero or two-or-more blocks
-    fail closed and return None.
-    """
-    if not isinstance(blob, str):
-        return None
-    lines = blob.splitlines()
-    fence_pattern = re.compile(r'^\s*(`{3,}|~{3,})\s*(?:json)?\s*$')
-    blocks = []
-    i = 0
-    while i < len(lines):
-        match = fence_pattern.match(lines[i])
-        if match and i + 1 < len(lines):
-            fence = match.group(1)[0]
-            end = i + 1
-            while end < len(lines) and not fence_pattern.match(lines[end]):
-                end += 1
-            if end < len(lines):
-                blocks.append('\n'.join(lines[i + 1:end]))
-                i = end + 1
-                continue
-        i += 1
-    if len(blocks) != 1:
-        return None
-    return blocks[0]
-
-
-def _valid_binding_record(record, context_repository='', context_target_branch='',
-                          evaluate_context=False):
-    """True only for a well-formed binding qualification record.
-
-    The record must supply the authenticated evaluation context
-    (repository, target branch), the reviewed head, a non-empty file inventory
-    and its full hash set whose key sets are identical, plus required checks.
-    A partial inventory (fewer hashes than files) fails closed. When
-    evaluate_context is set the record's repository and target_branch must
-    equal the authenticated evaluation context exactly; a mismatch fails
-    closed.
-    """
-    if not isinstance(record, dict):
-        return False
-    if not all(isinstance(record.get(key), str) for key in
-               ('repository', 'target_branch')):
-        return False
-    if not all(record.get(key) is not None for key in
-               ('reviewed_head', 'files', 'file_hashes', 'required_checks')):
-        return False
-    if not isinstance(record['reviewed_head'], str) or \
-            len(record['reviewed_head']) != 40:
-        return False
-    if not isinstance(record['files'], dict) or not record['files']:
-        return False
-    if not isinstance(record['file_hashes'], dict) or not record['file_hashes']:
-        return False
-    if set(record['files']) != set(record['file_hashes']):
-        return False
-    if not isinstance(record['required_checks'], list) or not record['required_checks']:
-        return False
-    if evaluate_context and (record['repository'] != context_repository or
-                             record['target_branch'] != context_target_branch):
-        return False
-    return True
-
-
-def _binding_inventory_matches(diff, record):
-    """True only when the complete diff equals the record's file/status map.
-
-    Every changed path must appear in the record with the exact reviewed
-    status, and there may be no extra changed path. A partial match, an extra
-    file or a renamed/deleted change of a reviewed file fails this.
-    """
-    files = record.get('files')
-    if not isinstance(files, dict) or not files:
-        return False
-    changes = diff.get('changes')
-    if not isinstance(changes, list):
-        return False
-    changed = []
-    for change in changes:
-        status = change.get('status')
-        if status in ('added', 'deleted', 'modified', 'type_changed'):
-            changed.append(change.get('path'))
-        elif status in ('renamed', 'copied'):
-            new_path = change.get('new_path')
-            if isinstance(new_path, str):
-                changed.append(new_path)
-        else:
-            return False
-    if sorted(changed) != sorted(files):
-        return False
-    status_by_path = {change.get('path'): change.get('status') for change in changes}
-    for path, expected_status in files.items():
-        if status_by_path.get(path) != expected_status:
-            return False
-    return True
-
-
-def _binding_content_hashes_verified(head_sha, record, repository='.'):
-    """True only when each reviewed file's content at head_sha matches its pin.
-
-    The hashes come from the trusted base record (sha256 of the blob at the
-    frozen reviewed head H), so they cannot be forged from the candidate
-    branch. A missing blob or a mismatched hash fails this.
-    """
-    hashes = record.get('file_hashes')
-    if not isinstance(hashes, dict) or not hashes:
-        return False
-    def git(*args):
-        try:
-            return subprocess.run(['git', '-C', str(repository), *args],
-                                  text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, check=False)
-        except OSError:
-            return None
-    if not isinstance(head_sha, str) or len(head_sha) != 40:
-        return False
-    for path, expected in hashes.items():
-        out = git('cat-file', 'blob', head_sha + ':' + path)
-        if not out or out.returncode or not out.stdout:
-            return False
-        import hashlib
-        digest = hashlib.sha256(out.stdout.encode('utf-8')).hexdigest()
-        if digest != expected:
-            return False
-    return True
-
-
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -669,33 +447,6 @@ def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     return False
 
 
-def core752_clean_integration_parents(target, head, integration, repository='.'):
-    """True only when the integration commit's parents are exactly [target, head].
-
-    Preserves the exact integration parents from the guard set: the first parent
-    is the trusted target base and the second is the reviewed head, with no extra
-    or reordered parents. This rejects forged integrations that relabel the
-    target after merge calculations.
-    """
-    def git(*args):
-        try:
-            return subprocess.run(['git', '-C', str(repository), *args],
-                                  text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.PIPE, check=False)
-        except OSError:
-            return None
-    if not all(isinstance(x, str) and len(x) == 40
-               for x in (target, head, integration)):
-        return False
-    parents = git('rev-list', '--parents', '-n', '1', integration)
-    if not parents or parents.returncode:
-        return False
-    fields = parents.stdout.strip().split()
-    if len(fields) != 3 or fields[1] != target or fields[2] != head:
-        return False
-    return True
-
-
 # Execution of this reviewed test candidate is not content qualification.
 CORE_754_TEST_HEAD = '5a3813385af5392a9be3095bd038424a4f9950b7'
 CORE_754_TEST_PATH = 'cmd/baha/mcp_preconditions_test.go'
@@ -718,8 +469,90 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
+def trusted_binding_checks(diff, repository='.', context_repository=None,
+                           context_target_branch=None):
+    """Verify the frozen binding from the authenticated target, never PR content.
+
+    Re-run the real diff resolver so caller-supplied inventories, integration
+    parents and merge trees cannot substitute for Git evidence. This bounded
+    record enables only the three CI files and the existing CI check catalog.
+    """
+    valid, _ = validated_diff(diff)
+    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
+        return None
+    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
+                          if context_repository is None else context_repository)
+    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
+                            if context_target_branch is None else context_target_branch)
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
+        return None
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repository), *args],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              check=True).stdout
+
+    try:
+        raw = git('show', diff['target_base_sha'] +
+                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
+        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
+                            flags=re.MULTILINE | re.DOTALL)
+        if len(blocks) != 1 or raw.count('```') != 2:
+            return None
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('duplicate qualification key')
+                result[key] = value
+            return result
+
+        record = json.loads(blocks[0], object_pairs_hook=unique_object)
+        expected_files = {path: 'modified' for path in (
+            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+            'scripts/test_pr_gate_plan.py')}
+        expected_ids = {check['id'] for check in CI_CHECKS}
+        if (not isinstance(record, dict) or set(record) != {
+                'repository', 'target_branch', 'reviewed_head', 'files',
+                'file_hashes', 'required_checks'} or
+                record['repository'] != context_repository or
+                record['target_branch'] != context_target_branch or
+                record['reviewed_head'] != diff['head_sha'] or
+                record['files'] != expected_files or
+                not isinstance(record['file_hashes'], dict) or
+                set(record['file_hashes']) != set(expected_files) or
+                not isinstance(record['required_checks'], list) or
+                len(record['required_checks']) != len(expected_ids) or
+                set(record['required_checks']) != expected_ids):
+            return None
+        for path, digest in record['file_hashes'].items():
+            if (not isinstance(digest, str) or
+                    re.fullmatch(r'[0-9a-f]{64}', digest) is None or
+                    hashlib.sha256(git('cat-file', 'blob',
+                                       diff['head_sha'] + ':' + path)).hexdigest() != digest):
+                return None
+        # Import the resolver beside this trusted planner, not from the PR tree.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
+                                          diff['head_sha'], diff['integration_sha'])
+        if actual != diff or actual['broad_required']:
+            return None
+        changes = actual['changes']
+        if (len(changes) != len(expected_files) or
+                {c.get('path'): c.get('status') for c in changes} != expected_files):
+            return None
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return CI_CHECKS
+
+
 def plan(diff, requirements, mapping, repository='.',
-         context_repository='', context_target_branch=''):
+         context_repository=None, context_target_branch=None):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
@@ -808,44 +641,6 @@ def plan(diff, requirements, mapping, repository='.',
                         'validations block in the existing trusted final verifier.'),
                     'reasons': [label + ': exact source hash, complete changed status '
                                 'set and proven clean trusted-target merge only']}
-    # Binding-PR self-qualification via trusted base policy (#1007). The
-    # reviewed final candidate H and its file hashes are frozen in a separate,
-    # independently reviewed prerequisite policy file on the trusted target
-    # base; the record is loaded there and never from the candidate branch. The
-    # clause binds only when the record parses from the base, its repository and
-    # target branch match the authenticated evaluation context, head_sha equals H
-    # (the binding PR is a single linear commit, so head_sha == H is the anchor;
-    # a follow-up edit has a different sha and fails), the complete diff
-    # inventory equals the record's file/status map, every reviewed file's
-    # content at head_sha equals the record's hash, and the integration parents
-    # stay exactly [target_base, head]. For a branch that is still the unfrozen
-    # H candidate (the policy file is not yet on develop), this correctly
-    # returns unresolved until the prerequisite policy PR lands.
-    record = load_binding_qualification_record(
-        identifiers['target_base_sha'], repository=repository,
-        context_repository=context_repository,
-        context_target_branch=context_target_branch, evaluate_context=True)
-    if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['integration_sha'] is not None and
-            record is not None and
-            identifiers['head_sha'] == record['reviewed_head'] and
-            _binding_inventory_matches(diff, record) and
-            _binding_content_hashes_verified(
-                identifiers['head_sha'], record, repository) and
-            core752_clean_integration_parents(
-                identifiers['target_base_sha'], identifiers['head_sha'],
-                identifiers['integration_sha'])):
-        require([{'id': check} for check in record['required_checks']])
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                "validation_contract": ("Every listed test must execute and PASS on the authenticated current integration. Missing, skipped and failed validations block in the existing trusted final verifier."),
-                'reasons': ['reviewed #1007 binding-PR qualification via trusted base '
-                            'policy record: head equals the frozen reviewed candidate, '
-                            'complete diff inventory and content hashes verified, clean '
-                            'trusted-target merge with parents [target_base, head] only']}
     # Reuse the existing content/ancestry proof for strict target updates.
     # Resolver validation proves the current PR integration parents and tree;
     # this rule only covers the immutable reviewed source and clean target merges.
@@ -1064,6 +859,18 @@ def plan(diff, requirements, mapping, repository='.',
                     'or automatically run the complete release catalog.'),
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
+    binding_checks = trusted_binding_checks(
+        diff, repository, context_repository, context_target_branch) if not unresolved else None
+    if binding_checks:
+        require(binding_checks)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': 'All authenticated current-integration CI checks must execute and pass.',
+                'reasons': ['Trusted target record: exact repository, branch, head, full '
+                            'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
         if path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
