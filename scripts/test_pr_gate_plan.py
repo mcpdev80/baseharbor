@@ -1556,9 +1556,10 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
 
 class ReviewedSourceQualificationTests(unittest.TestCase):
     def test_immutable_anchors_and_complete_inventories(self):
-        self.assertEqual('74ef0b110caa4d8c458a1714f32c9c302985da1d',
+        self.assertEqual('013d7e4d491afc58a31c7934b371ab0dc35f3346',
                          planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD)
         self.assertEqual({'.github/workflows/ci.yml': 'modified',
+                          'scripts/pr-authenticated-results.py': 'modified',
                           'scripts/test_pr_authenticated_results.py': 'modified'},
                          planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES)
         self.assertEqual('3f6772fc75243eaceb00c669f8ed1cd4c4b694e4',

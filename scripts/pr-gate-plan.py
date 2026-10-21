@@ -142,12 +142,13 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
-# Exact dependency repair: the final job awaits its mandatory authenticated
-# Workflow policy prerequisite. This grants no runtime or verifier exception;
-# all existing CI checks must execute against the actual integrated source.
-WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '74ef0b110caa4d8c458a1714f32c9c302985da1d'
+# Exact final-check repair: await mandatory policy and bounded authenticated
+# API job readiness. The adapter comes only from the immutable trusted base;
+# the verifier and original identity guards stay unchanged. No runtime exception.
+WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '013d7e4d491afc58a31c7934b371ab0dc35f3346'
 WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
+    'scripts/pr-authenticated-results.py': 'modified',
     'scripts/test_pr_authenticated_results.py': 'modified',
 }
 
