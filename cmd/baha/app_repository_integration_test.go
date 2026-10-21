@@ -47,7 +47,7 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
@@ -95,13 +95,8 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-		t.Fatalf("repository destroy failed: %v\n%s", err, out.String())
-	}
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest was not preserved: %v", err)
-	}
-	if _, err := os.Stat(deploymentRoot); !os.IsNotExist(err) {
-		t.Fatalf("target deployment state remains after destroy: %v", err)
 	}
 }

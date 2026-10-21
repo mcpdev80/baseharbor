@@ -73,7 +73,7 @@ networks:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
@@ -133,7 +133,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("up workload application: %v\n%s", err, out.String())
 	}
 	pg, err = compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
@@ -142,9 +142,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-		t.Fatalf("destroy workload application: %v\n%s", err, out.String())
-	}
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest not preserved: %v", err)
 	}
