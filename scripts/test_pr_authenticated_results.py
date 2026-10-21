@@ -1,8 +1,10 @@
 """Verified Actions adapter regression tests: missing, forged, stale, and failed."""
 import importlib.util
+import copy
 import re
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('auth_results', Path(__file__).with_name('pr-authenticated-results.py'))
 mod = importlib.util.module_from_spec(spec)
@@ -32,6 +34,19 @@ class AuthenticatedResultsTests(unittest.TestCase):
         report = mod.authenticated_results(PLAN, RUN, JOBS, 123, 1, HEAD)
         self.assertIn('Workflow policy',
                       {row['name'] for row in report['required_job_conclusions']})
+
+    def test_adapter_comes_only_from_immutable_trusted_base_and_verifier_stays_pinned(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    '.github/workflows/ci.yml').read_text()
+        final = workflow.split('  pr_selected_final:\n', 1)[1]
+        origin = [line.strip() for line in final.splitlines()
+                  if 'git show' in line and ':scripts/pr-authenticated-results.py' in line]
+        self.assertEqual(['git show "${EXPECTED_BASE}:scripts/pr-authenticated-results.py" '
+                          '> "$RUNNER_TEMP/pr-authenticated-results.py"'], origin)
+        self.assertIn('EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}', final)
+        self.assertIn('ref: ${{ github.event.pull_request.base.sha }}', final)
+        self.assertIn('git show c6db56c4ac077dbc496134cb0871c8e996a593fe:'
+                      'scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"', final)
 
     def test_actual_complete_job_results(self):
         report = mod.authenticated_results(PLAN,RUN,JOBS,123,1,HEAD)
@@ -78,6 +93,127 @@ class AuthenticatedResultsTests(unittest.TestCase):
             with self.subTest(name=name):
                 result=mod.authenticated_results(PLAN,RUN,jobs,123,1,HEAD)
                 self.assertIn('failure',[x['conclusion'] for x in result['required_job_conclusions']])
+
+
+class AuthenticatedReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.elapsed = 0
+        self.original_read_run = mod.read_run
+        self.completed = [dict(job, status='completed') for job in JOBS]
+        clock = patch.object(mod.time, 'monotonic', side_effect=lambda: self.elapsed)
+        sleeper = patch.object(mod.time, 'sleep', side_effect=self.advance)
+        reader = patch.object(mod, 'read_run', return_value=(RUN, self.completed))
+        self.clock = clock.start()
+        self.sleep = sleeper.start()
+        self.reader = reader.start()
+        self.addCleanup(clock.stop)
+        self.addCleanup(sleeper.stop)
+        self.addCleanup(reader.stop)
+
+    def advance(self, seconds):
+        self.elapsed += seconds
+
+    def read(self):
+        return mod.read_authenticated_results(PLAN, 'mcpdev80/baseharbor', 123, 1, HEAD, 'token')
+
+    def test_complete_results_do_not_wait_for_unrelated_jobs(self):
+        unrelated = dict(name='optional lane', run_id=123, run_attempt=1,
+                         status='in_progress', conclusion=None)
+        self.reader.return_value = RUN, self.completed + [unrelated]
+        result = self.read()
+        self.assertEqual('success', result['results'][0]['conclusion'])
+        self.reader.assert_called_once()
+        self.sleep.assert_not_called()
+
+    def test_each_required_nonterminal_job_is_reauthenticated_until_success(self):
+        for index in range(len(self.completed)):
+            for status in ('queued', 'in_progress', 'waiting', 'pending', 'requested'):
+                with self.subTest(index=index, status=status):
+                    pending = [dict(job, status=status, conclusion=None) if i == index else job
+                               for i, job in enumerate(self.completed)]
+                    self.reader.reset_mock()
+                    self.sleep.reset_mock()
+                    self.reader.side_effect = [(RUN, pending), (RUN, self.completed)]
+                    result = self.read()
+                    self.assertEqual('success', result['results'][0]['conclusion'])
+                    self.assertTrue(all(row['conclusion'] == 'success'
+                                        for row in result['required_job_conclusions']))
+                    self.assertEqual(2, self.reader.call_count)
+                    self.sleep.assert_called_once_with(3)
+
+    def test_nonterminal_lifecycle_never_accepts_an_early_success_conclusion(self):
+        pending = [dict(job, status='in_progress') for job in self.completed]
+        self.reader.side_effect = [(RUN, pending), (RUN, self.completed)]
+        self.read()
+        self.assertEqual(2, self.reader.call_count)
+
+    def test_nonterminal_timeout_has_finite_clock_and_poll_bound(self):
+        self.reader.return_value = RUN, [dict(job, status='in_progress', conclusion=None)
+                                       for job in self.completed]
+        with self.assertRaises(TimeoutError):
+            self.read()
+        self.assertEqual(45, self.elapsed)
+        self.assertLessEqual(self.reader.call_count, 16)
+        self.assertEqual(15, self.sleep.call_count)
+
+    def test_terminal_failure_skip_or_missing_conclusion_fail_fast_even_with_other_pending(self):
+        for conclusion in ('failure', 'cancelled', 'skipped', 'timed_out', None):
+            with self.subTest(conclusion=conclusion):
+                jobs = copy.deepcopy(self.completed)
+                jobs[0].update(conclusion=conclusion)
+                jobs[1].update(status='in_progress', conclusion=None)
+                self.reader.return_value = RUN, jobs
+                self.reader.reset_mock()
+                self.sleep.reset_mock()
+                result = self.read()
+                self.assertEqual('blocked', result['results'][0]['conclusion'])
+                self.reader.assert_called_once()
+                self.sleep.assert_not_called()
+
+    def test_missing_duplicate_forged_and_unknown_lifecycle_fail_without_retry(self):
+        forged = [dict(job, run_attempt=2) if i == 0 else job
+                  for i, job in enumerate(self.completed)]
+        cross_run = [dict(job, run_id=999) if i == 0 else job
+                     for i, job in enumerate(self.completed)]
+        unknown = [dict(job, status='invented') if i == 0 else job
+                   for i, job in enumerate(self.completed)]
+        variants = [(RUN, self.completed[:-1]), (RUN, self.completed + self.completed[:1]),
+                    (dict(RUN, head_sha='f' * 40), self.completed),
+                    (dict(RUN, run_attempt=2), self.completed), (RUN, forged),
+                    (RUN, cross_run), (RUN, unknown)]
+        for snapshot in variants:
+            with self.subTest(snapshot=snapshot):
+                self.reader.return_value = snapshot
+                self.reader.reset_mock()
+                self.sleep.reset_mock()
+                with self.assertRaises(PermissionError):
+                    self.read()
+                self.reader.assert_called_once()
+                self.sleep.assert_not_called()
+
+    def test_authentication_is_repeated_after_pending_snapshot(self):
+        pending = [dict(job, status='in_progress', conclusion=None) for job in self.completed]
+        self.reader.side_effect = [(RUN, pending), (dict(RUN, head_sha='f' * 40), self.completed)]
+        with self.assertRaises(PermissionError):
+            self.read()
+        self.assertEqual(2, self.reader.call_count)
+        self.sleep.assert_called_once_with(3)
+
+    def test_transport_failure_and_expired_api_budget_fail_closed(self):
+        self.reader.side_effect = OSError('API unavailable')
+        with self.assertRaises(OSError):
+            self.read()
+        self.sleep.assert_not_called()
+        with patch.object(mod, 'api_json') as api:
+            with self.assertRaises(TimeoutError):
+                self.original_read_run('mcpdev80/baseharbor', 123, 1, 'token', deadline=0)
+            api.assert_not_called()
+
+    def test_each_api_request_has_remaining_deadline_budget(self):
+        api_responses = [RUN, {'jobs': self.completed}]
+        with patch.object(mod, 'api_json', side_effect=api_responses) as api:
+            self.original_read_run('mcpdev80/baseharbor', 123, 1, 'token', deadline=7)
+        self.assertEqual([7, 7], [call.kwargs['timeout'] for call in api.call_args_list])
 
 
 if __name__ == '__main__':
