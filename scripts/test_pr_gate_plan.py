@@ -1298,18 +1298,18 @@ class TrustedBindingActivationTests(unittest.TestCase):
         for path in self.files:
             file = self.root / path
             file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_bytes(b'base\n')
+            file.write_bytes(b'base\nline 2\nline 3\nline 4\nline 5\nstable target field\n')
         self.git('add', '.')
         self.git('commit', '-qm', 'base')
         self.base = self.git('rev-parse', 'HEAD')
         for path in self.files:
-            (self.root / path).write_bytes(b'reviewed\r\n')
+            (self.root / path).write_bytes(b'reviewed\r\nline 2\nline 3\nline 4\nline 5\nstable target field\n')
         self.git('commit', '-qam', 'reviewed candidate')
         self.head = self.git('rev-parse', 'HEAD')
         self.record = {
             'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
             'reviewed_head': self.head, 'files': self.files,
-            'file_hashes': {p: hashlib.sha256(b'reviewed\r\n').hexdigest()
+            'file_hashes': {p: hashlib.sha256(b'reviewed\r\nline 2\nline 3\nline 4\nline 5\nstable target field\n').hexdigest()
                             for p in self.files},
             'required_checks': [c['id'] for c in planner.CI_CHECKS],
         }
@@ -1356,6 +1356,71 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertEqual({c['id'] for c in planner.CI_CHECKS},
                          {c['id'] for c in result['required_validation_checks']})
 
+    def integrated(self, target, head):
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               '-m', 'current PR integration')
+        return self.resolver.resolve_pr_diff(self.root, target, head, integration)
+
+    def test_real_git_record_target_merge_keeps_frozen_bytes_and_current_target_ancestry(self):
+        actual = self.resolved()
+        target = actual['target_base_sha']
+        self.git('checkout', '-q', '--detach', self.head)
+        self.git('merge', '--no-ff', '-qm', 'merge trusted record target', target)
+        merged = self.git('rev-parse', 'HEAD')
+        self.git('merge-base', '--is-ancestor', target, merged)
+        current = self.integrated(target, merged)
+        self.assertNotEqual(self.head, merged)
+        self.assertEqual(target, current['merge_base_sha'])
+        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+        # Additional trusted target advances may be integrated by the same owner.
+        self.git('checkout', '-q', '--detach', target)
+        (self.root / 'accepted-target.md').write_text('accepted target advance\n')
+        planner_path = self.root / 'scripts/pr-gate-plan.py'
+        planner_path.write_bytes(planner_path.read_bytes().replace(
+            b'stable target field', b'independently accepted target field'))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'later trusted target')
+        later = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', '--detach', merged)
+        self.git('merge', '--no-ff', '-qm', 'merge later trusted target', later)
+        advanced = self.git('rev-parse', 'HEAD')
+        # The authenticated target changed a pinned file. Frozen hashes still bind
+        # reviewed source; strict merge trees bind every actual inherited byte.
+        actual_blob = subprocess.check_output(['git', '-C', str(self.root), 'cat-file',
+            'blob', advanced + ':scripts/pr-gate-plan.py'])
+        self.assertNotEqual(self.record['file_hashes']['scripts/pr-gate-plan.py'],
+                            hashlib.sha256(actual_blob).hexdigest())
+        current = self.integrated(later, advanced)
+        self.assertEqual(3, len(current['changes']))
+        self.git('merge-base', '--is-ancestor', later, advanced)
+        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+
+    def test_real_git_untrusted_sideparent_dirty_merge_and_copied_tree_fail_closed(self):
+        actual = self.resolved()
+        target = actual['target_base_sha']
+        # A descendant of the target is not itself an authenticated target ancestor.
+        self.git('checkout', '-q', '--detach', target)
+        self.git('commit', '--allow-empty', '-qm', 'untrusted sideparent')
+        side = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', '--detach', self.head)
+        self.git('merge', '--no-ff', '-qm', 'untrusted side merge', side)
+        side_head = self.git('rev-parse', 'HEAD')
+        self.assertEqual(3, len(self.integrated(target, side_head)['changes']))
+        self.assertIsNone(self.checks(self.integrated(target, side_head)))
+        # Matching source bytes copied into a new linear commit do not prove review ancestry.
+        copied = self.git('commit-tree', self.git('rev-parse', side_head + '^{tree}'),
+                          '-p', target, '-m', 'unreviewed copied tree')
+        self.assertIsNone(self.checks(self.integrated(target, copied)))
+        # Right parent identities cannot authorize extra merge-resolution contents.
+        self.git('checkout', '-q', '--detach', self.head)
+        self.git('merge', '--no-ff', '--no-commit', target)
+        (self.root / 'scripts/pr-check-runner.py').write_bytes(b'unreviewed merge resolution\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'dirty merge')
+        dirty = self.git('rev-parse', 'HEAD')
+        self.assertIsNone(self.checks(self.integrated(target, dirty)))
+
     def test_untrusted_missing_and_wrong_context_fail_closed(self):
         actual = self.resolved()
         for repository, branch in (('', ''), ('other/repo', 'develop'),
@@ -1374,7 +1439,8 @@ class TrustedBindingActivationTests(unittest.TestCase):
         variants = []
         for key, value in (
                 ('repository', 'other/repo'), ('target_branch', 'main'),
-                ('reviewed_head', '0' * 40), ('files', {}),
+                ('reviewed_head', '0' * 40), ('reviewed_head', 'A' * 40),
+                ('reviewed_head', 'f' * 39), ('reviewed_head', []), ('files', {}),
                 ('file_hashes', {}), ('required_checks', ['ci-policy']),
                 ('required_checks', ['ci-policy'] * 3),
                 ('required_checks', ['unknown', 'ci-policy', 'pr-planner-tests']),
