@@ -84,6 +84,9 @@ networks:
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := verifyRepositoryFixtureState(resolved, []byte(manifest)); err != nil {
+		t.Fatal(err)
+	}
 	m := resolved.Manifest
 	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
 	if err != nil {

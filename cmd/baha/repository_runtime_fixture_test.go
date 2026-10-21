@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -52,7 +56,101 @@ func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(
 	if consentErr := application.ValidateProviderChangeConsent(plan, ack); consentErr != nil {
 		return consentErr
 	}
-	return run(withProviderChangeConsent(ctx, &ack))
+	retryErr := run(withProviderChangeConsent(ctx, &ack))
+	var rejected *machine.Error
+	if !errors.As(retryErr, &rejected) || rejected == nil || rejected.CauseCode != "stale-impact-consent" {
+		return retryErr
+	}
+	// Identifiers locate the refused boundary without rendering either plan's
+	// materials, paths, credentials, or the rejected observation itself.
+	approvedID := repositoryFixturePlanID(plan.PlanID)
+	rejectedID, boundary := "unavailable", "unavailable"
+	if rejectedPlan, ok := rejected.Details.(application.ProviderImpactPlan); ok {
+		rejectedID = repositoryFixturePlanID(rejectedPlan.PlanID)
+		if approvedID != "unavailable" && rejectedID != "unavailable" {
+			boundary = "across-invocation"
+			if approvedID == rejectedID {
+				boundary = "within-invocation"
+			}
+		}
+	}
+	return fmt.Errorf("repository fixture stale consent: acknowledged_plan_id=%s rejected_plan_id=%s boundary=%s: %w", approvedID, rejectedID, boundary, retryErr)
+}
+
+func repositoryFixturePlanID(id string) string {
+	data, err := hex.DecodeString(id)
+	if err != nil || len(data) != sha256.Size {
+		return "unavailable"
+	}
+	return id
+}
+
+// Repository identity metadata is allowed; runtime authority and confidential
+// material remain exclusively under the canonical Target/deployment UUID.
+func verifyRepositoryFixtureState(resolved resolvedApplication, authored []byte) error {
+	if err := resolved.DeploymentIdentity.Validate(); err != nil {
+		return err
+	}
+	if resolved.DeploymentIdentity.ApplicationID != resolved.Manifest.ApplicationID || resolved.DeploymentIdentity.Target != resolved.Target.Name {
+		return errors.New("deployment identity differs from selected application/Target")
+	}
+	targetRoot, err := deployment.TargetStateRoot(resolved.Target.Name)
+	if err != nil {
+		return err
+	}
+	root, err := deployment.DeploymentRoot(resolved.DeploymentIdentity)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(resolved.RepositoryRoot, root)
+	if err != nil || rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		return errors.New("canonical runtime state leaked into repository")
+	}
+	if resolved.TargetStateRoot != targetRoot || resolved.DeploymentStateRoot != root || resolved.Store.Root != filepath.Join(root, "state") || resolved.Store.Namespace != resolved.Target.Name {
+		return errors.New("runtime state is not bound to canonical Target/deployment UUID")
+	}
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if err != nil {
+		return err
+	}
+	if record.Identity != resolved.DeploymentIdentity || record.Source.Repository != resolved.RepositoryRoot || record.Source.Manifest != resolved.ManifestPath || !record.Observed.Ready || record.Observed.VerifiedAt.IsZero() {
+		return errors.New("canonical deployment does not verify the applied repository owner")
+	}
+	actual, err := os.ReadFile(resolved.ManifestPath)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(actual, authored) {
+		return errors.New("apply rewrote authored repository intent")
+	}
+	metadata := filepath.Join(resolved.RepositoryRoot, ".baseharbor")
+	owner := application.Store{Root: filepath.Join(metadata, "apps")}
+	identity, path, err := owner.Load(resolved.Manifest.Name)
+	if err != nil {
+		return err
+	}
+	if identity.ApplicationID != resolved.Manifest.ApplicationID || identity.Name != resolved.Manifest.Name || identity.Environment != resolved.Manifest.Environment {
+		return errors.New("repository identity metadata differs from canonical owner")
+	}
+	allowed := map[string]bool{metadata: true, owner.Root: true, filepath.Dir(path): true, path: true}
+	return filepath.WalkDir(metadata, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !allowed[path] || entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("unexpected repository-local runtime/confidential state: %s", path)
+		}
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+				return errors.New("repository identity copy is not a protected regular file")
+			}
+		}
+		return nil
+	})
 }
 
 type repositoryFixtureVolumeIdentity struct {
@@ -286,5 +384,160 @@ func TestRepositoryFixtureMandatoryNativeScopeIsPreserved(t *testing.T) {
 		if strings.Count(string(data), name) != 2 {
 			t.Fatalf("native workflow selection and required executed receipt changed for %s", name)
 		}
+	}
+}
+
+func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
+	configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	t.Chdir(selection.RepositoryRoot)
+	ctx := t.Context()
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authored, err := os.ReadFile(resolved.ManifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := recordPendingDeployment(ctx, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Observed.Ready = true
+	record.Observed.VerifiedAt = time.Now().UTC()
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRepositoryFixtureState(resolved, authored); err != nil {
+		t.Fatal("valid canonical state", err)
+	}
+	for _, path := range []string{"credentials.env", "deployment.json", "runtime/compose.yaml"} {
+		t.Run(path, func(t *testing.T) {
+			path = filepath.Join(selection.RepositoryRoot, ".baseharbor", path)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("unexpected material"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := verifyRepositoryFixtureState(resolved, authored); err == nil {
+				t.Fatal("repository runtime material accepted")
+			}
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if filepath.Base(filepath.Dir(path)) == "runtime" {
+				if err := os.Remove(filepath.Dir(path)); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+	for _, change := range []func(*resolvedApplication){
+		func(r *resolvedApplication) { r.TargetStateRoot = selection.RepositoryRoot },
+		func(r *resolvedApplication) { r.DeploymentStateRoot = selection.RepositoryRoot },
+		func(r *resolvedApplication) {
+			r.Store.Root = filepath.Join(selection.RepositoryRoot, ".baseharbor", "apps")
+		},
+		func(r *resolvedApplication) { r.DeploymentIdentity.ApplicationID = application.MustNewApplicationID() },
+	} {
+		changed := resolved
+		change(&changed)
+		if err := verifyRepositoryFixtureState(changed, authored); err == nil {
+			t.Fatal("foreign/noncanonical runtime authority accepted")
+		}
+	}
+	if err := verifyRepositoryFixtureState(resolved, append(authored, ' ')); err == nil {
+		t.Fatal("rewritten authored source accepted")
+	}
+}
+
+func TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal(t *testing.T) {
+	configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	t.Chdir(selection.RepositoryRoot)
+	source := "version: 1\napp:\n  name: fresh\n  environment: dev\nservices:\n  sql: true\n  cache: true\nworkload:\n  components:\n    - api\n"
+	if err := os.WriteFile(selection.ManifestPath, []byte(source), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var identities []string
+	err := runRepositoryFixtureApplyCall(t.Context(), []string{"app", "apply"}, func(ctx context.Context) error {
+		resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+		if err != nil {
+			return err
+		}
+		identities = append(identities, resolved.DeploymentIdentity.DeploymentID)
+		return authorizeApplicationProviderChanges(ctx, resolved, nil, io.Discard)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(identities) != 2 || identities[0] == identities[1] {
+		t.Fatalf("fixture did not exercise independent unallocated proposals: %v", identities)
+	}
+}
+
+func TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers(t *testing.T) {
+	approvedHash, changedHash := sha256.Sum256([]byte("approved")), sha256.Sum256([]byte("changed"))
+	approvedID, changedID := hex.EncodeToString(approvedHash[:]), hex.EncodeToString(changedHash[:])
+	for _, tc := range []struct{ name, rejectedID, boundary string }{
+		{"across", changedID, "across-invocation"},
+		{"within", approvedID, "within-invocation"},
+		{"invalid", "private-material-never-render", "unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: approvedID, ConfirmationsRequired: 2}
+			rejected := plan
+			rejected.PlanID = tc.rejectedID
+			rejected.Impacts = []application.ProviderImpact{{Notices: []string{"secret-material-never-render"}}}
+			cause := providerImpactConsentError(rejected, &application.ProviderChangeError{Code: "stale-impact-consent"})
+			calls := 0
+			err := runRepositoryFixtureApplyCall(t.Context(), []string{"app", "apply"}, func(context.Context) error {
+				calls++
+				if calls == 1 {
+					return providerImpactConsentError(plan, &application.ProviderChangeError{Code: "impact-confirmation-required"})
+				}
+				return cause
+			})
+			var failure *machine.Error
+			if calls != 2 || !errors.Is(err, cause) || !errors.As(err, &failure) || failure.CauseCode != "stale-impact-consent" {
+				t.Fatalf("lost cause or changed retry bound: calls=%d err=%v", calls, err)
+			}
+			for _, wanted := range []string{"acknowledged_plan_id=" + approvedID, "boundary=" + tc.boundary} {
+				if !strings.Contains(err.Error(), wanted) {
+					t.Fatalf("missing identifier diagnostic %s", wanted)
+				}
+			}
+			if tc.name != "invalid" && !strings.Contains(err.Error(), "rejected_plan_id="+tc.rejectedID) {
+				t.Fatal("rejected hash identifier missing")
+			}
+			for _, forbidden := range []string{"private-material-never-render", "secret-material-never-render"} {
+				if strings.Contains(err.Error(), forbidden) {
+					t.Fatal("plan material leaked through diagnostic")
+				}
+			}
+		})
+	}
+}
+
+// The existing selected cli-guided-tests lane requires this bounded fixture
+// suite. Native runtime execution remains separately required by its workflow.
+func TestGuidedRepositoryRuntimeFixtureRegressionSuite(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{"fresh-authority-and-stale-rejection", TestRepositoryFixtureApplyUsesActualFreshAuthorityAndDoesNotRefreshStalePlan},
+		{"invalid-and-wrong-operation-rejection", TestRepositoryFixtureApplyRejectsUnknownInvalidDestructiveAndWrongOperations},
+		{"mandatory-native-eight-test-scope", TestRepositoryFixtureMandatoryNativeScopeIsPreserved},
+		{"canonical-state-and-repository-material-isolation", TestRepositoryFixtureStateAllowsOnlyIdentityMetadata},
+		{"independent-unallocated-sql-cache-proposals", TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal},
+		{"identifier-only-stale-diagnostic", TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers},
+		{"production-concrete-consent-without-writes", TestApplicationImpactAuthorizationRequiresConcreteConsentWithoutWrites},
+		{"production-secrets-stable-consent", TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges},
+		{"production-retirement-owner-material", TestProviderOnlyRetirementDoesNotInventRuntimeMaterial},
+	} {
+		t.Run(test.name, test.run)
 	}
 }
