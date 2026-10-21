@@ -152,6 +152,19 @@ WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
     'scripts/test_pr_authenticated_results.py': 'modified',
 }
 
+# Exact Docker fixture/workflow source: all eight native runtime families passed
+# run 39619782116, including cleanup and authenticated readiness. Existing Guided
+# regressions exercise the fixture's strict consent, owner and material checks;
+# accepted target merges also retain the independently qualified MCP workflow.
+DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD = 'c1337192e06e63f8210ace9e5687d8dc8f70f6d2'
+DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES = {
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    'cmd/baha/app_repository_integration_test.go': 'modified',
+    'cmd/baha/app_workload_integration_test.go': 'modified',
+    'cmd/baha/repository_runtime_fixture_test.go': 'added',
+    'scripts/test_ci_docker_runtime_doctor.py': 'added',
+}
+
 # Independently reviewed withdrawal projection; canonical persisted provider
 # preferences remain intact. Native MCP run 39605072620 also proves this source.
 RETIREMENT_PREFERENCES_REVIEWED_HEAD = '3f6772fc75243eaceb00c669f8ed1cd4c4b694e4'
@@ -664,6 +677,9 @@ def plan(diff, requirements, mapping, repository='.',
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD, DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES,
+         CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed native Docker fixture and authenticated eight-family runtime evidence'),
         (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed final-job dependency on mandatory authenticated workflow policy'),

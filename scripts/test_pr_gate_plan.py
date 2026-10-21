@@ -1556,6 +1556,14 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
 
 class ReviewedSourceQualificationTests(unittest.TestCase):
     def test_immutable_anchors_and_complete_inventories(self):
+        self.assertEqual('c1337192e06e63f8210ace9e5687d8dc8f70f6d2',
+                         planner.DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/docker-runtime-acceptance.yml': 'modified',
+                          'cmd/baha/app_repository_integration_test.go': 'modified',
+                          'cmd/baha/app_workload_integration_test.go': 'modified',
+                          'cmd/baha/repository_runtime_fixture_test.go': 'added',
+                          'scripts/test_ci_docker_runtime_doctor.py': 'added'},
+                         planner.DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES)
         self.assertEqual('013d7e4d491afc58a31c7934b371ab0dc35f3346',
                          planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD)
         self.assertEqual({'.github/workflows/ci.yml': 'modified',
@@ -1583,6 +1591,8 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(resolver)
         cases = (
+            ('DOCKER_RUNTIME_FIXTURE', planner.CI_CHECKS + planner.CODE_CHECKS +
+             planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('RETIREMENT_PREFERENCES', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS),
