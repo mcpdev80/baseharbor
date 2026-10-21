@@ -13,6 +13,41 @@ import (
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
+// Native readiness uses real authenticated backend operations; sleeping alone
+// is running-unverified under the production workload status contract.
+const repositoryBackendProbeCompose = `services:
+  pg-probe:
+    image: postgres:18-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(psql "$$DATABASE_URL" -tAc 'SELECT 1') &&
+          test "$$result" = 1
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+  valkey-probe:
+    image: valkey/valkey:9.1.2-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(valkey-cli -u "$$REDIS_URL" --cacert "$$REDIS_CA_FILE" ping) &&
+          test "$$result" = PONG
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+
 func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
@@ -54,20 +89,7 @@ workload:
 	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	composeYAML := `services:
-  pg-probe:
-    image: postgres:18-alpine
-    command: ["sh", "-ec", "sleep infinity"]
-    networks:
-      - app-internal
-  valkey-probe:
-    image: valkey/valkey:9.1.2-alpine
-    command: ["sh", "-ec", "sleep infinity"]
-    networks:
-      - app-internal
-networks:
-  app-internal:
-`
+	composeYAML := repositoryBackendProbeCompose
 	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +229,7 @@ networks:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("apply workload-only application: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
@@ -266,7 +288,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("up workload-only application: %v\n%s", err, out.String())
 	}
 	probe, err = compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; echo ok`)
@@ -348,7 +370,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {
@@ -386,7 +408,7 @@ workload:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("unchanged app up: %v\n%s", err, out.String())
 	}
 	unchangedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
@@ -401,7 +423,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("ignored-input app up: %v\n%s", err, out.String())
 	}
 	ignoredIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
@@ -416,7 +438,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {

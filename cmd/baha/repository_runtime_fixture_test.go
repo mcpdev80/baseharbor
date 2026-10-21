@@ -11,11 +11,14 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -131,7 +134,7 @@ func verifyRepositoryFixtureState(resolved resolvedApplication, authored []byte)
 		return err
 	}
 	if record.Identity != resolved.DeploymentIdentity || record.Source.Repository != resolved.RepositoryRoot || record.Source.Manifest != resolved.ManifestPath || !record.Observed.Ready || record.Observed.VerifiedAt.IsZero() {
-		return errors.New("canonical deployment does not verify the applied repository owner")
+		return fmt.Errorf("canonical deployment does not verify the applied repository owner: identity_match=%t repository_match=%t manifest_match=%t ready=%t verified=%t", record.Identity == resolved.DeploymentIdentity, record.Source.Repository == resolved.RepositoryRoot, record.Source.Manifest == resolved.ManifestPath, record.Observed.Ready, !record.Observed.VerifiedAt.IsZero())
 	}
 	actual, err := os.ReadFile(resolved.ManifestPath)
 	if err != nil {
@@ -445,17 +448,41 @@ func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, err := recordPendingDeployment(ctx, resolved)
+	// Use the production observation writer: a successful apply of a sleeping
+	// workload is running-unverified, and must never satisfy this verifier.
+	for _, ready := range []bool{false, true} {
+		state := "running"
+		if ready {
+			state = "ready"
+		}
+		if err := recordAppliedDeploymentObservation(ctx, resolved, application.RuntimeFiles{}, state, ready); err != nil {
+			t.Fatal(err)
+		}
+		err := verifyRepositoryFixtureState(resolved, authored)
+		if (err == nil) != ready {
+			t.Fatalf("canonical readiness verification ready=%t: %v", ready, err)
+		}
+	}
+	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err != nil {
 		t.Fatal(err)
 	}
-	record.Observed.Ready = true
-	record.Observed.VerifiedAt = time.Now().UTC()
-	if err := deployment.SaveDeploymentRecord(record); err != nil {
-		t.Fatal(err)
-	}
-	if err := verifyRepositoryFixtureState(resolved, authored); err != nil {
-		t.Fatal("valid canonical state", err)
+	for _, change := range []func(*deployment.DeploymentRecord){
+		func(r *deployment.DeploymentRecord) { r.Source.Repository = root + "-foreign" },
+		func(r *deployment.DeploymentRecord) { r.Source.Manifest = filepath.Join(root, "foreign.yaml") },
+		func(r *deployment.DeploymentRecord) { r.Observed.VerifiedAt = time.Time{} },
+	} {
+		changed := record
+		change(&changed)
+		if err := deployment.SaveDeploymentRecord(changed); err != nil {
+			t.Fatal(err)
+		}
+		if err := verifyRepositoryFixtureState(resolved, authored); err == nil {
+			t.Fatal("foreign/unverified applied repository owner accepted")
+		}
+		if err := deployment.SaveDeploymentRecord(record); err != nil {
+			t.Fatal(err)
+		}
 	}
 	ignore := filepath.Join(root, ".baseharbor", ".gitignore")
 	for _, kind := range []string{"altered-ignore", "linked-ignore", "writable-ignore", "public-parent"} {
@@ -623,6 +650,58 @@ func TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers(t 
 	}
 }
 
+// Exercise the exact authored native fixture, including Compose's escaped
+// container variables. These shell regressions prove the probe contract only;
+// the separate native eight-test gate proves real runtime/backend readiness.
+func TestRepositoryBackendProbeFixtureChecksAuthenticatedReadiness(t *testing.T) {
+	var model struct {
+		Services map[string]struct {
+			Healthcheck struct {
+				Test     []string
+				Interval string
+				Timeout  string
+				Retries  int
+			}
+		}
+	}
+	if err := yaml.Unmarshal([]byte(repositoryBackendProbeCompose), &model); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range []struct{ service, binary, expected, arguments string }{
+		{"pg-probe", "psql", "1", `[ "$#" = 3 ] && [ "$1" = "$DATABASE_URL" ] && [ "$2" = -tAc ] && [ "$3" = 'SELECT 1' ]`},
+		{"valkey-probe", "valkey-cli", "PONG", `[ "$#" = 5 ] && [ "$1" = -u ] && [ "$2" = "$REDIS_URL" ] && [ "$3" = --cacert ] && [ "$4" = "$REDIS_CA_FILE" ] && [ "$5" = ping ]`},
+	} {
+		t.Run(probe.service, func(t *testing.T) {
+			h := model.Services[probe.service].Healthcheck
+			if len(h.Test) != 2 || h.Test[0] != "CMD-SHELL" || h.Interval != "1s" || h.Timeout != "5s" || h.Retries != 30 {
+				t.Fatalf("missing bounded container readiness probe: %#v", h)
+			}
+			bin := t.TempDir()
+			stub := "#!/bin/sh\n" + probe.arguments + " || exit 99\nprintf '%s\\n' \"$PROBE_OUTPUT\"\nexit \"$PROBE_EXIT\"\n"
+			if err := os.WriteFile(filepath.Join(bin, probe.binary), []byte(stub), 0700); err != nil {
+				t.Fatal(err)
+			}
+			for _, result := range []struct {
+				name, output, exit string
+				pass               bool
+			}{
+				{"authenticated-success", probe.expected, "0", true},
+				{"wrong-response", "unexpected", "0", false},
+				{"empty-response", "", "0", false},
+				{"command-failure", probe.expected, "1", false},
+			} {
+				t.Run(result.name, func(t *testing.T) {
+					command := exec.Command("sh", "-ec", strings.ReplaceAll(h.Test[1], "$$", "$"))
+					command.Env = []string{"PATH=" + bin, "DATABASE_URL=postgresql://fixture/database", "REDIS_URL=rediss://fixture", "REDIS_CA_FILE=/fixture/ca.pem", "PROBE_OUTPUT=" + result.output, "PROBE_EXIT=" + result.exit}
+					if err := command.Run(); (err == nil) != result.pass {
+						t.Fatalf("probe success=%t, want %t: %v", err == nil, result.pass, err)
+					}
+				})
+			}
+		})
+	}
+}
+
 // The existing selected cli-guided-tests lane requires this bounded fixture
 // suite. Native runtime execution remains separately required by its workflow.
 func TestGuidedRepositoryRuntimeFixtureRegressionSuite(t *testing.T) {
@@ -630,6 +709,8 @@ func TestGuidedRepositoryRuntimeFixtureRegressionSuite(t *testing.T) {
 		name string
 		run  func(*testing.T)
 	}{
+		{"authenticated-native-backend-healthchecks", TestRepositoryBackendProbeFixtureChecksAuthenticatedReadiness},
+		{"production-workload-health-status", TestBuildWorkloadServiceStatuses},
 		{"fresh-authority-and-stale-rejection", TestRepositoryFixtureApplyUsesActualFreshAuthorityAndDoesNotRefreshStalePlan},
 		{"invalid-and-wrong-operation-rejection", TestRepositoryFixtureApplyRejectsUnknownInvalidDestructiveAndWrongOperations},
 		{"mandatory-native-eight-test-scope", TestRepositoryFixtureMandatoryNativeScopeIsPreserved},
