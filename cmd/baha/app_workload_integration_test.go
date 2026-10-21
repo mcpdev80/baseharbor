@@ -13,8 +13,8 @@ import (
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
-// Native readiness uses real authenticated backend operations; sleeping alone
-// is running-unverified under the production workload status contract.
+// Native readiness requires authenticated SQL SELECT 1 and TLS Valkey PING.
+// Sleeping alone is running-unverified under the production status contract.
 const repositoryBackendProbeCompose = `services:
   pg-probe:
     image: postgres:18-alpine
