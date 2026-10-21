@@ -33,9 +33,11 @@ jobs:
     if: github.event_name != 'push' || !startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
     env:
       BASEHARBOR_TEST_RUNTIME: docker
+      GOTOOLCHAIN: local
+      DOCKER_CONTEXT: ""
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 75
 
     steps:
@@ -49,38 +51,37 @@ jobs:
         id: setup_go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          go-version: '1.26.9'
           cache: false
+
+      - name: Record exact source and toolchain
+        id: source_receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/docker-runtime-evidence"
+          mkdir -p "$out/tests"
+          git rev-parse HEAD | tee "$out/source-sha.txt"
+          git rev-parse 'HEAD^{tree}' | tee "$out/source-tree.txt"
+          printf '%s\n' "$GITHUB_REPOSITORY" > "$out/source-repository.txt"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+          git diff --quiet
+          go version | tee "$out/go-version.txt"
+          test "$(go env GOVERSION)" = go1.26.9
+
+      - name: Prepare isolated hosted rootless Docker
+        id: runtime_setup
+        timeout-minutes: 10
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Build BaseHarbor
         id: build
-        run: go build -trimpath -o /tmp/baha ./cmd/baha
-
-      - name: Diagnose runner rootless Docker prerequisites
-        id: runtime_diagnostics
-        shell: bash
-        timeout-minutes: 1
         run: |
           set -euo pipefail
-          {
-            runner_uid="$(id -u)"
-            printf 'Runner UID: %s\n' "$runner_uid"
-            expected_socket="/run/user/$runner_uid/docker.sock"
-            if [ -S "$expected_socket" ]; then
-              printf 'Expected rootless socket: present (socket)\n'
-            elif [ -e "$expected_socket" ] || [ -L "$expected_socket" ]; then
-              printf 'Expected rootless socket: present (not a socket)\n'
-            else
-              printf 'Expected rootless socket: absent\n'
-            fi
-            if command -v systemctl >/dev/null 2>&1 && command -v timeout >/dev/null 2>&1; then
-              timeout --signal=TERM --kill-after=2s 10s systemctl --user show docker.service \
-                -p LoadState -p ActiveState -p SubState -p FragmentPath --no-pager || \
-                printf 'User Docker service metadata unavailable (status %s)\n' "$?"
-            else
-              printf 'User Docker service metadata unavailable (systemctl or timeout missing)\n'
-            fi
-          } 2>&1 | tee /tmp/docker-runner-diagnostics.txt
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=$candidate_sha -X main.date=unknown" -o "$RUNNER_TEMP/baha" ./cmd/baha
 
       - name: Verify selected rootless Docker before cleanup
         id: runtime_preflight
@@ -89,15 +90,16 @@ jobs:
           set -euo pipefail
           test "$(id -u)" -gt 0
           test "$(id -u)" -le 65000
-          /tmp/baha doctor --json > /tmp/docker-engine-preflight.json
+          "$RUNNER_TEMP/baha" doctor --json > /tmp/docker-engine-preflight.json
           endpoint="$(python3 - <<'PYTHON'
-          import json
+          import json, os
           from pathlib import Path
           report = json.loads(Path('/tmp/docker-engine-preflight.json').read_text())
           engine = report.get('docker_engine') or {}
           endpoint = engine.get('endpoint', '')
           if (engine.get('verified') is not True or engine.get('mode') != 'rootless'
                   or not engine.get('daemon_id') or not endpoint.startswith('unix:///')
+                  or endpoint != os.environ['DOCKER_HOST']
                   or any(c in endpoint for c in '\r\n\x00')):
               raise SystemExit('Selected rootless Docker is unavailable or unverifiable; repair its daemon/socket before retrying. No engine fallback.')
           print(endpoint)
@@ -106,9 +108,45 @@ jobs:
           export DOCKER_HOST="$endpoint"
           export DOCKER_CONTEXT=
           docker --host "$endpoint" compose version
+          docker --host "$endpoint" version --format '{{json .}}' | tee "$RUNNER_TEMP/docker-runtime-evidence/runtime-version.json"
           printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$endpoint" >> "$GITHUB_ENV"
 
-      - name: Reset persistent runner state
+      - name: Package and verify exact candidate runtime image
+        id: runtime_image
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          out="$RUNNER_TEMP/docker-runtime-evidence"
+          build_dir="$RUNNER_TEMP/docker-runtime-build"
+          image="localhost/baseharbor-runtime:docker-$candidate_sha"
+          mkdir -p "$build_dir"
+          cp "$RUNNER_TEMP/baha" "$build_dir/baha"
+          cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
+          sha256sum "$RUNNER_TEMP/baha" | awk '{print $1}' > "$out/binary.sha256"
+          docker --host "$DOCKER_HOST" build --pull \
+            --label "org.opencontainers.image.revision=$candidate_sha" -t "$image" "$build_dir"
+          docker --host "$DOCKER_HOST" image inspect --format '{{.Id}}' "$image" | tee "$out/image-id.txt"
+          docker --host "$DOCKER_HOST" image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image" | tee "$out/image-revision.txt"
+          test -s "$out/image-id.txt"
+          test "$(cat "$out/image-revision.txt")" = "$candidate_sha"
+          docker --host "$DOCKER_HOST" run --rm --pull=never --network none \
+            --entrypoint sha256sum "$image" /usr/local/bin/baha | awk '{print $1}' > "$out/image-binary.sha256"
+          cmp "$out/binary.sha256" "$out/image-binary.sha256"
+          docker --host "$DOCKER_HOST" run --rm --pull=never --network none \
+            --entrypoint /usr/local/bin/baha "$image" version --json | tee "$out/runtime-binary-version.json"
+          python3 - "$candidate_sha" <<'PYTHON'
+          import json, os, sys
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-evidence/runtime-binary-version.json'
+          version = json.loads(path.read_text())
+          if version.get('commit') != sys.argv[1] or version.get('version') != 'dev':
+              raise SystemExit('Runtime image binary must match the tested commit and Go test dev build identity.')
+          PYTHON
+          printf '%s\n' "$image" > "$out/image-ref.txt"
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+
+      - name: Reset isolated rootless runtime state
         id: reset
         shell: bash
         timeout-minutes: 3
@@ -119,7 +157,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/baha doctor --json | tee /tmp/docker-doctor.json
+          "$RUNNER_TEMP/baha" doctor --json | tee /tmp/docker-doctor.json
           python3 - <<'PYTHON'
           import json, os
           from pathlib import Path
@@ -143,7 +181,9 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+        run: |
+          set -euo pipefail
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/main.jsonl"
 
       - name: Capture Docker control-plane diagnostics
         if: failure() && steps.runtime_integration.outcome == 'failure'
@@ -164,19 +204,25 @@ jobs:
         id: recovery
         env:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
-        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/recovery.jsonl"
 
       - name: Verify real workload log ingestion
         id: log_ingestion
         env:
           BASEHARBOR_LOGS_INTEGRATION: "1"
-        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+        run: |
+          set -euo pipefail
+          go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/logs.jsonl"
 
       - name: Verify real trace ingestion
         id: trace_ingestion
         env:
           BASEHARBOR_TRACES_INTEGRATION: "1"
-        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+        run: |
+          set -euo pipefail
+          go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/traces.jsonl"
 
       - name: Cleanup Docker runtime
         id: cleanup
@@ -184,6 +230,43 @@ jobs:
         shell: bash
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Verify all eight executed runtime tests
+        id: test_receipts
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-evidence/tests'
+          prefix = 'github.com/mcpdev80/baseharbor/'
+          required = {
+              'main': {
+                  ('cmd/baha', 'TestRepositoryWorkflowRealLifecycle'),
+                  ('cmd/baha', 'TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI'),
+                  ('cmd/baha', 'TestRepositoryComposeWorkloadOnlyLifecycleInCI'),
+                  ('cmd/baha', 'TestRepositoryBuildWorkloadRebuildsSourceChangesInCI'),
+                  ('internal/application', 'TestMultiInstanceComposeLifecycleInCI'),
+              },
+              'recovery': {('cmd/baha', 'TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile')},
+              'logs': {('internal/logs', 'TestManagedLokiIngestsRealComposeWorkloadLogs')},
+              'traces': {('internal/traces', 'TestManagedTempoReceivesVerificationTraceThroughCollector')},
+          }
+          for name, expected in required.items():
+              events = [json.loads(line) for line in (root / (name + '.jsonl')).read_text().splitlines() if line.startswith('{')]
+              if any(event.get('Action') in {'fail', 'skip'} for event in events):
+                  raise SystemExit(name + ': native test failed or skipped; no acceptance.')
+              for package, test in expected:
+                  package = prefix + package
+                  if (not any(event.get('Package') == package and event.get('Test') == test
+                              and event.get('Action') == 'pass' for event in events)
+                          or not any(event.get('Package') == package and 'Test' not in event
+                                     and event.get('Action') == 'pass' for event in events)):
+                      raise SystemExit(name + ': missing actual test/package PASS for ' + test)
+          print('All eight required Docker runtime tests executed and passed.')
+          PYTHON
 
       - name: Generate Docker runtime evidence
         if: always()
@@ -195,19 +278,22 @@ jobs:
           rows="$RUNNER_TEMP/docker-runtime-evidence.tsv"
           cat >"$rows" <<EOF
           Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
-          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Go setup	${{ steps.setup_go.outcome }}	Isolated hosted runner; Go 1.26.9; remote Go cache disabled
           Runner reset	${{ steps.reset.outcome }}	Docker state reset before validation
           BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
-          Runner diagnostics	${{ steps.runtime_diagnostics.outcome }}	Read-only UID, socket type and user-service metadata; not runtime acceptance
+          Source receipts	${{ steps.source_receipt.outcome }}	Exact commit, tree, repository and Go toolchain
+          Rootless setup	${{ steps.runtime_setup.outcome }}	Existing isolated hosted rootless runtime provisioner
           Engine preflight	${{ steps.runtime_preflight.outcome }}	Verified selected rootless Docker and Compose before cleanup
+          Runtime image	${{ steps.runtime_image.outcome }}	Exact local candidate image, source revision and identical static host/container binary
           Runtime detection	${{ steps.runtime_detection.outcome }}	Structured Doctor verifies the same engine and absent Core after reset
           Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
           Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
           Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
           Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          Executed test receipts	${{ steps.test_receipts.outcome }}	All eight exact test/package PASS receipts; skip/fail/missing block
           EOF
           cat >>"$rows" <<EOF
-          Cleanup	${{ steps.cleanup.outcome }}	Persistent Docker runner returned to clean state
+          Cleanup	${{ steps.cleanup.outcome }}	Isolated rootless Docker resources cleaned
           EOF
           mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs"
           cp /tmp/docker-*.txt /tmp/docker-*.json "$RUNNER_TEMP/docker-runtime-evidence/logs/" 2>/dev/null || true
