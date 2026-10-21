@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationsecret"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	runtimecontract "github.com/mcpdev80/baseharbor/internal/runtime/contract"
 )
 
@@ -37,6 +40,9 @@ func TestAppBackupRestoreCLIRealDisasterRecovery(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(root, "platform-state"))
 	t.Setenv("BASEHARBOR_PROVIDER_CHANGE_CONSENT", "")
 	configureAppBackupRuntimeTarget(t, filepath.Join(root, "config"), filepath.Join(root, "data"))
+	// LIFO cleanup first executes the owned fixture's cleanup registered below,
+	// then verifies the unrelated native volume before removing only that sentinel.
+	registerBackupForeignVolumeSentinel(t, ctx)
 	if err := runOwnedBackupCoreFixture(t, ctx,
 		func(startCtx context.Context) error {
 			return runtimeUpGuided(startCtx, strings.NewReader(""), io.Discard, runtimeUpOptions{Yes: true})
@@ -214,6 +220,85 @@ services:
 	}
 	if bytes.Equal(certBefore, certAfter) {
 		t.Fatal("runtime mTLS client certificate was replayed instead of regenerated")
+	}
+}
+
+func registerBackupForeignVolumeSentinel(t *testing.T, ctx context.Context) {
+	t.Helper()
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	project := "backup-foreign-" + application.MustNewApplicationID()
+	resource := bhruntime.ProjectResource{Kind: "volume", Name: project + "-sentinel"}
+	before, err := provider.InspectProjectResources(ctx, project, []bhruntime.ProjectResource{resource})
+	if err != nil || len(before) != 0 {
+		t.Fatal("foreign sentinel creation requires a verified absent resource")
+	}
+	if err := provider.EnsureOwnedVolume(ctx, project, resource.Name); err != nil {
+		t.Fatal("create separately owned native volume sentinel", err)
+	}
+	type volumeIdentity struct {
+		Name      string
+		CreatedAt string
+		Driver    string
+		Labels    map[string]string
+	}
+	inspect := func(ctx context.Context) (volumeIdentity, error) {
+		direct, ok := provider.(interface {
+			DirectOutput(context.Context, ...string) (string, error)
+		})
+		if !ok {
+			return volumeIdentity{}, fmt.Errorf("native runtime lacks bound volume metadata inspection")
+		}
+		data, err := direct.DirectOutput(ctx, "volume", "inspect", resource.Name)
+		if err != nil {
+			return volumeIdentity{}, fmt.Errorf("inspect foreign native sentinel failed")
+		}
+		var identities []volumeIdentity
+		if err := json.Unmarshal([]byte(data), &identities); err != nil || len(identities) != 1 {
+			return volumeIdentity{}, fmt.Errorf("foreign native sentinel metadata is not singular and valid")
+		}
+		identity := identities[0]
+		if identity.Name != resource.Name || identity.CreatedAt == "" || identity.Driver == "" ||
+			identity.Labels["com.docker.compose.project"] != project ||
+			identity.Labels["io.podman.compose.project"] != project {
+			return volumeIdentity{}, fmt.Errorf("foreign native sentinel identity or ownership is unverifiable")
+		}
+		return identity, nil
+	}
+	var original volumeIdentity
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		current, err := inspect(cleanupCtx)
+		if err != nil || original.CreatedAt == "" || !reflect.DeepEqual(current, original) {
+			t.Error("owned cleanup removed or changed the foreign native sentinel; replacement deletion refused")
+			return
+		}
+		owned, err := provider.InspectProjectResources(cleanupCtx, project, []bhruntime.ProjectResource{resource})
+		if err != nil || len(owned) != 1 || owned[0] != resource {
+			t.Error("foreign native sentinel ownership changed; explicit sentinel cleanup refused")
+			return
+		}
+		if err := provider.DestroyOwnedProjectResources(cleanupCtx, project, []bhruntime.ProjectResource{resource}); err != nil {
+			t.Error("explicit removal of the test's separately owned volume failed", err)
+			return
+		}
+		remaining, err := provider.InspectProjectResources(cleanupCtx, project, []bhruntime.ProjectResource{resource})
+		if err != nil || len(remaining) != 0 {
+			t.Error("explicit native sentinel removal could not be verified")
+			return
+		}
+		t.Log("foreign native volume retained its exact identity after owned cleanup; separate sentinel removal verified")
+	})
+	original, err = inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

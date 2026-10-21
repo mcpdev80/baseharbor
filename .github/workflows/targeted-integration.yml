@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - 'runtime-validation/ha/**'
+      - 'runtime-validation/podman/backup-recovery/**'
       - 'work/v0.4.24-core-ha-updates'
       - 'work/v0.4.25-contract-minimal-core'
   workflow_dispatch:
@@ -544,7 +545,7 @@ jobs:
           go vet ./...
 
   focused:
-    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' && inputs.gate != 'app-backup-restore-podman' }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -689,12 +690,13 @@ jobs:
     # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
     # token/certificate regeneration and automatic owned cleanup) without
     # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman') || (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/')) }}
     name: Application backup · podman
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     env:
       BASEHARBOR_TEST_RUNTIME: podman
+      GOTOOLCHAIN: local
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
 
@@ -703,17 +705,30 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref || github.sha }}
-
-      - name: Resolve tested commit
-        id: tested_ref
-        shell: bash
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Record exact source and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          mkdir -p "$out"
+          git rev-parse HEAD | tee "$out/source-sha.txt"
+          git rev-parse 'HEAD^{tree}' | tee "$out/source-tree.txt"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+          go version | tee "$out/go-version.txt"
+          expected_go="$(awk '$1 == "toolchain" {toolchain=$2} $1 == "go" {minimum="go" $2} END {print toolchain != "" ? toolchain : minimum}' go.mod)"
+          test -n "$expected_go"
+          printf '%s\n' "$expected_go" > "$out/expected-go-version.txt"
+          test "$(go env GOVERSION)" = "$expected_go"
 
       - name: Prepare verified rootless Podman
         timeout-minutes: 5
@@ -727,11 +742,41 @@ jobs:
           BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
         run: |
           set -euo pipefail
-          $RUNNER_TEMP/baha target create podman-backup-restore \
+          umask 0022
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          test "$(id -u)" -gt 0
+          test "$(id -u)" -le 65000
+          podman version | tee "$out/runtime-version.txt"
+          podman info --format '{{.Host.Security.Rootless}}' | tee "$out/rootless.txt"
+          test "$(cat "$out/rootless.txt")" = true
+          "$RUNNER_TEMP/baha" target create podman-backup-restore \
             --provider podman --access podman-backup-restore \
             --reference local --default
           go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
-            -count=1 -v -timeout 30m
+            -count=1 -json -timeout 30m 2>&1 | tee "$out/tests.jsonl"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery/tests.jsonl'
+          events = [json.loads(line) for line in path.read_text().splitlines() if line.startswith('{')]
+          package = 'github.com/mcpdev80/baseharbor/cmd/baha'
+          test = 'TestAppBackupRestoreCLIRealDisasterRecovery'
+          if (any(event.get('Action') in {'fail', 'skip'} for event in events)
+                  or not any(event.get('Package') == package and event.get('Test') == test
+                             and event.get('Action') == 'pass' for event in events)
+                  or not any(event.get('Package') == package and 'Test' not in event
+                             and event.get('Action') == 'pass' for event in events)):
+              raise SystemExit('Native Podman backup/recovery requires an executed test PASS and package PASS; skip/fail/missing receipts block.')
+          PYTHON
+
+      - name: Retain exact Podman backup recovery evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: podman-backup-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-backup-recovery
+          if-no-files-found: error
+          retention-days: 30
 
   core_bootstrap:
     if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
@@ -1168,7 +1213,7 @@ jobs:
           retention-days: 90
 
   rootless_engine_isolation:
-    if: ${{ contains(github.event.head_commit.message, '[rootless-runtime]') }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
     name: Engine isolation · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 35
@@ -1224,7 +1269,7 @@ jobs:
           retention-days: 90
 
   identity_trust:
-    if: ${{ contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]') }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
