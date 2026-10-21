@@ -648,10 +648,10 @@ def main():
                     'gate_count': len(requirements), 'requirements_digest': digest(requirements),
                     'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
                     'coverage_digest': digest(coverage)}
-        if args.tag in {'v0.4.24', 'v0.4.25'}:
+        if args.tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
             consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
             if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
-                raise ValueError('v0.4.24 requires an immutable complete consumer origin')
+                raise ValueError(f'{args.tag} requires an immutable complete consumer origin')
             approval['consumer_ref'] = consumer_ref
         (args.output / 'release-approved.json').write_text(json.dumps(approval, indent=2) + '\n')
     else:
