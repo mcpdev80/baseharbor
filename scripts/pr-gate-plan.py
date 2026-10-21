@@ -476,6 +476,9 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     Re-run the real diff resolver so caller-supplied inventories, integration
     parents and merge trees cannot substitute for Git evidence. This bounded
     record enables only the three CI files and the existing CI check catalog.
+    Hash the frozen reviewed blobs; later source may only add exact Git-computed
+    first-parent merges of authenticated target history. This permits strict
+    up-to-date integration without accepting candidate-authored follow-ups.
     """
     valid, _ = validated_diff(diff)
     if not valid or diff['broad_required'] or not diff.get('integration_sha'):
@@ -519,7 +522,11 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                 'file_hashes', 'required_checks'} or
                 record['repository'] != context_repository or
                 record['target_branch'] != context_target_branch or
-                record['reviewed_head'] != diff['head_sha'] or
+                not isinstance(record['reviewed_head'], str) or
+                re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                not core752_reviewed_merge_chain(
+                    diff['target_base_sha'], diff['head_sha'],
+                    record['reviewed_head'], repository) or
                 record['files'] != expected_files or
                 not isinstance(record['file_hashes'], dict) or
                 set(record['file_hashes']) != set(expected_files) or
@@ -531,7 +538,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
             if (not isinstance(digest, str) or
                     re.fullmatch(r'[0-9a-f]{64}', digest) is None or
                     hashlib.sha256(git('cat-file', 'blob',
-                                       diff['head_sha'] + ':' + path)).hexdigest() != digest):
+                                       record['reviewed_head'] + ':' + path)).hexdigest() != digest):
                 return None
         # Import the resolver beside this trusted planner, not from the PR tree.
         import importlib.util
