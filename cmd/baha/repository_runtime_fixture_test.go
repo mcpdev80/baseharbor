@@ -64,9 +64,10 @@ func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(
 	// Identifiers locate the refused boundary without rendering either plan's
 	// materials, paths, credentials, or the rejected observation itself.
 	approvedID := repositoryFixturePlanID(plan.PlanID)
-	rejectedID, boundary := "unavailable", "unavailable"
+	rejectedID, boundary, changedFields := "unavailable", "unavailable", "unavailable"
 	if rejectedPlan, ok := rejected.Details.(application.ProviderImpactPlan); ok {
 		rejectedID = repositoryFixturePlanID(rejectedPlan.PlanID)
+		changedFields = repositoryFixtureChangedPublicFields(plan, rejectedPlan)
 		if approvedID != "unavailable" && rejectedID != "unavailable" {
 			boundary = "across-invocation"
 			if approvedID == rejectedID {
@@ -74,7 +75,23 @@ func runRepositoryFixtureApplyCall(ctx context.Context, args []string, run func(
 			}
 		}
 	}
-	return fmt.Errorf("repository fixture stale consent: acknowledged_plan_id=%s rejected_plan_id=%s boundary=%s: %w", approvedID, rejectedID, boundary, retryErr)
+	return fmt.Errorf("repository fixture stale consent: acknowledged_plan_id=%s rejected_plan_id=%s boundary=%s changed_public_fields=%s: %w", approvedID, rejectedID, boundary, changedFields, retryErr)
+}
+
+// Report only fixed public field names, never values or material references.
+// Revision-only drift remains distinguishable from changed consequences.
+func repositoryFixtureChangedPublicFields(before, after application.ProviderImpactPlan) string {
+	left, right := reflect.ValueOf(before), reflect.ValueOf(after)
+	names := []string{}
+	for i := 0; i < left.NumField(); i++ {
+		if !reflect.DeepEqual(left.Field(i).Interface(), right.Field(i).Interface()) {
+			names = append(names, strings.Split(left.Type().Field(i).Tag.Get("json"), ",")[0])
+		}
+	}
+	if len(names) == 0 {
+		return "none"
+	}
+	return strings.Join(names, ",")
 }
 
 func repositoryFixturePlanID(id string) string {
@@ -132,7 +149,8 @@ func verifyRepositoryFixtureState(resolved resolvedApplication, authored []byte)
 	if identity.ApplicationID != resolved.Manifest.ApplicationID || identity.Name != resolved.Manifest.Name || identity.Environment != resolved.Manifest.Environment {
 		return errors.New("repository identity metadata differs from canonical owner")
 	}
-	allowed := map[string]bool{metadata: true, owner.Root: true, filepath.Dir(path): true, path: true}
+	ignore := filepath.Join(metadata, ".gitignore")
+	allowed := map[string]bool{metadata: true, owner.Root: true, filepath.Dir(path): true, path: true, ignore: true}
 	return filepath.WalkDir(metadata, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -140,18 +158,36 @@ func verifyRepositoryFixtureState(resolved resolvedApplication, authored []byte)
 		if !allowed[path] || entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("unexpected repository-local runtime/confidential state: %s", path)
 		}
-		if !entry.IsDir() {
-			info, err := entry.Info()
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if path == ignore {
+			// Store.Sync's public Git safety rule is the sole 0644 exception.
+			// Its parent, identity material and native owner must remain protected.
+			if !info.Mode().IsRegular() || info.Mode().Perm() != 0644 || !bhruntime.ProtectedStateOwner(path, repositoryFixtureIgnoreOwnerInfo{info}) {
+				return errors.New("repository Git safety rule has an unexpected mode or native owner")
+			}
+			data, err := os.ReadFile(path)
 			if err != nil {
 				return err
 			}
-			if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-				return errors.New("repository identity copy is not a protected regular file")
+			if string(data) != "*\n!.gitignore\n" {
+				return errors.New("repository Git safety rule differs from Store.Sync contract")
 			}
+		} else if !bhruntime.ProtectedStateOwner(path, info) || (!entry.IsDir() && (!info.Mode().IsRegular() || info.Mode().Perm() != 0600)) {
+			return errors.New("repository identity metadata is not protected under its native owner")
 		}
 		return nil
 	})
 }
+
+// ProtectedStateOwner verifies current native UID and single-link authority.
+// Exact 0644 is checked separately above; only its public-read bits are excluded
+// from that private-file predicate for this non-confidential Git safety rule.
+type repositoryFixtureIgnoreOwnerInfo struct{ os.FileInfo }
+
+func (info repositoryFixtureIgnoreOwnerInfo) Mode() os.FileMode { return info.FileInfo.Mode() &^ 0044 }
 
 type repositoryFixtureVolumeIdentity struct {
 	Name      string
@@ -389,9 +425,18 @@ func TestRepositoryFixtureMandatoryNativeScopeIsPreserved(t *testing.T) {
 
 func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
 	configureTestTarget(t)
-	selection := minimalRepositorySelection(t)
-	t.Chdir(selection.RepositoryRoot)
+	root := t.TempDir()
+	t.Chdir(root)
 	ctx := t.Context()
+	// Exercise the actual authoring command, including InitializeIdentity and
+	// Store.Sync/ensureStateGitIgnore, instead of a reduced resolver-only setup.
+	if err := runWithIO(ctx, []string{"app", "init", "plain", "--sql", "--cache"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	selection, err := application.ResolveRepositoryEnvironment(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
 	if err != nil {
 		t.Fatal(err)
@@ -411,6 +456,52 @@ func TestRepositoryFixtureStateAllowsOnlyIdentityMetadata(t *testing.T) {
 	}
 	if err := verifyRepositoryFixtureState(resolved, authored); err != nil {
 		t.Fatal("valid canonical state", err)
+	}
+	ignore := filepath.Join(root, ".baseharbor", ".gitignore")
+	for _, kind := range []string{"altered-ignore", "linked-ignore", "writable-ignore", "public-parent"} {
+		t.Run(kind, func(t *testing.T) {
+			switch kind {
+			case "altered-ignore":
+				if err := os.WriteFile(ignore, []byte("!credentials.env\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+			case "linked-ignore":
+				target := filepath.Join(t.TempDir(), "ignore")
+				if err := os.WriteFile(target, []byte("*\n!.gitignore\n"), 0644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(ignore); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, ignore); err != nil {
+					t.Fatal(err)
+				}
+			case "writable-ignore":
+				if err := os.Chmod(ignore, 0666); err != nil {
+					t.Fatal(err)
+				}
+			case "public-parent":
+				if err := os.Chmod(filepath.Dir(ignore), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := verifyRepositoryFixtureState(resolved, authored); err == nil {
+				t.Fatal("invalid Git safety rule or unprotected parent accepted")
+			}
+			if kind == "public-parent" {
+				if err := os.Chmod(filepath.Dir(ignore), 0700); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.Remove(ignore); err != nil {
+					t.Fatal(err)
+				}
+				// Reuse the production owner to restore the exact legitimate metadata.
+				if _, err := (application.Store{Root: filepath.Join(root, ".baseharbor", "apps")}).Sync(resolved.Manifest); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 	for _, path := range []string{"credentials.env", "deployment.json", "runtime/compose.yaml"} {
 		t.Run(path, func(t *testing.T) {
@@ -481,6 +572,17 @@ func TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal(t *testing.
 func TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers(t *testing.T) {
 	approvedHash, changedHash := sha256.Sum256([]byte("approved")), sha256.Sum256([]byte("changed"))
 	approvedID, changedID := hex.EncodeToString(approvedHash[:]), hex.EncodeToString(changedHash[:])
+	baseline := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: approvedID, Revision: "first"}
+	changed := baseline
+	changed.Revision = "second"
+	changed.PlanID = changedID
+	if fields := repositoryFixtureChangedPublicFields(baseline, changed); fields != "revision,plan_id" {
+		t.Fatalf("revision-only evidence mislabeled: %s", fields)
+	}
+	if fields := repositoryFixtureChangedPublicFields(baseline, baseline); fields != "none" {
+		t.Fatalf("unchanged public plan mislabeled: %s", fields)
+	}
+
 	for _, tc := range []struct{ name, rejectedID, boundary string }{
 		{"across", changedID, "across-invocation"},
 		{"within", approvedID, "within-invocation"},
@@ -504,7 +606,7 @@ func TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers(t 
 			if calls != 2 || !errors.Is(err, cause) || !errors.As(err, &failure) || failure.CauseCode != "stale-impact-consent" {
 				t.Fatalf("lost cause or changed retry bound: calls=%d err=%v", calls, err)
 			}
-			for _, wanted := range []string{"acknowledged_plan_id=" + approvedID, "boundary=" + tc.boundary} {
+			for _, wanted := range []string{"acknowledged_plan_id=" + approvedID, "boundary=" + tc.boundary, "changed_public_fields="} {
 				if !strings.Contains(err.Error(), wanted) {
 					t.Fatalf("missing identifier diagnostic %s", wanted)
 				}
