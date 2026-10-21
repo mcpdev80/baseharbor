@@ -777,7 +777,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
+    needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8

@@ -1,5 +1,6 @@
 """Verified Actions adapter regression tests: missing, forged, stale, and failed."""
 import importlib.util
+import re
 from pathlib import Path
 import unittest
 
@@ -15,6 +16,23 @@ JOBS = [{'name': name,'run_id':123,'run_attempt':1,'conclusion':'success'}
 
 
 class AuthenticatedResultsTests(unittest.TestCase):
+    def test_final_job_waits_for_mandatory_authenticated_policy(self):
+        workflow = (Path(__file__).resolve().parents[1] /
+                    '.github/workflows/ci.yml').read_text()
+        final = workflow.split('  pr_selected_final:\n', 1)[1]
+        final = re.split(r'^  [A-Za-z_][A-Za-z0-9_]*:\s*$', final,
+                         maxsplit=1, flags=re.MULTILINE)[0]
+        needs = re.search(r'^    needs: \[(.*?)\]$', final, re.MULTILINE)
+        self.assertIsNotNone(needs, 'final check requires explicit job dependencies')
+        dependencies = {name.strip() for name in needs.group(1).split(',')}
+        # The verifier always authenticates policy and focused-Python results;
+        # neither may race the final job, regardless of selected matrix lanes.
+        self.assertTrue({'workflow_policy', 'pr_focused', 'pr_plan', 'pr_validations'}
+                        <= dependencies, dependencies)
+        report = mod.authenticated_results(PLAN, RUN, JOBS, 123, 1, HEAD)
+        self.assertIn('Workflow policy',
+                      {row['name'] for row in report['required_job_conclusions']})
+
     def test_actual_complete_job_results(self):
         report = mod.authenticated_results(PLAN,RUN,JOBS,123,1,HEAD)
         self.assertEqual([{'kind':'validation','id':'documentation-audit','conclusion':'success'}],
