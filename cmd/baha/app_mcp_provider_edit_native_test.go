@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -46,39 +47,27 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 	}
 	assertCorelessHost(t, ctx, runtime, testTarget)
 	root := t.TempDir()
-	recoveryPath := filepath.Join(t.TempDir(), "core-recovery.json")
 
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 4*time.Minute)
 		defer cleanupCancel()
 		if err := approvedNativeFixtureCleanup(t, machineNoninteractiveContext(cleanupCtx), &bytes.Buffer{}); err != nil {
 			t.Errorf("isolated app.edit fixture cleanup: %v", err)
+			return
 		}
+		assertCorelessHost(t, cleanupCtx, runtime, testTarget)
 	})
 
-	// Install an own isolated management Core for the test's Target. This
-	// belongs exclusively to the test's own bh-<target>-shared project and
-	// never shares a provider instance with any other installation.
-	var bootstrapOut bytes.Buffer
-	first, err := installCore(ctx, strings.NewReader(""), &bootstrapOut, runtimeUpOptions{
-		Yes:              true,
-		ControlPlaneOnly: true,
-		MachineRole:      coreinstallation.Development,
-		RecoveryFile:     recoveryPath,
-	})
-	if err != nil || !first.Ready {
-		logCoreBootstrapFailure(t, runtime, testTarget.Name, testTarget.RuntimeProvider)
-		t.Fatalf("own isolated Core bootstrap: %v\n%s", err, bootstrapOut.String())
-	}
+	// Workload and application-scoped SQL use the existing coreless lifecycle.
+	// Installing an unrelated management Core here would add genuinely unknown
+	// ancillary material to the plan, outside this bounded SQL creation case.
 
 	stateRoot, err := deployment.TargetStateRoot(testTarget.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(root)
-	m := application.New("app-edit-integration", "dev", false, false, false)
-	m.ApplicationID = application.MustNewApplicationID()
-	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	m := appEditMCPNativeManifest()
 	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, '300']\n    healthcheck:\n      test: [CMD-SHELL, \"true\"]\n      interval: 1s\n      timeout: 1s\n      retries: 10\n")
 	// Capture the exact resolved Target and stored application name once so the
 	// app.edit calls carry the same values the handler validates against.
@@ -94,6 +83,7 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 		t.Fatalf("baseline lifecycle failed: %v", err)
 	}
 
+	assertCorelessHost(t, ctx, runtime, testTarget)
 	desired := application.WithSQLInstances(m, "default")
 	// Retain the canonical binding of a stopped, never-realized SQL provider.
 	// The daemon still has no SQL volume; Edit must realize and verify it.
@@ -252,7 +242,8 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 	stale := applyThroughMCP(t, session, ctx, editTarget, editApp, proposal, consent)
 	requireAppEditMCPConflict(t, stale)
 	editStateUnchanged(t, postEdit, stateRoot, root)
-	t.Log("native app.edit: complete verified SQL edit; wrong consent and stale apply rejected without persisted changes")
+	assertCorelessHost(t, ctx, runtime, testTarget)
+	t.Log("native app.edit: complete verified coreless SQL edit; wrong consent and stale apply rejected without persisted changes")
 }
 
 type appEditPersistedFile struct {
@@ -488,4 +479,44 @@ func runtimeInventoryPresent(t *testing.T, ctx context.Context, provider bhrunti
 		t.Fatalf("native runtime inventory inspection failed: %v", err)
 	}
 	return len(containers) > 0
+}
+
+// The native proof uses portable workload/SQL intent, not a management service.
+func appEditMCPNativeManifest() application.Manifest {
+	manifest := application.WithWorkloadComponents(application.New("app-edit-integration", "dev", false, false, false), "api")
+	manifest.ApplicationID = application.MustNewApplicationID()
+	return manifest
+}
+
+func appEditMCPNativeCorelessPrerequisites(t *testing.T) {
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	resolved := corelessResolvedFixture(t)
+	resolved.Manifest = application.WithSQLInstances(appEditMCPNativeManifest(), "default")
+	ctx := machineNoninteractiveContext(context.Background())
+	// Execute the actual production prerequisite and MCP authorization owners.
+	// Neither depends on a management installation for local development SQL.
+	if err := requireResolvedApplicationCore(ctx, resolved, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatalf("bounded SQL prerequisite requires unrelated Core: %v", err)
+	}
+	if err := authorizeResolvedMCPOperation(ctx, "app.edit", resolved, ""); err != nil {
+		t.Fatalf("local development MCP edit requires unrelated Core: %v", err)
+	}
+	snapshot, _, err := applicationLifecycleSnapshot(resolved, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Ancillary) != 0 || len(snapshot.DependencyRoots) != 0 {
+		t.Fatal("bounded application SQL projected a management dependency")
+	}
+	footprint, err := resolveApplicationLifecycleFootprint(resolved)
+	if err != nil || footprint.Core != application.CoreNotRequired {
+		t.Fatalf("bounded application SQL is not coreless: %v", err)
+	}
+	root, err := targetRuntimeStateRoot(resolved.Target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("prerequisite or authorization materialized Core: %v", err)
+	}
 }

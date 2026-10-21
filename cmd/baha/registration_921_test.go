@@ -153,6 +153,7 @@ func TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional(t *testing.T) {
 }
 
 func TestCore921MCPProposeReachesHandlerWithZeroWrites(t *testing.T) {
+	t.Run("coreless-native-prerequisites", appEditMCPNativeCorelessPrerequisites)
 	configureTestTarget(t)
 	root := t.TempDir()
 	t.Chdir(root)
@@ -222,6 +223,9 @@ func TestCore921MCPProposeReachesHandlerWithZeroWrites(t *testing.T) {
 }
 
 func TestCore921MCPEditHandlerLevelNegatives(t *testing.T) {
+	t.Run("SDK-consent-and-partial-execution", core921MCPEditConsentAndPartialExecutionThroughSDK)
+	t.Run("public-error-categories", core921MachineAdapterPublicCategories)
+	t.Run("missing-second-consent", core921MissingConsentPublicClassification)
 	configureTestTarget(t)
 	root := t.TempDir()
 	t.Chdir(root)
@@ -361,7 +365,7 @@ func deploymentSnapshotEqual(t *testing.T, before, after []byte) bool {
 // These real SDK calls exercise public error/result contracts using the same
 // registered handler and bounded Edit authority fixtures; they are not native
 // runtime acceptance evidence.
-func TestCore921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
+func core921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
 	for _, scenario := range []string{"approval", "partial", "complete", "complete-preferences", "wrong-target", "stale", "requirements-added", "requirements-removed", "requirements-changed", "requirements-reordered", "preferences-added", "preferences-removed", "preferences-changed", "preferences-reordered"} {
 		t.Run(scenario, func(t *testing.T) {
 			t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
@@ -524,7 +528,7 @@ func TestCore921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
 	}
 }
 
-func TestCore921MachineAdapterPublicCategories(t *testing.T) {
+func core921MachineAdapterPublicCategories(t *testing.T) {
 	for _, test := range []struct {
 		private string
 		public  machine.ErrorCode
@@ -539,7 +543,7 @@ func TestCore921MachineAdapterPublicCategories(t *testing.T) {
 	}
 }
 
-func TestCore921MissingConsentPublicClassification(t *testing.T) {
+func core921MissingConsentPublicClassification(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 2}
 	_, err := appMachineChange(context.Background(), appMachineChangeRequest{
 		Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
