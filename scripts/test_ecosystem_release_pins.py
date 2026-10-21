@@ -1,4 +1,10 @@
 import copy
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import tempfile
 import unittest
 
 from ecosystem_release_pins import resolve_pins, validate_ecosystem_graph
@@ -111,6 +117,96 @@ class EcosystemPinsTests(unittest.TestCase):
         console = {**self.console_candidate, 'release': '0.4.25'}
         self.assertNotIn('ecosystem', resolve_pins(self.core, self.connector, candidate,
                                                    console, self.core, release='0.4.25'))
+
+
+class ReleaseWorkflowPinsTests(unittest.TestCase):
+    def test_actual_candidate_resolution_binds_consumers_and_rejects_invalid_sources(self):
+        source = pathlib.Path(__file__).resolve().parents[1]
+        workflow = (source / '.github/workflows/pre-release.yml').read_text()
+        release_step = workflow.split('      - name: Resolve release candidate\n', 1)[1]
+        block = release_step.split('        run: |\n', 1)[1].split('\n      - name:', 1)[0]
+        script = '\n'.join(line[10:] if line.startswith('          ') else line
+                           for line in block.splitlines())
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            repo, origin, tools = root / 'repo', root / 'origin', root / 'bin'
+            repo.mkdir()
+            tools.mkdir()
+            subprocess.run(['git', 'init', '--bare', str(origin)], check=True, capture_output=True)
+            subprocess.run(['git', 'init', '-b', 'develop', str(repo)], check=True, capture_output=True)
+
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(repo), *args],
+                                               stderr=subprocess.PIPE, text=True).strip()
+
+            git('config', 'user.name', 'Release route fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            (repo / 'scripts').mkdir()
+            shutil.copy(source / 'scripts/ecosystem_release_pins.py', repo / 'scripts')
+            notes = repo / 'docs/releases'
+            notes.mkdir(parents=True)
+            for version in ('0.4.24', '0.4.25', '0.4.26'):
+                (notes / f'v{version}.md').write_text(f'Release {version}\n')
+            (repo / 'CHANGELOG.md').write_text('\n'.join(
+                f'## [{version}]' for version in ('0.4.24', '0.4.25', '0.4.26')))
+            git('add', '.')
+            git('commit', '-m', 'Immutable source fixture')
+            core = git('rev-parse', 'HEAD')
+            git('branch', 'main')
+            git('remote', 'add', 'origin', str(origin))
+            git('push', 'origin', 'develop', 'main')
+            # Only remote source transport is substituted; the production shell and resolver run.
+            gh = tools / 'gh'
+            gh.write_text('''#!/usr/bin/env python3
+import base64, json, os, sys
+path = sys.argv[2]
+candidate = {'schema': 'baseharbor.ecosystem-candidate/v1',
+             'release': os.environ['FIXTURE_RELEASE'], 'core': os.environ['FIXTURE_CORE'],
+             'console': 'c' * 40, 'demo': 'd' * 40}
+if 'baseharbor-node-connector/contents/integration-candidate.json?' in path:
+    content = json.dumps(candidate)
+elif 'baseharbor-console/contents/integration-candidate.json?' in path:
+    content = json.dumps({key: candidate[key] for key in ('schema', 'release', 'core', 'demo')})
+elif 'baseharbor-demo/contents/baseharbor-core.ref?' in path:
+    content = os.environ['FIXTURE_DEMO_CORE']
+else:
+    raise SystemExit('unexpected source request: ' + path)
+print(json.dumps({'type': 'file', 'encoding': 'base64', 'size': len(content),
+                  'content': base64.b64encode(content.encode()).decode()}))
+''')
+            gh.chmod(0o755)
+            for version, invalid in [('0.4.24', ''), ('0.4.25', ''), ('0.4.26', ''),
+                                     ('0.4.26', 'demo-core'), ('0.4.26', 'requested-demo')]:
+                with self.subTest(version=version, invalid=invalid):
+                    output = root / 'outputs'
+                    output.write_text('')
+                    pins_path = notes / f'v{version}.consumer-pins.json'
+                    pins_path.unlink(missing_ok=True)
+                    env = {**os.environ, 'PATH': str(tools) + os.pathsep + os.environ['PATH'],
+                           'PYTHONPATH': str(source / 'scripts'),
+                           'EVENT_NAME': 'workflow_dispatch', 'INPUT_TAG': 'v' + version,
+                           'INPUT_CONSUMER_REF': 'b' * 40,
+                           'INPUT_DEMO_REF': ('e' if invalid == 'requested-demo' else 'd') * 40,
+                           'FIXTURE_RELEASE': version, 'FIXTURE_CORE': core,
+                           'FIXTURE_DEMO_CORE': 'e' * 40 if invalid == 'demo-core' else core,
+                           'RUNNER_TEMP': str(root), 'GITHUB_OUTPUT': str(output)}
+                    result = subprocess.run(['bash', '-c', script], cwd=repo, env=env,
+                                            capture_output=True, text=True, timeout=30)
+                    if invalid:
+                        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertIn('immutable Core/Connector/Console/Demo candidate differs',
+                                      result.stderr)
+                        self.assertFalse(pins_path.exists())
+                        self.assertEqual(output.read_text(), '')
+                    else:
+                        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                        self.assertEqual(output.read_text().splitlines(), [
+                            'consumer_ref=' + 'b' * 40, 'tag=v' + version,
+                            'candidate_sha=' + core, 'demo_ref=' + 'd' * 40])
+                        pins = json.loads(pins_path.read_text())
+                        self.assertEqual(len(pins['gates']), 3)
+                        if version == '0.4.26':
+                            validate_ecosystem_graph(pins['ecosystem'])
 
 
 if __name__ == '__main__':

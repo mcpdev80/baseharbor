@@ -128,7 +128,7 @@ jobs:
           grep -Fq "## [${version}]" CHANGELOG.md
           test -s "docs/releases/${tag}.md"
 
-          if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ]; then
+          if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ] || [ "$tag" = v0.4.26 ]; then
             python3 scripts/ecosystem_release_pins.py --tag "$tag" --core "$(git rev-parse HEAD)" \
               --connector "$INPUT_CONSUMER_REF" --demo "$INPUT_DEMO_REF" \
               --output "docs/releases/$tag.consumer-pins.json" > "$RUNNER_TEMP/v024-consumers.json"
