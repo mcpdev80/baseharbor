@@ -142,6 +142,15 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
+# Exact dependency repair: the final job awaits its mandatory authenticated
+# Workflow policy prerequisite. This grants no runtime or verifier exception;
+# all existing CI checks must execute against the actual integrated source.
+WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '74ef0b110caa4d8c458a1714f32c9c302985da1d'
+WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_pr_authenticated_results.py': 'modified',
+}
+
 # Independently reviewed withdrawal projection; canonical persisted provider
 # preferences remain intact. Native MCP run 39605072620 also proves this source.
 RETIREMENT_PREFERENCES_REVIEWED_HEAD = '3f6772fc75243eaceb00c669f8ed1cd4c4b694e4'
@@ -654,6 +663,9 @@ def plan(diff, requirements, mapping, repository='.',
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed final-job dependency on mandatory authenticated workflow policy'),
         (RETIREMENT_PREFERENCES_REVIEWED_HEAD, RETIREMENT_PREFERENCES_REVIEWED_FILES,
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
          'reviewed withdrawal preferences projection preserving canonical owners'),
