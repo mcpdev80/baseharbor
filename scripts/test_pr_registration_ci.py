@@ -313,6 +313,8 @@ class NativeMCPWorkflowRoute(TestCase):
         self.assertIn("deploy/control-plane/Dockerfile.binary", build)
         self.assertIn("main.commit=$source_sha", build)
         self.assertIn("build --pull", build)
+        self.assertIn("--entrypoint sha256sum", build)
+        self.assertNotIn("--entrypoint /bin/sha256sum", build)
         self.assertNotIn("push", build)
         self.assertIn("-timeout 40m", steps["app_edit_native"]["run"])
         self.assertEqual("always()", steps["cleanup"]["if"])
@@ -463,8 +465,15 @@ func main() { json.NewEncoder(os.Stdout).Encode(map[string]string{"version":vers
                     if "--rm" not in args or "--pull=never" not in args or data["reference"] not in args:
                         raise SystemExit("runtime receipt must use the exact local image without a pull")
                     if "--entrypoint" in args:
-                        if args[args.index("--entrypoint")+1] != "/bin/sha256sum":
-                            raise SystemExit("unexpected receipt entrypoint")
+                        entrypoint = args[args.index("--entrypoint")+1]
+                        # Model the image's executable lookup: the utility is
+                        # in /usr/bin; an assumed /bin path must really fail.
+                        image_path = ["/usr/local/bin", "/usr/bin", "/bin"]
+                        image_files = {"/usr/bin/sha256sum"}
+                        resolved = entrypoint if "/" in entrypoint else next(
+                            (path+"/"+entrypoint for path in image_path if path+"/"+entrypoint in image_files), None)
+                        if resolved not in image_files:
+                            raise SystemExit("image entrypoint executable not found")
                         print(("0"*64 if mode == "binary" else data["digest"])+"  /usr/local/bin/baha")
                     elif mode == "runtime-commit":
                         print(json.dumps({"version":"dev","commit":"old-source","built":"unknown"}))
@@ -475,7 +484,7 @@ func main() { json.NewEncoder(os.Stdout).Encode(map[string]string{"version":vers
                     raise SystemExit("unsupported Docker fixture operation")
                 '''))
             docker.chmod(0o755)
-            for mode in ("pass", "revision", "image-tag", "image-id", "runtime-commit", "binary", "source", "configured-tag"):
+            for mode in ("pass", "revision", "image-tag", "image-id", "runtime-commit", "binary", "source", "configured-tag", "assumed-utility-path"):
                 with self.subTest(mode=mode):
                     temp = root / ("runner-" + mode)
                     temp.mkdir()
@@ -486,7 +495,8 @@ func main() { json.NewEncoder(os.Stdout).Encode(map[string]string{"version":vers
                                        GITHUB_SHA="old-source" if mode == "source" else source,
                                        RUNNER_TEMP=str(temp), DOCKER_FIXTURE_STATE=str(temp / "image-state.json"),
                                        DOCKER_FIXTURE_MODE=mode, PATH=str(tools) + os.pathsep + os.environ["PATH"])
-                    executed = subprocess.run(["bash", "-euo", "pipefail", "-c", script],
+                    checked_script = script.replace("--entrypoint sha256sum", "--entrypoint /bin/sha256sum") if mode == "assumed-utility-path" else script
+                    executed = subprocess.run(["bash", "-euo", "pipefail", "-c", checked_script],
                                               cwd=candidate, env=environment, text=True,
                                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=90)
                     receipt = temp / "mcp-edit-native-evidence/runtime-image-verification.json"

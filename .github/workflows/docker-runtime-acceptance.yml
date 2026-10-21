@@ -339,7 +339,7 @@ jobs:
           docker --host unix:///var/run/docker.sock image inspect "$BASEHARBOR_RUNTIME_IMAGE" > "$out/runtime-image.json"
           docker --host unix:///var/run/docker.sock run --rm --pull=never \
             "$BASEHARBOR_RUNTIME_IMAGE" version -o json > "$out/runtime-cli-version.json"
-          docker --host unix:///var/run/docker.sock run --rm --pull=never --entrypoint /bin/sha256sum \
+          docker --host unix:///var/run/docker.sock run --rm --pull=never --entrypoint sha256sum \
             "$BASEHARBOR_RUNTIME_IMAGE" /usr/local/bin/baha > "$out/runtime-binary.sha256"
           python3 - "$out" "$source_sha" "$BASEHARBOR_RUNTIME_IMAGE" <<'PY'
           import json
