@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
+import hashlib
 import json
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -429,6 +432,89 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
+
+def trusted_binding_checks(diff, repository='.', context_repository=None,
+                           context_target_branch=None):
+    """Verify the frozen binding from the authenticated target, never PR content.
+
+    Re-run the real diff resolver so caller-supplied inventories, integration
+    parents and merge trees cannot substitute for Git evidence. This bounded
+    record enables only the three CI files and the existing CI check catalog.
+    """
+    valid, _ = validated_diff(diff)
+    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
+        return None
+    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
+                          if context_repository is None else context_repository)
+    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
+                            if context_target_branch is None else context_target_branch)
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
+        return None
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repository), *args],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              check=True).stdout
+
+    try:
+        raw = git('show', diff['target_base_sha'] +
+                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
+        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
+                            flags=re.MULTILINE | re.DOTALL)
+        if len(blocks) != 1 or raw.count('```') != 2:
+            return None
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('duplicate qualification key')
+                result[key] = value
+            return result
+
+        record = json.loads(blocks[0], object_pairs_hook=unique_object)
+        expected_files = {path: 'modified' for path in (
+            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+            'scripts/test_pr_gate_plan.py')}
+        expected_ids = {check['id'] for check in CI_CHECKS}
+        if (not isinstance(record, dict) or set(record) != {
+                'repository', 'target_branch', 'reviewed_head', 'files',
+                'file_hashes', 'required_checks'} or
+                record['repository'] != context_repository or
+                record['target_branch'] != context_target_branch or
+                record['reviewed_head'] != diff['head_sha'] or
+                record['files'] != expected_files or
+                not isinstance(record['file_hashes'], dict) or
+                set(record['file_hashes']) != set(expected_files) or
+                not isinstance(record['required_checks'], list) or
+                len(record['required_checks']) != len(expected_ids) or
+                set(record['required_checks']) != expected_ids):
+            return None
+        for path, digest in record['file_hashes'].items():
+            if (not isinstance(digest, str) or
+                    re.fullmatch(r'[0-9a-f]{64}', digest) is None or
+                    hashlib.sha256(git('cat-file', 'blob',
+                                       diff['head_sha'] + ':' + path)).hexdigest() != digest):
+                return None
+        # Import the resolver beside this trusted planner, not from the PR tree.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
+                                          diff['head_sha'], diff['integration_sha'])
+        if actual != diff or actual['broad_required']:
+            return None
+        changes = actual['changes']
+        if (len(changes) != len(expected_files) or
+                {c.get('path'): c.get('status') for c in changes} != expected_files):
+            return None
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return CI_CHECKS
+
+
 def plan(diff, requirements, mapping):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
@@ -692,6 +778,17 @@ def plan(diff, requirements, mapping):
                     'or automatically run the complete release catalog.'),
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
+    binding_checks = trusted_binding_checks(diff) if not unresolved else None
+    if binding_checks:
+        require(binding_checks)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': 'All authenticated current-integration CI checks must execute and pass.',
+                'reasons': ['Trusted target record: exact repository, branch, head, full '
+                            'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
         if path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
