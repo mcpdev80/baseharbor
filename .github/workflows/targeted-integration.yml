@@ -734,8 +734,70 @@ jobs:
         timeout-minutes: 5
         run: bash scripts/ci-core-rootless-runtime.sh
 
-      - name: Build BaseHarbor
-        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
+      - name: Build and verify exact source runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          build="$RUNNER_TEMP/podman-backup-runtime-build"
+          mkdir -p "$build"
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$(cat "$out/source-sha.txt")"
+          test "$(go env GOVERSION)" = "$(cat "$out/expected-go-version.txt")"
+          image="localhost/baseharbor-runtime:podman-backup-$source_sha"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=dev -X main.commit=$source_sha -X main.date=unknown" \
+            -o "$build/baha" ./cmd/baha
+          go version -m "$build/baha" | tee "$out/binary-build.txt"
+          grep -Eq '^[[:space:]]*build[[:space:]]+CGO_ENABLED=0$' "$out/binary-build.txt"
+          sha256sum "$build/baha" | tee "$out/host-binary.sha256"
+          "$build/baha" version --json > "$out/host-version.json"
+          cp deploy/control-plane/Dockerfile.binary "$build/Dockerfile"
+          sha256sum "$build/Dockerfile" > "$out/runtime-dockerfile.sha256"
+          podman build --pull --label "org.opencontainers.image.revision=$source_sha" \
+            --iidfile "$out/runtime-image-build-id.txt" --tag "$image" \
+            -f "$build/Dockerfile" "$build" 2>&1 | tee "$out/image-build.log"
+          printf '%s\n' "$image" > "$out/runtime-image-ref.txt"
+          podman image inspect --format '{{.Id}}' "$image" | tee "$out/runtime-image-id.txt"
+          podman image inspect --format '{{index .Labels "org.opencontainers.image.revision"}}' "$image" \
+            | tee "$out/runtime-image-revision.txt"
+          podman run --rm --network none --entrypoint sha256sum "$image" /usr/local/bin/baha \
+            | tee "$out/image-binary.sha256"
+          podman run --rm --network none "$image" version --json > "$out/image-version.json"
+          python3 - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery'
+          source = (out / 'source-sha.txt').read_text().strip()
+          def image_id(path):
+              value = (out / path).read_text().strip().removeprefix('sha256:')
+              if re.fullmatch(r'[0-9a-f]{64}', value) is None:
+                  raise SystemExit('Exact runtime image requires a complete image ID.')
+              return value
+          def binary_hash(path):
+              fields = (out / path).read_text().split()
+              if not fields or re.fullmatch(r'[0-9a-f]{64}', fields[0]) is None:
+                  raise SystemExit('Exact runtime image requires a complete binary SHA-256.')
+              return fields[0]
+          build_id = image_id('runtime-image-build-id.txt')
+          actual_id = image_id('runtime-image-id.txt')
+          host_hash = binary_hash('host-binary.sha256')
+          image_hash = binary_hash('image-binary.sha256')
+          versions = [json.loads((out / name).read_text()) for name in
+                      ('host-version.json', 'image-version.json')]
+          if (re.fullmatch(r'[0-9a-f]{40}', source) is None or build_id != actual_id
+                  or (out / 'runtime-image-revision.txt').read_text().strip() != source
+                  or host_hash != image_hash
+                  or any(not isinstance(value, dict) or value.get('commit') != source
+                         or value.get('version') != 'dev'
+                         for value in versions)):
+              raise SystemExit('Runtime source mismatch: require exact image ID/revision, identical binary bytes and actual host/image version commits.')
+          (out / 'runtime-source-binding.json').write_text(json.dumps({
+              'source': source, 'image_id': actual_id, 'binary_sha256': host_hash,
+              'image': (out / 'runtime-image-ref.txt').read_text().strip(),
+          }, indent=2) + '\n')
+          PYTHON
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
 
       - name: Application backup and restore on Podman
         env:
@@ -749,7 +811,7 @@ jobs:
           podman version | tee "$out/runtime-version.txt"
           podman info --format '{{.Host.Security.Rootless}}' | tee "$out/rootless.txt"
           test "$(cat "$out/rootless.txt")" = true
-          "$RUNNER_TEMP/baha" target create podman-backup-restore \
+          "$RUNNER_TEMP/podman-backup-runtime-build/baha" target create podman-backup-restore \
             --provider podman --access podman-backup-restore \
             --reference local --default
           go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \

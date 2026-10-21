@@ -362,7 +362,9 @@ func runOwnedBackupCoreFixture(t *testing.T, ctx context.Context,
 		defer cancel()
 		if err := stop(cleanupCtx); err != nil {
 			t.Errorf("owned Core fixture cleanup: %v", err)
+			return
 		}
+		t.Log("automatic owned Core fixture cleanup completed successfully")
 	})
 	if err := start(ctx); err != nil {
 		return err

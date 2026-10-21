@@ -135,7 +135,8 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
     def test_actual_receipt_parser_rejects_skip_fail_missing_and_wrong_test(self):
         import os
         import textwrap
-        code = textwrap.dedent(self.native.split("<<'PYTHON'\n", 1)[1].split(
+        test_step = self.native.split('      - name: Application backup and restore on Podman\n', 1)[1]
+        code = textwrap.dedent(test_step.split("<<'PYTHON'\n", 1)[1].split(
             '\n          PYTHON', 1)[0])
         package = 'github.com/mcpdev80/baseharbor/cmd/baha'
         test = 'TestAppBackupRestoreCLIRealDisasterRecovery'
@@ -203,9 +204,129 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
                 self.assertEqual(toolchain or 'go1.25.0',
                                  (receipt / 'expected-go-version.txt').read_text().strip())
 
+    def test_actual_runtime_image_shell_binds_binary_image_and_source_before_export(self):
+        import os
+        import textwrap
+        source = Path(__file__).resolve().parents[1]
+        section = self.native.split('      - name: Build and verify exact source runtime image\n', 1)[1]
+        shell = textwrap.dedent(section.split('        run: |\n', 1)[1].split(
+            '\n      - name:', 1)[0])
+        for scenario in ('pass', 'image-id', 'revision', 'binary-hash',
+                         'host-version', 'image-version', 'runtime-version',
+                         'image-json', 'cgo', 'missing-id'):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                repo, tools, runtime = root / 'repo', root / 'bin', root / 'runtime'
+                repo.mkdir()
+                tools.mkdir()
+                receipt = runtime / 'podman-backup-recovery'
+                receipt.mkdir(parents=True)
+                dockerfile = repo / 'deploy/control-plane/Dockerfile.binary'
+                dockerfile.parent.mkdir(parents=True)
+                dockerfile.write_bytes((source / 'deploy/control-plane/Dockerfile.binary').read_bytes())
+                env = {**os.environ, 'GIT_AUTHOR_NAME': 'Image fixture',
+                       'GIT_AUTHOR_EMAIL': 'fixture@example.test',
+                       'GIT_COMMITTER_NAME': 'Image fixture',
+                       'GIT_COMMITTER_EMAIL': 'fixture@example.test',
+                       'PATH': str(tools) + os.pathsep + os.environ['PATH'],
+                       'RUNNER_TEMP': str(runtime), 'GITHUB_ENV': str(root / 'environment'),
+                       'STUB_IMAGE_CASE': scenario}
+                for args in [('init', '-q'), ('add', '.'), ('commit', '-qm', 'image source fixture')]:
+                    subprocess.run(['git', *args], cwd=repo, env=env, check=True,
+                                   capture_output=True, text=True)
+                sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip()
+                env['STUB_SOURCE_SHA'] = sha
+                (receipt / 'source-sha.txt').write_text(sha + '\n')
+                (receipt / 'expected-go-version.txt').write_text('go1.26.9\n')
+                Path(env['GITHUB_ENV']).write_text('')
+                # Only the external Go/Podman executables are replaced. The
+                # production workflow shell, Git and byte hashing run unchanged.
+                go = tools / 'go'
+                go.write_text(r'''#!/usr/bin/env python3
+import json, os, pathlib, sys
+args = sys.argv[1:]
+source = os.environ['STUB_SOURCE_SHA']
+scenario = os.environ['STUB_IMAGE_CASE']
+if args == ['env', 'GOVERSION']:
+    print('go1.26.9')
+elif args[:2] == ['version', '-m']:
+    print('candidate: go1.26.9\n\tbuild\tCGO_ENABLED=' + ('1' if scenario == 'cgo' else '0'))
+elif args and args[0] == 'build':
+    assert os.environ.get('CGO_ENABLED') == '0'
+    assert '-trimpath' in args and args[-1] == './cmd/baha'
+    assert any('-X main.commit=' + source in arg for arg in args)
+    assert any('-X main.version=dev' in arg for arg in args)
+    commit = '0' * 40 if scenario == 'host-version' else source
+    path = pathlib.Path(args[args.index('-o') + 1])
+    path.write_text('#!/usr/bin/env python3\nimport json, sys\n'
+                    'assert sys.argv[1:] == ["version", "--json"]\n'
+                    'print(json.dumps({"version": "dev", "commit": ' + repr(commit) + '}))\n')
+    path.chmod(0o755)
+else:
+    raise SystemExit('unexpected Go command: ' + repr(args))
+''')
+                go.chmod(0o755)
+                podman = tools / 'podman'
+                podman.write_text(r'''#!/usr/bin/env python3
+import hashlib, json, os, pathlib, sys
+args = sys.argv[1:]
+source = os.environ['STUB_SOURCE_SHA']
+scenario = os.environ['STUB_IMAGE_CASE']
+image = 'localhost/baseharbor-runtime:podman-backup-' + source
+root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'podman-backup-runtime-build'
+if args and args[0] == 'build':
+    assert '--pull' in args and '--push' not in args
+    assert args[args.index('--label') + 1] == 'org.opencontainers.image.revision=' + source
+    assert args[args.index('--tag') + 1] == image
+    assert pathlib.Path(args[args.index('-f') + 1]).read_bytes() == pathlib.Path('deploy/control-plane/Dockerfile.binary').read_bytes()
+    assert pathlib.Path(args[-1]) == root and (root / 'baha').is_file()
+    pathlib.Path(args[args.index('--iidfile') + 1]).write_text('' if scenario == 'missing-id' else 'sha256:' + 'a' * 64 + '\n')
+    print('fixture image built')
+elif args[:2] == ['image', 'inspect']:
+    assert args[-1] == image
+    if args[args.index('--format') + 1] == '{{.Id}}':
+        print('sha256:' + ('b' if scenario == 'image-id' else 'a') * 64)
+    else:
+        assert args[args.index('--format') + 1] == '{{index .Labels "org.opencontainers.image.revision"}}'
+        print('0' * 40 if scenario == 'revision' else source)
+elif args[:4] == ['run', '--rm', '--network', 'none']:
+    if '--entrypoint' in args:
+        assert args[4:] == ['--entrypoint', 'sha256sum', image, '/usr/local/bin/baha']
+        digest = hashlib.sha256((root / 'baha').read_bytes()).hexdigest()
+        print(('0' * 64 if scenario == 'binary-hash' else digest) + '  /usr/local/bin/baha')
+    else:
+        assert args[4:] == [image, 'version', '--json']
+        print('[]' if scenario == 'image-json' else json.dumps({
+            'commit': '0' * 40 if scenario == 'image-version' else source,
+            'version': 'v0.4.26-candidate' if scenario == 'runtime-version' else 'dev'}))
+else:
+    raise SystemExit('unexpected Podman command: ' + repr(args))
+''')
+                podman.chmod(0o755)
+                result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                        cwd=repo, env=env, capture_output=True, text=True, timeout=30)
+                self.assertEqual(scenario == 'pass', result.returncode == 0,
+                                 result.stdout + result.stderr)
+                environment = Path(env['GITHUB_ENV']).read_text()
+                binding = receipt / 'runtime-source-binding.json'
+                if scenario == 'pass':
+                    self.assertEqual('BASEHARBOR_RUNTIME_IMAGE=localhost/baseharbor-runtime:podman-backup-' + sha + '\n', environment)
+                    actual = json.loads(binding.read_text())
+                    self.assertEqual(sha, actual['source'])
+                    self.assertEqual('a' * 64, actual['image_id'])
+                    self.assertEqual((receipt / 'host-binary.sha256').read_text().split()[0],
+                                     actual['binary_sha256'])
+                else:
+                    self.assertEqual('', environment, 'unverified image must never be exported')
+                    self.assertFalse(binding.exists(), 'failed image proof emitted a success receipt')
+
     def test_native_source_runtime_and_artifact_receipts_are_not_optional(self):
         for receipt in ['source-sha.txt', 'source-tree.txt', 'go-version.txt',
-                        'runtime-version.txt', 'rootless.txt', 'tests.jsonl']:
+                        'runtime-version.txt', 'rootless.txt', 'tests.jsonl',
+                        'runtime-image-build-id.txt', 'runtime-image-id.txt',
+                        'runtime-image-revision.txt', 'host-binary.sha256',
+                        'image-binary.sha256', 'host-version.json', 'image-version.json',
+                        'runtime-source-binding.json']:
             self.assertIn(receipt, self.native)
         self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', self.native)
         self.assertIn('if: always()', self.native)
