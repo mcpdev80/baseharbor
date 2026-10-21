@@ -181,7 +181,11 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, 
 		fields := strings.Fields(strings.TrimPrefix(key, "provider "))
 		if len(fields) == 2 {
 			if requirement, ok := parseAppEditRequirementRef(fields[0]); ok {
-				next, err := session.Controller.SelectProvider(ctx, requirement, fields[1])
+				instanceID := fields[1]
+				if instanceID == "automatic" {
+					instanceID = ""
+				}
+				next, err := session.Controller.SelectProvider(ctx, requirement, instanceID)
 				if err == nil {
 					session.Controller = next
 					return session
@@ -190,10 +194,10 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, 
 				return session
 			}
 		}
-		fmt.Fprintln(out, "usage: provider <kind/name> <instance-id>")
+		fmt.Fprintln(out, "usage: provider <kind/name> <instance-id|automatic>")
 		return session
 	}
-	fmt.Fprintln(out, "use space/up/down to edit needs, 'provider <kind/name> <id>' to choose a provider, enter to preview, or cancel to quit without changes")
+	fmt.Fprintln(out, "use space/up/down to edit needs, 'provider <kind/name> <id|automatic>' to choose a provider, enter to preview, or cancel to quit without changes")
 	return session
 }
 

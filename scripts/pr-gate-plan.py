@@ -142,6 +142,25 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
+# Exact parsing repair: Automatic maps to the existing empty provider selection;
+# no lifecycle, authorization or runtime authority changes are covered here.
+EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD = '673bdcdaed9b81fa7f810b018961c02943c89ca7'
+EDIT_AUTOMATIC_INPUT_REVIEWED_FILES = {
+    'cmd/baha/app_edit.go': 'modified',
+    'cmd/baha/app_edit_apply_test.go': 'modified',
+}
+# Bind complete v0.4.26 resolver routing, final consumer origin and required
+# producer dependencies. Existing CI runs the real shell/approval regressions.
+ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
+ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
+    '.github/workflows/pre-release.yml': 'modified',
+    '.github/workflows/release.yml': 'modified',
+    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+    'scripts/pre-release-resume.py': 'modified',
+    'scripts/test_ecosystem_release_pins.py': 'modified',
+    'scripts/test_pre_release_resume.py': 'modified',
+}
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -204,6 +223,11 @@ GC_999_REVIEWED_FILES = {
     '.github/workflows/artifact-gc.yml': 'modified',
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_artifact_gc.py': 'modified',
+}
+BINDING_PR_1007_REVIEWED_FILES = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
 }
 
 
@@ -319,6 +343,38 @@ REGISTRATION_CI_REVIEWED_FILES = {
     'scripts/test_pr_registration_ci.py': 'added',
 }
 
+# core-921 reviewed production registration coverage: the exact shared
+# handlers, the golden contract/registry, CLI/MCP parity sources and the six
+# EN/DE reference docs. Individually reviewed, not task acceptance of the
+# handlers; the immutable commit and exact statuses bind this bundle.
+# Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
+# FINAL reviewed head after fresh independent full-source + delta re-review of
+# the corrected #998 source (o4-998-rereview.md), corrected to the typed-error
+# delta head 89d3ddef (re-pin from the #998 reviewed head 6931ba9c). The
+# path/status set below is the exact two-dot diff origin/develop..89d3ddef
+# for these 16 core-921 registration files; the three unrelated process-doc
+# changes in that diff (DEVELOPMENT_GUIDELINES x2, review-protection) are NOT
+# part of the registration bundle.
+CORE_921_PRODUCTION_REVIEWED_HEAD = '89d3ddef6e77cad9b8035dce0b2a4dbe403c2951'
+CORE_921_PRODUCTION_REVIEWED_FILES = {
+    'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_provider_choice.go': 'modified',
+    'cmd/baha/app_registration_921.go': 'added',
+    'cmd/baha/commands.go': 'modified',
+    'cmd/baha/main.go': 'modified',
+    'cmd/baha/machine_coverage.go': 'modified',
+    'cmd/baha/mcp_tools.go': 'modified',
+    'cmd/baha/registration_921_test.go': 'added',
+    'contracts/machine/v1/control.golden.json': 'modified',
+    'docs/cli/command-index.md': 'modified',
+    'docs/de/cli/command-index.md': 'modified',
+    'docs/de/reference/cli-machine-coverage.md': 'modified',
+    'docs/de/reference/mcp.md': 'modified',
+    'docs/reference/cli-machine-coverage.md': 'modified',
+    'docs/reference/mcp.md': 'modified',
+    'internal/machine/contract.go': 'modified',
+}
+
 # Proposed exact qualification for core-917 (#975). This record becomes an
 # authority only after independent policy review and integration into develop.
 # Source inspection: PR review 5555616115. Focused + Docker/Podman evidence:
@@ -432,7 +488,6 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
-
 def trusted_binding_checks(diff, repository='.', context_repository=None,
                            context_target_branch=None):
     """Verify the frozen binding from the authenticated target, never PR content.
@@ -440,6 +495,9 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     Re-run the real diff resolver so caller-supplied inventories, integration
     parents and merge trees cannot substitute for Git evidence. This bounded
     record enables only the three CI files and the existing CI check catalog.
+    Hash the frozen reviewed blobs; later source may only add exact Git-computed
+    first-parent merges of authenticated target history. This permits strict
+    up-to-date integration without accepting candidate-authored follow-ups.
     """
     valid, _ = validated_diff(diff)
     if not valid or diff['broad_required'] or not diff.get('integration_sha'):
@@ -483,7 +541,11 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                 'file_hashes', 'required_checks'} or
                 record['repository'] != context_repository or
                 record['target_branch'] != context_target_branch or
-                record['reviewed_head'] != diff['head_sha'] or
+                not isinstance(record['reviewed_head'], str) or
+                re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                not core752_reviewed_merge_chain(
+                    diff['target_base_sha'], diff['head_sha'],
+                    record['reviewed_head'], repository) or
                 record['files'] != expected_files or
                 not isinstance(record['file_hashes'], dict) or
                 set(record['file_hashes']) != set(expected_files) or
@@ -495,7 +557,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
             if (not isinstance(digest, str) or
                     re.fullmatch(r'[0-9a-f]{64}', digest) is None or
                     hashlib.sha256(git('cat-file', 'blob',
-                                       diff['head_sha'] + ':' + path)).hexdigest() != digest):
+                                       record['reviewed_head'] + ':' + path)).hexdigest() != digest):
                 return None
         # Import the resolver beside this trusted planner, not from the PR tree.
         import importlib.util
@@ -515,7 +577,8 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     return CI_CHECKS
 
 
-def plan(diff, requirements, mapping):
+def plan(diff, requirements, mapping, repository='.',
+         context_repository=None, context_target_branch=None):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
@@ -563,6 +626,13 @@ def plan(diff, requirements, mapping):
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD, EDIT_AUTOMATIC_INPUT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+         [wizard_check('wizard-app-edit-tests')],
+         'reviewed Automatic input parsing repair; lifecycle unchanged'),
+        (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed v0.4.26 immutable ecosystem resolver activation'),
         (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
@@ -582,10 +652,10 @@ def plan(diff, requirements, mapping):
         (CORE_982_REVIEWED_HEAD, CORE_982_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed core-894 Actions summary presentation'),
-        (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed exact #999 GC evidence retention candidate'),
-    ):
+         (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
+           CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+           'reviewed exact #999 GC evidence retention candidate'),
+     ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
                 len(paths) == len(expected) and set(paths) == set(expected) and
@@ -713,6 +783,50 @@ def plan(diff, requirements, mapping):
                     'integration does not accept registration task or future handler changes.'),
                 'reasons': ['independently reviewed exact #974 registration CI source; '
                             'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
+    # core-921 reviewed production registration coverage. No path-only approval:
+    # the exact shared registration handlers, the golden contract/registry, the
+    # CLI/MCP parity sources and the six EN/DE reference docs must arrive as this
+    # complete reviewed status set on a clean trusted-target merge. Unrelated
+    # changes after the review commit fail closed; the normal merge proof checks
+    # each merge tree. This is a shared-source coverage binding, not task
+    # acceptance or authorization of future handler edits.
+    # Bound to the final independently re-reviewed #998 head 89d3ddef (re-pin
+    # from the reviewed head 6931ba9c; exact two-dot diff origin/develop..89d3ddef
+    # for these 16 core-921 registration files); an exact reviewed-file/status
+    # set on a clean trusted-target merge only.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
+            set(paths) == set(CORE_921_PRODUCTION_REVIEWED_FILES) and
+            all(ch.get('status') == CORE_921_PRODUCTION_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'], CORE_921_PRODUCTION_REVIEWED_HEAD)):
+        # Require the affected coverage explicitly so the new families actually
+        # execute: the shared registration CI matrix, the machine-adapter and
+        # provider-choice regression families, the core-921 TestCore921
+        # regressions, plus the cmd/baha formatting gate. cli-guided-tests only
+        # runs ^TestGuided and the existing registration runner does not select
+        # ^TestCore921, so these are required as named lanes.
+        require(CI_CHECKS)
+        require(CODE_CHECKS)
+        require(CLI_CHECKS)
+        require(DOC_CHECKS)
+        require(WIZARD_BASE_CHECKS)
+        require([wizard_check('wizard-registration-tests'),
+                  wizard_check('wizard-machine-adapter-tests'),
+                  wizard_check('wizard-provider-choice-tests'),
+                  wizard_check('wizard-core921-tests')])
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Require every listed validation; exact reviewed '
+                    'source integration does not accept registration task or future handler changes.'),
+                'reasons': ['independently reviewed exact core-921 production registration '
+                            'bundle; mandatory CI/source/CLI/documentation checks on the complete '
+                            'reviewed file set and clean trusted-target merge']}
     # Exact independently inspected #1008 fixture source only; no generic test exemption.
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
@@ -778,7 +892,8 @@ def plan(diff, requirements, mapping):
                     'or automatically run the complete release catalog.'),
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
-    binding_checks = trusted_binding_checks(diff) if not unresolved else None
+    binding_checks = trusted_binding_checks(
+        diff, repository, context_repository, context_target_branch) if not unresolved else None
     if binding_checks:
         require(binding_checks)
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
@@ -932,8 +1047,25 @@ def main():
     parser.add_argument('--requirements', type=Path, default=ROOT / 'release-requirements.json')
     parser.add_argument('--mapping', type=Path, default=ROOT / 'pr-gate-map-v1.json')
     args = parser.parse_args()
-    result = plan(json.loads(args.diff.read_text()), json.loads(args.requirements.read_text()),
-                  json.loads(args.mapping.read_text()))
+    diff = json.loads(args.diff.read_text())
+    requirements = json.loads(args.requirements.read_text())
+    mapping = json.loads(args.mapping.read_text())
+    # Authenticated evaluation context comes from the runner, never from the
+    # candidate PR. On GitHub Actions the runner sets GITHUB_REPOSITORY
+    # (owner/name) and GITHUB_BASE_REF (target branch) in the pull_request
+    # context; these cannot be altered by the PR author. A blank value means
+    # the authenticated context is unknown, which must fail closed: an empty
+    # context yields an unresolved plan, never a trusted one.
+    context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
+    context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
+    if not context_repository or not context_target_branch:
+        raise SystemExit(
+            'refusing to qualify without authenticated runner context: '
+            'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'
+            % (context_repository, context_target_branch))
+    result = plan(diff, requirements, mapping,
+                  context_repository=context_repository,
+                  context_target_branch=context_target_branch)
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
