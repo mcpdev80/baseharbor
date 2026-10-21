@@ -103,6 +103,13 @@ type appMCPEditInput struct {
 }
 
 func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
+	registerMCPAppEditToolWithAuthorities(server, store, defaultAppEditAuthorities)
+}
+
+// The registered transport consumes the existing Edit authorities. Production
+// execution stays on the existing lifecycle; contract tests supply bounded
+// authority fixtures through this same registration path.
+func registerMCPAppEditToolWithAuthorities(server *mcp.Server, store application.Store, authoritiesFor func(application.Store, []string) appEditAuthorities) {
 	mcp.AddTool(server, machineMCPTool("app.edit", "Propose or apply reviewed application needs with exact fresh provider-impact consent.", false),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input appMCPEditInput) (*mcp.CallToolResult, any, error) {
 			ctx = withTargetOverride(ctx, input.Target)
@@ -119,7 +126,7 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 			if err := authorizeResolvedMCPOperation(ctx, "app.edit", resolved, ""); err != nil {
 				return machineMCPFailure(err)
 			}
-			authorities := defaultAppEditAuthorities(store, args)
+			authorities := authoritiesFor(store, args)
 			switch strings.ToLower(strings.TrimSpace(input.Phase)) {
 			case "propose":
 				if input.Proposal != nil || input.Consent != nil {
@@ -157,7 +164,10 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 				if err != nil {
 					return machineMCPFailure(err)
 				}
-				execute := appEditRuntimeExecuteAuthority(store, args, resolved, source, authorities, io.Discard, io.Discard, nil, nil)
+				execute := authorities.Execute
+				if execute == nil {
+					execute = appEditRuntimeExecuteAuthority(store, args, resolved, source, authorities, io.Discard, io.Discard, nil, nil)
+				}
 				result, err := appMachineChangeDesired(ctx, appMachineDesiredChangeRequest{
 					Desired: input.Desired, Proposal: *input.Proposal, Consent: *input.Consent,
 				}, authorities.Read, authorities.Choices, authorities.Plan,
@@ -165,6 +175,11 @@ func registerMCPAppEditTool(server *mcp.Server, store application.Store) {
 						return execute(ctx, desired, plan, consent)
 					})
 				if err != nil {
+					if result.Version == application.ProviderImpactVersion && result.PlanID != "" {
+						failure := *machine.Classify(classifyMachineCLIError(err))
+						failure.Details = result
+						return machineMCPFailure(&failure)
+					}
 					return machineMCPFailure(err)
 				}
 				return nil, result, nil

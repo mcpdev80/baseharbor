@@ -4,13 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -351,4 +356,216 @@ func deploymentSnapshot(t *testing.T) []byte {
 func deploymentSnapshotEqual(t *testing.T, before, after []byte) bool {
 	t.Helper()
 	return bytes.Equal(before, after)
+}
+
+// These real SDK calls exercise public error/result contracts using the same
+// registered handler and bounded Edit authority fixtures; they are not native
+// runtime acceptance evidence.
+func TestCore921MCPEditConsentAndPartialExecutionThroughSDK(t *testing.T) {
+	for _, scenario := range []string{"approval", "partial", "complete", "complete-preferences", "wrong-target", "stale", "requirements-added", "requirements-removed", "requirements-changed", "requirements-reordered", "preferences-added", "preferences-removed", "preferences-changed", "preferences-reordered"} {
+		t.Run(scenario, func(t *testing.T) {
+			t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+			target := configureTestTarget(t)
+			root := t.TempDir()
+			t.Chdir(root)
+			requirement := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+			requirements := []capability.Requirement{requirement, {Kind: capability.SQL, Name: "analytics"}}
+			manifest := application.WithSQLInstances(application.New("edit-safe", "dev", false, false, false), "primary", "analytics")
+			manifest.ApplicationID = application.MustNewApplicationID()
+			source := filepath.Join(root, application.RepositoryManifestName)
+			mustWriteInitializedAuthoredManifest(t, source, manifest)
+			registerTestDeployment(t, target, manifest, root, source)
+			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name,
+				PlanID: "sdk-plan", Revision: "sdk-revision", Complete: true, ConfirmationsRequired: 2,
+				Impacts: []application.ProviderImpact{{InstanceID: "db-a", Operation: "provide"}, {InstanceID: "db-b", Operation: "provide"}}}
+			executed := 0
+			authorities := appEditTestAuthorities(target.Name, manifest.ApplicationID,
+				requirements, nil, []application.ProviderImpactPlan{plan}, &executed)
+			outcomes := []application.ProviderExecutionOutcome{
+				{InstanceID: "db-a", Operation: "provide", Status: "applied", Verified: true, Evidence: "verified fixture outcome"},
+				{InstanceID: "db-b", Operation: "provide", Status: "applied", Verified: true, Evidence: "verified fixture outcome"},
+			}
+			if scenario == "partial" {
+				outcomes[1].Status, outcomes[1].Verified = "failed", false
+				outcomes[1].ErrorCode = "interrupted"
+				outcomes[1].Materials = []application.MaterialOutcome{{MaterialID: "db-b/data", Disposition: "retained",
+					Location: &application.ResourceLocation{Owner: manifest.ApplicationID, Target: target.Name, Kind: "volume", Reference: "owned-data"},
+					Verified: true, Evidence: "existing material retained"}}
+			}
+			authorities.Execute = func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+				executed++
+				if scenario == "partial" {
+					return outcomes, errors.New("private-executor-diagnostic password=private-secret-marker")
+				}
+				return outcomes, nil
+			}
+			ctx := context.Background()
+			server := mcp.NewServer(&mcp.Implementation{Name: "edit-contract-fixture", Version: "v1"}, nil)
+			registerMCPAppEditToolWithAuthorities(server, application.DefaultStore(), func(application.Store, []string) appEditAuthorities { return authorities })
+			serverTransport, clientTransport := mcp.NewInMemoryTransports()
+			serverSession, err := server.Connect(ctx, serverTransport, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = serverSession.Close() })
+			client := mcp.NewClient(&mcp.Implementation{Name: "edit-contract-client", Version: "v1"}, nil)
+			session, err := client.Connect(ctx, clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = session.Close() })
+			request := appMachineDesiredRequest{Target: target.Name, SnapshotRevision: "snapshot-1", Requirements: requirements}
+			if strings.Contains(scenario, "preferences") {
+				for _, requirement := range requirements {
+					request.Choices = append(request.Choices, appMachineDesiredChoice{Requirement: requirement, InstanceID: "provider-" + string(requirement.Kind) + "-" + requirement.Name})
+				}
+			}
+			proposed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: appMCPEditInput{
+				Target: target.Name, Phase: "propose", Desired: request,
+			}})
+			if err != nil || proposed == nil || proposed.IsError {
+				t.Fatalf("SDK propose failed: %v", err)
+			}
+			var proposal appMachineDesiredResult
+			if err := json.Unmarshal(marshalStructured(t, proposed), &proposal); err != nil {
+				t.Fatal(err)
+			}
+			consent := application.ProviderChangeConsent{PlanID: proposal.Plan.PlanID, First: true, Second: scenario != "approval"}
+			if scenario == "wrong-target" {
+				proposal.Desired.Target = "foreign-target"
+			}
+			if scenario == "stale" {
+				proposal.PlanRevision = "old-plan"
+			}
+			switch scenario {
+			case "requirements-added":
+				proposal.Requirements = append(proposal.Requirements, capability.Requirement{Kind: capability.SQL, Name: "extra"})
+			case "requirements-removed":
+				proposal.Requirements = proposal.Requirements[:1]
+			case "requirements-changed":
+				proposal.Requirements[0].Name = "changed"
+			case "requirements-reordered":
+				proposal.Requirements[0], proposal.Requirements[1] = proposal.Requirements[1], proposal.Requirements[0]
+			case "preferences-added":
+				proposal.Preferences = append(proposal.Preferences, proposal.Preferences[0])
+			case "preferences-removed":
+				proposal.Preferences = proposal.Preferences[:1]
+			case "preferences-changed":
+				proposal.Preferences[0].InstanceID = "foreign-provider"
+			case "preferences-reordered":
+				proposal.Preferences[0], proposal.Preferences[1] = proposal.Preferences[1], proposal.Preferences[0]
+			}
+			beforeSource, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeDeployment := deploymentSnapshot(t)
+			applied, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: appMCPEditInput{
+				Target: target.Name, Phase: "apply", Desired: proposal.Desired, Proposal: &proposal, Consent: &consent,
+			}})
+			if err != nil || applied == nil {
+				t.Fatalf("SDK apply transport failed: %v", err)
+			}
+			raw := marshalStructured(t, applied)
+			if bytes.Contains(raw, []byte("private-executor-diagnostic")) || bytes.Contains(raw, []byte("private-secret-marker")) {
+				t.Fatal("executor diagnostic leaked")
+			}
+			if scenario == "complete" || scenario == "complete-preferences" {
+				var receipt application.ProviderChangeResult
+				if err := json.Unmarshal(raw, &receipt); err != nil {
+					t.Fatal(err)
+				}
+				if applied.IsError || executed != 1 || receipt.Status != "complete" || !reflect.DeepEqual(receipt.Outcomes, outcomes) {
+					t.Fatalf("complete SDK receipt lost: %s", raw)
+				}
+				return
+			}
+			var payload struct {
+				Error *machine.Error `json:"error"`
+			}
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if !applied.IsError || payload.Error == nil {
+				t.Fatal("SDK apply did not return a structured failure")
+			}
+			want := machine.ErrorConflict
+			if scenario == "approval" {
+				want = machine.ErrorApprovalRequired
+			}
+			if scenario == "partial" {
+				want = machine.ErrorVerificationFailed
+			}
+			if payload.Error.Code != want || payload.Error.Next == "" {
+				t.Fatalf("SDK classification = %s, want %s: %s", payload.Error.Code, want, raw)
+			}
+			if scenario == "partial" {
+				var details struct {
+					Error struct {
+						Details application.ProviderChangeResult `json:"details"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(raw, &details); err != nil {
+					t.Fatal(err)
+				}
+				if executed != 1 || details.Error.Details.Status != "partial" || details.Error.Details.PlanID != plan.PlanID || !reflect.DeepEqual(details.Error.Details.Outcomes, outcomes) {
+					t.Fatalf("partial SDK outcomes or material dispositions lost: %s", raw)
+				}
+			} else {
+				if executed != 0 {
+					t.Fatal("rejected SDK request executed a mutation")
+				}
+				afterSource, readErr := os.ReadFile(source)
+				if readErr != nil || !bytes.Equal(beforeSource, afterSource) || !bytes.Equal(beforeDeployment, deploymentSnapshot(t)) {
+					t.Fatalf("rejected SDK request changed source or deployment state: %v", readErr)
+				}
+			}
+		})
+	}
+}
+
+func TestCore921MachineAdapterPublicCategories(t *testing.T) {
+	for _, test := range []struct {
+		private string
+		public  machine.ErrorCode
+	}{
+		{"approval_required", machine.ErrorApprovalRequired}, {"unsupported", machine.ErrorUnsupported},
+		{"denied", machine.ErrorPolicyDenied}, {"cancel", machine.ErrorInternal}, {"partial", machine.ErrorVerificationFailed},
+	} {
+		got := machine.Classify(classifyMachineCLIError(&appMachineError{Code: test.private}))
+		if got.Code != test.public || got.CauseCode != test.private || got.Next == "" {
+			t.Fatalf("public category for %s = %+v", test.private, got)
+		}
+	}
+}
+
+func TestCore921MissingConsentPublicClassification(t *testing.T) {
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", PlanID: "impact-1", ConfirmationsRequired: 2}
+	_, err := appMachineChange(context.Background(), appMachineChangeRequest{
+		Target: "dev", SnapshotRevision: "snapshot-1", PlanRevision: "impact-1",
+		Consent: application.ProviderChangeConsent{PlanID: "impact-1", First: true},
+	}, func(context.Context, string) (GuidedReadContext, error) { return appMachineFixture(), nil },
+		func(context.Context, string) (application.ProviderImpactPlan, error) { return plan, nil },
+		func(context.Context, string, string) error { return nil },
+		func(context.Context, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+			t.Fatal("unconsented mutation")
+			return nil, nil
+		})
+	if err == nil {
+		t.Fatal("missing second confirmation accepted")
+	}
+	result, payload, transportErr := machineMCPFailure(err)
+	if transportErr != nil || result == nil || !result.IsError {
+		t.Fatalf("public error unavailable: %v", transportErr)
+	}
+	raw, _ := json.Marshal(payload)
+	var decoded struct {
+		Error machine.Error `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Error.Code != machine.ErrorApprovalRequired {
+		t.Fatalf("missing second provider confirmation surfaced as %q; next=%q; want approval_required", decoded.Error.Code, decoded.Error.Next)
+	}
 }

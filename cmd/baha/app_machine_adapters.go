@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -23,33 +24,37 @@ func (e *appMachineError) Error() string { return "application machine: " + e.Co
 // CauseCode and remediation instead of the internal_error fallthrough. Every
 // origin keeps its fail-closed semantics; no guard is weakened.
 func classifyAppMachineError(err *appMachineError) *machine.Error {
+	var classified *machine.Error
 	switch err.Code {
 	case "conflict":
-		return machine.NewError(machine.ErrorConflict,
+		classified = machine.NewError(machine.ErrorConflict,
 			"application machine: "+err.Code,
-			"Resubmit with the exact proposed intent, a matching snapshot revision and the current provider-consequence consent, or correct the deployment Target.",
-			false)
+			"Resubmit with the exact proposed intent, a matching snapshot revision and the current provider-consequence consent, or correct the deployment Target.", false)
+	case "approval_required":
+		classified = machine.NewError(machine.ErrorApprovalRequired,
+			"application machine: "+err.Code,
+			"Review the current provider consequences and supply every required confirmation, including separate data-deletion consent when required.", false)
 	case "cancel":
-		return machine.NewError(machine.ErrorRuntimeUnavailable,
+		classified = machine.Classify(context.Canceled)
+	case "denied":
+		classified = machine.NewError(machine.ErrorPolicyDenied,
 			"application machine: "+err.Code,
-			"Retry after confirming the local runtime and providers are responsive.",
-			true)
-	case "denied", "unsupported":
-		return machine.NewError(machine.ErrorPolicyDenied,
+			"Review ownership and authorization for this Target and retry.", false)
+	case "unsupported":
+		classified = machine.NewError(machine.ErrorUnsupported,
 			"application machine: "+err.Code,
-			"Review ownership, authorization or provider support for this Target and retry.",
-			false)
+			"Choose an operation and provider supported by this Target.", false)
 	case "partial":
-		return machine.NewError(machine.ErrorVerificationFailed,
+		classified = machine.NewError(machine.ErrorVerificationFailed,
 			"application machine: "+err.Code,
-			"Inspect the partial change evidence and complete or roll back the affected provider operations.",
-			true)
+			"Inspect the partial change evidence and complete or roll back the affected provider operations.", true)
 	default:
-		return machine.NewError(machine.ErrorInternal,
+		classified = machine.NewError(machine.ErrorInternal,
 			"application machine: "+err.Code,
-			"Capture the reported machine code and investigate the underlying provider operation.",
-			false)
+			"Capture the reported machine code and investigate the underlying provider operation.", false)
 	}
+	classified.CauseCode = err.Code
+	return classified
 }
 
 type appMachineRead func(context.Context, string) (GuidedReadContext, error)
@@ -207,7 +212,7 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 				return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 			}
 			if change.Code == "impact-confirmation-required" || change.Code == "data-deletion-consent-required" {
-				return application.ProviderChangeResult{}, &appMachineError{Code: "cancel"}
+				return application.ProviderChangeResult{}, &appMachineError{Code: "approval_required"}
 			}
 		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}
@@ -403,17 +408,15 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 		fresh.PlanRevision != req.Proposal.PlanRevision {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
-	// The fresh plan must equal the proposed plan by VALUE, not pointer identity:
-	// a JSON round-trip (MCP client) produces a distinct *ProviderRealization
-	// After-pointer, which reflect.DeepEqual would flag as a divergence even
-	// though the resolved impact is identical. Compare serialized forms instead.
+	// Compare the public plan values after the proposal's JSON round-trip;
+	// omitted optional empty collections must not create artificial drift.
 	freshPlan, freshErr := json.Marshal(fresh.Plan)
 	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
 	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
-	if !reflect.DeepEqual(fresh.Requirements, req.Proposal.Requirements) ||
-		!reflect.DeepEqual(fresh.Preferences, req.Proposal.Preferences) {
+	if !slices.Equal(fresh.Requirements, req.Proposal.Requirements) ||
+		!slices.Equal(fresh.Preferences, req.Proposal.Preferences) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
 	if err := authorize(ctx, req.Desired.Target, fresh.ApplicationID); err != nil {
@@ -429,7 +432,7 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 			case "stale-impact-consent", "invalid-impact-plan":
 				return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 			case "impact-confirmation-required", "data-deletion-consent-required":
-				return application.ProviderChangeResult{}, &appMachineError{Code: "cancel"}
+				return application.ProviderChangeResult{}, &appMachineError{Code: "approval_required"}
 			}
 		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}

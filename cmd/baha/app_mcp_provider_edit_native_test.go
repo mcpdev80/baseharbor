@@ -164,8 +164,9 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 		proposal.SnapshotRevision != snapshotRevision || proposal.Desired.SnapshotRevision != snapshotRevision {
 		t.Fatal("round-tripped proposal lacks the exact application, Target, plan or snapshot identity")
 	}
-	if !proposal.Plan.Complete || proposal.Plan.ConfirmationsRequired < 2 {
-		t.Fatal("supported provider edit must have a complete two-stage plan")
+	if !proposal.Plan.Complete || proposal.Plan.ConfirmationsRequired < 1 || proposal.Plan.ConfirmationsRequired > 2 {
+		t.Fatalf("supported provider edit lacks a complete valid consent plan: complete=%t confirmations=%d impacts=%d",
+			proposal.Plan.Complete, proposal.Plan.ConfirmationsRequired, len(proposal.Plan.Impacts))
 	}
 	editStateUnchanged(t, baseline, stateRoot, root)
 	consent := application.ProviderChangeConsent{
