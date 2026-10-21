@@ -2,6 +2,8 @@
 
 Dieser Einstieg bringt eine bestehende Anwendung unter BaseHarbor zum Laufen, ohne dass du Provider-Interna verstehen oder das Manifest manuell bearbeiten musst.
 
+Mit dem [Bedarfswizard](../how-to/application-needs.md) erstellst du ein Projekt interaktiv, änderst seine Anforderungen und prüfst seinen Target-Footprint.
+
 ## Mit den Anforderungen der Anwendung beginnen
 
 Eine unterstützte lokale Workload ohne verwaltete Capabilities läuft ohne
