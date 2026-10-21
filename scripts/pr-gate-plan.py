@@ -142,6 +142,21 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
+# Exact parsing repair: Automatic maps to the existing empty provider selection;
+# no lifecycle, authorization or runtime authority changes are covered here.
+EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD = '673bdcdaed9b81fa7f810b018961c02943c89ca7'
+EDIT_AUTOMATIC_INPUT_REVIEWED_FILES = {
+    'cmd/baha/app_edit.go': 'modified',
+    'cmd/baha/app_edit_apply_test.go': 'modified',
+}
+# Enable the existing immutable ecosystem resolver for v0.4.26 only. The real
+# release shell/resolver regression runs in the existing Focused Python job.
+ECOSYSTEM_RESOLVER_REVIEWED_HEAD = 'd31d4394aeab276245938f6808b998485c70fb56'
+ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
+    '.github/workflows/pre-release.yml': 'modified',
+    'scripts/test_ecosystem_release_pins.py': 'modified',
+}
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -563,6 +578,13 @@ def plan(diff, requirements, mapping):
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD, EDIT_AUTOMATIC_INPUT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+         [wizard_check('wizard-app-edit-tests')],
+         'reviewed Automatic input parsing repair; lifecycle unchanged'),
+        (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed v0.4.26 immutable ecosystem resolver activation'),
         (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
