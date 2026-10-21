@@ -6,15 +6,56 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"slices"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // appMachineError exposes stable machine codes without leaking internal errors.
 type appMachineError struct{ Code string }
 
 func (e *appMachineError) Error() string { return "application machine: " + e.Code }
+
+// classifyAppMachineError maps the private adapter classification (conflict,
+// cancel, denied, unsupported, partial) onto the shared typed machine error
+// owner so the public CLI/JSON/MCP boundary surfaces a concrete Code,
+// CauseCode and remediation instead of the internal_error fallthrough. Every
+// origin keeps its fail-closed semantics; no guard is weakened.
+func classifyAppMachineError(err *appMachineError) *machine.Error {
+	var classified *machine.Error
+	switch err.Code {
+	case "conflict":
+		classified = machine.NewError(machine.ErrorConflict,
+			"application machine: "+err.Code,
+			"Resubmit with the exact proposed intent, a matching snapshot revision and the current provider-consequence consent, or correct the deployment Target.", false)
+	case "approval_required":
+		classified = machine.NewError(machine.ErrorApprovalRequired,
+			"application machine: "+err.Code,
+			"Review the current provider consequences and supply every required confirmation, including separate data-deletion consent when required.", false)
+	case "cancel":
+		classified = machine.Classify(context.Canceled)
+	case "denied":
+		classified = machine.NewError(machine.ErrorPolicyDenied,
+			"application machine: "+err.Code,
+			"Review ownership and authorization for this Target and retry.", false)
+	case "unsupported":
+		classified = machine.NewError(machine.ErrorUnsupported,
+			"application machine: "+err.Code,
+			"Choose an operation and provider supported by this Target.", false)
+	case "partial":
+		classified = machine.NewError(machine.ErrorVerificationFailed,
+			"application machine: "+err.Code,
+			"Inspect the partial change evidence and complete or roll back the affected provider operations.", true)
+	default:
+		classified = machine.NewError(machine.ErrorInternal,
+			"application machine: "+err.Code,
+			"Capture the reported machine code and investigate the underlying provider operation.", false)
+	}
+	classified.CauseCode = err.Code
+	return classified
+}
 
 type appMachineRead func(context.Context, string) (GuidedReadContext, error)
 
@@ -171,7 +212,7 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 				return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 			}
 			if change.Code == "impact-confirmation-required" || change.Code == "data-deletion-consent-required" {
-				return application.ProviderChangeResult{}, &appMachineError{Code: "cancel"}
+				return application.ProviderChangeResult{}, &appMachineError{Code: "approval_required"}
 			}
 		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}
@@ -206,27 +247,37 @@ func appMachineFootprintJSON(view GuidedReadContext, target string) ([]byte, err
 
 // appMachineDesiredChoice is a Target-bound, full-requirement request.
 // No mutation or provider selection is inferred from a bare provider kind.
+// Its public JSON contract is snake_case so the MCP SDK infers consistent
+// field names.
 type appMachineDesiredChoice struct {
-	Requirement capability.Requirement
-	InstanceID  string
+	Requirement capability.Requirement `json:"requirement"`
+	InstanceID  string                 `json:"instance_id,omitempty"`
 }
+
+// appMachineDesiredRequest is the portable, Target-bound edit intent carried
+// across the MCP boundary. Its public JSON contract is snake_case so the MCP
+// SDK infers consistent field names; no field leaks reconciliation state.
 type appMachineDesiredRequest struct {
-	Target           string
-	SnapshotRevision string
-	Requirements     []capability.Requirement
-	Choices          []appMachineDesiredChoice
+	Target           string                    `json:"target" jsonschema:"exact resolved deployment target for this edit"`
+	SnapshotRevision string                    `json:"snapshot_revision,omitempty" jsonschema:"optional current snapshot revision matched during propose"`
+	Requirements     []capability.Requirement  `json:"requirements,omitempty" jsonschema:"portable capability requirements to converge"`
+	Choices          []appMachineDesiredChoice `json:"choices,omitempty" jsonschema:"optional per-requirement provider instance selections"`
 }
 type appMachineChoiceReader func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error)
 type appMachineDesiredPlanner func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error)
+
+// appMachineDesiredResult is the typed propose response carried back across the
+// MCP boundary. Its public JSON contract is snake_case so the SDK infers
+// consistent field names; no field leaks internal reconciliation state.
 type appMachineDesiredResult struct {
-	ApplicationID    string
-	Desired          appMachineDesiredRequest
-	Requirements     []capability.Requirement
-	Preferences      []application.ProviderPreference
-	Choices          []appProviderChoice
-	Plan             application.ProviderImpactPlan
-	SnapshotRevision string
-	PlanRevision     string
+	ApplicationID    string                           `json:"application_id"`
+	Desired          appMachineDesiredRequest         `json:"desired"`
+	Requirements     []capability.Requirement         `json:"requirements,omitempty"`
+	Preferences      []application.ProviderPreference `json:"preferences,omitempty"`
+	Choices          []appProviderChoice              `json:"choices,omitempty"`
+	Plan             application.ProviderImpactPlan   `json:"plan"`
+	SnapshotRevision string                           `json:"snapshot_revision,omitempty"`
+	PlanRevision     string                           `json:"plan_revision,omitempty"`
 }
 
 // appMachinePropose delegates provider compatibility to accepted core-913 choice
@@ -354,10 +405,18 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 	}
 	if fresh.ApplicationID != req.Proposal.ApplicationID ||
 		fresh.SnapshotRevision != req.Proposal.SnapshotRevision ||
-		fresh.PlanRevision != req.Proposal.PlanRevision ||
-		!reflect.DeepEqual(fresh.Plan, req.Proposal.Plan) ||
-		!reflect.DeepEqual(fresh.Requirements, req.Proposal.Requirements) ||
-		!reflect.DeepEqual(fresh.Preferences, req.Proposal.Preferences) {
+		fresh.PlanRevision != req.Proposal.PlanRevision {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	// Compare the public plan values after the proposal's JSON round-trip;
+	// omitted optional empty collections must not create artificial drift.
+	freshPlan, freshErr := json.Marshal(fresh.Plan)
+	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
+	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
+		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
+	}
+	if !slices.Equal(fresh.Requirements, req.Proposal.Requirements) ||
+		!slices.Equal(fresh.Preferences, req.Proposal.Preferences) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}
 	if err := authorize(ctx, req.Desired.Target, fresh.ApplicationID); err != nil {
@@ -373,7 +432,7 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 			case "stale-impact-consent", "invalid-impact-plan":
 				return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 			case "impact-confirmation-required", "data-deletion-consent-required":
-				return application.ProviderChangeResult{}, &appMachineError{Code: "cancel"}
+				return application.ProviderChangeResult{}, &appMachineError{Code: "approval_required"}
 			}
 		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "denied"}

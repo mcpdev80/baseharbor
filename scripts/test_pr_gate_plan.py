@@ -425,7 +425,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
                 self.assertEqual([], planned['selected_gates'])
                 expected_checks = {c['id'] for c in
                                     planner.CI_CHECKS + planner.CODE_CHECKS +
-                                    planner.CLI_CHECKS + planner.DOC_CHECKS +
+                                    planner.WORKFLOW_SYNTAX_CHECKS + planner.CLI_CHECKS + planner.DOC_CHECKS +
                                     planner.WIZARD_BASE_CHECKS +
                                     [wizard_check('wizard-registration-tests'),
                                      wizard_check('wizard-machine-adapter-tests'),
@@ -1552,6 +1552,125 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                                              result['selected_gates'])
                         else:
                             self.assertTrue(result['unresolved_coverage'])
+
+
+class ReviewedSourceQualificationTests(unittest.TestCase):
+    def test_immutable_anchors_and_complete_inventories(self):
+        self.assertEqual('013d7e4d491afc58a31c7934b371ab0dc35f3346',
+                         planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/ci.yml': 'modified',
+                          'scripts/pr-authenticated-results.py': 'modified',
+                          'scripts/test_pr_authenticated_results.py': 'modified'},
+                         planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES)
+        self.assertEqual('3f6772fc75243eaceb00c669f8ed1cd4c4b694e4',
+                         planner.RETIREMENT_PREFERENCES_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/application_runtime_retirement_intent.go': 'modified',
+                          'cmd/baha/application_runtime_retirement_preferences_test.go': 'added'},
+                         planner.RETIREMENT_PREFERENCES_REVIEWED_FILES)
+        self.assertEqual('b31fe8918e319e3ad1505ffaaa1209c1343a5d13',
+                         planner.CORE_921_PRODUCTION_REVIEWED_HEAD)
+        self.assertEqual(20, len(planner.CORE_921_PRODUCTION_REVIEWED_FILES))
+        self.assertEqual('added', planner.CORE_921_PRODUCTION_REVIEWED_FILES[
+            'cmd/baha/app_mcp_provider_edit_native_test.go'])
+        self.assertEqual('77eb9a120f46b42281198fcee1de788c9779be18',
+                         planner.PODMAN_PG17_RECOVERY_REVIEWED_HEAD)
+        self.assertEqual(17, len(planner.PODMAN_PG17_RECOVERY_REVIEWED_FILES))
+        self.assertFalse(set(planner.RETIREMENT_PREFERENCES_REVIEWED_FILES) &
+                         set(planner.PODMAN_PG17_RECOVERY_REVIEWED_FILES))
+
+    def test_real_git_exact_sources_and_all_authority_mutations(self):
+        spec = importlib.util.spec_from_file_location('native_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        cases = (
+            ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
+            ('RETIREMENT_PREFERENCES', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS),
+            ('PODMAN_PG17_RECOVERY', planner.CI_CHECKS + planner.CODE_CHECKS +
+             planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
+            ('CORE_921_PRODUCTION', planner.CI_CHECKS + planner.CODE_CHECKS +
+             planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS +
+             planner.DOC_CHECKS + [wizard_check(name) for name in (
+                 'wizard-registration-tests', 'wizard-machine-adapter-tests',
+                 'wizard-provider-choice-tests', 'wizard-core921-tests')]),
+        )
+        for name, required in cases:
+            with self.subTest(source=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                files = getattr(planner, name + '_REVIEWED_FILES')
+                def git(*args):
+                    return subprocess.run(['git', '-C', str(root), *args], check=True,
+                                          capture_output=True, text=True).stdout.strip()
+                git('init', '-q')
+                git('config', 'user.name', 'Native qualification fixture')
+                git('config', 'user.email', 'native@example.invalid')
+                for path, status in files.items():
+                    if status == 'modified':
+                        (root / path).parent.mkdir(parents=True, exist_ok=True)
+                        (root / path).write_text('baseline\n')
+                git('add', '.')
+                git('commit', '-qm', 'accepted prerequisite baseline')
+                git('branch', 'trusted')
+                git('checkout', '-qb', 'source')
+                for path in files:
+                    (root / path).parent.mkdir(parents=True, exist_ok=True)
+                    (root / path).write_text('reviewed contents\n')
+                git('add', '.')
+                git('commit', '-qm', 'independently reviewed source')
+                reviewed = git('rev-parse', 'HEAD')
+                git('checkout', '-q', 'trusted')
+                (root / 'trusted-policy.txt').write_text('independent authority\n')
+                git('add', '.')
+                git('commit', '-qm', 'trusted target advance')
+                target = git('rev-parse', 'HEAD')
+                git('checkout', '-q', 'source')
+                git('merge', '--no-ff', '-qm', 'clean target integration', 'trusted')
+                head = git('rev-parse', 'HEAD')
+                def resolved_diff(candidate):
+                    tree = git('merge-tree', '--write-tree', target, candidate).splitlines()[0]
+                    integration = git('commit-tree', tree, '-p', target, '-p', candidate,
+                                      '-m', 'PR integration')
+                    return resolver.resolve_pr_diff(root, target, candidate, integration)
+                actual = resolved_diff(head)
+                proof = planner.core752_reviewed_merge_chain
+                def real_proof(base, candidate, anchor=None):
+                    return proof(base, candidate, anchor, root)
+                def assert_no_qualification(result):
+                    self.assertFalse(result['coverage_status'] == 'resolved' and
+                                     result['selected_gates'] == [], result)
+                with patch.object(planner, name + '_REVIEWED_HEAD', reviewed), patch.object(
+                        planner, 'core752_reviewed_merge_chain', side_effect=real_proof):
+                    result = planner.plan(actual, REQ, MAP)
+                    self.assertEqual('resolved', result['coverage_status'], result)
+                    self.assertEqual([], result['selected_gates'])
+                    self.assertEqual({c['id'] for c in required},
+                                     {c['id'] for c in result['required_validation_checks']})
+                    mutations = [dict(actual, changes=actual['changes'][:-1]),
+                                 dict(actual, changes=actual['changes'] + paths('unreviewed.go')),
+                                 dict(actual, changes=[dict(c, status='deleted') if i == 0 else c
+                                     for i, c in enumerate(actual['changes'])])]
+                    mutations += [dict(actual, **{key: None}) for key in
+                                  ('head_sha', 'target_base_sha', 'merge_base_sha', 'integration_sha')]
+                    for mutated in mutations:
+                        with self.subTest(mutation=mutated):
+                            assert_no_qualification(planner.plan(mutated, REQ, MAP))
+                    with patch.object(planner, name + '_REVIEWED_HEAD', 'f' * 40):
+                        assert_no_qualification(planner.plan(actual, REQ, MAP))
+                    # Same reviewed path inventory with different bytes cannot
+                    # inherit authority, even when integrated through real Git.
+                    changed = root / next(iter(files))
+                    changed.write_text('unreviewed follow-up\n')
+                    git('commit', '-qam', 'unreviewed content')
+                    unreviewed = git('rev-parse', 'HEAD')
+                    self.assertFalse(real_proof(target, unreviewed, reviewed))
+                    assert_no_qualification(planner.plan(resolved_diff(unreviewed), REQ, MAP))
+                    # A two-parent merge with an injected tree is not the clean
+                    # merge of the reviewed source and authenticated target.
+                    dirty_tree = git('rev-parse', unreviewed + '^{tree}')
+                    dirty = git('commit-tree', dirty_tree, '-p', reviewed, '-p', target,
+                                '-m', 'injected merge resolution')
+                    self.assertFalse(real_proof(target, dirty, reviewed))
+                    assert_no_qualification(planner.plan(resolved_diff(dirty), REQ, MAP))
 
 
 class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):

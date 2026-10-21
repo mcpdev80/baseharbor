@@ -89,6 +89,8 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.workspace.resolve` | `read_only` | false | false |
 | `baseharbor.workspace.status` | `read_only` | false | false |
 | `baseharbor.workspace.update` | `mutating` | false | false |
+| `baseharbor.app.edit` | `mutating` | true | true |
+| `baseharbor.app.footprint.show` | `read_only` | false | false |
 | `baseharbor.app.new` | `mutating` | false | false |
 | `baseharbor.plan` | `read_only` | false | false |
 | `baseharbor.apply` | `mutating` | true | false |

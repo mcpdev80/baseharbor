@@ -658,6 +658,24 @@
             "mcp_tool": "baseharbor.workspace.update"
           },
           {
+            "id": "app.edit",
+            "description": "Preview/apply reviewed application needs with exact explicit consent.",
+            "safety": "mutating",
+            "confirmation_required": true,
+            "policy_required": true,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.edit"
+          },
+          {
+            "id": "app.footprint.show",
+            "description": "Read the Target-bound authoritative footprint.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.footprint.show"
+          },
+          {
             "id": "app.new",
             "description": "Create and validate a new ecosystem-native application from portable capability intent.",
             "safety": "mutating",

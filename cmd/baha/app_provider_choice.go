@@ -17,18 +17,18 @@ type appProviderPreference struct {
 }
 
 type appProviderCandidate struct {
-	Instance capability.ProviderInstance
-	Reason   string
+	Instance capability.ProviderInstance `json:"instance"`
+	Reason   string                      `json:"reason,omitempty"`
 }
 
 type appProviderChoice struct {
-	Target              string
-	Requirement         capability.Requirement
-	Candidates          []appProviderCandidate
-	PreferredInstanceID string
-	ProposedInstanceID  string
-	Reason              string
-	BoundInstanceID     string
+	Target              string                 `json:"target"`
+	Requirement         capability.Requirement `json:"requirement"`
+	Candidates          []appProviderCandidate `json:"candidates,omitempty"`
+	PreferredInstanceID string                 `json:"preferred_instance_id,omitempty"`
+	ProposedInstanceID  string                 `json:"proposed_instance_id,omitempty"`
+	Reason              string                 `json:"reason,omitempty"`
+	BoundInstanceID     string                 `json:"bound_instance_id,omitempty"`
 }
 
 // The authoritative footprint owns automatic resolution and binding precedence.
