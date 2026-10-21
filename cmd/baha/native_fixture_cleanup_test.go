@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -48,8 +49,13 @@ func approvedNativeFixtureCleanup(t *testing.T, ctx context.Context, out io.Writ
 		return err
 	}
 	ack := &application.ProviderChangeConsent{PlanID: p.Scope.PlanID, First: true, Second: true, DeleteData: true}
-	if err := destroyInstallation(withProviderChangeConsent(machineNoninteractiveContext(ctx), ack), true, out, out); err != nil {
+	var destroyOutput bytes.Buffer
+	if err := destroyInstallation(withProviderChangeConsent(machineNoninteractiveContext(ctx), ack), true, &destroyOutput, &destroyOutput); err != nil {
 		logNativeFixtureCleanupMismatch(t, p, err)
+		if diagnostic := nativeFixtureCleanupDiagnostic(err); diagnostic != nil {
+			t.Logf("[native-cleanup-diagnostic] caller=%s owner=%s classification=%s",
+				diagnostic.Caller, diagnostic.Owner, diagnostic.Classification)
+		}
 		return err
 	}
 	if config == nil {

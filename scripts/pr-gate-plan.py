@@ -142,6 +142,61 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
+# Exact final-check repair: await mandatory policy and bounded authenticated
+# API job readiness. The adapter comes only from the immutable trusted base;
+# the verifier and original identity guards stay unchanged. No runtime exception.
+WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '013d7e4d491afc58a31c7934b371ab0dc35f3346'
+WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/pr-authenticated-results.py': 'modified',
+    'scripts/test_pr_authenticated_results.py': 'modified',
+}
+
+# Exact Docker fixture/workflow source: all eight native runtime families passed
+# run 39619782116, including cleanup and authenticated readiness. Existing Guided
+# regressions exercise the fixture's strict consent, owner and material checks;
+# accepted target merges also retain the independently qualified MCP workflow.
+DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD = 'c1337192e06e63f8210ace9e5687d8dc8f70f6d2'
+DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES = {
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    'cmd/baha/app_repository_integration_test.go': 'modified',
+    'cmd/baha/app_workload_integration_test.go': 'modified',
+    'cmd/baha/repository_runtime_fixture_test.go': 'added',
+    'scripts/test_ci_docker_runtime_doctor.py': 'added',
+}
+
+# Independently reviewed withdrawal projection; canonical persisted provider
+# preferences remain intact. Native MCP run 39605072620 also proves this source.
+RETIREMENT_PREFERENCES_REVIEWED_HEAD = '3f6772fc75243eaceb00c669f8ed1cd4c4b694e4'
+RETIREMENT_PREFERENCES_REVIEWED_FILES = {
+    'cmd/baha/application_runtime_retirement_intent.go': 'modified',
+    'cmd/baha/application_runtime_retirement_preferences_test.go': 'added',
+}
+
+# Native PG17 rootless recovery passed run 39605258769, including cleanup and
+# foreign-resource preservation. Retirement must already be integrated: its
+# two files are prerequisites, not part of this exact 17-file qualification.
+PODMAN_PG17_RECOVERY_REVIEWED_HEAD = '77eb9a120f46b42281198fcee1de788c9779be18'
+PODMAN_PG17_RECOVERY_REVIEWED_FILES = {
+    '.github/workflows/targeted-integration.yml': 'modified',
+    'cmd/baha/app_backup_restore.go': 'modified',
+    'cmd/baha/app_backup_restore_integration_test.go': 'modified',
+    'cmd/baha/app_backup_runtime_fixture_test.go': 'added',
+    'cmd/baha/app_backup_writer_recovery_test.go': 'added',
+    'cmd/baha/app_broker.go': 'modified',
+    'cmd/baha/app_workload.go': 'modified',
+    'cmd/baha/app_workload_stop_test.go': 'modified',
+    'cmd/baha/native_fixture_cleanup_diagnostics.go': 'added',
+    'cmd/baha/native_fixture_cleanup_diagnostics_test.go': 'modified',
+    'cmd/baha/native_fixture_cleanup_test.go': 'modified',
+    'cmd/baha/runtime_destroy_inventory_test.go': 'modified',
+    'internal/application/postgres_backup.go': 'modified',
+    'internal/application/postgres_backup_integration_test.go': 'modified',
+    'internal/application/postgres_backup_test.go': 'modified',
+    'internal/runtime/service_stop.go': 'modified',
+    'scripts/test_pr_selected_runtime_matrix.py': 'modified',
+}
+
 # Exact parsing repair: Automatic maps to the existing empty provider selection;
 # no lifecycle, authorization or runtime authority changes are covered here.
 EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD = '673bdcdaed9b81fa7f810b018961c02943c89ca7'
@@ -343,26 +398,21 @@ REGISTRATION_CI_REVIEWED_FILES = {
     'scripts/test_pr_registration_ci.py': 'added',
 }
 
-# core-921 reviewed production registration coverage: the exact shared
-# handlers, the golden contract/registry, CLI/MCP parity sources and the six
-# EN/DE reference docs. Individually reviewed, not task acceptance of the
-# handlers; the immutable commit and exact statuses bind this bundle.
-# Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
-# FINAL reviewed head after fresh independent full-source + delta re-review of
-# the corrected #998 source (o4-998-rereview.md), corrected to the typed-error
-# delta head 89d3ddef (re-pin from the #998 reviewed head 6931ba9c). The
-# path/status set below is the exact two-dot diff origin/develop..89d3ddef
-# for these 16 core-921 registration files; the three unrelated process-doc
-# changes in that diff (DEVELOPMENT_GUIDELINES x2, review-protection) are NOT
-# part of the registration bundle.
-CORE_921_PRODUCTION_REVIEWED_HEAD = '89d3ddef6e77cad9b8035dce0b2a4dbe403c2951'
+# Independently reviewed production registration, SDK error/consent semantics,
+# and coreless SQL fixture. Full native MCP run 39605072620 passed every step,
+# including cleanup. Retirement is a prerequisite integrated independently;
+# the exact remaining 20 paths and clean Git merge bind this source only.
+CORE_921_PRODUCTION_REVIEWED_HEAD = 'b31fe8918e319e3ad1505ffaaa1209c1343a5d13'
 CORE_921_PRODUCTION_REVIEWED_FILES = {
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
     'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_machine_adapters_test.go': 'modified',
+    'cmd/baha/app_mcp_provider_edit_native_test.go': 'added',
     'cmd/baha/app_provider_choice.go': 'modified',
     'cmd/baha/app_registration_921.go': 'added',
     'cmd/baha/commands.go': 'modified',
-    'cmd/baha/main.go': 'modified',
     'cmd/baha/machine_coverage.go': 'modified',
+    'cmd/baha/main.go': 'modified',
     'cmd/baha/mcp_tools.go': 'modified',
     'cmd/baha/registration_921_test.go': 'added',
     'contracts/machine/v1/control.golden.json': 'modified',
@@ -373,6 +423,7 @@ CORE_921_PRODUCTION_REVIEWED_FILES = {
     'docs/reference/cli-machine-coverage.md': 'modified',
     'docs/reference/mcp.md': 'modified',
     'internal/machine/contract.go': 'modified',
+    'scripts/test_pr_registration_ci.py': 'modified',
 }
 
 # Proposed exact qualification for core-917 (#975). This record becomes an
@@ -626,6 +677,18 @@ def plan(diff, requirements, mapping, repository='.',
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD, DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES,
+         CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed native Docker fixture and authenticated eight-family runtime evidence'),
+        (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed final-job dependency on mandatory authenticated workflow policy'),
+        (RETIREMENT_PREFERENCES_REVIEWED_HEAD, RETIREMENT_PREFERENCES_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
+         'reviewed withdrawal preferences projection preserving canonical owners'),
+        (PODMAN_PG17_RECOVERY_REVIEWED_HEAD, PODMAN_PG17_RECOVERY_REVIEWED_FILES,
+         CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed native PG17 rootless recovery and foreign-resource protection'),
         (EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD, EDIT_AUTOMATIC_INPUT_REVIEWED_FILES,
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
          [wizard_check('wizard-app-edit-tests')],
@@ -790,10 +853,8 @@ def plan(diff, requirements, mapping, repository='.',
     # changes after the review commit fail closed; the normal merge proof checks
     # each merge tree. This is a shared-source coverage binding, not task
     # acceptance or authorization of future handler edits.
-    # Bound to the final independently re-reviewed #998 head 89d3ddef (re-pin
-    # from the reviewed head 6931ba9c; exact two-dot diff origin/develop..89d3ddef
-    # for these 16 core-921 registration files); an exact reviewed-file/status
-    # set on a clean trusted-target merge only.
+    # The native-proven candidate includes the complete SDK/fixture regression
+    # inventory; an older registration-only subset cannot reuse its authority.
     if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
             len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
@@ -809,6 +870,7 @@ def plan(diff, requirements, mapping, repository='.',
         # runs ^TestGuided and the existing registration runner does not select
         # ^TestCore921, so these are required as named lanes.
         require(CI_CHECKS)
+        require(WORKFLOW_SYNTAX_CHECKS)
         require(CODE_CHECKS)
         require(CLI_CHECKS)
         require(DOC_CHECKS)

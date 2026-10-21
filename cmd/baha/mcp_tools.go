@@ -136,6 +136,7 @@ func registerMCPDiscoveryReadTools(server *mcp.Server) {
 }
 
 func registerMCPApplicationReadTools(server *mcp.Server, store application.Store) {
+	registerMCPFootprintShowTool(server, store)
 	mcp.AddTool(server, machineMCPTool("plan", "Read-only deterministic desired-state plan for the current repository or named application.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		resolved, err := resolveApplication(ctx, store, machineApplicationArgs(input.Name, input.Environment), "plan")
@@ -465,6 +466,7 @@ func registerMCPLifecycleTools(server *mcp.Server, store application.Store) {
 }
 
 func registerMCPApplicationMutationTools(server *mcp.Server, store application.Store) {
+	registerMCPAppEditTool(server, store)
 	mcp.AddTool(server, machineMCPTool("apply", "Converge the complete selected BaseHarbor application lifecycle and return verified semantic status. TIGHT host-memory headroom requires explicit skip_memory_preflight approval; hard failures remain enforced.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplyInput) (*mcp.CallToolResult, any, error) {
 		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)

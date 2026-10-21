@@ -151,7 +151,7 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 		return fmt.Errorf("start application runtime broker: %w", err)
 	}
 	cli.ReportActivityDetail(progress, "waiting for runtime broker readiness")
-	verifyCtx, cancel := context.WithTimeout(ctx, runtimeReadinessTimeout(compose, 60*time.Second))
+	verifyCtx, cancel := context.WithTimeout(ctx, runtimeReadinessTimeout(compose, 120*time.Second))
 	defer cancel()
 	var verifyErr error
 	for verifyCtx.Err() == nil {
