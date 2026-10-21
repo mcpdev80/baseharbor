@@ -82,13 +82,13 @@ func TestAppMachineAdaptersStalePlanConsentAndCancellation(t *testing.T) {
 		{"stale-consent", func(r *appMachineChangeRequest) {
 			r.Consent = application.ProviderChangeConsent{PlanID: "old", First: true, Second: true, DeleteData: true}
 		}, "conflict"},
-		{"cancel-first", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "impact-1"} }, "cancel"},
+		{"cancel-first", func(r *appMachineChangeRequest) { r.Consent = application.ProviderChangeConsent{PlanID: "impact-1"} }, "approval_required"},
 		{"cancel-second", func(r *appMachineChangeRequest) {
 			r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true}
-		}, "cancel"},
+		}, "approval_required"},
 		{"cancel-delete", func(r *appMachineChangeRequest) {
 			r.Consent = application.ProviderChangeConsent{PlanID: "impact-1", First: true, Second: true}
-		}, "cancel"},
+		}, "approval_required"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

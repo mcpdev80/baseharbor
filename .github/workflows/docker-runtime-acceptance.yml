@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   docker-runtime:
-    if: github.event_name != 'push' || !startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
+    if: github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
@@ -261,3 +261,183 @@ jobs:
         if: always()
         shell: bash
         run: bash scripts/ci-runtime-reset.sh docker
+
+
+  mcp-edit-native:
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_MCP_EDIT_NATIVE_ACCEPTANCE: "true"
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:mcp-${{ github.sha }}
+      GOTOOLCHAIN: local
+
+    steps:
+      - name: Checkout validation branch
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.9'
+          cache: false
+
+      - name: Reset Docker runtime
+        id: reset
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Report runner and Docker inventory
+        id: inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          mkdir -p "$out"
+          git rev-parse HEAD > "$out/source.txt"
+          test "$(cat "$out/source.txt")" = "$GITHUB_SHA"
+          git rev-parse 'HEAD^{tree}' > "$out/tree.txt"
+          printf '%s %s %s\n' "$RUNNER_NAME" "$RUNNER_OS" "$RUNNER_ARCH" > "$out/runner.txt"
+          go version > "$out/go-version.txt"
+          test "$(go env GOVERSION)" = "$(sed -n 's/^toolchain //p' go.mod)"
+          printf '%s\n' 'unix:///var/run/docker.sock' > "$out/runtime-endpoint.txt"
+          docker --host unix:///var/run/docker.sock version > "$out/runtime-version.txt"
+          docker --host unix:///var/run/docker.sock compose version > "$out/compose-version.txt"
+          docker --host unix:///var/run/docker.sock info --format '{{.ID}}' > "$out/daemon-id.txt"
+          docker --host unix:///var/run/docker.sock ps --format '{{.ID}} {{.Names}} {{.Status}}' > "$out/containers-before.txt"
+
+      - name: Build and verify the exact candidate Core runtime image
+        id: build_runtime_image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          build="$RUNNER_TEMP/mcp-edit-native-image"
+          mkdir -p "$out" "$build"
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$GITHUB_SHA"
+          test "$BASEHARBOR_RUNTIME_IMAGE" = "localhost/baseharbor-runtime:mcp-$source_sha"
+          test "$(go env GOVERSION)" = "$(sed -n 's/^toolchain //p' go.mod)"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=dev -X main.commit=$source_sha -X main.date=unknown" \
+            -o "$build/baha" ./cmd/baha 2>&1 | tee "$out/host-build.log"
+          cp deploy/control-plane/Dockerfile.binary "$build/Dockerfile"
+          sha256sum "$build/baha" > "$out/host-binary.sha256"
+          "$build/baha" version -o json > "$out/host-cli-version.json"
+          docker --host unix:///var/run/docker.sock build --pull \
+            --label "org.opencontainers.image.revision=$source_sha" \
+            -t "$BASEHARBOR_RUNTIME_IMAGE" "$build" 2>&1 | tee "$out/runtime-image-build.log"
+          docker --host unix:///var/run/docker.sock image inspect "$BASEHARBOR_RUNTIME_IMAGE" > "$out/runtime-image.json"
+          docker --host unix:///var/run/docker.sock run --rm --pull=never \
+            "$BASEHARBOR_RUNTIME_IMAGE" version -o json > "$out/runtime-cli-version.json"
+          docker --host unix:///var/run/docker.sock run --rm --pull=never --entrypoint sha256sum \
+            "$BASEHARBOR_RUNTIME_IMAGE" /usr/local/bin/baha > "$out/runtime-binary.sha256"
+          python3 - "$out" "$source_sha" "$BASEHARBOR_RUNTIME_IMAGE" <<'PY'
+          import json
+          from pathlib import Path
+          import re
+          import sys
+
+          out, source, reference = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+          images = json.loads((out / "runtime-image.json").read_text())
+          if not isinstance(images, list) or len(images) != 1:
+              raise SystemExit("exact candidate runtime image inspection is missing or ambiguous")
+          image = images[0]
+          revision = image.get("Config", {}).get("Labels", {}).get("org.opencontainers.image.revision")
+          image_id = image.get("Id", "")
+          if revision != source or reference not in image.get("RepoTags", []) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+              raise SystemExit("runtime image source, reference or image ID does not match the candidate")
+          host = json.loads((out / "host-cli-version.json").read_text())
+          runtime = json.loads((out / "runtime-cli-version.json").read_text())
+          if host.get("commit") != source or runtime != host:
+              raise SystemExit("host and runtime CLI versions must contain the exact candidate commit")
+          host_digest = (out / "host-binary.sha256").read_text().split()[0]
+          runtime_digest = (out / "runtime-binary.sha256").read_text().split()[0]
+          if not re.fullmatch(r"[0-9a-f]{64}", host_digest) or host_digest != runtime_digest:
+              raise SystemExit("packaged runtime binary differs from the exact host binary")
+          (out / "runtime-image-verification.json").write_text(json.dumps({
+              "source_sha": source, "image_ref": reference, "image_id": image_id, "binary_sha256": host_digest,
+          }) + "\n")
+          PY
+
+      - name: Execute app.edit native provider-edit lifecycle
+        id: app_edit_native
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          mkdir -p "$out"
+          go test -json ./cmd/baha \
+            -run '^TestAppEditMCPAppEditRunsRealProviderEditLifecycle$' \
+            -count=1 -timeout 40m 2> >(tee "$out/test-stderr.log" >&2) | tee "$out/test-results.jsonl"
+          python3 - "$out/test-results.jsonl" "$out/verification.json" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          package = "github.com/mcpdev80/baseharbor/cmd/baha"
+          test = "TestAppEditMCPAppEditRunsRealProviderEditLifecycle"
+          events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
+          if not events or any(not isinstance(event, dict) for event in events):
+              raise SystemExit("native app.edit evidence missing or invalid")
+          if any(event.get("Action") in {"fail", "skip"} for event in events):
+              raise SystemExit("native app.edit evidence contains a failure or skipped test")
+          exact = [event for event in events if event.get("Package") == package and event.get("Test") == test]
+          package_events = [event for event in events if event.get("Package") == package and not event.get("Test")]
+          if sum(event.get("Action") == "run" for event in exact) != 1 or sum(event.get("Action") == "pass" for event in exact) != 1:
+              raise SystemExit("exact native app.edit test must execute and pass once")
+          if sum(event.get("Action") == "pass" for event in package_events) != 1:
+              raise SystemExit("exact native app.edit package must pass once")
+          Path(sys.argv[2]).write_text(json.dumps({"package": package, "test": test, "test_pass": True, "package_pass": True}) + "\n")
+          PY
+
+      - name: Cleanup Docker runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate native app.edit evidence
+        if: always()
+        shell: bash
+        env:
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SETUP_OUTCOME: ${{ steps.setup_go.outcome }}
+          RESET_OUTCOME: ${{ steps.reset.outcome }}
+          INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
+          IMAGE_OUTCOME: ${{ steps.build_runtime_image.outcome }}
+          TEST_OUTCOME: ${{ steps.app_edit_native.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          mkdir -p "$out"
+          rows="$out/results.tsv"
+          printf 'Checkout\t%s\tExact requested source\n' "$CHECKOUT_OUTCOME" > "$rows"
+          printf 'Go setup\t%s\tCandidate toolchain\n' "$SETUP_OUTCOME" >> "$rows"
+          printf 'Runtime reset\t%s\tHosted Docker fixture\n' "$RESET_OUTCOME" >> "$rows"
+          printf 'Source and runtime receipts\t%s\tActual commit, tree, Go and explicit Docker daemon\n' "$INVENTORY_OUTCOME" >> "$rows"
+          printf 'Exact Core runtime image\t%s\tSource-built local image; exact OCI revision, CLI commit and binary digest\n' "$IMAGE_OUTCOME" >> "$rows"
+          printf 'Native app.edit\t%s\tExact GoJSON test and package PASS; no skipped or failed test\n' "$TEST_OUTCOME" >> "$rows"
+          printf 'Cleanup\t%s\tHosted Docker runtime returned to clean state\n' "$CLEANUP_OUTCOME" >> "$rows"
+          bash scripts/ci-evidence.sh "$out" "BaseHarbor native MCP app.edit evidence" \
+            "mcp-edit-native" "$GITHUB_REF_NAME" "$(git rev-parse HEAD)" "$rows"
+
+      - name: Retain native app.edit evidence and original failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mcp-edit-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mcp-edit-native-evidence
+          if-no-files-found: error
+          retention-days: 30

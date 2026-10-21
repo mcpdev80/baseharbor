@@ -70,6 +70,8 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 			row.Reason = cliSemanticModes[path]
 			row.JSONSurface = "CLI -o json / typed MCP result"
 			switch path {
+			case "baha app edit":
+				row.JSONSurface = "Interactive CLI / typed two-phase MCP consent"
 			case "baha app env":
 				row.JSONSurface = "CLI --format json (masked) / typed MCP result"
 			case "baha trust export":
@@ -91,8 +93,10 @@ func classifyCommandCoverage(path string, command *cli.Command) commandCoverage 
 }
 
 var cliMachineOperations = map[string]string{
-	"baha update": "release.check",
-	"baha up":     "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
+	"baha app edit":           "app.edit",
+	"baha app footprint show": "app.footprint.show",
+	"baha update":             "release.check",
+	"baha up":                 "control-plane.up", "baha down": "control-plane.stop", "baha destroy": "control-plane.destroy", "baha status": "control-plane.status", "baha doctor": "control-plane.doctor",
 	"baha openbao status":    "openbao.status",
 	"baha openbao bootstrap": "openbao.bootstrap",
 	"baha openbao unseal":    "openbao.unseal",

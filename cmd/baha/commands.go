@@ -238,6 +238,8 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		}
 	}
 	appCmd.Children = append(appCmd.Children,
+		appEditRegisteredCommand(store),
+		appFootprintRegisteredCommand(store),
 		appInspectCommand(),
 		appApplyCommand(store),
 		appGuidedBackupCommand(store),
