@@ -1375,8 +1375,8 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
-      - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
+      - name: Resolve exact immutable consumer source bindings
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25' || needs.source.outputs.tag == 'v0.4.26')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1421,8 +1421,8 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
-      - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
+      - name: Resolve exact immutable consumer source bindings
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25' || needs.source.outputs.tag == 'v0.4.26')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1467,8 +1467,8 @@ jobs:
         with:
           ref: ${{ needs.source.outputs.candidate_sha }}
           fetch-depth: 0
-      - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
+      - name: Resolve exact immutable consumer source bindings
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25' || needs.source.outputs.tag == 'v0.4.26')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
@@ -1505,7 +1505,7 @@ jobs:
     name: Evidence · Candidate Manifest
     # Targeted qualification never grants the final release-boundary approval.
     if: ${{ always() && inputs.only_gates == '' && !startsWith(github.ref_name, 'validation/pre-release/selected/') && !startsWith(github.ref_name, 'validation/evidence/') }}
-    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
+    needs: [source, runtime_candidate, adoption, static_gates, runtime_light_gates, runtime_heavy_gates, v0421_ha_groups, reference_journey, integration_public_contracts, integration_configuration_policy, integration_browser_terminal, integration_core_docker, integration_core_podman, integration_coreless_docker, integration_coreless_podman, integration_remote_target_docker, integration_remote_target_podman, integration_live_console]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout evidence tooling
@@ -1517,8 +1517,8 @@ jobs:
       - name: Install evidence parser
         run: python -m pip install --disable-pip-version-check -r requirements-docs.txt
 
-      - name: Resolve exact v0.4.24 consumer source bindings
-        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25')
+      - name: Resolve exact immutable consumer source bindings
+        if: needs.source.result == 'success' && (needs.source.outputs.tag == 'v0.4.24' || needs.source.outputs.tag == 'v0.4.25' || needs.source.outputs.tag == 'v0.4.26')
         env:
           GH_TOKEN: ${{ github.token }}
           CANDIDATE_SHA: ${{ needs.source.outputs.candidate_sha }}
