@@ -21,6 +21,7 @@ type inventoryTestRuntime struct {
 	fail       bool
 	retain     bool
 	deleted    []string
+	destroyErr error
 }
 
 func (r *inventoryTestRuntime) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
@@ -34,10 +35,72 @@ func (r *inventoryTestRuntime) ListOwnedProjectResources(_ context.Context, proj
 }
 func (r *inventoryTestRuntime) DestroyOwnedProjectResources(_ context.Context, project string, _ []bhruntime.ProjectResource) error {
 	r.deleted = append(r.deleted, project)
+	if r.destroyErr != nil {
+		return r.destroyErr
+	}
 	if !r.retain {
 		r.resources[project] = nil
 	}
 	return nil
+}
+
+func TestDestroyInventoryResourceMissingErrorCannotHideRemainingResources(t *testing.T) {
+	for _, message := range []string{
+		"remove owned container vanished: no such container",
+		"remove owned volume vanished: no such volume",
+		"remove owned network vanished: no such network",
+		"runtime storage database not found",
+		"unable to find runtime command",
+	} {
+		t.Run(message, func(t *testing.T) {
+			remaining := bhruntime.ProjectResource{Kind: "volume", Name: "retained-data"}
+			planned := []bhruntime.ProjectResource{
+				{Kind: "container", Name: "vanished"}, remaining,
+			}
+			runtime := &inventoryTestRuntime{
+				resources:  map[string][]bhruntime.ProjectResource{"owned-project": {remaining}},
+				destroyErr: errors.New(message),
+			}
+			plan := targetDestroyInventory{
+				Target: deployment.ResolvedTarget{Name: "local"}, Runtime: runtime,
+				Projects: map[string][]bhruntime.ProjectResource{"owned-project": planned},
+			}
+			var results []fullDestroyResult
+			plan.cleanup(context.Background(), &results)
+			if countFullDestroyBlockers(results) == 0 {
+				t.Fatalf("unverified resource removal did not block completion: %+v", results)
+			}
+			for _, result := range results {
+				if result.Status != "FAILED" || !strings.Contains(result.Detail, message) {
+					t.Fatalf("runtime failure was replaced by successful absence evidence: %+v", results)
+				}
+			}
+			if got := runtime.resources["owned-project"]; len(got) != 1 || got[0] != remaining {
+				t.Fatal("failed destroy lost retained owned data")
+			}
+		})
+	}
+}
+
+func TestDestroyInventoryAcceptsAbsenceVerifiedByRuntimeOwner(t *testing.T) {
+	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{}}
+	plan := targetDestroyInventory{
+		Target: deployment.ResolvedTarget{Name: "local"}, Runtime: runtime,
+		Projects: map[string][]bhruntime.ProjectResource{"owned-project": {
+			{Kind: "container", Name: "already-absent"},
+			{Kind: "volume", Name: "already-absent-data"},
+		}},
+	}
+	var results []fullDestroyResult
+	plan.cleanup(context.Background(), &results)
+	if countFullDestroyBlockers(results) != 0 || len(results) != 2 {
+		t.Fatalf("runtime-verified absence did not complete: %+v", results)
+	}
+	for _, result := range results {
+		if result.Status != "REMOVED" {
+			t.Fatalf("unexpected runtime-verified absence result: %+v", result)
+		}
+	}
 }
 func TestDestroyInventoryPreviewsOlderOwnedVolumeAndExcludesForeignTarget(t *testing.T) {
 	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{

@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - 'runtime-validation/ha/**'
+      - 'runtime-validation/recovery-podman/**'
       - 'work/v0.4.24-core-ha-updates'
       - 'work/v0.4.25-contract-minimal-core'
   workflow_dispatch:
@@ -18,6 +19,7 @@ on:
         options:
           - coreless-runtime
           - app-backup-restore
+          - app-backup-restore-podman
           - metrics
           - openbao-backup
           - otlp
@@ -543,7 +545,7 @@ jobs:
           go vet ./...
 
   focused:
-    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' && inputs.gate != 'app-backup-restore-podman' }}
     name: ${{ inputs.gate }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -682,6 +684,161 @@ jobs:
         if: always()
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
+
+  app_backup_restore_podman:
+    # Focused Podman opt-in: native backup/restore acceptance on Podman/Quadlet.
+    # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
+    # token/certificate regeneration and automatic owned cleanup) without
+    # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman') || (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/recovery-podman/')) }}
+    name: Application backup · podman
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      GOTOOLCHAIN: local
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.9'
+          cache: false
+
+      - name: Record exact source and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          mkdir -p "$out"
+          git rev-parse HEAD | tee "$out/source-sha.txt"
+          git rev-parse 'HEAD^{tree}' | tee "$out/source-tree.txt"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+          go version | tee "$out/go-version.txt"
+          expected_go="$(awk '$1 == "toolchain" {toolchain=$2} $1 == "go" {minimum="go" $2} END {print toolchain != "" ? toolchain : minimum}' go.mod)"
+          test -n "$expected_go"
+          printf '%s\n' "$expected_go" > "$out/expected-go-version.txt"
+          test "$(go env GOVERSION)" = "$expected_go"
+
+      - name: Prepare verified rootless Podman
+        timeout-minutes: 5
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Build and verify exact source runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          build="$RUNNER_TEMP/podman-backup-runtime-build"
+          mkdir -p "$build"
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$(cat "$out/source-sha.txt")"
+          test "$(go env GOVERSION)" = "$(cat "$out/expected-go-version.txt")"
+          image="localhost/baseharbor-runtime:podman-backup-$source_sha"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=dev -X main.commit=$source_sha -X main.date=unknown" \
+            -o "$build/baha" ./cmd/baha
+          go version -m "$build/baha" | tee "$out/binary-build.txt"
+          grep -Eq '^[[:space:]]*build[[:space:]]+CGO_ENABLED=0$' "$out/binary-build.txt"
+          sha256sum "$build/baha" | tee "$out/host-binary.sha256"
+          "$build/baha" version --json > "$out/host-version.json"
+          cp deploy/control-plane/Dockerfile.binary "$build/Dockerfile"
+          sha256sum "$build/Dockerfile" > "$out/runtime-dockerfile.sha256"
+          podman build --pull --label "org.opencontainers.image.revision=$source_sha" \
+            --iidfile "$out/runtime-image-build-id.txt" --tag "$image" \
+            -f "$build/Dockerfile" "$build" 2>&1 | tee "$out/image-build.log"
+          printf '%s\n' "$image" > "$out/runtime-image-ref.txt"
+          podman image inspect --format '{{.Id}}' "$image" | tee "$out/runtime-image-id.txt"
+          podman image inspect --format '{{index .Labels "org.opencontainers.image.revision"}}' "$image" \
+            | tee "$out/runtime-image-revision.txt"
+          podman run --rm --network none --entrypoint sha256sum "$image" /usr/local/bin/baha \
+            | tee "$out/image-binary.sha256"
+          podman run --rm --network none "$image" version --json > "$out/image-version.json"
+          python3 - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery'
+          source = (out / 'source-sha.txt').read_text().strip()
+          def image_id(path):
+              value = (out / path).read_text().strip().removeprefix('sha256:')
+              if re.fullmatch(r'[0-9a-f]{64}', value) is None:
+                  raise SystemExit('Exact runtime image requires a complete image ID.')
+              return value
+          def binary_hash(path):
+              fields = (out / path).read_text().split()
+              if not fields or re.fullmatch(r'[0-9a-f]{64}', fields[0]) is None:
+                  raise SystemExit('Exact runtime image requires a complete binary SHA-256.')
+              return fields[0]
+          build_id = image_id('runtime-image-build-id.txt')
+          actual_id = image_id('runtime-image-id.txt')
+          host_hash = binary_hash('host-binary.sha256')
+          image_hash = binary_hash('image-binary.sha256')
+          versions = [json.loads((out / name).read_text()) for name in
+                      ('host-version.json', 'image-version.json')]
+          if (re.fullmatch(r'[0-9a-f]{40}', source) is None or build_id != actual_id
+                  or (out / 'runtime-image-revision.txt').read_text().strip() != source
+                  or host_hash != image_hash
+                  or any(not isinstance(value, dict) or value.get('commit') != source
+                         or value.get('version') != 'dev'
+                         for value in versions)):
+              raise SystemExit('Runtime source mismatch: require exact image ID/revision, identical binary bytes and actual host/image version commits.')
+          (out / 'runtime-source-binding.json').write_text(json.dumps({
+              'source': source, 'image_id': actual_id, 'binary_sha256': host_hash,
+              'image': (out / 'runtime-image-ref.txt').read_text().strip(),
+          }, indent=2) + '\n')
+          PYTHON
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+
+      - name: Application backup and restore on Podman
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: |
+          set -euo pipefail
+          umask 0022
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          test "$(id -u)" -gt 0
+          test "$(id -u)" -le 65000
+          podman version | tee "$out/runtime-version.txt"
+          podman info --format '{{.Host.Security.Rootless}}' | tee "$out/rootless.txt"
+          test "$(cat "$out/rootless.txt")" = true
+          "$RUNNER_TEMP/podman-backup-runtime-build/baha" target create podman-backup-restore \
+            --provider podman --access podman-backup-restore \
+            --reference local --default
+          go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
+            -count=1 -json -timeout 30m 2>&1 | tee "$out/tests.jsonl"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery/tests.jsonl'
+          events = [json.loads(line) for line in path.read_text().splitlines() if line.startswith('{')]
+          package = 'github.com/mcpdev80/baseharbor/cmd/baha'
+          test = 'TestAppBackupRestoreCLIRealDisasterRecovery'
+          if (any(event.get('Action') in {'fail', 'skip'} for event in events)
+                  or not any(event.get('Package') == package and event.get('Test') == test
+                             and event.get('Action') == 'pass' for event in events)
+                  or not any(event.get('Package') == package and 'Test' not in event
+                             and event.get('Action') == 'pass' for event in events)):
+              raise SystemExit('Native Podman backup/recovery requires an executed test PASS and package PASS; skip/fail/missing receipts block.')
+          PYTHON
+
+      - name: Retain exact Podman backup recovery evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: podman-backup-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-backup-recovery
+          if-no-files-found: error
+          retention-days: 30
 
   core_bootstrap:
     if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
@@ -1118,7 +1275,7 @@ jobs:
           retention-days: 90
 
   rootless_engine_isolation:
-    if: ${{ contains(github.event.head_commit.message, '[rootless-runtime]') }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
     name: Engine isolation · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 35
@@ -1174,7 +1331,7 @@ jobs:
           retention-days: 90
 
   identity_trust:
-    if: ${{ contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]') }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45

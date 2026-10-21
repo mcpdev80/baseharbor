@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -26,8 +27,9 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 		t.Fatalf("DetectCompose() error = %v", err)
 	}
 
-	store := Store{Root: filepath.Join(t.TempDir(), ".baseharbor", "apps")}
+	t.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
 	m := WithSQLInstances(New("backup-probe", "dev", true, false, false), "analytics", "primary")
+	store := Store{Root: filepath.Join(t.TempDir(), ".baseharbor", "apps"), Namespace: "backup-probe-" + m.ApplicationID[:8]}
 	if _, err := store.Create(m); err != nil {
 		t.Fatalf("Store.Create() error = %v", err)
 	}
@@ -35,14 +37,20 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureRuntime() error = %v", err)
 	}
-	project := RuntimeProjectName(m)
+	project := files.Project
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), time.Minute)
+		defer cleanupCancel()
+		if err := compose.DestroyProject(cleanupCtx, project, files.Compose, files.Env); err != nil {
+			t.Errorf("cleanup isolated SQL backup fixture: %v", err)
+		}
+	})
 	if err := compose.ConfigProject(ctx, project, files.Compose, files.Env); err != nil {
 		t.Fatalf("ConfigProject() error = %v", err)
 	}
 	if err := compose.UpProject(ctx, project, files.Compose, files.Env); err != nil {
 		t.Fatalf("initial UpProject() error = %v", err)
 	}
-	defer func() { _ = compose.DestroyProject(context.Background(), project, files.Compose, files.Env) }()
 	waitForPostgresBackupRuntime(t, ctx, compose, m, files)
 
 	values := map[string]string{
@@ -51,9 +59,8 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		database := postgresDatabaseName(m, instance)
 		sql := "CREATE TABLE recovery_probe (value text NOT NULL); INSERT INTO recovery_probe VALUES ('" + values[instance] + "');"
-		if _, err := compose.ExecProject(ctx, project, files.Compose, files.Env, service, "psql", "-v", "ON_ERROR_STOP=1", "-U", "baseharbor", "-d", database, "-c", sql); err != nil {
+		if _, err := compose.ExecProjectInput(ctx, project, files.Compose, files.Env, []byte(sql), service, "sh", "-ec", postgresBackupClientCommand(instance, "psql", "--no-psqlrc -v ON_ERROR_STOP=1")); err != nil {
 			t.Fatalf("seed %s error = %v", instance, err)
 		}
 	}
@@ -76,9 +83,10 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		database := postgresDatabaseName(m, instance)
-		if _, err := compose.ExecProject(ctx, project, files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", database, "-tAc", "SELECT value FROM recovery_probe"); err == nil {
-			t.Fatalf("instance %s still contained pre-disaster table after volume destruction", instance)
+		query := "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='recovery_probe'"
+		out, err := compose.ExecProject(ctx, project, files.Compose, files.Env, service, "sh", "-ec", postgresBackupClientCommand(instance, "psql", "--no-psqlrc -v ON_ERROR_STOP=1 -tAc "+shellQuote(query)))
+		if err != nil || strings.TrimSpace(out) != "0" {
+			t.Fatalf("instance %s fresh volume must prove an empty recovery table inventory: %v", instance, err)
 		}
 	}
 
@@ -87,8 +95,7 @@ func TestPostgresBackupDisasterRecovery(t *testing.T) {
 	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		database := postgresDatabaseName(m, instance)
-		out, err := compose.ExecProject(ctx, project, files.Compose, files.Env, service, "psql", "-U", "baseharbor", "-d", database, "-tAc", "SELECT value FROM recovery_probe")
+		out, err := compose.ExecProject(ctx, project, files.Compose, files.Env, service, "sh", "-ec", postgresBackupClientCommand(instance, "psql", "--no-psqlrc -v ON_ERROR_STOP=1 -tAc "+shellQuote("SELECT value FROM recovery_probe")))
 		if err != nil {
 			t.Fatalf("verify restored %s error = %v", instance, err)
 		}
