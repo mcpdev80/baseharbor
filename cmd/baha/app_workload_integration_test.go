@@ -297,8 +297,21 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
 		t.Fatalf("destroy workload-only application: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest not preserved: %v", err)
@@ -454,7 +467,20 @@ workload:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
 		t.Fatalf("destroy build workload: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
 	}
 }

@@ -717,6 +717,8 @@ func TestGuidedRepositoryRuntimeFixtureRegressionSuite(t *testing.T) {
 		{"canonical-state-and-repository-material-isolation", TestRepositoryFixtureStateAllowsOnlyIdentityMetadata},
 		{"independent-unallocated-sql-cache-proposals", TestRepositoryFixtureApplyReResolvesUnallocatedSQLCacheProposal},
 		{"identifier-only-stale-diagnostic", TestRepositoryFixtureStaleDiagnosticPreservesCauseAndOnlyHashIdentifiers},
+		{"production-retirement-current-scope-and-data-consent", TestApplicationDestructionRequiresCurrentOuterScopeAndSeparateDataConsent},
+		{"production-retirement-stale-publication-rejection", TestApplicationDestructionConsentInvalidatedByRetainedPublicationChange},
 		{"production-concrete-consent-without-writes", TestApplicationImpactAuthorizationRequiresConcreteConsentWithoutWrites},
 		{"production-secrets-stable-consent", TestSelectiveSecretsPlanHasStableConsentWithoutAuthorityChanges},
 		{"production-retirement-owner-material", TestProviderOnlyRetirementDoesNotInventRuntimeMaterial},
