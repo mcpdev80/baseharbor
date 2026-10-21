@@ -433,6 +433,52 @@ func TestAppEditCommandReview918DriverEditsProviderFromInput(t *testing.T) {
 	t.Fatalf("provider selection lost: %+v", decision.Preferences)
 }
 
+func TestAppEditCommandProviderInputReturnsToAutomatic(t *testing.T) {
+	for _, test := range []struct {
+		input   string
+		want    string
+		invalid bool
+	}{
+		{input: "automatic"},
+		{input: "AuToMaTiC"},
+		{input: "missing-instance", want: "sql-a", invalid: true},
+	} {
+		t.Run(test.input, func(t *testing.T) {
+			input := appWizardTestInput(t)
+			// One compatible provider keeps Automatic unambiguous. Each named
+			// requirement must retain its own independent Target preference.
+			input.Snapshot.Registry.Instances = input.Snapshot.Registry.Instances[:1]
+			controller, err := newAppWizardController(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := "provider database.sql/primary sql-a\nprovider database.sql/analytics sql-a\nnext\nno\n" +
+				"provider database.sql/primary " + test.input + "\nnext\nyes\n"
+			var out bytes.Buffer
+			session, err := driveAppEditWizard(context.Background(), appEditSession{Controller: controller}, bufioReader(command), &out)
+			if err != nil {
+				t.Fatalf("drive Edit input: %v", err)
+			}
+			decision, confirmed := session.Controller.Decision()
+			if !confirmed || decision.Target != "dev" || len(decision.Preferences) != 2 {
+				t.Fatalf("Edit input lost its confirmed Target preferences: %+v", decision)
+			}
+			for _, preference := range decision.Preferences {
+				want := "sql-a"
+				if preference.Requirement.Name == "primary" {
+					want = test.want
+				}
+				if preference.Target != "dev" || preference.InstanceID != want {
+					t.Fatalf("provider input %q yielded %+v, want instance %q", test.input, preference, want)
+				}
+			}
+			if strings.Contains(out.String(), "provider selection failed") != test.invalid {
+				t.Fatalf("unexpected provider input diagnostic: %s", out.String())
+			}
+		})
+	}
+}
+
 // TestReview918RunAppEditCancelsWriteFree calls the assembled handler end-to-end
 // against a registered existing application. A cancel must reach the input path,
 // return the cancel error, and produce no lifecycle run and no source write.
