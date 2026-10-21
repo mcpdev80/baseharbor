@@ -1,4 +1,5 @@
 import importlib.util
+import fnmatch
 import json
 from pathlib import Path
 import re
@@ -59,6 +60,33 @@ class RuntimeMatrix(unittest.TestCase):
 
 
 class PodmanBackupWorkflowRoute(unittest.TestCase):
+    def test_setup_installs_the_required_toolchain_and_push_has_one_workflow(self):
+        root = Path(__file__).resolve().parents[1]
+        declared = re.search(r'^toolchain go(\S+)$',
+                             (root / 'go.mod').read_text(), re.MULTILINE).group(1)
+        setup = self.native.split('      - name: Set up Go\n', 1)[1].split(
+            '\n      - name:', 1)[0]
+        version = re.search(r"go-version: ['\"]?([^'\"\s]+)", setup)
+        self.assertIsNotNone(version, 'setup-go must install the declared toolchain explicitly')
+        self.assertEqual(declared, version.group(1))
+        branch = 'runtime-validation/recovery-podman/qualification'
+        matched = []
+        for workflow in (root / '.github/workflows').glob('*.yml'):
+            push = re.search(r'^  push:\n(?P<body>(?:^    .*\n|^\n)*)',
+                             workflow.read_text(), re.MULTILINE)
+            if push is None:
+                continue
+            branches = re.search(r'^    branches:\n(?P<body>(?:^      .*\n)*)',
+                                 push['body'], re.MULTILINE)
+            if branches is None:
+                continue
+            patterns = [line.strip()[2:].strip().strip("'\"")
+                        for line in branches['body'].splitlines()
+                        if line.strip().startswith('- ')]
+            if any(fnmatch.fnmatchcase(branch, pattern) for pattern in patterns):
+                matched.append(workflow.name)
+        self.assertEqual(['targeted-integration.yml'], sorted(matched))
+
     @classmethod
     def setUpClass(cls):
         cls.workflow = (Path(__file__).resolve().parent.parent /
@@ -88,10 +116,10 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
         return selected
 
     def test_push_selects_only_exact_podman_job_even_with_other_runtime_markers(self):
-        self.assertIn("      - 'runtime-validation/podman/backup-recovery/**'", self.workflow)
+        self.assertIn("      - 'runtime-validation/recovery-podman/**'", self.workflow)
         for message in ['', '[rootless-runtime] [identity-runtime] [identity-ha-runtime]']:
             self.assertEqual(['app_backup_restore_podman'], self.selected(
-                'push', 'runtime-validation/podman/backup-recovery/exact-source', message=message))
+                'push', 'runtime-validation/recovery-podman/exact-source', message=message))
         for branch in ['runtime-validation/podman/backup-recovery-other/source',
                        'runtime-validation/podman/backup-recovery', 'develop']:
             self.assertEqual([], self.selected('push', branch))
@@ -102,7 +130,7 @@ class PodmanBackupWorkflowRoute(unittest.TestCase):
         self.assertNotIn('app_backup_restore_podman', self.selected(
             'workflow_dispatch', 'develop', 'app-backup-restore'))
         self.assertEqual([], self.selected(
-            'pull_request', 'runtime-validation/podman/backup-recovery/exact-source'))
+            'pull_request', 'runtime-validation/recovery-podman/exact-source'))
 
     def test_actual_receipt_parser_rejects_skip_fail_missing_and_wrong_test(self):
         import os

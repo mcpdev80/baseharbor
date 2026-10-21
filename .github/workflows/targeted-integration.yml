@@ -6,7 +6,7 @@ on:
   push:
     branches:
       - 'runtime-validation/ha/**'
-      - 'runtime-validation/podman/backup-recovery/**'
+      - 'runtime-validation/recovery-podman/**'
       - 'work/v0.4.24-core-ha-updates'
       - 'work/v0.4.25-contract-minimal-core'
   workflow_dispatch:
@@ -690,7 +690,7 @@ jobs:
     # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
     # token/certificate regeneration and automatic owned cleanup) without
     # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman') || (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/')) }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman') || (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/recovery-podman/')) }}
     name: Application backup · podman
     runs-on: ubuntu-26.04
     timeout-minutes: 45
@@ -710,7 +710,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version-file: go.mod
+          go-version: '1.26.9'
           cache: false
 
       - name: Record exact source and toolchain
@@ -1213,7 +1213,7 @@ jobs:
           retention-days: 90
 
   rootless_engine_isolation:
-    if: ${{ !startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
     name: Engine isolation · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 35
@@ -1269,7 +1269,7 @@ jobs:
           retention-days: 90
 
   identity_trust:
-    if: ${{ !startsWith(github.ref_name, 'runtime-validation/podman/backup-recovery/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
