@@ -330,7 +330,7 @@ jobs:
           if approval.get('coverage_digest') != calculated:
               raise SystemExit('Release coverage digest differs from approval.')
           PY_DIGEST
-              if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ]; then
+              if [ "$tag" = v0.4.24 ] || [ "$tag" = v0.4.25 ] || [ "$tag" = v0.4.26 ]; then
                 consumer_ref="$(jq -er '.consumer_ref | select(test("^[0-9a-f]{40}$"))' "$approval_json")"
                 python3 scripts/ecosystem_release_pins.py --tag "$tag" --core "$tested_sha" \
                   --connector "$consumer_ref" --demo "$(jq -r '.demo_sha' "$approval_json")" \
