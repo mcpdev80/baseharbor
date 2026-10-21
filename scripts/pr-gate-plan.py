@@ -149,12 +149,16 @@ EDIT_AUTOMATIC_INPUT_REVIEWED_FILES = {
     'cmd/baha/app_edit.go': 'modified',
     'cmd/baha/app_edit_apply_test.go': 'modified',
 }
-# Enable the existing immutable ecosystem resolver for v0.4.26 only. The real
-# release shell/resolver regression runs in the existing Focused Python job.
-ECOSYSTEM_RESOLVER_REVIEWED_HEAD = 'd31d4394aeab276245938f6808b998485c70fb56'
+# Bind complete v0.4.26 resolver routing, final consumer origin and required
+# producer dependencies. Existing CI runs the real shell/approval regressions.
+ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
 ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
     '.github/workflows/pre-release.yml': 'modified',
+    '.github/workflows/release.yml': 'modified',
+    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+    'scripts/pre-release-resume.py': 'modified',
     'scripts/test_ecosystem_release_pins.py': 'modified',
+    'scripts/test_pre_release_resume.py': 'modified',
 }
 
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,

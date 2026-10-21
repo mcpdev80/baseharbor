@@ -1447,10 +1447,14 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
         self.assertEqual({'cmd/baha/app_edit.go': 'modified',
                           'cmd/baha/app_edit_apply_test.go': 'modified'},
                          planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES)
-        self.assertEqual('d31d4394aeab276245938f6808b998485c70fb56',
+        self.assertEqual('46e80866db0dfeecc10c4472a0f1f585d11ff164',
                          planner.ECOSYSTEM_RESOLVER_REVIEWED_HEAD)
         self.assertEqual({'.github/workflows/pre-release.yml': 'modified',
-                          'scripts/test_ecosystem_release_pins.py': 'modified'},
+                          '.github/workflows/release.yml': 'modified',
+                          '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+                          'scripts/pre-release-resume.py': 'modified',
+                          'scripts/test_ecosystem_release_pins.py': 'modified',
+                          'scripts/test_pre_release_resume.py': 'modified'},
                          planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES)
         for files, is_edit in ((planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES, True),
                                (planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES, False)):
@@ -1463,6 +1467,11 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                          for i, c in enumerate(changes)],
                         [dict(c, status='added') if i == 0 else c
                          for i, c in enumerate(changes)]]
+            if not is_edit:
+                # The earlier source-only two-file candidate never covers the
+                # completed consumer, publication and approval execution paths.
+                variants.append(paths('.github/workflows/pre-release.yml',
+                                      'scripts/test_ecosystem_release_pins.py'))
             for variant in variants:
                 with self.subTest(is_edit=is_edit, changes=variant), patch.object(
                         planner, 'core752_reviewed_merge_chain', return_value=True):
