@@ -1272,6 +1272,11 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(resolver_spec)
         resolver_spec.loader.exec_module(resolver)
         for reviewed_name, files, expected_checks in (
+            ('EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD', planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES,
+             {c['id'] for c in planner.CODE_CHECKS + planner.CLI_CHECKS +
+              planner.WIZARD_BASE_CHECKS} | {'wizard-app-edit-tests'}),
+            ('ECOSYSTEM_RESOLVER_REVIEWED_HEAD', planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES,
+             {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('EVIDENCE_RETENTION_REVIEWED_HEAD', planner.EVIDENCE_RETENTION_REVIEWED_FILES,
              {c['id'] for c in planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS}),
             ('RUNTIME_RESET_REVIEWED_HEAD', planner.RUNTIME_RESET_REVIEWED_FILES,
@@ -1359,7 +1364,12 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     side_effect=lambda base, current, reviewed=None:
                         proof(base, current, reviewed, root)):
                     result = planner.plan(actual, REQ, MAP)
-                self.assertEqual('unresolved', result['coverage_status'])
+                if reviewed_name == 'EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD':
+                    self.assertEqual('resolved', result['coverage_status'])
+                    self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                     result['selected_gates'])
+                else:
+                    self.assertEqual('unresolved', result['coverage_status'])
 
     def test_replacement_is_exact_three_file_reviewed_candidate(self):
         self.assertEqual('cf0a19bc4c8f398d7ee3fc07a635833168081ff5',
@@ -1428,6 +1438,120 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
         self.assertEqual({'source-contracts', 'cli-guided-tests', 'cli-vet', 'cli-build'},
                          {c['id'] for c in result['required_validation_checks']})
         self.assertEqual([], result['selected_gates'])
+
+
+class ReadinessRepairCoverageTests(unittest.TestCase):
+    def test_only_reviewed_sources_and_complete_inventories_get_runtime_free_checks(self):
+        self.assertEqual('673bdcdaed9b81fa7f810b018961c02943c89ca7',
+                         planner.EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/app_edit.go': 'modified',
+                          'cmd/baha/app_edit_apply_test.go': 'modified'},
+                         planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES)
+        self.assertEqual('46e80866db0dfeecc10c4472a0f1f585d11ff164',
+                         planner.ECOSYSTEM_RESOLVER_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/pre-release.yml': 'modified',
+                          '.github/workflows/release.yml': 'modified',
+                          '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+                          'scripts/pre-release-resume.py': 'modified',
+                          'scripts/test_ecosystem_release_pins.py': 'modified',
+                          'scripts/test_pre_release_resume.py': 'modified'},
+                         planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES)
+        for files, is_edit in ((planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES, True),
+                               (planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES, False)):
+            changes = [{'path': p, 'status': status} for p, status in files.items()]
+            variants = [changes[:-1], changes + paths('unreviewed/source.go'),
+                        [dict(c, status='deleted') if i == 0 else c
+                         for i, c in enumerate(changes)],
+                        [dict(c, status='renamed', old_path=c['path'],
+                              new_path='unreviewed/renamed.go') if i == 0 else c
+                         for i, c in enumerate(changes)],
+                        [dict(c, status='added') if i == 0 else c
+                         for i, c in enumerate(changes)]]
+            if not is_edit:
+                # The earlier source-only two-file candidate never covers the
+                # completed consumer, publication and approval execution paths.
+                variants.append(paths('.github/workflows/pre-release.yml',
+                                      'scripts/test_ecosystem_release_pins.py'))
+            for variant in variants:
+                with self.subTest(is_edit=is_edit, changes=variant), patch.object(
+                        planner, 'core752_reviewed_merge_chain', return_value=True):
+                    result = planner.plan(diff(variant), REQ, MAP)
+                    if result['coverage_status'] == 'resolved':
+                        self.assertTrue(is_edit)
+                        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                         result['selected_gates'])
+                    else:
+                        self.assertTrue(result['unresolved_coverage'])
+
+    def test_real_git_nonclean_merge_and_unreviewed_filenames_cannot_reuse_exception(self):
+        spec = importlib.util.spec_from_file_location('repair_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        for anchor, files in (
+                ('EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD', planner.EDIT_AUTOMATIC_INPUT_REVIEWED_FILES),
+                ('ECOSYSTEM_RESOLVER_REVIEWED_HEAD', planner.ECOSYSTEM_RESOLVER_REVIEWED_FILES)):
+            with self.subTest(anchor=anchor), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                def git(*args):
+                    result = subprocess.run(['git', '-C', str(root), *args],
+                                            check=True, capture_output=True, text=True)
+                    return result.stdout.strip()
+                git('init', '-q')
+                git('config', 'user.name', 'Repair fixture')
+                git('config', 'user.email', 'repair@example.invalid')
+                for name in files:
+                    path = root / name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text('baseline\n')
+                git('add', '.')
+                git('commit', '-qm', 'baseline')
+                git('branch', 'trusted')
+                git('checkout', '-qb', 'source')
+                for name in files:
+                    (root / name).write_text('reviewed\n')
+                git('commit', '-qam', 'reviewed source')
+                reviewed = git('rev-parse', 'HEAD')
+                git('checkout', '-q', 'trusted')
+                (root / 'trusted.txt').write_text('accepted target advance\n')
+                git('add', '.')
+                git('commit', '-qm', 'target advance')
+                target = git('rev-parse', 'HEAD')
+                clean_tree = git('merge-tree', '--write-tree', reviewed, target).splitlines()[0]
+                git('checkout', '-q', 'source')
+                git('merge', '--no-ff', '--no-commit', 'trusted')
+                (root / next(iter(files))).write_text('unreviewed merge resolution\n')
+                git('add', '.')
+                git('commit', '-qm', 'nonclean source integration')
+                dirty = git('rev-parse', 'HEAD')
+                self.assertNotEqual(clean_tree, git('rev-parse', dirty + '^{tree}'))
+                tree = git('merge-tree', '--write-tree', target, dirty).splitlines()[0]
+                integration = git('commit-tree', tree, '-p', target, '-p', dirty,
+                                  '-m', 'actual PR integration')
+                actual = resolver.resolve_pr_diff(root, target, dirty, integration)
+                self.assertFalse(actual['broad_required'], actual['reasons'])
+                proof = planner.core752_reviewed_merge_chain
+                self.assertFalse(proof(target, dirty, reviewed, root))
+                with patch.object(planner, anchor, reviewed), patch.object(
+                        planner, 'core752_reviewed_merge_chain',
+                        side_effect=lambda base, head, reviewed=None:
+                            proof(base, head, reviewed, root)):
+                    result = planner.plan(actual, REQ, MAP)
+                if anchor == 'EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD':
+                    self.assertEqual('resolved', result['coverage_status'])
+                    self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                     result['selected_gates'])
+                else:
+                    self.assertEqual('unresolved', result['coverage_status'])
+                for key in ('head_sha', 'merge_base_sha', 'integration_sha'):
+                    missing = dict(actual, **{key: None})
+                    with self.subTest(missing=key):
+                        result = planner.plan(missing, REQ, MAP)
+                        if result['coverage_status'] == 'resolved':
+                            self.assertEqual('EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD', anchor)
+                            self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                             result['selected_gates'])
+                        else:
+                            self.assertTrue(result['unresolved_coverage'])
 
 
 class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
