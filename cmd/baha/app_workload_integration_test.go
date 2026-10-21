@@ -37,7 +37,6 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: workload-ci
   environment: dev
 services:
@@ -175,7 +174,6 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 22222222-2222-4222-8222-222222222222
   name: workload-only-ci
   environment: dev
 services:
@@ -308,7 +306,6 @@ func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 33333333-3333-4333-8333-333333333333
   name: build-convergence-ci
   environment: dev
 services:
