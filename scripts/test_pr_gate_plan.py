@@ -1554,8 +1554,14 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                             self.assertTrue(result['unresolved_coverage'])
 
 
-class NativeProvenSourceQualificationTests(unittest.TestCase):
-    def test_immutable_anchors_and_complete_native_inventories(self):
+class ReviewedSourceQualificationTests(unittest.TestCase):
+    def test_immutable_anchors_and_complete_inventories(self):
+        self.assertEqual('013d7e4d491afc58a31c7934b371ab0dc35f3346',
+                         planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/ci.yml': 'modified',
+                          'scripts/pr-authenticated-results.py': 'modified',
+                          'scripts/test_pr_authenticated_results.py': 'modified'},
+                         planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES)
         self.assertEqual('3f6772fc75243eaceb00c669f8ed1cd4c4b694e4',
                          planner.RETIREMENT_PREFERENCES_REVIEWED_HEAD)
         self.assertEqual({'cmd/baha/application_runtime_retirement_intent.go': 'modified',
@@ -1577,6 +1583,7 @@ class NativeProvenSourceQualificationTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(resolver)
         cases = (
+            ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('RETIREMENT_PREFERENCES', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS),
             ('PODMAN_PG17_RECOVERY', planner.CI_CHECKS + planner.CODE_CHECKS +
