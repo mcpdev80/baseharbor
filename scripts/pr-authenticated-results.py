@@ -7,6 +7,7 @@ verifier must supply those results separately before final acceptance.
 import argparse
 import json
 import os
+import time
 from pathlib import Path
 import urllib.request
 
@@ -60,24 +61,29 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             "results": results}  # NO GATE PASS without verified runtime evidence
 
 
-def api_json(url, token):
+def api_json(url, token, timeout=20):
     if not token:
         raise PermissionError("read-only GitHub Actions token required")
     req = urllib.request.Request(url, headers={
         "Authorization": "Bearer " + token, "Accept": "application/vnd.github+json"})
-    with urllib.request.urlopen(req, timeout=20) as response:
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         return json.load(response)
 
 
-def read_run(repository, run_id, attempt, token):
+def read_run(repository, run_id, attempt, token, deadline=None):
     if repository != "mcpdev80/baseharbor" or not str(run_id).isdecimal():
         raise PermissionError("unexpected repository or run")
     base = "https://api.github.com/repos/" + repository + "/actions/runs/" + str(run_id)
-    run = api_json(base, token)
+    def read_api(url):
+        timeout = 20 if deadline is None else min(20, deadline - time.monotonic())
+        if timeout <= 0:
+            raise TimeoutError("required Actions jobs did not become terminal within 45 seconds")
+        return api_json(url, token, timeout=timeout)
+    run = read_api(base)
     jobs = []
     for page in range(1, 11):
-        value = api_json(base + "/attempts/" + str(attempt) +
-                         "/jobs?per_page=100&page=" + str(page), token)
+        value = read_api(base + "/attempts/" + str(attempt) +
+                         "/jobs?per_page=100&page=" + str(page))
         if not isinstance(value.get("jobs"), list):
             raise ValueError("incomplete Actions jobs response")
         jobs.extend(value["jobs"])
@@ -86,6 +92,37 @@ def read_run(repository, run_id, attempt, token):
     else:
         raise ValueError("too many Actions jobs to prove complete pagination")
     return run, jobs
+
+
+def read_authenticated_results(plan, repository, run_id, attempt, head_sha, token):
+    # Job lifecycle publication can lag the dependency scheduler. Only genuine
+    # required nonterminal jobs may wait; every snapshot is authenticated anew.
+    # Missing/duplicate/forged jobs and transport errors still fail immediately.
+    deadline = time.monotonic() + 45
+    while True:
+        run, jobs = read_run(repository, run_id, attempt, token, deadline=deadline)
+        report = authenticated_results(plan, run, jobs, run_id, attempt, head_sha)
+        if time.monotonic() > deadline:
+            raise TimeoutError("required Actions jobs did not become terminal within 45 seconds")
+        names = ["PR · Validation · " + row["id"] for row in report["results"]]
+        names += [row["name"] for row in report["required_job_conclusions"]]
+        by_name = {job.get("name"): job for job in jobs}
+        required = [by_name[name] for name in names]
+        # Terminal negative results never wait or acquire a successful receipt.
+        if any(job.get("conclusion") not in (None, "success") or
+               (job.get("status") == "completed" and job.get("conclusion") != "success")
+               for job in required):
+            return report
+        if any(job.get("status") not in
+               ("queued", "in_progress", "waiting", "pending", "requested", "completed")
+               for job in required):
+            raise PermissionError("unknown required Actions job lifecycle")
+        if all(job.get("status") == "completed" for job in required):
+            return report
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("required Actions jobs did not become terminal within 45 seconds")
+        time.sleep(min(3, remaining))
 
 
 def main():
@@ -97,10 +134,9 @@ def main():
     p.add_argument("--head-sha", required=True)
     args = p.parse_args()
     plan = json.loads(args.plan.read_text())
-    run, jobs = read_run(args.repository, args.run_id, args.attempt,
-                         os.environ.get("GH_TOKEN", ""))
-    print(json.dumps(authenticated_results(plan, run, jobs, args.run_id,
-                                           args.attempt, args.head_sha), indent=2))
+    print(json.dumps(read_authenticated_results(
+        plan, args.repository, args.run_id, args.attempt, args.head_sha,
+        os.environ.get("GH_TOKEN", "")), indent=2))
 
 
 if __name__ == "__main__":
