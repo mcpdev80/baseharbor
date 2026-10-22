@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.26] - 2026-10-21
+
+### Added
+
+- Interactive application needs wizard with optional Target-specific provider selection, dependency/footprint preview and explicit create-only or run choice.
+- Registered application Edit and read-only Footprint commands across CLI and MCP, including a two-phase MCP Edit proposal/apply boundary and matching generated references.
+- English/German New/Edit/provider-selection guidance and candidate release notes.
+
+### Changed
+
+- New/Edit share the existing provider resolver and confirmed lifecycle. Repeated No retains choices; cancellation and EOF before consent write nothing; stale plans require a fresh preview.
+- Development uses task-scoped pull requests, trusted selected-check planning, isolated runners and authenticated execution/evidence verification; unknown or unqualified changes remain blocked.
+
+### Fixed
+
+- The workload-stop phase of application backup stops only selected repository services, without stopping SQL as part of the workload stop. Partial writer-stop failures receive bounded lifecycle recovery without losing the original or recovery error.
+- PostgreSQL backup/restore uses retained database identity and protected TLS credentials instead of a fixed role assumption.
+- Runtime withdrawal resolves without provider preferences while preserving the deployment’s persisted preferences for recovery, its retained runtime owner and other Targets.
+- MCP Edit retains typed refusals and actual partial-result details after failed apply.
+
+### Security
+
+- Edit retains Target-bound authorization, fresh provider-consequence consent and actual post-apply verification. Generic confirmation does not replace required impact acknowledgements or separate data-deletion consent.
+- Explicit provider preferences stay in protected Target/deployment state; portable application intent remains provider-neutral and application identity remains system-generated.
+
+### Compatibility
+
+- Existing runtime and Console/Connector support boundaries remain unchanged. Interactive New/Edit require a terminal; deterministic creation arguments remain available.
+- Candidate notes do not claim completed native or ecosystem acceptance. Final qualification, immutable consumer pins and publication remain separate release steps.
+
 ## [0.4.25] - 2026-10-15
 
 ### Added
