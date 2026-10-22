@@ -134,7 +134,17 @@ func registerMCPAppEditToolWithAuthorities(server *mcp.Server, store application
 						"app edit propose must not carry the typed proposal or provider-consequence consent.",
 						"Resubmit propose with only the Target-bound desired intent.", false))
 				}
-				proposal, err := appMachinePropose(ctx, input.Desired, authorities.Read, authorities.Choices, authorities.Plan)
+				desired := input.Desired
+				if desired.SnapshotRevision == "" {
+					// Pin the existing read owner's current revision for a fresh client.
+					// Propose reads again, so concurrent drift still fails closed.
+					view, err := appMachineInspect(ctx, input.Target, authorities.Read)
+					if err != nil {
+						return machineMCPFailure(err)
+					}
+					desired.SnapshotRevision = view.SnapshotRevision
+				}
+				proposal, err := appMachinePropose(ctx, desired, authorities.Read, authorities.Choices, authorities.Plan)
 				if err != nil {
 					return machineMCPFailure(err)
 				}

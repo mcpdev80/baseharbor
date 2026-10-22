@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -153,6 +155,7 @@ func TestCore921MCPEditSchemaIsSnakeCaseAndPhaseConditional(t *testing.T) {
 }
 
 func TestCore921MCPProposeReachesHandlerWithZeroWrites(t *testing.T) {
+	t.Run("fresh-client-stdio-bootstrap", core921MCPFreshClientProposeBootstrapThroughStdio)
 	t.Run("coreless-native-prerequisites", appEditMCPNativeCorelessPrerequisites)
 	configureTestTarget(t)
 	root := t.TempDir()
@@ -572,4 +575,157 @@ func core921MissingConsentPublicClassification(t *testing.T) {
 	if decoded.Error.Code != machine.ErrorApprovalRequired {
 		t.Fatalf("missing second provider confirmation surfaced as %q; next=%q; want approval_required", decoded.Error.Code, decoded.Error.Next)
 	}
+}
+
+func core921MCPFreshClientProposeBootstrapThroughStdio(t *testing.T) {
+	for _, scenario := range []string{"omitted", "explicit-current", "explicit-stale", "read-failure", "second-read-failure", "concurrent-drift", "empty-owner-revision", "apply-drift", "apply-missing-revision"} {
+		t.Run(scenario, func(t *testing.T) {
+			target := configureTestTarget(t)
+			root := t.TempDir()
+			t.Chdir(root)
+			m := application.WithSQLInstances(application.New("edit-safe", "dev", false, false, false), "primary")
+			source := filepath.Join(root, application.RepositoryManifestName)
+			mustWriteInitializedAuthoredManifest(t, source, m)
+			registerTestDeployment(t, target, m, root, source)
+			requirements := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
+			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target.Name,
+				PlanID: "public-plan", Revision: "public-plan-revision", Complete: true, ConfirmationsRequired: 2,
+				Impacts: []application.ProviderImpact{{InstanceID: "provider-a", Operation: "provide"}}}
+			executed, reads := 0, 0
+			authorities := appEditTestAuthorities(target.Name, m.ApplicationID, requirements, nil, []application.ProviderImpactPlan{plan}, &executed)
+			read := authorities.Read
+			authorities.Read = func(ctx context.Context, target string) (GuidedReadContext, error) {
+				reads++
+				if scenario == "read-failure" || scenario == "second-read-failure" && reads == 2 {
+					return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: errors.New("private-reader-detail")}
+				}
+				view, err := read(ctx, target)
+				view.PlanRevision = plan.PlanID
+				if scenario == "concurrent-drift" && reads >= 2 || scenario == "apply-drift" && reads >= 3 {
+					view.SnapshotRevision = "snapshot-2"
+				}
+				if scenario == "empty-owner-revision" {
+					view.SnapshotRevision = ""
+				}
+				return view, err
+			}
+			server := mcp.NewServer(&mcp.Implementation{Name: "public-edit-stdio", Version: "1"}, nil)
+			registerMCPAppEditToolWithAuthorities(server, application.DefaultStore(), func(application.Store, []string) appEditAuthorities { return authorities })
+			session := appEditBootstrapStdioClient(t, server)
+			beforeSource, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatal(err)
+			}
+			beforeDeployment := deploymentSnapshot(t)
+			assertNoWrites := func() {
+				t.Helper()
+				after, err := os.ReadFile(source)
+				if err != nil || !bytes.Equal(beforeSource, after) || !deploymentSnapshotEqual(t, beforeDeployment, deploymentSnapshot(t)) {
+					t.Fatal("propose/refusal changed source or deployment state", err)
+				}
+			}
+			// The client has only portable intent. It never reads a private snapshot.
+			desired := map[string]any{"target": target.Name, "requirements": requirements}
+			if scenario == "explicit-current" {
+				desired["snapshot_revision"] = "snapshot-1"
+			} else if scenario == "explicit-stale" {
+				desired["snapshot_revision"] = "snapshot-old"
+			}
+			ctx := t.Context()
+			proposed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: map[string]any{
+				"target": target.Name, "phase": "propose", "desired": desired,
+			}})
+			if err != nil || proposed == nil {
+				t.Fatal("public propose transport", err)
+			}
+			assertNoWrites()
+			if executed != 0 {
+				t.Fatal("propose executed a mutation")
+			}
+			switch scenario {
+			case "explicit-stale", "read-failure", "second-read-failure", "concurrent-drift", "empty-owner-revision":
+				if !proposed.IsError {
+					t.Fatal("unverifiable/stale proposal accepted")
+				}
+				if bytes.Contains(marshalStructured(t, proposed), []byte("private-reader-detail")) {
+					t.Fatal("private reader diagnostic leaked")
+				}
+				if scenario == "explicit-stale" || scenario == "concurrent-drift" || scenario == "empty-owner-revision" {
+					assertAppEditBootstrapConflict(t, proposed)
+				}
+				if scenario == "explicit-stale" && reads != 1 {
+					t.Fatal("explicit revision was refreshed instead of matched")
+				}
+				if (scenario == "second-read-failure" || scenario == "concurrent-drift") && reads != 2 {
+					t.Fatal("fresh proposal did not revalidate its pinned snapshot")
+				}
+				return
+			}
+			var proposal appMachineDesiredResult
+			if proposed.IsError || json.Unmarshal(marshalStructured(t, proposed), &proposal) != nil ||
+				proposal.Desired.SnapshotRevision != "snapshot-1" || proposal.SnapshotRevision != proposal.Desired.SnapshotRevision ||
+				proposal.ApplicationID != m.ApplicationID || proposal.Desired.Target != target.Name {
+				t.Fatal("public proposal did not carry the exact pinned intent")
+			}
+			if scenario == "apply-missing-revision" {
+				proposal.Desired.SnapshotRevision = ""
+			}
+			// Apply uses only values returned across the public JSON boundary.
+			consent := application.ProviderChangeConsent{PlanID: proposal.Plan.PlanID, First: true, Second: true}
+			applied, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: appMCPEditInput{
+				Target: target.Name, Phase: "apply", Desired: proposal.Desired, Proposal: &proposal, Consent: &consent,
+			}})
+			if err != nil || applied == nil {
+				t.Fatal("public apply transport", err)
+			}
+			if scenario == "apply-drift" || scenario == "apply-missing-revision" {
+				assertAppEditBootstrapConflict(t, applied)
+				if executed != 0 {
+					t.Fatal("stale or missing apply revision executed")
+				}
+				assertNoWrites()
+				return
+			}
+			var receipt application.ProviderChangeResult
+			if applied.IsError || json.Unmarshal(marshalStructured(t, applied), &receipt) != nil || receipt.Status != "complete" || executed != 1 {
+				t.Fatalf("public propose/apply did not reach the existing executor exactly once: %s", marshalStructured(t, applied))
+			}
+		})
+	}
+}
+
+func assertAppEditBootstrapConflict(t *testing.T, result *mcp.CallToolResult) {
+	t.Helper()
+	var payload struct {
+		Error *machine.Error `json:"error"`
+	}
+	if !result.IsError || json.Unmarshal(marshalStructured(t, result), &payload) != nil || payload.Error == nil || payload.Error.Code != machine.ErrorConflict {
+		t.Fatalf("expected typed conflict: %s", marshalStructured(t, result))
+	}
+}
+
+func appEditBootstrapStdioClient(t *testing.T, server *mcp.Server) *mcp.ClientSession {
+	t.Helper()
+	inReader, inWriter := io.Pipe()
+	outReader, outWriter := io.Pipe()
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Run(ctx, &drainingMCPTransport{reader: inReader, writer: outWriter, timeout: time.Second})
+	}()
+	client := mcp.NewClient(&mcp.Implementation{Name: "fresh-public-client", Version: "1"}, nil)
+	session, err := client.Connect(ctx, &mcp.IOTransport{Reader: outReader, Writer: inWriter}, nil)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close()
+		cancel()
+		select {
+		case <-done:
+		case <-ctx.Done():
+		}
+	})
+	return session
 }

@@ -259,7 +259,7 @@ type appMachineDesiredChoice struct {
 // SDK infers consistent field names; no field leaks reconciliation state.
 type appMachineDesiredRequest struct {
 	Target           string                    `json:"target" jsonschema:"exact resolved deployment target for this edit"`
-	SnapshotRevision string                    `json:"snapshot_revision,omitempty" jsonschema:"optional current snapshot revision matched during propose"`
+	SnapshotRevision string                    `json:"snapshot_revision,omitempty" jsonschema:"omit on initial propose to pin the current revision; supplied revisions must match; apply echoes the returned desired intent"`
 	Requirements     []capability.Requirement  `json:"requirements,omitempty" jsonschema:"portable capability requirements to converge"`
 	Choices          []appMachineDesiredChoice `json:"choices,omitempty" jsonschema:"optional per-requirement provider instance selections"`
 }

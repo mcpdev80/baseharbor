@@ -145,13 +145,12 @@ func TestAppEditMCPAppEditRunsRealProviderEditLifecycle(t *testing.T) {
 		t.Fatalf("snapshot pre-edit state: %v", err)
 	}
 
-	// Propose from the workload-only source. Only the real consented Apply
-	// may persist SQL intent, preferences or deployment state.
-	snapshotRevision := currentSnapshotRevision(t, ctx, editTarget, editApp)
-	proposal := appEditProposeThroughMCP(t, session, ctx, editTarget, editApp, selected.ID, snapshotRevision)
+	// A fresh public client proposes portable intent without a private revision.
+	// Only the real consented Apply may persist SQL intent or deployment state.
+	proposal := appEditProposeThroughMCP(t, session, ctx, editTarget, editApp, selected.ID)
 	if proposal.ApplicationID != m.ApplicationID || proposal.Plan.Target != editTarget ||
 		proposal.PlanRevision != proposal.Plan.PlanID || proposal.Plan.PlanID == "" ||
-		proposal.SnapshotRevision != snapshotRevision || proposal.Desired.SnapshotRevision != snapshotRevision {
+		proposal.SnapshotRevision == "" || proposal.Desired.SnapshotRevision != proposal.SnapshotRevision {
 		t.Fatal("round-tripped proposal lacks the exact application, Target, plan or snapshot identity")
 	}
 	if !proposal.Plan.Complete || proposal.Plan.ConfirmationsRequired < 1 || proposal.Plan.ConfirmationsRequired > 2 {
@@ -359,12 +358,12 @@ func TestAppEditMCPNativeStateSnapshotDetectsMutationAndInspectionFailure(t *tes
 }
 
 // The returned proposal crosses a real JSON boundary before it is ever reused.
-func appEditProposeThroughMCP(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app, instanceID, snapshotRevision string) appMachineDesiredResult {
+func appEditProposeThroughMCP(t *testing.T, session *mcp.ClientSession, ctx context.Context, target, app, instanceID string) appMachineDesiredResult {
 	t.Helper()
 	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "baseharbor.app.edit", Arguments: map[string]any{
 		"phase": "propose", "target": target, "name": app,
 		"desired": map[string]any{
-			"target": target, "snapshot_revision": snapshotRevision,
+			"target":       target,
 			"requirements": []any{map[string]any{"kind": "database.sql", "name": "default"}},
 			"choices": []any{map[string]any{
 				"requirement": map[string]any{"kind": "database.sql", "name": "default"}, "instance_id": instanceID,
