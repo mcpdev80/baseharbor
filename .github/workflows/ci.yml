@@ -137,6 +137,7 @@ jobs:
           python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
           python scripts/test_artifact_gc.py
+          python scripts/test_targeted_gate_ref.py
 
       - name: Validate private source access preflight
         run: python scripts/test_private_evidence_access_preflight.py

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: BaseHarbor ref or commit SHA to test
+        description: BaseHarbor branch/tag or full commit SHA; short SHAs are resolved to a ref before checkout
         required: true
         default: release/v0.4.21
         type: string
@@ -49,8 +49,7 @@ jobs:
       gate: ${{ steps.resolve.outputs.gate }}
       gates: ${{ steps.resolve.outputs.gates }}
     steps:
-      - name: Checkout candidate for pinned demo ref
-        if: github.event_name != 'workflow_dispatch'
+      - name: Checkout gate tooling for ref resolution and pinned demo ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
@@ -68,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            ref="$DISPATCH_REF"
+            ref="$(python3 scripts/targeted-gate-ref.py --ref "$DISPATCH_REF")"
             demo_ref="$DISPATCH_DEMO_REF"
             runtime="$DISPATCH_RUNTIME"
             gate="$DISPATCH_GATE"
