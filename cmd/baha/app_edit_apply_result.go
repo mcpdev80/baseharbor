@@ -313,7 +313,8 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 
 // planApplicationProviderImpactForDesired routes the desired manifest through
 // the existing request and impact owners without a second executor. An empty
-// pending-change set yields the zero plan; callers treat that as drift.
+// pending-change set still yields the authoritative zero-impact envelope from
+// the impact owner; a bare zero-value plan is not a valid proposal.
 func planApplicationProviderImpactForDesired(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 	union, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
 	if err != nil {
@@ -339,9 +340,6 @@ func planApplicationProviderImpactForDesired(ctx context.Context, resolved resol
 	requests, err = externalIdentityChangeRequests(resolved, requests)
 	if err != nil {
 		return application.ProviderImpactPlan{}, err
-	}
-	if len(requests) == 0 {
-		return application.ProviderImpactPlan{}, nil
 	}
 	return resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
 }
