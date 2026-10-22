@@ -61,6 +61,7 @@ nav:
 - Applications:
   - Application Contract: explanation/application-contract.md
   - Application-Befehle: cli/applications.md
+  - Bedarf erstellen und ändern: how-to/application-needs.md
   - Core-Workflow: cli/core.md
   - Umgebungen: how-to/environments.md
   - Backup und Restore: how-to/backup-restore.md
