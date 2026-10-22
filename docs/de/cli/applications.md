@@ -2,9 +2,14 @@
 
 Application-Befehle arbeiten mit dem portablen Contract und seinem Deployment-Zustand.
 
+[Anwendungsbedarf erstellen und ändern](../how-to/application-needs.md) erklärt die interaktive Checkliste, Target-Provider-Präferenzen und Footprint-Vorschau.
+
 | Befehl | Aufgabe |
 | --- | --- |
 | `baha new application` | Neue ecosystem-native Application erzeugen |
+| `baha app new` | Interaktiven Bedarfswizard öffnen |
+| `baha app edit` | Bestehenden Bedarf mit Vorschau und Zustimmung ändern |
+| `baha app footprint show` | Target-bezogenen Footprint lesen |
 | `baha init` | Bestehendes Repository übernehmen |
 | `baha inspect` | Repository-/Application-Evidenz lesen |
 | `baha app show` | Aufgelösten Vertrag anzeigen |
@@ -126,6 +131,6 @@ zwei ausdrückliche Bestätigungen des aktuellen Plans. Gewöhnliches `--yes`
 ersetzt weder diese Bestätigungen noch die Zustimmung zur Datenlöschung.
 Tatsächliche Berechtigung, Ownership und Prüfung nach der Änderung bleiben
 Voraussetzung. Fehlgeschlagene oder unterbrochene Ausführung bleibt teilweise
-erledigt und wiederaufnehmbar. Der v0.4.25-Kandidat benötigt weiterhin die vollständige
-Abnahme aller Provider, Mutationspfade und des nativen Ecosystems. Einzelne grüne
-Fixtures belegen keine Pre-Release-Bereitschaft.
+erledigt und wiederaufnehmbar. Release-Bereitschaft benötigt die jeweils erforderliche
+Provider-, Mutationspfad- und native Ökosystem-Abnahme. Einzelne grüne Fixtures
+belegen keine Pre-Release-Bereitschaft.

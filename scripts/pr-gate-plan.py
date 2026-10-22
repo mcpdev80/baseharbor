@@ -152,6 +152,47 @@ WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
     'scripts/test_pr_authenticated_results.py': 'modified',
 }
 
+# Independently reviewed public MCP bootstrap: pin an omitted initial revision
+# through the existing read owner, then revalidate; apply consent stays strict.
+# Native job 119314164799 (run 39626844187) proved the fresh public path.
+MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD = 'f762f4480a2eb6b29ceebb35ae4032cb2ce7288c'
+MCP_PUBLIC_BOOTSTRAP_REVIEWED_FILES = {
+    'cmd/baha/app_machine_adapters.go': 'modified',
+    'cmd/baha/app_mcp_provider_edit_native_test.go': 'modified',
+    'cmd/baha/app_registration_921.go': 'modified',
+    'cmd/baha/registration_921_test.go': 'modified',
+}
+# Terminal adapter identity only: preserve Bubble Tea's cancellable input
+# contract across New preview/No. Existing real PTY tests execute in app-new.
+NEW_TERMINAL_INPUT_REVIEWED_HEAD = '99901ff2e787157ffb5e8d7d5206cf21272bd6c3'
+NEW_TERMINAL_INPUT_REVIEWED_FILES = {
+    'cmd/baha/app_new_wizard_test.go': 'modified',
+    'cmd/baha/application_provider_preferences.go': 'modified',
+}
+
+# Pre-execution Edit refusal accuracy only: the unchanged Execute callback
+# marks entry before lifecycle work, so real partial receipts stay unchanged.
+# This frozen source adds a Guided wrapper for every affected unit regression;
+# the earlier source without that mandatory coverage receives no exemption.
+EDIT_REFUSAL_RESULT_REVIEWED_HEAD = 'c6dfb988bb4f1fd295b6beb950980bb257e3699a'
+EDIT_REFUSAL_RESULT_REVIEWED_FILES = {
+    'cmd/baha/app_edit_apply.go': 'modified',
+    'cmd/baha/app_edit_apply_test.go': 'modified',
+}
+
+# Exact Docker fixture/workflow source: all eight native runtime families passed
+# run 39619782116, including cleanup and authenticated readiness. Existing Guided
+# regressions exercise the fixture's strict consent, owner and material checks;
+# accepted target merges also retain the independently qualified MCP workflow.
+DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD = 'c1337192e06e63f8210ace9e5687d8dc8f70f6d2'
+DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES = {
+    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
+    'cmd/baha/app_repository_integration_test.go': 'modified',
+    'cmd/baha/app_workload_integration_test.go': 'modified',
+    'cmd/baha/repository_runtime_fixture_test.go': 'added',
+    'scripts/test_ci_docker_runtime_doctor.py': 'added',
+}
+
 # Independently reviewed withdrawal projection; canonical persisted provider
 # preferences remain intact. Native MCP run 39605072620 also proves this source.
 RETIREMENT_PREFERENCES_REVIEWED_HEAD = '3f6772fc75243eaceb00c669f8ed1cd4c4b694e4'
@@ -664,6 +705,19 @@ def plan(diff, requirements, mapping, repository='.',
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
+        (EDIT_REFUSAL_RESULT_REVIEWED_HEAD, EDIT_REFUSAL_RESULT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
+         'reviewed pre-execution Edit refusal accuracy with mandatory Guided regressions'),
+        (MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD, MCP_PUBLIC_BOOTSTRAP_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+         [wizard_check('wizard-machine-adapter-tests'), wizard_check('wizard-core921-tests')],
+         'reviewed fresh public MCP proposal bootstrap with strict apply revision'),
+        (NEW_TERMINAL_INPUT_REVIEWED_HEAD, NEW_TERMINAL_INPUT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + [wizard_check('wizard-app-new-tests')],
+         'reviewed terminal Name delegation preserving New preview cancellation'),
+        (DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD, DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES,
+         CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed native Docker fixture and authenticated eight-family runtime evidence'),
         (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed final-job dependency on mandatory authenticated workflow policy'),
@@ -986,7 +1040,8 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'registration-mixed-unresolved'
             unresolved.append('mixed registration/execution source needs independent diff review: ' + path)
         elif (path.startswith('docs/') and path.endswith(('.md', '.rst')) or
-                path in ('README.md', 'CONTRIBUTING.md', 'mkdocs.yml', 'mkdocs.de.yml') or
+                path in ('README.md', 'CONTRIBUTING.md', 'CHANGELOG.md',
+                         'mkdocs.yml', 'mkdocs.de.yml') or
                 path.startswith('site/')):
             area = 'documentation'
             require(DOC_CHECKS)

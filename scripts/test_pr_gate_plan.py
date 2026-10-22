@@ -645,7 +645,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
 class MappingTests(unittest.TestCase):
     def test_documentation_requires_validation_but_zero_release_gates(self):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
-                     'README.md', 'mkdocs.yml']:
+                     'README.md', 'CHANGELOG.md', 'mkdocs.yml']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -653,6 +653,18 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertEqual(4, len(result['required_validation_checks']))
                 self.assertFalse(result['unresolved_coverage'])
+
+    def test_changelog_plus_docs_paths_classify_as_documentation(self):
+        result = planner.plan(diff(paths('CHANGELOG.md', 'docs/how-to/example.md',
+                  'docs/internal/reference.md', 'README.md',
+                  'CONTRIBUTING.md', 'mkdocs.yml')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual([], result['unresolved_coverage'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertEqual({'documentation-audit', 'mkdocs-en-strict',
+                          'mkdocs-de-strict', 'pages-candidate-build'}, checks)
 
     def test_code_picks_contract_without_private_consumers(self):
         for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
@@ -1556,6 +1568,31 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
 
 class ReviewedSourceQualificationTests(unittest.TestCase):
     def test_immutable_anchors_and_complete_inventories(self):
+        self.assertEqual('c6dfb988bb4f1fd295b6beb950980bb257e3699a',
+                         planner.EDIT_REFUSAL_RESULT_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/app_edit_apply.go': 'modified',
+                          'cmd/baha/app_edit_apply_test.go': 'modified'},
+                         planner.EDIT_REFUSAL_RESULT_REVIEWED_FILES)
+        self.assertEqual('f762f4480a2eb6b29ceebb35ae4032cb2ce7288c',
+                         planner.MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/app_machine_adapters.go': 'modified',
+                          'cmd/baha/app_mcp_provider_edit_native_test.go': 'modified',
+                          'cmd/baha/app_registration_921.go': 'modified',
+                          'cmd/baha/registration_921_test.go': 'modified'},
+                         planner.MCP_PUBLIC_BOOTSTRAP_REVIEWED_FILES)
+        self.assertEqual('99901ff2e787157ffb5e8d7d5206cf21272bd6c3',
+                         planner.NEW_TERMINAL_INPUT_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/app_new_wizard_test.go': 'modified',
+                          'cmd/baha/application_provider_preferences.go': 'modified'},
+                         planner.NEW_TERMINAL_INPUT_REVIEWED_FILES)
+        self.assertEqual('c1337192e06e63f8210ace9e5687d8dc8f70f6d2',
+                         planner.DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/docker-runtime-acceptance.yml': 'modified',
+                          'cmd/baha/app_repository_integration_test.go': 'modified',
+                          'cmd/baha/app_workload_integration_test.go': 'modified',
+                          'cmd/baha/repository_runtime_fixture_test.go': 'added',
+                          'scripts/test_ci_docker_runtime_doctor.py': 'added'},
+                         planner.DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES)
         self.assertEqual('013d7e4d491afc58a31c7934b371ab0dc35f3346',
                          planner.WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD)
         self.assertEqual({'.github/workflows/ci.yml': 'modified',
@@ -1583,6 +1620,15 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
         resolver = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(resolver)
         cases = (
+            ('EDIT_REFUSAL_RESULT', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS),
+            ('MCP_PUBLIC_BOOTSTRAP', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-machine-adapter-tests'),
+                                         wizard_check('wizard-core921-tests')]),
+            ('NEW_TERMINAL_INPUT', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-new-tests')]),
+            ('DOCKER_RUNTIME_FIXTURE', planner.CI_CHECKS + planner.CODE_CHECKS +
+             planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('RETIREMENT_PREFERENCES', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS),
@@ -1612,6 +1658,14 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
                 git('commit', '-qm', 'accepted prerequisite baseline')
                 git('branch', 'trusted')
                 git('checkout', '-qb', 'source')
+                prior_source = None
+                if name == 'EDIT_REFUSAL_RESULT':
+                    # Same two-file implementation before its mandatory Guided
+                    # wrapper: ancestry alone cannot inherit the later review.
+                    for path in files:
+                        (root / path).write_text('earlier source without required coverage\n')
+                    git('commit', '-qam', 'unqualified pre-wrapper source')
+                    prior_source = git('rev-parse', 'HEAD')
                 for path in files:
                     (root / path).parent.mkdir(parents=True, exist_ok=True)
                     (root / path).write_text('reviewed contents\n')
@@ -1645,6 +1699,12 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
                     self.assertEqual([], result['selected_gates'])
                     self.assertEqual({c['id'] for c in required},
                                      {c['id'] for c in result['required_validation_checks']})
+                    if prior_source is not None:
+                        prior_tree = git('merge-tree', '--write-tree', prior_source, target).splitlines()[0]
+                        prior_merge = git('commit-tree', prior_tree, '-p', prior_source, '-p', target,
+                                          '-m', 'older pre-wrapper source with clean target merge')
+                        self.assertFalse(real_proof(target, prior_merge, reviewed))
+                        assert_no_qualification(planner.plan(resolved_diff(prior_merge), REQ, MAP))
                     mutations = [dict(actual, changes=actual['changes'][:-1]),
                                  dict(actual, changes=actual['changes'] + paths('unreviewed.go')),
                                  dict(actual, changes=[dict(c, status='deleted') if i == 0 else c
