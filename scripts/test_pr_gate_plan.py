@@ -645,7 +645,7 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
 class MappingTests(unittest.TestCase):
     def test_documentation_requires_validation_but_zero_release_gates(self):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
-                     'README.md', 'mkdocs.yml']:
+                     'README.md', 'CHANGELOG.md', 'mkdocs.yml']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -653,6 +653,18 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertEqual(4, len(result['required_validation_checks']))
                 self.assertFalse(result['unresolved_coverage'])
+
+    def test_changelog_plus_docs_paths_classify_as_documentation(self):
+        result = planner.plan(diff(paths('CHANGELOG.md', 'docs/how-to/example.md',
+                  'docs/internal/reference.md', 'README.md',
+                  'CONTRIBUTING.md', 'mkdocs.yml')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual([], result['unresolved_coverage'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertEqual({'documentation-audit', 'mkdocs-en-strict',
+                          'mkdocs-de-strict', 'pages-candidate-build'}, checks)
 
     def test_code_picks_contract_without_private_consumers(self):
         for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
