@@ -1,6 +1,8 @@
 # Release notes
 
-[v0.4.25 candidate](v0.4.25.md) — Core-less application path and minimal authoring; not yet published.
+[v0.4.26 candidate](v0.4.26.md) — application needs wizard, Edit, Footprint and targeted development checks; not yet published.
+
+[v0.4.25](v0.4.25.md) — published baseline: Core-less application path and minimal authoring.
 
 
 Release notes record delivered behavior. Future planning belongs in GitHub Issues.

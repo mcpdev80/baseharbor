@@ -2,6 +2,8 @@
 
 This tutorial gets an existing application running under BaseHarbor without requiring provider knowledge or manual manifest editing.
 
+Use the [needs wizard](../how-to/application-needs.md) to create a project interactively, change its requirements and inspect its Target footprint.
+
 ## Start with what your application needs
 
 A supported local workload with no managed capabilities runs without installing
