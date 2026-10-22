@@ -232,6 +232,16 @@ EDIT_AUTOMATIC_INPUT_REVIEWED_FILES = {
     'cmd/baha/app_edit.go': 'modified',
     'cmd/baha/app_edit_apply_test.go': 'modified',
 }
+
+# Zero-needs Edit preview envelope repair only: the planner routes an empty
+# change-request set through the existing impact owner; no execution, consent
+# or registration surface changes. The bound source carries the guided-lane
+# regression inside the existing wizard-app-edit-tests check filter.
+EDIT_ZERO_PREVIEW_REVIEWED_HEAD = 'c37933d9688615ba574cfc3b9ffc817bd03c4f3e'
+EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
+    'cmd/baha/app_edit_apply_result.go': 'modified',
+    'cmd/baha/app_edit_zero_preview_test.go': 'added',
+}
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
 ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
@@ -731,6 +741,10 @@ def plan(diff, requirements, mapping, repository='.',
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
          [wizard_check('wizard-app-edit-tests')],
          'reviewed Automatic input parsing repair; lifecycle unchanged'),
+        (EDIT_ZERO_PREVIEW_REVIEWED_HEAD, EDIT_ZERO_PREVIEW_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+         [wizard_check('wizard-app-edit-tests')],
+         'reviewed zero-needs Edit preview envelope with guided regression'),
         (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed v0.4.26 immutable ecosystem resolver activation'),
