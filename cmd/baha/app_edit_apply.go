@@ -253,12 +253,19 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 	if err != nil {
 		return appEditApplyResult{Source: appEditLoadSource(loaded)}, err
 	}
+	executed := false
 	machineApply := func(applyCtx context.Context, plan application.ProviderImpactPlan, approved application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		executed = true
 		return authorities.Execute(applyCtx, desired, plan, approved)
 	}
 	result, changeErr := appMachineChangeDesired(ctx, appMachineDesiredChangeRequest{
 		Desired: request, Proposal: proposal, Consent: consent,
 	}, authorities.Read, authorities.Choices, authorities.Plan, authorities.Authorize, machineApply)
+	if !executed {
+		// A refused plan has no execution receipt to present and does not claim
+		// a changed application. Preserve the original admission failure.
+		return appEditApplyResult{Source: appEditLoadSource(loaded), Plan: proposal.Plan}, changeErr
+	}
 	presentation, presentErr := appChangeResultPresenter(proposal.Plan, result)
 	if presentErr != nil {
 		if changeErr != nil {

@@ -183,6 +183,58 @@ func TestAppEditApplyStalePlanAndWrongConsentWriteNothing(t *testing.T) {
 	}
 }
 
+func TestGuidedAppEditRefusalAndPartialResult(t *testing.T) {
+	t.Run("refusal-without-execution", TestAppEditApplyRefusalHasNoExecutionResult)
+	t.Run("authorization-and-partial-execution", TestAppEditApplyForeignOwnerAndPartialActualResult)
+	t.Run("destructive-and-shared-admission", TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics)
+}
+
+func TestAppEditApplyRefusalHasNoExecutionResult(t *testing.T) {
+	before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
+	after := append(append([]capability.Requirement(nil), before...), capability.Requirement{Kind: capability.KeyValue, Name: "cache"})
+	loaded := appEditTestLoaded(t, "dev", before, nil)
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r1", PlanID: "refusal-plan", Complete: true, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "add"}}}
+	for _, scenario := range []string{"missing-consent", "authorization", "fresh-read"} {
+		t.Run(scenario, func(t *testing.T) {
+			executed := 0
+			authorities := appEditTestAuthorities("dev", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{plan}, &executed)
+			consent := application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}
+			wantCode := "denied"
+			switch scenario {
+			case "missing-consent":
+				consent.First = false
+				wantCode = "approval_required"
+			case "authorization":
+				authorities.Authorize = func(context.Context, string, string) error { return errors.New("current actor denied") }
+			case "fresh-read":
+				read := authorities.Read
+				reads := 0
+				authorities.Read = func(ctx context.Context, target string) (GuidedReadContext, error) {
+					reads++
+					if reads == 3 {
+						return GuidedReadContext{}, &GuidedReadError{Kind: "denied"}
+					}
+					return read(ctx, target)
+				}
+			}
+			result, err := appEditApplyConfirmed(context.Background(), appEditTestController("dev", after, nil, plan), loaded, consent, authorities)
+			var machineErr *appMachineError
+			if !errors.As(err, &machineErr) || machineErr.Code != wantCode {
+				t.Fatalf("refusal classification: got %v, want %s", err, wantCode)
+			}
+			var resultErr *application.ProviderChangeError
+			if errors.As(err, &resultErr) {
+				t.Fatalf("pre-execution refusal acquired an execution-result error: %v", err)
+			}
+			if executed != 0 || result.Changed || result.Presentation != "" || !bytes.Equal(result.Source, loaded.Source) ||
+				!reflect.DeepEqual(result.Result, application.ProviderChangeResult{}) {
+				t.Fatalf("pre-execution refusal claimed a change or receipt: executions=%d result=%+v", executed, result)
+			}
+		})
+	}
+}
+
 func TestAppEditApplyForeignOwnerAndPartialActualResult(t *testing.T) {
 	before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
 	after := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}, {Kind: capability.KeyValue, Name: "cache"}}
@@ -202,16 +254,17 @@ func TestAppEditApplyForeignOwnerAndPartialActualResult(t *testing.T) {
 
 	executed = 0
 	authorities = appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{plan}, &executed)
+	executionFailure := errors.New("old SQL stop failed")
 	authorities.Execute = func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
 		executed++
-		return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true, Evidence: "cache add verified"}}, errors.New("old SQL stop failed")
+		return []application.ProviderExecutionOutcome{{InstanceID: "cache", Operation: "add", Status: "applied", Verified: true, Evidence: "cache add verified"}}, executionFailure
 	}
 	result, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
 	var partial *appMachineError
 	if !errors.As(err, &partial) || partial.Code != "partial" {
 		t.Fatalf("partial execution error = %v", err)
 	}
-	if executed != 1 || result.Result.Status != "partial" || !strings.Contains(result.Presentation, "old-sql: stop") || !strings.Contains(result.Presentation, "fresh consent") {
+	if executed != 1 || !result.Changed || !errors.Is(err, executionFailure) || result.Result.Version != application.ProviderImpactVersion || result.Result.PlanID != plan.PlanID || result.Result.Status != "partial" || !strings.Contains(result.Presentation, "old-sql: stop") || !strings.Contains(result.Presentation, "fresh consent") {
 		t.Fatalf("actual partial result not presented: calls=%d result=%+v text=%s", executed, result.Result, result.Presentation)
 	}
 }
@@ -302,7 +355,7 @@ func TestAppEditApplyRemovalRespectsDestructiveAndSharedPlanSemantics(t *testing
 	authorities := appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{destructive}, &executed)
 	_, err := appEditApplyConfirmed(context.Background(), controller, loaded, application.ProviderChangeConsent{PlanID: destructive.PlanID, First: true, Second: true}, authorities)
 	var machineErr *appMachineError
-	if !errors.As(err, &machineErr) || machineErr.Code != "cancel" || executed != 0 {
+	if !errors.As(err, &machineErr) || machineErr.Code != "approval_required" || executed != 0 {
 		t.Fatalf("destructive removal without data consent: err=%v calls=%d", err, executed)
 	}
 
