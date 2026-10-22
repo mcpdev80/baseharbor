@@ -703,3 +703,113 @@ func TestAppNewWizardActualTerminalSelectionUsesArrowSpaceAndEnter(t *testing.T)
 		t.Fatal("terminal selection did not finish")
 	}
 }
+
+func TestAppNewWizardActualTerminalNoPreservesChecklistAndCancels(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	configureTestTarget(t)
+	t.Setenv("TERM", "xterm-256color")
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	if err := pty.Setsize(master, &pty.Winsize{Rows: 40, Cols: 120}); err != nil {
+		t.Fatal(err)
+	}
+	old := appNewInput
+	appNewInput = slave
+	defer func() { appNewInput = old }()
+	reader := bufio.NewReader(slave)
+	if input := (appNewTerminalInput{Reader: reader, file: slave}); input.Name() != slave.Name() || input.Fd() != slave.Fd() {
+		t.Fatal("terminal adapter lost its descriptor identity")
+	}
+	m := application.WithWorkloadComponents(application.New("terminal-return", "dev", true, false, false), "app")
+	m.ApplicationID = application.MustNewApplicationID()
+	_, snapshot, err := appNewWizardAuthorityContext(t.Context(), "", m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err := newAppWizardController(t.Context(), appWizardInput{
+		Manifest: m, Snapshot: snapshot,
+		Selection: appCapabilitySelectionInput{Current: []capability.Requirement{{Kind: capability.SQL, Name: "default"}}}, TTY: true,
+		Refresh: func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+			return &GuidedReadContext{Footprint: application.Footprint{Target: snapshot.Target}}, &application.ProviderImpactPlan{Target: snapshot.Target}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	finished := make(chan error, 1)
+	const question = "Create project files and continue into the separately authorized lifecycle?"
+	go func() {
+		selected, err := appNewEditSelection(ctx, reader, slave, controller)
+		if err == nil {
+			selected, err = selected.Step(ctx, appWizardNext)
+		}
+		if err == nil {
+			var yes bool
+			yes, err = promptYesNo(reader, slave, question, true)
+			if err == nil && yes {
+				err = errors.New("single No was lost or interpreted as Yes")
+			}
+		}
+		if err == nil {
+			selected, err = selected.Step(ctx, appWizardNo)
+		}
+		if err == nil && len(selected.selection.Requirements()) != 2 {
+			err = errors.New("No discarded SQL/Cache selection")
+		}
+		if err == nil {
+			_, err = appNewEditSelection(ctx, reader, slave, selected)
+		}
+		finished <- err
+	}()
+	frames := make(chan int, 3)
+	go func() {
+		var rendered strings.Builder
+		stage := 0
+		buf := make([]byte, 4096)
+		for {
+			n, err := master.Read(buf)
+			rendered.Write(buf[:n])
+			marker := "P: optional provider preference"
+			if stage == 1 {
+				marker = question + " [Y/n]"
+			}
+			if stage < 3 && strings.Contains(rendered.String(), marker) {
+				frames <- stage
+				stage++
+				rendered.Reset()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	for stage, keys := range []string{"\x1b[B \r", "n\n", "\x1b"} {
+		select {
+		case got := <-frames:
+			if got != stage {
+				t.Fatalf("terminal frame=%d, want %d", got, stage)
+			}
+		case err := <-finished:
+			t.Fatalf("terminal ended before frame %d: %v", stage, err)
+		case <-ctx.Done():
+			t.Fatalf("terminal did not reach frame %d after one No", stage)
+		}
+		if _, err := master.Write([]byte(keys)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	select {
+	case err := <-finished:
+		if !errors.Is(err, errAppWizardAbort) {
+			t.Fatalf("returned checklist did not accept Esc: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("returned checklist did not cancel")
+	}
+}

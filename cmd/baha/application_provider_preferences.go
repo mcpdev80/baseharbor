@@ -267,6 +267,14 @@ type appNewTerminalInput struct {
 	file *os.File
 }
 
+// Keep the cancellable terminal-file contract used by Bubble Tea's reader.
+var _ interface {
+	io.ReadWriteCloser
+	Fd() uintptr
+	Name() string
+} = appNewTerminalInput{}
+
+func (r appNewTerminalInput) Name() string                { return r.file.Name() }
 func (r appNewTerminalInput) Fd() uintptr                 { return r.file.Fd() }
 func (r appNewTerminalInput) Write(p []byte) (int, error) { return r.file.Write(p) }
 
