@@ -1573,6 +1573,11 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
         self.assertEqual({'cmd/baha/app_edit_apply.go': 'modified',
                           'cmd/baha/app_edit_apply_test.go': 'modified'},
                          planner.EDIT_REFUSAL_RESULT_REVIEWED_FILES)
+        self.assertEqual('c37933d9688615ba574cfc3b9ffc817bd03c4f3e',
+                         planner.EDIT_ZERO_PREVIEW_REVIEWED_HEAD)
+        self.assertEqual({'cmd/baha/app_edit_apply_result.go': 'modified',
+                          'cmd/baha/app_edit_zero_preview_test.go': 'added'},
+                         planner.EDIT_ZERO_PREVIEW_REVIEWED_FILES)
         self.assertEqual('f762f4480a2eb6b29ceebb35ae4032cb2ce7288c',
                          planner.MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD)
         self.assertEqual({'cmd/baha/app_machine_adapters.go': 'modified',
@@ -1627,6 +1632,8 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
                                          wizard_check('wizard-core921-tests')]),
             ('NEW_TERMINAL_INPUT', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-new-tests')]),
+            ('EDIT_ZERO_PREVIEW', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests')]),
             ('DOCKER_RUNTIME_FIXTURE', planner.CI_CHECKS + planner.CODE_CHECKS +
              planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
