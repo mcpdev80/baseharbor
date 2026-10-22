@@ -91,7 +91,8 @@ baha version
 
 ## Project status
 
-BaseHarbor is pre-v1. This branch prepares v0.4.25; it is not yet release-ready.
+BaseHarbor is pre-v1. This branch prepares v0.4.26; it is not yet release-ready.
+The published baseline is [v0.4.25](https://github.com/mcpdev80/baseharbor/releases/tag/v0.4.25).
 Docker and Podman runtimes are implemented; Kubernetes and OpenShift runtimes
 are planned. See the documentation for supported paths and current limits.
 
