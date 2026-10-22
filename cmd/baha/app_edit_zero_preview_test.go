@@ -12,13 +12,13 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
-// TestAppEditZeroNeedsGuidedPreviewReachesReadonlyPreview reproduces the
+// TestAppEditCommandZeroNeedsGuidedPreviewReachesReadonlyPreview reproduces the
 // new-edit-new-zero-no gate failure: the Edit wizard of an application without
 // any provider needs must advance from the needs screen into the read-only
 // decision preview. A zero pending-change set previously returned the bare
 // zero-value plan envelope, appMachinePropose rejected it as a conflict, the
 // drive loop swallowed the Step error and the wizard never showed the preview.
-func TestAppEditZeroNeedsGuidedPreviewReachesReadonlyPreview(t *testing.T) {
+func TestAppEditCommandZeroNeedsGuidedPreviewReachesReadonlyPreview(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	target := configureTestTarget(t)
 	root := t.TempDir()
