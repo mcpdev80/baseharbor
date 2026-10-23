@@ -32,7 +32,7 @@ def _validate_fields(body):
         raise ReceiptError("EVIDENCE_COMMIT: invalid exact commit SHA")
     if not isinstance(body["policy_digest"], str) or not DIGEST.fullmatch(body["policy_digest"]):
         raise ReceiptError("EVIDENCE_POLICY: invalid policy digest")
-    if body["result"] != "PASS":
+    if type(body["result"]) is not str or body["result"] != "PASS":
         raise ReceiptError("EVIDENCE_RESULT: only verified PASS may be recorded")
 
 
