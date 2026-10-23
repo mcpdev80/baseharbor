@@ -39,6 +39,15 @@ class ResolverTests(unittest.TestCase):
         (self.directory / 'payloads' / 'check.json').write_bytes(b'bad')
         with self.assertRaises(ArchiveError): self.resolve()
 
+    def test_boolean_byte_count_rejected(self):
+        self.payload = b"x"
+        (self.directory / 'payloads' / 'check.json').write_bytes(self.payload)
+        self.manifest['checks'][0]['bytes'] = True
+        self.manifest['checks'][0]['sha256'] = hashlib.sha256(self.payload).hexdigest()
+        self.save()
+        with self.assertRaisesRegex(ArchiveError, "payload length or digest mismatch"):
+            self.resolve()
+
     def test_missing_payload(self):
         (self.directory / 'payloads' / 'check.json').unlink()
         with self.assertRaises(ArchiveError): self.resolve()
