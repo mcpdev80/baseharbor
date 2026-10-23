@@ -51,6 +51,8 @@ def publish(repo, number, expected_sha):
     if (latest["head"]["sha"] != expected_sha or latest["state"] != "open"
             or latest.get("draft") or latest["base"]["ref"] != "develop"):
         raise RuntimeError("candidate changed while preparing event; retry")
+    if "ci:validate" in {label["name"] for label in latest.get("labels", [])}:
+        raise RuntimeError("candidate label remains set; no new labeled event would fire")
     gh("POST", f"repos/{repo}/issues/{number}/labels",
        data={"labels": ["ci:validate"]})
     print(f"candidate submitted: {repo}#{number} {expected_sha}")
