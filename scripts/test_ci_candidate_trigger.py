@@ -85,6 +85,7 @@ class CandidateTriggerTests(unittest.TestCase):
     def test_candidate_submitter_safety_contract(self):
         source = (ROOT / "scripts/submit-pr-candidate.py").read_text()
         self.assertIn('os.environ.get("GITHUB_ACTIONS") == "true"', source)
+        self.assertIn('if not os.environ.get("GH_TOKEN"):', source)
         self.assertIn('pr["head"]["sha"] != expected_sha', source)
         self.assertIn('latest["head"]["sha"] != expected_sha', source)
         self.assertIn('pr["state"] != "open"', source)
