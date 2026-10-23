@@ -64,8 +64,8 @@ def main():
         parser.error("--repo must be owner/repository")
     if len(args.head_sha) != 40 or any(c not in "0123456789abcdef" for c in args.head_sha):
         parser.error("--head-sha must be full lowercase Git commit SHA")
-    if not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")):
-        parser.error("gh authentication required (independent GH_TOKEN)")
+    if not os.environ.get("GH_TOKEN"):
+        parser.error("independent GH_TOKEN required; GITHUB_TOKEN alone is not accepted")
     try:
         publish(args.repo, args.pr, args.head_sha)
     except (RuntimeError, KeyError, ValueError) as error:
