@@ -36,6 +36,8 @@ class CandidateTriggerTests(unittest.TestCase):
         self.assertIn('current.get("head", {}).get("sha") != expected', source)
         self.assertIn('current.get("base", {}).get("sha") != os.environ["EXPECTED_BASE"]', source)
         self.assertIn('current.get("state") != "open"', source)
+        self.assertIn('"stale candidate: PR head changed', source)
+        self.assertIn('"stale candidate: target base changed', source)
         self.assertIn('python3 "$RUNNER_TEMP/pr-required-final.py"', source)
 
     def test_ready_events_and_label_signal(self):
