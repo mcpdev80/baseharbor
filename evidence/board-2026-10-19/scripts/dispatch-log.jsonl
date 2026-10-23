@@ -1,3 +1,8 @@
 {"nonce":"dispatch-1792757218-526774-957","sid":"88ba1d78-1f3c-4d02-a292-ac4b552d4a92","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792757430-536995-12315","sid":"88ba1d78-1f3c-4d02-a292-ac4b552d4a92","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792757849-571980-7839","sid":"88ba1d78-1f3c-4d02-a292-ac4b552d4a92","baseline_users":2,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792758132-593873-3560","sid":"3f926e90-f23e-4313-876c-e63b440595a5","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792758429-620177-31120","sid":"f55cb3b3-d795-42f5-af83-e0c496b77a44","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792758578-646156-2185","sid":"3409aff4-ca6f-44a0-b44e-99c8b537b76b","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792758580-646267-9581","sid":"845f87ce-975d-4296-a751-de07538d5996","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792758582-646438-10897","sid":"4a7226aa-9823-45c3-b73c-8f29b1ed1d8c","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

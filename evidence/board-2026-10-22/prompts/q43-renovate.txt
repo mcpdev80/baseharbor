@@ -1,0 +1,4 @@
+Card t-20261017-release-0-4-27-updates (Claim q43). Read: python3 scripts/plan.py show t-20261017-release-0-4-27-updates.
+FIRST ACTION: evidence/board-2026-10-22/q43-renovate.md mit PLAN + todowrite ([wip:q43]).
+AUFGABE: Renovate-Update-Bestand fuer alle 4 Produktrepos erfassen (gh pr list mit Renovate-Absender), nach Risikoklasse sortieren (deps-major/minor/patch, lock-only, docker-base), je Repo eine empfohlene Integrationsreihenfolge vor der Feature-Arbeit ableiten (Task-Text lesen!). KEINE Merges/Closes - nur Inventar + Rezept.
+END Q43-RENOVATE-DONE.

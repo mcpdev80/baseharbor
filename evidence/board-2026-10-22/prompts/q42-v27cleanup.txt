@@ -1,0 +1,4 @@
+Card t-20261017-release-0-4-27-cleanup (baseharbor-plan, Claim q42). Read: python3 scripts/plan.py show t-20261017-release-0-4-27-cleanup.
+FIRST ACTION: evidence/board-2026-10-22/q42-v27cleanup.md mit PLAN + todowrite ([wip:q42]).
+AUFGABE: Release-start reconciliation fuer v0.4.27: alte offene PRs/Tasks/Branches ueber alle 4 Produktrepos listen (gh pr list --repo mcpdev80/{baseharbor,baseharbor-demo,baseharbor-console,baseharbor-node-connector} + origin/Branchen aelter 14 Tage), JEDES Teil kategorisieren (needs-rebase / superseded / still-open-legit / stale-close-candidate) und Ergebnis als Tabelle in die Evidence. KEINE mutationellen Aktionen (keine closes, keine pushes, kein loeschen) - nur Inventar + Vorschlaege mit Begruendung. Karten-Status bleibt active bis Owner-Review.
+END Q42-V27CLEANUP-DONE (mit zaehlen je Kategorie).
