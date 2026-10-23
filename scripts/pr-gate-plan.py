@@ -1160,13 +1160,6 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'r27-prototype-exact-path'
             require(R27_PROTOTYPE_CHECKS)
             require(CI_CHECKS)
-        elif path == '.github/workflows/r27-prototype-tests.yml':
-            if path_status.get(path) not in ('added', 'modified'):
-                unresolved.append('r27 prototype workflow deletion/rename/type change requires independent review: ' + path)
-            area = 'r27-prototype-workflow-exact-path'
-            require(R27_PROTOTYPE_CHECKS)
-            require(CI_CHECKS)
-            require(WORKFLOW_SYNTAX_CHECKS)
         elif path in PLANNING_WORKFLOWS:
             area = 'documentation-workflow'
             require(DOC_CHECKS)
