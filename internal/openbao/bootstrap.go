@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +37,27 @@ var (
 	ErrManagerNotConfigured = errors.New("OpenBao manager credentials are not configured")
 	ErrInvalidRecoveryFile  = errors.New("invalid OpenBao recovery file")
 )
+
+// isTransientError reports whether err represents a transient transport or
+// listener error that is likely to resolve on retry (for example a brief
+// window between Podman container restart and the openbao process re-attaching
+// to its TCP listener). Permanent errors (TLS/CA, permissions, missing
+// executables) are not retried.
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "network unreachable") ||
+		strings.Contains(s, "no such host") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "operation timed out") ||
+		strings.Contains(s, "temporary") ||
+		strings.Contains(s, io.ErrUnexpectedEOF.Error()) ||
+		strings.Contains(s, "reset by peer")
+}
 
 // Executor is the narrow runtime boundary required for OpenBao lifecycle work.
 // Sensitive input must be supplied through stdin rather than command arguments.
@@ -129,7 +151,13 @@ func probeMemberState(ctx context.Context, executor Executor, files bhruntime.Fi
 		cancel()
 		var state State
 		if err != nil {
-			if !retry || attempt > memberRestartAttempts {
+			if !retry {
+				return State{}, err
+			}
+			if !isTransientError(err) {
+				return State{}, err
+			}
+			if attempt >= memberRestartAttempts {
 				return State{}, err
 			}
 			select {
@@ -506,10 +534,6 @@ func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhrun
 	if err != nil {
 		return errors.New("encode OpenBao unseal request")
 	}
-	const (
-		memberRestartAttempts = 5
-		memberRetryDelay      = 500 * time.Millisecond
-	)
 
 	for _, member := range files.OpenBaoMembers() {
 		state, err := probeMemberState(ctx, executor, files, member, true)
