@@ -805,6 +805,7 @@ jobs:
           PLAN_JOB: ${{ needs.pr_plan.result }}
           EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           EXPECTED_INTEGRATION: ${{ github.sha }}
           FOCUSED_JOB: ${{ needs.pr_focused.result }}
           VALIDATION_JOB: ${{ needs.pr_validations.result }}
@@ -818,6 +819,30 @@ jobs:
           VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
+          # A label event can become stale while a developer pushes a new commit.
+          # Reject that run rather than qualifying the old event SHA.
+          python3 - <<'PY'
+          import json
+          import os
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          number = os.environ["PR_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          request = Request(
+              f"https://api.github.com/repos/{repo}/pulls/{number}",
+              headers={"Authorization": f"Bearer {token}",
+                       "Accept": "application/vnd.github+json",
+                       "X-GitHub-Api-Version": "2022-11-28"},
+          )
+          with urlopen(request, timeout=15) as response:
+              current = json.load(response)
+          expected = os.environ["EXPECTED_HEAD"]
+          if current.get("head", {}).get("sha") != expected:
+              raise SystemExit(
+                  "stale candidate: PR head changed after validation request; "
+                  "submit a new ci:validate event for the latest commit")
+          PY
           test "$PLAN_JOB" = success
           test -s pr-plan.json
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
