@@ -67,6 +67,8 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
         raise EvidenceError("EVIDENCE_POLICY: stale policy")
     if stage == "release" and artifact_digest is None:
         raise EvidenceError("EVIDENCE_ARTIFACT: release proof requires artifact")
+    if artifact_digest is None and artifact is not None:
+        raise EvidenceError("EVIDENCE_ARTIFACT: unexpected unbound artifact scope")
     if artifact_digest is not None and artifact != artifact_digest:
         raise EvidenceError("EVIDENCE_ARTIFACT: artifact scope mismatch")
     if (gate == "release/smoke" or record["gate"] == "release/smoke") and stage != "release":
