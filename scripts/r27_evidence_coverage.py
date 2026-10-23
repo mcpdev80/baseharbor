@@ -38,7 +38,7 @@ def plan(required, covered, *, stage, exact_candidate, trusted=True, failed=()):
         raise ValueError("EVIDENCE_INPUT: unknown gate in coverage")
     if stage == "release" and "release/smoke" not in required_set:
         raise ValueError("EVIDENCE_SMOKE: mandatory final artifact smoke gate missing")
-    reusable = tuple(sorted(covered_set - failed_set))
+    # This basic planner cannot prove candidate/artifact binding. Release smoke\n    # is never reused until the trusted verifier provides bound GateProof data.\n    if stage == "release":\n        covered_set.discard("release/smoke")\n    reusable = tuple(sorted(covered_set - failed_set))
     pending = tuple(sorted(required_set - covered_set - failed_set))
     if not trusted:
         return Decision("BLOCKED", "EVIDENCE_TRUST", "Trusted qualification source unavailable",
