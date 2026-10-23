@@ -85,4 +85,40 @@ Write-Set auf dieses Skript beschraenkt.
 - dry-run standardmaessig; realer Dispatch durch explizites Owner-Env (W1_CONFIRM=GO) gesperrt.
 - Kein Produkt-Branch-Mutation; nur Evidence-/Skript-Write-Set.
 
+## DRY-Lauf-Ausgabe (bash w1-input.sh, DRY_RUN=1 Standard)
+
+```
+=== W1-Input-Sheet ===
+console PR #7:  branch: work/v0426-console-consumption  sha: 0ea88f553fdac2097e26dce7a5203233a5530527  state: OPEN  mergeable: MERGEABLE  mergeStateStatus: CLEAN  reviews: 0
+connector PR #8: branch: work/v0426-connector-consumption sha: 570864c7c8bec738438aa70aa967be7e8490d7c3  state: OPEN  mergeable: MERGEABLE  mergeStateStatus: CLEAN  reviews: 0
+=== Matrix Targets: docker podman ===
+=== consumer_ref-Felder LIVE verifiziert ===
+=== W1-Dispatch-Precheck ===
+MODE: DRY_RUN (Standard) — es wird nichts real dispatchet.
+Genaue gh-Workflow-Dispatch-Kommandos:
+  OK: mcpdev80/baseharbor@develop = 1861ed07888a1ec22c218ca491d23ee54f48e261 (remote, kein kahl-Checkout)
+  OK: demo_ref 40-hex (1861ed07888a…)          [mit W1_DEMO_REF=1861ed07888a1ec22c218ca491d23ee54f48e261]
+  consumer_ref: 0ea88f553fdac2097e26dce7a5203233a5530527
+--- Matrix target: docker ---
+  DRY: gh workflow run "Release · Pre-Release Validation" --repo "mcpdev80/baseharbor" --ref "develop" \
+      --field tag="v0.4.26" --field ref="develop" --field demo_ref="1861ed07888a1ec22c218ca491d23ee54f48e261" \
+      --field consumer_ref="0ea88f553fdac2097e26dce7a5203233a5530527"
+--- Matrix target: podman ---
+  DRY: gh workflow run "Release · Pre-Release Validation" --repo "mcpdev80/baseharbor" --ref "develop" \
+      --field tag="v0.4.26" --field ref="develop" --field demo_ref="1861ed07888a1ec22c218ca491d23ee54f48e261" \
+      --field consumer_ref="0ea88f553fdac2097e26dce7a5203233a5530527"
+=== D2-Hinweis: Run 39977865544 = 404 -> D2 NICHT real dispatchen ===
+```
+
+Syntax-Check: `bash -n w1-input.sh` -> SYNTAX OK.
+
+### EXECUTE-Gate + Live-Befund (gh API, 2026-10-23)
+
+- EXECUTE ohne `W1_CONFIRM=GO` -> exit 1 (Owner-Gate greift).
+- EXECUTE mit `W1_CONFIRM=GO DRY_RUN=0`: docker+podman werden PARALLEL (background + wait) dispatched.
+  Live-Befund: `demo_ref` ist ein **REQUIRED**-Input. `--field demo_ref=""` -> HTTP 422
+  "Required input 'demo_ref' not provided". Daher im Skript demo_ref jetzt Pflicht (40-hex-Check),
+  Aussetzen mit `W1_DEMO_REF=<40-hex>`.
+- Consumer_ref LIVE via `git ls-remote` zur Laufzeit (o44/o33), PR-Head gegen w1-input.sh-Kopf validiert.
+
 ## O62-W1DISPATCH-DONE

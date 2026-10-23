@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f25-console2.md (ABSOLUT) mit PLAN + todowrite ([wip:f25]).
+Karte console-2 (Claim f25). Umsetze das Rezept aus evidence/board-2026-10-22/f24-console2.md (absolut, Datei lesen und 1:1 befolgen - es definiert die 2 Dateien + markierte Ausnahme).
+Repo mcpdev80/baseharbor-console: kleiner PR gegen develop (oder wie das Rezept es nennt), PR-Checks abwarten, KEIN Merge (REVIEW/MERGE macht codex-Lane nach deinem END).
+END F25-CONSOLE2-DONE mit PR-Nr + head + check-status.

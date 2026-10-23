@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o65-27cleanup.md (ABSOLUT) mit PLAN + todowrite ([wip:o65]).
+Karte t-20261017-release-0-4-27-cleanup (active, Owner q42 beendet - Uebergabe hiermit dokumentiert: o65 fuehrt den REPARATUR-Teil aus, Basis ist q42s Inventar evidence/board-2026-10-22/q42-v27cleanup.md im Ecosystem-Workspace).
+Auftrag: Nur die Kategorie "stale-close-candidate" aus dem Inventar ABARBEITEN wenn und soweit der Repo-Konsens (Task-Historie/Superseded-Belege) das klar hergibt: PR schliessen mit 1-Zeilen-Kommentar+Referenz. needs-rebase-Faelle: NICHT rebasen, nur Liste mit exaktem Ziel-Branch/Target je Kandidat. Alle Aktionen: keine Merges, keine Loeschungen von Branches, nichts auf develop/main.
+END O65-27CLEANUP-DONE mit counts (geschlossen/rezeptiert/uebersprungen).

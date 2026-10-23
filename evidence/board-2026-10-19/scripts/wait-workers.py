@@ -301,11 +301,24 @@ def _run_watch_loop(state, state_path, coordinator_id, poll_interval, dry_run):
         wref["last_wall"], wref["last_mono"] = wall_now, mono_now
         state["watcher"] = wref
         dirty = True
+        # pending_notify retry limited to 1x per message. After 1 failed
+        # retry, drop the message and let the next real event carry the
+        # same content (or silently advance). No poll-spam from indefinite
+        # retransmission when coordinator persistently returns busy.
         queue = state.setdefault("pending_notify", [])
+        retry_count = state.get("pending_retry_count", {})
         for msg in list(queue):
             if _send_wake(coordinator_id, msg, dry_run, self_id=coordinator_id, persist=False):
                 queue.remove(msg)
+                retry_count.pop(msg, None)
                 dirty = True
+            else:
+                # First retry failed: drop this message, no more retries.
+                retry_count[msg] = retry_count.get(msg, 0) + 1
+                if retry_count[msg] > 1:
+                    queue.remove(msg)
+                    dirty = True
+        state["pending_retry_count"] = retry_count
         if not obs_ok:
             # Finding 1: transient API loss must NOT stop monitoring or be
             # interpreted as gone/idle; alert (deduped) and retry next poll.
@@ -436,7 +449,10 @@ def _observe_pass(state, session, coordinator_id, dry_run, mono_now):
                 state["dialog_pending"] = True
             api_status = (entry or {}).get("status") or st_word
             if previous != api_status:
-                state["last_status"][worker_id] = api_status
+                # Write canonical status word in the busy branch, not raw api_status.
+                # This prevents flapping API states from reopening transitions
+                # that would trigger duplicate event emissions.
+                state["last_status"][worker_id] = st_word
                 dirty = True
             busy = state.setdefault("busy_since", {})
             bentry = busy.get(worker_id)
@@ -477,12 +493,15 @@ def _observe_pass(state, session, coordinator_id, dry_run, mono_now):
                 message += " [GHOST-CANDIDATE: no evidence file for " + nm + "]"
         if st_word == "exited":
             message += " (paneExit observed - NOT proof of completion; verify evidence)"
-        if norm == "gone":
-            state["last_status"][worker_id] = norm
-            dirty = True
+        # Advance last_status BEFORE _notify so dedup works regardless of
+        # delivery success. The event is appended to events.log via persist=
+        # True inside _notify/_send_wake; if delivery to coordinator fails
+        # (busy -> exit 4), last_status is already set so the next poll
+        # will see previous == norm and skip re-emission entirely.
+        state["last_status"][worker_id] = norm
+        dirty = True
         ok = _notify(state, coordinator_id, message, dry_run, self_id=worker_id)
         if ok:
-            state["last_status"][worker_id] = norm
             state["delivered"]["{}:{}".format(worker_id, norm)] = {
                 "coordinator": coordinator_id,
                 "at": _now_ms(),
@@ -490,6 +509,11 @@ def _observe_pass(state, session, coordinator_id, dry_run, mono_now):
             }
             dirty = True
             sys.stdout.write("watcher: delivered {} {}\n".format(worker_id, norm))
+        # last_status is now set regardless of delivery success, closing
+        # the loop so the dedup gate (if previous == norm: continue) blocks
+        # re-emission even when _notify returns False.
+        # (if previous == norm: continue) blocks re-emission even when
+        # _notify returns False because the coordinator is busy.
     return dirty
 
 

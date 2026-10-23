@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o64-nc3.md (ABSOLUT) mit PLAN + todowrite ([wip:o64]).
+Karte nc-3-core-enrollment-remote-runtime-acceptance (waiting, v0.4.27). Read-only Research wie bei f24: Contract + nc-Repo (mcpdev80/baseharbor-node-connector, PR #8 Status beachten) abgleichen - was fehlt fuer Core-kompatible Enrollment + echte remote Docker/Podman Acceptance? Rezept (max 3 Dateien, Job-Namen, Test-Namen) damit ein Umsetzungs-Worker direkt loslegen kann. KEINE Aenderungen.
+END O64-NC3RESEARCH-DONE.

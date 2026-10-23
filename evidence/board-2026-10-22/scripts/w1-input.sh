@@ -107,15 +107,12 @@ dispatch_matrix() {  # <tag> <ref> <demo_ref> <consumer_ref> <mode>
 
   verify_ref "${W1_REPO}" "${ref}"
 
-  if [[ -n "${demo_ref}" ]]; then
-    if [[ "${demo_ref}" =~ ^[0-9a-f]{40}$ ]]; then
-      echo "  OK: demo_ref 40-hex (${demo_ref:0:12}…)"
-    else
-      echo "  ERROR: demo_ref muss 40-hex sein, got: ${demo_ref}" >&2
-      return 1
-    fi
+  if [[ "${demo_ref}" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "  OK: demo_ref 40-hex (${demo_ref:0:12}…)"
   else
-    echo "  HINWEIS: demo_ref nicht gesetzt (Owner-Wert, aus docs/releases/${tag}.demo-ref)" >&2
+    echo "  ERROR: demo_ref ist ein REQUIRED-Input (gh API: HTTP 422 'Required input demo_ref not provided')," >&2
+    echo "         muss 40-hex sein, got: '${demo_ref}'. Aussetzen mit: W1_DEMO_REF=<40-hex> bash w1-input.sh" >&2
+    return 1
   fi
 
   local consumer_label="${consumer_ref:-<leer, owner-loest via ecosystem_release_pins.py>}"
