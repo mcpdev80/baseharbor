@@ -1578,6 +1578,16 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
         self.assertEqual({'cmd/baha/app_edit_apply_result.go': 'modified',
                           'cmd/baha/app_edit_zero_preview_test.go': 'added'},
                          planner.EDIT_ZERO_PREVIEW_REVIEWED_FILES)
+        self.assertEqual('398bbdbd37eefd292d62b8663ce52d381bf0685d',
+                         planner.DISPATCH_GATE_REF_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/ci.yml': 'modified',
+                          '.github/workflows/pre-release-runtime-suite.yml': 'modified',
+                          '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+                          'scripts/targeted-gate-ref.py': 'added',
+                          'scripts/test_targeted_gate_ref.py': 'added',
+                          'scripts/pr-gate-plan.py': 'modified',
+                          'scripts/test_pr_gate_plan.py': 'modified'},
+                         planner.DISPATCH_GATE_REF_REVIEWED_FILES)
         self.assertEqual('f762f4480a2eb6b29ceebb35ae4032cb2ce7288c',
                          planner.MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD)
         self.assertEqual({'cmd/baha/app_machine_adapters.go': 'modified',
@@ -1634,6 +1644,7 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-new-tests')]),
             ('EDIT_ZERO_PREVIEW', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests')]),
+            ('DISPATCH_GATE_REF', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('DOCKER_RUNTIME_FIXTURE', planner.CI_CHECKS + planner.CODE_CHECKS +
              planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
