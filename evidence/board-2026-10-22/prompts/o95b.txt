@@ -1,0 +1,1 @@
+HINWEIS (Coordination): f36 hatte parallele pushes auf deinem branch - Kollision erkannt. PRUEFE vor deinem naechsten push den aktuellen remote head (de500239 oder neuer) und baue DARAUF auf, nicht auf deinem lokalen stand. Falls sein diff regressiv ist (3 fail checks): korrigiere von der remote-spitze aus.

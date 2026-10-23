@@ -53,3 +53,4 @@ INCIDENT o85 (2026-10-23): Lane fuehrte git checkout -b + commit IM OPS-ROOT-REP
 WORKTREE-PFLICHT: alle Produkt-Missionen nutzen git worktree add <pfad> -b <branch> <base-sha>; main-Worktrees NIE switchen (Kollisionsquelle, o88-Fund).
 
 INCIDENT#2 (q87/q88): git checkout -b IM ROOT statt baseharbor (cwd-Rutsch) -> root auf core-branch. Recovery: checkout master, branch geloescht. NEUE MISSIONS-REGEL: Prompt-Prafix "pwd-PFLICHT: vor jedem git-Befehl pwd pruefen; in /home/marcel/dev/baseharbor-ecosystem ROOT ist KEIN git erlaubt (kein -C-Vergessen)."
+LAN-REGEL: pro branch nur EINE lane - #1056-Kollision (f36+o95) koordinativ geloest (f36 stop, o95 uebernimmt remote-spitze).

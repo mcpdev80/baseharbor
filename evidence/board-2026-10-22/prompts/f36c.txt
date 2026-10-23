@@ -1,0 +1,1 @@
+STOP-INSTRUCTION (Coordination): o95 arbeitet auf demselben branch (o90-planner-pr) wie du - Kollision. Stoppe ALLE weiteren pushes auf diesen branch sofort. Schreibe deinen aktuellen Stand (was du gepusht hast, head-sha, was offen war) in die Evidence und melde END F36-PLANNERFINAL-STOPPED.
