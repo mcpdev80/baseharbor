@@ -242,7 +242,6 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
-
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
 ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
