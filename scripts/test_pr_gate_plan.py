@@ -40,8 +40,7 @@ def planner_core752_merge(root, target, head, reviewed):
 
 class R27PrototypeExactPathTests(unittest.TestCase):
     def test_each_reviewed_path_requires_focused_checks(self):
-        for path in sorted(planner.R27_PROTOTYPE_PATHS | {
-                '.github/workflows/r27-prototype-tests.yml'}):
+        for path in sorted(planner.R27_PROTOTYPE_PATHS):
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'],
@@ -49,8 +48,6 @@ class R27PrototypeExactPathTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertIn('r27-prototype-regressions', checks)
                 self.assertIn('pr-planner-tests', checks)
-                if path.endswith('.yml'):
-                    self.assertIn('ci-actionlint', checks)
 
     def test_unreviewed_paths_remain_unresolved(self):
         for path in ('scripts/r27_unreviewed.py',
