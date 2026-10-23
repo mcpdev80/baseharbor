@@ -1,0 +1,31 @@
+{
+  "schema": "baseharbor.consumer-evidence-pins/v1",
+  "gates": {
+    "integration/docker/remote-target": {
+      "connector": {
+        "repository": "mcpdev80/baseharbor-node-connector",
+        "commit": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+        "workflow": ".github/workflows/release-integration.yml"
+      }
+    },
+    "integration/podman/remote-target": {
+      "connector": {
+        "repository": "mcpdev80/baseharbor-node-connector",
+        "commit": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+        "workflow": ".github/workflows/release-integration.yml"
+      }
+    },
+    "integration/static/live-console": {
+      "connector": {
+        "repository": "mcpdev80/baseharbor-node-connector",
+        "commit": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+        "workflow": ".github/workflows/release-integration.yml"
+      },
+      "console": {
+        "repository": "mcpdev80/baseharbor-console",
+        "commit": "69d1d14007fa43dc0c0457c3347280be7f802818",
+        "workflow": ".github/workflows/release-integration.yml"
+      }
+    }
+  }
+}
