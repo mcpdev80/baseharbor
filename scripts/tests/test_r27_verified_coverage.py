@@ -85,6 +85,13 @@ class VerifiedCoverageTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaisesRegex(EvidenceError, code):
                 check(signed(**changes))
 
+    def test_every_release_gate_binds_artifact(self):
+        for gate in ("sql", "release/smoke"):
+            with self.subTest(gate=gate):
+                self.assertEqual(check(signed(gate=gate), gate=gate)["gate"], gate)
+                with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
+                    check(signed(gate=gate, artifact_digest="d" * 64), gate=gate)
+
     def test_missing_release_artifact_rejected(self):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
             check(signed(), artifact_digest=None)
