@@ -1,9 +1,13 @@
+import hashlib
+import hmac
+import json
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from r27_evidence_coverage import GateProof, plan
+from r27_evidence_coverage import GateProof, plan, plan_verified
+from r27_verified_coverage import SCHEMA
 
 SHA = "a" * 40
 OLD = "c" * 40
@@ -64,6 +68,30 @@ class CoverageTests(unittest.TestCase):
                      stage="pr", candidate=SHA, policy_digest=POLICY)
             self.assertEqual((d.state, d.reusable, d.pending),
                              ("WAITING", (), ("sql",)))
+
+    def test_verified_reuse_and_pending(self):
+        key = b"k" * 32
+
+        def receipt(gate, candidate=SHA):
+            body = dict(schema=SCHEMA, stage="pr", candidate=candidate,
+                        policy_digest=POLICY, gate=gate, artifact_digest=None,
+                        result="PASS", run_id=11, attempt=1, job_id=12)
+            mac = hmac.new(key, json.dumps(body, sort_keys=True,
+                           separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+            return json.dumps({**body, "mac": mac}).encode()
+
+        args = dict(key=key, stage="pr", candidate=SHA, policy_digest=POLICY)
+        d = plan_verified(["sql", "docs"], {"sql": receipt("sql")}, **args)
+        self.assertEqual((d.state, d.reusable, d.pending),
+                         ("WAITING", ("sql",), ("docs",)))
+        d = plan_verified(["sql", "docs"], {"sql": receipt("sql"),
+                          "docs": receipt("docs")}, **args)
+        self.assertEqual((d.state, d.reusable, d.pending),
+                         ("READY_FOR_TRUSTED_ISSUER", ("docs", "sql"), ()))
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_TARGET"):
+            plan_verified(["sql"], {"sql": receipt("sql", candidate="f" * 40)}, **args)
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
+            plan_verified(["sql"], {"unknown": receipt("sql")}, **args)
 
     def test_unknown_gate_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
