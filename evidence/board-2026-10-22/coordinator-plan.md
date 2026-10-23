@@ -47,3 +47,5 @@ ROLLENKLARTEXT (Owner 2026-10-23): Coordinator fuehrt KEINE Produkt-/CI-Kommando
 26-FENCE (Owner 2026-10-23): Marcel macht 0.4.27 parallel selbst. Finger weg von 27-Karten/PRs. W1 ref/Resolver core = IMMER 1861ed07 fest, develop-move unerheblich. Planning: nur 26-Karten editieren.
 
 BRANCH-ONLY Regel (Owner): keine Merges in develop/main, alles auf eigenen branches; W1 ref fix 1861ed07.
+
+INCIDENT o85 (2026-10-23): Lane fuehrte git checkout -b + commit IM OPS-ROOT-REPO statt baseharbor aus (branch-Name kollidierte, ganzer Tree auf Core-Inhalt). Konsequenz: alle kuenftigen Missionen erhalten die Zeile "ALLE git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor[-plan|-console|-node-connector|-demo], NIEMALS im Root-Repo". Recovery: master-Checkout, Branch geloescht, 39/39 Dateien + Daemon ok.
