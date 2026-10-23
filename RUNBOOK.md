@@ -98,6 +98,10 @@ Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-2
   Todo-Tabelle = GUI-Grundlage). `ralphTodoStats/ralphTodos` in `agent list --json`
   ist ein ANDERES Feature (zeigt dort immer 0) – nie als Diagnose nutzen.
 - Jede Lane pflegt PLAN doppelt: natives todowrite-Tool + `## PLAN` in der Evidence-Datei.
+- **OPS-4 (q50):** Bevor evidence/... nach baseharbor-plan kopiert wird, durch pipe nach
+  `bash evidence/board-2026-10-22/scripts/sanitize_evidence_for_plan.sh`, um Markdown-Checkboxen
+  (`- [ ]`, `- [x]`) zu Unicode-Pendants (`- [☐]`, `- [✔]`) zu maskieren und
+  CardBoard-Checkbox-Render zu verhindern.
 
 ## 7. Evidence-Konventionen
 

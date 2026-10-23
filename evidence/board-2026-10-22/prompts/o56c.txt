@@ -1,0 +1,3 @@
+o56 Zusatzspur (parallel zu deinem Artefakt-Faden, KEINE Doppelarbeit): q53 konnte lokal nicht reproduzieren (kein podman hier) liefert aber 3 podman-spezifische Hypothesen fuer preparation=1 (siehe evidence/board-2026-10-22/q53-podmanlocal.md Section "Key Podman-specific behaviors": Quadlet auto-collect, env -u XDG_* Isolation, paused-state).
+Pruefe im scope-result.json Artefakt welche dieser 3 Klassen passt (container-List vs expected, XDG env im Job, container states) und benenne die eine Stelle im Workflow/Script, die gefixt werden muss.
+END wie zuvor O56-PODMAN2-DONE.

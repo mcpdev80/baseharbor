@@ -1,0 +1,3 @@
+ROLLE: REVIEW
+PR #8 mcpdev80/baseharbor-console (console-2 live core adapter workflow proofs, head 502cdadae3dff0b285868aae85bab618f4c1dede, base main laut Repo-Regel). Diff gegen main pruefen (SHA-genau), Akzeptanz der Karte console-2 (baseharbor-plan: plan.py show console-2), Check-Status app-based.
+Verdict ACCEPT/CHANGES-REQUIRED + Rezept in evidence/board-2026-10-22/codex-verdict-console2.md. NICHT mergen. END CODEX-CONSOLE2-DONE.

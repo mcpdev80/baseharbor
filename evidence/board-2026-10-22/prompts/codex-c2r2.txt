@@ -1,0 +1,3 @@
+ROLLE: REVIEW (Korrekturrunde 2).
+PR #8 head fd84036e0a40f16d71a3abdc701758f82d8ee863 gegen dein R1/R2-Rezept prüfen (codex-verdict-console2.md), Diff 502cdad..fd84036 = nur docs/CONTRACT-READINESS.md + pin provenance?
+Verdict ACCEPT/CHANGES als ERGÄNZUNG in dieselbe Datei. NICHT mergen. END CODEX-CONSOLE2-R2-DONE.

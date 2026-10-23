@@ -1,0 +1,2 @@
+q54, Review-Runde: codex-verdict-reviewwave.md Abschnitt DOCS = CHANGES mit den Punkten (Datei selbst lesen!). Rezept-Punkt 4: echte Produkt-Korrekturen auf DEINEM bestehenden Branch q54-docsfix buendeln (kein neuer PR), betroffene docs-Checks ausfuehren, push, PR-Checks beobachten.
+END Q54-DOCSFIX-R2-DONE mit updated head + check-status.

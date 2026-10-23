@@ -1,0 +1,2 @@
+ROLLE: REVIEW (Nachholung, Vorlaeufer-lane ist ohne Output gestorben).
+Karte t-20261019-v0426-complete-defect-audit (v0.4.26, review): f21-Memo sagt alle Audit-Befunde IN-C2 (develop 1861ed07). Pruefe STICHPROBE 5 Befunde gegen echte Commits/PRs (grep -l ueber die Memo-Tabelle, jeweils git merge-base/is-ancestor Check auf 1861ed07). Append NEW section "## AUDIT (rerun)" in evidence/board-2026-10-23/codex-verdict-reviewwave.md, Verdict ACCEPT(close-reif)/CHANGES. END RW-AUDIT-RERUN-DONE.

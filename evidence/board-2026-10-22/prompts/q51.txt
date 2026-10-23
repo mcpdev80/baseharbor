@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q51-opsqa.md (ABSOLUT) mit PLAN + todowrite ([wip:q51]).
+QA der OPS-1..6 Serie (q48/q49/q50 Deliverables, Scripts in evidence/board-2026-10-19/scripts/): (a) Daemon regulär neu starten (RUNBOOK §3), (b) basics-check --json auf neue Felder pruefen (reminder-summary, LATENCY, UNMONITORED-Freiraum), (c) fixturesuite rc=0, (d) events.log Rotation + ACK-Cursor nach 2 Zyklen konsistent, (e) spawn-lane ohne Flag => Headroom-Auswahl ornith zuerst (Doku-Check im Script, NICHT spawnen!).
+Bei Findings: gefixt zurueckmelden (Write-Set scripts/ + fixtures, suite erneut rc=0) oder Rezept notieren.
+END Q51-OPSQA-DONE mit pass/fail je Punkt (a-e).

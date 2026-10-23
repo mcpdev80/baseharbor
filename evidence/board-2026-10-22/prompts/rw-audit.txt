@@ -1,0 +1,2 @@
+ROLLE: REVIEW
+Karte t-20261019-v0426-complete-defect-audit (review; war blocked, Memo von f21 zeigt alle Befunde IN-C2 1861ed07). Stichproben-pruefe 3 Befunde gegen echte Merge-SHA-Referenzen im Memo. Bei Bestaetigung: ACCEPT = Karte schliess-reif (KEIN eigener close, das macht der Coordinator). Abschnitt AUDIT im selben Evidence-File. END RW-AUDIT-DONE.

@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q53-podmanlocal.md (ABSOLUT) mit PLAN + todowrite ([wip:q53]).
+PARALLELSPUR zu o56 (lokale Reproduktion statt CI-Artefakt): Auf DIESER Maschine im demo repo (origin work/v0.4.26-ecosystem-release, checkout a0ff20e in eigenem worktree) den cleanup-Pfad der demo acceptance unter podman isoliert nachfahren: script/Jobident aus .github/workflows/v0424-targeted.yml + den cleanup-Bash-Zweigen, preparation=1 Pfad finden (welcher PODMAN-Aufruf/Pruefung liefert was, warum unverifiziert?). VM-Only, kein CI-Manip, kein Push.
+Wenn reproduzierbar: Fixvorschlag an exakther Datei/Zeile; wenn nicht reproduzierbar: Umgebungsdifferenz zur CI begruendet eingrenzen (podman version, remote vs host, SELinux/apparmor, rootless).
+END Q53-PODMANLOCAL-DONE mit repro=yes/no + Stelle oder环境Delta.

@@ -1,0 +1,3 @@
+o65: Du bist mitten im PLAN nach dem Turn-Start stehen geblieben (Evidence zeigt nur das basics-check Protokoll). Fortsetzen mit dem urspruenglichen Auftrag aus evidence/board-2026-10-22/prompts/o65.txt (selbe Datei, alle Punkte).
+Kurzform falls Pfadprobleme: Inventar = /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q42-v27cleanup.md; plan.py liegt in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/scripts/.
+END O65-27CLEANUP-DONE mit counts.

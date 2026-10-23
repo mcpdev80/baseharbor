@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o67-console2b.md (ABSOLUT) mit PLAN + todowrite ([wip:o67]).
+Korrekturrunde console PR #8 (head 502cdad) nach evidence/board-2026-10-22/codex-verdict-console2.md: R1 (docs/CONTRACT-READINESS.md:27-64: historical qualified slices vs pending live qualification trennen, exakt wie Rezept) + R2 (pin provenance Doku korrigieren). Commit auf selben Branch, normal push, Checks beobachten.
+END O67-CONSOLE2B-DONE mit neuer head + check-status.

@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o71-appidgate.md (ABSOLUT) mit PLAN + todowrite ([wip:o71]).
+V0.4.26: appid-Karte hat READY mit Caveat: TestExternalProviderRegistrationAndRemoval fails NUR lokal (ownership-unverifiable, CI gruen - siehe cave-at in der Karte t-20261020-develop-appid-manifest-test-regression). Mache den Test umgebungsrobust ODER dokumentiere die Environment-Bedingung im Test selbst: PR gegen develop (baseharbor) mit der minimalsten Loesung (skip-if-unverifiable ist VERBOTEN wenn es echte Checks verschluckt - bevorzuge deterministische Pruefung des ownership-Pfads im tmp-dir-Modus).
+END O71-APPIDGATE-DONE mit PR-Nr + local-green-Beweis.

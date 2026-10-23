@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o68-publisher.md (ABSOLUT) mit PLAN + todowrite ([wip:o68]).
+Karte t-20261022-r27-evidence-publisher (Claim o68). Contract lesen. Pruefe den bestehenden Evidence-Publisher (Produktbasis: t-20261019-ci-evidence-stabilization ist accepted) gegen JEDEM Acceptance-Punkt der 27er-Karte: sanitization, bounded payloads, provenance+SHA-Binding. Luecken -> kleiner PR (Repo laut Contract), sonst verdict "contract-satisfied" mit Dateibelegen.
+END O68-PUBLISHER-DONE mit verdict-field + PR-Nr falls erstellt.

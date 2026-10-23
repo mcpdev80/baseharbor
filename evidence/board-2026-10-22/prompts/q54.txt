@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q54-docsfix.md (ABSOLUT) mit PLAN + todowrite ([wip:q54]).
+V0.4.26 (NICHT 27!): Karte t-20261022-q20-docs-pages ist review mit einem changes-rezept aus o58-docs920.md (Datei lesen, Abschnitt corrections). Setze das Rezept um: kleiner PR gegen develop (mcpdev80/baseharbor) der Pages-/Docs-Punkte, Checks abwarten, KEIN Merge.
+END Q54-DOCSFIX-DONE mit PR-Nr + head.

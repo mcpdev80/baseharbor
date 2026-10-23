@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o66-27prepare.md (ABSOLUT) mit PLAN + todowrite ([wip:o66]).
+Karte t-20261017-release-0-4-27-prepare (Claim o66). Contract lesen. 26-Stand: develop 1861ed07 C2-final, D2 in Arbeit. AUFGABE 27: Prepare-Readiness - welche Aenderungen 27 einleiten (o65 cleanup-Ergebnisse, f25 console-2 PR, o64 nc-3 Rezept) und Reihenfolge bis Pre-Release validity. Liefere Prepare-Checkliste ALS TEILAUFTRAEGE (Titel/Dateien/Test je Eintrag) fuer direkte Claim-Vergabe.
+Read-only. END O66-27PREPARE-DONE.

@@ -1,0 +1,2 @@
+ROLLE: REVIEW (Korrekturrunde 3).
+PR #8 head 71bb303e0a40f16d71a3abdc701758f82d8ee864 - R1/R2-Punkte aus Round-2 final pruefen (Diff fd84036..71bb303). ACCEPT oder letzter CHANGES-Punkt mit Rezept. ERGAENZUNG codex-verdict-console2.md. NICHT mergen. END CODEX-CONSOLE2-R3-DONE.

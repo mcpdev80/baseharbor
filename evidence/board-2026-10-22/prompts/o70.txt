@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o70-resolver.md (ABSOLUT) mit PLAN + todowrite ([wip:o70]).
+Karte t-20261022-r27-evidence-resolver (Claim o70, analog o68-Vorgehen): Contract lesen, bestehenden Resolver (Basis t-20261019-ci-evidence-stabilization) gegen JEDES Acceptance-Kriterium pruefen: fail-closed bei SHA/candidate drift, disjoint vom Publisher-Write-Set. verdict contract-satisfied oder Luecke mit PR.
+END O70-RESOLVER-DONE.

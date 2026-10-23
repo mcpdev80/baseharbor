@@ -73,3 +73,61 @@ All ancestry checks: `git merge-base --is-ancestor <sha> 1861ed07888a1ec22c218ca
 
 END F21-DEFECTCLOSE-DONE
 memo-field: all-covered: yes
+
+## AUDIT
+
+ROLLE: REVIEW — Codex, 2026-10-23. Scope: independent three-finding
+spot check requested by `prompts/rw-audit.txt`; no card closure or product changes.
+
+### PLAN
+
+- [x] 0. Read the dispatched prompt and binding policies; establish this review plan before audit work.
+- [x] 1. Refresh remote product/planning state and pin the memo and target commit.
+- [x] 2. Check three findings against actual GitHub merge SHAs, ancestry and source changes.
+- [x] 3. Record the bounded verdict, any actionable correction recipe and remaining acceptance limits.
+
+Tool limitation: this Codex session exposes no native TodoWrite/todowrite tool
+(tool catalog checked). No native TodoWrite update is claimed. The dispatched
+file contains no PLAN step 0; the explicit user request supplies step 0 above.
+
+### Inputs and reproducible checks
+
+- Reviewed by the assigned Codex REVIEW session, independently of the F21 memo author; no new worker was dispatched. Session/model backend identifiers beyond the supplied Codex identity are unavailable and are not invented.
+- GitHub authenticated identity: `mcpdev80` (`gh api user --jq .login`).
+- Live GitHub branch endpoints, checked twice: Core develop `1861ed07888a1ec22c218ca491d23ee54f48e261`; Planning main `c41cd2cf5d9d2ed7ba18bc346c0cd1ee4f2148e8`.
+- Planning task at remote main remains `review`, owner `Codex (Maintainer complete v0.4.26 defect audit)`, blocker empty. Local `plan.py show` agrees. Its old OWNER STOP handoff is historical data, not authorization to resume implementation.
+- SSH fetch failed before updating refs because `/etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf` has invalid owner/permissions. Live GitHub API branch/task/PR reads supplied the remote verification instead; no SSH settings changed. Local origin/develop and Planning HEAD already equal the live tips. Product working HEAD differs, so source inspection used immutable `git show 1861ed07:<path>` throughout.
+- For each sampled full merge below: `gh pr view <PR> -R mcpdev80/baseharbor --json state,mergeCommit,mergedAt`; `git -C baseharbor merge-base --is-ancestor <merge> 1861ed07888a1ec22c218ca491d23ee54f48e261`; `git show <merge>` and immutable target source inspection. All three ancestry commands returned **0**.
+
+### Three-finding sample
+
+| Memo finding | Actual merge SHA and live state | Source evidence at C2-final | Result |
+| --- | --- | --- | --- |
+| 1 — CLI/MCP registration | [#1026](https://github.com/mcpdev80/baseharbor/pull/1026), MERGED 2026-10-21T15:04:51Z; `fe2d0c4a8c1df2d15058e338abb78adeb4cc9b83` | `cmd/baha/commands.go:241–242` registers Edit/Footprint; `mcp_tools.go:139,469` registers Footprint/Edit. `app_registration_921.go:95–102,121–124` retains snake-case transport and typed wrong-Target conflict; `registration_921_test.go:24,55,84,157,228` covers real command/discovery/schema/propose/negative paths. | CONFIRMED, IN-C2 |
+| 27 — single-No terminal input loss | [#1035](https://github.com/mcpdev80/baseharbor/pull/1035), MERGED 2026-10-22T17:53:59Z; `078fdd0a57092f2649c92c93df901a70b3d2b11f` | `application_provider_preferences.go:270–278` preserves the cancellable terminal interface including `Name()`. `app_new_wizard_test.go:707` is the real PTY regression `TestAppNewWizardActualTerminalNoPreservesChecklistAndCancels`: one No, retained SQL/Cache selections, returned checklist and Esc cancellation. | CONFIRMED, IN-C2 |
+| 28 — truthful pre-execution Edit result | [#1036](https://github.com/mcpdev80/baseharbor/pull/1036), MERGED 2026-10-22T17:56:42Z; `2adae47afddc299d06dbc34eb16a8e011c14b6dc` | `app_edit_apply.go:256–267` returns the original admission failure before presenting any execution receipt. `app_edit_apply_test.go:186,192,238` supplies Guided coverage for consent/authorization/read refusals without writes or claimed changes, plus actual partial execution. | CONFIRMED, IN-C2 |
+
+Full parent-to-merge diff SHA-256 (`git diff <merge>^ <merge> --` raw bytes):
+
+- #1026: `81e47891c79ba574a1cd359730366b32f85fbca67cbef4b31732a0e79bbc6c38`
+- #1035: `00e911ba23c048fc745025ec5a03020a2863e1cff8763106aa10bddd8d190eeb`
+- #1036: `be4d4e76cb956267649d28f4dc0e03c51275c4a4f8583d8e090cc1932cf8ef00`
+
+Existing CI readback: #1035 run [39826312781](https://github.com/mcpdev80/baseharbor/actions/runs/39826312781) has passing wizard-app-new-tests, cli-guided-tests and PR Selected Checks; #1036 run [39826736084](https://github.com/mcpdev80/baseharbor/actions/runs/39826736084) has passing cli-guided-tests and PR Selected Checks. Runtime jobs are skipped. `gh pr checks 1026` reports no checks on its branch today, so this review claims no fresh #1026 CI/native verification. No tests or CI runs were started; this bounded source-reference sample reuses existing evidence.
+
+### Verdict and coordinator handoff
+
+**ACCEPT — the requested three-finding merge-reference spot check is confirmed.**
+For this dispatched audit handoff, the memo is ready for the Coordinator's card-closure decision. This session does not close or accept the Planning card, merge anything, or assert complete release qualification. A three-item sample does not re-review the other 29 dispositions or recover retired native receipts. The original task's published acceptance criteria remain binding for actual closure.
+
+Actionable recipe: no product correction is required for the sampled findings. Coordinator should attach this AUDIT to its closure evidence and preserve the outstanding final-source native/consumer/binary/gate qualification under core-923. Before actual closure, verify the original card's criterion map, required independent reviews/checks and published Planning render/check evidence. Stop closure if any mandatory original-card evidence is missing or if a changed target invalidates the references. Final qualification is not inferred from ancestry.
+
+Non-blocking memo precision: row 10 names the #1030 planner activation, while bootstrap source integration is correctly identified separately in row 26 as #1033 `3be56628`; retain that distinction when publishing. The memo's old `blocked` state is superseded by the live `review` card, not silently rewritten in its historical section.
+
+### repo-rule compliance and operational flags
+
+ROLLE: REVIEW throughout. Only this existing ecosystem evidence file was edited; product files, Planning task ownership/status, branches and foreign dirty work were preserved. No implementation, spawn, merge, release, deployment or messages to other sessions. Root policy retains the Maintainer pause; conflicting historical resumption prose was not used as authority.
+
+Turn-start basics flags were triaged within this bounded REVIEW scope: low /tmp space means no spawn; pool/idle/busy/coordinator-plan flags concern the dedicated Coordinator and do not authorize this reviewer to re-task/remove sessions, clean foreign files or edit its plan. Reminder backlog was inspected as operational data and left unacknowledged rather than claiming resolution. Event queue had already been consumed concurrently; a fresh check returned zero unread, and `events-check.py --ack` acknowledged zero. Those operational items remain with the Coordinator. Native TodoWrite remains unavailable as recorded above.
+
+END RW-AUDIT-DONE

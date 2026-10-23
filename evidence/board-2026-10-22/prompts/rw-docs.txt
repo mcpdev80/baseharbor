@@ -1,0 +1,2 @@
+ROLLE: REVIEW
+Karte t-20261022-q20-docs-pages (v0.4.26, review). o58 lieferte changes-rezept; q54 hat gerade einen Docs-PR gegen develop geoeffnet (q54-docsfix.md fuer PR-Nr). PR-Check: deckt der PR die rezept-Punkte final ab? Verdict ACCEPT/CHANGES im SELBEN File Abschnitt DOCS, Rezept falls Luecke. END RW-DOCS-DONE.

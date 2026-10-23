@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q52-console2c.md (ABSOLUT) mit PLAN + todowrite ([wip:q52]).
+PR #8 (mcpdev80/baseharbor-console, head fd84036) Runde 3 nach codex-verdict-console2.md Round-2 (Datei SELBST lesen, beide Punkte): R1 = CONTRACT-READINESS.md Zeilen 27-47 + 69-93: JEWEILS konkrete qualifizierte Historienreferenz (PR/Run/Artefakt-ID) statt Sammelbehauptung; R2-Follow-up = die von dir (o67) eingefuegte Zeile 62-64 "receipt equality" IST NICHT ERREICHBAR - Formulier so, dass Gleichheit nur innerhalb eines Laufs gilt (exact-SHA + run-ID als Identifier, kein Cross-Run-Gleichheitszwang).
+Commit + push + checks. END Q52-CONSOLE2C-DONE mit head.

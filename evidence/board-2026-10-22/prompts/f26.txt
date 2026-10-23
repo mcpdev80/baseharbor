@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f26-nc3.md (ABSOLUT) mit PLAN + todowrite ([wip:f26]).
+Karte nc-3 (Claim f26). Umsetze das Rezept aus evidence/board-2026-10-22/o64-nc3.md (Datei lesen, 1:1 folgen). Repo mcpdev80/baseharbor-node-connector, PR gegen main (Connector-Regel), Checks abwarten, KEIN Merge.
+Wenn das Rezept Stellen nennt, die den Repo-Guidelines widersprechen: Befund + STOP vor Push (END F26-NC3-STOP).
+END F26-NC3-DONE mit PR-Nr + head + checks.

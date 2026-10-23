@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f27-appidtest.md (ABSOLUT) mit PLAN + todowrite ([wip:f27]).
+Auftrag von o71 uebernommen (2x Lane-Ausfall): Karte t-20261020-develop-appid-manifest-test-regression, lokale Caveat: TestExternalProviderRegistrationAndRemoval failt auf dieser Maschine (provider-registry-ownership-unverifiable) auch auf origin/main, CI gruen. Mache den Test UMGEbungsrobust (deterministisch im tmp-dir, KEIN skip-if) als kleiner PR gegen develop (mcpdev80/baseharbor). Beweis = lokal PASS + CI PASS.
+END F27-APPIDTEST-DONE mit PR-Nr + local-Nachweis.

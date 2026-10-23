@@ -26,6 +26,8 @@ PLAN = os.environ.get("BH_COORDINATOR_PLAN") or os.path.join(
     ROOT, "evidence", "board-2026-10-22", "coordinator-plan.md")
 STATE = os.environ.get("WATCHER_STATE") or os.path.join(HERE, "watcher-state.json")
 CURRENCY = os.path.join(HERE, "board-currency.json")
+GATEWAY_LATENCY_CACHE = os.path.join(HERE, "gateway-latency.json")
+GATEWAY_URL = os.environ.get("GATEWAY_URL") or "http://192.168.6.132:4000/v1/models"
 
 
 def sh(cmd, timeout=30):
@@ -105,6 +107,58 @@ def board_flags(detail):
     return flags
 
 
+def gateway_latency():
+    """Read-only curl through AgentGateway, cache 60s, flag >5s.
+
+    Returns (latency_seconds, cache_age_seconds) tuple and writes cache file.
+    If latency > 5s: caller must NOT spawn that model.
+    If latency < 2s and cache was stale: model recovered, spawns allowed.
+    """
+    now = time.time()
+    # Check cache
+    cache_age = None
+    try:
+        cached = json.load(open(GATEWAY_LATENCY_CACHE))
+        if isinstance(cached, dict) and "time" in cached and "latency" in cached:
+            cache_age = now - cached["time"]
+            if cache_age < 60:
+                return cached["latency"], cache_age
+    except Exception:
+        pass
+
+    # Fresh curl
+    rc, out, err = sh(
+        ["curl", "-s", "-o", "/dev/null", "-w", "%{time_total}",
+         "--connect-timeout", "5", "--max-time", "10", GATEWAY_URL],
+        timeout=15)
+    if rc != 0:
+        # curl failed - flag high latency as critical
+        cached_latency = 999.0
+        try:
+            if cache_age is not None and cache_age < 120:
+                # Stale cache but recent failure; use last known or 999
+                pass
+        except Exception:
+            pass
+    else:
+        try:
+            cached_latency = float(out.strip())
+        except ValueError:
+            cached_latency = 999.0
+
+    # Write cache
+    try:
+        cache_data = {"time": now, "latency": cached_latency, "url": GATEWAY_URL}
+        tmp = GATEWAY_LATENCY_CACHE + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(cache_data, fh)
+        os.replace(tmp, GATEWAY_LATENCY_CACHE)
+    except Exception:
+        pass
+
+    return cached_latency, 0
+
+
 def main(argv):
     board_only = "--board-json" in argv
     detail = board_state()
@@ -143,6 +197,17 @@ def main(argv):
     if reminder_summary.get("unread"):
         flags.append("REMINDERS: {} unread (events-check.py --reminders; acknowledge after processing)".format(reminder_summary["unread"]))
     flags.extend(board_flags(detail))
+    # OPS-5: Gateway latency check (read-only, cache 60s, >5s flag, <2s recovery)
+    try:
+        lat, cache_age = gateway_latency()
+        if lat > 5.0:
+            flags.append("LATENCY: Gateway latency {:.2f}s (>5s) - NO NEW SPAWNS of "
+                         "this model until <2s".format(lat))
+        elif cache_age is not None and cache_age > 55:
+            flags.append("LATENCY: Gateway recovered ({:.2f}s <2s) - spawns allowed".format(lat))
+    except Exception as exc:
+        flags.append("LATENCY: Gateway check FAILED ({}) - assume high latency, "
+                     "block spawns until manual check".format(exc))
     rc_l, out_l, _ = sh([os.environ.get("CODMAN_BIN", "codeman"), "agent", "list", "--json"])
     if rc_l != 0:
         flags.append("OBS: codeman session list FAILED (rc {}) - pool/idle state UNKNOWN, "
@@ -220,10 +285,17 @@ def main(argv):
                      "(- {} - dispatch-hold until discovered or stopped)".format(
                          ", ".join(sorted(set(unmonitored))), len(set(unmonitored))))
     flags.extend(busy_over)
+    # OPS-5: Pool check aware of LATENCY holds
     want = {"flash": 1, "ornith": 2, "qwen": 2}
     for host, n in want.items():
         if mix.get(host, 0) < n:
-            flags.append("POOL: {} worker(s) below target ({}<{}) if real work exists".format(host, mix.get(host, 0), n))
+            # Check if LATENCY flag is active for this model
+            latency_flags = [f for f in flags if "LATENCY:" in f and host.upper() in f.upper()]
+            if latency_flags and any("NO NEW SPAWNS" in lf for lf in latency_flags):
+                flags.append("POOL: {} worker(s) below target ({}<{}) - "
+                             "LATENCY HOLD blocks spawns".format(host, mix.get(host, 0), n))
+            else:
+                flags.append("POOL: {} worker(s) below target ({}<{}) if real work exists".format(host, mix.get(host, 0), n))
     if os.path.exists(PLAN):
         age_min = (now - os.path.getmtime(PLAN)) / 60
         if age_min > 45:
