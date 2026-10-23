@@ -93,6 +93,13 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
             plan_verified(["sql"], {"unknown": receipt("sql")}, **args)
 
+    def test_empty_required_gates_never_qualify(self):
+        args = dict(stage="pr", candidate=SHA, policy_digest=POLICY)
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
+            plan([], [], **args)
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
+            plan_verified([], {}, key=b"k" * 32, **args)
+
     def test_unknown_gate_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
             plan(["sql"], [proof("other")], stage="pr",
