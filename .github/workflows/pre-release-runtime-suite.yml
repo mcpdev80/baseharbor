@@ -225,7 +225,7 @@ jobs:
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
         # Security starts the complete provider set; budget cold builds and
         # teardown after acceptance without changing service readiness limits.
-        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'security' && 12 || 8 }}
+        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}

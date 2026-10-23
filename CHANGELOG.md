@@ -6,13 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.4.26] - 2026-10-21
+## [0.4.26]
+
+Candidate release section; promoted date recorded when v0.4.26 is published
+rather than a mid-development commit date.
 
 ### Added
 
 - Interactive application needs wizard with optional Target-specific provider selection, dependency/footprint preview and explicit create-only or run choice.
 - Registered application Edit and read-only Footprint commands across CLI and MCP, including a two-phase MCP Edit proposal/apply boundary and matching generated references.
-- English/German New/Edit/provider-selection guidance and candidate release notes.
+- English/German New/Edit/provider-selection guidance for the candidate surface.
 
 ### Changed
 
@@ -1146,7 +1149,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.24...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
+[0.4.26]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
 [0.4.24]: https://github.com/mcpdev80/baseharbor/compare/v0.4.23...v0.4.24
 [0.4.23]: https://github.com/mcpdev80/baseharbor/compare/v0.4.22...v0.4.23
 [0.4.22]: https://github.com/mcpdev80/baseharbor/compare/v0.4.21...v0.4.22
