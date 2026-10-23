@@ -842,6 +842,12 @@ jobs:
               raise SystemExit(
                   "stale candidate: PR head changed after validation request; "
                   "submit a new ci:validate event for the latest commit")
+          if current.get("base", {}).get("sha") != os.environ["EXPECTED_BASE"]:
+              raise SystemExit(
+                  "stale candidate: target base changed after validation request; "
+                  "replan and revalidate against the current target")
+          if current.get("state") != "open" or current.get("draft"):
+              raise SystemExit("candidate is not an open review-ready pull request")
           PY
           test "$PLAN_JOB" = success
           test -s pr-plan.json
