@@ -1,0 +1,4 @@
+Fortsetzung o51: Diagnose steht fest - codex-verdict-1042-red.md Rootcause integration_sha_mismatch, WEIL der develop-Sync NIE gepusht wurde (remote head weiterhin 0267dbdb, kein Merge-Commit).
+Jetzt exakt ausfuehren: git fetch origin; checkout fix/atomic-bare-sha-dispatch bei 0267dbdb; git merge origin/develop (aktuell 49d396c4); Konflikt minimal (Selector-Datei: develop-Version gewinnen lassen, Branch-Aenderung bleibt); normaler push origin HEAD:refs/heads/fix/atomic-bare-sha-dispatch (kein force).
+Danach gh pr checks 1042 beobachten bis app 15368 auf dem NEUEN head entschieden hat.
+PLAN+Handoff in o51-sync1042b.md fortschreiben, END O51-SYNC1042B2-DONE mit neuem head SHA.

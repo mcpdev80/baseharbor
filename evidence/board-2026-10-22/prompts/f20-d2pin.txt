@@ -1,0 +1,4 @@
+FIRST ACTION: evidence/board-2026-10-22/f20-d2pin.md mit PLAN + todowrite ([wip:f20]).
+C2-final = baseharbor origin/develop 1861ed07 (Q+stepcap+dispatch-atomic alles drin).
+Auftrag: den lokalen Draft-Branch work/v0426-d2-pin in baseharbor-demo (von o49, Basis main 82d042b, core.ref={C2-FINAL:TODO}) fertigstellen: evidence/board-2026-10-22/scripts/apply_d2_pin_sha.sh lesen/ausfuehren (setzt den 40-Hex von 1861ed07), ein sauberer Commit "pin core C2-final 1861ed07", normaler push origin HEAD:refs/heads/work/v0426-d2-pin, PR gegen demo main (gh pr create --repo mcpdev80/baseharbor-demo, base main), checks beobachten.
+Wenn das Skript anders funktioniert als beschrieben: 1:1 Befund in Evidence, minimal selbst korrigieren (Write-Set: demo Branch + das Skript, nicht develop/main). END F20-D2PIN-DONE mit PR-Nr+head+check-status.

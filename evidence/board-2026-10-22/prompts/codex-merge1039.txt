@@ -1,0 +1,3 @@
+ROLLE: MERGE
+PR #1039 (mcpdev80/baseharbor) head 7e53bc68 = ACCEPTED source 75efeef8 + develop-sync, PR Selected Checks PASS. Ordinary expected-HEAD squash in develop, no force, develop-HEAD danach notieren.
+Evidence: ERGAENZUNG codex-merge-q-wave.md (Zweiter Abschnitt "1039-final", UTC before/after + run IDs). END MERGE-1039-FINAL-DONE.

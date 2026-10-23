@@ -1,0 +1,4 @@
+FIRST ACTION: evidence/board-2026-10-22/q45-updates-minor.md mit PLAN + todowrite ([wip:q45]).
+Card t-20261017-release-0-4-27-updates (Claim wechselfall: dokumentiere obergabe q43->q45 fuer den Apply-Teil). Basis: q43-Inventar (evidence/v0.4.27-2026-10-23/q43-renovate.md in baseharbor-plan).
+AUFGABE: NUR deps-patch/minor lock-only Updates anwenden: fuer JEDE offene Renovate-PR-Gruppe mit risk=patch/minor und lock-only, die bestehenden Renovate-PRs unveraendert lassen und NICHT mergen; stattdessen die Integrationsempfehlung je Repo als konkrete REZEPT-LISTE (PR-Nummern, Reihenfolge, erwartete Gates) in die Evidence schreiben. MAJORS (mongo 7->9 etc.) und docker-base-minor: nur als Owner-Entscheidungsliste (Auswirkungen 1 Satz je Eintrag).
+Keine Repo-Mutationen. END Q45-UPDATES-DONE.

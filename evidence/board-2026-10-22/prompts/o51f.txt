@@ -1,0 +1,6 @@
+o51, finales Rezept aus codex-verdict-1042-red.md DIAG3 (wortgetreu, Lies auch selbst):
+1. Neuer Branch vom SOURCE 0267dbdb: git checkout -B fix/atomic-bare-sha-dispatch-v2 0267dbdb, dann git merge --no-ff origin/develop (aktuell fetchen!) = korrekter Kandidat.
+2. PR #1042 schliessen (gh pr close 1042 --repo mcpdev80/baseharbor --comment "superseded by v2 branch with fresh base event"), NEUES PR vom v2-Branch gegen develop eroffnen - damit ist die PR-BASE des Events exakt das aktuelle develop 49d396c4 (Integration-Commit-Elternbedingung aus Antwort a/c).
+3. gh pr checks des NEUEN PRs bis app 15368 entschieden hat.
+4. Alte Branch fix/atomic-bare-sha-dispatch bleibt unveraendert (Historie, kein Loeschen).
+Evidence in o51-sync1042b.md fortsetzen, END O51-V2PR-DONE mit neuer PR-Nr, head, parents-Grafik, check outcome.

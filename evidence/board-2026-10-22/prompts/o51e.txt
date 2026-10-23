@@ -1,0 +1,4 @@
+o51, finale Aktion - du hattest recht mit deinem Stopp, meine Direktive interpretierte pr-diff-base.py:142 falsch (es geht um GITHUBS synthetischen Integration-Commit, nicht deinen Branch-Commit; parents [integration,target,head] ist ein 3-Parent-Marker).
+Die 8s-Fails sind ein stale Event-Base: loese ein frisches pull_request-Event aus, indem du PR #1042 einmal schliesst und sofort wieder oeffnest (gh pr close 1042 --repo mcpdev80/baseharbor; gh pr reopen 1042 --repo mcpdev80/baseharbor) - head 1263b9e2 bleibt unveraendert, kein force, keine Rule-Aenderung.
+Belege die Reasoning-Kette (Zeile 133-146 Kommentar + deine Gegenpruefung) in der Evidence, beobachte gh pr checks bis app 15368 auf dem frischen Event entschieden hat.
+END O51-EVENT-RESET-DONE mit check-Outcome.

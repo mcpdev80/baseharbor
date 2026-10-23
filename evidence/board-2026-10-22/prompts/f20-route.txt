@@ -1,0 +1,5 @@
+f20 Korrektur (du hast Kontext): Demo-CI ist NUR push-getriggert auf work/v0.4.26-ecosystem-release (v0424-targeted.yml on.push.branches) - PR->main loest keine Checks aus, Route ist falsch.
+1. gh pr close 119 --comment "wrong trigger route: demo gates are push-triggered on the release branch" --repo mcpdev80/baseharbor-demo.
+2. git checkout -B work/v0.4.26-ecosystem-release origin/work/v0.4.26-ecosystem-release (a0d0be81), cherry-pick f4c08069 (pin core.ref auf 1861ed07 - falls Konflikt: core.ref gewinnen, Rest des Branches behalten), normal push (KEIN force).
+3. gh run list --repo mcpdev80/baseharbor-demo --branch work/v0.4.26-ecosystem-release beobachten bis Ziel-Gates entschieden haben.
+END F20-D2ROUTE-DONE mit run-IDs+conclusions, D2 = finaler commit SHA auf dem release branch.

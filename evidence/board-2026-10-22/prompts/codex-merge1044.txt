@@ -1,0 +1,3 @@
+ROLLE: MERGE
+PR #1044 (mcpdev80/baseharbor, v2 von 0267dbdb + develop 49d396c4, Selected Checks PASS laut o51 Evidence, ACCEPT-Grundlage wie bei #1042 identischer Inhalt) ordinary expected-HEAD squash in develop, danach develop-HEAD = C2-final notieren + PR #1042 als superseded bestaetigt schliessen falls nicht schon.
+Evidence ERGAENZUNG codex-merge-q-wave.md Abschnitt "1044-final". END MERGE-1044-DONE mit develop-HEAD.

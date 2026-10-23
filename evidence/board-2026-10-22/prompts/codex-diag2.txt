@@ -1,0 +1,3 @@
+ROLLE: REVIEW (Follow-up-Diagnose, kein Merge).
+#1042 ist jetzt ECHT gesynct: head 1263b9e2 = merge(0267dbdb, develop 49d396c4); Focused Python pass; PR Selected Checks failt nach 8s. Pruefe gegen deine eigene Diagnose (integration_sha_mismatch) und ci.yml:444-457: Welcher konkrete Wert mismatcht JETZT (Selector erwartet reviewed head 0267dbdb, real ist 1263b9e2 als Sync-Kind - ist die Nachfahrenregel aktiv? Wie ist sie bei #1039 erfolgreich: 7e53bc68 vs 75efeef8)?#
+Ein Run-Log genuegt. Liefere DAS eine Rezept (Datei+Zeile+Aenderung) damit der naechste Workerlauf nicht erneut ins Leere laeuft. ERGAENZUNG in codex-verdict-1042-red.md, END DIAG2-1042-DONE.

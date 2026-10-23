@@ -1,0 +1,3 @@
+FIRST ACTION: evidence/board-2026-10-22/q46-accept922.md mit PLAN + todowrite ([wip:q46]).
+Karte core-922 (Docs: explain New/Edit and provider selection concisely), Status review. Verifiziere den Acceptance-Contract der Karte GEGEN develop 1861ed07 (C2-final): gh cli docs/help-Texte + wizard explanations existieren und entsprechen den Akzeptanzpunkten; die q20-docs-Pages-Kette und das appid-Receipt sind SEPARATE Karten, nicht hier.
+Beleg je Akzeptanzpunkt (Datei/Zeile oder help-Auszug) in der Evidence; bei Luecke: exaktes Rezept. PR nur wenn eine Doc-Aenderung noetig (dann kleiner PR gegen develop mit docs-Paths). END Q46-ACCEPT922-DONE mit verdict-field (ready|changes-rezept).

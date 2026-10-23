@@ -1,0 +1,4 @@
+o51, finale Korrektur in 4 Kommandos (warum: dein 1263b9e2 hat parents [49d396c4, 0267dbdb] = develop-first, pr-diff-base.py verlangt [source, develop]):
+git checkout -B fix/atomic-bare-sha-dispatch 0267dbdb && git merge --no-ff 49d396c4 && git log --format="%h %p" -1 && git push origin fix/atomic-bare-sha-dispatch:refs/heads/fix/atomic-bare-sha-dispatch
+(Merge des develop IN den source-Branch erzeugt parents [0267dbdb, 49d396c4] = source-first.) Vor dem push: git log --format=%p -1 muss mit 0267dbdb beginnen - sonst NICHT pushen und END STOP mit %p-Ausgabe.
+danach gh pr checks 1042 auf neuem head bis app 15368 entscheidet. END O51-FINAL-DONE mit head + %p.

@@ -1,0 +1,6 @@
+ROLLE: REVIEW (dritte Welle, engste Frage).
+#1042 (head 1263b9e2, parents [49d396c4, 0267dbdb]) failt PR Selected Checks nach 8-11s WEITER, close/reopen half nicht. Beantworte an Hand des TATSAECHLICHEN Check-Run-Logs (letzter attempt, app 15368) und ci.yml + pr-diff-base.py:128-152:
+a) WAS ist integration_sha in diesem Lauf konkret (welcher SHA, woher取自 webhook/github context)?
+b) WELCHE einzelne Aenderung (Welcher Commit, wo: Branch/develop/workflow-Detail) macht parents==[integration,target,head] wahr?
+c) Wie hat #1039 (head 7e53bc68, parents?) dasselbe Gate PASSIERT - diff der realen Eltern-Grafiken beider PRs.
+Ein Rezept, ein Worker, keine Spekulation. ERGAENZUNG codex-verdict-1042-red.md, END DIAG3-1042-DONE.

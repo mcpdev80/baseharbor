@@ -1,0 +1,2 @@
+ROLLE: REVIEW (Diagnose, kein Merge).
+PR #1042 head 0267dbdb: PR Selected Checks FAILURE trotz matchingem Selector-Eintrag (develop pr-gate-plan.py Zeile 249 zeigt exakt diesen SHA) UND develop ist neuer (5be7dabd, Q drin); Branch zeigt NICHT auf develop-Sync (head unveraendert). Live-Run-Log des fehlgeschlagenen check-runs sezieren, Rootcause feststellen (strict-up-to-date? cleanup-traceback wie #1043? Selektorlogik-Zweig?), praezises Rezept (Datei/Aenderung/Test) fuer einen Worker. Evidence: evidence/board-2026-10-22/codex-verdict-1042-red.md. END DIAG-1042-DONE.
