@@ -1,0 +1,6 @@
+Triage baseharbor run 39853157648 (pre-release.yml CMD-A matrix; refs C=2adae47afddc299d06dbc34eb16a8e011c14b6dc, D=896dc3cb68a8c9b9585940c4696410de5a338c52; dispatched per evidence/board-2026-10-22/o25-matrix-runnable.md).
+FIRST ACTION: create evidence/board-2026-10-22/q24-cmda-triage.md with ## PLAN checkboxes and todowrite steps.
+Then: gh run view the jobs; for EVERY failed job output: job name, matrix row, first 3 error lines, classification in {ENV-OUTAGE, FLAKY, REAL-DEFECT, EXPECTED-PENDING-FIX}.
+Known context: preview-line defect fixed by OPEN PR #1038 (not merged) -> runtime rows failing exactly on 'Read-only decision preview' assertion are EXPECTED-PENDING-FIX (signature in f7-native-dispatch.md).
+Deliver: counts table, list of rows that would flip green after C2 merge, any REAL-DEFECT needing a new mission. READ-ONLY, no writes, no dispatches.
+Finish: ## repo-rule compliance + END Q24-TRIAGE-DONE.

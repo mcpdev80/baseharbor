@@ -1,0 +1,3 @@
+FIRST ACTION: create evidence/board-2026-10-22/o31-docs-922-fix.md with ## PLAN + todowrite.
+On branch docs/v0426-notes-corrections (core PR #1041) implement codex-verdicts-2026-10-23.md core-922 items 2 and 3: EN/DE docs/releases/v0.4.26.md line ~15 restore explicit action+outcome ("Choosing No returns to the preserved selection" / "Mit No kehrst du zur erhaltenen Auswahl zuruck" - per verdict wording; forbidden: o29 F8 reversal), accurate cancellation translation for "cancellable terminal input", CHANGELOG link refs must not target nonexistent v0.4.26 tag (use existing base + candidate refs until promotion).
+Push to the #1041 branch, watch checks to terminal, PR stays OPEN. END O31-DOCS922-DONE.

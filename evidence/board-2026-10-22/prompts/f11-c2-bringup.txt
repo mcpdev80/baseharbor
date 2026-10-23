@@ -1,0 +1,7 @@
+FIRST ACTION: create /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f11-c2-bringup.md with ## PLAN + todowrite.
+Mission: sync the two fix branches onto develop 281d1ae0 (normal merge commits, never force):
+- fix/edit-refusal-preview-line (PR #1038)
+- fix/v0426-stepcap-split (PR #1039)
+Push each, then watch PR checks to terminal; report per-PR check table (pass/fail/pending counts) + first error line for any fail.
+No merges, no other branches, no product changes beyond merge resolution if needed.
+Finish: ## repo-rule compliance + END F11-BRINGUP-DONE.

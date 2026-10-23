@@ -1,0 +1,9 @@
+evidence/board-2026-10-19/scripts/events.log
+evidence/board-2026-10-19/scripts/reminders.log
+evidence/board-2026-10-19/scripts/watcher.log
+evidence/board-2026-10-19/scripts/watcher-state.json
+evidence/**/scripts/*.db
+evidence/**/scripts/*.db-*
+*.pid
+__pycache__/
+*.pyc

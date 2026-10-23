@@ -1,0 +1,3 @@
+FIRST ACTION: create evidence/board-2026-10-22/q26-demo118-ci.md with ## PLAN + todowrite.
+Mission DEMO118 (READ-ONLY): gh -R mcpdev80/baseharbor-demo pr view 118 + checks (state, mergeable, run conclusions); review diff scope vs scripts/acceptance.sh + failure-runtime-diagnostics.sh only (no stray changes); verdict MERGE-READY or BLOCKED with exact reasons and required precondition order (C2/D2 notes from HANDOFF).
+Finish: ## repo-rule compliance + END Q26-118-DONE.

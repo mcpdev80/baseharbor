@@ -1,0 +1,7 @@
+FIRST ACTION: create evidence/board-2026-10-22/q39-scriptfix-done.md with PLAN + todowrite ([wip:q39]).
+Take over f17's handoff (see f17-scriptfix.md steps 1-10 done, 11-14 open) on the ALREADY-EDITED scripts in evidence/board-2026-10-19/scripts/:
+- 11: add the fixture tests required by codex-script-audit.md (mocked send/list/DB, bare-remote temp repos, busy->idle->busy sequences, UNKNOWN dialog cases, WIP lines, ack cursors) under scripts/tests/.
+- 12: py_compile every .py + bash -n every .sh; run the fixture suite; fix ONLY what the suite proves broken in the takeover files.
+- 13: run basics-check.py --json and ONE dry dispatch-lane invocation against codex-merge-1030's session id using its dry/validation code path WITHOUT sending any text (read its --help/flags first; if no safe dry mode exists, verify by unit fixture instead and say so).
+- 14: ## repo-rule compliance + copy f17's completion ledger status + END Q39-SCRIPTFIX-DONE.
+Sessions untouched; no spawning; no product repos touched.

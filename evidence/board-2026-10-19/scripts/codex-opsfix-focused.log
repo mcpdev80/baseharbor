@@ -1,0 +1,13 @@
+test_chrome_ignored_real_dialog_retained (__main__.TestOpsFixes.test_chrome_ignored_real_dialog_retained) ... ok
+test_exact_session_id_overrides_ambiguous_title_and_late_start (__main__.TestOpsFixes.test_exact_session_id_overrides_ambiguous_title_and_late_start) ... ok
+test_gone_notification_dedupes_even_on_send_failure (__main__.TestOpsFixes.test_gone_notification_dedupes_even_on_send_failure) ... ok
+test_late_start_probe_exact_and_approx (__main__.TestOpsFixes.test_late_start_probe_exact_and_approx) ... ok
+test_reminders_json_and_ack_separate_from_events (__main__.TestOpsFixes.test_reminders_json_and_ack_separate_from_events) ... ok
+test_rotation_retains_unread_and_cursor_across_larger_replacement (__main__.TestOpsFixes.test_rotation_retains_unread_and_cursor_across_larger_replacement) ... ok
+test_task_named_evidence_both_locations_no_prefix_collision (__main__.TestOpsFixes.test_task_named_evidence_both_locations_no_prefix_collision) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.118s
+
+OK
+DRY-RUN send -> co: WATCHDOG REMINDER[observe:pane:missing]: PANE observation UNKNOWN for codeman-missing - dialog state unverified, flag retained, no RESOLVED emitted

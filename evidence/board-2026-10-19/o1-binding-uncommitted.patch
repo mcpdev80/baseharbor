@@ -1,0 +1,226 @@
+diff --git a/scripts/pr-gate-plan.py b/scripts/pr-gate-plan.py
+index c1606b92..c3420def 100644
+--- a/scripts/pr-gate-plan.py
++++ b/scripts/pr-gate-plan.py
+@@ -270,6 +270,28 @@ REGISTRATION_CI_REVIEWED_FILES = {
+     'scripts/test_pr_registration_ci.py': 'added',
+ }
+ 
++# core-921 reviewed production registration coverage: the exact shared
++# handlers, the golden contract/registry, CLI/MCP parity sources and the six
++# EN/DE reference docs. Individually reviewed, not task acceptance of the
++# handlers; the immutable commit and exact statuses bind this bundle.
++# Review report: evidence/board-2026-10-19/o1-core921-review.md Round 2.
++CORE_921_PRODUCTION_REVIEWED_HEAD = '756b22dc8967d0daa7393065cd5bc15f262c7050'
++CORE_921_PRODUCTION_REVIEWED_FILES = {
++    'cmd/baha/app_registration_921.go': 'added',
++    'cmd/baha/commands.go': 'modified',
++    'cmd/baha/machine_coverage.go': 'modified',
++    'cmd/baha/mcp_tools.go': 'modified',
++    'cmd/baha/registration_921_test.go': 'added',
++    'contracts/machine/v1/control.golden.json': 'modified',
++    'docs/cli/command-index.md': 'modified',
++    'docs/de/cli/command-index.md': 'modified',
++    'docs/de/reference/cli-machine-coverage.md': 'modified',
++    'docs/de/reference/mcp.md': 'modified',
++    'docs/reference/cli-machine-coverage.md': 'modified',
++    'docs/reference/mcp.md': 'modified',
++    'internal/machine/contract.go': 'modified',
++}
++
+ # Proposed exact qualification for core-917 (#975). This record becomes an
+ # authority only after independent policy review and integration into develop.
+ # Source inspection: PR review 5555616115. Focused + Docker/Podman evidence:
+@@ -567,6 +589,35 @@ def plan(diff, requirements, mapping):
+                     'integration does not accept registration task or future handler changes.'),
+                 'reasons': ['independently reviewed exact #974 registration CI source; '
+                             'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
++    # core-921 reviewed production registration coverage. No path-only approval:
++    # the exact shared registration handlers, the golden contract/registry, the
++    # CLI/MCP parity sources and the six EN/DE reference docs must arrive as this
++    # complete reviewed status set on a clean trusted-target merge. Unrelated
++    # changes after the review commit fail closed; the normal merge proof checks
++    # each merge tree. This is a shared-source coverage binding, not task
++    # acceptance or authorization of future handler edits.
++    if (valid and not diff['broad_required'] and not unresolved and
++            identifiers['integration_sha'] is not None and
++            len(paths) == len(CORE_921_PRODUCTION_REVIEWED_FILES) and
++            set(paths) == set(CORE_921_PRODUCTION_REVIEWED_FILES) and
++            all(ch.get('status') == CORE_921_PRODUCTION_REVIEWED_FILES.get(ch.get('path'))
++                for ch in diff['changes']) and
++            core752_reviewed_merge_chain(identifiers['target_base_sha'],
++                                         identifiers['head_sha'], CORE_921_PRODUCTION_REVIEWED_HEAD)):
++        require(CI_CHECKS)
++        require(CODE_CHECKS)
++        require(CLI_CHECKS)
++        require(DOC_CHECKS)
++        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
++                'mapping_schema': mapping['schema'], 'release': release,
++                'coverage_status': 'resolved', 'unresolved_coverage': [],
++                'broad_required': False, 'selected_gates': [],
++                'required_validation_checks': [validations[k] for k in sorted(validations)],
++                'validation_contract': ('Require every listed validation; exact reviewed '
++                    'source integration does not accept registration task or future handler changes.'),
++                'reasons': ['independently reviewed exact core-921 production registration '
++                            'bundle; mandatory CI/source/CLI/documentation checks on the complete '
++                            'reviewed file set and clean trusted-target merge']}
+     # Reuse the existing clean trusted-target merge proof, bound to the exact
+     # independently reviewed wizard CI commit and its complete seven-file diff.
+     if (valid and not diff['broad_required'] and not unresolved and
+diff --git a/scripts/test_pr_gate_plan.py b/scripts/test_pr_gate_plan.py
+index 05dccf19..291dfc05 100644
+--- a/scripts/test_pr_gate_plan.py
++++ b/scripts/test_pr_gate_plan.py
+@@ -327,6 +327,152 @@ class RegistrationBootstrapPolicyTests(unittest.TestCase):
+                 self.assertEqual('unresolved', planner.plan(bad, REQ, MAP)['coverage_status'])
+ 
+ 
++class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
++    def _checkout_and_git(self, git):
++        git('init', '-q')
++        git('config', 'user.name', 'core-921 fixture')
++        git('config', 'user.email', 'fixture@example.test')
++
++    def _make_reviewed_head(self, git, content, msg):
++        # Trusted shared baseline for the files that exist on develop (modified
++        # paths only); added paths are created fresh on the reviewed branch.
++        for path in {path for path, status in planner.CORE_921_PRODUCTION_REVIEWED_FILES.items() if status == 'modified'}:
++            (root / path).parent.mkdir(parents=True, exist_ok=True)
++            (root / path).write_text('baseline\n')
++        git('add', '.')
++        git('commit', '-qm', 'trusted shared baseline')
++        git('branch', 'trusted')
++        git('checkout', '-qb', 'source')
++        for path, status in planner.CORE_921_PRODUCTION_REVIEWED_FILES.items():
++            (root / path).parent.mkdir(parents=True, exist_ok=True)
++            (root / path).write_text(content)
++        git('add', '.')
++        git('commit', '-qm', msg)
++        return git('rev-parse', 'HEAD')
++
++    def _merge_integration(self, git, target, head):
++        git('checkout', '-q', 'trusted')
++        (root / 'accepted-policy.txt').write_text('target policy\n')
++        git('add', '.')
++        git('commit', '-qm', 'advance trusted target')
++        target = git('rev-parse', 'HEAD')
++        git('checkout', '-q', 'source')
++        git('merge', '--no-ff', '-qm', 'clean trusted-target integration', 'trusted')
++        head = git('rev-parse', 'HEAD')
++        git('checkout', '-q', 'trusted')
++        git('merge', '--no-ff', '-qm', 'verified PR integration', 'source')
++        integration = git('rev-parse', 'HEAD')
++        return target, head, integration
++
++    def test_exact_reviewed_bundle_resolves_with_full_check_set(self):
++        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
++        resolver = importlib.util.module_from_spec(rspec)
++        rspec.loader.exec_module(resolver)
++        with tempfile.TemporaryDirectory() as temporary:
++            global root
++            root = Path(temporary)
++            def git(*args):
++                result = subprocess.run(['git', '-C', str(root), *args],
++                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++                self.assertEqual(0, result.returncode, result.stderr)
++                return result.stdout.strip()
++            self._checkout_and_git(git)
++            reviewed = self._make_reviewed_head(git, 'independently reviewed\n', 'reviewed core-921 production registration bundle')
++            target, head, integration = self._merge_integration(git, None, None)
++            actual_proof = planner.core752_reviewed_merge_chain
++            def proof(target_sha, head_sha, reviewed_sha=None):
++                return actual_proof(target_sha, head_sha, reviewed_sha, root)
++            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
++                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
++                actual = resolver.resolve_pr_diff(root, target, head, integration)
++                self.assertFalse(actual['broad_required'], actual['reasons'])
++                self.assertEqual(target, actual['merge_base_sha'])
++                planned = planner.plan(actual, REQ, MAP)
++                self.assertEqual('resolved', planned['coverage_status'])
++                self.assertEqual([], planned['selected_gates'])
++                self.assertEqual({c['id'] for c in planner.CI_CHECKS + planner.CODE_CHECKS + planner.CLI_CHECKS + planner.DOC_CHECKS},
++                                 {c['id'] for c in planned['required_validation_checks']})
++
++    def test_mutated_reviewed_head_and_dirty_merge_chain_do_not_resolve(self):
++        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
++        resolver = importlib.util.module_from_spec(rspec)
++        rspec.loader.exec_module(resolver)
++        with tempfile.TemporaryDirectory() as temporary:
++            global root
++            root = Path(temporary)
++            def git(*args):
++                result = subprocess.run(['git', '-C', str(root), *args],
++                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++                self.assertEqual(0, result.returncode, result.stderr)
++                return result.stdout.strip()
++            self._checkout_and_git(git)
++            # No trusted baseline: only a dirty unreviewed branch exists; the
++            # exact-match clause requires a clean trusted-target merge chain,
++            # which is impossible here (the merge-chain proof is forced to fail),
++            # so coverage stays unresolved even with an exact reviewed file set.
++            for path, status in planner.CORE_921_PRODUCTION_REVIEWED_FILES.items():
++                (root / path).parent.mkdir(parents=True, exist_ok=True)
++                (root / path).write_text('unreviewed content\n')
++            git('add', '.')
++            git('commit', '-qm', 'unreviewed core-921 production bundle')
++            git('branch', 'source')
++            head = git('rev-parse', 'HEAD')
++            # 'target' advances linearly; head is a clean two-parent merge of the
++            # PR source and target. The merge-chain proof is forced to fail, so
++            # the clause cannot resolve despite the exact reviewed file set.
++            git('checkout', '-q', '-b', 'target')
++            (root / 'accepted-policy.txt').write_text('target policy\n')
++            git('add', '.')
++            git('commit', '-qm', 'advance trusted target')
++            target = git('rev-parse', 'HEAD')
++            git('checkout', '-q', 'source')
++            git('merge', '--no-ff', '-qm', 'clean trusted-target integration', 'target')
++            head = git('rev-parse', 'HEAD')
++            git('checkout', '-q', 'target')
++            git('merge', '--no-ff', '-qm', 'verified PR integration of target', 'source')
++            integration = git('rev-parse', 'HEAD')
++            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', head), \
++                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=lambda a, b, c=None: False):
++                actual = resolver.resolve_pr_diff(root, 'target', head, integration)
++                self.assertFalse(actual['broad_required'], actual['reasons'])
++                planned = planner.plan(actual, REQ, MAP)
++                self.assertEqual('unresolved', planned['coverage_status'])
++
++    def test_changed_status_and_extra_path_do_not_resolve(self):
++        rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
++        resolver = importlib.util.module_from_spec(rspec)
++        rspec.loader.exec_module(resolver)
++        with tempfile.TemporaryDirectory() as temporary:
++            global root
++            root = Path(temporary)
++            def git(*args):
++                result = subprocess.run(['git', '-C', str(root), *args],
++                    text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++                self.assertEqual(0, result.returncode, result.stderr)
++                return result.stdout.strip()
++            self._checkout_and_git(git)
++            # Reviewed bundle with a corrupted added handler: an added path is
++            # instead deleted, so the changed set is no longer exact and the
++            # clause must fail closed even on a clean trusted-target merge.
++            reviewed = self._make_reviewed_head(git, 'reviewed\n', 'reviewed core-921 production registration bundle')
++            git('checkout', '-q', 'source')
++            (root / 'cmd/baha/registration_921_test.go').unlink()
++            git('add', '.')
++            git('commit', '-qm', 'corrupted core-921 production bundle')
++            target, head, integration = self._merge_integration(git, None, None)
++            actual_proof = planner.core752_reviewed_merge_chain
++            def proof(target_sha, head_sha, reviewed_sha=None):
++                return actual_proof(target_sha, head_sha, reviewed_sha, root)
++            with patch.object(planner, 'CORE_921_PRODUCTION_REVIEWED_HEAD', reviewed), \
++                 patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
++                actual = resolver.resolve_pr_diff(root, target, head, integration)
++                self.assertFalse(actual['broad_required'], actual['reasons'])
++                planned = planner.plan(actual, REQ, MAP)
++                self.assertEqual('unresolved', planned['coverage_status'])
++                planned = planner.plan(actual, REQ, MAP)
++                self.assertEqual('unresolved', planned['coverage_status'])
++
++
+ class MappingTests(unittest.TestCase):
+     def test_documentation_requires_validation_but_zero_release_gates(self):
+         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',

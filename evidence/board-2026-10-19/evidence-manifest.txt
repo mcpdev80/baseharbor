@@ -1,0 +1,63 @@
+================================================================================
+EVIDENCE INTEGRITY MANIFEST — board-2026-10-19
+Date:        2026-10-19
+Coordinator session: w1-baseharbor
+Purpose:     PRE-HANDOFF BASELINE for Codex round 3 (final acceptance, #998/#1007)
+Scope:       /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/
+             top-level *.md and *.json only (scripts/ and tmp/ excluded)
+Format:      filename | sha256 | size_bytes | mtime_unix
+Sorted by filename (byte/ASCII order).
+================================================================================
+
+FILENAME                                                  SHA256                                                            SIZE      MTIME
+ci-finding-integration-sha-mismatch.md                    7d3df24baa425778072614ac40f38e86efda3bc8e4f0887121f0fbda3c7a1a6e   2155   1792409342
+codex-verdict-core921-round1.md                           46afa59d18466051b3b2ef8a691320d300bf97bf2632979081815c21955d5926   3381   1792411442
+codex-verdict-core921-round2.md                           75e8c014dfba6ce8bf92e515f6b94392e29fb6b186f67a517bc72694a7346bc0   3034   1792417597
+draft-codex-handoff-round3.md                             20b0d0ffc4f3401c37326aca14973d7e30d76e46e7c0e44347045ad44122a4e1  11741   1792445517
+draft-codex-handoff-round3-v2.md                           685a535aa8954aa175fed69f99bc172f6670ad94d6a2df14b2ca952a3b2def0b  17485   1792446591
+mapping.json                                                64e8aeebe06284281b14febf5dd32f8ff063700835f59cb97713cf0d4d3a995e   4442   1792435745
+o10-native-mcp-proof.md                                     df2910b9b6e745172733f28866d601c372588490f288f225fb909130823b4aa3   3516   1792441065
+o13-1007-review.md                                          7ba57048531166a91a0a60dc4f0191031e44c9ddaa6ef5ae2bb9a72ebed317fd   7169   1792422777
+o13-doc922-prep.md                                          d7b98aec84d6b6b2d70cd390cbb55c3d842cd0e73dbfd504df20d846204576a9  17060   1792444290
+o14-923-prep.md                                             878958882bcbf6ef003e1c2afa7683bc47ed06f441b68141a3c97e184c3649a8  17886   1792445216
+o17-selfq-review.md                                         f8615be949990c0f8d404b6f8a14abb71cc106237a9ee9be65e61efad5ecc8e1   7728   1792435332
+o1-binding-final.md                                         849df147bb73ec95f196fda2fc614f2f15691011d347385b5ae6a6f12e2e0921   6457   1792412801
+o1-binding-pause-note.md                                    128254f1e851a9d2e65fa39b4b5990f1b02c38da0c6d46c5d0d1d0fdd43de27f   4053   1792370634
+o1-binding-rebase.md                                        c15c3d70e59e7a33fd1bba12634a62e928995ac979794ff118a56fef73b2c941   3673   1792403257
+o1-core921-review.md                                        ba68c08c81b1a04a561522932cab45ae5a9997ea85c075b6125c27b7b463ef90  13058   1792369624
+o2-989-review.md                                            fe38604beae3a317addee7e0f60b2841c6045e216de3419d802222fe88ce3610   5658   1792370707
+o2-995-fix.md                                               f770cf5d0b430c4b4ae94b2ec0b9a1f2f5bef91ace19b6ec06fb46ea09ab2004   3985   1792369767
+o3-985-integration.md                                       a1fc76a1a3b6b4baef988ec8093010f741e524ed23373c65c97d2cd9718644a7   7340   1792369158
+o4-993-review.md                                            62adc84f22314d5a5f5a6255796382622f09d3c01873c3fc2f406ff817443808   5216   1792370100
+o4-995-rereview.md                                          d213957dce6e1cf8bf29526bdbda2c3a5630e25cee881b552a6f117587e43b24   6151   1792370656
+o4-998-rereview.md                                          6ae269c6d9939f0598ad7a6e75437c362bc369336f57624e310e668afa7763b2   5754   1792409590
+o5-998-correction.md                                        8546bc45c38af1e4b51209e699da8675c4d64e64f04cb9e6a34065058a14abce  11791   1792409073
+o6-codeman-delegation-investigation.md                     bebef21be67e1ac74a33afe2ae63e0560c9f2b8674f1029f6647d458466318f2  11188   1792414584
+o7-998-codexround.md                                        5b41277d7d86d9918e8c39d9b893f5a2b74d628682deaec9bbf1e51f3a71a8ad   9711   1792414793
+o8-998-delta.md                                             246b4f8ad2f568cb66163228418809391259d363db0c284edfeda0f594c033c0   8776   1792415147
+o9-binding-repin.md                                         25fe95b0435a486e71bc79d945fe5a453ae87f76ee6203a67d87de4588d89b7e  13556   1792433105
+q1-native-reverify.md                                       8bcd96db723bab0f9423903cb32d0a71bb8254e6be65bfed24e58c35e8d26eb1   2281   1792443955
+q2-ciwebhook-proposal.md                                    a7abfa34c1b83e0a8adf92b6331ef472660fae36f9be3b08176e0b2f4f6b5769  19719   1792444236
+q3-998-candidate-verify.md                                  931275eb11ca4ccb83acba75483e621e32544546dc77183c34066e5701a3a9ed  15747   1792444525
+q4-docprep-audit.md                                         1d581d813c175e100a084109ec2babd37d4478c3f632ced48592f54e8ef52dcd  15383   1792445235
+r1-998-prereview.md                                         55492fe5131b5e65ed7eb14ea0655fd2256568a1927f6df089d15e8494778bfd   7374   1792436994
+r2-ci-bundle.md                                             c8b96a5c5bae9c0615a26385983a8464a6f92d443cf463044e70eab5feb28ed9   6327   1792438421
+r3-998-native-delta-review.md                              3afe5ef6c641337674eafb5dcdcc8b87bcab0107855eb2c4389d656fe0d63ce6   5853   1792441538
+r4-planner-mode-analysis.md                                9b18cf55916e9a1f2a199bebcc4e493a3a7239f3d16b5efb7b90af6e770f7916  12716   1792439951
+r5-chainfix-review.md                                       34bf2ec9d932a4769dc84d5afe741d1b126694be7958ffa73e7cd033f71b0312  12807   1792446598
+
+--------------------------------------------------------------------------------
+SECTION 2 — CANDIDATE COMMITS (pre-handoff proof via `git cat-file -t`)
+--------------------------------------------------------------------------------
+All four hashes resolve as object type `commit` in the baseharbor product repo
+(/home/marcel/dev/baseharbor-ecosystem/baseharbor). No matching objects exist in
+baseharbor-console, baseharbor-demo, baseharbor-node-connector or baseharbor-plan.
+
+CLAIM  REPO         SHORT SHA   FULL SHA                                                          cat-file -t
+#998   baseharbor    6931ba9c    6931ba9c8e604419ae0afb7ff52dbdd20da840f8                          commit
+#998   baseharbor    a66e5de6    a66e5de664b22c295a8b5ae918a9c2dfe4c6e327                          commit
+#1007  baseharbor    706b5244    706b524489f8410091902e595df50427f80a4eab                          commit
+#1007  baseharbor    48def9e8    48def9e85e35db90025b4e354350bac22c9fe806                          commit   (PENDING FINAL)
+
+================================================================================
+O17-MANIFEST-DONE

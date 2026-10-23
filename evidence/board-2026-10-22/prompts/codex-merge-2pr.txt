@@ -1,0 +1,7 @@
+ROLLE: MERGE
+Auftrag: Merge der zwei AKZEPTIERTEN Kandidaten gemäß baseharbor-Regeln, SHA-genau, ohne Force/Bypass:
+- PR #1039 (mcpdev80/baseharbor) head 75efeef89b61d848d5ea351877ba6423a31e58a6 -> develop
+- PR #1042 (mcpdev80/baseharbor) head 0267dbdb71f63a2c77e193618e6fba4106e5cd5b -> develop
+Pflicht vor Merge: Live-Gates des jeweiligen PRs auf exakt diesem Head gruen (gh pr checks); falls nicht antretbar/gruen: NICHT mergen, Status in Evidence.
+Reihenfolge 1039 dann 1042 (beide develop); nach jedem Merge develop HEAD notieren; PRs danach mit Standard-Delete-Head mergen wenn Repo-Regel das vorsieht, sonst Branch behalten.
+Evidence: evidence/board-2026-10-22/codex-merge-1039-1042.md (UTC, before/after SHAs, Run-IDs, Verdict-Referenz codex-verdict-s39b-s42b.md). END CODEX-MERGE-SHA-DONE.

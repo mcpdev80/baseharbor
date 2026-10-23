@@ -1,0 +1,10 @@
+Lane f7 (Flash host). Mission: v0.4.26 demo native dispatch set on frozen inputs.
+C = 2adae47afddc299d06dbc34eb16a8e011c14b6dc (baseharbor develop)
+D = 896dc3cb68a8c9b9585940c4696410de5a338c52 (baseharbor-demo main)
+READ FIRST: evidence/board-2026-10-22/codex-review-demo-plan.md (WORKER recipe section; governs which gates),
+f5-demo-gates.md (previous signatures), evidence/board-2026-10-19/*/o13b-matrix-check.md runbook for dispatch mechanics.
+RULES: WRITE-FIRST: create evidence/board-2026-10-22/f7-native-dispatch.md with ## PLAN checklist + todowrite BEFORE any other action.
+Do not edit product files. Dispatch only via documented workflow_dispatch mechanisms on repos at the exact SHAs above.
+Collect for every gate: run URL, run id, head SHA, conclusion, first error line if fail.
+Expected gates (per review): guided-light Docker, guided-light Podman, heavy-data SQL Docker+Podman, backup-restore Podman cleanup-provenance, static/mcp parity, both reference journeys.
+No weakening, no local-substitute evidence, CI runs only. Finish: results table + END F7-DISPATCH-DONE + ## repo-rule compliance.

@@ -1,0 +1,1 @@
+mission = map every defect from planning card t-20261019-v0426-complete-defect-audit (q8-defect-audit.md) to current status (merged PR SHA / open / obsolete) READ-ONLY, evidence file q19-defect-ledger.md + todowrite PLAN first, END Q19-LEDGER-DONE.

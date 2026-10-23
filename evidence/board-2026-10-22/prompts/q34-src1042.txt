@@ -1,0 +1,2 @@
+FIRST ACTION: evidence/board-2026-10-22/q34-src1042.md with PLAN + todowrite.
+Execute step 3 of evidence/board-2026-10-22/codex-verdict-selector.md on branch fix/atomic-bare-sha-dispatch (PR #1042) ONLY: remove f14's branch-local DISPATCH_GATE_REF_* block exactly as the recipe prescribes, ONE commit, push, report new head SHA as frozen S42. No merges, no qualification entries. END Q34-SRC-DONE.

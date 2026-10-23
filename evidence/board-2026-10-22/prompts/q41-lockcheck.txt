@@ -1,0 +1,4 @@
+Mission v0426-lockcheck-recheck (read-only, product repos untouched).
+FIRST ACTION: evidence/board-2026-10-22/q41-lockcheck.md mit PLAN + todowrite ([wip:q41]).
+Repo baseharbor, Basis origin/develop=9f4916be (fetch, detached worktree). AUFGABE: Diff der CONTRACT-Dateien gegen den Stand, mit dem die offenen Consumer-PRs gebaut wurden: gh pr view 7 --repo mcpdev80/baseharbor-console und gh pr view 8 --repo mcpdev80/baseharbor-node-connector (heads 0ea88f5 / 570864c; PR-Lists sind gegen mcpdev80, NICHT krenost!). Welche Contract-/Source-Prep-/Lock-Dateien anderten sich 2adae47a..9f4916be, die diese Heeads betreffen? Brauchen #7/#8 neue Sync-Merge + ggf. Requalify, oder bleiben ihre gruenen Checks guiltig?
+Stop: keine Pushes/Merges/Kommentare; nur Analyse+Rezept. END Q41-LOCKCHECK-DONE.

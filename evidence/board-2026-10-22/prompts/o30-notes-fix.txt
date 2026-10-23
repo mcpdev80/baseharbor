@@ -1,0 +1,2 @@
+FIRST ACTION: create evidence/board-2026-10-22/o30-notes-fix.md with ## PLAN + todowrite, quoting delegation-inbox NOTESFIX.
+Mission NOTESFIX: implement the fix list from evidence/board-2026-10-22/o29-notes-qa.md on branch docs/v0426-notes-corrections from develop 281d1ae0 (EN/DE release notes + changelog entries, follow docs AGENTS rules). One PR to develop, checks green, branch OPEN, no merges. END O30-NOTESFIX-DONE.

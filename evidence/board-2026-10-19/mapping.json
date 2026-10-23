@@ -1,0 +1,136 @@
+{
+  "date": "2026-10-19",
+  "coordinator_session": "c3b6820f-5562-41a2-ae14-b92611dff14f (w1-baseharbor)",
+  "lanes": [
+    {
+      "task": "core-921",
+      "pr": "mcpdev80/baseharbor#998",
+      "worker": "o1-core921 (b70198fc-bbcd-457e-a23a-30f250b43a58)",
+      "branch": "work/core-921-central-cli-mcp-registration",
+      "candidate": "756b22dc8967d0daa7393065cd5bc15f262c7050",
+      "worktree": "worktrees/core-921-central-cli-mcp-registration",
+      "scope": "round2: coverage-unresolved root-cause probe, read-only",
+      "status": "PAUSED"
+    },
+    {
+      "task": "t-20261018-podman-recovery-bootstrap-cleanup",
+      "pr": "mcpdev80/baseharbor#995",
+      "worker": "o2-995fix (ef07916b-0b9f-43a2-855d-2823a75d37c4)",
+      "branch": "fix/t-20261018-podman-recovery-core-state-owner",
+      "candidate": "eaf86813f789f62b393ecf9ad287ae04b3ff7561",
+      "worktree": "worktrees/t-20261018-podman-recovery-core-state-owner",
+      "scope": "fixture manifest capability keys + redacted cleanup diagnostics + regression tests, push branch",
+      "status": "PAUSED"
+    },
+    {
+      "task": "core-754",
+      "pr": "mcpdev80/baseharbor#985",
+      "worker": "removed after evidence",
+      "branch": "fix/core-754-mcp-precondition-classification",
+      "candidate": "5a3813385af5392a9be3095bd038424a4f9950b7",
+      "worktree": "worktrees/core-754-mcp-precondition-classification",
+      "scope": "develop integration + exact Go families + vet/build, push branch",
+      "status": "PAUSED"
+    },
+    {
+      "task": "t-20261018-scoped-runtime-reset-xdg-ownership",
+      "pr": "mcpdev80/baseharbor#993",
+      "worker": "o4-993review (19d72a4b-6dd6-49a5-9d85-23a35fadb30f)",
+      "branch": "fix/scoped-runtime-reset-xdg-992",
+      "candidate": "b981f3b60bebfaebf6eb7f2f467dfd06142c90fe",
+      "worktree": "worktrees/scoped-runtime-reset-xdg-992",
+      "scope": "independent local source review, read-only",
+      "status": "PAUSED"
+    },
+    {
+      "task": "t-20261019-core921-coverage-binding",
+      "pr": null,
+      "worker": "o1-core921 (b70198fc)",
+      "branch": "work/ci-core921-coverage-binding",
+      "base": "f2bad5ef",
+      "status": "PAUSED: clause+tests UNCOMMITTED in worktree, no push/PR; pause note o1-binding-pause-note.md"
+    },
+    {
+      "task": "t-20261017-podman-acceptance-typed-consent",
+      "pr": "mcpdev80/baseharbor#989",
+      "worker": "o2-995fix (ef07916b)",
+      "candidate": "78a72ebad0723eefe760090bc34130b55858d8a3",
+      "status": "DONE read-only review (o2-989-review.md); foreign claim preserved; gate coverage-unresolved",
+      "worktree": "worktrees/podman-acceptance-typed-consent"
+    },
+    {
+      "task": "t-20261018-podman-recovery-bootstrap-cleanup review round",
+      "pr": "mcpdev80/baseharbor#995",
+      "worker": "o4-993review (19d72a4b)",
+      "candidate": "d359af833649a16f6b2b121704d5c2a6613f8e36",
+      "status": "PARTIAL review (o4-995-rereview.md); halted by pause; gate integration_sha_mismatch"
+    }
+  ],
+  "coordinator_status": "ACTIVE post-VM-reboot; session w1-baseharbor=74e10b98 (this pane); old c3b6820f/b7ab00ec dead",
+  "pause_order": "2026-10-19 Marcel: controlled pause; GC fixed via merged #999/#1000; gates still block",
+  "as_of": "2026-10-20 10:1x (pre-compact checkpoint)",
+  "active": [
+    {
+      "task": "core-921 #998",
+      "lane": "p22-998-nativejob",
+      "id": "1ff8b93a",
+      "branch": "work/core-921-central-cli-mcp-registration (head 89d3ddef)",
+      "job": "add hosted ubuntu-24.04 native app.edit lifecycle job per codex-round4-answers Q1, push, CI green",
+      "evidence": "evidence/board-2026-10-19/p22-nativejob.md marker P22-NATIVEJOB-DONE"
+    },
+    {
+      "task": "binding #1007",
+      "lane": "p24-loader-enforce",
+      "id": "d84a500a",
+      "branch": "work/ci-core921-coverage-binding (head 716b31d2, re-pin done by p21)",
+      "job": "Q2 loader: docs/internal/ci-binding-qualifications.md single fenced block from AUTHENTICATED BASE + Q3 four enforcement fixes + 6 tests + repro",
+      "evidence": "evidence/board-2026-10-19/p24-loader-enforce.md marker P24-ENFORCE-DONE"
+    },
+    {
+      "task": "podman-recovery #995",
+      "lane": "q17-995-recovery (Qwen3.6)",
+      "id": "5b9178eb",
+      "branch": "fix/t-20261018-podman-recovery-core-state-owner (remote 4ca98817 BEHIND develop)",
+      "job": "clean takeover claim fb892b5; preserve prior owner commits; merge develop; fix fixture+diagnostics; CI-durable proof (existing Targeted HA podman or new focused job); push; watch green",
+      "evidence": "evidence/board-2026-10-20/q17-995-recovery.md marker Q17-RECOVERY-DONE"
+    }
+  ],
+  "completed_since_last_map": [
+    "o9 self-qualification 48def9e8 pushed; independent APPROVE by t20 (qwen3.6-laptop session) o17-selfq-review.md; t20+o9 removed",
+    "o13 review APPROVE 706b5244; o15 in progress; watcher currently stopped",
+    "Codex round2 verdicts secured in codex-verdict-core921-round2.md; consolidated handoff of #1007 AFTER #998 final SHA (re-pin CORE_921 head, then agent send to fe5dff6c)"
+  ],
+  "codex_reviewer": {
+    "id": "1e46075f-67a2-40d1-9ab8-82db5a72f0fb",
+    "name": "codex-921-r4",
+    "state": "idle; round-4 answers in codex-round4-answers.md (RULING-4-DONE); Q3 rejected q15 blanket approve - p24 fixes it; next verdict after lanes land"
+  },
+  "next_events": [
+    "o10 idle -> verify native evidence -> re-pin #1007 -> review delta -> CODEX HANDOFF #1007 then #998",
+    "o15 idle -> restart watcher -> watch add active lanes"
+  ],
+  "chain_next": [
+    "p22 done -> final #998 head",
+    "p24 done -> re-pin CORE_921 if #998 head moved again -> freeze H",
+    "record PR (docs/internal md, hashes of H) -> green CI -> qualify #1007",
+    "Codex round5 bundle",
+    "merge #1007 then #998",
+    "unblock core-922/923; #990 follows #995"
+  ],
+  "budgets": {
+    "998 app.edit wiring (round3 cause)": "1 used (p20/p22)",
+    "1007 loader enforcement (ruling4 causes)": "1 used (p24)",
+    "1007 binding reachability": "EXHAUSTED per Codex (bootstrap route is design, not budget)",
+    "995 recovery": "1 used (q17)"
+  },
+  "rules_recent": [
+    "send-before-watch-add",
+    "first-send --wait",
+    "helpers NEVER in product branch (evidence/scripts only)",
+    "proofs as GH Actions jobs",
+    "pool=2 ornith+1 qwen",
+    "auto-compact 200K per session (API, pw in web env)"
+  ],
+  "board": "baseharbor-plan main=fb892b5; binding active, core-921 active, 995 claimed; checks green",
+  "pool_rule_reminder": "Rotation IMMER gegen feste Mischung pruefen: 1 flash + 1 qwen3.6 + 2 ornith. Fehler 2026-10-22: f3(FLASH) wurde mit o5(ORNITH) ersetzt -> 3 ornith zeitweise. Beim naechsten Idle->Respawn zuerst: welche Rolle fehlt?"
+}

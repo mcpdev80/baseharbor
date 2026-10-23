@@ -1,0 +1,119 @@
+test_mix_from_pane_not_letters_exited_separate_idle_confirmed (__main__.TestBasicsObservation.test_mix_from_pane_not_letters_exited_separate_idle_confirmed) ... ok
+test_ahead_unpushed_flag_not_stale (__main__.TestBoardCurrency.test_ahead_unpushed_flag_not_stale) ... ok
+test_behind_stale_and_divergence (__main__.TestBoardCurrency.test_behind_stale_and_divergence) ... ok
+test_clean_ok (__main__.TestBoardCurrency.test_clean_ok) ... ok
+test_dirty_stale (__main__.TestBoardCurrency.test_dirty_stale) ... ok
+test_fetch_failure_is_unknown (__main__.TestBoardCurrency.test_fetch_failure_is_unknown) ... ok
+test_missing_origin_main_is_unknown (__main__.TestBoardCurrency.test_missing_origin_main_is_unknown) ... ok
+test_wrong_branch_stale (__main__.TestBoardCurrency.test_wrong_branch_stale) ... ok
+test_api_failure_never_iterated (__main__.TestClassifier.test_api_failure_never_iterated) ... ok
+test_busy_idle_busy_tool_never_idle (__main__.TestClassifier.test_busy_idle_busy_tool_never_idle) ... ok
+test_malformed_json_is_unknown (__main__.TestClassifier.test_malformed_json_is_unknown) ... ok
+test_pending_permission_and_exit_and_gone (__main__.TestClassifier.test_pending_permission_and_exit_and_gone) ... ok
+test_unreadable_pane_is_unknown_not_idle (__main__.TestClassifier.test_unreadable_pane_is_unknown_not_idle) ... ok
+test_aggregate_pending_with_one_still_pending_lane (__main__.TestDialogPass.test_aggregate_pending_with_one_still_pending_lane) ... ok
+test_coordinator_scanned (__main__.TestDialogPass.test_coordinator_scanned) ... ok
+test_failed_pane_reads_never_emit_resolved (__main__.TestDialogPass.test_failed_pane_reads_never_emit_resolved) ... ok
+test_gone_lane_keeps_names_from_snapshot (__main__.TestDialogPass.test_gone_lane_keeps_names_from_snapshot) ... ok
+test_idle_confirmation_and_unknown_emit_no_events (__main__.TestDialogPass.test_idle_confirmation_and_unknown_emit_no_events) ... ok
+test_key_suggestion_only_from_rendered_options (__main__.TestDialogPass.test_key_suggestion_only_from_rendered_options) ... ok
+test_quoted_phrase_outside_tail_not_dialog (__main__.TestDialogPass.test_quoted_phrase_outside_tail_not_dialog) ... ok
+test_send_failure_persists_pending_notify (__main__.TestDialogPass.test_send_failure_persists_pending_notify) ... ok
+test_three_clean_resolve_with_recurrence (__main__.TestDialogPass.test_three_clean_resolve_with_recurrence) ... ok
+test_two_clean_then_unknown_then_clean_no_premature_resolve (__main__.TestDialogPass.test_two_clean_then_unknown_then_clean_no_premature_resolve) ... ok
+test_ambiguous_two_sessions_created_together (__main__.TestDispatchHoldAndDelivery.test_ambiguous_two_sessions_created_together) ... ok
+test_db_unavailable_unknown_single_send (__main__.TestDispatchHoldAndDelivery.test_db_unavailable_unknown_single_send) ... ok
+test_dispatch_log_identity_recorded (__main__.TestDispatchHoldAndDelivery.test_dispatch_log_identity_recorded) ... ok
+test_dry_run_sends_nothing (__main__.TestDispatchHoldAndDelivery.test_dry_run_sends_nothing) ... ok
+test_empty_db_classic_probe_is_unknown_not_success (__main__.TestDispatchHoldAndDelivery.test_empty_db_classic_probe_is_unknown_not_success) ... ok
+test_fast_completion_not_judged_by_busy_flip (__main__.TestDispatchHoldAndDelivery.test_fast_completion_not_judged_by_busy_flip) ... ok
+test_idle_staying_idle_never_double_sends (__main__.TestDispatchHoldAndDelivery.test_idle_staying_idle_never_double_sends) ... ok
+test_lost_delivery_exactly_one_retry (__main__.TestDispatchHoldAndDelivery.test_lost_delivery_exactly_one_retry) ... ok
+test_permission_dialog_no_resend (__main__.TestDispatchHoldAndDelivery.test_permission_dialog_no_resend) ... ok
+test_send_rc_failure_proven_loss (__main__.TestDispatchHoldAndDelivery.test_send_rc_failure_proven_loss) ... ok
+test_stale_currency_holds_without_sending (__main__.TestDispatchHoldAndDelivery.test_stale_currency_holds_without_sending) ... ok
+test_tool_busy_is_not_mission_receipt (__main__.TestDispatchHoldAndDelivery.test_tool_busy_is_not_mission_receipt) ... ok
+test_watcher_down_visible_monitoring_hold (__main__.TestDispatchHoldAndDelivery.test_watcher_down_visible_monitoring_hold) ... ok
+test_working_flip_still_one_send_identity_proven (__main__.TestDispatchHoldAndDelivery.test_working_flip_still_one_send_identity_proven) ... ok
+test_ack_covers_only_observed_snapshot (__main__.TestEvents.test_ack_covers_only_observed_snapshot) ... ok
+test_malformed_preserved_not_fatal (__main__.TestEvents.test_malformed_preserved_not_fatal) ... ok
+test_rotation_rescans (__main__.TestEvents.test_rotation_rescans) ... ok
+test_same_second_and_backward_clock_still_visible (__main__.TestEvents.test_same_second_and_backward_clock_still_visible) ... ok
+test_torn_write_not_acked_until_complete (__main__.TestEvents.test_torn_write_not_acked_until_complete) ... ok
+test_chrome_ignored_real_dialog_retained (__main__.TestOpsFixes.test_chrome_ignored_real_dialog_retained) ... ok
+test_exact_session_id_overrides_ambiguous_title_and_late_start (__main__.TestOpsFixes.test_exact_session_id_overrides_ambiguous_title_and_late_start) ... ok
+test_gone_notification_dedupes_even_on_send_failure (__main__.TestOpsFixes.test_gone_notification_dedupes_even_on_send_failure) ... ok
+test_late_start_probe_exact_and_approx (__main__.TestOpsFixes.test_late_start_probe_exact_and_approx) ... ok
+test_reminders_json_and_ack_separate_from_events (__main__.TestOpsFixes.test_reminders_json_and_ack_separate_from_events) ... ok
+test_rotation_retains_unread_and_cursor_across_larger_replacement (__main__.TestOpsFixes.test_rotation_retains_unread_and_cursor_across_larger_replacement) ... ok
+test_task_named_evidence_both_locations_no_prefix_collision (__main__.TestOpsFixes.test_task_named_evidence_both_locations_no_prefix_collision) ... ok
+test_critical_unchanged_deduped_not_persisted (__main__.TestReminderDedupe.test_critical_unchanged_deduped_not_persisted) ... ok
+test_send_failure_bounded_retry (__main__.TestReminderDedupe.test_send_failure_bounded_retry) ... ok
+test_concurrent_last_slot_admits_exactly_one (__main__.TestSpawn.test_concurrent_last_slot_admits_exactly_one) ... ok
+test_coordinator_excluded_by_identity (__main__.TestSpawn.test_coordinator_excluded_by_identity) ... ok
+test_failed_parse_restores_environment (__main__.TestSpawn.test_failed_parse_restores_environment) ... ok
+test_unavailable_list_is_hold_not_free_slot (__main__.TestSpawn.test_unavailable_list_is_hold_not_free_slot) ... ok
+test_unreadable_pane_is_hold (__main__.TestSpawn.test_unreadable_pane_is_hold) ... ok
+test_watch_add_failure_means_not_ready (__main__.TestSpawn.test_watch_add_failure_means_not_ready) ... ok
+test_api_loss_alerts_then_recovers (__main__.TestWaitConfirmed.test_api_loss_alerts_then_recovers) ... wait-workers: observation UNKNOWN (codeman list failed) - retrying, monitoring continues
+ok
+test_single_idle_does_not_return (__main__.TestWaitConfirmed.test_single_idle_does_not_return) ... ok
+test_api_failure_reported_not_silently_clear (__main__.TestWatchdogFixtures.test_api_failure_reported_not_silently_clear) ... ok
+test_claimed_ready_looking_card_never_dispatched (__main__.TestWatchdogFixtures.test_claimed_ready_looking_card_never_dispatched) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/test_f17_fixtures.py:999: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-yhnkuroi/evidence/board-2026-10-22/delegation-inbox.txt' mode='w' encoding='UTF-8'>
+  open(inbox, "w").write("")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_exited_idle_lane_separate_not_idlenoend (__main__.TestWatchdogFixtures.test_exited_idle_lane_separate_not_idlenoend) ... ok
+test_failed_planning_query_reported_not_fabricated (__main__.TestWatchdogFixtures.test_failed_planning_query_reported_not_fabricated) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/test_f17_fixtures.py:1010: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-j3d9zjdd/evidence/board-2026-10-22/delegation-inbox.txt' mode='w' encoding='UTF-8'>
+  open(inbox, "w").write("")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_handoff_prose_alone_does_not_retire (__main__.TestWatchdogFixtures.test_handoff_prose_alone_does_not_retire) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-cb4gib55/evidence/board-2026-10-22/lane-f.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-cb4gib55/baseharbor-plan/evidence/codeman-x/HANDOFF.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-cb4gib55/baseharbor-plan/evidence/codeman-x/HANDOFF.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_next_day_and_nested_evidence_locations (__main__.TestWatchdogFixtures.test_next_day_and_nested_evidence_locations) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-l66xg0da/evidence/board-2026-10-23/lane-c.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-l66xg0da/baseharbor-plan/evidence/codeman-x/lane-d.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_no_safe_work_reports_nothing (__main__.TestWatchdogFixtures.test_no_safe_work_reports_nothing) ... ok
+test_owner_stop_suppresses_delegate (__main__.TestWatchdogFixtures.test_owner_stop_suppresses_delegate) ... ok
+test_published_completion_retires_even_if_aged (__main__.TestWatchdogFixtures.test_published_completion_retires_even_if_aged) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-2n1b1m1x/evidence/board-2026-10-22/lane-e.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_reused_lane_prefix_exact_match (__main__.TestWatchdogFixtures.test_reused_lane_prefix_exact_match) ... ok
+test_stale_end_new_after_old_board_commit_fires_after_grace (__main__.TestWatchdogFixtures.test_stale_end_new_after_old_board_commit_fires_after_grace) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-4e5ozkba/evidence/board-2026-10-22/lane-a.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_stale_wip_marker_flagged_not_dispatched (__main__.TestWatchdogFixtures.test_stale_wip_marker_flagged_not_dispatched) ... ok
+test_unpublished_end_not_cleared_by_removal_or_old_commit (__main__.TestWatchdogFixtures.test_unpublished_end_not_cleared_by_removal_or_old_commit) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-t318m09_/evidence/board-2026-10-22/lane-b.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1261: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-t318m09_/evidence/board-2026-10-22/lane-b.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_wip_owner_idle_still_owned_other_task_reminds (__main__.TestWatchdogFixtures.test_wip_owner_idle_still_owned_other_task_reminds) ... /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/scripts/wait-workers.py:1152: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/f17wd-_r8sosbs/evidence/board-2026-10-22/q30-card.md' mode='r' encoding='utf-8'>
+  txt = open(f, encoding="utf-8", errors="replace").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+
+----------------------------------------------------------------------
+Ran 73 tests in 35.500s
+
+OK
+watcher: delivered co gone
+watcher: delivered w1 gone
+watcher: delivered w1 idle
+DRY-RUN send -> co: WATCHDOG REMINDER[observe:pane:missing]: PANE observation UNKNOWN for codeman-missing - dialog state unverified, flag retained, no RESOLVED emitted

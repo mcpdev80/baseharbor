@@ -1,0 +1,156 @@
+# BaseHarbor Ecosystem – operatives RUNBOOK (Flash/Codeman)
+
+Kanonischer Ort: `/home/marcel/dev/baseharbor-ecosystem/RUNBOOK.md`
+Diese Datei enthält die bewährten Betriebsdetails. `AGENTS.md` definiert den
+Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-22.
+
+## 1. Sessions & Pools
+
+- Pool-Ziel: 1 Coordinator (Flash) + 5 Worker (1 Flash, 2 Ornith15, 2 Qwen3.6) = 6 Sessions;
+  Codex-Abnahme-Lane separat. alle Modelle ausschließlich über AgentGateway
+  (`http://192.168.6.132:4000/v1`, Modell-IDs via `/v1/models`).
+- Hardware-ZUORDNUNG IST ZIELARCHITEKTUR (noch nicht verifiziert migriert):
+  Coordinator+Flash-Worker → NVIDIA Spark; Ornith → AMD 295; Qwen3.6 → AMD-295-Laptop.
+  Bis zur Verifikation nicht als Fakt behandeln. Host-CPU/RAM sind KEINE Spawn-Gates
+  fuer Modellfragen; Gesundheit des Codeman-Hosts (Prozess-Headroom der TUI-Sessions,
+  freier RAM > 2 Gi als Daumengrenze fuer Prozesstätigkeit, Uhr-Sync) bleibt Betriebskriterium.
+- - Gemessene Gateway-Parallelität: 4-Stream tok/s flash 22,8 / ornith 23,2 / qwen3.6 15-19;
+  VOLLLAST 6 simultane Streams (Pool 1 Coord + 5 Worker): 23,9 s Wandzeit, alle ok -
+  qwen3.6 langsamster Kanal, kein Limit gefunden (2026-10-22).
+
+## 2. Spawn + Dispatch (Pflichtpfad)
+
+- **Spawn:** `evidence/board-2026-10-19/scripts/spawn-lane.sh <name> [--qwen|--flash]`
+  - Modell-Overrides laufen NUR noch als Flag; intern flock-serialisiert
+    (set→spawn→unset an `/home/marcel/.codeman/.spawn-lane.lock`) - keine
+    überlappenden globalen tmux-Env-Änderungen mehr; kein manueller Env-Trick nötig.
+  - Auto-Compact: 200.000 Standard, 400.000 für Flash-Konfiguration.
+  - TUI-Readiness-Gate (Welcome-Erkennung) + automatische Watcher-Registrierung
+    (Watch-Add kann nicht mehr vergessen werden).
+  - Nach dem Spawn ist die Modellidentität im Pane-Footer einmal zu verifizieren.
+- **Auftrag:** Prompttext als Datei nach `evidence/board-2026-10-22/prompts/<lane>.txt`
+  (arbeitsverzeichnis-lokale Pfade, /tmp/opencode ok), dann
+  `evidence/board-2026-10-19/scripts/dispatch-lane.sh <id> <prompt-datei>`
+  = Einzeiler-Pointer-Nachricht + 5s-Busy-Check + Auto-Resend + Auto-watch-add.
+  Hintergrund: Codeman verwirft Multi-Line-Sends still; `--wait` blockiert bis Abschluss.
+- **Nach jedem Erfolg:** `codeman agent rm <id>` + `wait-workers.py watch remove <id>`.
+- **Watchdog-Layer (freigegeben 2026-10-22):** `wait-workers.py` prüft alle 60s Pool-Belegung nach
+  echtem Modell (Pane-Header `Build · …`, Coordinator/codex ausgenommen) und mappt `basics-check.py --json`
+  Flags in deduplizierte Reminders (Cooldown 15min, kritische sofort) via Queued-`agent send`; Skripte
+  erinnern nur, entscheiden nie. Compact-Erfolg = Kontext unter Schwelle ODER Message-Event plus Rückgang
+  (kein starrer 20%-Abschlag); Delegate-Reminder nur bei bekanntem ausführbarem Task
+  (`plan.py list --ready` unclaimed oder Zeilen in `evidence/board-2026-10-22/delegation-inbox.txt`). spawn-lane.sh: POOL-Guard VOR Spawn (exit 4) + Identitäts-Guard NACH
+  Spawn (exit 3, Lane bleibt); Root-Cause f8: geerbte Daemon-Env `OPENCODE_CONFIG` – Override jetzt
+  zwingend in der flock-Sektion. **Daemon-Neustart: immer Pid aus `watcher-state.json['watcher']['pid']`
+  killen (`watch start` forked – Wrapper-Pid töten lässt Altkind weiterlaufen).**
+- **Lane unterbrechen statt töten:** `codeman agent interrupt <id>` (nur ESC). Raw `tmux send-keys C-c` beendet den OpenCode-Prozess (q18-Verlust 2026-10-22). Mehrzeilige Inhalte immer als Promptdatei unter `evidence/board-2026-10-22/prompts/` (codeman verwirft Multi-Line still).
+
+## 3. Watcher
+
+- Daemon: `python3 evidence/board-2026-10-19/scripts/wait-workers.py watch start <coordinator-session-id>`
+  (Coordinator-ID = aktuelle eigene Session aus `agent list --json`; nach Reboot/Session-Wechsel NEU starten).
+- Kommandos: `watch add|remove|list <id>`; State: `scripts/watcher-state.json`; Log: `scripts/watcher.log`.
+- **Event-Queue (Vergessenschutz):** jedes Event wird zusätzlich nach `scripts/events.log` angehängt.
+  Coordinator-Fixregel: zu Begin jedes Turns `python3 evidence/board-2026-10-19/scripts/events-check.py`
+  (zeigt un-quittierte Events) und nach Abarbeitung `--ack`. Events aus dem Message-Stream sind
+  flüchtig; die Queue-Datei ist maßgeblich.
+- Meldet: Transitions (idle/exit/blocked/gone), **CLOCK JUMP** (Wall-vs-Monotonic),
+  **PERMISSION-DIALOG now** (Pane-Scan `Allow once|Permission required`, Re-Alert alle 5 min),
+  **busy>40min**, **HEARTBEAT** alle 60 min (Pflicht: fetch+PR-States+Pane-Checks).
+- Daemon-Neustart: Pid aus `watcher-state.json` → kill → `watch start` (NIEMALS
+  `pkill -f wait-workers` – das tötet den aufrufenden Shell selbst).
+- Der Daemon zählt ein Pane mit offenem Permission-Dialog als busy/idle je nach
+  API-Lage – Dialog-Scan ist primär, Busy-Heuristik Sekundärnetz.
+
+## 4. Permission-Dialoge auflösen
+
+1. Pane ansehen: `tmux -L codeman capture-pane -p -t codeman-<id8> | grep -aB6 "Allow once"`
+2. Legitimer Pfad (Workspace, /tmp/opencode, /home/marcel/dev/* – global vorfreigegeben in
+   `~/.config/opencode/opencode.json` + `qwen36.json` + `flash2.json`:
+   `permission.external_directory`: `/tmp/*`, `/home/marcel/dev/*`, `~/go/pkg/mod/*`,
+   `~/.ssh/*` - die .ssh-Freigabe bleibt (VM-Diagnose-Lanes), aber Secrets gehören
+   NIE in Evidence/Logs und ssh-Bedarf ist pro Auftrag in dessen Scope-Zeile zu
+   benennen):
+   `tmux -L codeman send-keys -t codeman-<id8> Enter` (Allow once).
+3. Danach Busy prüfen; Lane ggf. mit workspace-lokalen Paden weiterschicken.
+
+## 5. Codex-Maintainer-Lane
+
+- Spawn: `codeman agent spawn baseharbor -m codex -n codex-<auftrag>`; Auto-Compact separat
+  auf 200.000 setzen. Netz-Login-Erfordernis: `~/.codex/config.toml` braucht
+  `sandbox_workspace_write.network_access = true` + Projekt-Trust (beides gesetzt 2026-10-22),
+  sonst DNS-Fehler (exit 6) in der Session.
+- **Codex startet grundsätzlich im YOLO-Modus (Owner-Direktive 2026-10-23):**
+  `approval_policy = "never"` + `sandbox_mode = "danger-full-access"` in
+  `~/.codex/config.toml` (gesetzt 2026-10-23; wirkt pro neuem Spawn). Grenze: keine
+  System-Ressourcen/Root – Aufträge, die darüber hinausgehen, lehnt der Coordinator
+  ab bzw. tragen Scope-Limits im Prompt. Dialog-Melder bleibt als Safety-Net aktiv.
+- Merge-Protokoll pro PR: Live-Gates zuerst (head-SHA-Wache, `gh pr checks`, Threads einzeln,
+  Rulesets: code-owner approval + last-push approval + squash-only + up-to-date-Checks),
+  dann approve+squash-merge, post-merge develop-Checks verifizieren, Abschnitt in
+  `evidence/.../codex-merge-*.md` (UTC-Zeit, SHA before/after).
+- BLOCKED-Meldungen der Merge-Lane sind Input, kein Ende: Ursache lane-seitig beheben,
+  dann PR-Nummer/Kopf nachliefern.
+
+## 6. Todo-/Fortschritts-Sicht
+
+- Verbindliche Quelle: `evidence/board-2026-10-19/scripts/todo-check.sh` (liest OpenCodes
+  Todo-Tabelle = GUI-Grundlage). `ralphTodoStats/ralphTodos` in `agent list --json`
+  ist ein ANDERES Feature (zeigt dort immer 0) – nie als Diagnose nutzen.
+- Jede Lane pflegt PLAN doppelt: natives todowrite-Tool + `## PLAN` in der Evidence-Datei.
+
+## 7. Evidence-Konventionen
+
+- Ordner je Tag: `evidence/board-<JJJJ-MM-TT>/<lane>-<topic>.md`; Prompts: `.../prompts/`;
+  Skripte: NUR `evidence/board-2026-10-19/scripts/` – niemals im Produkt-Branch.
+- Beweise als wiederholbare GitHub-Actions-Jobs (Muster: docker-runtime-acceptance.yml,
+  targeted-integration.yml, runtime-validation/<bereich>/<test>/sha refs,
+  validation/pre-release/selected/gates/<ids>), VMs nur zur Diagnose.
+- Worker-Dateien landen gern relativ (`baseharbor-plan/evidence/...`); beim Einsammeln
+  beide Orte prüfen: `evidence/board-<datum>/` UND `baseharbor-plan/evidence/board-<datum>/`.
+
+## 8. CI-Bootstrap-Familie (coverage-unresolved)
+
+- Root-Cause-Muster: PR-geänderter Planner/Workflow qualifiziert sich NICHT selbst;
+  Behebung nur über (a) qualifizierten Commit auf develop (Muster #1026/#1029/#1030),
+  (b) Classifier-Erweiterung als eigener kleiner PR (#1034-Muster),
+  (c) docs-Klassifikation (DOC_CHECKS), (d) selected-gates-Pushformat als Beweisroute.
+- Stale-Webhook-base.sha: Checks koennen an altem Base haengen – `gh run rerun <id> --failed`
+  oder Branch-Sync-Commit als legitime Frischkur.
+
+## 9. Runner-Infra (baha-docker)
+
+- Rootless Docker für `github-runner` (uid 1001) als enabled User-Service + Linger=yes;
+  Socket-Eigentümer-Fix über ExecStartPost-Override (chown github-runner:github-runner
+  %t/docker.sock, 0660). Nach Reboot prüfen: Socket da? `docker version` als Runner-User?
+- Destruktive Aktionen (Workspace-rm, `podman system reset`, Unit-Wipes) sind
+  nur nach Drei-Punkte-Prüfung erlaubt und in der Evidence zu dokumentieren:
+  (1) aktive Jobs/Runs auf dem Runner? (gh run list --status in_progress +
+  queue-Check), (2) laufende/beschlagnahmte Container/Volumes + Ownership
+  (shared Stacks `bh-*-shared-*` NIE anfassen), (3) Wiederherstellungsfolge
+  (Images/Cache-Aufbau, Laufzeitkosten). Bei Zweifel: nicht ausführen, sondern
+  als Blocker mit Prüfergebnis melden.
+- Runner-Watchlist: `gh api repos/mcpdev80/baseharbor/actions/runners` (baha-runner-docker-2
+  ist der Aktive; Workspace-Pfad `/home/github-runner/actions-runner/_work`; bei
+  Checkout-fehlt-git-Fehlern `_work/<repo>` wipe-rennen).
+- baha-podman: rootless podman; bei aardvark/netavark-Hängern (exit 126, "Cannot assign
+  requested address") erst `loginctl/linger + stale netns` prüfen, zuletzt `podman system reset`.
+
+## 10. Uhr & Reallität
+
+- Nach JEHER Pause/Suspend: `timedatectl` + `git fetch` beider Repos + PR-Status-Check
+  (`gh pr view --json state`), BEVOR delegiert wird. Clock-Jumps erkennt der Watcher
+  und meldet CLOCK JUMP; dann gilt: Handoff-Dokumente (`baseharbor-plan/evidence/codeman-*/HANDOFF.md`)
+  zuerst lesen; OWNER STOP bindet sofort.
+
+## 11. Bekannte Fehlerklassen (heute diagnostiziert) und ihre Netze
+
+| Klasse | Netz |
+|---|---|
+| Spawn-Race → Prompt verloren | Ready-Gate + dispatch-lane Auto-Resend |
+| Multi-Line-Send still verworfen | Pointer-Prompts |
+| Permission-Dialog ohne Event | Dialog-Scan + 5-min-Re-Alert + Pre-Approvals |
+| watch add vergessen | dispatch-lane registriert automatisch |
+| VM-Uhr driftet | CLOCK JUMP + Fetch-Pflicht + HEARTBEAT |
+| Beweise an VM-Sessions hängend | CI-Job-Prinzip (Abschnitt 7/8) |
+| Worker übergreift Status 'accepted' | nur Owner/Codex; Lane-Kommandos verbieten es |

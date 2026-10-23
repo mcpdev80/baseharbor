@@ -1,0 +1,4 @@
+Card t-20261023-selector-q-predecessor (baseharbor-plan, Claim dir). Read: python3 scripts/plan.py show t-20261023-selector-q-predecessor + evidence/board-2026-10-22/codex-verdict-selector.md (Schritte 1-6).
+FIRST ACTION: evidence/board-2026-10-22/o47-qpr.md mit PLAN + todowrite ([wip:o47]).
+AUFGABE: ONE tiny predecessor PR gegen develop: die zwei Selector-Qualifikations-Einträge fuer stepcap-split (#1039) und atomic-bare-sha-dispatch (#1042) in die TRUSTED-BASE-Selector-Datei (ci.yml:458 Logik beachten - genau wie im Selector-Verdict-Rezept beschrieben). Zwei Dateien, ein Commit, PR baseharbor (mcpdev80) target develop. PR-Check gruen abwarten (gh pr checks, App 15368).
+NICHT mergen (Codex MERGE macht das). END O47-QPR-DONE mit PR-Nummer+SHA.

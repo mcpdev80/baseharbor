@@ -1,0 +1,13 @@
+{
+  "cursor": {
+    "identity": "2049:1591112",
+    "pos": 517807
+  },
+  "count": 250,
+  "categories": {
+    "gone transition; no task completion inferred": 23,
+    "idle transition; no task completion inferred": 65,
+    "dialog alert; inspect only, no grant": 115,
+    "dialog clear; no completion inferred": 47
+  }
+}

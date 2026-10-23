@@ -1,0 +1,2 @@
+FIRST ACTION: evidence/board-2026-10-22/q33-src1039.md with PLAN + todowrite.
+Execute step 2 of evidence/board-2026-10-22/codex-verdict-selector.md on branch fix/v0426-stepcap-split (PR #1039) ONLY: read the section verbatim, apply the described source-preparation as ONE batched commit (fix the pre-release workflow as specified), push, report new head SHA as the frozen S39 in your file. No merges, no other branches, no qualification entries. END Q33-SRC-DONE.

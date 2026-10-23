@@ -1,0 +1,129 @@
+# Worker operation reference
+
+Everything here is callable with a worker token, as an MCP tool on the
+coordination bridge or as `horde call OPERATION 'JSON'` when the token is in the
+environment. `*` marks required fields.
+
+`task` and `worker` are supplied by your token. Do not pass a different value:
+the RPC layer rejects it as a scope violation. Arguments beginning with `_` are
+rejected as reserved.
+
+## Context and questions
+
+| Operation | Arguments |
+| --- | --- |
+| `read_context` | `after`, `limit` — paged; use the returned `next` cursor |
+| `pending_questions` | none |
+| `request_question` | `question`*, `id`, `evidence`, `recommendation`, `human_only` |
+| `answer_question` | `question`*, `answer`*, `human` — only for questions from your own children |
+| `escalate_question` | `question`*, `commentary` — forwards the original envelope one level up |
+
+## Workspace and ownership
+
+| Operation | Arguments |
+| --- | --- |
+| `register_workspace` | `path`*, `branch`*, `base`* |
+| `claim_paths` | `paths[]`* — repository-relative files or directory prefixes; `.` is the whole repo |
+| `transfer_claim` | `to`*, `path`* — atomic, moves nested claims too |
+| `list_workers` | none |
+| `set_worker_status` | `status`* — `idle`, `working`, `blocked`, `stopped` |
+
+Not available to a worker token: `release_claims`, `reconcile_worker`, `integrate`,
+`register_worker`. Those are caller or runtime operations.
+
+## Mail
+
+| Operation | Arguments |
+| --- | --- |
+| `send_message` | `id`*, `destination`*, `body`*, `refs{}`, `actionable` |
+| `read_messages` | `after`, `limit` |
+| `acknowledge_messages` | `ids[]`* |
+| `join_channel` | `channel`* |
+
+`destination` is a worker id, `group:NAME`, or `task`. Broadcast recipients are
+snapshotted at send time. Delivery is at-least-once until you acknowledge
+explicitly. A separate notification watermark stops an already-delivered wakeup
+from invoking a model twice.
+
+## Artifacts and knowledge
+
+| Operation | Arguments |
+| --- | --- |
+| `put_artifact` | `name`*, `content`*, `inputs{}` |
+| `get_artifact` | `hash`* |
+| `reuse_artifact` | `name`*, `inputs{}`* |
+| `add_knowledge` | `kind`*, `content`*, `provenance{}`*, `inputs{}` |
+| `knowledge` | none |
+| `link_knowledge` | `source`*, `target`*, `relation`* |
+
+Worker schemas omit `verified` and `step`; the runtime supplies step attribution.
+A supplied verification flag is dropped with a `tool.argument_dropped` warning.
+The stored evidence remains unverified. A supplied step must match your own.
+
+Artifacts are addressed by SHA-256, synced before their database reference commits,
+and checked on retrieval. `reuse_artifact` returns a verified prior result only
+when the `inputs` fingerprint matches exactly.
+
+## Delegation and workflow
+
+| Operation | Arguments |
+| --- | --- |
+| `delegate_task` | `id`*, `objective`*, `template`, `peer`, `bundles[]`, `skills[]` |
+| `list_children` | none |
+| `integrate_child` | `child`*, `validation[]`* |
+| `environments` | none |
+| `propose_steps` | `steps`* — planner role only; inserted before the planning step's pending successors |
+
+## Pinned skills
+
+| Operation | Arguments |
+| --- | --- |
+| `list_skills` | none |
+| `read_skill` | `name`*, `path` (defaults to `SKILL.md`), `offset`, `limit` |
+
+Reads return bounded pages with `next_offset`. The catalog is pinned to the task;
+workers cannot import a new host directory into it.
+
+## Native tools
+
+A worker running on Horde's own Tuara executor has these tools in addition to the
+coordination operations:
+
+| Tool | Arguments | Notes |
+| --- | --- | --- |
+| `complete_step` | `result`, `accepted`, `artifacts[]`, declared named outputs | Finish the assigned step; must be the only tool call in its response |
+| `read_file` | `path` | UTF-8 file in your worktree |
+| `search` | `pattern` | ripgrep over the repository |
+| `write_file` | `path`, `content` | Complete file; requires an exclusive claim |
+| `apply_patch` | `patch` | Unified diff; every changed path is validated against claims |
+| `command` | `argv[]` | Runs in the workspace; environment excludes provider credentials; resulting changes are checked against claims |
+
+`complete_step` returns control to the runtime, which applies its existing
+acceptance checks. Invalid arguments return a tool error for correction;
+`accepted=false` fails the step. Plain JSON final replies remain supported.
+
+File tools reject path traversal and symlink traversal. `command` is removed
+entirely when `allow_commands = false`.
+
+A Codex or Claude Code harness worker uses its own file tools under its own
+sandboxing, with the same coordination operations supplied as MCP tools. Those
+edits cannot all be checked before they happen, so they are inspected before
+integration and out-of-scope results are held for reconciliation rather than
+merged.
+
+
+## Planner step proposals
+
+`propose_steps` takes a `steps` array of Step objects, not a map of tool names.
+Each step requires `id`; `role` defaults to `worker`, `kind` to `agent`, and
+`attempts` to `1` (allowed range 1–20). Use arrays of strings for `needs`, `scope`,
+`tools`, `acceptance`, `artifacts`, and command argv. `when` is an object with
+`step` and `status` (`succeeded`, `failed`, or `skipped`). The published tool schema
+also describes nested environment settings and result types.
+
+Use `propose_steps` as the function name even when a proposed step is named
+`implement_json`. The runtime accepts 1–32 steps from an active planner, adds the
+planner dependency, and rejects delivery or unexpanded nested templates. On a
+validation error, correct the reported field (for example `steps[0].needs`) and
+retry the tool. Graph errors name the expanded workflow position and step ID;
+no rejected proposal is partially applied.

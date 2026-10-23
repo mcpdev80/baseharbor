@@ -1,0 +1,6 @@
+ROLLE: REVIEW. Issue verdicts (ACCEPT / CHANGES-REQUIRED + recipe) for four stuck cards:
+1) core-922 docs: merged via #1031; q23-docs-audit.md MET list; o29 fix-list -> o30 PR (check live).
+2) t-20261020-develop-appid-manifest-test-regression: #1008 merged (HANDOFF evidence/codeman-2026-10-22/HANDOFF.md).
+3) t-20261019-v0426-complete-defect-audit: q19-defect-ledger.md - verify each 'resolved-by' PR live, list remaining open defects.
+4) t-20261022-q20-docs-pages: q23-docs-audit.md + o30 status.
+Verify all against live git/gh (fetch first). Write verdicts to evidence/board-2026-10-22/codex-verdicts-2026-10-23.md (ROLLE: REVIEW header, session/model/id line, per-card verdict + followups, no card edits). END VERDICTS-DONE.

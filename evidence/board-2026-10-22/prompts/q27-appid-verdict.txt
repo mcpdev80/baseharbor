@@ -1,0 +1,2 @@
+FIRST ACTION: create evidence/board-2026-10-22/q27-appid-verdict.md with ## PLAN + todowrite.
+Card t-20261020-develop-appid-manifest-test-regression needs its acceptance evidence per codex verdicts section 2: (a) PR #1008 merged commit diff shows the app.id fixture change (paste blob/file lines), (b) the native develop-lifecycle receipt: run id + conclusion of the develop run proving it after merge, (c) short independent verification paragraph citing both. Live git/gh reads only. END Q27-APPID-DONE.

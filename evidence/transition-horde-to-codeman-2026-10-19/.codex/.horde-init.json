@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "files": {
+    ".agents/skills/horde-delegation/SKILL.md": "15e38bb7d9ccac5df78c829b17657c7442dba647c2fc4b9a26dded635c41231a",
+    ".agents/skills/horde-discovery/SKILL.md": "6256ddc76c469287e479bcbd6bbe41b92959e97f7e13508eab9afaf4ee924d31",
+    ".agents/skills/horde-model-selection/SKILL.md": "905b1720543534491a97204e1cfc95e71249f03ba3bfcefd1e802ffefb92f504",
+    ".agents/skills/horde-model-selection/horde.toml": "2090702ed6b22a710b5ba125f13574ee335dfe552b09e5a681a23efac23ed880",
+    ".agents/skills/horde-planning/SKILL.md": "eb96af8f03a177eed180a82056a7b58b0b8ceeb2676a808f5538ded8ce4a6ddb",
+    ".agents/skills/horde-planning/horde.toml": "a8269bdfa467ad93d9de4fe110ca24d115bd18d5f16cde560457571b9fccd0cc",
+    ".agents/skills/horde-review/SKILL.md": "4e54566bab1a5358e95d650b47863878a7a990762cf9027cae71fc7d217a892b",
+    ".agents/skills/horde-sdlc/SKILL.md": "afa8b9a63c38a59b5b38e5ace82eb9df4cb5e4649707abb0f575d317d6b3b20f",
+    ".agents/skills/horde-sdlc/references/artifacts.md": "ccf3f64cbd8c7810065a745b1e7c46b0937edc14d3696c67662d6307232dee54",
+    ".agents/skills/horde-sdlc/references/execution.md": "82cca19a39ecbbd6917d545d08b5d9aa2194112efc335f74eb6b13e84ac2f3a8",
+    ".agents/skills/horde-setup/SKILL.md": "335a78d087cce388404d1ac46ab94df00bdb24b08df7709637baab22f1fadc74",
+    ".agents/skills/horde-templates/SKILL.md": "5ccb1f035f0ff225debbbbda8f2ad5e046014d6b3a0ae1e4c229f920f0818830",
+    ".agents/skills/horde-templates/references/examples.md": "2b8f1e59caa3885220ee2f816625df9ae6d4648854f2d878adb274916e47a9b6",
+    ".agents/skills/horde-worker/SKILL.md": "99d3e1b7369523cec6ad31e18cbae4cf2b427ab30e818d283bdf019084a74825",
+    ".agents/skills/horde-worker/references/operations.md": "0beaf7a24b851beb2714794ab24b498768da48377eced37cf025c2ed6aabdf06",
+    ".agents/skills/horde/SKILL.md": "941599712d6d4c927af0482934b34efdc271ff2c8193462d69d8af8b7cf79fc7",
+    ".agents/skills/horde/references/configuration.md": "1069a63feb906580753c6e25ac8eab198024ecc8698da4f75d9d106039c66824",
+    ".agents/skills/horde/references/delegation.md": "f3cbb30317940dfc96c79d95e6fd70ba0a013a6798f7f963ca07c6da6c2604fa",
+    ".agents/skills/horde/references/delivery.md": "eede8cbb685938951734c5e42221e5cc93e380bb8d41c26daba14afaac1b311d",
+    ".agents/skills/horde/references/environments.md": "fe2b3a88d03b28c272d6d13df281dc812f15b2f54f2a592c590cc26d345dca05",
+    ".agents/skills/horde/references/fleet.md": "7aa6816b11639c158aa6c5f3d1ecfe3086dc925b863765239bd5aa5580cfb509",
+    ".agents/skills/horde/references/operations.md": "656115c3b9bec9d3fc7b7c8cc87b641dd6e8e04ba4944752bd3ab58b1ff94c07",
+    ".agents/skills/horde/references/setup.md": "875ec9f94e6ef808470f3b9589b9bbedb279d3548d27f49a06dbcc7302aafc33",
+    ".agents/skills/horde/references/tasks.md": "741df1631f3a5903295fea52680c297d0292dd48bbe8b09be261022d2a10559a"
+  }
+}

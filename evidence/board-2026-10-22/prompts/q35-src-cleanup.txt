@@ -1,0 +1,5 @@
+FIRST ACTION: evidence/board-2026-10-22/q35-src-cleanup.md with PLAN + todowrite.
+Per codex-verdict-s39-s42.md CHANGES findings, on the two EXISTING branches:
+- fix/v0426-stepcap-split (#1039): remove leftover qualification tuple/test case, fix the IndentationError in the test file, respect timeout precedence noted in verdict.
+- fix/atomic-bare-sha-dispatch (#1042): remove the four residual blank lines causing two extra plan outputs.
+One commit per branch, push both, report new frozen SHAs S39b/S42b, run scripts/pr-gate-plan.py selftest (or the planner unit test) locally to prove clean outputs. No merges. END Q35-CLEANUP-DONE.

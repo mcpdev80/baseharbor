@@ -1,0 +1,5 @@
+Card t-20261023-ops-session-matcher (baseharbor-plan, claim=dein Name). Read: python3 scripts/plan.py show t-20261023-ops-session-matcher.
+FIRST ACTION: evidence/board-2026-10-22/f19-opsmatcher.md mit PLAN + todowrite ([wip:f19]).
+Fix in evidence/board-2026-10-19/scripts/: lane-stalled.py und dispatch-lane.py/.sh Liefer-Nachweis nutzt Session-Zeitfenster-Match (30s) -> bei Spaetstart falsches no-db-session/SENT-UNVERIFIED bei lebenden Lanes (heute 5x beobachtet). Umstellen auf exakten session.id-Lookup in opencode.db (Tabelle session, primary key id; Lane-Liste liefert die id). Zeitfenster nur als letzten Fallback mit Flag "approx".
+Pflicht: Fixture fuer both cases (exact match; late-start no-db) in test_f17_fixtures.py, suite rc=0 zweimal, py_compile alle.
+END F19-OPSMATCHER-DONE + Status der Karte via Hinweis in Evidence (Coordinator updated planning).

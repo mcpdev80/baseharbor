@@ -1,0 +1,5 @@
+TASK: test calibration, tiny scope.
+FILE: evidence/board-2026-10-19/scripts/test_f17_fixtures.py only.
+The daemon RESOLVED wording now proves idle before saying runnable (audit finding 3). Update stale assertions to the CURRENT wording from wait-workers.py (search "dialog no longer observed"); check the 4 failing tests (TestDialogPass.test_three_clean_resolve_with_recurrence + TestDispatchHoldAndDelivery x3) against current daemon/dispatch behavior; adapt EXPECTATIONS only where behavior is provably correct-per-audit; if behavior is WRONG, fix wait-workers.py/dispatch-lane.sh minimally and note it.
+MANDATORY: full suite green twice (python3 test_f17_fixtures.py; echo rc must be 0), py_compile all, bash -n all.
+Evidence: evidence/board-2026-10-22/f18-testcal.md with PLAN first, ## repo-rule compliance, END F18-TESTCAL-DONE.

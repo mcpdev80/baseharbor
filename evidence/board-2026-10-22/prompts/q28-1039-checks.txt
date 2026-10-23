@@ -1,0 +1,3 @@
+FIRST ACTION: create evidence/board-2026-10-22/q28-1039-checks.md with ## PLAN + todowrite.
+Core PR #1039 (branch fix/v0426-stepcap-split, head 940fa694) has NEVER produced check runs (f11-c2-bringup.md). Find why (gh api runs?check_suite=true on head; workflow triggers/paths incl. #1034 changelog-classifier influence). Apply minimal correction on that branch (e.g. missing CHANGELOG line under a product-classifying section, or path trigger the selector honors), push, then show the checks being CREATED and their terminal conclusions. No merges, no other branches. Note: develop is now C2=2f005813dc6d7fa94de164388b2531d025af31bc - merge C2 into the branch first if needed for validity.
+END Q28-CHECKS-DONE.

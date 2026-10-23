@@ -1,0 +1,6 @@
+ROLLE: REVIEW (Fortsetzung, Korrekturrunde 2).
+Re-Review der beiden gefixten Kandidaten gegen dein eigenes Verdict von vorhin (codex-verdict-s39b-s42b.md, Leerzeilen-Befund pr-gate-plan.py:748):
+A) PR #1039 head 75efeef89b61d848d5ea351877ba6423a31e58a6 (branch fix/v0426-stepcap-split)
+B) PR #1042 head 0267dbdb71f63a2c77e193618e6fba410 (branch fix/atomic-bare-sha-dispatch)
+Beide Diffs sind Ein-Datei-Deltas auf den bekannten Freeze-SHAs fe17e6e5/c34740fa; sonst unveraendert.
+Verdict je Branch ACCEPT/CHANGES-REQUIRED (mit Rezept falls nötig) als ERGÄNZUNG in dasselbe Evidence-File, dann END CODEX-REREVIEW-SHA-DONE. NICHT mergen.

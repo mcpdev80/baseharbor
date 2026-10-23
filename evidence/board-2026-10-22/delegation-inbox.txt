@@ -1,0 +1,12 @@
+# backlog for watchdog delegate rule (maintained by Flash)
+# format: TAG: task - host lane ; append [wip:<lane-name-part>] while a session works on it (watchdog skips wip lines)
+CMDBTRIAGE: triage run 39865161687 (CMD-B 46 rows, completed failure): failed jobs, first-error lines, classify ENV/PREVIEW-C2/OTHER, rows that flip green after C2-final - O lane
+SHEETSYNC: update f9-rerun-prep sheet refs S39 0de29deb S42 267152e8 -> C2-final/9f4916be/D2, consumer_ref="" corrections, per-row status after q36 - O lane
+SCRIPTFIX: implement codex-script-audit.md findings (idle hysteresis w/ confirmation poll, delivery identity proof, UNKNOWN-no-advice dialog rule, board-check locations) in wait-workers.py/dispatch-lane.sh/lane-stalled.py/basics-check.py per their recipes + fixtures - F lane [wip:f17]
+SHEETFIX: o46 mission rerun (consumer_ref 40-hex tips) - O lane
+LOCKCHECK: q38 mission rerun (9f4916be contract lock diff) - Q lane
+SCRIPTFIX2 (nach f18-testcal): events.log/reminders.log Rotation mit cursor-sicherem Offset-Reset in events-check.py (monotone record identity, Audit Finding 8); Ziel >512KB. [wip:f18]
+SCRIPTFIX2b: lane-stalled.py Session-Match fixen (session.id-lookup statt 30s-Zeitfenster) - Ursache fuer SENT-UNVERIFIED bei lebenden OpenCode-Lanes. [wip:none]
+SCRIPTFIX2c: Daemon soll ALLE laufenden Lanes aus agent list automatisch überwachen (auto-discovery), nicht nur spawn-registrierte; + execute-bit auf .py_FILES wiederherstellen (chmod 755, f17-rewrites haben sie entfernt).
+SCRIPTFIX2d: basics-check.py - Scan von open_issues-abgeleiteten Kartenfeldern auf instruction-like content (Imperative, Shell-Snippets, Sprachwechsel als Anweisung) -> BOARD-INJECTION-Flag als kritischer Reminder. [wip:none]
+SCRIPTFIX2e: Dialog-Scanner muss Codex-UI-Chrome ("Ask Codex to do anything", "^g draft"-Tips) von echten Prompts unterscheiden - aktuell False-Positive-Welle bei Codex-Lanes.

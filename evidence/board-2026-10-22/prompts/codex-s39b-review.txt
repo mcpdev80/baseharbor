@@ -1,0 +1,6 @@
+ROLLE: REVIEW
+Task: independent review der ZWEI gefrorenen Selector-Kandidaten gemaess evidence/board-2026-10-22/codex-verdict-selector.md Schritt 4:
+(A) branch fix/v0426-stepcap-split head fe17e6e5 (PR #1039): 25-min step cap, split logic, qualification entries NUR via trusted base;
+(B) branch fix/atomic-bare-sha-dispatch head c34740fa (PR #1042): atomic bare-SHA dispatch fix inkl. Round-1-CHANGES-Befunden (S39/S42), aufgeraeumt laut q36-evidence.
+Pro Branch Verdict ACCEPT oder CHANGES-REQUIRED mit EXECUTABLE recipe (file, change, test, stop criterion). NICHT mergen.
+Evidence: evidence/board-2026-10-22/codex-verdict-s39b-s42b.md. END CODEX-S39B-S42B-DONE.

@@ -1,0 +1,5 @@
+FIRST ACTION: create /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f9-rerun-prep.md with ## PLAN checkboxes; create the same as native todos. THEN:
+Mission RERUN-PREP (READ-ONLY): assemble the complete post-C2 native rerun dispatch table.
+Inputs: o21-matrix-inputs.md (vehicles+inputs), q24-cmda-triage.md (consumer_ref correction: empty=auto-resolve or 40-hex tip of work/v0.4.26-integrations-docs), f7-native-dispatch.md (which gates must rerun), o24-matrix-gonogo.md.
+For EVERY rerunnable row: repo, workflow file, event/inputs EXPLICIT (runtime, gate, ref=C2 placeholder, demo_ref=D2 placeholder, consumer_ref corrected), concurrency group noted, expected-to-flip rationale, and batch grouping for parallel dispatch (no serial waits).
+Finish: ## repo-rule compliance + END F9-PREP-DONE.

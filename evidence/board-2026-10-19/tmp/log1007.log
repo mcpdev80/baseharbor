@@ -1,0 +1,365 @@
+﻿2026-10-19T17:54:43.0230853Z Current runner version: '2.337.0'
+2026-10-19T17:54:43.0266148Z ##[group]Runner Image Provisioner
+2026-10-19T17:54:43.0267651Z Hosted Compute Agent
+2026-10-19T17:54:43.0268670Z Version: 20261015.610
+2026-10-19T17:54:43.0270067Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+2026-10-19T17:54:43.0271650Z Build Date: 2026-10-14T17:06:54Z
+2026-10-19T17:54:43.0272842Z Worker ID: {b0bdf142-f729-422d-a642-586074e76125}
+2026-10-19T17:54:43.0274149Z Region: eastus2
+2026-10-19T17:54:43.0275102Z Cloud: Azure
+2026-10-19T17:54:43.0276116Z ##[endgroup]
+2026-10-19T17:54:43.0278586Z ##[group]Operating System
+2026-10-19T17:54:43.0280024Z Ubuntu
+2026-10-19T17:54:43.0281015Z 24.04.5
+2026-10-19T17:54:43.0281943Z LTS
+2026-10-19T17:54:43.0282975Z ##[endgroup]
+2026-10-19T17:54:43.0284060Z ##[group]Runner Image
+2026-10-19T17:54:43.0285105Z Image: ubuntu-24.04
+2026-10-19T17:54:43.0286276Z Version: 20261018.339.1
+2026-10-19T17:54:43.0288461Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261018.339/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-19T17:54:43.0291705Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.339
+2026-10-19T17:54:43.0293536Z ##[endgroup]
+2026-10-19T17:54:43.0295611Z ##[group]GITHUB_TOKEN Permissions
+2026-10-19T17:54:43.0298458Z Actions: read
+2026-10-19T17:54:43.0299814Z Contents: read
+2026-10-19T17:54:43.0300768Z Metadata: read
+2026-10-19T17:54:43.0301846Z ##[endgroup]
+2026-10-19T17:54:43.0304763Z Secret source: Actions
+2026-10-19T17:54:43.0306481Z Cache mode: write
+2026-10-19T17:54:43.0307659Z Prepare workflow directory
+2026-10-19T17:54:43.0794064Z Prepare all required actions
+2026-10-19T17:54:43.0866097Z Getting action download info
+2026-10-19T17:54:43.2980373Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-19T17:54:43.4099206Z Download action repository 'actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093' (SHA:d3f86a106a0bac45b974a628896c90dbdf5c8093)
+2026-10-19T17:54:43.6967343Z Complete job name: PR Selected Checks
+2026-10-19T17:54:43.7798982Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-10-19T17:54:43.7800299Z with:
+2026-10-19T17:54:43.7800800Z   ref: bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:43.7801420Z   persist-credentials: false
+2026-10-19T17:54:43.7801952Z   repository: mcpdev80/baseharbor
+2026-10-19T17:54:43.7805616Z   token: ***
+2026-10-19T17:54:43.7806061Z   ssh-strict: true
+2026-10-19T17:54:43.7806516Z   ssh-user: git
+2026-10-19T17:54:43.7806957Z   clean: true
+2026-10-19T17:54:43.7807420Z   sparse-checkout-cone-mode: true
+2026-10-19T17:54:43.7807950Z   fetch-depth: 1
+2026-10-19T17:54:43.7808387Z   fetch-tags: false
+2026-10-19T17:54:43.7808837Z   show-progress: true
+2026-10-19T17:54:43.7809354Z   lfs: false
+2026-10-19T17:54:43.7810016Z   submodules: false
+2026-10-19T17:54:43.7810538Z   set-safe-directory: true
+2026-10-19T17:54:43.7811116Z   allow-unsafe-pr-checkout: false
+2026-10-19T17:54:43.7811995Z ##[endgroup]
+2026-10-19T17:54:43.8834384Z Syncing repository: mcpdev80/baseharbor
+2026-10-19T17:54:43.8836155Z ##[group]Getting Git version info
+2026-10-19T17:54:43.8836916Z Working directory is '/home/runner/work/baseharbor/baseharbor'
+2026-10-19T17:54:43.8838000Z [command]/usr/bin/git version
+2026-10-19T17:54:43.8915927Z git version 2.55.0
+2026-10-19T17:54:43.8937561Z ##[endgroup]
+2026-10-19T17:54:43.8948504Z Temporarily overriding HOME='/home/runner/work/_temp/9501ba5e-f393-43a6-92a1-b9797453925d' before making global git config changes
+2026-10-19T17:54:43.8951081Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-19T17:54:43.8954137Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/baseharbor/baseharbor
+2026-10-19T17:54:43.9001859Z Deleting the contents of '/home/runner/work/baseharbor/baseharbor'
+2026-10-19T17:54:43.9005331Z ##[group]Determining repository object format
+2026-10-19T17:54:43.9006667Z ##[endgroup]
+2026-10-19T17:54:43.9007799Z ##[group]Initializing the repository
+2026-10-19T17:54:43.9011156Z [command]/usr/bin/git init /home/runner/work/baseharbor/baseharbor
+2026-10-19T17:54:43.9113237Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-19T17:54:43.9114656Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-19T17:54:43.9115825Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-19T17:54:43.9117344Z hint: call:
+2026-10-19T17:54:43.9117850Z hint:
+2026-10-19T17:54:43.9118460Z hint: 	git config --global init.defaultBranch <name>
+2026-10-19T17:54:43.9119201Z hint:
+2026-10-19T17:54:43.9120531Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-19T17:54:43.9122758Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-19T17:54:43.9124187Z hint:
+2026-10-19T17:54:43.9124705Z hint: 	git branch -m <name>
+2026-10-19T17:54:43.9125283Z hint:
+2026-10-19T17:54:43.9126306Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-19T17:54:43.9128036Z Initialized empty Git repository in /home/runner/work/baseharbor/baseharbor/.git/
+2026-10-19T17:54:43.9130386Z [command]/usr/bin/git remote add origin https://github.com/mcpdev80/baseharbor
+2026-10-19T17:54:43.9172795Z ##[endgroup]
+2026-10-19T17:54:43.9173639Z ##[group]Disabling automatic garbage collection
+2026-10-19T17:54:43.9176400Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-19T17:54:43.9210156Z ##[endgroup]
+2026-10-19T17:54:43.9211109Z ##[group]Setting up auth
+2026-10-19T17:54:43.9211669Z Removing SSH command configuration
+2026-10-19T17:54:43.9216429Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-19T17:54:43.9250767Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-19T17:54:43.9578727Z Removing HTTP extra header
+2026-10-19T17:54:43.9584555Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-19T17:54:43.9617532Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-19T17:54:43.9859826Z Removing includeIf entries pointing to credentials config files
+2026-10-19T17:54:43.9865672Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-19T17:54:43.9902151Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-19T17:54:44.0146733Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-19T17:54:44.0192865Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/baseharbor/baseharbor/.git.path /home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:44.0230929Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/baseharbor/baseharbor/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:44.0272238Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:44.0310979Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:44.0354451Z ##[endgroup]
+2026-10-19T17:54:44.0355207Z ##[group]Fetching the repository
+2026-10-19T17:54:44.0364535Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:44.8273519Z From https://github.com/mcpdev80/baseharbor
+2026-10-19T17:54:44.8275502Z  * branch            bb91fbc327414952b36a88271153db43970280cc -> FETCH_HEAD
+2026-10-19T17:54:44.8284160Z [command]/usr/bin/git rev-parse --verify --quiet bb91fbc327414952b36a88271153db43970280cc^{object}
+2026-10-19T17:54:44.8312521Z bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:44.8320011Z ##[endgroup]
+2026-10-19T17:54:44.8321695Z ##[group]Determining the checkout info
+2026-10-19T17:54:44.8323575Z ##[endgroup]
+2026-10-19T17:54:44.8324762Z [command]/usr/bin/git sparse-checkout disable
+2026-10-19T17:54:44.8382144Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-19T17:54:44.8418694Z ##[group]Checking out the ref
+2026-10-19T17:54:44.8422900Z [command]/usr/bin/git checkout --progress --force bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:45.0120999Z Note: switching to 'bb91fbc327414952b36a88271153db43970280cc'.
+2026-10-19T17:54:45.0122293Z 
+2026-10-19T17:54:45.0123264Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-10-19T17:54:45.0125353Z changes and commit them, and you can discard any commits you make in this
+2026-10-19T17:54:45.0127308Z state without impacting any branches by switching back to a branch.
+2026-10-19T17:54:45.0128100Z 
+2026-10-19T17:54:45.0128643Z If you want to create a new branch to retain commits you create, you may
+2026-10-19T17:54:45.0130336Z do so (now or later) by using -c with the switch command. Example:
+2026-10-19T17:54:45.0131642Z 
+2026-10-19T17:54:45.0132242Z   git switch -c <new-branch-name>
+2026-10-19T17:54:45.0133174Z 
+2026-10-19T17:54:45.0133747Z Or undo this operation with:
+2026-10-19T17:54:45.0134577Z 
+2026-10-19T17:54:45.0134910Z   git switch -
+2026-10-19T17:54:45.0135492Z 
+2026-10-19T17:54:45.0136280Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-10-19T17:54:45.0137303Z 
+2026-10-19T17:54:45.0138337Z HEAD is now at bb91fbc docs: clarify Owner-delegated Maintainer merge authority (#1006)
+2026-10-19T17:54:45.0142119Z ##[endgroup]
+2026-10-19T17:54:45.0180555Z [command]/usr/bin/git log -1 --format=%H
+2026-10-19T17:54:45.0208335Z bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:45.0223531Z ##[group]Removing auth
+2026-10-19T17:54:45.0224539Z Removing SSH command configuration
+2026-10-19T17:54:45.0225913Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-19T17:54:45.0264202Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-19T17:54:45.0501557Z Removing HTTP extra header
+2026-10-19T17:54:45.0505106Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-19T17:54:45.0547215Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-19T17:54:45.0777736Z Removing includeIf entries pointing to credentials config files
+2026-10-19T17:54:45.0781078Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-19T17:54:45.0808313Z includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git.path
+2026-10-19T17:54:45.0811984Z includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git/worktrees/*.path
+2026-10-19T17:54:45.0814291Z includeif.gitdir:/github/workspace/.git.path
+2026-10-19T17:54:45.0816226Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-19T17:54:45.0826945Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git.path
+2026-10-19T17:54:45.0843863Z /home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:45.0854787Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-e77059b0\-6f52\-4389\-a60b\-da58d33595f5\.config
+2026-10-19T17:54:45.0890665Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git/worktrees/*.path
+2026-10-19T17:54:45.0914026Z /home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:45.0923796Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/baseharbor/baseharbor/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-e77059b0\-6f52\-4389\-a60b\-da58d33595f5\.config
+2026-10-19T17:54:45.0958133Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-19T17:54:45.0984390Z /github/runner_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:45.0994227Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-e77059b0\-6f52\-4389\-a60b\-da58d33595f5\.config
+2026-10-19T17:54:45.1073620Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-19T17:54:45.1111888Z /github/runner_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config
+2026-10-19T17:54:45.1117043Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-e77059b0\-6f52\-4389\-a60b\-da58d33595f5\.config
+2026-10-19T17:54:45.1148914Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-19T17:54:45.1376457Z Removing credentials config '/home/runner/work/_temp/git-credentials-e77059b0-6f52-4389-a60b-da58d33595f5.config'
+2026-10-19T17:54:45.1395068Z ##[endgroup]
+2026-10-19T17:54:45.1807330Z ##[group]Run actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+2026-10-19T17:54:45.1809036Z with:
+2026-10-19T17:54:45.1810341Z   name: trusted-pr-plan
+2026-10-19T17:54:45.1811403Z   merge-multiple: false
+2026-10-19T17:54:45.1812464Z   repository: mcpdev80/baseharbor
+2026-10-19T17:54:45.1813586Z   run-id: 39297909779
+2026-10-19T17:54:45.1814563Z ##[endgroup]
+2026-10-19T17:54:45.3404605Z Downloading single artifact
+2026-10-19T17:54:45.3557111Z (node:2383) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-10-19T17:54:45.3560267Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-10-19T17:54:45.4642181Z Preparing to download the following artifacts:
+2026-10-19T17:54:45.4643816Z - trusted-pr-plan (ID: 12207852870, Size: 833, Expected Digest: sha256:9c06fa49d169a082384aba0260e9974480f99c488a9fe6d4e6ce81507ce7527f)
+2026-10-19T17:54:45.6136824Z Redirecting to blob download url: https://productionresultssa4.blob.core.windows.net/actions-results/3aa00062-a420-8bf1-a643-e0f1a50715c3/workflow-job-run-5a770a60-2d2b-5d51-880c-a3ea1455c1f5/artifacts/fe188bea4129ea835c48f057d3e524d8b03f7fd4f6b3f2ccdb8ec4dd059a9a74.zip
+2026-10-19T17:54:45.6617270Z (node:2383) [DEP0005] DeprecationWarning: Buffer() is deprecated due to security and usability issues. Please use the Buffer.alloc(), Buffer.allocUnsafe(), or Buffer.from() methods instead.
+2026-10-19T17:54:45.6619021Z Starting download of artifact to: /home/runner/work/baseharbor/baseharbor
+2026-10-19T17:54:45.6708299Z SHA256 digest of downloaded artifact is 9c06fa49d169a082384aba0260e9974480f99c488a9fe6d4e6ce81507ce7527f
+2026-10-19T17:54:45.6709375Z Artifact download completed successfully.
+2026-10-19T17:54:45.6710200Z Total of 1 artifact(s) downloaded
+2026-10-19T17:54:45.6714955Z Download artifact has finished successfully
+2026-10-19T17:54:45.6883801Z ##[group]Run set -euo pipefail
+2026-10-19T17:54:45.6884218Z [36;1mset -euo pipefail[0m
+2026-10-19T17:54:45.6884510Z [36;1mtest "$PLAN_JOB" = success[0m
+2026-10-19T17:54:45.6884800Z [36;1mtest -s pr-plan.json[0m
+2026-10-19T17:54:45.6886093Z [36;1mpython3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'[0m
+2026-10-19T17:54:45.6887459Z [36;1mgit fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe c6db56c4ac077dbc496134cb0871c8e996a593fe[0m
+2026-10-19T17:54:45.6888410Z [36;1mgit show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-authenticated-results.py > "$RUNNER_TEMP/pr-authenticated-results.py"[0m
+2026-10-19T17:54:45.6889706Z [36;1mgit show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"[0m
+2026-10-19T17:54:45.6891029Z [36;1mpython3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"[0m
+2026-10-19T17:54:45.6892431Z [36;1mif { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then[0m
+2026-10-19T17:54:45.6893191Z [36;1m  [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]][0m
+2026-10-19T17:54:45.6893630Z [36;1m  git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe[0m
+2026-10-19T17:54:45.6894428Z [36;1m  git show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"[0m
+2026-10-19T17:54:45.6895227Z [36;1m  python3 "$RUNNER_TEMP/pr-verified-atomic-evidence.py" \[0m
+2026-10-19T17:54:45.6895741Z [36;1m    --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" \[0m
+2026-10-19T17:54:45.6896233Z [36;1m    --requirements scripts/release-requirements.json \[0m
+2026-10-19T17:54:45.6896704Z [36;1m    --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" \[0m
+2026-10-19T17:54:45.6897227Z [36;1m    --head-sha "$EXPECTED_HEAD" --integration-sha "$EXPECTED_INTEGRATION" \[0m
+2026-10-19T17:54:45.6897672Z [36;1m    --demo-sha "$VERIFIED_DEMO_SHA"[0m
+2026-10-19T17:54:45.6897968Z [36;1mfi[0m
+2026-10-19T17:54:45.6898649Z [36;1mpython3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json[0m
+2026-10-19T17:54:45.7063828Z shell: /usr/bin/bash -e {0}
+2026-10-19T17:54:45.7064123Z env:
+2026-10-19T17:54:45.7064374Z   PLAN_JOB: success
+2026-10-19T17:54:45.7064693Z   EXPECTED_BASE: bb91fbc327414952b36a88271153db43970280cc
+2026-10-19T17:54:45.7065112Z   EXPECTED_HEAD: 48def9e85e35db90025b4e354350bac22c9fe806
+2026-10-19T17:54:45.7065576Z   EXPECTED_INTEGRATION: 9e014c21b9e7b825ce393c8e694fe9cbe3ec1cf5
+2026-10-19T17:54:45.7065966Z   FOCUSED_JOB: success
+2026-10-19T17:54:45.7066218Z   VALIDATION_JOB: success
+2026-10-19T17:54:45.7068918Z   GH_TOKEN: ***
+2026-10-19T17:54:45.7069182Z   ACTIONS_RUN_ID: 39297909779
+2026-10-19T17:54:45.7069677Z   ACTIONS_RUN_ATTEMPT: 1
+2026-10-19T17:54:45.7069954Z   SELECTED_RUNTIME_REQUIRED: false
+2026-10-19T17:54:45.7070255Z   SELECTED_RUNTIME_JOB: skipped
+2026-10-19T17:54:45.7070556Z   PUBLIC_CONTRACTS_REQUIRED: false
+2026-10-19T17:54:45.7070861Z   PUBLIC_CONTRACTS_JOB: skipped
+2026-10-19T17:54:45.7071133Z   VERIFIED_DEMO_SHA: 
+2026-10-19T17:54:45.7071369Z ##[endgroup]
+2026-10-19T17:54:46.8402670Z From https://github.com/mcpdev80/baseharbor
+2026-10-19T17:54:46.8404145Z  * branch              c6db56c4ac077dbc496134cb0871c8e996a593fe -> FETCH_HEAD
+2026-10-19T17:54:46.8405345Z  * branch              c6db56c4ac077dbc496134cb0871c8e996a593fe -> FETCH_HEAD
+2026-10-19T17:54:47.5679980Z BLOCKED: coverage-unresolved: CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py
+2026-10-19T17:54:47.5739902Z ##[error]Process completed with exit code 1.
+2026-10-19T17:54:47.5806851Z ##[group]Run python3 - <<'PY'
+2026-10-19T17:54:47.5807442Z [36;1mpython3 - <<'PY'[0m
+2026-10-19T17:54:47.5807706Z [36;1mimport datetime as dt[0m
+2026-10-19T17:54:47.5807957Z [36;1mimport json[0m
+2026-10-19T17:54:47.5808170Z [36;1mimport os[0m
+2026-10-19T17:54:47.5808401Z [36;1mfrom pathlib import Path[0m
+2026-10-19T17:54:47.5808690Z [36;1mfrom urllib.parse import urlsplit[0m
+2026-10-19T17:54:47.5809028Z [36;1mfrom urllib.request import Request, urlopen[0m
+2026-10-19T17:54:47.5809331Z [36;1m[0m
+2026-10-19T17:54:47.5809785Z [36;1mrepository = os.environ["GITHUB_REPOSITORY"][0m
+2026-10-19T17:54:47.5810122Z [36;1mrun_id = os.environ["GITHUB_RUN_ID"][0m
+2026-10-19T17:54:47.5810446Z [36;1mattempt = os.environ["GITHUB_RUN_ATTEMPT"][0m
+2026-10-19T17:54:47.5810899Z [36;1mbase = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"[0m
+2026-10-19T17:54:47.5811528Z [36;1mlink = f"https://github.com/{repository}/actions/runs/{run_id}/attempts/{attempt}"[0m
+2026-10-19T17:54:47.5812088Z [36;1mgroups = {"Checked": [], "Reused": [], "Not required": [],[0m
+2026-10-19T17:54:47.5812467Z [36;1m          "Failed": [], "Blocked": []}[0m
+2026-10-19T17:54:47.5812742Z [36;1mtry:[0m
+2026-10-19T17:54:47.5813032Z [36;1m    plan = json.loads(Path("pr-plan.json").read_text())[0m
+2026-10-19T17:54:47.5813751Z [36;1m    if not isinstance(plan, dict) or not isinstance(plan.get("required_validation_checks"), list) or not isinstance(plan.get("selected_gates"), list):[0m
+2026-10-19T17:54:47.5814465Z [36;1m        raise ValueError("incomplete PR plan")[0m
+2026-10-19T17:54:47.5814895Z [36;1m    if plan.get("coverage_status") not in {"resolved", "unresolved"}:[0m
+2026-10-19T17:54:47.5815326Z [36;1m        raise ValueError("missing coverage status")[0m
+2026-10-19T17:54:47.5815688Z [36;1m    if plan["coverage_status"] == "unresolved":[0m
+2026-10-19T17:54:47.5816225Z [36;1m        groups["Blocked"].append(f"[Trusted plan coverage unresolved]({link}) · duration unknown")[0m
+2026-10-19T17:54:47.5816809Z [36;1m    required = {f"PR · Validation · {item['id']}" for item in[0m
+2026-10-19T17:54:47.5817252Z [36;1m                plan.get("required_validation_checks", [])}[0m
+2026-10-19T17:54:47.5817706Z [36;1m    required.update({"PR · Trusted Plan", "PR · Focused Python",[0m
+2026-10-19T17:54:47.5818147Z [36;1m                     "Workflow policy", "PR Selected Checks"})[0m
+2026-10-19T17:54:47.5818536Z [36;1m    selected = set(plan.get("selected_gates", []))[0m
+2026-10-19T17:54:47.5818859Z [36;1m    for gate in selected:[0m
+2026-10-19T17:54:47.5819129Z [36;1m        parts = gate.split("/")[0m
+2026-10-19T17:54:47.5819673Z [36;1m        if len(parts) == 3 and parts[0] == "atomic" and parts[1] in {"docker", "podman"}:[0m
+2026-10-19T17:54:47.5820128Z [36;1m            runtime, suite = parts[1], parts[2][0m
+2026-10-19T17:54:47.5820442Z [36;1m            required.add([0m
+2026-10-19T17:54:47.5820794Z [36;1m                f"PR · Selected Runtime ({gate}, {runtime}, {suite}) / "[0m
+2026-10-19T17:54:47.5821189Z [36;1m                f"{runtime} · {suite}")[0m
+2026-10-19T17:54:47.5821567Z [36;1m    if "integration/static/public-contracts" in selected:[0m
+2026-10-19T17:54:47.5821953Z [36;1m        required.add("PR · Public Contracts")[0m
+2026-10-19T17:54:47.5822251Z [36;1m    jobs = [][0m
+2026-10-19T17:54:47.5822495Z [36;1m    token = os.environ["GH_TOKEN"][0m
+2026-10-19T17:54:47.5822785Z [36;1m    for page in range(1, 11):[0m
+2026-10-19T17:54:47.5823166Z [36;1m        url = (f"https://api.github.com/repos/{repository}/actions/runs/"[0m
+2026-10-19T17:54:47.5823654Z [36;1m               f"{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}")[0m
+2026-10-19T17:54:47.5824062Z [36;1m        request = Request(url, headers={[0m
+2026-10-19T17:54:47.5824508Z [36;1m            "Authorization": f"***",[0m
+2026-10-19T17:54:47.5824850Z [36;1m            "Accept": "application/vnd.github+json",[0m
+2026-10-19T17:54:47.5825166Z [36;1m        })[0m
+2026-10-19T17:54:47.5825611Z [36;1m        with urlopen(request, timeout=15) as response:[0m
+2026-10-19T17:54:47.5826106Z [36;1m            batch = json.load(response)["jobs"][0m
+2026-10-19T17:54:47.5826425Z [36;1m        jobs.extend(batch)[0m
+2026-10-19T17:54:47.5826695Z [36;1m        if len(batch) < 100:[0m
+2026-10-19T17:54:47.5826954Z [36;1m            break[0m
+2026-10-19T17:54:47.5827181Z [36;1m    if not jobs:[0m
+2026-10-19T17:54:47.5827468Z [36;1m        raise ValueError("empty Actions jobs response")[0m
+2026-10-19T17:54:47.5827815Z [36;1m    def duration(job):[0m
+2026-10-19T17:54:47.5828125Z [36;1m        a, b = job.get("started_at"), job.get("completed_at")[0m
+2026-10-19T17:54:47.5828459Z [36;1m        if not a or not b:[0m
+2026-10-19T17:54:47.5828732Z [36;1m            return "duration unknown"[0m
+2026-10-19T17:54:47.5829015Z [36;1m        try:[0m
+2026-10-19T17:54:47.5829331Z [36;1m            start = dt.datetime.fromisoformat(a.replace("Z", "+00:00"))[0m
+2026-10-19T17:54:47.5829949Z [36;1m            end = dt.datetime.fromisoformat(b.replace("Z", "+00:00"))[0m
+2026-10-19T17:54:47.5830400Z [36;1m            return f"{max(0, int((end - start).total_seconds()))}s"[0m
+2026-10-19T17:54:47.5830751Z [36;1m        except ValueError:[0m
+2026-10-19T17:54:47.5831043Z [36;1m            return "duration unknown"[0m
+2026-10-19T17:54:47.5831364Z [36;1m    seen = set()[0m
+2026-10-19T17:54:47.5831594Z [36;1m    for job in jobs:[0m
+2026-10-19T17:54:47.5831868Z [36;1m        name = job.get("name") or "Unnamed job"[0m
+2026-10-19T17:54:47.5832170Z [36;1m        seen.add(name)[0m
+2026-10-19T17:54:47.5832442Z [36;1m        if name == "PR Selected Checks":[0m
+2026-10-19T17:54:47.5832794Z [36;1m            continue  # This very job is still in progress.[0m
+2026-10-19T17:54:47.5833144Z [36;1m        state = job.get("conclusion")[0m
+2026-10-19T17:54:47.5833524Z [36;1m        item = f"[{name}]({job.get('html_url') or link}) · {duration(job)}"[0m
+2026-10-19T17:54:47.5833926Z [36;1m        if state == "success":[0m
+2026-10-19T17:54:47.5834202Z [36;1m            category = "Checked"[0m
+2026-10-19T17:54:47.5834567Z [36;1m        elif state in {"failure", "timed_out", "action_required"}:[0m
+2026-10-19T17:54:47.5834925Z [36;1m            category = "Failed"[0m
+2026-10-19T17:54:47.5835253Z [36;1m        elif state == "skipped" and name not in required:[0m
+2026-10-19T17:54:47.5835601Z [36;1m            category = "Not required"[0m
+2026-10-19T17:54:47.5835882Z [36;1m        else:[0m
+2026-10-19T17:54:47.5836113Z [36;1m            category = "Blocked"[0m
+2026-10-19T17:54:47.5836411Z [36;1m        groups[category].append(item)[0m
+2026-10-19T17:54:47.5836837Z [36;1m    # This running final check cannot yet have a terminal conclusion.[0m
+2026-10-19T17:54:47.5837329Z [36;1m    # Every other mandatory name absent from an API response is blocked.[0m
+2026-10-19T17:54:47.5837820Z [36;1m    for name in sorted(required - seen - {"PR Selected Checks"}):[0m
+2026-10-19T17:54:47.5838210Z [36;1m        groups["Blocked"].append([0m
+2026-10-19T17:54:47.5838585Z [36;1m            f"[Missing required job: {name}]({link}) · duration unknown")[0m
+2026-10-19T17:54:47.5839081Z [36;1m    # Reuse is display-only metadata from the trusted plan. Never infer[0m
+2026-10-19T17:54:47.5839682Z [36;1m    # reuse merely from a skipped job or a green previous run.[0m
+2026-10-19T17:54:47.5840124Z [36;1m    for evidence in plan.get("verified_reused_evidence", []):[0m
+2026-10-19T17:54:47.5840613Z [36;1m        if not isinstance(evidence, dict) or evidence.get("verified") is not True:[0m
+2026-10-19T17:54:47.5841032Z [36;1m            continue[0m
+2026-10-19T17:54:47.5841286Z [36;1m        url = evidence.get("url")[0m
+2026-10-19T17:54:47.5841577Z [36;1m        if not isinstance(url, str):[0m
+2026-10-19T17:54:47.5841852Z [36;1m            continue[0m
+2026-10-19T17:54:47.5842098Z [36;1m        parsed = urlsplit(url)[0m
+2026-10-19T17:54:47.5842409Z [36;1m        prefix = f"/{repository}/actions/runs/"[0m
+2026-10-19T17:54:47.5843017Z [36;1m        suffix = parsed.path[len(prefix):] if parsed.path.startswith(prefix) else ""[0m
+2026-10-19T17:54:47.5843653Z [36;1m        if (parsed.scheme != "https" or parsed.netloc != "github.com"[0m
+2026-10-19T17:54:47.5844119Z [36;1m                or not suffix or not suffix.split("/")[0].isdigit()[0m
+2026-10-19T17:54:47.5844517Z [36;1m                or parsed.query or parsed.fragment):[0m
+2026-10-19T17:54:47.5844834Z [36;1m            continue[0m
+2026-10-19T17:54:47.5845121Z [36;1m        seconds = evidence.get("duration_seconds")[0m
+2026-10-19T17:54:47.5845547Z [36;1m        elapsed = (f"{seconds}s" if type(seconds) is int and seconds >= 0[0m
+2026-10-19T17:54:47.5845946Z [36;1m                   else "duration unknown")[0m
+2026-10-19T17:54:47.5846386Z [36;1m        groups["Reused"].append(f"[Plan-marked verified evidence]({url}) · {elapsed}")[0m
+2026-10-19T17:54:47.5846911Z [36;1mexcept (OSError, ValueError, KeyError, TypeError) as error:[0m
+2026-10-19T17:54:47.5847489Z [36;1m    groups["Blocked"].append("Result overview unavailable; inspect the required check and run logs.")[0m
+2026-10-19T17:54:47.5848106Z [36;1mlines = [f"## PR checks · [Run {run_id} (attempt {attempt})]({link})",[0m
+2026-10-19T17:54:47.5848657Z [36;1m         "", "Presentation only; the independent required verifier remains authoritative.",[0m
+2026-10-19T17:54:47.5849101Z [36;1m         ""][0m
+2026-10-19T17:54:47.5849352Z [36;1mfor group, entries in groups.items():[0m
+2026-10-19T17:54:47.5849829Z [36;1m    lines.extend([f"### {group} ({len(entries)})", ""])[0m
+2026-10-19T17:54:47.5850219Z [36;1m    lines.extend(f"- {entry}" for entry in entries)[0m
+2026-10-19T17:54:47.5850535Z [36;1m    if not entries:[0m
+2026-10-19T17:54:47.5850796Z [36;1m        lines.append("- None confirmed")[0m
+2026-10-19T17:54:47.5851085Z [36;1m    lines.append("")[0m
+2026-10-19T17:54:47.5851472Z [36;1mwith open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:[0m
+2026-10-19T17:54:47.5851923Z [36;1m    output.write("\n".join(lines) + "\n")[0m
+2026-10-19T17:54:47.5852216Z [36;1mPY[0m
+2026-10-19T17:54:47.5905099Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-10-19T17:54:47.5905453Z env:
+2026-10-19T17:54:47.5907749Z   GH_TOKEN: ***
+2026-10-19T17:54:47.5907970Z ##[endgroup]
+2026-10-19T17:54:48.0902791Z Post job cleanup.
+2026-10-19T17:54:48.1760374Z [command]/usr/bin/git version
+2026-10-19T17:54:48.1800901Z git version 2.55.0
+2026-10-19T17:54:48.1836945Z Temporarily overriding HOME='/home/runner/work/_temp/b40bccfd-260b-4673-ad03-7fb26104bba6' before making global git config changes
+2026-10-19T17:54:48.1858582Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-19T17:54:48.1859863Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/baseharbor/baseharbor
+2026-10-19T17:54:48.1879673Z Removing SSH command configuration
+2026-10-19T17:54:48.1887418Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-19T17:54:48.1927779Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-19T17:54:48.2162318Z Removing HTTP extra header
+2026-10-19T17:54:48.2167442Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-19T17:54:48.2206385Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-19T17:54:48.2442231Z Removing includeIf entries pointing to credentials config files
+2026-10-19T17:54:48.2448480Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-19T17:54:48.2484240Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-19T17:54:48.2863647Z Cleaning up orphan processes
+2026-10-19T17:54:48.3172207Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

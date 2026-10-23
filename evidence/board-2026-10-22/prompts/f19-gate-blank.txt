@@ -1,0 +1,6 @@
+FIRST ACTION: evidence/board-2026-10-22/f19-gate-blank.md mit PLAN + todowrite ([wip:f19]).
+Repo baseharbor (mcpdev80). GEMAESS codex-verdict-s39b-s42b.md: je EINEN leftover fixen:
+- branch fix/v0426-stepcap-split (head fe17e6e5): scripts/pr-gate-plan.py:748 - fehlende Leerzeile zwischen EDIT_ZERO_PREVIEW- und ECOSYSTEM_RESOLVER-Tuple ergaenzen (genau so, wie das Verdict beschreibt).
+- branch fix/atomic-bare-sha-dispatch (head c34740fa): identische Stelle, identischer Fix.
+Je Branch: ein Commit, Push zum PR-Head (keine Force), PR-Checks anstossen lassen wie gehabt; lokale Gate-Unit (pr-gate-plan.py Testpfad) laeuft.
+BEIDES fertig + PR-heads gepusht: END F19-GATE-BLANK-DONE mit beiden neuen SHAs in der Evidence.

@@ -1,0 +1,5 @@
+Follow-up zu deiner Handoff-Pause (o47-qpr.md, State active): Die source-prep Freezes SIND da und ACCEPTED laut codex-verdict-s39b-s42b.md (Round 2):
+- S39 = 75efeef89b61d848d5ea351877ba6423a31e58a6 (fix/v0426-stepcap-split, PR #1039)
+- S42 = 0267dbdb71f63a2c77e193618e6fba4106e5cd5b (fix/atomic-bare-sha-dispatch, PR #1042)
+Damit ist Rezept-Schritt 1+2 erfuellt; dein Schritt ist NUR noch Schritt 3: der tiny two-file predecessor-Qualification-PR gegen develop, der genau diese beiden SHAs in den trusted-base Selector-Eintraegen referenziert (Dateien/Klassen wie in deinem eigenen Handoff-Analyseteil festgehalten; pr-gate-plan.py ci-planner-Einstufung 563-564/1121-1123 beachten - keine neuen Selbsteintraege noetig).
+Ein Commit, PR target develop, checks abwarten (app 15368), NICHT mergen. PLAN in deiner bestehenden Datei fortschreiben (kein Neues anlegen), Handoff-Block aktualisieren, END O47-QPR-DONE mit PR-Nummer+SHA.

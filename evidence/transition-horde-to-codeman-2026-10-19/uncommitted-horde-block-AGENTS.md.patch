@@ -1,0 +1,35 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 117310e..9a8e52c 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -42,3 +42,30 @@ Details: [WORKFLOW.md](WORKFLOW.md). Overview: [HOME.md](HOME.md).
+ ## Recurring release cards
+ 
+ Every future concrete release needs the six [release lifecycle cards](RELEASE_WORKFLOW.md). The already-running v0.4.26 has only its four completion stages; do not recreate startup cards for it. On scheduling/changing scope run `python3 scripts/release_cycles.py sync`, then render/check and planning tests. Complete cleanup and applicable Renovate intake before new feature development. Readiness, complete pre-release authorization, promotion/tagging authorization and post-release verification are distinct. Preserve verifier-valid green evidence from partially failed runs; rerun only failed/affected coverage. Planning card creation authorizes none of those operations.
++
++<!-- BEGIN HORDE DELEGATION -->
++## Delegate repository changes to Horde
++
++First determine whether you are already a Horde worker. If HORDE_WORKER_TOKEN
++is set or the runtime gave you a worker identity and an assigned Horde step,
++follow the horde-worker skill and perform that step. Do not
++resubmit the assignment as a new root task.
++
++For the agent talking to the user: for every user-requested repository change,
++use the horde skill and delegate implementation, tests, and review to Horde. This
++includes small edits, documentation, bug fixes, features, and refactoring, and
++overrides the skill's default advice to handle small edits locally. Do not
++implement changes directly or substitute another subagent system unless the
++user explicitly requests it. Read-only investigation and answering questions
++may happen in the current session.
++
++The agent talking to the user owns clarification, task submission, monitoring,
++answering worker questions within the user's instructions, and inspecting
++results. Include the user's constraints and acceptance checks in the submitted
++task. Follow it until completion or a blocker requiring user input. Verify the
++integrated result and report its branch, checks, and unresolved issues. Keep
++external delivery within the user's authorization.
++
++If Horde is unavailable, report the blocker instead of silently doing the work
++directly.
++<!-- END HORDE DELEGATION -->

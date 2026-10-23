@@ -1,0 +1,2 @@
+FIRST ACTION: create evidence/board-2026-10-22/o45-sheet-sync.md with PLAN + todowrite ([wip:o45] applies).
+Mission SHEETSYNC: convert f9-rerun-prep.md into the LIVE W1 sheet in your file: develop refs 9f4916be + S39 0de29debf4f91ee3de735ef6d2008eeec880bcdb + S42 267152e8ef1c8873bb1ec6518d4d714052ad8e10, demo main 82d042b (+ pending pin C2-final), consumer_ref empty per q24; per row: dispatch-ready yes/no, blocker=Q-predecessor/#1039/#1042 merge. READ-ONLY, no dispatches. END O45-SHEET-DONE.

@@ -1,0 +1,7 @@
+FIRST ACTION: create evidence/board-2026-10-22/o37-118-repro.md with ## PLAN + todowrite.
+Mission: prove baseharbor-demo PR #118 head c1285a889ec5 fixes cleanup-provenance deterministically.
+1) git -C baseharbor-demo fetch origin refs/pull/118/head (no stderr suppression), worktree in /tmp/opencode from FETCH_HEAD.
+2) find repro118-multiple-owned.py (grep -r in repo incl. scripts/ and evidence dirs; codex ran it before - locate canonical copy).
+3) run it against this head (podman paths per RUNBOOK, baha-podman VM if needed), full output, require exit 0 and both owned IDs unpauased.
+4) Verdict PROVEN/NOT-PROVEN + commands + output tail in the file. Diagnostics only, no pushes.
+END O37-REPRO-DONE.

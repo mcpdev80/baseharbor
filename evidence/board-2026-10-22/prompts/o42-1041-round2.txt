@@ -1,0 +1,2 @@
+FIRST ACTION: create evidence/board-2026-10-22/o42-1041-round2.md with PLAN + todowrite.
+Execute the Worker recipe (items 1-5) in evidence/board-2026-10-22/codex-verdicts-1041.md on the EXISTING branch docs/v0426-notes-corrections (PR #1041) - same owner lane, no new PR. Push, CI to terminal, include the exact-head check evidence the recipe item 5 demands. END O42-1041R2-DONE + compliance.
