@@ -57,6 +57,14 @@ class PublisherTests(unittest.TestCase):
         directory = Path(self.temp.name) / "evidence" / "v0.4.27" / "candidate" / "run-1"
         self.assertFalse((directory / "payloads" / "new.json").exists())
 
+    def test_boolean_byte_count_rejected_before_staging(self):
+        self.payload = b"x"
+        self.manifest["checks"][0]["bytes"] = True
+        self.manifest["checks"][0]["sha256"] = hashlib.sha256(self.payload).hexdigest()
+        with self.assertRaisesRegex(ArchiveError, "payload size or digest mismatch"):
+            self.publish()
+        self.assertFalse((Path(self.temp.name) / "evidence").exists())
+
     def test_missing_payload(self):
         with self.assertRaises(ArchiveError):
             publish(self.temp.name, "v0.4.27", "candidate", "run-1", self.manifest, {})
