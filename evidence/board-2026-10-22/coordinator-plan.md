@@ -33,3 +33,4 @@
 - [x] codex danger-full-access (YOLO) gesetzt
 - [ ] nach q39: daemon restart, o46/q38 nachholen, dann C2-Kette: S39 fe17e6e5 S42 c34740fa -> Q-PR -> merges -> develop -> D2 pin (demo main 82d042b) -> W1 (consumer_ref=40hex tips! nicht leer)
 - [ ] prepare/qualify naechste: codex-verdicts-2026-10-23.md 4x CHANGES, Rezepte in Arbeit
+OPERATION: never push plan changes before check=0 (run check, on error fix+amend, THEN push) - codify in future dispatch prompts.

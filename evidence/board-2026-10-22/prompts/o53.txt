@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o53-accept-appid.md (ABSOLUTER Pfad!) mit PLAN + todowrite ([wip:o53]).
+Karte t-20261020-develop-appid-manifest-test-regression (Status review). Verifiziere Acceptance-Punkte gegen develop 1861ed07 (C2-final, fetch + detached worktree): appid manifest regression tests laufen und sind gruen im Tree; Receipts laut q27 (evidence board-2026-10-22) abgearbeitet. Beleg je Punkt, verdict ready|changes-rezept. KEIN PR noetig (nur wenn Testlucke: kleiner PR gegen develop).
+END O53-ACCEPT-APPID-DONE.

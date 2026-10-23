@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q47-accept-docs.md (ABSOLUTER Pfad!) mit PLAN + todowrite ([wip:q47]).
+Karte t-20261022-q20-docs-pages (Status review): Verifiziere Pages-/Docs-Akzeptanz gegen develop 1861ed07: q20-Rezepte (codex-verdicts) wurden in #1041 eingearbeitet, Seiten-Deploy-Pfad vorhanden, Content-Kuerze laut core-922-Linie konsistent. verdict-field ready|changes-rezept, Belege mit Datei/Zeile.
+END Q47-ACCEPT-DOCS-DONE.
