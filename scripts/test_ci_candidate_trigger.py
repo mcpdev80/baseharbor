@@ -178,6 +178,7 @@ class CandidateTriggerTests(unittest.TestCase):
         source = GC.read_text()
         self.assertIn("types: [opened, ready_for_review, labeled]", source)
         self.assertIn("github.event.label.name == 'ci:validate'", source)
+        self.assertIn("github.event.action == 'labeled' && !github.event.pull_request.draft", source)
 
 if __name__ == "__main__":
     unittest.main()
