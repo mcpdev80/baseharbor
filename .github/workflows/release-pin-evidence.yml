@@ -50,17 +50,23 @@ jobs:
       - name: run ecosystem_release_pins.py
         run: |
           set -euo pipefail
+          echo "RELEASE_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
           python3 scripts/ecosystem_release_pins.py \
             --core "$CORE_REF" \
-            --tag "${RELEASE_TAG#v}" \
+            --tag "${RELEASE_VERSION}" \
             --connector "$CONNECTOR_REF" \
             --demo "$DEMO_REF" \
-            --output "docs/releases/${RELEASE_TAG#v}.consumer-pins.json"
+            --output "docs/releases/${RELEASE_VERSION}.consumer-pins.json"
+
+      - name: strip release tag
+        id: strip_tag
+        run: |
+          echo "TAG=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
 
       - name: upload consumer pins artifact
         uses: actions/upload-artifact@v4
         with:
-          name: consumer-pins-${{ env.RELEASE_TAG#v }}
+          name: consumer-pins-${{ env.TAG }}
           path: docs/releases/*.consumer-pins.json
           retention-days: 30
 
