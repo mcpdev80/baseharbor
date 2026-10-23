@@ -1,7 +1,7 @@
-"""Fail-closed selection from trusted, candidate-bound gate proofs.
+"""Fail-closed advisory gate planning, without authority to reuse evidence.
 
-The caller must authenticate each proof and provide the complete required-gate
-dependency closure. This helper neither authenticates CI nor issues receipts.
+Caller-provided proof flags cannot establish provenance. An independent trusted
+verifier must authenticate evidence and decide which gates can be reused.
 """
 from dataclasses import dataclass
 import re
@@ -37,7 +37,7 @@ class Decision:
 
 def plan(required, proofs, *, stage, candidate, policy_digest,
          artifact_digest=None, failed=(), trust_available=True):
-    """Return minimal missing gates; fail closed on stale or untrusted proofs."""
+    """Report required gates; do not authorize reuse from caller claims."""
     if stage not in ("pr", "integration", "release"):
         raise ValueError("EVIDENCE_STAGE: unsupported stage")
     if not isinstance(candidate, str) or not SHA.fullmatch(candidate):
@@ -72,14 +72,10 @@ def plan(required, proofs, *, stage, candidate, policy_digest,
     if not trust_available:
         return Decision("BLOCKED", "EVIDENCE_TRUST", ordered, (), ordered, (),
                         "Restore trusted verifier and rerun qualification")
+    # Caller-provided GateProof objects have no authenticated provenance. Even
+    # authenticated=True is a claim, not evidence. Never omit a required gate
+    # on this basis; the trusted verifier owns actual reuse decisions.
     reusable_set = set()
-    for proof in proofs:
-        if (proof.authenticated is True and proof.candidate == candidate
-                and proof.policy_digest == policy_digest):
-            if proof.gate == "release/smoke" and proof.artifact_digest != artifact_digest:
-                continue
-            reusable_set.add(proof.gate)
-    reusable_set -= failed_set
     pending_set = required_set - reusable_set - failed_set
     reusable = tuple(sorted(reusable_set))
     failed_sorted = tuple(sorted(failed_set))
