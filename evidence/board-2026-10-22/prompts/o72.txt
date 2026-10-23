@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o72-auditfull.md (ABSOLUT) mit PLAN + todowrite ([wip:o72]).
+Karte t-20261019-v0426-complete-defect-audit: codex-verdict-reviewwave.md Abschnitt "AUDIT (rerun)" sagt CHANGES, Grund: Vollstaendigkeits-Behauptung groesser als die belegte Tabelle. Erstelle die VOLLSTAENDIGE Befund-Matrix: jeder originale Audit-Befund (Quellen: defect-audit Karte + Task-Bodys + verdicts dateien board-2026-10-19..22) -> PR/Merge-SHA -> gh pr view mergeCommit-Check gegen develop 1861ed07 -> status (in-c2 | open | superseded). Keine Sammelbehauptung, nur Zeile-fuer-Zeile-Beleg. Read-only.
+END O72-AUDITFULL-DONE mit zaehlung je status + Liste offener Reste (falls jede Zeile in-c2: "closure established").

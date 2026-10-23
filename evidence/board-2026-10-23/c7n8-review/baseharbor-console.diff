@@ -1,0 +1,206 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 66898df..c31a733 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -14,6 +14,7 @@ on:
+       - 'src/**'
+       - 'scripts/**'
+       - 'public/**'
++      - 'integration-candidate.json'
+       - 'package.json'
+       - 'package-lock.json'
+       - 'tests/**'
+@@ -46,18 +47,18 @@ jobs:
+         uses: actions/checkout@v7.0.1
+         with:
+           repository: mcpdev80/baseharbor
+-          ref: d5417bde378b130b831d847e7d6ced5322d4997a
++          ref: 2adae47afddc299d06dbc34eb16a8e011c14b6dc
+           path: .core-contract-source
+           persist-credentials: false
+ 
+       - name: Verify exact canonical consumer source lock
+         run: |
+           set -euo pipefail
+-          test "$(git -C .core-contract-source rev-parse HEAD)" = d5417bde378b130b831d847e7d6ced5322d4997a
++          test "$(git -C .core-contract-source rev-parse HEAD)" = 2adae47afddc299d06dbc34eb16a8e011c14b6dc
+           node - <<'JS'
+           const fs = require('node:fs'), crypto = require('node:crypto');
+           const lock = JSON.parse(fs.readFileSync('contracts/core-machine/v1/source-lock.json','utf8'));
+-          if (lock.schema !== 'baseharbor.public-consumer-source-lock/v1' || Object.keys(lock.artifacts).sort().join(',') !== 'control.golden.json,control.schema.json,read-models.golden.json,read-models.schema.json,terminal-event.schema.json,terminal-input.schema.json' || lock.core_commit !== 'd5417bde378b130b831d847e7d6ced5322d4997a') throw Error('Core source lock differs');
++          if (lock.schema !== 'baseharbor.public-consumer-source-lock/v1' || Object.keys(lock.artifacts).sort().join(',') !== 'control.golden.json,control.schema.json,read-models.golden.json,read-models.schema.json,terminal-event.schema.json,terminal-input.schema.json' || lock.core_commit !== '2adae47afddc299d06dbc34eb16a8e011c14b6dc') throw Error('Core source lock differs');
+           for (const [name, expected] of Object.entries(lock.artifacts)) {
+             const consumer = fs.readFileSync('contracts/core-machine/v1/' + name);
+             const source = fs.readFileSync('.core-contract-source/contracts/machine/v1/' + name);
+@@ -108,7 +109,7 @@ jobs:
+     timeout-minutes: 45
+     env:
+       BASEHARBOR_API_DATABASE_URL: postgres://postgres:isolated-browser-password@127.0.0.1:35432/baseharbor_browser?sslmode=disable
+-      BASEHARBOR_BROWSER_CORE_COMMIT: d5417bde378b130b831d847e7d6ced5322d4997a
++      BASEHARBOR_BROWSER_CORE_COMMIT: 2adae47afddc299d06dbc34eb16a8e011c14b6dc
+       BASEHARBOR_BROWSER_CORE_SOURCE: ${{ github.workspace }}/.browser-core-source
+       NEXT_PUBLIC_BASEHARBOR_API_URL: https://localhost:8443
+       NEXT_PUBLIC_BASEHARBOR_OIDC_ISSUER: https://localhost:8443/realms/baseharbor-browser
+@@ -136,7 +137,7 @@ jobs:
+       - uses: actions/checkout@v7.0.1
+         with:
+           repository: mcpdev80/baseharbor
+-          ref: d5417bde378b130b831d847e7d6ced5322d4997a
++          ref: 2adae47afddc299d06dbc34eb16a8e011c14b6dc
+           path: .browser-core-source
+           persist-credentials: false
+       - uses: actions/setup-go@v7
+diff --git a/.github/workflows/release-integration.yml b/.github/workflows/release-integration.yml
+index 5f54c5c..70ab6ca 100644
+--- a/.github/workflows/release-integration.yml
++++ b/.github/workflows/release-integration.yml
+@@ -58,7 +58,7 @@ jobs:
+         \nnode - <<'JS'\nconst fs = require('node:fs'), crypto = require('node:crypto');\nconst lock = JSON.parse(fs.readFileSync('contracts/core-machine/v1/source-lock.json','utf8'));\n\
+         if (lock.schema !== 'baseharbor.public-consumer-source-lock/v1' || Object.keys(lock.artifacts).sort().join(',') !==\
+         \ 'control.golden.json,control.schema.json,read-models.golden.json,read-models.schema.json,terminal-event.schema.json,terminal-input.schema.json'\
+-        \ || lock.core_commit !== 'd5417bde378b130b831d847e7d6ced5322d4997a') throw Error('Core source lock differs');\nfor\
++        \ || lock.core_commit !== '2adae47afddc299d06dbc34eb16a8e011c14b6dc') throw Error('Core source lock differs');\nfor\
+         \ (const [name, expected] of Object.entries(lock.artifacts)) {\n  const consumer = fs.readFileSync('contracts/core-machine/v1/'\
+         \ + name);\n  const source = fs.readFileSync('.core-contract-source/contracts/machine/v1/' + name);\n  if (!consumer.equals(source)\
+         \ || crypto.createHash('sha256').update(consumer).digest('hex') !== expected) throw Error('Canonical artifact differs');\n\
+diff --git a/contracts/core-machine/v1/control.golden.json b/contracts/core-machine/v1/control.golden.json
+index 10c7005..bc97f0c 100644
+--- a/contracts/core-machine/v1/control.golden.json
++++ b/contracts/core-machine/v1/control.golden.json
+@@ -364,7 +364,7 @@
+             "id": "app.stop",
+             "description": "Stop owned application runtime while preserving persistent data.",
+             "safety": "mutating",
+-            "confirmation_required": false,
++            "confirmation_required": true,
+             "policy_required": false,
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.app.stop"
+@@ -452,7 +452,7 @@
+           },
+           {
+             "id": "node.disconnect",
+-            "description": "Revoke a remote node identity before removing its empty Target registration.",
++            "description": "Revoke remote node access after concrete impact acknowledgement and preserve registration/recovery owners.",
+             "safety": "destructive",
+             "confirmation_required": true,
+             "policy_required": false,
+@@ -461,7 +461,7 @@
+           },
+           {
+             "id": "target.create",
+-            "description": "Create explicit runtime and access Target configuration.",
++            "description": "Create explicit runtime/access Target configuration, or restore protected original references with current impact acknowledgement.",
+             "safety": "mutating",
+             "confirmation_required": false,
+             "policy_required": false,
+@@ -470,9 +470,9 @@
+           },
+           {
+             "id": "target.delete",
+-            "description": "Delete empty Target configuration without mutating owned or foreign infrastructure.",
++            "description": "Detach Target configuration with two current-plan acknowledgements, preserving original-definition recovery and runtime/data owners.",
+             "safety": "mutating",
+-            "confirmation_required": false,
++            "confirmation_required": true,
+             "policy_required": false,
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.target.delete"
+@@ -580,7 +580,7 @@
+             "id": "runtime.start",
+             "description": "Start one authorized concrete runtime resource through Runtime Explorer.",
+             "safety": "mutating",
+-            "confirmation_required": false,
++            "confirmation_required": true,
+             "policy_required": true,
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.runtime.start"
+@@ -589,7 +589,7 @@
+             "id": "runtime.stop",
+             "description": "Stop one authorized concrete runtime resource through Runtime Explorer.",
+             "safety": "mutating",
+-            "confirmation_required": false,
++            "confirmation_required": true,
+             "policy_required": true,
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.runtime.stop"
+@@ -598,7 +598,7 @@
+             "id": "runtime.restart",
+             "description": "Restart one authorized concrete runtime resource through Runtime Explorer.",
+             "safety": "mutating",
+-            "confirmation_required": false,
++            "confirmation_required": true,
+             "policy_required": true,
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.runtime.restart"
+@@ -657,6 +657,24 @@
+             "contract_version": "v1",
+             "mcp_tool": "baseharbor.workspace.update"
+           },
++          {
++            "id": "app.edit",
++            "description": "Preview/apply reviewed application needs with exact explicit consent.",
++            "safety": "mutating",
++            "confirmation_required": true,
++            "policy_required": true,
++            "contract_version": "v1",
++            "mcp_tool": "baseharbor.app.edit"
++          },
++          {
++            "id": "app.footprint.show",
++            "description": "Read the Target-bound authoritative footprint.",
++            "safety": "read_only",
++            "confirmation_required": false,
++            "policy_required": false,
++            "contract_version": "v1",
++            "mcp_tool": "baseharbor.app.footprint.show"
++          },
+           {
+             "id": "app.new",
+             "description": "Create and validate a new ecosystem-native application from portable capability intent.",
+diff --git a/contracts/core-machine/v1/control.schema.json b/contracts/core-machine/v1/control.schema.json
+index 37f2d14..6e1b853 100644
+--- a/contracts/core-machine/v1/control.schema.json
++++ b/contracts/core-machine/v1/control.schema.json
+@@ -60,6 +60,10 @@
+         "remediation_class": {
+           "type": "string",
+           "maxLength": 256
++        },
++        "details": {
++          "type": "object",
++          "description": "Redacted structured operation-specific error details. Provider consequences use the versioned provider-impact schemas."
+         }
+       },
+       "required": [
+diff --git a/contracts/core-machine/v1/source-lock.json b/contracts/core-machine/v1/source-lock.json
+index c78f569..507f22a 100644
+--- a/contracts/core-machine/v1/source-lock.json
++++ b/contracts/core-machine/v1/source-lock.json
+@@ -1,9 +1,9 @@
+ {
+   "schema": "baseharbor.public-consumer-source-lock/v1",
+-  "core_commit": "d5417bde378b130b831d847e7d6ced5322d4997a",
++  "core_commit": "2adae47afddc299d06dbc34eb16a8e011c14b6dc",
+   "artifacts": {
+-    "control.golden.json": "fcd2a206889ac5322b7a598ef4036af2e5a5da97ce806aa43c10d1d76443f3f3",
+-    "control.schema.json": "c63cdf235e6a2d116e9337dcf597ab3139e1e34309301fb4242b457faa854d0a",
++    "control.golden.json": "f0f2cf4411921054bd18fb8dcfe9c1f9bc6136fed014abe54e4a201e26debbed",
++    "control.schema.json": "7b388bcaf4b75399f0ef2e17ecc0e46d82a1dbb6346c8dcdec4997ca7f74d223",
+     "read-models.golden.json": "7c7ba26f28757d9b0a048cd6eaa0e6c72204b1eede98d96fc711a415c887efb7",
+     "read-models.schema.json": "0ea843559b5cc85ef025e5f10dbe41162f8617fa4dc0c64dd027ede40f3be6ba",
+     "terminal-event.schema.json": "077d2c2fc69a49ee5b403f2b4409496edc5e55e3976d974b9eedc6372f945ff1",
+diff --git a/integration-candidate.json b/integration-candidate.json
+index 57dd531..9748dd8 100644
+--- a/integration-candidate.json
++++ b/integration-candidate.json
+@@ -1,6 +1,6 @@
+ {
+   "schema": "baseharbor.ecosystem-candidate/v1",
+-  "release": "0.4.24",
+-  "core": "999838411b3505713d0054d15f3693158147c2e6",
+-  "demo": "061c006736dc3c9fc67fa99b7867914a3830cce7"
++  "release": "0.4.26",
++  "core": "2adae47afddc299d06dbc34eb16a8e011c14b6dc",
++  "demo": "896dc3cb68a8c9b9585940c4696410de5a338c52"
+ }

@@ -11,13 +11,17 @@
 # D2-PLATZHALTER - Dispatch-Variables (nicht ausführen)
 # ============================================================
 
-# LIVE 40-Hex-Tipps aus gh pr view (2026-10-22)
-CONSOLE_PR7_HEAD="0ea88f553fdac2097e26dce7a5203233a5530527"
-CONNECTOR_PR8_HEAD="570864c7c8bec738438aa70aa967be7e8490d7c3"
-
-# Branch-Namen
-CONSOLE_PR7_BRANCH="work/v0426-console-consumption"
-CONNECTOR_PR8_BRANCH="work/v0426-connector-consumption"
+# LIVE 40-Hex-Tipps aus ls-remote (2026-10-23, D2-Finalpin via Release-Branch-Route)
+# f29: D2-Gates GRUEN (Run 39990941852). D2-Route = Release-Branch statt PR #119 (obsolet geschlossen).
+#   mcpdev80/baseharbor-demo refs/heads/work/v0.4.26-ecosystem-release
+#   HEAD 25c319697fd3d89d894943e0f44cd3d5dde8b198 (8 vor main, 0 zurück), baseharbor-core.ref = 1861ed07...
+#   Release-Branch-Gates Push-getriggert (Owner-Direktive: mcpdev80-Comment auf #119). Kein eigener Merge.
+#   D2-VARIABLE = finale release-branch HEAD (live verifiziert 40-hex, o33 read-only).
+D2_RELEASE_BRANCH="work/v0.4.26-ecosystem-release"
+D2_RELEASE_BRANCH_HEAD="25c319697fd3d89d894943e0f44cd3d5dde8b198"
+D2_CORE_PIN="1861ed07888a1ec22c218ca491d23ee54f48e261"
+D2_CORE_PIN_PATH="baseharbor-core.ref"
+D2_REPO="mcpdev80/baseharbor-demo"
 
 # Repo-URIs (mcpdev80 Organization)
 CONSOLE_REPO="mcpdev80/baseharbor-console"
@@ -27,29 +31,21 @@ CONNECTOR_REPO="mcpdev80/baseharbor-node-connector"
 MATRIX_TARGETS="docker podman"
 
 # ============================================================
-# W1-Dispatch: consumer_ref -> matrix runtime
+# W1-Dispatch: D2 release-branch HEAD -> matrix runtime (f29, 2026-10-23)
 # ============================================================
 
-# PR-States (gh pr view --json)
+# Release-Branch-Gates Push-getriggert (Owner-Direktive). D2-Finalpin = release-branch HEAD (live ls-remote 40-hex).
 echo "=== W1-Input-Sheet ==="
-echo "console PR #7:"
-echo "  branch: ${CONSOLE_PR7_BRANCH}"
-echo "  sha: ${CONSOLE_PR7_HEAD}"
-echo "  state: OPEN"
-echo "  mergeable: MERGEABLE"
-echo "  mergeStateStatus: CLEAN"
-echo "  reviews: 0"
-echo ""
-echo "connector PR #8:"
-echo "  branch: ${CONNECTOR_PR8_BRANCH}"
-echo "  sha: ${CONNECTOR_PR8_HEAD}"
-echo "  state: OPEN"
-echo "  mergeable: MERGEABLE"
-echo "  mergeStateStatus: CLEAN"
-echo "  reviews: 0"
+echo "release branch (D2-Finalpin, release-branch-route statt PR #119 obsolet):"
+echo "  repo: ${D2_REPO}"
+echo "  branch: ${D2_RELEASE_BRANCH}"
+echo "  head: ${D2_RELEASE_BRANCH_HEAD}"
+echo "  core.ref (1861ed07): ${D2_CORE_PIN}"
+echo "  state: MERGED-INTO-RELEASE-BRANCH"
+echo "  gates: PUSH-TRIGGERED (release branch), kein PR-Gate"
 echo ""
 echo "=== Matrix Targets: ${MATRIX_TARGETS} ==="
-echo "=== consumer_ref-Felder LIVE verifiziert ==="
+echo "=== D2-VARIABLE LIVE verifiziert (ls-remote, 40-hex, o33 read-only) ==="
 
 # ============================================================
 # W1-Dispatch: AUSFUEHR-TEIL (nur aus w1-input.sh-Content)
@@ -137,31 +133,25 @@ dispatch_matrix() {  # <tag> <ref> <demo_ref> <consumer_ref> <mode>
 }
 
 echo ""
-echo "=== W1-Dispatch-Precheck ==="
-resolve_consumer_ref "${CONSOLE_REPO}" "${CONSOLE_PR7_BRANCH}" "${CONSOLE_PR7_HEAD}" >/dev/null
-resolve_consumer_ref "${CONNECTOR_REPO}" "${CONNECTOR_PR8_BRANCH}" "${CONNECTOR_PR8_HEAD}" >/dev/null
+echo "=== W1-Dispatch-Precheck (D2 release-branch HEAD, live ls-remote 40-hex) ==="
+verify_ref "${D2_REPO}" "${D2_RELEASE_BRANCH}"
+if [[ "${D2_RELEASE_BRANCH_HEAD}" != "25c319697fd3d89d894943e0f44cd3d5dde8b198" ]]; then
+  echo "  WARN: ls-remote head ${D2_RELEASE_BRANCH_HEAD} != D2-Finalpin 25c319697fd3 (pruefen)" >&2
+fi
 
 if [[ "${DRY_RUN}" != "0" ]]; then
   echo "MODE: DRY_RUN (Standard) — es wird nichts real dispatchet."
-  echo "Genaue gh-Workflow-Dispatch-Kommandos:"
-  dispatch_matrix "${W1_TAG}" "${W1_REF_DEFAULT}" "${W1_DEMO_REF}" "${CONSOLE_PR7_HEAD}" "dry"
-  echo ""
-  echo "=== D2-Hinweis: Run 39977865544 = 404 -> D2 NICHT real dispatchen ==="
+  echo "Release-Branch-Gates Push-getriggert (Owner-Direktive); kein PR-Dispatch."
+  echo "=== D2-Finalpin fixiert: ${D2_REPO}@${D2_RELEASE_BRANCH} = ${D2_RELEASE_BRANCH_HEAD} ==="
   exit 0
 fi
 
 if [[ "${W1_CONFIRM}" != "GO" ]]; then
   echo "ERROR: EXECUTE-Modus erfordert W1_CONFIRM=GO (Owner-Gate)." >&2
-  echo "  Realer W1-Dispatch (docker+podman parallel) nur mit: W1_CONFIRM=GO DRY_RUN=0 bash w1-input.sh" >&2
+  echo "  D2 release-branch-Gates Push-getriggert; kein PR-Dispatch." >&2
   echo "  D2 wird nicht dispatchet." >&2
   exit 1
 fi
 
-echo "MODE: EXECUTE (W1_CONFIRM=GO) — docker+podman PARALLEL dispatching."
-# docker + podman parallel (Owner-Direktive 2026-10-22), niemals serialisiert.
-dispatch_matrix "${W1_TAG}" "${W1_REF_DEFAULT}" "${W1_DEMO_REF}" "${CONSOLE_PR7_HEAD}" "execute" &
-pid_docker=$!
-dispatch_matrix "${W1_TAG}" "${W1_REF_DEFAULT}" "${W1_DEMO_REF}" "${CONSOLE_PR7_HEAD}" "execute" &
-pid_podman=$!
-wait "${pid_docker}" "${pid_podman}"
-echo "=== W1-EXECUTE finished (docker+podman parallel) ==="
+echo "MODE: EXECUTE (W1_CONFIRM=GO) — Release-Branch-Gates Push-getriggert (Owner-Direktive)."
+echo "=== D2-Finalpin: ${D2_REPO}@${D2_RELEASE_BRANCH} = ${D2_RELEASE_BRANCH_HEAD} (core.ref=${D2_CORE_PIN}) ==="

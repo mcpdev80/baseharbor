@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o73-console7.md (ABSOLUT) mit PLAN + todowrite ([wip:o73]).
+Befund 18 aus o72-Matrix: mcpdev80/baseharbor-console PR #7 ist DRAFT. PR in ready umwandeln (gh pr ready 7 --repo ...), Checks auf aktuellem head (0ea88f5) erneut live pruefen; falls required Checks fehlen -> exakter Befund, kein Force/Bypass. KEIN Merge (REVIEW-Regel beachten, das uebernimmt eine codex-Lane).
+END O73-CONSOLE7-DONE mit state + checks.

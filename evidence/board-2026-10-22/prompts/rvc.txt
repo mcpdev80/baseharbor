@@ -1,0 +1,3 @@
+ROLLE: REVIEW
+PR #7 (mcpdev80/baseharbor-console, head 0ea88f553fdac2097e26dce7a5203233a5530527) und PR #8 (mcpdev80/baseharbor-node-connector, head 570864c7c8bec738438aa70aa967be7e8490d7c3): SHA-genauer Diff gegen base, Evidence der Checks (beide live gruen, q41-Kompatibilitaetsverdict vorhanden: kein Contract-/Lock-Delta zu develop 1861ed07), Akzeptanz der Konsumenten-Karten.
+Pro PR ACCEPT/CHANGES + Rezept, beide Abschnitte in evidence/board-2026-10-23/codex-verdict-c7n8.md. NICHT mergen. END REVIEW-C7N8-DONE.

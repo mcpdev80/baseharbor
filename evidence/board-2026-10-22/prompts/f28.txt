@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f28-connector8.md (ABSOLUT) mit PLAN + todowrite ([wip:f28]).
+Befund 19 aus o72-Matrix analog: mcpdev80/baseharbor-node-connector PR #8 DRAFT -> gh pr ready, Checks auf head 570864c live pruefen, Befund falls Pflichtcheck fehlt. KEIN Merge.
+END F28-CONNECTOR8-DONE mit state + checks.

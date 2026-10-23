@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f29-d2close.md (ABSOLUT) mit PLAN + todowrite ([wip:f29]).
+D2-Gates sind GRUEN (Run 39990941852, work/v0.4.26-ecosystem-release @ o56-fix). Abschluss D2: (1) status von baseharbor-demo PR #119 klaeren - wenn sie den gleichen Pin 1861ed07 traegt und Checks gruen sind: bereit fuer Merge-Lane (nicht selbst mergen), sonst mit Comment als obsolet schließen (Begruendung: Release-Branch-Route statt PR). (2) evidence/board-2026-10-22/scripts/w1-input.sh: D2-VARIABLE auf finale release-branch HEAD setzen (ls-remote live, 40 hex).
+END F29-D2CLOSE-DONE.

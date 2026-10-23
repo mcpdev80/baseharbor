@@ -1,0 +1,3 @@
+ROLLE: MERGE (Wiedervorlage nach Block: Review liegt jetzt vor).
+PR #7 + #8 ACCEPT gemaess evidence/board-2026-10-23/codex-verdict-c7n8.md (preparatory diffs, exact heads 0ea88f55 / 570864c7). Mandatory-CI live gruen (o73/q55). Ordinary merges gemaess Repo-Regeln.
+Evidence ERGAENZUNG codex-merge-c7n8.md (neuer Abschnitt "post-review"). END MERGE-C7N8-2-DONE.

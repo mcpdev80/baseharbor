@@ -1,0 +1,23 @@
+{
+  "utc": "2026-10-23T17:32:29.618408+00:00",
+  "candidates": [
+    {
+      "repo": "baseharbor-console",
+      "pr": 7,
+      "head": "0ea88f553fdac2097e26dce7a5203233a5530527",
+      "base": "4724d9962486de5c9f4d226a8a27edcaf8da2fcc",
+      "state": "open",
+      "merged": false,
+      "draft": false
+    },
+    {
+      "repo": "baseharbor-node-connector",
+      "pr": 8,
+      "head": "570864c7c8bec738438aa70aa967be7e8490d7c3",
+      "base": "813f08a307f2357f2e16ae9307ea247186ea7dda",
+      "state": "open",
+      "merged": false,
+      "draft": false
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+ROLLE: MERGE
+PR #7 (mcpdev80/baseharbor-console, head 0ea88f55) und PR #8 (mcpdev80/baseharbor-node-connector, head 570864c7) - beide READY, Checks live gruen, q41-Verdict gueltig gegen develop 1861ed07.
+Ordinary squash merges gemaess Repo-Regeln, develop/main wie vorgesehen, keine Force/Protection-Bypasses, PR-Referenzen fuer Audit-Befunde 18+19 der o72-Matrix in die Evidence.
+Evidence evidence/board-2026-10-23/codex-merge-c7n8.md (before/after, Run-IDs). END MERGE-C7N8-DONE.
