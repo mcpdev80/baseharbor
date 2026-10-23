@@ -39,31 +39,21 @@ jobs:
       - name: strip release tag
         id: strip_tag
         run: |
-          echo "RELEASE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
           echo "TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${{ inputs.tag }}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
 
-      - name: run ecosystem_release_pins.py
+      - name: run generate_consumer_pins.py
+        env:
+          CONSOLE_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
         run: |
           set -euo pipefail
-          export GH_TOKEN="${GITHUB_TOKEN}"
-          echo "Running ecosystem_release_pins.py..."
           echo "CORE_REF=$CORE_REF"
           echo "CONNECTOR_REF=$CONNECTOR_REF"
+          echo "CONSOLE_REF=$CONSOLE_REF"
           echo "DEMO_REF=$DEMO_REF"
-          echo "RELEASE_VERSION=$RELEASE_VERSION"
-          echo "GH_TOKEN is set: $([ -n "$GH_TOKEN" ] && echo yes || echo no)"
-          python3 scripts/ecosystem_release_pins.py \
-            --core "$CORE_REF" \
-            --tag "${RELEASE_VERSION}" \
-            --connector "$CONNECTOR_REF" \
-            --demo "$DEMO_REF" \
-            --output "docs/releases/${RELEASE_VERSION}.consumer-pins.json" 2>&1 || {
-            echo "SCRIPT FAILED with exit code $?"
-            echo "Trying gh api directly with GH_TOKEN..."
-            export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
-            gh api repos/mcpdev80/baseharbor-node-connector/contents/integration-candidate.json?ref=$CONNECTOR_REF 2>&1 || echo "GH API FAILED"
-            exit 1
-          }
+          echo "RELEASE_TAG=$RELEASE_TAG"
+          python3 scripts/generate_consumer_pins.py
 
       - name: upload consumer pins artifact
         uses: actions/upload-artifact@v4
