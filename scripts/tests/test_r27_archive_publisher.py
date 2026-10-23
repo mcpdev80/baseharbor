@@ -41,6 +41,22 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaises(ArchiveError):
             self.publish()
 
+    def test_invalid_run_does_not_stage_files(self):
+        self.manifest["run"]["attempt"] = True
+        with self.assertRaises(ArchiveError):
+            self.publish()
+        self.assertFalse((Path(self.temp.name) / "evidence").exists())
+
+    def test_conflicting_committed_manifest_does_not_stage_new_payload(self):
+        self.publish()
+        self.manifest["checks"][0]["id"] = "renamed"
+        self.manifest["checks"][0]["payload"] = "payloads/new.json"
+        with self.assertRaises(ArchiveError):
+            publish(self.temp.name, "v0.4.27", "candidate", "run-1",
+                    self.manifest, {"payloads/new.json": self.payload})
+        directory = Path(self.temp.name) / "evidence" / "v0.4.27" / "candidate" / "run-1"
+        self.assertFalse((directory / "payloads" / "new.json").exists())
+
     def test_missing_payload(self):
         with self.assertRaises(ArchiveError):
             publish(self.temp.name, "v0.4.27", "candidate", "run-1", self.manifest, {})
