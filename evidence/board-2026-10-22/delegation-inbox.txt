@@ -15,3 +15,6 @@ OPS-4: evidence-Dateien im Plan-Repo duerfen KEINE Markdown-Checkboxen enthalten
 OPS-5: Bei Gateway-latency>5s (ein curl hi) auf einem Modell: KEINE neuen Spawns dieses Modells bis Messung wieder <2s; laufende Lanes behalten oder auf anderes Modell umsiedeln. basics-check soll LATENCY-Flag liefern (kurzer curl pro Modell, cache 60s).\n
 OPS-7: todo-check.sh DB-Kopien zurueck (Regression durch Script-Rewrite) - Fixture die verbietet cp auf opencode.db in ALLEN scripts/ (grep-Guard im Test).
 F27-APPIDTEST: DONE - PR mcpdev80/baseharbor#1046 (env-robuster appid-Testfix, head 35582508, lokal PASS u. umask 002/022/077) + companion #1047 (gate-plan Lane, CI komplett gruen run 39998286306). NACH #1047-MERGE: gh pr update-branch 1046 -> Trusted Plan nutzt neuen Lane, Selected Checks PASS erwartet. Evidenz: evidence/board-2026-10-22/f27-appidtest.md. [wip:none]
+W1REDO [wip:none]: nach Merge von f28s release-note PR -> neue o-Lane mit evidence/board-2026-10-22/w1-redo-instruction.txt dispatchen.
+F29 [wip:none]: W1-Final-Matrix-Dispatch (Mission prompts/f29-w1final.txt fertig) – Trigger = f28-PR MERGED in develop.
+F29 [wip:f29]: W1-Matrix Dispatch (flash). o78 [wip:o78]: Release notes. q57 [wip:q57]: docs matrix.

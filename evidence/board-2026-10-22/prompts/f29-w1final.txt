@@ -1,0 +1,7 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f29-w1final.md (ABSOLUT) mit PLAN + todowrite ([wip:f29]).
+Freigabe-Basis: Owner hat W1-Volldispatch erteilt. f28 hat den Release-Note-PR (CHANGELOG + docs/releases/v0.4.26.md) gegen develop geoeffnet und codex-MERGE-Lane hat ihn in develop gemergt (PR-Nummer + develop-HEAD in f28/f29-Evidence lesen, live via gh bestaetigen).
+AUFGABEN in dieser Reihenfolge:
+1. W1-Matrix dispatchen: gh workflow run .github/workflows/pre-release.yml --repo mcpdev80/baseharbor --ref develop -f tag=v0.4.26 -f ref=<develop-40-hex live> -f demo_ref=25c319697fd3d89d894943e0f44cd3d5dde8b198 -f consumer_ref=<connector tip 40-hex live>. NACH dispatch: gh api actions/runs/<id> --jq .inputs verifizieren (NICHT null); docker- UND podman-Jobs laufen in diesem EINEN Matrix-Workflow (light/heavy x docker/podman).
+2. Beide Zweige bis zur letzten Job-Zeile beobachten; jedes Failed-Log mit Datei/Zeilenbeleg in die Evidence, KEINE eigenmaechtigen Retries ohne Grund, KEINE neuen Produkt-Commits.
+3. Wenn alles gruen: Matrix-Konsens-Tabelle (runtime x gate) + Artefakt-Links in die Evidence, damit Prepare/Qualify darauf aufbauen.
+END F29-W1FINAL-DONE mit run-id + matrix-tabelle.
