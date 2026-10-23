@@ -47,6 +47,22 @@ class ResolverTests(unittest.TestCase):
         with self.assertRaises(ArchiveError):
             resolve(self.tmp.name, 'v0.4.27', 'candidate', 'run-1', '0' * 64)
 
+    def test_non_string_archive_identities_fail_closed(self):
+        for release, candidate, run in (
+            (None, 'candidate', 'run-1'),
+            ('v0.4.27', 123, 'run-1'),
+            ('v0.4.27', 'candidate', ['run-1']),
+        ):
+            with self.subTest(release=release, candidate=candidate, run=run):
+                with self.assertRaises(ArchiveError):
+                    resolve(self.tmp.name, release, candidate, run, self.digest)
+
+    def test_non_string_expected_digest_fails_closed(self):
+        for digest in (None, 42, ['0' * 64]):
+            with self.subTest(digest=digest):
+                with self.assertRaises(ArchiveError):
+                    resolve(self.tmp.name, 'v0.4.27', 'candidate', 'run-1', digest)
+
     def test_path_traversal(self):
         self.manifest['checks'][0]['payload'] = 'payloads/../manifest.json'
         self.save()
