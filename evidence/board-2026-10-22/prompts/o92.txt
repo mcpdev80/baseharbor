@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber baseharbor-Pfade, ROOT-git verboten.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o92-metagate.md mit PLAN + todowrite ([wip:o92]).
+READ-ONLY: Warum failt "PR Selected Checks" weiterhin in PR #1055 (head work/ci-explicit-candidate-trigger-20261024) und PR #1056 (o90-planner-pr)? Lies die Meta-Job-Logs beider aktueller Runs (gh api jobs/steps mit Namen "Enforce every required check" + umgebende Schritte) und den ACTUELLEN Code dieser Zweige (git show <head>:scripts/pr-gate-plan.py relevanten Teil, job-if-Bedingungen ci.yml). Bestimme: laeuft der Planner im Meta-Job von BASE oder HEAD? Welche exakte Bedingung macht Consumer-Pins/Runtime jobs auf skipped statt selected fuer einen scripts+workflows-only PR? Liefere das 1-Zeilen-Rezept (Datei:Zeile, Aenderung) das #1056 ergaenzen muesste damit sein Meta-Gate gruen wird.
+END O92-METAGATE-DONE mit rezept.

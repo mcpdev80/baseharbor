@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber git -C .../baseharbor, ROOT-git verboten.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q91-precheck.md mit PLAN + todowrite ([wip:q91]).
+READ-ONLY PRE-CHECK der W1-Kette unter Annahme ALLER vier Merge-Kandidaeten (#1050 pins-data, #1052 retry, #1053 wizard, #1054 planner-fix): baue im baseharbor Repo einen temporaeren merged-state (git merge-tree oder lokaler Weg mit --no-commit in deinem EIGENEN scratch-worktree, KEIN push!) und pruefe: (1) ecosystem_release_pins.py loesst die komplette Pin-Kette ohne ValueError, (2) pr-gate-plan.py (neue Version) kategorisiert die 26er-Pfade so, dass Meta-Gate + Consumer-Pins-Job gruen werden Wuerden (begrundet an Code-Stellen), (3) docs/releases/v0.4.26.consumer-pins.json digest-konsistent zu den vier Branch-HEADS. Fehler in (2) = exakt melden.
+END Q91-PRECHECK-DONE mit verdict (bereit/nicht bereit + grund).

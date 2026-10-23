@@ -84,3 +84,5 @@
 {"nonce":"dispatch-1792793424-3481307-1971","sid":"f8683055-0887-4853-ae61-63495e50fa91","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792793471-3489986-4080","sid":"07329c22-271a-4285-96e7-a624c8be7331","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792794869-4166225-10873","sid":"35f8f5e7-b630-47c0-91c8-98c16df434bf","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792795455-43622-5288","sid":"d742bec8-892a-4e1b-9f69-009e3a50a230","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792795908-89277-13532","sid":"7ea7c367-149f-4897-9131-2bde2c61a459","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
