@@ -65,8 +65,10 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
         raise EvidenceError("EVIDENCE_TARGET: receipt scope mismatch")
     if record["policy_digest"] != policy_digest:
         raise EvidenceError("EVIDENCE_POLICY: stale policy")
-    if stage == "release" and (artifact_digest is None or artifact != artifact_digest):
-        raise EvidenceError("EVIDENCE_ARTIFACT: release proof must bind exact artifact")
+    if stage == "release" and artifact_digest is None:
+        raise EvidenceError("EVIDENCE_ARTIFACT: release proof requires artifact")
+    if artifact_digest is not None and artifact != artifact_digest:
+        raise EvidenceError("EVIDENCE_ARTIFACT: artifact scope mismatch")
     if (gate == "release/smoke" or record["gate"] == "release/smoke") and stage != "release":
         raise EvidenceError("EVIDENCE_ARTIFACT: smoke artifact mismatch")
     return {"gate": gate, "run_id": record["run_id"], "attempt": record["attempt"],
