@@ -10,8 +10,8 @@ import json
 import re
 
 SCHEMA = "baseharbor.evidence-receipt/v1"
-SHA = re.compile(r"[0-9a-f]{40}\\Z")
-DIGEST = re.compile(r"[0-9a-f]{64}\\Z")
+SHA = re.compile(r"[0-9a-f]{40}\Z")
+DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 MAX_BYTES = 4096
 
 
@@ -51,7 +51,7 @@ def issue(kind, commit, policy_digest, key):
     encoded = _canonical({**body, "mac": signature})
     if len(encoded) > MAX_BYTES:
         raise ReceiptError("EVIDENCE_SIZE: receipt exceeds 4 KiB")
-    return encoded + b"\\n"
+    return encoded + b"\n"
 
 
 def verify(raw, expected_kind, expected_commit, expected_policy_digest, key):
