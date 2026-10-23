@@ -3,9 +3,11 @@
 
 This is a static safety check, not a replacement for GitHub event integration.
 """
+import importlib.util
 import pathlib
 import re
 import unittest
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 CI = ROOT / ".github/workflows/ci.yml"
@@ -94,6 +96,58 @@ class CandidateTriggerTests(unittest.TestCase):
         self.assertIn('gh("DELETE",', source)
         self.assertIn('gh("POST",', source)
         self.assertIn('data={"labels": ["ci:validate"]}', source)
+
+    def test_submitter_runtime_behaviour(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sha = "a" * 40
+        base = {
+            "state": "open", "head": {"sha": sha},
+            "base": {"ref": "develop"}, "labels": [],
+        }
+
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false"}):
+            with patch.object(module, "gh", side_effect=[base, base, None]) as api:
+                module.publish("example/repo", 15, sha)
+                self.assertEqual([call.args[0] for call in api.call_args_list],
+                                 ["GET", "GET", "POST"])
+                self.assertEqual(api.call_args_list[-1].kwargs["data"],
+                                 {"labels": ["ci:validate"]})
+
+            labeled = dict(base, labels=[{"name": "ci:validate"}])
+            with patch.object(module, "gh", side_effect=[labeled, None, base, None]) as api:
+                module.publish("example/repo", 15, sha)
+                self.assertEqual([call.args[0] for call in api.call_args_list],
+                                 ["GET", "DELETE", "GET", "POST"])
+
+            stale = dict(base, head={"sha": "b" * 40})
+            with patch.object(module, "gh", return_value=stale) as api:
+                with self.assertRaisesRegex(RuntimeError, "stale candidate"):
+                    module.publish("example/repo", 15, sha)
+                self.assertEqual(api.call_count, 1)
+
+            closed = dict(base, state="closed")
+            with patch.object(module, "gh", return_value=closed):
+                with self.assertRaisesRegex(RuntimeError, "not open"):
+                    module.publish("example/repo", 15, sha)
+
+            wrong_base = dict(base, base={"ref": "main"})
+            with patch.object(module, "gh", return_value=wrong_base):
+                with self.assertRaisesRegex(RuntimeError, "does not target develop"):
+                    module.publish("example/repo", 15, sha)
+
+            with patch.object(module, "gh", side_effect=[labeled, None, stale]) as api:
+                with self.assertRaisesRegex(RuntimeError, "candidate changed"):
+                    module.publish("example/repo", 15, sha)
+                self.assertEqual(api.call_count, 3)
+
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}):
+            with patch.object(module, "gh") as api:
+                with self.assertRaisesRegex(RuntimeError, "outside GitHub Actions"):
+                    module.publish("example/repo", 15, sha)
+                api.assert_not_called()
 
     def test_gc_pr_events_are_candidate_only(self):
         source = GC.read_text()
