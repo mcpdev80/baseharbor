@@ -14,6 +14,7 @@ jobs:
       CORE_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
       CONNECTOR_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
       DEMO_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: checkout
         uses: actions/checkout@v4
