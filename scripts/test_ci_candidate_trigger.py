@@ -82,6 +82,18 @@ class CandidateTriggerTests(unittest.TestCase):
         self.assertIn("bash scripts/ci-workflow-policy.sh", source)
         self.assertIn('"$RUNNER_TEMP/bin/actionlint" -shellcheck=', source)
 
+    def test_candidate_submitter_safety_contract(self):
+        source = (ROOT / "scripts/submit-pr-candidate.py").read_text()
+        self.assertIn('os.environ.get("GITHUB_ACTIONS") == "true"', source)
+        self.assertIn('pr["head"]["sha"] != expected_sha', source)
+        self.assertIn('latest["head"]["sha"] != expected_sha', source)
+        self.assertIn('pr["state"] != "open"', source)
+        self.assertIn('pr["base"]["ref"] != "develop"', source)
+        self.assertIn('if "ci:validate" in labels:', source)
+        self.assertIn('gh("DELETE",', source)
+        self.assertIn('gh("POST",', source)
+        self.assertIn('data={"labels": ["ci:validate"]}', source)
+
     def test_gc_pr_events_are_candidate_only(self):
         source = GC.read_text()
         self.assertIn("types: [opened, ready_for_review, labeled]", source)
