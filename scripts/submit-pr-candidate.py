@@ -55,7 +55,7 @@ def publish(repo, number, expected_sha):
         raise RuntimeError("candidate label remains set; no new labeled event would fire")
     gh("POST", f"repos/{repo}/issues/{number}/labels",
        data={"labels": ["ci:validate"]})
-    print(f"candidate submitted: {repo}#{number} {expected_sha}")
+    print(f"candidate label requested: {repo}#{number} {expected_sha}; CI result must be verified separately")
 
 
 def main():
