@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -255,6 +256,121 @@ func TestRetryManagerProvisioningConvergesAfterTransientFailures(t *testing.T) {
 	}
 	if attempts != 3 {
 		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+}
+
+type flakyMemberExecutor struct {
+	states          map[string]State
+	transientWindow map[string]int
+	tries           map[string]int
+	keys            []string
+	answered        bool
+}
+
+func (f *flakyMemberExecutor) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
+	joined := strings.Join(args, " ")
+	f.tries[service]++
+	if strings.Contains(joined, "bao status -format=json") {
+		if f.answered {
+			if fails, ok := f.transientWindow[service]; ok && fails > 0 {
+				f.transientWindow[service]--
+				return "", errors.New("connection refused")
+			}
+		}
+		f.answered = true
+		return statusJSON(f.states[service].Initialized, f.states[service].Sealed), nil
+	}
+	return "", nil
+}
+
+func (f *flakyMemberExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, _ string, args ...string) (string, error) {
+	unsealing := false
+	var payload struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(input, &payload); err == nil {
+		f.keys = append(f.keys, payload.Key)
+		if payload.Key != "" {
+			unsealing = true
+		}
+	}
+	for _, arg := range args {
+		if strings.Contains(arg, "sys/unseal") {
+			unsealing = true
+		}
+	}
+	if !unsealing {
+		return "", nil
+	}
+	for member := range f.states {
+		f.states[member] = State{Initialized: f.states[member].Initialized, Sealed: false}
+	}
+	return "{\"sealed\":false}", nil
+}
+
+// TestUnsealConvergesAfterMemberRestartRace drives unseal through a member that
+// answers its in-container seal-status probe with connection refused during the
+// control-plane restart race window. With retry enabled the same unseal call
+// must converge once the member answers, proving the race no longer fails fast.
+func TestUnsealConvergesAfterMemberRestartRace(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	executor := &flakyMemberExecutor{
+		states: map[string]State{
+			"openbao-member-1": {Initialized: true, Sealed: true},
+			"openbao-member-2": {Initialized: true, Sealed: true},
+			"openbao-member-3": {Initialized: true, Sealed: true},
+		},
+		transientWindow: map[string]int{
+			"openbao-member-1": 2,
+		},
+		tries:  map[string]int{},
+		keys:   []string{},
+	}
+	files := bhruntime.Files{HA: true, Compose: "compose.yaml", Env: "runtime.env"}
+	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
+	if err := os.WriteFile(recovery, []byte("{\"version\":1,\"key_shares\":1,\"key_threshold\":1,\"unseal_keys\":[\"unseal-secret\"]}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Unseal(ctx, executor, files, recovery); err != nil {
+		t.Fatalf("unseal failed on transient member probe: %v", err)
+	}
+	if executor.tries["openbao-member-1"] < 3 {
+		t.Fatalf("member status probes = %d, want at least 3 after transient failures", executor.tries["openbao-member-1"])
+	}
+	if len(executor.keys) == 0 || executor.keys[0] == "" {
+		t.Fatal("unseal key was never supplied to the member")
+	}
+}
+
+// TestUnsealFailsFastWhenMemberNeverAnswers proves fail-fast is preserved: a
+// member that never answers its status probe exhausts its retry budget and the
+// unseal call returns an error instead of hanging or silently succeeding.
+func TestUnsealFailsFastWhenMemberNeverAnswers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	executor := &flakyMemberExecutor{
+		states: map[string]State{
+			"openbao-member-1": {Initialized: true, Sealed: true},
+		},
+		transientWindow: map[string]int{
+			"openbao-member-1": 100,
+		},
+		tries:  map[string]int{},
+		keys:   []string{},
+	}
+	files := bhruntime.Files{HA: true, Compose: "compose.yaml", Env: "runtime.env"}
+	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
+	if err := os.WriteFile(recovery, []byte("{\"version\":1,\"key_shares\":1,\"key_threshold\":1,\"unseal_keys\":[\"unseal-secret\"]}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Unseal(ctx, executor, files, recovery)
+	if err == nil {
+		t.Fatal("expected unseal to fail when member never answers")
 	}
 }
 

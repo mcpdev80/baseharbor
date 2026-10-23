@@ -19,6 +19,14 @@ const (
 	serviceName     = "openbao-admin"
 	adminFileName   = "openbao-admin.env"
 	recoveryVersion = 1
+
+	// memberRestartAttempts bounds how often the Unseal path re-probes an HA
+	// member that answers its in-container seal-status probe with a transport
+	// error during the control-plane restart race window. The per-attempt
+	// budget (5s, see probeMemberState) plus this cap keep the window finite
+	// while a wobbly second between Inspect and Unseal no longer fails fast.
+	memberRestartAttempts = 5
+	memberRetryDelay      = 500 * time.Millisecond
 )
 
 var (
@@ -91,6 +99,21 @@ func Inspect(ctx context.Context, executor Executor, files bhruntime.Files) (Sta
 }
 
 func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
+	state, err := probeMemberState(ctx, executor, files, member, false)
+	if err != nil {
+		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
+	}
+	return state, nil
+}
+
+// probeMemberState probes one HA member's seal status. When retrying is
+// enabled (Unseal path), a member that answers its in-container probe with a
+// transient transport error during the control-plane restart race window is
+// retried within the same per-attempt budget instead of failing the whole
+// unseal on the first wobbly second. A member that never answers, or that
+// exhausts its retry budget, still fails fast — the race window is bounded by
+// the caller, not open-ended.
+func probeMemberState(ctx context.Context, executor Executor, files bhruntime.Files, member string, retry bool) (State, error) {
 	// Probe each HA member from inside that member instead of routing the
 	// readiness check through openbao-admin. This keeps initial readiness
 	// independent from cross-container DNS/alias convergence (notably with
@@ -100,17 +123,27 @@ func inspectMemberState(ctx context.Context, executor Executor, files bhruntime.
 		"BAO_ADDR=https://127.0.0.1:8200 bao status -format=json || code=$?\n" +
 		"if [ \"$code\" -eq 0 ] || [ \"$code\" -eq 2 ]; then exit 0; fi\n" +
 		"exit \"$code\""
-	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	out, err := executor.ExecProject(probeCtx, projectNameForFiles(files), files.Compose, files.Env, member, "sh", "-c", script)
-	if err != nil {
-		return State{}, err
+	for attempt := 1; ; attempt++ {
+		probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		out, err := executor.ExecProject(probeCtx, projectNameForFiles(files), files.Compose, files.Env, member, "sh", "-c", script)
+		cancel()
+		var state State
+		if err != nil {
+			if !retry || attempt > memberRestartAttempts {
+				return State{}, err
+			}
+			select {
+			case <-ctx.Done():
+				return State{}, ctx.Err()
+			case <-time.After(memberRetryDelay):
+			}
+			continue
+		}
+		if err := json.Unmarshal([]byte(out), &state); err != nil {
+			return State{}, errors.New("invalid status response")
+		}
+		return state, nil
 	}
-	var state State
-	if err := json.Unmarshal([]byte(out), &state); err != nil {
-		return State{}, errors.New("invalid status response")
-	}
-	return state, nil
 }
 
 func AdminCredentialsPath(files bhruntime.Files) string {
@@ -461,7 +494,7 @@ func loadRecoveryFile(path string) (recoveryBundle, error) {
 }
 
 func memberState(ctx context.Context, executor Executor, files bhruntime.Files, member string) (State, error) {
-	state, err := inspectMemberState(ctx, executor, files, member)
+	state, err := probeMemberState(ctx, executor, files, member, false)
 	if err != nil {
 		return State{}, fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
 	}
@@ -473,10 +506,15 @@ func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhrun
 	if err != nil {
 		return errors.New("encode OpenBao unseal request")
 	}
+	const (
+		memberRestartAttempts = 5
+		memberRetryDelay      = 500 * time.Millisecond
+	)
+
 	for _, member := range files.OpenBaoMembers() {
-		state, err := memberState(ctx, executor, files, member)
+		state, err := probeMemberState(ctx, executor, files, member, true)
 		if err != nil {
-			return err
+			return fmt.Errorf("inspect OpenBao HA member %s: %w", member, err)
 		}
 		if !state.Initialized {
 			return fmt.Errorf("OpenBao HA member %s is not initialized", member)
@@ -487,9 +525,9 @@ func unsealAllMembersWithKey(ctx context.Context, executor Executor, files bhrun
 				return fmt.Errorf("unseal OpenBao HA member %s: %w", member, err)
 			}
 		}
-		state, err = memberState(ctx, executor, files, member)
+		state, err = probeMemberState(ctx, executor, files, member, true)
 		if err != nil {
-			return err
+			return fmt.Errorf("verify OpenBao HA member %s after unseal: %w", member, err)
 		}
 		if state.Sealed {
 			return fmt.Errorf("%w: member %s remains sealed", ErrSealed, member)
