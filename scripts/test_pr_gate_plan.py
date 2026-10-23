@@ -2590,23 +2590,10 @@ if (not result.wasSuccessful() or result.skipped or
             'test_pr_provenance_and_native_evidence_keep_review_window',
         })
 
-def _rmtree_retries(path):
-    import shutil
-    import time
-    for attempt in range(5):
-        try:
-            shutil.rmtree(path)
-            return
-        except OSError:
-            if attempt == 4:
-                raise
-            time.sleep(0.2)
-
-
 class TrustedBindingActivationTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(_rmtree_retries, temporary.name)
+        self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
         self.git('init', '-q')
         self.git('config', 'user.name', 'Fixture')
