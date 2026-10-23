@@ -59,3 +59,9 @@
 {"nonce":"dispatch-1792783708-2523280-10005","sid":"69879e07-75c8-4d11-8439-c2c0d5bf20c4","baseline_users":2,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792786141-2723632-17024","sid":"5df54f36-61a0-42ad-8fe8-0c1792f6bc08","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792786172-2724789-11893","sid":"65c4727b-6917-4090-be8e-420235738c94","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792786329-2750994-22705","sid":"48a35998-519b-462b-9e76-0053f5a06c0f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792786426-2760594-6280","sid":"48a35998-519b-462b-9e76-0053f5a06c0f","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792786500-2771004-15568","sid":"0edb3832-8b2b-46c5-ac08-a18e40983ffd","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792786968-2828141-3589","sid":"c6c094b8-24c4-43ae-9f37-d3e9958880c1","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792787385-2867793-7047","sid":"c6c094b8-24c4-43ae-9f37-d3e9958880c1","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792787567-2883459-27016","sid":"62801a7b-5260-40d2-9312-1dc353da632d","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
