@@ -242,6 +242,18 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
+RUNTIME_STEP_CAP_REVIEWED_HEAD = '75efeef89b61d848d5ea351877ba6423a31e58a6'
+RUNTIME_STEP_CAP_REVIEWED_FILES = {
+    '.github/workflows/pre-release-runtime-suite.yml': 'modified',
+}
+DISPATCH_GATE_REF_REVIEWED_HEAD = '0267dbdb71f63a2c77e193618e6fba4106e5cd5b'
+DISPATCH_GATE_REF_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/pre-release-runtime-suite.yml': 'modified',
+    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+    'scripts/targeted-gate-ref.py': 'added',
+    'scripts/test_targeted_gate_ref.py': 'added',
+}
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
 ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
@@ -741,10 +753,16 @@ def plan(diff, requirements, mapping, repository='.',
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
          [wizard_check('wizard-app-edit-tests')],
          'reviewed Automatic input parsing repair; lifecycle unchanged'),
-        (EDIT_ZERO_PREVIEW_REVIEWED_HEAD, EDIT_ZERO_PREVIEW_REVIEWED_FILES,
-         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
-         [wizard_check('wizard-app-edit-tests')],
-         'reviewed zero-needs Edit preview envelope with guided regression'),
+         (EDIT_ZERO_PREVIEW_REVIEWED_HEAD, EDIT_ZERO_PREVIEW_REVIEWED_FILES,
+          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+          [wizard_check('wizard-app-edit-tests')],
+          'reviewed zero-needs Edit preview envelope with guided regression'),
+         (RUNTIME_STEP_CAP_REVIEWED_HEAD, RUNTIME_STEP_CAP_REVIEWED_FILES,
+          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+          'reviewed data-capabilities runtime gate step budget split'),
+         (DISPATCH_GATE_REF_REVIEWED_HEAD, DISPATCH_GATE_REF_REVIEWED_FILES,
+          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+          'reviewed bare-SHA dispatch input resolution before atomic gate checkout'),
         (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed v0.4.26 immutable ecosystem resolver activation'),
