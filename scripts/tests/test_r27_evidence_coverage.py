@@ -26,7 +26,7 @@ class CoverageTests(unittest.TestCase):
     def test_release_complete(self):
         decision = plan(["sql", "release/smoke"], ["sql", "release/smoke"],
                         stage="release", exact_candidate=SHA)
-        self.assertEqual(decision.state, "PASS")
+        self.assertEqual(decision.state, "WAITING")\n        self.assertEqual(decision.pending, ("release/smoke",))
 
     def test_trust_failure_blocks_even_when_covered(self):
         decision = plan(["sql"], ["sql"], stage="integration", exact_candidate=SHA, trusted=False)
