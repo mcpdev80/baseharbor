@@ -40,24 +40,41 @@ class CandidateTriggerTests(unittest.TestCase):
         self.assertIn('"stale candidate: target base changed', source)
         self.assertIn('python3 "$RUNNER_TEMP/pr-required-final.py"', source)
 
-    def test_ready_events_and_label_signal(self):
-        def enabled(action, draft, label=None):
-            return action == "ready_for_review" or (
-                action == "opened" and not draft
-            ) or (action == "labeled" and label == "ci:validate")
+    def test_real_pr_job_guards_match_candidate_event_matrix(self):
+        source = CI.read_text()
+        jobs = source.split("\n  pr_plan:\n", 1)[1]
+        jobs = "\n  pr_plan:\n" + jobs
+        blocks = re.split(r"(?m)^  (?=[a-z_]+:\\n)", jobs)
+        candidates = {
+            "pr_plan", "pr_runner_interface", "pr_consumer_pins",
+            "pr_demo_pin", "pr_candidate", "pr_focused", "pr_validations",
+            "pr_public_contracts", "pr_runtime_selected", "pr_selected_final",
+        }
+        observed = set()
+        for block in blocks:
+            name = block.split(":", 1)[0].strip()
+            if name not in candidates:
+                continue
+            observed.add(name)
+            condition = next(
+                (line.split("if:", 1)[1] for line in block.splitlines()
+                 if line.startswith("    if: ")), ""
+            )
+            with self.subTest(job=name):
+                self.assertIn("github.event.action == 'opened'", condition)
+                self.assertIn("!github.event.pull_request.draft", condition)
+                self.assertIn("github.event.action == 'ready_for_review'", condition)
+                self.assertIn("github.event.action == 'labeled'", condition)
+                self.assertIn("github.event.label.name == 'ci:validate'", condition)
+                self.assertIn("github.event_name == 'pull_request'", condition)
+                self.assertIn("github.base_ref == 'develop'", condition)
+        self.assertEqual(observed, candidates)
 
-        cases = [
-            ("opened", False, None, True),
-            ("opened", True, None, False),
-            ("ready_for_review", False, None, True),
-            ("labeled", True, "ci:validate", True),
-            ("labeled", False, "unrelated", False),
-            ("synchronize", False, None, False),
-            ("reopened", False, None, False),
-        ]
-        for action, draft, label, expected in cases:
-            with self.subTest(action=action, draft=draft, label=label):
-                self.assertEqual(enabled(action, draft, label), expected)
+    def test_workflow_policy_and_final_job_remain_present(self):
+        source = CI.read_text()
+        self.assertRegex(source, r"(?m)^  workflow_policy:\\n    if: .*ci:validate")
+        self.assertRegex(source, r"(?m)^  pr_selected_final:\\n    name: PR Selected Checks")
+        self.assertIn("always() && github.event_name == 'pull_request'", source)
 
     def test_workflow_policy_always_checks_candidate_contract(self):
         source = CI.read_text()
