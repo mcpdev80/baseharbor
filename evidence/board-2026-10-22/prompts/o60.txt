@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o60-verifydraft.md (ABSOLUT) mit PLAN + todowrite ([wip:o60]).
+Karte t-20261017-release-0-4-26-verify (waiting; Dependency publish). o58 hat fuer q20-docs einen changes-rezept-Punkt "Live Pages deployment (post-promotion)" definiert. Erstelle den DRAFT der Verify-Suite JETZT (nichts ausfuehren): Punkte fuer post-release verify (tags, releases, Pages-URL, artifacts, consumer pins) je mit konkretem Pruefkommando, ablegbar als evidence/board-2026-10-22/scripts/w1-verify.sh TEMPLATE (Platzhalter fuer Version+SHAs).
+READ-ONLY. END O60-VERIFYDRAFT-DONE mit Dateipfad.

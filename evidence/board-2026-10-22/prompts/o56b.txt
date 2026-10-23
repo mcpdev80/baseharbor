@@ -1,0 +1,5 @@
+o56, dein Port (3776ad7) laeuft, aber Run 39977865544 podman zeigt IDENTISCHEN Fehler (preparation=1, destroy=0). Naechste Diagnosestufe - du hast Kontext:
+1. Artefakt ziehen: gh run download 39977865544 -D podman aus dem failed job oder scope-result.json aus dem Job-Log finden (grep im Log nach scope-result/PREP/paths). Der Inhalt zeigt WELCHE preparation-Kategorie (container/image/volume/network) unverifiziert blieb.
+2. im repo-Code (release branch 3776ad7) die prepare-Funktion fuer podman lokalisieren und den Unterschied zum docker-Pfad feststellen (warum ist dort das provenance-Guard nicht aktiv?).
+3. Minimaler Fix-Commit auf work/v0.4.26-ecosystem-release (normal push, Gate laeuft dann neu) ODER wenn Grund strukturell: STOP mit Rezept. Zeige immer das konkrete scope-result-JSON-Zitat in der Evidence.
+END O56-PODMAN2-DONE.

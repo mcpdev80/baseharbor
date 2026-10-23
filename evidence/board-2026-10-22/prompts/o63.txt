@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q49-ops6.md (ABSOLUT) mit PLAN + todowrite ([wip:q49]).
+OPS-6 laut o59-daemon.md Befund (Zeilen zu wait-workers.py:204-218 + 478-486): notify-to-coordinator exit-4 Loop - (1) events.log APPEND darf NICHT von delivery success abhaengen (Event sofort loggen), (2) dedup/last_status muss unabhaengig vom Notify-Erfolg fortschreiten, (3) Notify-Retry nur 1x pro Event, danach stilles Nachziehen wenn das naechste echte Event kommt (kein Poll-Spam), (4) wenn Coordinator busy: Reminder statt Event-Nachtrag.
+Write-Set evidence/board-2026-10-19/scripts/wait-workers.py + fixtures, suite rc=0 zweimal, danach Daemon-regulaer neu starten (RUNBOOK §3) und 3 Poll-Zyklen Logwachstum messen (soll ~0 sein wenn keine neuen Facts).
+END Q49-OPS6-DONE mit Vorher/Nachher-Lograte.

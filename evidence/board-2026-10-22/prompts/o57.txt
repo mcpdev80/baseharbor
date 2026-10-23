@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o57-core923.md (ABSOLUT) mit PLAN + todowrite ([wip:o57]).
+Karte core-923 (Acceptance: verify New/Edit journeys and ecosystem consumers, active). Read-only Vorbereitung der W1-Akzeptanz: Contract-Punkte einzeln gegen develop 1861ed07 + demo release branch (aktuell fetchen) pruefen; consumer-sichtbare Flaeche via console #7 / connector #8 Heeads (q41: gueltig). Ergebnis je Punkt: verified|needs-W1-run (Matrix laeuft erst nach D2).
+END O57-CORE923-PRE-DONE mit tally.

@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o56-port118.md (ABSOLUT) mit PLAN + todowrite ([wip:o56]).
+Rezept aus evidence/board-2026-10-22/o54-podman-cleanup.md (lesen!) anwenden: den #118 cleanup-provenance Hunk (demo main 82d042b) auf branch work/v0.4.26-ecosystem-release portieren (normaler Merge oder Cherry-Pick laut Rezept, KEIN force, KEIN main), PR dagegen ist der Release-Branch selbst nicht noetig - der PUSH auf work/v0.4.26-ecosystem-release triggert die Demo-Gates (on.push.branches) direkt.
+Nach Push: gh run list --branch work/v0.4.26-ecosystem-release beobachten, docker UND podman muessen gruen sein; bei erneutem podman-fail: Log-Stelle 1:1 dokumentieren und END O56-STOP.
+END O56-PORT118-DONE mit neuem release-branch SHA + run-IDs + conclusions.

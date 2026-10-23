@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o61-w1dry.md (ABSOLUT) mit PLAN + todowrite ([wip:o61]).
+W1-DRYRUN (NICHT mutieren): fuehre evidence/board-2026-10-22/scripts/w1-input.sh in einem Modus, der NUR die finalen gh-Workflow-Dispatch-Kommandos + Payloads AUSGIBT (setze DRY_RUN=1 im Kopf des Skripts falls vorgesehen; sonst bash -n + dry-print der gh run create-Aufrufe). Prüfe: consumer_ref 40-Hex aktuell (ls-remote live), ref=develop 1861ed07, runtime docker+podman parallel, KEIN kahl-SHA-Checkout (o33-Regel). Abweichungen => korrigiere das Skript (Write-Set nur dieses Skript) und zeige finalen Diff.
+END O61-W1DRY-DONE mit den exakten 2 Dispatch-Kommandos, die nach D2-Gruen laufen wuerden.

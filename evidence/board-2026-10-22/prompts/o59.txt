@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o59-daemon.md (ABSOLUT) mit PLAN + todowrite ([wip:o59]).
+q48 hat OPS-2/3 implementiert (Suite rc=0). Du verifizierst den BETRIEB: Daemon mit dem neuen Code neustarten (kill alte pid aus watcher-state.json, regulärer Start), danach 90s beobachten: (a) events.log keine Duplikat-Stürme, (b) basics-check --json zeigt neue Felder (fair-scheduling, LATENCY oder reminder-summary) wenn vorhanden, (c) eine bewusste DIALOG-Fixture: nichts. Stoppen nur bei Traceback im watcher.log.
+END O59-DAEMON-LIVE-DONE mit pass/fail je Punkt.

@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o58-docs920.md (ABSOLUT) mit PLAN + todowrite ([wip:o58]).
+Karte t-20261022-q20-docs-pages (review). Verifiziere Pages-/Docs-Akzeptanz gegen develop 1861ed07 (fetch+detached worktree): die q20-Rezepte sind mit #1041 in develop; Pruefe Seiten-Struktur, Kurzfassung-Regel (AGENTS docs guideline), Vollstaendigkeit der Help-/Wizard-Texte laut Karten-Acceptance. verdict-field ready|changes-rezept je Punkt mit Datei/Zeile.
+END O58-DOCS920-DONE.

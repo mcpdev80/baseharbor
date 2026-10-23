@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f24-console2.md (ABSOLUT) mit PLAN + todowrite ([wip:f24]).
+Karte console-2-live-core-adapter-workflow-proofs (waiting, v0.4.27). Contract lesen (plan.py show), dann RECHERCHIEREN ohne Aenderung: Welche "live core adapter workflow proofs" existieren bereits im console-Repo (Tests/Gates/CI-Namen) gegenueber dem, was die Karte fordert? Diff: fehlt nur eine Doku-Zeile oder echte Live-Beweis-Jobs? Liefere fertiges Umsetzungsrezept (Datei/Job/Namen, max 2 Dateien) damit ein naechster Worker ohne Research starten kann.
+Read-only. END F24-CONSOLE2-DONE.

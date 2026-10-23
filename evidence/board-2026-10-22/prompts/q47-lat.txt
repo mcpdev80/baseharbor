@@ -1,0 +1,2 @@
+KURZANWEISUNG: Backend-Latenz-Check, keine Panik-Aktion. Miss selbst: curl -s -o /dev/null -w "%{time_total}" -m 40 http://192.168.6.132:4000/v1/chat/completions -H "Content-Type: application/json" -d "{\"model\":\"qwen3.6-laptop\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}" --3x. >5s = bestaetigt degradiert: STOPPE weitere qwen-Erzeugung (du laeufst zwar noch, aber melde Degrade am END), harte Abbruch-Schwelle bei >120s fuer einzelne Requests.
+Dann END Q47-QWENLATENCY mit 3 Messwerten.
