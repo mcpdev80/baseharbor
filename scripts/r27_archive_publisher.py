@@ -50,7 +50,9 @@ def publish(root, release, candidate_id, run_id, manifest, payloads):
         if not isinstance(data, bytes) or len(data) > MAX_PAYLOAD:
             raise ArchiveError("missing or oversized payload")
         total += len(data)
-        if total > MAX_TOTAL or check.get("bytes") != len(data) or check.get("sha256") != hashlib.sha256(data).hexdigest():
+        if (total > MAX_TOTAL or type(check.get("bytes")) is not int or
+                check["bytes"] != len(data) or
+                check.get("sha256") != hashlib.sha256(data).hexdigest()):
             raise ArchiveError("payload size or digest mismatch")
     if set(payloads) != names:
         raise ArchiveError("unlisted payload")
