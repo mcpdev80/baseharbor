@@ -16,7 +16,7 @@ class GateProof:
     candidate: str
     policy_digest: str
     artifact_digest: str | None = None
-    authenticated: bool = False
+    authenticated: bool = False  # advisory only; never an authority boundary
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,9 @@ def plan(required, proofs, *, stage, candidate, policy_digest,
         if proof.gate not in required_set:
             raise ValueError("EVIDENCE_INPUT: proof for unknown gate")
     ordered = tuple(sorted(required_set))
+    # This helper is intentionally incapable of granting a trusted PASS.
+    # A caller-controlled authenticated flag is not a verifier signature.
+    # Only the independent canonical verifier may authorize qualification.
     if not trust_available:
         return Decision("BLOCKED", "EVIDENCE_TRUST", ordered, (), ordered, (),
                         "Restore trusted verifier and rerun qualification")
@@ -88,5 +91,5 @@ def plan(required, proofs, *, stage, candidate, policy_digest,
     if pending_set:
         return Decision("WAITING", "EVIDENCE_GATES_PENDING", ordered,
                         reusable, pending, (), "Automatically schedule pending gates")
-    return Decision("PASS", "EVIDENCE_COVERAGE_COMPLETE", ordered, reusable,
-                    (), (), "Trusted verifier may authorize receipt issuance")
+    return Decision("WAITING", "EVIDENCE_VERIFIER_REQUIRED", ordered, reusable,
+                    (), (), "Submit complete candidate-bound proofs to the independent trusted verifier")
