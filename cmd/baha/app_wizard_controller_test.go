@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -364,6 +365,35 @@ func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 	}
 	if !strings.Contains(view, "\n"+string(capability.SQL)+"/primary") || !strings.Contains(view, "\n"+string(capability.SQL)+"/analytics") {
 		t.Fatalf("provider choices not on distinct lines: %q", view)
+	}
+}
+
+func TestAppWizardControllerFreshFactsBlocksWithoutTimeout(t *testing.T) {
+	input := appWizardTestInput(t)
+	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		// Block indefinitely – simulates the Cluster B wizard-hang
+		// After fix: freshFacts wraps refresh in context.WithTimeout(30s)
+		// so this test will get a timeout error instead of hanging forever
+		<-ctx.Done()
+		return nil, nil, ctx.Err()
+	}
+	w, err := newAppWizardController(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Step with appWizardNext triggers freshFacts in appWizardNeeds case
+	// With the fix, this should timeout rather than hang forever
+	type testDone struct{}
+	done := make(chan testDone, 1)
+	go func() {
+		w.Step(context.Background(), appWizardNext)
+		done <- testDone{}
+	}()
+	select {
+	case <-done:
+		// Test completed – if the fix is in place, freshFacts timed out
+	case <-time.After(35 * time.Second):
+		t.Fatal("freshFacts blocked indefinitely – no timeout on refresh callback")
 	}
 }
 
