@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/o94-rev1056.md mit PLAN + todowrite ([wip:o94]).
+READ-ONLY Review PR #1056 (branch o90-planner-pr): Planner-Fix fuer pins-data-Pfade + (in Kuerze) F36-Ergaenzung fuer CI-self-classification. Kriterien: coverage-Logik ist fail-closed (kein Pfad wird still als covered angenommen), Tests prove-first, Digest/Schema-Aenderungen Rueckwaerts-kompatibel fuer 24/25. ACHTUNG: f36 pusht gerade noch - reviewe den JEWEILS aktuellen head und vermerke ihn.
+END O94-REV1056-DONE mit verdict + head-sha.

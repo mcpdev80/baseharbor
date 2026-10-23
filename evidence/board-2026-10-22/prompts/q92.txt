@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR ueber baseharbor-Pfade. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q92-rev1053.md mit PLAN + todowrite ([wip:q92]).
+READ-ONLY Zweitmeinung PR #1053 (wizard timeout guard, head 8eef2b8e): unabhaengiger Review-Kontext steht schon in f34-rev1053.md - PRUEFE nach, nicht abschreiben: Diff selbst lesen (git fetch + git show 8eef2b8e), Timeout-Wert begruendet (Woher nimmt der Code ihn, ist er in allen Runtimes gleich sinnvoll), test fail-first echt (Test vor Fix nachweislich fail - Logik des Tests lesen), keine Race-Risiken durch den Guard (timeout -> welcher Pfad, was wenn Facts-Refresh spaet doch eintrifft). Verdict mit Begruendung, KEINE PR-Kommentare.
+END Q92-REV1053-DONE mit verdict.

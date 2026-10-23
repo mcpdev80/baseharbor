@@ -27,3 +27,4 @@ FREEZE+REST-PHASE 21:5x: PRs #1050(pins) #1052(openbao-retry) offen, beide nur M
 REST-PR-PACK: 1050 pins, 1052 openbao-retry, 1053 wizard-timeoutguard. Reviews: f34 (1053, unabhaengig) + codex-rv1052. o90 gateplan laeuft.REVIEW-STATUS: #1050 clean (q90), #1053 APPROVE (f34, B1-B4 nicht-blockierend), #1052 REQUEST_CHANGES->o91 Korrektur laeuft, #1054 o90 laeuft (Meta-Gate-Catch22 wird gerade gelost).
 EXTERN: Session w1-baseharbor (nicht Coordinator-erzeugt, pool-seitig ausgenommen, Beobachtung nur).
 CI-MATRIX (f35): 1053 pass, 1050/1052 Meta-fail, 1055 fail/1056 prueft o92. Plan: 1056 (Planner-Fix) ist der Schluessel fuer alle, danach Re-Checks ohne neue Produkt-CI.
+MILESTONE: #1053 doppelt APPROVED (f34+o93). f36 finalisiert #1056 (Planner), o94 reviewed es. Danach Merges nur mit deiner Einzel-Freigabe.
