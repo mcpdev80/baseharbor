@@ -2467,6 +2467,10 @@ class TrustedBindingActivationTests(unittest.TestCase):
         target = self.git('rev-parse', 'HEAD')
         head = head or self.head
         tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        # merge-tree --write-tree mutates the working-tree index; reset it so the
+        # next resolved() can detach to self.base cleanly instead of failing
+        # with exit 128 after the index was left dirty.
+        self.git('reset', '-q')
         integration = self.git('commit-tree', tree, '-p', target, '-p', head,
                                '-m', 'actual PR integration')
         return self.resolver.resolve_pr_diff(self.root, target, head, integration)
