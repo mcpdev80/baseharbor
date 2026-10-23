@@ -10,7 +10,7 @@ import (
 )
 
 func TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry(t *testing.T) {
-	root := t.TempDir()
+	root := protectedTempDir(t)
 	reg := externalprovider.Registration{ID: "company-db", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app", CredentialRef: "file:///protected/retained-credential", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Trust: externalprovider.Trust{Mode: externalprovider.TrustSystem}}
 	if err := RegisterExternalProviderAt(root, reg); err != nil {
 		t.Fatal(err)
