@@ -44,7 +44,7 @@ class CandidateTriggerTests(unittest.TestCase):
         source = CI.read_text()
         jobs = source.split("\n  pr_plan:\n", 1)[1]
         jobs = "\n  pr_plan:\n" + jobs
-        blocks = re.split(r"(?m)^  (?=[a-z_]+:\\n)", jobs)
+        blocks = re.split(r"(?m)^  (?=[a-z_]+:\n)", jobs)
         candidates = {
             "pr_plan", "pr_runner_interface", "pr_consumer_pins",
             "pr_demo_pin", "pr_candidate", "pr_focused", "pr_validations",
@@ -72,8 +72,8 @@ class CandidateTriggerTests(unittest.TestCase):
 
     def test_workflow_policy_and_final_job_remain_present(self):
         source = CI.read_text()
-        self.assertRegex(source, r"(?m)^  workflow_policy:\\n    if: .*ci:validate")
-        self.assertRegex(source, r"(?m)^  pr_selected_final:\\n    name: PR Selected Checks")
+        self.assertRegex(source, r"(?m)^  workflow_policy:\n    if: .*ci:validate")
+        self.assertRegex(source, r"(?m)^  pr_selected_final:\n    name: PR Selected Checks")
         self.assertIn("always() && github.event_name == 'pull_request'", source)
 
     def test_workflow_policy_always_checks_candidate_contract(self):
