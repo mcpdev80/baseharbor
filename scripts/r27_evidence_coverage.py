@@ -1,57 +1,92 @@
-"""Conservative evidence coverage planner; not an authorization owner."""
+"""Fail-closed selection from trusted, candidate-bound gate proofs.
+
+The caller must authenticate each proof and provide the complete required-gate
+dependency closure. This helper neither authenticates CI nor issues receipts.
+"""
 from dataclasses import dataclass
+import re
+
+SHA = re.compile(r"[0-9a-f]{40}\Z")
+DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+
+
+@dataclass(frozen=True)
+class GateProof:
+    gate: str
+    candidate: str
+    policy_digest: str
+    artifact_digest: str | None = None
+    authenticated: bool = False
 
 
 @dataclass(frozen=True)
 class Decision:
     state: str
     code: str
-    summary: str
+    required: tuple
     reusable: tuple
     pending: tuple
+    failed: tuple
     action: str
 
     def as_dict(self):
-        return dict(state=self.state, code=self.code, summary=self.summary,
-                    reusable=list(self.reusable), pending=list(self.pending), action=self.action)
+        return dict(state=self.state, code=self.code, required=list(self.required),
+                    reusable=list(self.reusable), pending=list(self.pending),
+                    failed=list(self.failed), action=self.action)
 
 
-def plan(required, covered, *, stage, exact_candidate, trusted=True, failed=()):
-    """Required is the trusted planner's complete dependency closure.
-
-    Covered is authenticated by the trusted verifier before calling this function.
-    This helper does not infer coverage or issue PASS receipts.
-    """
+def plan(required, proofs, *, stage, candidate, policy_digest,
+         artifact_digest=None, failed=(), trust_available=True):
+    """Return minimal missing gates; fail closed on stale or untrusted proofs."""
     if stage not in ("pr", "integration", "release"):
-        raise ValueError("EVIDENCE_STAGE: unsupported qualification stage")
-    if not isinstance(exact_candidate, str) or len(exact_candidate) != 40 or any(
-            c not in "0123456789abcdef" for c in exact_candidate):
-        raise ValueError("EVIDENCE_TARGET: invalid candidate SHA")
-    for name, items in (("required", required), ("covered", covered), ("failed", failed)):
-        if not isinstance(items, (list, tuple, set, frozenset)) or any(
-                not isinstance(item, str) or not item or len(item) > 128 for item in items):
-            raise ValueError("EVIDENCE_INPUT: invalid " + name)
-    required_set, covered_set, failed_set = set(required), set(covered), set(failed)
-    # A receipt for release/smoke is reusable only when its verifier has
-    # authenticated the exact final candidate and published artifacts.
-    if not covered_set <= required_set or not failed_set <= required_set:
-        raise ValueError("EVIDENCE_INPUT: unknown gate in coverage")
+        raise ValueError("EVIDENCE_STAGE: unsupported stage")
+    if not isinstance(candidate, str) or not SHA.fullmatch(candidate):
+        raise ValueError("EVIDENCE_TARGET: invalid candidate")
+    if not isinstance(policy_digest, str) or not DIGEST.fullmatch(policy_digest):
+        raise ValueError("EVIDENCE_POLICY: invalid policy digest")
+    if artifact_digest is not None and (
+            not isinstance(artifact_digest, str) or not DIGEST.fullmatch(artifact_digest)):
+        raise ValueError("EVIDENCE_ARTIFACT: invalid artifact digest")
+    if stage == "release" and artifact_digest is None:
+        raise ValueError("EVIDENCE_ARTIFACT: release artifact digest required")
+    if not isinstance(required, (tuple, list, set, frozenset)) or not isinstance(
+            proofs, (tuple, list)) or not isinstance(failed, (tuple, list, set, frozenset)):
+        raise ValueError("EVIDENCE_INPUT: invalid collection")
+    for value in (*required, *failed):
+        if not isinstance(value, str) or not value or len(value) > 128:
+            raise ValueError("EVIDENCE_INPUT: invalid gate")
+    required_set, failed_set = set(required), set(failed)
+    if not failed_set <= required_set:
+        raise ValueError("EVIDENCE_INPUT: unknown failed gate")
     if stage == "release" and "release/smoke" not in required_set:
-        raise ValueError("EVIDENCE_SMOKE: mandatory final artifact smoke gate missing")
-    # This basic planner cannot prove candidate/artifact binding. Release smoke\n    # is never reused until the trusted verifier provides bound GateProof data.\n    if stage == "release":\n        covered_set.discard("release/smoke")\n    reusable = tuple(sorted(covered_set - failed_set))
-    pending = tuple(sorted(required_set - covered_set - failed_set))
-    if not trusted:
-        return Decision("BLOCKED", "EVIDENCE_TRUST", "Trusted qualification source unavailable",
-                        (), tuple(sorted(required_set)), "Restore trusted verifier; do not issue PASS")
+        raise ValueError("EVIDENCE_SMOKE: release smoke gate is mandatory")
+    for proof in proofs:
+        if not isinstance(proof, GateProof) or not isinstance(proof.gate, str):
+            raise ValueError("EVIDENCE_INPUT: invalid proof")
+        if proof.gate not in required_set:
+            raise ValueError("EVIDENCE_INPUT: proof for unknown gate")
+    ordered = tuple(sorted(required_set))
+    if not trust_available:
+        return Decision("BLOCKED", "EVIDENCE_TRUST", ordered, (), ordered, (),
+                        "Restore trusted verifier and rerun qualification")
+    reusable_set = set()
+    for proof in proofs:
+        if (proof.authenticated is True and proof.candidate == candidate
+                and proof.policy_digest == policy_digest):
+            if proof.gate == "release/smoke" and proof.artifact_digest != artifact_digest:
+                continue
+            reusable_set.add(proof.gate)
+    reusable_set -= failed_set
+    pending_set = required_set - reusable_set - failed_set
+    reusable = tuple(sorted(reusable_set))
+    failed_sorted = tuple(sorted(failed_set))
+    pending = tuple(sorted(pending_set))
     if failed_set:
-        return Decision("ACTION_REQUIRED", "EVIDENCE_GATE_FAILED",
-                        "Required gates failed: " + ", ".join(sorted(failed_set)),
-                        reusable, tuple(sorted(failed_set | set(pending))),
-                        "Fix failing gates; rerun only invalidated requirements")
-    if pending:
-        return Decision("WAITING", "EVIDENCE_GATES_PENDING",
-                        "Automatically schedule missing gates: " + ", ".join(pending),
-                        reusable, pending, "No developer action while gates run")
-    return Decision("PASS", "EVIDENCE_COVERAGE_COMPLETE",
-                    "All required gates have authenticated coverage",
-                    reusable, (), "Trusted issuer may record qualified result")
+        return Decision("ACTION_REQUIRED", "EVIDENCE_GATE_FAILED", ordered,
+                        reusable, pending, failed_sorted,
+                        "Fix failed gates; rerun only affected requirements")
+    if pending_set:
+        return Decision("WAITING", "EVIDENCE_GATES_PENDING", ordered,
+                        reusable, pending, (), "Automatically schedule pending gates")
+    return Decision("PASS", "EVIDENCE_COVERAGE_COMPLETE", ordered, reusable,
+                    (), (), "Trusted verifier may authorize receipt issuance")
