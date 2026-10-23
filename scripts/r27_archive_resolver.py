@@ -41,7 +41,8 @@ def _read(path, maximum):
 
 def resolve(root, release, candidate_id, run_id, expected_digest):
     """Check archive byte integrity; no CI trust or current policy assessment."""
-    if not all(isinstance(x, str) and SAFE.fullmatch(x) and x not in (".", "..")\n               for x in (release, candidate_id, run_id)):
+    if not all(isinstance(x, str) and SAFE.fullmatch(x) and x not in (".", "..")
+               for x in (release, candidate_id, run_id)):
         raise ArchiveError("unsafe archive identity")
     if not isinstance(expected_digest, str) or not HEX64.fullmatch(expected_digest):
         raise ArchiveError("invalid expected manifest digest")
