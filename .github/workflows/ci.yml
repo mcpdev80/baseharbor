@@ -44,6 +44,9 @@ jobs:
       - name: Enforce fixed workflow surface
         run: bash scripts/ci-workflow-policy.sh
 
+      - name: Validate candidate-only PR trigger contract
+        run: python3 -m unittest scripts/test_ci_candidate_trigger.py -v
+
       - name: Validate workflow syntax
         shell: bash
         run: |
