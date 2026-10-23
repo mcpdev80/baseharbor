@@ -30,7 +30,7 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
     """Validate MAC, exact scope and CI provenance from a trusted issuer."""
     if not isinstance(key, bytes) or len(key) < 32:
         raise EvidenceError("EVIDENCE_TRUST: verifier key unavailable")
-    if not isinstance(raw, bytes) or len(raw) > MAX_BYTES:
+    if not isinstance(raw, bytes) or not raw or len(raw) > MAX_BYTES:
         raise EvidenceError("EVIDENCE_SIZE: invalid receipt size")
     try:
         record = json.loads(raw, object_pairs_hook=_unique)
@@ -51,7 +51,7 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
     artifact = record["artifact_digest"]
     if artifact is not None and (not isinstance(artifact, str) or not DIGEST.fullmatch(artifact)):
         raise EvidenceError("EVIDENCE_ARTIFACT: invalid digest")
-    if record["result"] != "PASS":
+    if type(record["result"]) is not str or record["result"] != "PASS":
         raise EvidenceError("EVIDENCE_RESULT: only PASS reusable")
     if any(type(record[k]) is not int or record[k] < 1 for k in ("run_id", "attempt", "job_id")):
         raise EvidenceError("EVIDENCE_ORIGIN: invalid CI identity")
