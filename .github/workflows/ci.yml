@@ -10,6 +10,7 @@ on:
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
   pull_request:
+    types: [labeled]
     branches:
       - develop
       - main
@@ -23,6 +24,7 @@ permissions:
 
 jobs:
   workflow_policy:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'ci:validate'
     name: Workflow policy
     runs-on: ubuntu-latest
     steps:
