@@ -1149,8 +1149,8 @@ rather than a mid-development commit date.
 - This release candidate validates the real GitHub publishing path before `v0.1.0`.
 - It is intentionally not marked as the latest stable release.
 
-[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...HEAD
-[0.4.26]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...HEAD
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
+[0.4.26]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
 [0.4.24]: https://github.com/mcpdev80/baseharbor/compare/v0.4.23...v0.4.24
 [0.4.23]: https://github.com/mcpdev80/baseharbor/compare/v0.4.22...v0.4.23
 [0.4.22]: https://github.com/mcpdev80/baseharbor/compare/v0.4.21...v0.4.22
