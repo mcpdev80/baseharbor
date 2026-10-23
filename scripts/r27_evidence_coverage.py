@@ -32,6 +32,8 @@ def plan(required, covered, *, stage, exact_candidate, trusted=True, failed=()):
                 not isinstance(item, str) or not item or len(item) > 128 for item in items):
             raise ValueError("EVIDENCE_INPUT: invalid " + name)
     required_set, covered_set, failed_set = set(required), set(covered), set(failed)
+    # A receipt for release/smoke is reusable only when its verifier has
+    # authenticated the exact final candidate and published artifacts.
     if not covered_set <= required_set or not failed_set <= required_set:
         raise ValueError("EVIDENCE_INPUT: unknown gate in coverage")
     if stage == "release" and "release/smoke" not in required_set:
