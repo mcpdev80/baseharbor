@@ -44,4 +44,9 @@ Mode: **planning-only (baseharbor-plan, main).** No product writes, no CI, no pu
 - All remote facts verified live (gh / git ls-remote / gh run), not from stale local reads.
 
 ## END O79-PLANNINGFX-DONE
-board-sha: <pending render/check>
+board-sha: e3ee433 (o79 planning-fx pushed to baseharbor-plan main; render+check clean, 0 errors)
+
+### o79 disposition (what was actually applied)
+- **Docs-pages card (26): NOT accepted.** o79's premise is factually wrong. The "matrix" referenced (q57-docsevid.md) does not exist; the only matrix (`q7-matrix-prep.md`) is the v0.4.26 **release-qualification 65-gate map**, verdict "Mixed — 18 gates need dispatch, NOT lueckenlos." Live `Release · Pre-Release Validation` on develop `1861ed07` are FAILING (run 225, Connector console=PENDING-FREEZE). Marking `accepted` would be a release acceptance (Maintainer-only) on a false premise. Card correctly stays `review`; verified-true fact (EN/DE v0.4.26 release notes present on 1861ed07 via #1031/#1041) recorded in plan file.
+- **Defect-audit card: "18/19" refuted.** Ledger is **32 findings** (f21 closure memo, SHA-verified in `1861ed07`). Code-defect findings fixed/verified; residue (18 Console #7, 19 Connector #8 + acceptance-gaps) lives in core-923. Card stays `blocked` by Owner stop. Recorded truth-preserving note, no fabricated "18/19".
+- **appid card: premise TRUE — applied.** #1046/#1047 OPEN + self-approve BLOCKED; recorded owner-decision-skipped note so no session re-touches it.
