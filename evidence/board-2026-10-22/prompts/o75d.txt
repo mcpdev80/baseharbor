@@ -1,0 +1,5 @@
+o75, dritter Dispatch – Input-Diagnose abgeschlossen: Source-Job wirft "immutable source commit required" bei LEEREM consumer_ref. Setze ALLE vier Inputs auf explizite 40-Hex-Werte (keine Branch-Namen):
+tag=v0.4.26, ref=1861ed07888a1ec22c218ca491d23ee54f48e261, demo_ref=25c319697fd3d89d894943e0f44cd3d5dde8b198, consumer_ref=<exakt der 40-Hex aus deiner eigenen ls-remote Tabelle: connector 570864c…>.
+Vor Dispatch: gh workflow view pre-release.yml --repo mcpdev80/baseharbor || cat .github/workflows/pre-release.yml Inputs – prüfe ob der Workflow MEHRERE consumer-Felder hat (console/connector getrennt?). Wenn ja: beide full-hex.
+Docker zuerst (parallel podman wie direktiert wenn Inputs gleich bleiben), runs notieren, conclusions in Evidence.
+END O75-W1REDO2-DONE.

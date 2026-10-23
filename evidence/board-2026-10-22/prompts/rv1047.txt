@@ -1,0 +1,4 @@
+ROLLE: REVIEW
+PR #1047 (mcpdev80/baseharbor, head 79e0aa2b03f66e1a056976d018f4f97949e51417): gate-plan Qualification fuer appid env-robust test, required Checks success, mergeStateStatus BLOCKED wg. fehlender Approve.
+SHA-genauer Diff gegen develop 1861ed07 (direct parent). ACCEPT mit Approve (gh pr review --approve) wenn fehlerfrei, sonst CHANGES+Rezept. KEIN Merge (andere Session). Kurzer Abschnitt in codex-merge-1047.md ERGAENZUNG oder evidence/board-2026-10-23/codex-verdict-1047.md.
+END REVIEW-1047-DONE.

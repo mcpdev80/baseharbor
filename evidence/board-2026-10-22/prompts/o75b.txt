@@ -1,0 +1,5 @@
+o75, OFFIZIELLER FREIGABE-AUFTRAG (Owner-Marcel, keine Rueckfrage mehr noetig):
+W1_CONFIRM=GO MATRIX_TARGETS="docker podman" bash /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/scripts/w1-input.sh
+Vorbedingungen beim Start pruefen und in Evidence schreiben (Soll/Ist, 40 hex): core=develop 1861ed07, demo pin=25c319697fd3d89d894943e0f44cd3d5dde8b198, consumer refs = live ls-remote tips (console work-branch zu #7, connector work-branch zu #8) - diese tips VOR dispatch notieren, nicht aendern.
+Beide Laeufe PARALLEL dispatchen (Owner-Direktive), jeweils run-ID sofort in die Evidence, dann run-Results festhalten. Bei Fail: Log-Stelle dokumentieren, KEIN Retry ohne Rezept, END mit fail-info.
+Ende: END O75-W1-FULL-DONE mit run-IDs + conclusions.

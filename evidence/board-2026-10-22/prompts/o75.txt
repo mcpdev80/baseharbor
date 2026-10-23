@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o75-w1podman.md (ABSOLUT) mit PLAN + todowrite ([wip:o75]).
+Owner-Freigabe NUR PODMAN: fuehre evidence/board-2026-10-22/scripts/w1-input.sh mit W1_CONFIRM=GO und MATRIX_TARGETS="podman" (Docker-Lauf bleibt aus). Vor dem Dispatch: DRY-Lauf in die Evidence (Soll/Ist der Inputs: develop 1861ed07, D2 25c319697fd3d89d894943e0f44cd3d5dde8b198, consumer 40-hex live).
+Danach real dispatchen und den Workflow-Run mit gh run watch in die Evidence protokollieren (Run-ID + alle Job-conclusions). KEIN Retry bei Fail - dokumentieren und STOP.
+END O75-W1PODMAN-DONE mit run-id +结论.

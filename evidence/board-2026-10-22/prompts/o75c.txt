@@ -1,0 +1,8 @@
+o75 Korrektur (du hattest blind dispatched): pre-release.yml braucht zwingende INPUTS. Der Fail war NUR "Source · Contracts · Docs" (connector 404) - alles andere skipped, also keine echten Gate-Ergebnisse.
+Nocheimals mit expliziten Inputs (Namen aus dem Workflow-Schema: tag + source-ref + demo-sha + optional connector sha). Ermittle die exakten Input-Namen aus dem Workflow (git show origin/develop:.github/workflows/pre-release.yml sed auf workflow_dispatch Block) und dispatche BEIDE Runtimes mit:
+- release tag: v0.4.26
+- source ref: develop (1861ed07)
+- demo commit SHA: 25c319697fd3d89d894943e0f44cd3d5dde8b198
+- connector SHA: 570864c7c8bec738438aa70aa967be7e8490d7c3 (falls Input existiert)
+Wenn der Workflow einen runtime-Input hat: zweimal (docker|podman), sonst EIN Qualify-Lauf (Matrix intern). Runs beobachten, Job-für-Job in Evidence. KEIN curl mit Tokens - nur gh.
+END O75-W1REDO-DONE mit run-IDs + conclusions.

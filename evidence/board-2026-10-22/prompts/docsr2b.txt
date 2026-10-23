@@ -1,0 +1,1 @@
+rv-docs2: dein Turn endete idle ohne Verdict-Abschnitt. Fuehre NUR den Auftrag aus doctxr2 aus, aber ohne eigene basics-check-Deko: Diff fd84036..2b8938e8 bzw. PR #1045 head gegen die DOCS-CHANGES-Punkte pruefen, Abschnitt "### DOCS Runde-2 verdict" in codex-verdict-reviewwave.md APPENDEN (ACCEPT oder Rest-Rezept). END REVIEW-DOCS-R2-DONE.

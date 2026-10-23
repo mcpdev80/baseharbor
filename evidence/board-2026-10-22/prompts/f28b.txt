@@ -1,0 +1,5 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f28-releasenote.md (ABSOLUT) mit PLAN + todowrite ([wip:f28]).
+W1-Blocker aus run 40001750271 (Source job, pre-release.yml Zeile 127-128): develop 1861ed07 fehlt (a) CHANGELOG.md Abschnitt "## 0.4.26" und (b) docs/releases/v0.4.26.md - beides Pflicht-Eintritte des Resolvers. Erstelle sie als kleiner PR gegen develop (mcpdev80/baseharbor): Vorbild = docs/releases/v0.4.25.md Struktur; Inhalt v0.4.26: Core develop 1861ed07 (C2-Final, PRs #1040/#1038/#1041/#1043/#1044 + #1039/#1042 Historie), Demo release branch 25c319697fd3d89d894943e0f44cd3d5dde8b198 (main 82d042b), Consumer console e7d1e4a1... (HEAD nach #7 Merge, exakt verifizieren), connector 570864c7... bzw. aktueller main-tip (beides live ls-remote). Facts only, kein Marketing-Text.
+CHANGELOG: eine Section mit den gleichen Einträgen wie im Release-Doc.
+Checks (docs-only) abwarten, NICHT mergen.
+END F28-RELEASENOTE-DONE mit PR-Nr + head.

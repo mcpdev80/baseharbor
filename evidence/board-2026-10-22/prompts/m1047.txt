@@ -1,0 +1,4 @@
+ROLLE: MERGE
+PR #1047 (mcpdev80/baseharbor, head 79e0aa2b..., MERGEABLE, alle required Checks gruen, Review ohne Code-Befund - offener Punkt war nur Planning-Reconciliation, das laeuft separat in o77).
+Ordinary squash in develop, danach develop-HEAD notieren.
+Evidence evidence/board-2026-10-23/codex-merge-1047.md. END MERGE-1047-DONE.

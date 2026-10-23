@@ -42,3 +42,5 @@ REGELN 2026-10-23 (Owner, verbindlich): 5 Worker-Dauerkontingent, Luecke sofort 
 - 27-Kette: f24+o64 Research done; f25 console-2 Umsetzung (PR folgt); o65 Stale-PR-Cleanup; q50 OPS-4/5; o56 Podman2
 Kommunikationsregel (Marcel 2026-10-23): Bei Karten-Status IMMER die baseharbor-plan Karten-ID nennen (z.B. t-20261020-develop-appid-manifest-test-regression), nicht Lane-Kuerzel. Lane-IDs nur auf explizite Nachfrage.
 - Review-Welle 26: c7n8 ACCEPT + MERGE laeuft; docs/appid PRs in Runde 2; D2 done; W1-Input final ueber o74\n
+
+ROLLENKLARTEXT (Owner 2026-10-23): Coordinator fuehrt KEINE Produkt-/CI-Kommandos selbst aus (kein gh run/workflow dispatch, keine Merges) – alles ueber Worker-Lanes oder Codex-ROLL-Session. Worker-Lanes starten ihrerseits keine anderen Sessions/Explorer.

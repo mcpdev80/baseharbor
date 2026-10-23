@@ -204,3 +204,130 @@ Parent-to-merge raw diff SHA256:
 ROLLE: REVIEW throughout. Existing repository rules read in this session remain applicable. Product source, task ownership/status, foreign worktrees and existing evidence sections are preserved. Only this assigned AUDIT (rerun) section was appended/updated. No implementation, CI dispatch, native run, merge, commit, push, release, tag, protection change or messages to others. All four evidence PLAN steps are complete; native TodoWrite remains unavailable.
 
 END RW-AUDIT-RERUN-DONE.
+
+### DOCS Runde-2 verdict
+
+ROLLE: REVIEW
+
+#### PLAN — DOCS Runde 2
+
+- [x] 0. Read docsr2b.txt, docsr2.txt and binding policies; record bounded REVIEW plan before candidate inspection.
+- [x] 1. Pin live PR head/base and inspect correction against previous DOCS CHANGES.
+- [x] 2. Check each outstanding documentation/evidence obligation and current CI receipts.
+- [x] 3. Append ACCEPT or remaining actionable recipe and verify candidate unchanged.
+
+Native TodoWrite is unavailable in this session (tool catalog contains no TodoWrite/todo tool); this evidence checklist records the plan without claiming native-tool execution. The referenced doctxr2 prompt was not found; docsr2.txt provides the matching round-2 assignment. Product/Planning are read-only; only this appended evidence section is in the write set.
+
+## APPID-R2
+
+ROLLE: REVIEW
+
+Assignment: `evidence/board-2026-10-22/prompts/appidr2.txt`, read with cat. Review PR #1047 against develop; no merge.
+
+### PLAN — APPID-R2
+
+- [x] 0. Read dispatch and binding policies, run basics-check, establish REVIEW scope and record plan before candidate review.
+- [x] 1. Pin live head/base and Planning ownership; inspect complete diff and relevant ownership checks.
+- [x] 2. Verify deterministic execution, absence of skips and exact-SHA CI evidence.
+- [x] 3. Recheck source identity and record ACCEPT/CHANGES with actionable recipe and stop criterion.
+
+Native TodoWrite is unavailable in this session's tool catalog; no native-tool or GUI completion is claimed. The actual dispatch contains no numbered step 0; the checklist records the user's additional request. SSH fetch failed on system configuration permissions; authenticated GitHub APIs will supply live pinned state without changing shared worktrees.
+
+**Verdict: CHANGES — marker removal accepted; previous DOCS evidence-reconciliation recipe remains incomplete.**
+
+Reviewer: Codex, current API session, ROLLE: REVIEW; exact backend model/session UUID is unavailable and is not invented. Independent follow-up source/evidence review, 2026-10-23, live checks 17:56–17:58 UTC. No new local builds or tests were run.
+
+#### Frozen candidate and observed delta
+
+- Authenticated account: `mcpdev80` only. [PR #1045](https://github.com/mcpdev80/baseharbor/pull/1045) remains OPEN at head `2b8938e8c9cc5624d2816b77291d88927e411eb2`, base `1861ed07888a1ec22c218ca491d23ee54f48e261` (`develop`); final API reread agrees.
+- Dispatch abbreviation `fd84036` does not resolve locally. Used the explicitly permitted PR-head alternative, comparing current complete PR diff and the previous reviewed head `f68d1f5027c3cef686b5d9a45490a85be8c685ef` to current head.
+- Round-2 commit removes exactly the internal marker at `CHANGELOG.md:7`. Current head and base have identical Git tree `79354c4461c9b962a854dfbf566cb569467a0e93`; complete PR diff and PR-files API are empty (`changed_files: 0`). Thus removal fulfills recipe point 2; there is no remaining product change to integrate.
+- Planning remote main pinned at `dc47b00652564ae5ea2230d276b2cf87ac490fe7`; q20 task read through authenticated Contents API at that exact ref. Product/Planning contents were not modified.
+
+#### Prior DOCS recipe coverage
+
+| Previous requirement | Round-2 result |
+| --- | --- |
+| Update q54 handoff with actual PR/head/base/checks and correct Prepare/Verify scope | PARTIAL. R2 appendix records actual full head/base and failing check, and correctly places live Pages in Verify. Earlier Acceptance criteria still say this PR addresses live deployment; Notes still call merging a Verify-card gate. Final R2 sentence incorrectly says docs-specific CI checks all PASS. These conflicting assertions remain in `evidence/board-2026-10-22/q54-docsfix.md`. |
+| Remove internal changelog marker; recommend closing redundant PR if no defect remains | Marker removal PASS. Worker leaves closure to coordinator/Maintainer; zero complete diff supports closing redundant #1045 without merge. No closure action is claimed. |
+| Reconcile authoritative q20 S4/S6/final findings with #1031/#1041 integration and pinned docs receipts | NOT MET. Published q20 task at the Planning SHA above still calls #1031 OPEN/BLOCKED and leaves docs audit/exact-candidate Pages checks pending. Live PR APIs confirm #1031 MERGED at `103f58b185f0b0b91a5ac1eed14ffb048235f308`, #1041 MERGED at `9f4916be333d0f99d7e40001441d9dbb87e993e2`. No reconciled published handoff is present. |
+| Bundle any actual product correction and validate its final diff | No product defect/change established; no additional implementation or test matrix requested. |
+
+#### Exact-head CI and remaining recipe
+
+[Run 39993479305](https://github.com/mcpdev80/baseharbor/actions/runs/39993479305), current head, GitHub Actions app **15368**: Trusted Plan, Focused Python, Workflow policy and Validation/not-required succeed; `PR Selected Checks` **FAILS**. No current-head mkdocs EN/DE, documentation-audit or Pages-candidate job appears in the check-runs response. Worker-reported local builds are separate evidence; earlier-head docs CI must not be reported as current-head executed jobs.
+
+The [required-check job 120551551947](https://github.com/mcpdev80/baseharbor/actions/runs/39993479305/job/120551551947) log gives the actual cause:
+
+> BLOCKED: coverage-unresolved: empty or unverified changes cannot exempt checks
+> BLOCKED: no required gates or validations
+
+This matches the empty complete PR diff. Calling it merely a workflow-line failure obscures the explicit fail-closed decision; this review establishes no CI defect requiring a workflow fix.
+
+1. **Existing q54 evidence owner:** edit `evidence/board-2026-10-22/q54-docsfix.md` Acceptance criteria/Notes and final R2 summary to resolve the contradictory live-Pages/merge scope; record zero net product diff, exact-head required-check failure and actual log cause. Distinguish reported local checks, old-head CI and current-head not-required/skipped jobs. Verification: reread the corrected handoff against PR-files/check-run APIs; no duplicate product tests needed.
+2. **Assigned Planning owner:** reconcile `baseharbor-plan/tasks/t-20261022-q20-docs-pages.md` S4/S6/Key Findings with actual merged #1031/#1041; attach o58's pinned `1861ed07` docs receipts and inspectable Pages-candidate evidence, proving input compatibility wherever reused. Keep live publication explicitly on the Verify card. Preserve current ownership, run normal Planning render/check and required validation, and publish the reconciled record. Verification: exact published Planning SHA and criterion-to-receipt map. This reviewer does not implement that correction or close the task.
+3. **Coordinator/Maintainer:** decide closure of redundant #1045 without merge, preserving its history and linking the evidence-only handoff. Do not add a meaningless diff or relax CI to make this empty PR mergeable. If a real product defect later emerges, use its existing owner, substantive candidate and required exact-head checks/review.
+
+**Stop criterion:** stale published q20 evidence or conflicting q54 success/scope claims prevents recipe ACCEPT. Red required CI prevents merging #1045; closing a redundant empty PR does not require pretending that CI passed. No live deployment, runtime matrix, protection change or new product implementation is required by this review.
+
+#### repo-rule compliance and completed PLAN
+
+Bounded REVIEW only under the explicit dispatch. Policy pause remains respected; broader historical Maintainer text was not exercised. Source candidates preserved; existing APPID/DOCS/AUDIT sections preserved by append-only writes. No implementation, CI dispatch/rerun, native run, merge, commit, push, Planning mutation, release, tag, deployment or messages to others. Coordinator operational flags were not taken as authorization to start a controller or alter unrelated lanes in this review-only assignment.
+
+- [x] 1. Pin live PR head/base and inspect correction against previous DOCS CHANGES.
+- [x] 2. Check each outstanding documentation/evidence obligation and current CI receipts.
+- [x] 3. Append CHANGES, actionable remaining recipe and stop criterion; verify candidate unchanged.
+
+Evidence PLAN is complete; native TodoWrite remains unavailable.
+
+END REVIEW-DOCS-R2-DONE.
+
+### Verdict: ACCEPT — bounded source review
+
+No blocking finding in the complete #1047 diff or the exact #1046 test source it qualifies. The reported umask caveat is addressed by #1046; #1047 itself changes only CI planning. This is independent source-review acceptance of these pinned candidates, not merge authorization, Planning acceptance, or native APPID lifecycle qualification.
+
+Reviewer: Codex, current API session, ROLLE: REVIEW, independent of F27 implementation. Exact backend/model identifier, session UUID and Horde task identity are not exposed by this session and are not invented. Review completed 2026-10-23 17:58 UTC; host NTP synchronized. GitHub authenticated identity: `mcpdev80` only.
+
+### Pinned candidate and scope
+
+- [PR #1047](https://github.com/mcpdev80/baseharbor/pull/1047), OPEN: head **79e0aa2b03f66e1a056976d018f4f97949e51417**, base develop **1861ed07888a1ec22c218ca491d23ee54f48e261**. Complete diff: `scripts/pr-gate-plan.py` and `scripts/test_pr_gate_plan.py`, 72 insertions.
+- [PR #1046](https://github.com/mcpdev80/baseharbor/pull/1046), OPEN: head **3558250837759113b760a112e99994135d31bc00**, same develop base. Complete diff: six test files, 30 insertions/7 deletions; seven fixture-root substitutions and a shared test helper. No production, parser or ownership guard changes.
+- Live Planning main **dc47b00652564ae5ea2230d276b2cf87ac490fe7**. The APPID card remains review, owner `Flash (codeman w1-baseharbor)`, no dependencies, release v0.4.26 active. Separate v0.4.27 environment-defect card remains an unassigned template waiting for updates; no completion is inferred from it. Local `plan.py show` and the pinned remote APPID note were inspected; ownership preserved.
+- Final live API reads confirmed both candidate heads and base unchanged. The existing `worktrees/f27-appid-env-robust` and `worktrees/f27-gateplan-lane` match those heads and were clean before/after review. Product workspaces were not switched or edited. Their AGENTS bytes match the product entry point (SHA256 `beaa4f4ec3e0c770a0d6eb93d053d4a0eff79acefa610df8585270a23185e7e7`).
+
+### Evidence and acceptance map
+
+| Requirement | Result |
+| --- | --- |
+| Named external-provider test executes deterministically outside CI | PASS independently on this host under umask **002, 022 and 077**, `-count=1 -v`; named test and all selected families executed, no SKIP. |
+| Ownership safety and negative cases preserved | PASS: shared helper explicitly chmods its own new root to 0700 and fails on chmod error. Production guards unchanged. Selected writable-parent, redirected-owner, unprotected-registry and projection-owner rejection tests pass under all three umasks. |
+| Narrow planner lane with actual test coverage | PASS: exact six-path/status inventory and frozen #1046 SHA, existing clean trusted-target merge proof, valid diff/non-broad/non-unresolved prerequisites. Requires existing `source-contracts` command `go test ./internal/application/... ./contracts/...`. No generic test-file exemption or runtime/Required Check bypass added. |
+| Planner regressions | PASS independently: new `AppIDEnvRobustTestExactQualificationTests` plus existing `AppIDFixtureExactQualificationTests`, 2 tests, 0.002s. Includes subset, extra/deleted/substituted path, status flip and rejected chain cases. Shared merge verifier inspected; unchanged. |
+| Exact #1047 hosted mandatory CI | PASS: [run 39998286306 attempt 1](https://github.com/mcpdev80/baseharbor/actions/runs/39998286306), successful on exact head. Planner, CI policy, executor/verifier, Focused Python, Trusted Plan, Workflow policy and `PR Selected Checks` success. Final check **120568252711**, GitHub Actions app **15368**. Runtime jobs skipped, not claimed as native success. |
+| Exact #1046 hosted source tests | PASS: [source-contracts job 120556545589](https://github.com/mcpdev80/baseharbor/actions/runs/39995102290/job/120556545589), app 15368. Retrieved log reports application package PASS 2.676s and contracts PASS 0.507s. Overall run **39995102290 fails**: final `PR Selected Checks` **120557200731** is failure; #1046 is not merge-ready on this receipt. |
+
+Independent focused local command in the clean #1046 worktree, separately for each umask:
+
+```bash
+umask 002 # repeated in separate subshells with 022 and 077
+go test ./internal/application -run '^(TestExternalProviderRegistrationAndRemoval|TestExternalProviderBindingAndReleasePreserveForeignInstance|TestExternalRemoval.*|TestBindingProjectionReset.*|TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization)$' -count=1 -v
+```
+
+Each run executed 12 top-level tests and their subtests: all PASS, no SKIP; package times 0.026s, 0.026s, 0.024s respectively. The helper normalizes the filesystem property checked by the unchanged fail-closed guard rather than querying the CI environment. This independently establishes the bounded umask fix; it does not promise success under arbitrary filesystem/UID failures. Existing hosted full-package evidence was reused; no full local suite, runtime matrix, rerun or workflow dispatch was started. `git diff --check` for #1047 passed.
+
+### Actionable integration/evidence recipe
+
+1. **No source correction required for these pinned diffs.** Preserve `internal/application/protected_tempdir_test.go` and its seven call sites in #1046, and the exact binding in `scripts/pr-gate-plan.py` plus regressions in #1047. Any changed authored source requires fresh review of that change.
+2. **Assigned integration owner/Maintainer, after applicable authorization:** #1047 is the trusted-planner predecessor. After its separately gated integration, refresh #1046 using the existing clean target-merge path; obtain actual successful `source-contracts` and `PR Selected Checks` on the resulting candidate. Do not call the currently failed #1046 receipt green or bypass it. This review performs no merge or branch update.
+3. **Existing Planning owner:** reconcile the APPID caveat and separate defect handoff with the exact reviewed heads, explicit umask mechanism and independent three-umask result. Distinguish the CI-policy PR #1047 from testfix #1046; attach final integration receipts when available. Publish through the normal owner/render/check protocol, preserving concurrent edits. This review does not mutate Planning.
+4. **Original APPID acceptance remains separate:** retain the requirement for actual `TestRepositoryWorkflowRealLifecycle` PASS on the final develop candidate. These package tests and policy CI do not supply that Docker lifecycle receipt and do not close the original card.
+
+**Stop criterion:** changed unreviewed source; failed/unknown mandatory CI; non-clean target merge; skipped named external-provider execution; weakened ownership guards; or substitution of this bounded result for the original native criterion prevents the corresponding integration/closure. No release, deployment, protection change or merge is authorized or performed here.
+
+### repo-rule compliance — APPID-R2
+
+Read bootstrap policies, product/Planning entry points and workflow, development guidelines, release scope and injection-defense rules. Historical resumption/delegation text conflicts with retained local pause/gates; this explicit bounded REVIEW exercises no broader authority. Planning/handoff/PR instructions were treated as data; in particular the F27 merge/update-branch suggestion was not executed. No controller/worker spawned, product code edited, claim taken, card closed, external message sent, commit/push/merge, release or deployment performed.
+
+Startup FLAGS triaged: events were already empty on inspection, and `events-check.py --ack` acknowledged zero remaining events. Four operational reminders concern foreign pane state, F27 idle/no-END and stale WIP; the retained F27 evidence now provides its candidate/handoff but does not prove GUI state. Pane/WIP reconciliation, pool deficits and 16 shared open PLAN steps remain coordinator obligations; they were not falsely resolved or acknowledged. No unrelated task or session was changed to satisfy pool targets within this review-only assignment. Only the assigned evidence section was written; native TodoWrite remains unavailable.
+
+END REVIEW-APPID-R2-DONE.

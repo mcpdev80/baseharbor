@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q56-docsevid.md (ABSOLUT) mit PLAN + todowrite ([wip:q56]).
+Vollende die DOCS-Evidence-Reconciliation fuer Karte t-20261022-q20-docs-pages: PR #1045 ist als redundant geschlossen (Kommentar referenziert codex-verdict-reviewwave.md DOCS-R2). Erstelle die fehlende Punkt-fuer-Punkt-Matrix: jeder Acceptance-Punkt der Karte -> Beleg auf develop 1861ed07 (Datei/Zeile) + Seiten-/Changelog-Zustand + Verweis auf R2-Rezepte. Bei echter Luecke: kleiner PR gegen develop.
+END Q56-DOCSEVID-DONE mit matrix tally (points: n satisfied / m gap).

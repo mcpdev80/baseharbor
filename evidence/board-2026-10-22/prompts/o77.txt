@@ -1,0 +1,4 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o77-appidplan.md (ABSOLUT) mit PLAN + todowrite ([wip:o77]).
+Rezept aus codex-verdict-reviewwave.md APPID-R2 (Punkte 3+4, selbst lesen): (a) APPID-Karte t-20261020-develop-appid-manifest-test-regression: Env-Caveat-Zeile praezisieren (exact revision/conditions, verweise auf o53-f27-Befunde), (b) separate defect-Handoff fuer TestRepositoryWorkflow-Forderung als neue Karte t-2026XXXX-... (plan.py new core, slug appid-repo-workflow-proof, release v0.4.27, depends auf 26-verify), (c) PR #1047 Referenz in die 26er-Karte eintragen (prs-Feld).
+baseharbor-plan/scripts/plan.py + tasks/ - render+check muss 0 errors vor commit, dann push.
+END O77-APPIDPLAN-DONE mit board-sha.

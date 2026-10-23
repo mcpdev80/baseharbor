@@ -1,0 +1,2 @@
+ROLLE: REVIEW
+PR #1047 (mcpdev80/baseharbor, head 79e0aa2b03f66e1a0..., checks komplett gruen laut f27-appidtest.md). Ziel: Umgebungscaveat der appid-Karte beheben (TestExternalProviderRegistrationAndRemoval muss auch ohne CI-Runner deterministisch pruefen, KEIN skip). Diff gegen develop pruefen, ACCEPT/CHANGES mit Rezept, neuer Abschnitt "APPID-R2" in evidence/board-2026-10-23/codex-verdict-reviewwave.md. NICHT mergen. END REVIEW-APPID-R2-DONE.
