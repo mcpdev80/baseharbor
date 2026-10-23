@@ -104,7 +104,8 @@ def resolve(root, release, candidate_id, run_id, expected_digest):
         total_bytes += len(content)
         if total_bytes > 32 * 1024 * 1024:
             raise ArchiveError("archive total payload size exceeded")
-        if check.get("bytes") != len(content) or hashlib.sha256(content).hexdigest() != digest:
+        if (type(check.get("bytes")) is not int or check["bytes"] != len(content) or
+                hashlib.sha256(content).hexdigest() != digest):
             raise ArchiveError("payload length or digest mismatch")
     return manifest
 
