@@ -23,6 +23,11 @@ def publish(root, release, candidate_id, run_id, manifest, payloads):
             not isinstance(manifest.get("run"), dict) or
             manifest["run"].get("archive_id") != run_id):
         raise ArchiveError("manifest identity mismatch")
+    run = manifest["run"]
+    if (manifest.get("schema") != "baseharbor.ci-evidence-archive/v1" or
+            type(run.get("id")) is not int or run["id"] <= 0 or
+            type(run.get("attempt")) is not int or run["attempt"] <= 0):
+        raise ArchiveError("invalid archive schema or run provenance fields")
     checks = manifest.get("checks")
     if not isinstance(checks, list) or not checks or len(checks) != len(payloads) or len(checks) > 128:
         raise ArchiveError("invalid payload inventory")
@@ -82,6 +87,14 @@ def publish(root, release, candidate_id, run_id, manifest, payloads):
             path.unlink(missing_ok=True)
             raise
 
+    # Reject a conflicting committed identity before staging any additional blobs.
+    manifest_path = directory / "manifest.json"
+    if manifest_path.is_symlink():
+        raise ArchiveError("archive identity collision")
+    if manifest_path.exists():
+        from r27_archive_resolver import _read
+        if _read(manifest_path, 1024 * 1024) != raw:
+            raise ArchiveError("archive identity collision")
     for name, data in payloads.items():
         create_once(directory / name, data)
     create_once(directory / "manifest.json", raw)
