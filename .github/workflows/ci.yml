@@ -10,6 +10,8 @@ on:
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
   pull_request:
+    # Candidate-ready is a one-shot event; ordinary commits do not start CI.
+    # The signal may be emitted by an authorized human or agent via the GitHub API.
     types: [labeled]
     branches:
       - develop
@@ -782,6 +784,7 @@ jobs:
   pr_selected_final:
     name: PR Selected Checks
     needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
+    # Final verification must run even when an upstream required job fails.
     if: github.event.label.name == 'ci:validate' && (always() && github.event_name == 'pull_request' && github.base_ref == 'develop')
     runs-on: ubuntu-latest
     timeout-minutes: 8
