@@ -92,6 +92,12 @@ class VerifiedCoverageTests(unittest.TestCase):
                 with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
                     check(signed(gate=gate, artifact_digest="d" * 64), gate=gate)
 
+    def test_smoke_not_reusable_as_pr_or_integration(self):
+        for stage in ("pr", "integration"):
+            with self.subTest(stage=stage), self.assertRaisesRegex(
+                    EvidenceError, "EVIDENCE_ARTIFACT"):
+                check(signed(stage=stage), stage=stage)
+
     def test_missing_release_artifact_rejected(self):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
             check(signed(), artifact_digest=None)
