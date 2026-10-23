@@ -20,6 +20,14 @@ class ReceiptTests(unittest.TestCase):
                 self.assertTrue(verify(raw, kind, SHA, POLICY, KEY))
                 self.assertNotIn(b"run_id", raw)
 
+    def test_wrong_type_pass_is_rejected(self):
+        for value in (None, True, 1, ["PASS"]):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ReceiptError, "EVIDENCE_RESULT"):
+                    from r27_evidence_receipt import _validate_fields, SCHEMA
+                    _validate_fields(dict(schema=SCHEMA, kind="pr", commit=SHA,
+                                          policy_digest=POLICY, result=value))
+
     def test_wrong_commit_policy_or_kind(self):
         raw = issue("pr", SHA, POLICY, KEY)
         for kind, sha, policy in [
