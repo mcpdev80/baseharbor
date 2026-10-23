@@ -57,3 +57,5 @@
 {"nonce":"dispatch-1792781802-2362641-22583","sid":"a410c061-e9c7-493b-ac29-09ddf9412adc","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792781822-2363475-4869","sid":"69879e07-75c8-4d11-8439-c2c0d5bf20c4","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792783708-2523280-10005","sid":"69879e07-75c8-4d11-8439-c2c0d5bf20c4","baseline_users":2,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792786141-2723632-17024","sid":"5df54f36-61a0-42ad-8fe8-0c1792f6bc08","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792786172-2724789-11893","sid":"65c4727b-6917-4090-be8e-420235738c94","baseline_users":1,"send_rc":0,"resends":0}

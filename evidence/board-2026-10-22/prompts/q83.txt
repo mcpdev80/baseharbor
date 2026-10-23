@@ -1,0 +1,3 @@
+FIRST ACTION (SCHREIB-TOOL zuerst): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q83-ciaudit.md mit PLAN + todowrite ([wip:q83]).
+READ-ONLY CI-Auth-Audit (mcpdev80/baseharbor develop): Woher beziehen die Integration-Jobs (remote-target, static/live-console) Credentials fuer private baseharbor-console Repos? Pruife (1) .github/workflows + reusable workflows: secrets/permissions/GITHUB_TOKEN-Nutzung, (2) ob mcpdev80/baseharbor-console privat oder oeffentlich ist (gh repo view), (3) wie der v0425-Lauf (#1039 Aera) dasselbe Gate gelost hat - verglaube mit git log der workflow-Dateien. Ergebnis: exakte Auth-Kette + wo sie fuer 26 reisst. Kein secret ausgeben, nur Pfad+Name.
+END Q83-CIAUDIT-DONE mit auth-kette + bruchstelle.
