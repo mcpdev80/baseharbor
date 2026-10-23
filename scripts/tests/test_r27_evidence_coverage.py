@@ -20,7 +20,7 @@ class CoverageTests(unittest.TestCase):
         d = plan(["sql", "docs"], [proof("sql")], stage="pr",
                  candidate=SHA, policy_digest=POLICY)
         self.assertEqual((d.state, d.reusable, d.pending),
-                         ("WAITING", ("sql",), ("docs",)))
+                         ("WAITING", (), ("docs", "sql")))
 
     def test_stale_or_untrusted_cannot_pass(self):
         for p in [proof("sql", OLD), proof("sql", policy="f" * 64),
@@ -36,11 +36,11 @@ class CoverageTests(unittest.TestCase):
                   proof("release/smoke", OLD, artifact=ARTIFACT)]:
             d = plan(required, [proof("sql"), p], stage="release",
                      candidate=SHA, policy_digest=POLICY, artifact_digest=ARTIFACT)
-            self.assertEqual(d.pending, ("release/smoke",))
+            self.assertEqual(d.pending, ("release/smoke", "sql"))
         d = plan(required, [proof("sql"), proof("release/smoke", artifact=ARTIFACT)],
                  stage="release", candidate=SHA, policy_digest=POLICY,
                  artifact_digest=ARTIFACT)
-        self.assertEqual((d.state, d.code), ("WAITING", "EVIDENCE_VERIFIER_REQUIRED"))
+        self.assertEqual((d.state, d.pending), ("WAITING", ("release/smoke", "sql")))
 
     def test_release_without_smoke_or_artifact_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_ARTIFACT"):
@@ -57,6 +57,13 @@ class CoverageTests(unittest.TestCase):
                          ("ACTION_REQUIRED", ("sql",), ("docs",)))
         self.assertEqual(plan(["sql"], [proof("sql")],
                               trust_available=False, **args).state, "BLOCKED")
+
+    def test_caller_claimed_authentication_never_skips_gate(self):
+        for claimed in (True, False):
+            d = plan(["sql"], [proof("sql", authenticated=claimed)],
+                     stage="pr", candidate=SHA, policy_digest=POLICY)
+            self.assertEqual((d.state, d.reusable, d.pending),
+                             ("WAITING", (), ("sql",)))
 
     def test_unknown_gate_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
