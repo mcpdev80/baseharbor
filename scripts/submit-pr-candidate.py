@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 
-def gh(method, path, *, data=None, allow_missing=False):
+def gh(method, path, *, data=None):
     args = ["gh", "api", "--method", method, path]
     if data is not None:
         args += ["--input", "-"]
@@ -20,8 +20,6 @@ def gh(method, path, *, data=None, allow_missing=False):
         text=True, capture_output=True, check=False,
     )
     if result.returncode:
-        if allow_missing and "HTTP 404" in result.stderr:
-            return None
         raise RuntimeError(f"gh api {method} {path}: {result.stderr.strip()}")
     return json.loads(result.stdout) if result.stdout.strip() else None
 
@@ -47,8 +45,7 @@ def publish(repo, number, expected_sha):
         raise RuntimeError("candidate PR does not target develop")
     labels = {label["name"] for label in pr.get("labels", [])}
     if "ci:validate" in labels:
-        gh("DELETE", f"repos/{repo}/issues/{number}/labels/ci%3Avalidate",
-           allow_missing=True)
+        gh("DELETE", f"repos/{repo}/issues/{number}/labels/ci%3Avalidate")
     # Close the race between removing the old label and re-adding it.
     latest = gh("GET", f"repos/{repo}/pulls/{number}")
     if (latest["head"]["sha"] != expected_sha or latest["state"] != "open"
