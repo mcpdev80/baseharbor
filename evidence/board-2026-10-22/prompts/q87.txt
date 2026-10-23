@@ -1,3 +1,13 @@
 FIRST ACTION (SCHREIB-TOOL zuerst): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q87-pinsdevelop.md mit PLAN + todowrite ([wip:q87]).
-git NUR in baseharbor/. Owner-FREIGABE liegt vor: docs/releases/v0.4.26.consumer-pins.json DARF als PR auf develop (einziger inhaltlicher Develop-Zugang fuer 26, rein datenmuessig). Erstelle branch work/v0.4.26-consumerpins-develop ab origin/develop (1861ed07...) mit GENAU dieser einen Datei - Inhalt = die verifizierte Pin-Kette aus evidence/board-2026-10-22/q86-pinsfix.md (core 1861ed07888a1ec22c218ca491d23ee54f48e261, demo 25c319697fd3d89d894943e0f44cd3d5dde8b198, console 69d1d14007fa43dc0c0457c3347280be7f802818, connector df1f4378d8c7fdc3e174a1e9dc8ad0155a955571 - PRUEFE zuerst gegen scripts/release-requirements.json-Konsistenz und gegen das 25er-File als Schema-Vorbild; bei Schema-Zweifel: loader-Funktion in scripts/pre-release-resume.py lesen, nicht raten). PR gegen develop oeffnen, Body: Owner-Freigabe-Zitat + q86/q85-Befunde. Checks abwarten (docs-only), NICHT selbst mergen.
-END Q87-PINSDEVELOP-DONE mit pr-nummer + head.
+2: git NUR in baseharbor/. Owner-FREIGABE liegt vor: docs/releases/v0.4.26.consumer-pins.json DARF als PR auf develop (einziger inhaltlicher Develop-Zugang fuer 26, rein datenmuessig). Erstelle branch work/v0.4.26-consumerpins-develop ab origin/develop (1861ed07...) mit GENAU dieser einen Datei - Inhalt = die verifizierte Pin-Kette aus evidence/board-2026-10-22/q86-pinsfix.md (core 1861ed07888a1ec22c218ca491d23ee54f48e261, demo 25c319697fd3d89d894943e0f44cd3d5dde8b198, console 69d1d14007fa43dc0c0457c3347280be7f802818, connector df1f4378d8c7fdc3e174a1e9dc8ad0155a955571 - PRUEFE zuerst gegen scripts/release-requirements.json-Konsistenz und gegen das 25er-File als Schema-Vorbild; bei Schema-Zweifel: loader-Funktion in scripts/pre-release-resume.py lesen, nicht raten). PR gegen develop oeffnen, Body: Owner-Freigabe-Zitat + q86/q85-Befunde. Checks abwarten (docs-only), NICHT selbst mergen.
+3: END Q87-PINSDEVELOP-DONE mit pr-nummer + head.
+
+## END Q87
+
+- PR: https://github.com/mcpdev80/baseharbor/pull/1050
+- pr-nummer: 1050
+- head: f2434c82
+- branch: work/v0.4.26-consumerpins-develop
+- base: develop
+
+(End of file - total 9 lines)

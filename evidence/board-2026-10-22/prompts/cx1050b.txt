@@ -1,0 +1,3 @@
+ROLLE: REVIEW (Folgeauftrag zu PR #1050)
+Dein MERGE BLOCKED Befund: PR Selected Checks failt, aber PR Consumer Pins UND PR Selected Runtime sind skipped. Klaere die exakte Trigger-Bedingung in baseharbor/.github/workflows/ci.yml (welcher paths-Filter steuert das Consumer-Pins Job; warum matcht docs/releases/v0.4.26.consumer-pins.json nicht) und was das PR Selected Checks Meta-Job verlangt (Datei:Zeile). Liefere das Rezept: minimalste Aenderung (PR-INHALT oder labels/inputs) damit das Daten-PR seine Pflicht-Gates ERFUELLT statt skipped - unter der AGENTS-Regel "Planning-/Evidence-only darf keine Full-CI erzwingen".
+Anhaengen an /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-23/codex-verdict-1050.md (## Folgebefund), END CX1050-FOLLOWUP-DONE mit rezept.

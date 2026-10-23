@@ -72,3 +72,9 @@
 {"nonce":"dispatch-1792790158-3103824-2165","sid":"7745df90-be5f-41fb-b5b7-8cac7dd7d0cb","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792790185-3109250-31292","sid":"41a6ad99-301f-4d35-ac4c-00597a0762cb","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792790224-3112272-10201","sid":"41a6ad99-301f-4d35-ac4c-00597a0762cb","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792791094-3208266-9008","sid":"58915389-0e0f-4479-85af-c751c8057329","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792792094-3293609-21433","sid":"bf622c3c-6b82-4afa-9131-c9cbf668c67e","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792792119-3298621-10656","sid":"542f9ec5-b8fa-4f72-9db9-852f8d41bd93","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792792193-3309072-26875","sid":"54c251da-1d20-4b4b-be6a-9c9e081a9016","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792792506-3352673-16327","sid":"54c251da-1d20-4b4b-be6a-9c9e081a9016","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792792742-3388720-8063","sid":"b9e662b5-11a8-4ec8-b16f-d2693491ece3","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

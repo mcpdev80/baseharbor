@@ -23,3 +23,4 @@ FREEZE-COMPLETE 20:3x: q80 console 69d1d140, q59 connector df1f4378 precheck-PAS
 W1#1 run 40009690268: lights+source GRUEN, 11 Heavy-Fails in 3 Clustern (auth, wizard/e2e, openbao/data-caps). o86 Forensik + q83 Auth-Audit busy, f29 freed, flash slot frei fuer Fix-Lane nach Befunden.
 QWEN-BACKEND-VERDACHT: 3/5 letzte Lanes phantom (q58,q83,q85). o86-laeuft-auf-ornith-stabil. Bei naechstem qwen-Spawn Delivery-Check verschaerfen.
 W1-REST: f30 (flash, B/C-Forensik) + q84 (qwen, Cluster-A-Qualifikationsfix) laufen ohne File-Output; ornith1/2 frei als Fallback. QWEN-File-Ghosting erneut (3. Mal) - Backend-Check Spaeter OPS-Karte.
+FREEZE+REST-PHASE 21:5x: PRs #1050(pins) #1052(openbao-retry) offen, beide nur Meta-Gate-fail (planner kennt pins-Data nicht). o90 fixt pr-gate-plan.py. q89 wizardfix laeuft. cx-Runde: verdict-1050 data PASS. Codex-Lanes brauchen name-codex*-Konvention fuer pool-admission - MERKE fuer kuenftige Spawn-Namen.

@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR in baseharbor/worktrees/q89 via git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add worktrees/q89 -b work/v0.4.26-wizardfix origin/develop. Root-Repo ist git-veruacket.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q89-wizardfix.md mit PLAN + todowrite ([wip:q89]).
+Fix Cluster B wizard-hang: Root-Cause + Minimal-Fix in f30-w1forensics.md (Abschnitt Cluster B, app_wizard_controller.go:202ff Step/freshFacts; Read-only-Preview-Autoritaeten). Fail-first Regressionstest die den Hang nachstellt, dann minimaler Fix, go test der betroffenen Pakete green. PR gegen develop, KEIN Merge, Checks abwarten.
+END Q89-WIZARDFIX-DONE mit pr + head + test.

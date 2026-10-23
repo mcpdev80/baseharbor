@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add worktrees/o89 -b work/v0.4.26-openbao-retry origin/develop; Root-Repo git-verboten.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o89-openbao-retry.md mit PLAN + todowrite ([wip:o89]).
+Fix Cluster C1 (rootless-podman OpenBao-Race, Hypothese+Minimal-Fix in f30-w1forensics.md Cluster C): bounded Retry/Condition-Waiting in memberState/inspectMemberState im Unseal-Pfad, fail-fast bei echtem Down bleibt garantiet (Test dafuer). Targeted go/vault-Tests + falls VM-noetig nur diagnose-weise. PR gegen develop, KEIN Merge.
+END O89-OPENBAO-RETRY-DONE mit pr + head + test.
