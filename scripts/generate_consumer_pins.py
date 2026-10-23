@@ -53,8 +53,8 @@ def main():
     demo_ref = os.environ.get('DEMO_REF', '1861ed07888a1ec22c218ca491d23ee54f48e261')
     console_ref = os.environ.get('CONSOLE_REF', '1861ed07888a1ec22c218ca491d23ee54f48e261')
 
-    # Strip 'v' prefix from tag
-    tag_version = tag.lstrip('v')
+    # Keep 'v' prefix for file naming
+    tag_version = tag
 
     pins = generate_consumer_pins(core_ref, connector_ref, console_ref, demo_ref, tag_version)
 

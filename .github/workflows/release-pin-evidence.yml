@@ -65,13 +65,15 @@ jobs:
       - name: evidence summary
         run: |
           set -euo pipefail
-          pins_file="docs/releases/${RELEASE_VERSION}.consumer-pins.json"
+          pins_file="docs/releases/${{ inputs.tag }}.consumer-pins.json"
           if [ -f "$pins_file" ]; then
-            echo "pin-evidence: SUCCESS tag=$RELEASE_VERSION"
+            echo "pin-evidence: SUCCESS tag=${{ inputs.tag }}"
             echo "pin-evidence: run_id=$GITHUB_RUN_ID"
-            echo "pin-evidence: artifact=consumer-pins-$RELEASE_VERSION"
+            echo "pin-evidence: artifact=consumer-pins-${{ inputs.tag }}"
             echo "pin-evidence: sha=$(git rev-parse HEAD)"
           else
-            echo "pin-evidence: FAILED no pins file generated" >&2
+            echo "pin-evidence: FAILED no pins file generated, looking for: $pins_file" >&2
+            echo "Contents of docs/releases/:" >&2
+            ls -la docs/releases/ 2>&1 || true
             exit 1
           fi
