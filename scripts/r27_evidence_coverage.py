@@ -56,6 +56,8 @@ def plan(required, proofs, *, stage, candidate, policy_digest,
         if not isinstance(value, str) or not value or len(value) > 128:
             raise ValueError("EVIDENCE_INPUT: invalid gate")
     required_set, failed_set = set(required), set(failed)
+    if not required_set:
+        raise ValueError("EVIDENCE_INPUT: at least one required gate must be specified")
     if not failed_set <= required_set:
         raise ValueError("EVIDENCE_INPUT: unknown failed gate")
     if stage == "release" and "release/smoke" not in required_set:
