@@ -89,3 +89,46 @@ def plan(required, proofs, *, stage, candidate, policy_digest,
                         reusable, pending, (), "Automatically schedule pending gates")
     return Decision("WAITING", "EVIDENCE_VERIFIER_REQUIRED", ordered, reusable,
                     (), (), "Submit complete candidate-bound proofs to the independent trusted verifier")
+
+
+def plan_verified(required, receipts, *, key, stage, candidate, policy_digest,
+                  artifact_digest=None, failed=(), trust_available=True):
+    """Advisory reuse based only on authenticated, exact-scope gate receipts.
+
+    The CI issuer must independently authenticate successful jobs before
+    signing. This function does not issue evidence or authorize promotion.
+    """
+    from r27_verified_coverage import EvidenceError, verify
+
+    baseline = plan(required, [], stage=stage, candidate=candidate,
+                    policy_digest=policy_digest, artifact_digest=artifact_digest,
+                    failed=failed, trust_available=trust_available)
+    if baseline.state == "BLOCKED":
+        return baseline
+    if not isinstance(receipts, dict):
+        raise ValueError("EVIDENCE_INPUT: receipts must be a gate-to-bytes map")
+    if set(receipts) - set(baseline.required):
+        raise ValueError("EVIDENCE_INPUT: receipt for unknown gate")
+    reusable = set()
+    for gate, raw in receipts.items():
+        try:
+            verify(raw, key=key, stage=stage, candidate=candidate,
+                   policy_digest=policy_digest, gate=gate,
+                   artifact_digest=artifact_digest)
+        except EvidenceError as exc:
+            raise ValueError(f"{exc} (gate={gate})") from exc
+        reusable.add(gate)
+    failed_set = set(baseline.failed)
+    reusable -= failed_set
+    pending = tuple(sorted(set(baseline.required) - reusable - failed_set))
+    good = tuple(sorted(reusable))
+    if failed_set:
+        return Decision("ACTION_REQUIRED", "EVIDENCE_GATE_FAILED", baseline.required,
+                        good, pending, baseline.failed,
+                        "Fix failed gates; rerun only affected requirements")
+    if pending:
+        return Decision("WAITING", "EVIDENCE_GATES_PENDING", baseline.required,
+                        good, pending, (), "Automatically schedule pending gates")
+    return Decision("READY_FOR_TRUSTED_ISSUER", "EVIDENCE_COVERAGE_VERIFIED",
+                    baseline.required, good, (), (),
+                    "Trusted CI issuer must independently confirm jobs and promotion policy")
