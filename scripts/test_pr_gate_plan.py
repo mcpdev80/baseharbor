@@ -38,6 +38,67 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+def git_rev_parse(root, ref):
+    result = subprocess.run(['git', '-C', str(root), 'rev-parse', ref],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_commit_tree(root, target, head):
+    tree = subprocess.run(['git', '-C', str(root), 'merge-tree', '--write-tree',
+                           target, head], text=True, capture_output=True).stdout.strip().splitlines()[0]
+    result = subprocess.run(['git', '-C', str(root), 'commit-tree', tree,
+                             '-p', target, '-p', head, '-m', 'pins fixture'],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_merge_base(root, a, b):
+    result = subprocess.run(['git', '-C', str(root), 'merge-base', a, b],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_init(root):
+    subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'pins fixture'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'pins@example.invalid'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'commit.gpgsign', 'false'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'checkout', '-b', 'develop'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'commit', '-q', '--allow-empty', '-m', 'pins base'],
+                   check=True, capture_output=True)
+
+
+def git_add_commit(root):
+    """Commit the working tree (with the added pins file) onto a pins branch.
+
+    develop stays at the clean base so the PR diff is exactly the pins add.
+    """
+    subprocess.run(['git', '-C', str(root), 'checkout', '-qb', 'pins'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'commit', '-q', '-m', 'add consumer-pins'],
+                   check=True, capture_output=True)
+
+
+def validate_pins_for_test(actual, root):
+    spec = importlib.util.spec_from_file_location(
+        'pr_check_runner', ROOT / 'pr-check-runner.py')
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    return runner.validate_pins_data('pins-data-validation', root)
+
+
 class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)
@@ -1077,6 +1138,117 @@ try:
 except ModuleNotFoundError:
     from test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests
 
+
+
+class PinsDataQualificationTests(unittest.TestCase):
+    def test_pins_only_added_file_resolves_with_exactly_pins_data_validation(self):
+        change = {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
+        result = planner.plan(diff([change]), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['broad_required'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual({'pins-data-validation'},
+                         {c['id'] for c in result['required_validation_checks']})
+        self.assertNotIn('ci-executor-verifier-tests',
+                         {c['id'] for c in result['required_validation_checks']})
+
+    def test_malformed_missing_and_mismatched_pins_data_stay_fail_closed(self):
+        for name in ['malformed-schema', 'missing-gates', 'wrong-repo', 'non-hex-commit']:
+            with self.subTest(name=name):
+                with tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    rel = root / 'docs' / 'releases'
+                    rel.mkdir(parents=True)
+                    bad = {
+                        'malformed-schema': {'schema': 'wrong', 'gates': {}},
+                        'missing-gates': {'schema': 'baseharbor.consumer-evidence-pins/v1'},
+                        'wrong-repo': {'schema': 'baseharbor.consumer-evidence-pins/v1',
+                            'gates': {'integration/docker/remote-target': {
+                                'connector': {'repository': 'other/repo', 'commit': 'e' * 40,
+                                              'workflow': '.github/workflows/release-integration.yml'},
+                                'console': {'repository': 'mcpdev80/baseharbor-console',
+                                            'commit': 'e' * 40,
+                                            'workflow': '.github/workflows/release-integration.yml'}}}},
+                        'non-hex-commit': {'schema': 'baseharbor.consumer-evidence-pins/v1',
+                            'gates': {'integration/docker/remote-target': {
+                                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                              'commit': 'not-hex', 'workflow': 'x'},
+                                'console': {'repository': 'mcpdev80/baseharbor-console',
+                                            'commit': 'e' * 40, 'workflow': 'x'}}}},
+                    }[name]
+                    git_init(root)
+                    (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(bad))
+                    git_add_commit(root)
+                    resolver_spec = importlib.util.spec_from_file_location(
+                        'resolver', ROOT / 'pr-diff-base.py')
+                    resolver = importlib.util.module_from_spec(resolver_spec)
+                    resolver_spec.loader.exec_module(resolver)
+                    target = git_rev_parse(root, 'develop')
+                    head = git_merge_base(root, 'develop', 'pins')
+                    head = git_rev_parse(root, 'pins')
+                    integrated = git_commit_tree(root, target, head)
+                    actual = resolver.resolve_pr_diff(root, target, head, integrated)
+                    self.assertFalse(actual['broad_required'], actual['reasons'])
+                    with self.assertRaises(RuntimeError):
+                        validate_pins_for_test(actual, str(root))
+
+    def test_divergent_connector_commit_across_gates_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rel = root / 'docs' / 'releases'
+            rel.mkdir(parents=True)
+            divergent = {
+                'schema': 'baseharbor.consumer-evidence-pins/v1',
+                'gates': {
+                    'integration/docker/remote-target': {
+                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                      'commit': 'a' * 40,
+                                      'workflow': '.github/workflows/release-integration.yml'}},
+                    'integration/static/live-console': {
+                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                      'commit': 'b' * 40,
+                                      'workflow': '.github/workflows/release-integration.yml'},
+                        'console': {'repository': 'mcpdev80/baseharbor-console',
+                                    'commit': 'c' * 40,
+                                    'workflow': '.github/workflows/release-integration.yml'}},
+                },
+            }
+            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(divergent))
+            git_init(root)
+            git_add_commit(root)
+            resolver_spec = importlib.util.spec_from_file_location(
+                'resolver', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(resolver_spec)
+            resolver_spec.loader.exec_module(resolver)
+            target = git_rev_parse(root, 'develop')
+            head = git_rev_parse(root, 'pins')
+            integrated = git_commit_tree(root, target, head)
+            actual = resolver.resolve_pr_diff(root, target, head, integrated)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            with self.assertRaises(RuntimeError):
+                validate_pins_for_test(actual, str(root))
+
+    def test_mixed_with_unrelated_json_keeps_own_coverage_requirements(self):
+        mixed = [
+            {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'},
+            {'status': 'added', 'path': 'other/data/config.json'},
+        ]
+        result = planner.plan(diff(mixed), REQ, MAP)
+        # The unrelated JSON still resolves through its own path rule; the pins
+        # add is not left as unknown impact.
+        self.assertNotIn('other/data/config.json: unresolved', result['unresolved_coverage'])
+
+    def test_pins_add_not_added_stays_unresolved(self):
+        change = {'status': 'modified', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
+        result = planner.plan(diff([change]), REQ, MAP)
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_pins_path_outside_docs_releases_is_not_qualified(self):
+        change = {'status': 'added', 'path': 'docs/guide/v0.4.26.consumer-pins.json'}
+        result = planner.plan(diff([change]), REQ, MAP)
+        self.assertIn('unknown impact for docs/guide/v0.4.26.consumer-pins.json',
+                      result['unresolved_coverage'])
 
 
 class Core918TrustedCoverageTests(unittest.TestCase):
