@@ -61,6 +61,14 @@ class VerifiedCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_TRUST"):
             check(signed(), key=b"weak")
 
+    def test_empty_and_non_string_result_rejected(self):
+        with self.assertRaisesRegex(EvidenceError, "EVIDENCE_SIZE"):
+            check(b"")
+        for value in (None, True, 1, ["PASS"]):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    EvidenceError, "EVIDENCE_RESULT"):
+                check(signed(result=value))
+
     def test_non_dict_json_rejected(self):
         for raw in (b"[]", b"null", b"42", b'"hello"'):
             with self.subTest(raw=raw), self.assertRaisesRegex(
