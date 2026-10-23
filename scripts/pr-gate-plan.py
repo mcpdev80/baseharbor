@@ -745,7 +745,6 @@ def plan(diff, requirements, mapping, repository='.',
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
          [wizard_check('wizard-app-edit-tests')],
          'reviewed zero-needs Edit preview envelope with guided regression'),
-
         (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed v0.4.26 immutable ecosystem resolver activation'),
