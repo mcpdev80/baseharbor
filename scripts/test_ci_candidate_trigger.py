@@ -108,7 +108,7 @@ class CandidateTriggerTests(unittest.TestCase):
             "base": {"ref": "develop"}, "labels": [],
         }
 
-        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false"}):
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
             with patch.object(module, "gh", side_effect=[base, base, None]) as api:
                 module.publish("example/repo", 15, sha)
                 self.assertEqual([call.args[0] for call in api.call_args_list],
@@ -143,11 +143,35 @@ class CandidateTriggerTests(unittest.TestCase):
                     module.publish("example/repo", 15, sha)
                 self.assertEqual(api.call_count, 3)
 
-        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true"}):
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "true", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
             with patch.object(module, "gh") as api:
                 with self.assertRaisesRegex(RuntimeError, "outside GitHub Actions"):
                     module.publish("example/repo", 15, sha)
                 api.assert_not_called()
+
+    def test_release_rollout_lock_denies_api_calls(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate_lock", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false"}, clear=True):
+            with patch.object(module, "gh") as api:
+                with self.assertRaisesRegex(RuntimeError, "rollout locked"):
+                    module.publish("example/repo", 15, "a" * 40)
+                api.assert_not_called()
+
+    def test_draft_candidate_is_rejected(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate_draft", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        draft = {"draft": True, "state": "open", "head": {"sha": "a" * 40},
+                 "base": {"ref": "develop"}, "labels": []}
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
+            with patch.object(module, "gh", return_value=draft) as api:
+                with self.assertRaisesRegex(RuntimeError, "draft PR"):
+                    module.publish("example/repo", 15, "a" * 40)
+                self.assertEqual(api.call_count, 1)
 
     def test_gc_pr_events_are_candidate_only(self):
         source = GC.read_text()
