@@ -51,3 +51,5 @@ BRANCH-ONLY Regel (Owner): keine Merges in develop/main, alles auf eigenen branc
 INCIDENT o85 (2026-10-23): Lane fuehrte git checkout -b + commit IM OPS-ROOT-REPO statt baseharbor aus (branch-Name kollidierte, ganzer Tree auf Core-Inhalt). Konsequenz: alle kuenftigen Missionen erhalten die Zeile "ALLE git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor[-plan|-console|-node-connector|-demo], NIEMALS im Root-Repo". Recovery: master-Checkout, Branch geloescht, 39/39 Dateien + Daemon ok.
 
 WORKTREE-PFLICHT: alle Produkt-Missionen nutzen git worktree add <pfad> -b <branch> <base-sha>; main-Worktrees NIE switchen (Kollisionsquelle, o88-Fund).
+
+INCIDENT#2 (q87/q88): git checkout -b IM ROOT statt baseharbor (cwd-Rutsch) -> root auf core-branch. Recovery: checkout master, branch geloescht. NEUE MISSIONS-REGEL: Prompt-Prafix "pwd-PFLICHT: vor jedem git-Befehl pwd pruefen; in /home/marcel/dev/baseharbor-ecosystem ROOT ist KEIN git erlaubt (kein -C-Vergessen)."
