@@ -78,3 +78,6 @@
 {"nonce":"dispatch-1792792193-3309072-26875","sid":"54c251da-1d20-4b4b-be6a-9c9e081a9016","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792792506-3352673-16327","sid":"54c251da-1d20-4b4b-be6a-9c9e081a9016","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792792742-3388720-8063","sid":"b9e662b5-11a8-4ec8-b16f-d2693491ece3","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792793041-3414856-1433","sid":"bf622c3c-6b82-4afa-9131-c9cbf668c67e","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792793212-3445866-4458","sid":"1a5ba528-32e0-4d34-9acb-419856cc0fee","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792793281-3459538-30094","sid":"cdb41991-4063-456d-a457-5507c284100b","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

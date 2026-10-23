@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber git -C .../baseharbor, Root-git verboten.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f34-rev1053.md mit PLAN + todowrite ([wip:f34]).
+ unabhaengiges Review PR #1053 (baseharbor, head 8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c): Wizard-Hang-Fix in freshFacts/Step (internal/cli). Kriterien: SHA-genauer Diff gegen develop 1861ed07, Logik des Timeout-Guards haelt die f30-Root-Cause-Hypothese (Cluster B), Regressionstest deckt den Hang deterministisch ab (fail-first nachweisbar), keine Nebenwirkungen auf andere Wizard-Pfade (tests go test ./internal/cli/... voll), Scope minimal. KEIN Merge, KEIN Kommentar im PR (nur Evidence-Datei).
+END F34-REV1053-DONE mit verdict + begruendung.

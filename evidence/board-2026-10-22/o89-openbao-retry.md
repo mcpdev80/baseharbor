@@ -41,4 +41,12 @@ Race-Fenster: Nach Control-Plane-Restart unter rootless Podman bindet OpenBao de
 - Forensik: `evidence/board-2026-10-22/f30-w1forensics.md` Cluster C (read-only).
 - Prompt: `evidence/board-2026-10-22/prompts/o89.txt`.
 
+## Abschluss (o89)
+
+- Commit (candidate SHA): `e371ebdcead7fb64f2a8559c0f7fe299311febb2` — branch `work/v0.4.26-openbao-retry`
+- PR: https://github.com/mcpdev80/baseharbor/pull/1052 (gegen develop, KEIN Merge)
+- Lokale Prüfung: `go build/vet` ok; `internal/openbao` Tests green (inkl.
+  `TestUnsealConvergesAfterMemberRestartRace` + `TestUnsealFailsFastWhenMemberNeverAnswers`).
+- Podman/telemetry Gate-Fails sind pre-existing auf base (env-spezifisch), nicht betroffen.
+
 END O89-OPENBAO-RETRY-DONE mit pr + head + test
