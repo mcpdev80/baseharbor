@@ -40,7 +40,7 @@ class CoverageTests(unittest.TestCase):
         d = plan(required, [proof("sql"), proof("release/smoke", artifact=ARTIFACT)],
                  stage="release", candidate=SHA, policy_digest=POLICY,
                  artifact_digest=ARTIFACT)
-        self.assertEqual(d.state, "PASS")
+        self.assertEqual((d.state, d.code), ("WAITING", "EVIDENCE_VERIFIER_REQUIRED"))
 
     def test_release_without_smoke_or_artifact_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_ARTIFACT"):
