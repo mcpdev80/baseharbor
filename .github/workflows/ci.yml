@@ -651,6 +651,7 @@ jobs:
           python3 scripts/test_pr_verified_atomic_evidence.py
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
+          python3 scripts/test_targeted_gate_ref.py
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
