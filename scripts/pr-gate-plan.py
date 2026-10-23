@@ -243,16 +243,6 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
 
-# v0.4.26 data-capabilities runtime gate step budget split only: the suite
-# raises its step timeout from 8 to 25 minutes with the data profile gate
-# override; no runner, consent or evidence surface changes. The bound source
-# carries the split inside the existing workflow syntax and CI policy owners.
-RUNTIME_STEP_CAP_REVIEWED_HEAD = '940fa69416520e2fe05346c24f45bd839860aff4'
-RUNTIME_STEP_CAP_REVIEWED_FILES = {
-    '.github/workflows/pre-release-runtime-suite.yml': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-}
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
 ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
