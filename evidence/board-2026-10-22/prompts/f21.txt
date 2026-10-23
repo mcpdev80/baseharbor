@@ -1,0 +1,3 @@
+FIRST ACTION: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f21-defectclose.md (ABSOLUT) mit PLAN + todowrite ([wip:f21]).
+Karte t-20261019-v0426-complete-defect-audit (blocked). o32 hat alle Befunde als IN-C2 verifiziert. Erzeuge das Closure-Memo: je Audit-Befund -> fix-PR/Merge-Referenz in develop 1861ed07 (SHA-genau, grep genuegt), plus Status-Vorschlag pro Karte (core-923 etc. nur Vorschlag, keine Status-Aenderung durch dich). Lies Task-Contract auf Status-Uebergangsregeln.
+END F21-DEFECTCLOSE-DONE mit memo-field (alle-covered: yes/no).

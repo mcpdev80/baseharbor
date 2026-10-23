@@ -34,3 +34,6 @@
 - [ ] nach q39: daemon restart, o46/q38 nachholen, dann C2-Kette: S39 fe17e6e5 S42 c34740fa -> Q-PR -> merges -> develop -> D2 pin (demo main 82d042b) -> W1 (consumer_ref=40hex tips! nicht leer)
 - [ ] prepare/qualify naechste: codex-verdicts-2026-10-23.md 4x CHANGES, Rezepte in Arbeit
 OPERATION: never push plan changes before check=0 (run check, on error fix+amend, THEN push) - codify in future dispatch prompts.
+REGEL (Owner 2026-10-23): 5 Worker-Slots sind Dauer-Kontingent; bei frei werdendem Slot sofort naechsten Auftrag dispatchen (keine Idle-Slots, keine Scheinauftraege).
+
+REGELN 2026-10-23 (Owner, verbindlich): 5 Worker-Dauerkontingent, Luecke sofort fuellen; faire Modellreihenfolge ornith>qwen>flash bei gleicher Eignung; Batch-Spawn => verify-delivery liefert ambiguous-window => Pane-Beweis ist verbindlich, nie Blind-Resend.
