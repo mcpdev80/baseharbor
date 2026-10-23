@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: Exact BaseHarbor ref or commit SHA to test
+        description: Exact BaseHarbor branch/tag, refs/... path or full commit SHA (validated before checkout)
         required: true
         type: string
       demo_ref:
@@ -39,6 +39,33 @@ jobs:
       ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
 
     steps:
+      - name: Validate candidate ref before checkout
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ref="$CANDIDATE_REF"
+          fail_fast() {
+            echo "::error::candidate ref '$ref' is not a branch/tag; resolve to a ref or a full commit SHA before the gate checkout. actions/checkout fetches non-SHA values as +refs/heads/<value>* and cannot resolve a bare short SHA." >&2
+            exit 2
+          }
+          if [ -z "$ref" ]; then
+            echo "::error::candidate ref is empty; pass a branch/tag, refs/... path, or full commit SHA" >&2
+            exit 2
+          elif [[ "$ref" == refs/* ]]; then
+            :
+          elif [[ "$ref" =~ ^[0-9a-fA-F]{40}$ ]] || [[ "$ref" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$ref" --jq .sha >/dev/null || fail_fast
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$ref" >/dev/null 2>&1; then
+            :
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$ref" >/dev/null 2>&1; then
+            :
+          else
+            fail_fast
+          fi
+
       - name: Checkout BaseHarbor candidate
         id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -225,6 +252,7 @@ jobs:
           out="$RUNNER_TEMP/demo-runtime-diagnostics"
           rm -rf "$out"
           mkdir -p "$out"
+          printf 'runtime=%s\ngate=%s\ncheckout=%s\n' "${{ inputs.runtime }}" "${{ inputs.gate }}" "${{ steps.checkout.outcome }}" > "$out/preserve-summary.txt"
           if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
           cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
           if [ -d "$ARTIFACT_DIR/failure-runtime" ]; then
@@ -240,12 +268,12 @@ jobs:
           echo "::endgroup::"
 
       - name: Upload demo runtime diagnostics
-        if: failure() && inputs.runtime != 'static'
+        if: failure() && inputs.runtime != 'static' && steps.checkout.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: demo-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/demo-runtime-diagnostics
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 1
 
       - name: Run provider integration gate
@@ -315,12 +343,12 @@ jobs:
           cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
 
       - name: Upload atomic failure diagnostics
-        if: failure() && inputs.runtime != 'static'
+        if: failure() && inputs.runtime != 'static' && steps.checkout.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: atomic-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/atomic-runtime-diagnostics
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 1
 
       - name: Show original assertion before cleanup

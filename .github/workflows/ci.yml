@@ -137,6 +137,7 @@ jobs:
           python scripts/test_private_integration_producer.py
           python scripts/test_pre_release_integration.py
           python scripts/test_artifact_gc.py
+          python scripts/test_targeted_gate_ref.py
 
       - name: Validate private source access preflight
         run: python scripts/test_private_evidence_access_preflight.py
@@ -650,6 +651,7 @@ jobs:
           python3 scripts/test_pr_verified_atomic_evidence.py
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
+          python3 scripts/test_targeted_gate_ref.py
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
