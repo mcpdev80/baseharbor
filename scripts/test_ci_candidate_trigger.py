@@ -38,6 +38,31 @@ class CandidateTriggerTests(unittest.TestCase):
         self.assertIn('current.get("state") != "open"', source)
         self.assertIn('python3 "$RUNNER_TEMP/pr-required-final.py"', source)
 
+    def test_ready_events_and_label_signal(self):
+        def enabled(action, draft, label=None):
+            return action == "ready_for_review" or (
+                action == "opened" and not draft
+            ) or (action == "labeled" and label == "ci:validate")
+
+        cases = [
+            ("opened", False, None, True),
+            ("opened", True, None, False),
+            ("ready_for_review", False, None, True),
+            ("labeled", True, "ci:validate", True),
+            ("labeled", False, "unrelated", False),
+            ("synchronize", False, None, False),
+            ("reopened", False, None, False),
+        ]
+        for action, draft, label, expected in cases:
+            with self.subTest(action=action, draft=draft, label=label):
+                self.assertEqual(enabled(action, draft, label), expected)
+
+    def test_workflow_policy_always_checks_candidate_contract(self):
+        source = CI.read_text()
+        self.assertIn("python3 -m unittest scripts/test_ci_candidate_trigger.py -v", source)
+        self.assertIn("bash scripts/ci-workflow-policy.sh", source)
+        self.assertIn('"$RUNNER_TEMP/bin/actionlint" -shellcheck=', source)
+
     def test_gc_pr_events_are_candidate_only(self):
         source = GC.read_text()
         self.assertIn("types: [opened, ready_for_review, labeled]", source)
