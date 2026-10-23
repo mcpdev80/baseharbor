@@ -243,20 +243,6 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
 
-# Bare-SHA dispatch input resolution before the atomic gate checkout: the
-# ref owner scripts/targeted-gate-ref.py resolves dispatch targets ahead of
-# checkout; its selftest runs in the existing focused Python lane. No
-# execution, consent or evidence surface changes on the three bound workflows.
-DISPATCH_GATE_REF_REVIEWED_HEAD = '398bbdbd37eefd292d62b8663ce52d381bf0685d'
-DISPATCH_GATE_REF_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    '.github/workflows/pre-release-runtime-suite.yml': 'modified',
-    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
-    'scripts/targeted-gate-ref.py': 'added',
-    'scripts/test_targeted_gate_ref.py': 'added',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-}
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
 ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
@@ -760,9 +746,7 @@ def plan(diff, requirements, mapping, repository='.',
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
          [wizard_check('wizard-app-edit-tests')],
          'reviewed zero-needs Edit preview envelope with guided regression'),
-        (DISPATCH_GATE_REF_REVIEWED_HEAD, DISPATCH_GATE_REF_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed bare-SHA dispatch gate ref resolution with selftest'),
+
         (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed v0.4.26 immutable ecosystem resolver activation'),
