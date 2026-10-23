@@ -1,0 +1,1 @@
+CORRECTION (Owner): nichts mergen, nur eigene branches. connector integration-candidate.json direkt auf branch work/v0.4.26-integrations-docs pushen; console-Feld = Branch-HEAD von baseharbor-console work/v0.4.26-integrations-docs (q80 liefert ihn, kein merge). core=1861ed07 fixed, demo=25c319697fd3d89d894943e0f44cd3d5dde8b198. Resolver-precheck wie befohlen.

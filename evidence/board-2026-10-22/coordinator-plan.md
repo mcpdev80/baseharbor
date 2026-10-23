@@ -45,3 +45,5 @@ Kommunikationsregel (Marcel 2026-10-23): Bei Karten-Status IMMER die baseharbor-
 
 ROLLENKLARTEXT (Owner 2026-10-23): Coordinator fuehrt KEINE Produkt-/CI-Kommandos selbst aus (kein gh run/workflow dispatch, keine Merges) – alles ueber Worker-Lanes oder Codex-ROLL-Session. Worker-Lanes starten ihrerseits keine anderen Sessions/Explorer.ANKER-CHECK vor compact: dieser Text steht in evidence/board-2026-10-22/coordinator-plan.md (Regelblock + F29/o78/q57 Queue) und HANDOFF.md im plan-repo. Endgame: D2 gruen 25c3196, develop 1861ed07, W1 wartet auf o78-PR-Merge dann f29-Dispatch (--ref develop + alle 4 inputs 40-hex!), danach prepare/qualify, Publish nur mit Marcel-GO, 27 pausiert.
 26-FENCE (Owner 2026-10-23): Marcel macht 0.4.27 parallel selbst. Finger weg von 27-Karten/PRs. W1 ref/Resolver core = IMMER 1861ed07 fest, develop-move unerheblich. Planning: nur 26-Karten editieren.
+
+BRANCH-ONLY Regel (Owner): keine Merges in develop/main, alles auf eigenen branches; W1 ref fix 1861ed07.
