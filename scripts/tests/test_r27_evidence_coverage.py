@@ -93,6 +93,24 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
             plan_verified(["sql"], {"unknown": receipt("sql")}, **args)
 
+    def test_nonrelease_signed_artifact_must_be_explicitly_bound(self):
+        key = b"k" * 32
+        body = dict(schema=SCHEMA, stage="pr", candidate=SHA,
+                    policy_digest=POLICY, gate="sql", artifact_digest=ARTIFACT,
+                    result="PASS", run_id=11, attempt=1, job_id=12)
+        mac = hmac.new(key, json.dumps(body, sort_keys=True,
+                       separators=(",", ":")).encode(), hashlib.sha256).hexdigest()
+        receipt = json.dumps({**body, "mac": mac}).encode()
+        args = dict(key=key, stage="pr", candidate=SHA, policy_digest=POLICY)
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_ARTIFACT"):
+            plan_verified(["sql"], {"sql": receipt}, **args)
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_ARTIFACT"):
+            plan_verified(["sql"], {"sql": receipt},
+                          artifact_digest="e" * 64, **args)
+        result = plan_verified(["sql"], {"sql": receipt},
+                               artifact_digest=ARTIFACT, **args)
+        self.assertEqual(result.state, "READY_FOR_TRUSTED_ISSUER")
+
     def test_empty_required_gates_never_qualify(self):
         args = dict(stage="pr", candidate=SHA, policy_digest=POLICY)
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
