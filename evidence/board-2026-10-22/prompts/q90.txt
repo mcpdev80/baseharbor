@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber git -C .../baseharbor, Root-git verboten.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q90-rev1050.md mit PLAN + todowrite ([wip:q90]).
+READ-ONLY Review PR mcpdev80/baseharbor #1050 (head e551bc8b): Consumer-Pins-Datei fuer v0.4.26. Pruefe: Diff nur docs/releases/v0.4.26.consumer-pins.json, schema wie 25er-Vorbild (git show origin/develop:docs/releases/v0.4.25.consumer-pins.json), Werte exakt gegen connector integration-candidate.json (df1f4378, branch work/v0.4.26-integrations-docs), console 69d1d140, demo 25c3196, core 1861ed07; lokale Probe ecosystem_release_pins.py --tag v0.4.26. Kein Kommentar im PR, nur Evidence.
+END Q90-REV1050-DONE mit verdict.

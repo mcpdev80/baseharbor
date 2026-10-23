@@ -1,0 +1,4 @@
+pwd-PFLICHT: git NUR ueber git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor, ROOT-git verboten; eigener worktree.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o91-retryfix2.md mit PLAN + todowrite ([wip:o91]).
+Korrekturen zu PR #1052 nach Codex-Rezept (vollstaendig lesen: evidence/board-2026-10-23/codex-verdict-1052.md Worker-recipes): probeMemberState retries nur bei positiv identifiziertem transienten listen-Error; harte Grenze five total executions (attempt >= memberRestartAttempts terminiert); bootstrap_test.go mit phase-spezifischen/per-member Counters + case fuer false-Down. Push auf den EXISTIERENDEN branch work/v0.4.26-openbao-retry (PR #1052 update, nicht neu oeffnen), KEIN Merge, CI beobachten.
+END O91-RETRYFIX2-DONE mit head + testbeleg.

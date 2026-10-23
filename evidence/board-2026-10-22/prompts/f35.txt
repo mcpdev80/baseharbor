@@ -1,0 +1,3 @@
+pwd-PFLICHT: ROOT-git verboten, nur baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/f35-cimatrix.md mit PLAN + todowrite ([wip:f35]).
+READ-ONLY Analyse der drei Rest-PR-Pfade auf CI-Kompatibilitaet fuer v0.4.26: PR #1050 (data), #1052 (vault retry), #1053 (cli wizard) - jeweils die aktuellen Required-Check-Status live erfassen (gh pr checks), plus fuer JEDEN PR die Frage: welche Checks laufen, skippen, failen und WARUM (planner-Kategorisierung via scripts/pr-gate-plan.py nachvolziehbar machen: welche Rule greift fuer docs/releases/*.consumer-pins.json / internal/vault / internal/cli). Ziel: eine Tabelle, die nach o90-Merge voraussagt welche PRs sofort gruen werden. KEIN Aenderung.
+END F35-CIMATRIX-DONE mit tabelle.
