@@ -68,6 +68,7 @@ class CandidateTriggerTests(unittest.TestCase):
                 self.assertIn("github.event.action == 'ready_for_review'", condition)
                 self.assertIn("github.event.action == 'labeled'", condition)
                 self.assertIn("github.event.label.name == 'ci:validate'", condition)
+                self.assertIn("github.event.action == 'labeled' && !github.event.pull_request.draft", condition)
                 self.assertIn("github.event_name == 'pull_request'", condition)
                 self.assertIn("github.base_ref == 'develop'", condition)
         self.assertEqual(observed, candidates)
