@@ -6,31 +6,23 @@ on:
         description: 'Release tag (e.g. v0.4.26)'
         required: true
         default: 'v0.4.26'
-      core_ref:
-        description: '40-hex Core commit SHA'
-        required: true
-        default: '1861ed07888a1ec22c218ca491d23ee54f48e261'
-      connector_ref:
-        description: '40-hex Connector commit SHA'
-        required: true
-        default: '1861ed07888a1ec22c218ca491d23ee54f48e261'
-      demo_ref:
-        description: '40-hex Demo commit SHA'
-        required: true
-        default: '1861ed07888a1ec22c218ca491d23ee54f48e261'
 
 jobs:
   pin-evidence:
     runs-on: ubuntu-latest
+    env:
+      CORE_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
+      CONNECTOR_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
+      DEMO_REF: '1861ed07888a1ec22c218ca491d23ee54f48e261'
     steps:
       - name: checkout
         uses: actions/checkout@v4
 
-      - name: validate inputs
+      - name: validate refs
         run: |
           set -euo pipefail
           re='^[0-9a-f]{40}$'
-          for var in core_ref connector_ref demo_ref; do
+          for var in CORE_REF CONNECTOR_REF DEMO_REF; do
             val="${!var}"
             if ! [[ "$val" =~ $re ]]; then
               echo "error: $var is not a 40-hex SHA: $val" >&2
@@ -43,17 +35,15 @@ jobs:
             exit 1
           fi
 
-      - name: set env vars for script
+      - name: strip release tag
+        id: strip_tag
         run: |
-          echo "CORE_REF=${{ inputs.core_ref }}" >> "$GITHUB_ENV"
-          echo "CONNECTOR_REF=${{ inputs.connector_ref }}" >> "$GITHUB_ENV"
-          echo "DEMO_REF=${{ inputs.demo_ref }}" >> "$GITHUB_ENV"
-          echo "RELEASE_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
+          echo "RELEASE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
 
       - name: run ecosystem_release_pins.py
         run: |
           set -euo pipefail
-          echo "RELEASE_VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
           python3 scripts/ecosystem_release_pins.py \
             --core "$CORE_REF" \
             --tag "${RELEASE_VERSION}" \
@@ -61,27 +51,21 @@ jobs:
             --demo "$DEMO_REF" \
             --output "docs/releases/${RELEASE_VERSION}.consumer-pins.json"
 
-      - name: strip release tag
-        id: strip_tag
-        run: |
-          echo "TAG=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
-
       - name: upload consumer pins artifact
         uses: actions/upload-artifact@v4
         with:
-          name: consumer-pins-${{ env.TAG }}
+          name: consumer-pins-${{ env.RELEASE_VERSION }}
           path: docs/releases/*.consumer-pins.json
           retention-days: 30
 
       - name: evidence summary
         run: |
           set -euo pipefail
-          tag="${RELEASE_TAG#v}"
-          pins_file="docs/releases/${tag}.consumer-pins.json"
+          pins_file="docs/releases/${RELEASE_VERSION}.consumer-pins.json"
           if [ -f "$pins_file" ]; then
-            echo "pin-evidence: SUCCESS tag=$tag"
+            echo "pin-evidence: SUCCESS tag=$RELEASE_VERSION"
             echo "pin-evidence: run_id=$GITHUB_RUN_ID"
-            echo "pin-evidence: artifact=consumer-pins-$tag"
+            echo "pin-evidence: artifact=consumer-pins-$RELEASE_VERSION"
             echo "pin-evidence: sha=$(git rev-parse HEAD)"
           else
             echo "pin-evidence: FAILED no pins file generated" >&2
