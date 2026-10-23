@@ -142,6 +142,20 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
 APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
                             'internal/application/manifest_test.go': 'modified'}
 
+# Exact reviewed appid test-regression follow-up (#1046): six test-only sources
+# normalizing t.TempDir() roots to 0700 so machine umask cannot mask the
+# protected-owner guards differently between local runs and CI. No production,
+# parser or guard semantics change; no generic internal/application exemption.
+APPID_ENV_ROBUST_TEST_REVIEWED_HEAD = '3558250837759113b760a112e99994135d31bc00'
+APPID_ENV_ROBUST_TEST_REVIEWED_FILES = {
+    'internal/application/external_provider_registry_test.go': 'modified',
+    'internal/application/external_provider_removal_retry_test.go': 'modified',
+    'internal/application/external_provider_scope_test.go': 'modified',
+    'internal/application/protected_tempdir_test.go': 'added',
+    'internal/application/runtime_binding_projection_reset_test.go': 'modified',
+    'internal/application/telemetry_authorization_test.go': 'modified',
+}
+
 # Exact final-check repair: await mandatory policy and bounded authenticated
 # API job readiness. The adapter comes only from the immutable trusted base;
 # the verifier and original identity guards stay unchanged. No runtime exception.
@@ -979,6 +993,28 @@ def plan(diff, requirements, mapping, repository='.',
                 'validation_contract': ('All hosted checks required; native Docker '
                                         'acceptance remains separately mandatory.'),
                 'reasons': ['exact reviewed #1008 fixture-only correction']}
+    # Exact reviewed appid test-regression follow-up only; coverage is the
+    # existing static package validation that runs the changed test sources.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(APPID_ENV_ROBUST_TEST_REVIEWED_FILES) and
+            set(paths) == set(APPID_ENV_ROBUST_TEST_REVIEWED_FILES) and
+            all(ch.get('status') == APPID_ENV_ROBUST_TEST_REVIEWED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'],
+                                         APPID_ENV_ROBUST_TEST_REVIEWED_HEAD)):
+        require(CODE_CHECKS)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'resolved', 'unresolved_coverage': [],
+                'broad_required': False, 'selected_gates': [],
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Require every listed validation; the exact reviewed '
+                    'test-only source adds no product or guard behavior beyond the '
+                    'umask-deterministic tmp roots.'),
+                'reasons': ['exact reviewed appid test-regression follow-up: umask-deterministic '
+                            'protected tmp roots in internal/application test sources only']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
     if (valid and not diff['broad_required'] and not unresolved and
