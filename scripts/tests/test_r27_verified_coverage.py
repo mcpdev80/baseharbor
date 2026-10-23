@@ -71,6 +71,20 @@ class VerifiedCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_RESULT"):
             check(signed(result="FAIL"))
 
+    def test_cross_key_signature_rejected(self):
+        with self.assertRaisesRegex(EvidenceError, "EVIDENCE_SIGNATURE"):
+            check(signed(), key=b"z" * 32)
+
+    def test_signed_gate_mismatch_rejected(self):
+        with self.assertRaisesRegex(EvidenceError, "EVIDENCE_TARGET"):
+            check(signed(gate="sql"))
+
+    def test_signed_policy_and_candidate_mismatch_rejected(self):
+        for changes, code in ((dict(policy_digest="d" * 64), "EVIDENCE_POLICY"),
+                              (dict(candidate="d" * 40), "EVIDENCE_TARGET")):
+            with self.subTest(changes=changes), self.assertRaisesRegex(EvidenceError, code):
+                check(signed(**changes))
+
     def test_missing_release_artifact_rejected(self):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
             check(signed(), artifact_digest=None)
