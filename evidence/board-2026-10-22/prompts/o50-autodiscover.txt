@@ -1,0 +1,7 @@
+FIRST ACTION: evidence/board-2026-10-22/o50-autodiscover.md mit PLAN + todowrite ([wip:o50]).
+Mission ops/tasks/auto-discovery.md (im lokalen Ops-Git, Datei lesen) - alle 3 Teile:
+1. wait-workers.py Poll diffed agent list vs registered; running+unregistered lanes AUTOMATISCH observieren (idle/gone/END/PLAN wie registrierte).
+2. spawn-lane.sh: registration-failure -> rc!=0 + Fehler auf STDOUT + sid-File scripts/.last-spawn-<name>.sid.
+3. basics-check.py: UNMONITORED-Flag als Sicherheitsnetz.
+Write-Set: evidence/board-2026-10-19/scripts/ + ops/tasks/. Pflicht: fixtures fuer discovery-diff + failure-exit, suite rc=0 zweimal, py_compile/bash -n, danach ein SELF-TEST: basics-check --json zeigt registered==live fuer alle laufenden sessions.
+END O50-AUTODISCOVER-DONE.

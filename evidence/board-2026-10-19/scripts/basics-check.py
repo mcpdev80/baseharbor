@@ -162,6 +162,7 @@ def main(argv):
         state = json.load(open(STATE))
     except Exception:
         pass
+    registered = state.get("registered", {}) if isinstance(state, dict) else {}
     busy_since = state.get("busy_since", {})
     idle_streak = state.get("idle_streak", {})
     mix = {"flash": 0, "ornith": 0, "qwen": 0, "codex": 0}
@@ -169,6 +170,7 @@ def main(argv):
     exited = []
     busy_over = []
     unconfirmed = []
+    unmonitored = []
     if slist is not None:
         for s in slist:
             name = s.get("name", "")
@@ -199,6 +201,11 @@ def main(argv):
             bsy = busy_since.get(sid)
             if status == "busy" and isinstance(bsy, dict) and time.monotonic() - bsy.get("since", 0) > 2400:
                 busy_over.append("{} busy>40min".format(name))
+            # Finding (OPS-1): running-not-registered is UNMONITORED, a dispatch
+            # HOLD before auto-discovery ships. Guarded by a successful list
+            # above so a failed observation never fabricates the flag.
+            if registered and sid not in registered and name not in registered:
+                unmonitored.append(name)
     if exited:
         flags.append("EXITED PANES (separate signal, NOT task completion; verify evidence, "
                      "then rm or restart): {}".format(", ".join(sorted(set(exited)))))
@@ -208,6 +215,10 @@ def main(argv):
     if unconfirmed:
         flags.append("OBS: {} idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - "
                      "not reported as terminal".format(len(unconfirmed)))
+    if unmonitored:
+        flags.append("UNMONITORED: {} running lane(s) NOT registered with the watcher "
+                     "(- {} - dispatch-hold until discovered or stopped)".format(
+                         ", ".join(sorted(set(unmonitored))), len(set(unmonitored))))
     flags.extend(busy_over)
     want = {"flash": 1, "ornith": 2, "qwen": 2}
     for host, n in want.items():

@@ -323,17 +323,50 @@ def _run_watch_loop(state, state_path, coordinator_id, poll_interval, dry_run):
         time.sleep(poll_interval)
 
 
+def _discover(state, session, coordinator_id, dry_run, mono_now):
+    """OPS-1 auto-discovery: diff the live list against registered; any live id
+    not present is ADDED to observation immediately (same role=worker,
+    coordinator=coordinator) and a DISCOVERED event is emitted. The worker is
+    registered BEFORE the loop below so it is observed in this very pass with
+    the identical classifier as registered lanes."""
+    live_ids = set()
+    for s in session:
+        if s.get("id"):
+            live_ids.add(s["id"])
+    discovered = []
+    for live_id in sorted(live_ids):
+        if live_id in state["registered"]:
+            continue
+        state["registered"][live_id] = {
+            "added_at": _now_ms(),
+            "role": "worker",
+            "coordinator": coordinator_id,
+            "discovered": True,
+        }
+        dirty_msg = "WATCHER EVENT: DISCOVERED {} (running, not registered - " \
+                    "auto-adding to observation)".format(live_id)
+        _notify(state, coordinator_id, dirty_msg, dry_run, self_id=live_id)
+        discovered.append(live_id)
+    if discovered:
+        sys.stdout.write(
+            "wait-workers: auto-discovered {} lane(s): {}\n".format(
+                len(discovered), ", ".join(discovered)))
+    return discovered
+
+
 def _observe_pass(state, session, coordinator_id, dry_run, mono_now):
-    """One full observation pass over registered lanes (findings 1+3).
+    """One full observation pass (findings 1+3).
 
     Dialog scanning INCLUDES the coordinator; worker accounting excludes it.
     Idle events require classifier confirmation; UNKNOWN observations never
-    produce RESOLVED/gone/idle conclusions."""
+    produce RESOLVED/gone/idle conclusions. OPS-1 auto-discovery runs FIRST so
+    a running-but-unregistered lane joins observation in this same pass."""
     dirty = False
     names = state.setdefault("names", {})
     for s in session:
         if s.get("id"):
             names[s["id"]] = s.get("name") or ""
+    _discover(state, session, coordinator_id, dry_run, mono_now)
     entries = {s.get("id"): s for s in session}
     for worker_id in sorted(state["registered"]):
         # Finding 3: coordinator panes are scanned for dialogs too;

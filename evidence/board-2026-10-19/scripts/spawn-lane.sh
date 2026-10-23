@@ -115,8 +115,8 @@ resp="$(curl -sf -u "admin:$PW" -X POST -H 'Content-Type: application/json' \
   "http://127.0.0.1:3000/api/sessions/$sid/auto-compact" 2>/dev/null || true)"
 echo "$resp" | grep -q '"success":true' || echo "spawn-lane: WARN auto-compact not confirmed for $sid" >&2
 if ! python3 "$DIR/wait-workers.py" watch add "$sid" >/dev/null 2>&1; then
-  echo "spawn-lane: WATCH-ADD-FAILED for $sid - lane NOT marked ready for dispatch (MONITORING HOLD), lane preserved; fix watcher then 'watch add' manually" >&2
-  echo "$sid" >&2
+  { echo "spawn-lane: WATCH-ADD-FAILED for $sid - lane NOT marked ready for dispatch (MONITORING HOLD), lane preserved; fix watcher then 'watch add' manually"; } | tee /dev/stderr
+  echo "$sid" > "$DIR/.last-spawn-$name.sid" 2>/dev/null || true
   exit 8
 fi
 echo "$sid"

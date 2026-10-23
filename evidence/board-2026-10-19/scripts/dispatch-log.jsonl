@@ -10,3 +10,5 @@
 {"nonce":"dispatch-1792759233-686528-490","sid":"e48bcc04-7e15-4ca0-b45a-cff5bef68a8e","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792759494-702601-28251","sid":"dbd6154f-11c4-41ae-956b-7e4b61e87f73","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792759496-702740-13605","sid":"1813400d-5705-4f32-a195-a6ec29701635","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792759766-720377-27879","sid":"80688713-bfc4-436b-aa07-bd3dac83892c","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792759854-725126-13664","sid":"27e657ab-79a4-46b1-9e12-4b968fa6f524","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
