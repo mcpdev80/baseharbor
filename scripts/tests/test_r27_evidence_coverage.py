@@ -3,50 +3,65 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from r27_evidence_coverage import plan
+from r27_evidence_coverage import GateProof, plan
 
 SHA = "a" * 40
+OLD = "c" * 40
+POLICY = "b" * 64
+ARTIFACT = "d" * 64
+
+
+def proof(gate, candidate=SHA, policy=POLICY, artifact=None, authenticated=True):
+    return GateProof(gate, candidate, policy, artifact, authenticated)
 
 
 class CoverageTests(unittest.TestCase):
-    def test_reuses_authenticated_coverage(self):
-        decision = plan(["sql", "cli", "sql"], ["sql"], stage="pr", exact_candidate=SHA)
-        self.assertEqual(decision.state, "WAITING")
-        self.assertEqual(decision.reusable, ("sql",))
-        self.assertEqual(decision.pending, ("cli",))
-        self.assertEqual(decision.code, "EVIDENCE_GATES_PENDING")
+    def test_only_missing_gates(self):
+        d = plan(["sql", "docs"], [proof("sql")], stage="pr",
+                 candidate=SHA, policy_digest=POLICY)
+        self.assertEqual((d.state, d.reusable, d.pending),
+                         ("WAITING", ("sql",), ("docs",)))
 
-    def test_release_requires_smoke(self):
+    def test_stale_or_untrusted_cannot_pass(self):
+        for p in [proof("sql", OLD), proof("sql", policy="f" * 64),
+                  proof("sql", authenticated=False)]:
+            with self.subTest(p=p):
+                d = plan(["sql"], [p], stage="integration",
+                         candidate=SHA, policy_digest=POLICY)
+                self.assertEqual(d.state, "WAITING")
+
+    def test_release_smoke_bound_to_artifact(self):
+        required = ["sql", "release/smoke"]
+        for p in [proof("release/smoke", artifact="e" * 64),
+                  proof("release/smoke", OLD, artifact=ARTIFACT)]:
+            d = plan(required, [proof("sql"), p], stage="release",
+                     candidate=SHA, policy_digest=POLICY, artifact_digest=ARTIFACT)
+            self.assertEqual(d.pending, ("release/smoke",))
+        d = plan(required, [proof("sql"), proof("release/smoke", artifact=ARTIFACT)],
+                 stage="release", candidate=SHA, policy_digest=POLICY,
+                 artifact_digest=ARTIFACT)
+        self.assertEqual(d.state, "PASS")
+
+    def test_release_without_smoke_or_artifact_rejected(self):
+        with self.assertRaisesRegex(ValueError, "EVIDENCE_ARTIFACT"):
+            plan(["release/smoke"], [], stage="release", candidate=SHA,
+                 policy_digest=POLICY)
         with self.assertRaisesRegex(ValueError, "EVIDENCE_SMOKE"):
-            plan(["sql"], ["sql"], stage="release", exact_candidate=SHA)
-        decision = plan(["sql", "release/smoke"], ["sql"], stage="release", exact_candidate=SHA)
-        self.assertEqual(decision.pending, ("release/smoke",))
-        self.assertNotEqual(decision.state, "PASS")
+            plan(["sql"], [], stage="release", candidate=SHA,
+                 policy_digest=POLICY, artifact_digest=ARTIFACT)
 
-    def test_release_complete(self):
-        decision = plan(["sql", "release/smoke"], ["sql", "release/smoke"],
-                        stage="release", exact_candidate=SHA)
-        self.assertEqual(decision.state, "WAITING")\n        self.assertEqual(decision.pending, ("release/smoke",))
+    def test_failed_gate_and_trust(self):
+        args = dict(stage="pr", candidate=SHA, policy_digest=POLICY)
+        d = plan(["sql", "docs"], [proof("sql")], failed=["sql"], **args)
+        self.assertEqual((d.state, d.failed, d.pending),
+                         ("ACTION_REQUIRED", ("sql",), ("docs",)))
+        self.assertEqual(plan(["sql"], [proof("sql")],
+                              trust_available=False, **args).state, "BLOCKED")
 
-    def test_trust_failure_blocks_even_when_covered(self):
-        decision = plan(["sql"], ["sql"], stage="integration", exact_candidate=SHA, trusted=False)
-        self.assertEqual(decision.state, "BLOCKED")
-        self.assertEqual(decision.code, "EVIDENCE_TRUST")
-
-    def test_failure_is_actionable(self):
-        decision = plan(["sql", "cli"], ["sql"], failed=["sql"],
-                        stage="pr", exact_candidate=SHA)
-        self.assertEqual(decision.state, "ACTION_REQUIRED")
-        self.assertIn("sql", decision.summary)
-        self.assertEqual(decision.pending, ("cli", "sql"))
-
-    def test_unknown_coverage_fails_closed(self):
+    def test_unknown_gate_rejected(self):
         with self.assertRaisesRegex(ValueError, "EVIDENCE_INPUT"):
-            plan(["sql"], ["unknown"], stage="pr", exact_candidate=SHA)
-
-    def test_invalid_candidate_fails_closed(self):
-        with self.assertRaisesRegex(ValueError, "EVIDENCE_TARGET"):
-            plan(["sql"], [], stage="pr", exact_candidate="wrong")
+            plan(["sql"], [proof("other")], stage="pr",
+                 candidate=SHA, policy_digest=POLICY)
 
 
 if __name__ == "__main__":
