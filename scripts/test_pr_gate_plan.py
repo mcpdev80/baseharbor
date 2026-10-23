@@ -1578,6 +1578,18 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
         self.assertEqual({'cmd/baha/app_edit_apply_result.go': 'modified',
                           'cmd/baha/app_edit_zero_preview_test.go': 'added'},
                          planner.EDIT_ZERO_PREVIEW_REVIEWED_FILES)
+        self.assertEqual('75efeef89b61d848d5ea351877ba6423a31e58a6',
+                         planner.RUNTIME_STEP_CAP_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/pre-release-runtime-suite.yml': 'modified'},
+                         planner.RUNTIME_STEP_CAP_REVIEWED_FILES)
+        self.assertEqual('0267dbdb71f63a2c77e193618e6fba4106e5cd5b',
+                         planner.DISPATCH_GATE_REF_REVIEWED_HEAD)
+        self.assertEqual({'.github/workflows/ci.yml': 'modified',
+                          '.github/workflows/pre-release-runtime-suite.yml': 'modified',
+                          '.github/workflows/targeted-demo-acceptance.yml': 'modified',
+                          'scripts/targeted-gate-ref.py': 'added',
+                          'scripts/test_targeted_gate_ref.py': 'added'},
+                         planner.DISPATCH_GATE_REF_REVIEWED_FILES)
         self.assertEqual('f762f4480a2eb6b29ceebb35ae4032cb2ce7288c',
                          planner.MCP_PUBLIC_BOOTSTRAP_REVIEWED_HEAD)
         self.assertEqual({'cmd/baha/app_machine_adapters.go': 'modified',
@@ -1632,8 +1644,10 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
                                          wizard_check('wizard-core921-tests')]),
             ('NEW_TERMINAL_INPUT', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-new-tests')]),
-            ('EDIT_ZERO_PREVIEW', planner.CODE_CHECKS + planner.CLI_CHECKS +
-             planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests')]),
+             ('EDIT_ZERO_PREVIEW', planner.CODE_CHECKS + planner.CLI_CHECKS +
+              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests')]),
+             ('RUNTIME_STEP_CAP', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
+             ('DISPATCH_GATE_REF', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('DOCKER_RUNTIME_FIXTURE', planner.CI_CHECKS + planner.CODE_CHECKS +
              planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
