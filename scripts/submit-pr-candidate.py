@@ -27,12 +27,16 @@ def gh(method, path, *, data=None, allow_missing=False):
 
 
 def publish(repo, number, expected_sha):
+    if os.environ.get("BASEHARBOR_CANDIDATE_CI_ROLLOUT") != "enabled":
+        raise RuntimeError("candidate CI rollout locked until v0.4.26 completion and explicit owner approval")
     if os.environ.get("GITHUB_ACTIONS") == "true":
         raise RuntimeError(
             "Run candidate submission outside GitHub Actions using independent "
             "GitHub App/PAT credentials, never a workflow GITHUB_TOKEN."
         )
     pr = gh("GET", f"repos/{repo}/pulls/{number}")
+    if pr.get("draft"):
+        raise RuntimeError("draft PR cannot trigger candidate CI")
     if pr["state"] != "open":
         raise RuntimeError("PR is not open")
     if pr["head"]["sha"] != expected_sha:
@@ -47,7 +51,8 @@ def publish(repo, number, expected_sha):
            allow_missing=True)
     # Close the race between removing the old label and re-adding it.
     latest = gh("GET", f"repos/{repo}/pulls/{number}")
-    if latest["head"]["sha"] != expected_sha or latest["state"] != "open":
+    if (latest["head"]["sha"] != expected_sha or latest["state"] != "open"
+            or latest.get("draft") or latest["base"]["ref"] != "develop"):
         raise RuntimeError("candidate changed while preparing event; retry")
     gh("POST", f"repos/{repo}/issues/{number}/labels",
        data={"labels": ["ci:validate"]})
