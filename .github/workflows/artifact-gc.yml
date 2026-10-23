@@ -18,7 +18,7 @@ permissions: {}
 jobs:
   gc-tests:
     name: GC tests
-    if: ${{ github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'opened' && !github.event.pull_request.draft) || (github.event.action == 'labeled' && github.event.label.name == 'ci:validate')) }}
+    if: ${{ github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'opened' && !github.event.pull_request.draft) || (github.event.action == 'labeled' && !github.event.pull_request.draft && github.event.label.name == 'ci:validate')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
