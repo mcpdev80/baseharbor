@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/f37-rev1055.md mit PLAN + todowrite ([wip:f37]).
+READ-ONLY Review PR #1055 (branch work/ci-explicit-candidate-trigger-20261024): expliziter candidate-ready Trigger statt impliziter Qualifikation. Pruife: (a) Diff-Vollstaendigkeit (ci.yml + test_ci_candidate_trigger.py), (b) kein Wegfall bestehender Qualifikationen (fail-closed), (c) Vereinbarkeit mit o95/#1056 Aenderungen am pr-gate-plan - ueberlappungen als Konflikt-Befund, (d) Tests decken neuen Trigger. KEIN Merge.
+END F37-REV1055-DONE mit verdict.

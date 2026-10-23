@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/q94-retryfix3.md mit PLAN + todowrite ([wip:q94]).
+Du bist EINEIGENTLICH auf branch work/v0.4.26-openbao-retry (PR #1052, head 4cf071214). q93-Zweitreview-Befund (read: evidence/board-2026-10-22/q93-rev1052b.md, Abschnitt Verdict): bootstrap_test.go phase-counters 270-281/351-374 unzureichend fuer die Codex-Anforderung (phase-spezifische/per-member Status-Zaehler + case fuer false-Down). Umsetzung: Tests verschaerfen (fail-first gegen die aktuelle retry-Implementierung - zeige dass sie den Fall jetzt NICHT faengt, dann Implementierung nachbessern bis beide gruen), push auf denselben branch, KEIN Merge, PR-CI beobachten.
+END Q94-RETRYFIX3-DONE mit head + counter-beleg.

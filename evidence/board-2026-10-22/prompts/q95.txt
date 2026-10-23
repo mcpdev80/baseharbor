@@ -1,0 +1,3 @@
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q95-planning26.md mit PLAN + todowrite ([wip:q95]).
+REIN baseharbor-plan Repo (check=0 vor push, https-Evidence, keine Checkboxen in Evidenz-Pfaden): 26-Planning auf den realen Stand bringen: (1) Defect-Audit-Karte: PR-Welle #1050-1056 + review-verdicts (codex-verdict-1052, f34/o93/f37/q9x) als Referenzen erfassen, Status bleibt review bis Merges. (2) release-prepare-Karte: PR #1056/#1050 als prepare-Deliverables vermerken (PAUSEVERMERK bleibt, nur Zusatzinfo "owner-geplant ueber PR-Welle"). (3) appid-Karte t-20261020-develop-appid-manifest-test-regression: PR #1047 SKIP-Eintrag aktualisieren. Regelkonform, Karten-IDs精确.
+END Q95-PLANNING26-DONE mit board-sha.

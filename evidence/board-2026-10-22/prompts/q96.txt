@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/q96-1055checks.md mit PLAN + todowrite ([wip:q96]).
+READ-ONLY: Vollstaendiger Check-Katalog von PR #1055 (branch work/ci-explicit-candidate-trigger-20261024): alle required checks live (gh pr checks 1055), fuer jedes fail/skip: Job-Log-Stelle + Grund (test_ci_candidate_trigger.py laeuft dort?), plus ob die drei Produkt-PRs (#1052/#1053/#1050) mit dem #1055-Mechanismus sofort gruen WUERDEN (Begruendung an Code-Stellen, kein Rateakt).
+END Q96-1055CHECKS-DONE mit katalog.

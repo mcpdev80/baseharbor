@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor, ROOT-git verboten. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/o96-falsecase.md mit PLAN + todowrite ([wip:o96]).
+Eineigentuemer branch work/v0.4.26-openbao-retry (PR #1052, head 4cf07121). Codex-Tie-Break (read evidence/board-2026-10-23/codex-verdict-1052.md Abschnitt Tie-Break): drittes Rezept nur teilweise erfuellt - exakte false-Down case + missing file/Zeile dort nachlesen. Implementiere NUR die Luecke (test-first), push auf den branch, KEIN Merge, CI beobachten.
+END O96-FALSECASE-DONE mit head + diff.

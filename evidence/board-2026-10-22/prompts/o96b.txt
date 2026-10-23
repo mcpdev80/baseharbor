@@ -1,0 +1,1 @@
+STATUSCHECK (Coordination): branch head ist unveraendert (4cf07121), Evidence fehlt - dein Dialog ist vorbei, aber keine Push-Spur. Schreibe JETZT zuerst die Evidence-Datei mit deinem Stand und fuehre die false-Down-Test-Luecke zu Ende (push auf work/v0.4.26-openbao-retry wie befohlen) oder melde mit Gruenden END O96-FALSECASE-BLOCKED.
