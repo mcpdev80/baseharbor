@@ -150,6 +150,22 @@ class CandidateTriggerTests(unittest.TestCase):
                     module.publish("example/repo", 15, sha)
                 api.assert_not_called()
 
+    def test_label_removal_failure_aborts_submission(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate_delete", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sha = "a" * 40
+        labeled = {"draft": False, "state": "open", "head": {"sha": sha},
+                   "base": {"ref": "develop"}, "labels": [{"name": "ci:validate"}]}
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false",
+                                     "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
+            with patch.object(module, "gh", side_effect=[labeled, RuntimeError("HTTP 404")]) as api:
+                with self.assertRaisesRegex(RuntimeError, "HTTP 404"):
+                    module.publish("example/repo", 15, sha)
+                self.assertEqual([call.args[0] for call in api.call_args_list],
+                                 ["GET", "DELETE"])
+
     def test_release_rollout_lock_denies_api_calls(self):
         path = ROOT / "scripts/submit-pr-candidate.py"
         spec = importlib.util.spec_from_file_location("submit_pr_candidate_lock", path)
