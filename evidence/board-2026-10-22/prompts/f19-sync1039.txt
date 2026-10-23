@@ -1,0 +1,3 @@
+FIRST ACTION: evidence/board-2026-10-22/f19-sync1039.md mit PLAN + todowrite ([wip:f19]).
+Branch fix/v0426-stepcap-split (head 75efeef8, PR #1039 ACCEPTED): git merge origin/develop (5be7dabd, Q ist drin) in den Branch, Konflikte minimal aufloesen (Selector-Datei: Q-Eintraege gewinnen, Branch-Eintraege bleiben wie akzeptiert), normaler Push (kein force), dann gh pr checks beobachten bis app 15368 auf NEUEM SHA entschieden hat.
+Bestaetigung, dass develop-Sync die pr-gate-Datei nicht funktionsaendert (diff gegen 75efeef8 nur Merge-Kontext). END F19-SYNC1039-DONE mit neuer head SHA + Check-Status.

@@ -1,0 +1,3 @@
+FIRST ACTION: evidence/board-2026-10-22/o47-sync1042.md mit PLAN + todowrite ([wip:o47]).
+Branch fix/atomic-bare-sha-dispatch (head 0267dbdb, PR #1042 ACCEPTED): git merge origin/develop (5be7dabd, Q drin), minimale Konfliktloesung wie im Selector-Rezept, normaler Push, gh pr checks bis app 15368 entschieden.
+END O47-SYNC1042-DONE mit neuer head SHA + Check-Status.

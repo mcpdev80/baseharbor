@@ -1,0 +1,4 @@
+ROLLE: MERGE
+Merge #1043 (mcpdev80/baseharbor, head 81cb6365f1d1c5f4c0840253cd55649bb6c0f1d0, ACCEPT via codex-verdict-q1043.md rerun) als ordinary expected-HEAD squash in develop. Danach develop-HEAD notieren.
+Anschliessend dieselbe Prozedur fr die beiden ACCEPTED Source-PRs: #1039 (75efeef8...) und #1042 (0267dbdb...) - vor jedem Merge PR Selected Checks auf exakt dem aktuellen HEAD pruefen; falls strict-up-to-date failt wg. neuem develop (Q): NICHT selbst syncen, sondern Befund + exakten Bedarf in die Evidence, Stop.
+Evidence evidence/board-2026-10-22/codex-merge-q-wave.md (UTC, before/after, Run-IDs). END CODEX-QWAVE-MERGE-DONE.

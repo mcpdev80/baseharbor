@@ -75,3 +75,56 @@ Only this requested verdict file was written. No product implementation, test co
 Turn-start basics flags were read and triaged within REVIEW scope. Pool deficits are conditional coordinator scheduling notices; this assignment authorizes no pool fill. Coordinator PLAN age/open steps remain coordinator-owned; its source SHA references are stale compared with the live identities recorded here. Ten repeated idle watcher events concern another lane and require coordinator session inspection, not an invented success acknowledgment. Reminders concern the idle `o47-qpr` lane and pending #1043 review/merge; this file resolves only the review portion, with merging explicitly blocked. Events/reminders remain unacknowledged because their outstanding coordinator actions have not been completed; `events-check.py --ack` was not falsely used to clear them. No other lane was stopped or reassigned. Native TodoWrite could not be used because no such tool is exposed.
 
 END CODEX-Q1043-DONE
+
+## ROLLE: REVIEW — bounded rerun review PLAN (2026-10-23)
+
+- [x] 0. Read rerun dispatch and binding policies; record review-only scope before candidate inspection. The dispatch contains no numbered PLAN step 0. Native TodoWrite is not exposed by this session; tool discovery found no native Todo tool, so this evidence checklist is maintained without claiming native execution.
+- [x] 1. Refresh live account, Q/base/integration/source and Planning identities; triage basics flags within assigned REVIEW scope.
+- [x] 2. Compare exact two-file diff/blob identities with the prior verdict; authenticate latest CI attempt, required checks and run evidence.
+- [x] 3. Recheck identities and append ACCEPT/CHANGES-REQUIRED with actionable recipe and stop criteria. No merge or implementation.
+
+### Rerun verdict: ACCEPT
+
+**ACCEPT — unchanged Q candidate `81cb6365f1d1c5f4c0840253cd55649bb6c0f1d0`, bounded code/CI re-review.** This appended verdict supersedes the earlier mandatory-CI blocker for these exact inputs. No selector code correction is required. It is not a merge, Planning acceptance or release qualification.
+
+Independent reviewer: this assigned Codex REVIEW session, separate from implementation and CI owner o48. No Horde task was created; session UUID, exact model/backend identity are not exposed and are not invented. Live inspection 2026-10-23 12:37–12:40 UTC; `NTPSynchronized=yes`; authenticated GitHub account `mcpdev80`.
+
+#### Unchanged inputs and diff
+
+Live Q HEAD, current develop/base `9f4916be333d0f99d7e40001441d9dbb87e993e2` and integration `d17048422bad65c45366bac8841b4fa8925ce015` match the preceding review. Q is OPEN. S39 and S42 remain respectively `75efeef89b61d848d5ea351877ba6423a31e58a6` and `0267dbdb71f63a2c77e193618e6fba4106e5cd5b`. Current live identities were rechecked after evidence inspection.
+
+Exactly two changed files remain. Complete binary diff SHA256, checked twice, is unchanged: `1d83d5848b1401e07a06e0f7fbd0825da38a8bb8200dfdf7a05dbda7ff7bfc01`. Immutable planner blob remains `36c1641204d39dc6d4ff9a344fe597912e5facb3`; test blob remains `be21c16834f74a0c66ebd43f9323c6dc5210ee37`. This reuses the prior complete-diff review without duplicating it or altering the candidate.
+
+#### Authenticated rerun evidence
+
+[Run 39952469490, attempt 2](https://github.com/mcpdev80/baseharbor/actions/runs/39952469490/attempts/2) is COMPLETED/SUCCESS, event `pull_request`, exact Q head; completed 2026-10-23T12:33:18Z. `gh pr checks` exits 0. Latest check-suite 108287560308 check runs authenticate all checks below to GitHub Actions app **15368**, exact Q head:
+
+| Check | Conclusion | Latest job ID |
+| --- | --- | --- |
+| PR · Focused Python | SUCCESS | 120415147247 |
+| PR Selected Checks | SUCCESS | 120415720323 |
+| PR · Trusted Plan | SUCCESS | 120415196977 |
+| Workflow policy | SUCCESS | 120415148469 |
+| PR · Validation · pr-planner-tests | SUCCESS | 120415149616 |
+| PR · Validation · ci-policy | SUCCESS | 120415150436 |
+| PR · Validation · ci-executor-verifier-tests | SUCCESS | 120415149750 |
+
+The [Focused Python log](https://github.com/mcpdev80/baseharbor/actions/runs/39952469490/job/120415147247) now shows the previously failing direct planner suite completing 93 tests, OK, followed by remaining regressions and actionlint v1.7.12; the complete job succeeds. The [final gate log](https://github.com/mcpdev80/baseharbor/actions/runs/39952469490/job/120415720323) records `PLAN_JOB: success`, `FOCUSED_JOB: success`, `VALIDATION_JOB: success` and passes its required enforcement step. Latest job IDs differ from attempt 1; o48's reuse of the old Focused job ID is historical, not the successful rerun job identity.
+
+Downloaded and parsed `trusted-pr-plan` artifact ID **12500364637** in memory. Its exact base/head/integration match current inputs; `coverage_status=resolved`, `unresolved_coverage=[]`, `selected_gates=[]`; required validations are exactly `ci-executor-verifier-tests`, `ci-policy`, `pr-planner-tests`. Skipped runtime, native, consumer and release jobs are outside this trusted planner-only scope; none is counted as a successful required gate. Current develop rules still require strict `PR Selected Checks` from app 15368. No bypass, protection change or new rerun was performed.
+
+The rerun resolves the demonstrated transient CI blocker; it does not establish o48's claimed cleanup-race root cause. No fixture/product change is warranted by this evidence.
+
+#### Actionable recipe and stop criteria
+
+1. **Worker code changes: none.** Preserve `scripts/pr-gate-plan.py` and `scripts/test_pr_gate_plan.py` at the blob IDs above, Q and both source freezes. Reuse the verified successful attempt rather than starting more tests.
+2. A separately authorized MERGE assignment must refresh exact head/base/integration, independent review, source freezes, individual acceptance criteria, ownership/dependencies, unresolved review threads and live mandatory checks before any merge. The current Planning task is still active with owner o47 and placeholder acceptance/scope; this review does not repair that contract or certify unspecified acceptance criteria. Record/resolve that gap through its authorized owner before task acceptance. The bootstrap Maintainer/production pause remains binding; historical broader Planning resumption/authority prose is conflicting and does not activate MERGE in this assignment.
+3. **Stop:** changed candidate/source/base/integration, any missing/red/uncertain required gate, acceptance gap, unresolved required thread or owner stop. A changed diff needs fresh exact-source review; changed inputs require evidence valid for those inputs. Do not alter qualification maps, protections or CI enforcement to conceal a gap. Continue selector step 6 only after a separately authorized actual merge and verification.
+
+#### repo-rule compliance and basics disposition
+
+Only this assigned evidence file was edited. No product implementation, local test rerun, CI mutation, claim takeover, Planning mutation, merge, deployment or release. Product worktree currently reports only pre-existing untracked `worktrees/`; it was preserved. Product and Planning were fetched via public HTTPS after normal SSH failed on system SSH-config permissions and then key authentication; no credential/system configuration was changed. Planning local HEAD and fetched main both equal `34027ec84714226b5141b791db3835b61a4860c5`; task state remains active/owner o47. No native TodoWrite tool is exposed, so only the persistent PLAN checklist could be completed.
+
+Turn-start basics event/reminders were inspected. The idle o49 event and o47/q42/q43/o49 observation/reminder actions concern coordinator-owned lanes, not this REVIEW candidate. Pool deficits and coordinator PLAN age/open steps remain outside this bounded assignment and cannot override the cost/production pause. They are triaged here, not represented as resolved; no other session was removed, restarted or dispatched. Event/reminder acknowledgment remains pending with the coordinator because those actual lane actions have not been completed; `--ack` was not used to falsely clear them. This verdict resolves only the #1043 review portion of its reminder.
+
+END CODEX-Q1043-RERUN-DONE
