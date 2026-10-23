@@ -45,6 +45,7 @@ jobs:
       - name: run ecosystem_release_pins.py
         run: |
           set -euo pipefail
+          export GH_TOKEN="${GITHUB_TOKEN}"
           echo "Running ecosystem_release_pins.py..."
           echo "CORE_REF=$CORE_REF"
           echo "CONNECTOR_REF=$CONNECTOR_REF"
@@ -58,7 +59,8 @@ jobs:
             --demo "$DEMO_REF" \
             --output "docs/releases/${RELEASE_VERSION}.consumer-pins.json" 2>&1 || {
             echo "SCRIPT FAILED with exit code $?"
-            echo "Trying gh api directly..."
+            echo "Trying gh api directly with GH_TOKEN..."
+            export GH_TOKEN="${{ secrets.GITHUB_TOKEN }}"
             gh api repos/mcpdev80/baseharbor-node-connector/contents/integration-candidate.json?ref=$CONNECTOR_REF 2>&1 || echo "GH API FAILED"
             exit 1
           }
