@@ -28,3 +28,4 @@ REST-PR-PACK: 1050 pins, 1052 openbao-retry, 1053 wizard-timeoutguard. Reviews: 
 EXTERN: Session w1-baseharbor (nicht Coordinator-erzeugt, pool-seitig ausgenommen, Beobachtung nur).
 CI-MATRIX (f35): 1053 pass, 1050/1052 Meta-fail, 1055 fail/1056 prueft o92. Plan: 1056 (Planner-Fix) ist der Schluessel fuer alle, danach Re-Checks ohne neue Produkt-CI.
 MILESTONE: #1053 doppelt APPROVED (f34+o93). f36 finalisiert #1056 (Planner), o94 reviewed es. Danach Merges nur mit deiner Einzel-Freigabe.
+REVIEW-KANON nach q91-precheck: Reihenfolge 1056 -> 1050 -> Re-Check 1052/1053 -> W1. q93 rev 1052b laeuft. o95/f36 an 1056.

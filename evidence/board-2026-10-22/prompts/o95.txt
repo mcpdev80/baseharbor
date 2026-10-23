@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): evidence/board-2026-10-22/o95-remedy.md mit PLAN + todowrite ([wip:o95]).
+o94s Remedy-Rezept in evidence/board-2026-10-22/o94-rev1056.md (Abschnitt nach dem Verdict - wortlich lesen und abarbeiten) auf PR #1056 (branch o90-planner-pr) umsetzen, push auf denselben branch, KEIN Merge, Tests + CI-Status in den aktuellen Runs abwarten und in der Evidence notieren.
+END O95-REMEDY-DONE mit head + remedy-erledigt-liste.

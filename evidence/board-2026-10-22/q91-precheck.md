@@ -49,32 +49,17 @@ git -C /home/marcel/dev/baseharbor log --oneline refs/heads/pr-1054-planner-fix 
 
 ### Check (1): ecosystem_release_pins.py Pin-Kette
 
-**Datei**: `/home/marcel/dev/baseharbor/scripts/release/ecosystem_release_pins.py`
+**Datei**: `/home/marcel/dev/baseharbor-ecosystem/scripts/ecosystem_release_pins.py` (korrekter Pfad)
 
 **Code-Stelle**: `ecosystem_release_pins()` Funktion, Pin-Kette Aufruf
 
 **Ergebnis**: Prüfe ob `ecosystem_release_pins()` die komplette Pin-Kette ohne ValueError loest.
 
-```bash
-# Read-only check: pins-data loest Pin-Kette ohne ValueError
-python3 -c "
-import sys
-sys.path.insert(0, '/home/marcel/dev/baseharbor/scripts/release')
-try:
-    from ecosystem_release_pins import ecosystem_release_pins
-    result = ecosystem_release_pins()
-    print(f'ecosystem_release_pins() returned: {result}')
-    print('CHECK (1) PASS: Pin-Kette ohne ValueError')
-except ValueError as e:
-    print(f'CHECK (1) FAIL: ValueError: {e}')
-except Exception as e:
-    print(f'CHECK (1) ERROR: {type(e).__name__}: {e}')
-" 2>&1
-```
+**STATUS**: CHECK (1) WIRD AUSGEFUEHRT
 
 ### Check (2): pr-gate-plan.py 26er-Pfade Meta-Gate + Consumer-Pins
 
-**Datei**: `/home/marcel/dev/baseharbor/scripts/gate/pr-gate-plan.py`
+**Datei**: `/home/marcel/dev/baseharbor-ecosystem/baseharbor/scripts/pr-gate-plan.py` (korrekter Pfad)
 
 **Code-Stelle**: `categorize_path_26er()` oder analoge Funktion fuer 26er-Pfade
 
@@ -115,7 +100,9 @@ except Exception as e:
 
 ### Check (3): docs/releases/v0.4.26.consumer-pins.json digest-konsistent
 
-**Datei**: `/home/marcel/dev/baseharbor/docs/releases/v0.4.26.consumer-pins.json`
+**Datei**: `/home/marcel/dev/baseharbor-ecosystem/baseharbor/docs/releases/v0.4.26.consumer-pins.json` (korrekter Pfad)
+
+**FINDING**: Datei existiert NICHT. Nur `v0.4.23.consumer-pins.json` existiert. `v0.4.26.consumer-pins.json` wurde nicht gefunden.
 
 **Ergebnis**: digest-konsistent zu den vier Branch-HEADs (#1050, #1052, #1053, #1054).
 
@@ -141,17 +128,56 @@ except Exception as e:
 " 2>&1
 ```
 
+## PRE-CHECK AUSGEFUEHRT
+
+### CHECK (1): ecosystem_release_pins.py Pin-Kette
+
+**STATUS**: Module nicht importierbar - Abhaengigkeit `private_consumer_evidence` fehlt
+
+**Code-Stellen**:
+- `/home/marcel/dev/baseharbor-ecosystem/ecosystem_release_pins.py` existiert
+- Funktion `resolve_pins()` existiert und hat ValueError in Zeile 25+
+- Funktionssignatur: `resolve_pins(core, connector, candidate, console_candidate, demo_core, requested_demo, release)`
+- Abhaengigkeit: `from private_consumer_evidence import REPOSITORIES, WORKFLOW`
+- `private_consumer_evidence` ist NICHT installiert
+- **CHECK (1) ERGEBNIS**: Module kann nicht geladen werden -> Pin-Kette NICHT geprueft
+
+### CHECK (2): pr-gate-plan.py 26er-Pfade Meta-Gate + Consumer-Pins
+
+**STATUS**: Module erfolgreich geladen, Funktionen aufgelistet
+
+**Code-Stellen**:
+- `/home/marcel/dev/baseharbor-ecosystem/baseharbar/scripts/pr-gate-plan.py` existiert
+- Funktionen: `core752_reviewed_merge_chain()`, `main()`, `plan()`, `trusted_binding_checks()`, `validated_diff()`, `wizard_check()`
+- `26er` Pfade: Keine explizite `categorize_path_26er()` Funktion gefunden
+- **CHECK (2) ERGEBNIS**: Module existiert, aber 26er-Pfade-Kategorisierung NICHT explizit identifiziert
+
+### CHECK (3): docs/releases/v0.4.26.consumer-pins.json digest-konsistent
+
+**STATUS**: Datei existiert NICHT
+
+**FINDING**:
+- Gefordert: `docs/releases/v0.4.26.consumer-pins.json`
+- Nur existiert: `docs/releases/v0.4.23.consumer-pins.json`
+- `v0.4.26.consumer-pins.json` wurde NICHT gefunden
+- **CHECK (3) ERGEBNIS**: FAIL - Datei existiert nicht
+
 ## VERDICT
 
 **Q91-PRECHECK-DONE**
 
-Nach Ausfuehrung der oben stehenden Read-Only-Pruefungen:
+Nach Ausfuehrung der Read-Only-Pruefungen:
 
-- CHECK (1): Pin-Kette ohne ValueError?
-- CHECK (2): 26er-Pfade korrekt kategorisiert?
-- CHECK (3): digest-konsistent?
+- CHECK (1): Pin-Kette NICHT geprueft - Abhaengigkeit `private_consumer_evidence` fehlt
+- CHECK (2): 26er-Pfade NICHT kategorisiert - keine explizite `categorize_path_26er()` Funktion
+- CHECK (3): FAIL - `v0.4.26.consumer-pins.json` existiert NICHT
 
-**Verdict**: [bereit / nicht bereit] + grund
+**Verdict**: NICHT BEREIT
+
+**Grund**:
+1. Pin-Kette kann nicht ueprueft werden (fehlende Abhaengigkeit)
+2. 26er-Pfade-Kategorisierung nicht identifiziert
+3. `v0.4.26.consumer-pins.json` existiert nicht (nur v0.4.23)
 
 ---
 
