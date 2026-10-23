@@ -112,6 +112,14 @@ class VerifiedCoverageTests(unittest.TestCase):
                     EvidenceError, "EVIDENCE_ARTIFACT"):
                 check(signed(stage=stage), stage=stage)
 
+    def test_nonrelease_artifact_scope_is_enforced_when_supplied(self):
+        for stage in ("pr", "integration"):
+            with self.subTest(stage=stage):
+                raw = signed(stage=stage, gate="sql")
+                self.assertEqual(check(raw, stage=stage, gate="sql")["job_id"], 456)
+                with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
+                    check(raw, stage=stage, gate="sql", artifact_digest="d" * 64)
+
     def test_missing_release_artifact_rejected(self):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
             check(signed(), artifact_digest=None)
