@@ -1,0 +1,11 @@
+FORTSETZUNG cmx1047b - OWNER-ENTSCHEIDUNG LIEGT VOR (Marcel, 2026-10-24, woerentlich):
+"Nutze den bereits bestehenden Owner-Bypass in Ruleset 23754541 (`mcpdev80`, `pull_request`) fuer v0.4.26."
+Verifiziert vom Coordinator: `gh api repos/mcpdev80/baseharbor/rulesets/23754541` -> bypass_actors=[{actor_id:22537373=**mcpdev80**, actor_type:User, bypass_mode:pull_request}], required_approving_review_count=1, squash-only. Keine Regel-Aenderung, kein Admin-Modus, kein Force-Push - es wird ausschliesslich der bereits existierende, Owner-authorisierte per-PR-Bypass genutzt.
+
+AUFGABE: PR #1047 (head 40351fd30af9d1b12a3ea5b4b450056ea714f475, base develop, Checks success run 40076426268, freshness CLEAN, inhaltlich leerer Rebase lt. cmx1047b-Befund) JETZT mergen.
+1. Head-Wache vor der Aktion (muss 40351fd3... sein) + `gh pr checks 1047` final gruen.
+2. `gh pr merge 1047 --squash` (OHNE --admin, OHNE force). GitHub verbucht den Merge als Bypass durch den authorisierten User - das ist die freigegebene Route.
+3. Falls der Merge trotzdem abgelehnt wird: exakte Fehlermeldung + API-Pfad in die Evidence, BLOCKED-Meldung, KEIN Umgehungsversuch (kein zweiter Account, kein Ruleset-Edit, kein Admin).
+4. Post-Merge: develop-Log, develop-Checks (`gh run list --branch develop --limit 5`), neue develop-SHA. Danach #1046 naechsten Schritt NUR benennen (Rebase-Bedarf auf neue develop-SHA), nicht selbst ausfuehren.
+5. Evidence: Abschnitt "## RUNDE 3 (Owner-Bypass erteilt)" in evidence/board-2026-10-24/codex-merge-1047.md mit: UTC, Owner-Zitat, Bypass-Nachweis (API-Auszug), SHA before/after, Run-IDs.
+END CX-1047-MERGED mit develop-SHA / END CX-1047-BLOCKED mit Fehlerwortlaut.
