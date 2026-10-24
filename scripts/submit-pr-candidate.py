@@ -57,6 +57,12 @@ def publish(repo, number, expected_sha):
         raise RuntimeError("candidate label remains set; no new labeled event would fire")
     gh("POST", f"repos/{repo}/issues/{number}/labels",
        data={"labels": ["ci:validate"]})
+    observed = gh("GET", f"repos/{repo}/pulls/{number}")
+    if (observed["head"]["sha"] != expected_sha or observed["state"] != "open"
+            or observed.get("draft") or observed["base"]["ref"] != "develop"
+            or observed["base"]["sha"] != base_sha
+            or "ci:validate" not in {label["name"] for label in observed.get("labels", [])}):
+        raise RuntimeError("candidate label not confirmed on expected PR head")
     print(f"candidate label requested: {repo}#{number} {expected_sha}; CI result must be verified separately")
 
 
