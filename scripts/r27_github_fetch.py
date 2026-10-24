@@ -10,6 +10,17 @@ import re
 
 def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
                           job_id, expected_job_name, workflow_path, expected_event="pull_request"):
+    run, jobs = fetch_run_inventory(get_json, repository=repository,
+                                    run_id=run_id, attempt=attempt)
+    return verify_origin(
+        run=run, jobs=jobs, repository=repository, head_sha=head_sha,
+        run_id=run_id, attempt=attempt, job_id=job_id,
+        expected_job_name=expected_job_name, workflow_path=workflow_path,
+        expected_event=expected_event)
+
+
+def fetch_run_inventory(get_json, *, repository, run_id, attempt):
+    """Fetch complete attempt inventory once for single or aggregate verification."""
     if not callable(get_json):
         raise OriginError("EVIDENCE_ORIGIN: authenticated transport unavailable")
     if (not isinstance(repository, str) or repository.count("/") != 1
@@ -45,11 +56,7 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
                 and sum(len(p.get("jobs", [])) for p in pages if isinstance(p, dict))
                     == response["total_count"]) else None
             if jobs is not None:
-                return verify_origin(
-                    run=run, jobs=jobs, repository=repository, head_sha=head_sha,
-                    run_id=run_id, attempt=attempt, job_id=job_id,
-                    expected_job_name=expected_job_name, workflow_path=workflow_path,
-                    expected_event=expected_event)
+                return run, jobs
             page += 1
     except OriginError:
         raise

@@ -9,8 +9,9 @@ import urllib.request
 from r27_github_origin import OriginError
 
 _ALLOWED = re.compile(
-    r"repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/actions/runs/[1-9][0-9]*"
-    r"(?:/attempts/[1-9][0-9]*/jobs\?per_page=100&page=[1-9][0-9]*)?\Z"
+    r"repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:actions/runs/[1-9][0-9]*"
+    r"(?:/attempts/[1-9][0-9]*/jobs\?per_page=100&page=[1-9][0-9]*)?"
+    r"|pulls/[1-9][0-9]*|git/ref/heads/(?:develop|ci-policy/r27))\Z"
 )
 _LIMIT = 4 * 1024 * 1024
 
