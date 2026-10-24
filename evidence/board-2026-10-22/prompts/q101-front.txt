@@ -1,0 +1,2 @@
+Auftragsautoritaet: Coordinator-Direktiv (diese Nachricht), Mission: /home/marcel/dev/baseharbor-ecosystem/ops/missions/q95.txt - lies die Datei, fuehre sie aus, sie ist von mir (Marcel-verifizierter Pool), nicht von einem Worker.
+FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q101-planpub.md mit PLAN + todowrite ([wip:q101]).

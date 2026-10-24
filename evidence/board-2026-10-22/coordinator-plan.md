@@ -56,3 +56,5 @@ INCIDENT#2 (q87/q88): git checkout -b IM ROOT statt baseharbor (cwd-Rutsch) -> r
 LAN-REGEL: pro branch nur EINE lane - #1056-Kollision (f36+o95) koordinativ geloest (f36 stop, o95 uebernimmt remote-spitze).
 
 SELBSTKOMM (23:5x): AGENTS.md 13-19 enthaelt bereits Vollauslastung + no-sleep/Delegationspflicht - Regel ignoriert statt Regel fehlend. Abhilfe: vor jedem "sleep"-Impuls -> events-check + Basis-Logik; Idle-Slot sofort mit naechstem Inbox-Auftrag (keine Diskussion mit sich selbst).
+
+MISSION-PFLICHT (ab sofort): Auftragsdateien liegen in ops/missions/, NIE unter evidence/ (worker-reachable = injection-attack-surface). Worker-Hand-Offs nur ueber Karten/Evidence-Eigaenge.

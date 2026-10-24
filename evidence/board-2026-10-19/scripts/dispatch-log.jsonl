@@ -113,3 +113,13 @@
 {"nonce":"dispatch-1792799607-600538-1643","sid":"bec4d0b0-dfc8-4d88-bfa6-831c9ea15533","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792799609-600675-1373","sid":"cebfdcf9-7378-443c-b069-a01d85903f85","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792799647-607729-26026","sid":"e4a325c3-50d5-4194-98de-594287e23dae","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792799724-615496-1925","sid":"e4a325c3-50d5-4194-98de-594287e23dae","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792799737-616139-23597","sid":"e4a325c3-50d5-4194-98de-594287e23dae","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792799857-631698-12363","sid":"4941994a-78da-461b-b5b8-f8a09ea11818","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792799925-638384-8141","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792800084-653479-26772","sid":"0ac4a154-3ab0-46ba-b53b-535f1c2d0ba5","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792800097-657586-37","sid":"0ac4a154-3ab0-46ba-b53b-535f1c2d0ba5","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792800235-679754-11867","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","outcome":"currency-hold","currency":"unknown"}
+{"nonce":"dispatch-1792800287-691969-4900","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792800309-695320-30749","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","baseline_users":2,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792800370-709732-7656","sid":"250b0b68-dbcd-4209-9fd3-1747ce52f51a","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

@@ -1,0 +1,4 @@
+Auftragsquelle: Coordinator (Marcel-Pool), diese Datei ist dein Task-Vertrag.
+ERSTER SCHRITT (SCHREIB-TOOL VOR ALLEM): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f39-meta1056.md mit PLAN + todowrite ([wip:f39]). Ohne diese Datei keine weitere Arbeit.
+READ-ONLY Analyse (git nur in baseharbor, Root-git verboten): Warum failt "PR Selected Checks" in PR #1056 (branch o90-planner-pr, head zuletzt 4e737e26) als einziger Check? (1) aktueller run der branch, (2) Meta-Job-Log Schritt "Enforce every required check", (3) Code-Stelle die skipped-Jobs blockiert (pr-required-final.py + pr-gate-plan.py des HEADs), (4) Loest der #1055-Ansatz (explicit candidate trigger) dieselbe Luecke? Diagnose-Abschnitt + Rezept in die Datei.
+END F39-META1056-DONE mit rezept.
