@@ -26,6 +26,10 @@ def _unique(pairs):
     return obj
 
 
+def _reject_nonfinite(value):
+    raise EvidenceError("EVIDENCE_SCHEMA: nonfinite JSON constant")
+
+
 def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=None):
     """Validate MAC, exact scope and CI provenance from a trusted issuer."""
     if not isinstance(key, bytes) or len(key) < 32:
@@ -33,7 +37,7 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
     if not isinstance(raw, bytes) or not raw or len(raw) > MAX_BYTES:
         raise EvidenceError("EVIDENCE_SIZE: invalid receipt size")
     try:
-        record = json.loads(raw, object_pairs_hook=_unique)
+        record = json.loads(raw, object_pairs_hook=_unique, parse_constant=_reject_nonfinite)
     except (UnicodeError, ValueError) as exc:
         raise EvidenceError("EVIDENCE_SCHEMA: malformed JSON") from exc
     if not isinstance(record, dict) or set(record) != FIELDS | {"mac"}:
