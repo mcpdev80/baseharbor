@@ -4,6 +4,7 @@ Requires trusted caller to pin gate policy and provision secret credentials.
 Never a substitute for policy authorization or promotion qualification.
 """
 import hashlib
+import os
 import hmac
 import json
 from r27_verified_coverage import SCHEMA, SHA, DIGEST, GATE, MAX_BYTES, EvidenceError
@@ -13,6 +14,9 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
                       gate, run_id, attempt, job_id, expected_job_name,
                       workflow_path, expected_event="pull_request",
                       artifact_digest=None, policy_jobs=None, trusted_policy_digest=None):
+    # Additional fail-closed activation gate; not a runner trust boundary.
+    if os.environ.get("BASEHARBOR_TRUSTED_ISSUER") != "enabled":
+        raise EvidenceError("EVIDENCE_TRUST: issuer process not enabled")
     if type(key) is not bytes or len(key) < 32:
         raise EvidenceError("EVIDENCE_TRUST: trusted signing key unavailable")
     if stage not in ("pr", "integration", "release"):

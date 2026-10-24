@@ -1,6 +1,7 @@
 import sys,unittest,hashlib,json
 from pathlib import Path
 from unittest.mock import patch
+import os
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from r27_verified_issuer import issue_from_github
 from r27_verified_coverage import verify,EvidenceError
@@ -15,7 +16,13 @@ ARGS["policy_jobs"]=JOBS
 ARGS["policy_digest"]=hashlib.sha256(json.dumps(JOBS,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 ARGS["trusted_policy_digest"]=ARGS["policy_digest"]
 PROOF=dict(run_id=11,attempt=2,job_id=12,head_sha="a"*40,name="PR Selected Checks")
-class IssuerTests(unittest.TestCase):
+class ActivatedIssuerCase(unittest.TestCase):
+ def setUp(self):
+  p=patch.dict(os.environ,{"BASEHARBOR_TRUSTED_ISSUER":"enabled"})
+  p.start()
+  self.addCleanup(p.stop)
+
+class IssuerTests(ActivatedIssuerCase):
  def test_success_correlated_to_authenticated_job(self):
   with patch("r27_verified_issuer.fetch_authenticated_origin",return_value=PROOF) as origin:
    raw=issue_from_github(**ARGS)
@@ -39,7 +46,7 @@ class IssuerTests(unittest.TestCase):
     fetch.assert_not_called()
 
 
-class IssuerPolicyTests(unittest.TestCase):
+class IssuerPolicyTests(ActivatedIssuerCase):
  def test_unmapped_gate_denied_before_api(self):
   for policy in (None, {}, {"sql":{"workflow_path":".github/workflows/ci.yml",
                                     "job_name":"Unrelated Job"}}):
@@ -49,7 +56,7 @@ class IssuerPolicyTests(unittest.TestCase):
     origin.assert_not_called()
 
 
-class DigestBindingTests(unittest.TestCase):
+class DigestBindingTests(ActivatedIssuerCase):
  def test_policy_mutation_invalidates_digest_without_api(self):
   mutated={"sql":{"workflow_path":".github/workflows/ci.yml","job_name":"PR Selected Checks"},
            "docs":{"workflow_path":".github/workflows/docs.yml","job_name":"Docs"}}
@@ -59,7 +66,7 @@ class DigestBindingTests(unittest.TestCase):
    api.assert_not_called()
 
 
-class IndependentPolicyPinTests(unittest.TestCase):
+class IndependentPolicyPinTests(ActivatedIssuerCase):
  def test_policy_pin_required(self):
   for pin in (None, "x"*64, "", True):
    with self.subTest(pin=pin),patch("r27_verified_issuer.fetch_authenticated_origin") as api:
@@ -68,7 +75,7 @@ class IndependentPolicyPinTests(unittest.TestCase):
     api.assert_not_called()
 
 
-class StageEventBindingTests(unittest.TestCase):
+class StageEventBindingTests(ActivatedIssuerCase):
  def test_mismatched_stage_and_event_block_before_fetch(self):
   for stage,event in (("pr","push"),("pr","workflow_dispatch"),
                       ("integration","pull_request"),("release","push")):
@@ -80,7 +87,7 @@ class StageEventBindingTests(unittest.TestCase):
     api.assert_not_called()
 
 
-class FullPolicyValidationTests(unittest.TestCase):
+class FullPolicyValidationTests(ActivatedIssuerCase):
  def test_unrelated_malformed_mapping_is_not_signable(self):
   for extra in ({"workflow_path":"../../ci.yml","job_name":"job"},
                 {"workflow_path":".github/workflows/ci.yml","job_name":"job\nattack"},
@@ -91,3 +98,11 @@ class FullPolicyValidationTests(unittest.TestCase):
     with self.assertRaisesRegex(EvidenceError,"invalid complete mapping"):
      issue_from_github(**dict(ARGS,policy_jobs=mapping,policy_digest=digest,trusted_policy_digest=digest))
     api.assert_not_called()
+
+
+class DisabledIssuerTests(unittest.TestCase):
+ def test_issuer_disabled_by_default(self):
+  with patch.dict(os.environ,{"BASEHARBOR_TRUSTED_ISSUER":""}),patch("r27_verified_issuer.fetch_authenticated_origin") as api:
+   with self.assertRaisesRegex(EvidenceError,"issuer process not enabled"):
+    issue_from_github(**ARGS)
+   api.assert_not_called()
