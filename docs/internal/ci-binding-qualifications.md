@@ -84,3 +84,30 @@ Independent source review by /root/independent_review approves the exact four-fi
   ]
 }
 ```
+
+## Unbound Core SQL retirement regression CI qualification
+
+Owner-authorized exact CI source qualification; no independent review is claimed. This three-file source adds one mandatory executable regression/safety profile and an exact immutable binding for product source `938adee78ec2d10536f1834829facd8d9b1bec09`. It reuses the existing trusted executor and source/ancestry checks; missing, skipped and failed test families remain blocking. All144 planner/runner tests, existing nested utility checks, the six actual Go regression/safety families and workflow policy pass locally. Native acceptance of the corrected product remains pending. Only the authenticated target copy of this record authorizes CI; candidate-owned copies cannot qualify themselves.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "1b5acfeb17a538755e69545e9339bac894f86d66",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "bb38f470b0fc7878d83d858e2a15e6211626777112bef21613e0936728ab9d6e",
+    "scripts/pr-check-runner.py": "3a9ff8b808195ceb3dda8ae2d059f1fcafff429131f11d709f96485d94782ad9",
+    "scripts/test_pr_gate_plan.py": "98dcd7df9453e7539da3ff568f59aa0f5752f22e68a6918f45cd7dc1425c7cc9"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
