@@ -1,0 +1,27 @@
+{
+  "baseharbor/go.mod": {
+    "sha256": "abd362975a9c6c2c563aad360c4300893fac6e7fab0fbdf88f12d9b423b1c4e3",
+    "mtime_utc": "2026-10-24T11:55:25.882507+00:00",
+    "size": 2088
+  },
+  "baseharbor/go.sum": {
+    "sha256": "4869d9ebfebaa164de2f90af74faff81f82b2efd42df9826030724ada7e16a9f",
+    "mtime_utc": "2026-10-24T11:55:25.882088+00:00",
+    "size": 12999
+  },
+  "wt-wizardfix/cmd/baha/app_wizard_preview_bounded_test.go": {
+    "sha256": "0febaae818f5f7671069cf9e6e393686b5a428d3c8e202bee111af58f98b7994",
+    "mtime_utc": "2026-10-23T21:25:09.163311+00:00",
+    "size": 3176
+  },
+  "baseharbor/.git/index": {
+    "sha256": "6d1945384f64589ce4d111a1cc2fb5e11b3ccc395236cce63915bb64f7bf73d2",
+    "mtime_utc": "2026-10-24T11:58:48.126307+00:00",
+    "size": 279854
+  },
+  ".git/index": {
+    "sha256": "b05bebbf01060ca1cd1c1ff656c5a4d631fb5d5035dd26860f70303619552067",
+    "mtime_utc": "2026-10-24T12:38:55.600360+00:00",
+    "size": 195546
+  }
+}

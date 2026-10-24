@@ -1,0 +1,24 @@
+[
+  {
+    "probe": "dedicated executor actual call",
+    "exception": "ValueError",
+    "message": "unsupported executable validation"
+  },
+  {
+    "probe": "intended two-file OpenBao diff",
+    "coverage": "unresolved",
+    "validations": [
+      "source-contracts"
+    ],
+    "unresolved": [
+      "OpenBao production impact requires source/status binding or independent diff review: internal/openbao/bootstrap.go",
+      "OpenBao production impact requires source/status binding or independent diff review: internal/openbao/bootstrap_test.go"
+    ]
+  },
+  {
+    "probe": "record reviewed source available in fetched graph",
+    "reviewed_head": "89d87f7814242f0732779995b6a06c65e99b3f1a",
+    "returncode": 128,
+    "stderr": "fatal: git cat-file: could not get object info\n"
+  }
+]

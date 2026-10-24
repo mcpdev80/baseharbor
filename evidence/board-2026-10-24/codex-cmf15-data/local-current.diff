@@ -1,0 +1,99 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a434e797..cf84de8e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -716,6 +716,7 @@ jobs:
+             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
+             ci-executor-verifier-tests)
+               PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
++            openbao-package-tests) go test ./internal/openbao/... -count=1 ;;
+             *) exit 2 ;;
+           esac
+ 
+diff --git a/docs/internal/ci-binding-qualifications.md b/docs/internal/ci-binding-qualifications.md
+index df61996c..d96bfb70 100644
+--- a/docs/internal/ci-binding-qualifications.md
++++ b/docs/internal/ci-binding-qualifications.md
+@@ -6,16 +6,16 @@ Owner-authorized immutable source inventory for the exact #1060 candidate. This
+ {
+   "repository": "mcpdev80/baseharbor",
+   "target_branch": "develop",
+-  "reviewed_head": "9ec2528253e1d91c48f81985f7c696a663a29fd6",
++  "reviewed_head": "89d87f7814242f0732779995b6a06c65e99b3f1a",
+   "files": {
+     "scripts/pr-check-runner.py": "modified",
+     "scripts/pr-gate-plan.py": "modified",
+-    "docs/internal/ci-binding-qualifications.md": "modified"
++    "scripts/test_pr_gate_plan.py": "modified"
+   },
+   "file_hashes": {
+-    "scripts/pr-check-runner.py": "5fe7617cd9111774b76423c4850aefbe3503059a2da072ebce77b4a0cc9f2a8a",
+-    "scripts/pr-gate-plan.py": "6d20a39e6893241ea7ec8453ad91414ca9035e6014abc21b1c6a99bbb3c768a3",
+-    "docs/internal/ci-binding-qualifications.md": "609257b57d8bf46d4736db9838a12bf5e990dc891e3d610e275352c2a99ebfca"
++    "scripts/pr-check-runner.py": "f71bf2cf1dac197ff0b998630c165c70f1c83a742e38245bfbc256f8c630c36d",
++    "scripts/pr-gate-plan.py": "38967c37f3d11c5e5c392cc6c39e7ba5711be0f3c2bacad861b4b7b02ec8f673",
++    "scripts/test_pr_gate_plan.py": "c291efdd8146a8d801ad747a59e889d5d6ecf91285829a7476c4788a37e285d7"
+   },
+   "required_checks": [
+     "pr-planner-tests",
+diff --git a/scripts/pr-gate-plan.py b/scripts/pr-gate-plan.py
+index fdeae8d1..978c10eb 100644
+--- a/scripts/pr-gate-plan.py
++++ b/scripts/pr-gate-plan.py
+@@ -653,7 +653,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
+         record = json.loads(blocks[0], object_pairs_hook=unique_object)
+         expected_files = {path: 'modified' for path in (
+             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+-            'docs/internal/ci-binding-qualifications.md')}
++            'scripts/test_pr_gate_plan.py')}
+         expected_ids = {check['id'] for check in CI_CHECKS}
+         if (not isinstance(record, dict) or set(record) != {
+                 'repository', 'target_branch', 'reviewed_head', 'files',
+diff --git a/scripts/test_pr_gate_plan.py b/scripts/test_pr_gate_plan.py
+index ec027225..25554d0a 100644
+--- a/scripts/test_pr_gate_plan.py
++++ b/scripts/test_pr_gate_plan.py
+@@ -2183,6 +2183,43 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
+         self.assertEqual('unresolved', planned['coverage_status'], planned)
+         self.assertTrue(planned['unresolved_coverage'])
+ 
++# OpenBao package-tests validation and fail-closed handling.
++class OpenBaoValidationTests(unittest.TestCase):
++    def test_openbao_package_tests_is_a_known_check(self):
++        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
++        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
++
++    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
++        """Unreviewed OpenBao production paths must remain unresolved."""
++        for name in ['internal/openbao/unreviewed_security_mutation.go',
++                     'internal/openbao/managed_credentials.go',
++                     'internal/openbao/application_runtime_client.go',
++                     'internal/openbao/dev_access.go']:
++            with self.subTest(path=name):
++                result = planner.plan(diff(paths(name)), REQ, MAP)
++                self.assertEqual('unresolved', result['coverage_status'])
++                self.assertTrue(result['unresolved_coverage'])
++                self.assertTrue(
++                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
++                )
++
++    def test_openbao_add_delete_rename_stay_unresolved(self):
++        """Added, deleted, renamed OpenBao files must stay fail-closed."""
++        variants = [
++            paths('internal/openbao/bootstrap.go'),
++            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
++            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
++              'new_path': 'internal/openbao/new_bootstrap.go'}],
++            paths('internal/openbao/bootstrap.go',
++                  'internal/openbao/unreviewed_addition.go'),
++            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
++        ]
++        for changes in variants:
++            with self.subTest(changes=changes):
++                result = planner.plan(diff(changes), REQ, MAP)
++                self.assertEqual('unresolved', result['coverage_status'])
++                self.assertTrue(result['unresolved_coverage'])
++
+ # main() entrypoint must source the authenticated evaluation context from the
+ # runner environment, never from the candidate PR, and must fail closed when
+ # either value is absent. These tests drive planner.main() with monkeypatched

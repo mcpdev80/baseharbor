@@ -1,0 +1,12 @@
+worktree /home/marcel/dev/baseharbor-ecosystem
+HEAD d1fc46312e85f4cd5672420d51cf8daa29312cae
+branch refs/heads/master
+
+worktree /home/marcel/tmp-ops/o135-design
+HEAD b0abe10526554960b827dd0f4a503a10cebff911
+detached
+
+worktree /tmp/o128-r-worktree
+HEAD 32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2
+detached
+

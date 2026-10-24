@@ -1,9 +1,9 @@
 {
- "at": 1792844806,
+ "at": 1792846664,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792844809,
+   "observed_at": 1792846668,
    "prs": {
     "1046": {
      "head": "1ec67f8d4",
@@ -26,7 +26,7 @@
      "state": "OPEN"
     },
     "1060": {
-     "head": "6a0d36dad",
+     "head": "13a05ea49",
      "merge": "DIRTY",
      "state": "OPEN"
     }
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792844810,
+   "observed_at": 1792846668,
    "prs": {
     "9": {
      "head": "6017de284",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792844809,
+   "observed_at": 1792846668,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792844810,
+   "observed_at": 1792846669,
    "prs": {
     "10": {
      "head": "e832d5651",
@@ -67,9 +67,9 @@
   }
  },
  "health": {
-  "board_currency": "stale",
-  "mem_available_mb": 6000,
-  "tmp_free_mb": 5958,
+  "board_currency": "ok",
+  "mem_available_mb": 6530,
+  "tmp_free_mb": 5651,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -81,52 +81,43 @@
  "lanes": [
   {
    "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 515,
+   "idle_s": 0,
    "mode": "codex",
    "model": "GPT-6.1-Sol",
    "name": "codex-merge26",
    "self": false,
-   "status": "idle"
+   "status": "busy"
   },
   {
-   "id": "e350f992-89f3-4517-a6e2-5a9be676c514",
-   "idle_s": 29,
+   "id": "cc353b61-8c14-416d-b896-89709d5c761f",
+   "idle_s": 71,
    "mode": "opencode",
    "model": null,
-   "name": "f55",
+   "name": "f57",
    "self": false,
    "status": "idle"
   },
   {
-   "id": "087443b5-e09b-4f6c-b426-46be1efad37a",
-   "idle_s": 96,
-   "mode": "opencode",
-   "model": null,
-   "name": "o133",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "276e1198-16bb-49ed-9388-ee8b47c9dc3d",
+   "id": "7b4e97b4-5651-4459-8a41-27acc53fcfa1",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "q117",
+   "name": "o136",
    "self": false,
    "status": "busy"
   },
   {
-   "id": "120be22b-9e27-4b26-bd37-5735fe6079b3",
+   "id": "09be2ce5-a572-4390-99b0-7e944415765b",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "q119",
+   "name": "q120",
    "self": false,
    "status": "busy"
   },
   {
    "id": "adebf29e-6371-4a14-afa6-e8828693a1db",
-   "idle_s": 0,
+   "idle_s": 56,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
@@ -153,6 +144,21 @@
   "cmf12": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf12.txt",
+   "state": "dispatched"
+  },
+  "cmf13": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf13.txt",
+   "state": "dispatched"
+  },
+  "cmf14": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf14.txt",
+   "state": "dispatched"
+  },
+  "cmf15": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf15.txt",
    "state": "dispatched"
   },
   "cmf2": {
@@ -495,6 +501,11 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f55.txt",
    "state": "dispatched"
   },
+  "f56": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f56-readinessgap.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f56.txt",
+   "state": "DONE"
+  },
   "f7": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f7-native-dispatch.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f7-native-dispatch.txt",
@@ -706,9 +717,9 @@
    "state": "dispatched"
   },
   "o13": {
-   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o133-review1052fix.md",
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o136-1052r2.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o13.txt",
-   "state": "DONE"
+   "state": "BLOCKED"
   },
   "o130": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o130-1063R.md",
@@ -729,6 +740,21 @@
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o133-review1052fix.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o133.txt",
    "state": "DONE"
+  },
+  "o134": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o134-planboard26r4.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o134.txt",
+   "state": "dispatched"
+  },
+  "o135": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o135-1056design.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o135.txt",
+   "state": "dispatched"
+  },
+  "o136": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o136-1052r2.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o136.txt",
+   "state": "BLOCKED"
   },
   "o30": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o30-notes-fix.md",
@@ -1238,6 +1264,11 @@
   "q119": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q119-isolationaudit.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q119.txt",
+   "state": "DONE"
+  },
+  "q120": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q120.txt",
    "state": "dispatched"
   },
   "q13": {

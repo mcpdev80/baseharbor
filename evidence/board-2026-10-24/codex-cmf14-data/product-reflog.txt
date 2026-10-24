@@ -1,0 +1,12 @@
+7170c1b67459d4c4fccb1a0bd41b11d5cec52f51 HEAD@{2026-10-24T13:58:48+02:00} commit: docs(ci): correct #1056 akte file_hashes to raw sha256 (record-only, reviewed_head=R 32b85d95)
+cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7 HEAD@{2026-10-24T13:58:40+02:00} checkout: moving from cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7 to o124-Q-record
+cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7 HEAD@{2026-10-24T13:57:05+02:00} checkout: moving from o90-planner-pr to cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7
+32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2 HEAD@{2026-10-24T13:12:16+02:00} checkout: moving from o90-planner-pr-rebase to o90-planner-pr
+32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2 HEAD@{2026-10-24T13:12:11+02:00} reset: moving to origin/o90-planner-pr
+550711a61280dfb9d9f14b867109fa08be6de7d6 HEAD@{2026-10-24T13:08:06+02:00} commit: ci(akte): carry reviewed #1056 CI script blobs (runner/planner/test) for R
+714519c9a01414b318303792d6d74fa2a7846473 HEAD@{2026-10-24T13:07:51+02:00} commit: ci(akte): restore ci-binding-qualifications to authenticated develop bytes for exact-three-script R diff
+49c94d8bf7a1767c7c3472958b12bbc7f0b4db62 HEAD@{2026-10-24T11:29:29+02:00} commit (amend): ci(akte): Core-921 CI binding qualification for #1056 - refresh reviewed_head/file_hashes for PR head 9d1624e2
+2c5b234ec8b80a5c65dec426155e1d85262f83ae HEAD@{2026-10-24T11:29:17+02:00} commit (amend): ci(akte): Core-921 CI binding qualification for #1056 - refresh reviewed_head/file_hashes for PR head 9d1624e2
+7b9fd4ae1447c47c6c7e21386f30715031ff9be0 HEAD@{2026-10-24T11:04:18+02:00} commit: ci(akte): refresh Core-921 reviewed_head/file_hashes for fresh #1056 PR head (9d1624e2)
+9d1624e2b6641404d09cfd77cd92e250ec5e6dbf HEAD@{2026-10-24T11:00:00+02:00} rebase (finish): returning to refs/heads/o90-planner-pr-rebase
+9d1624e2b6641404d09cfd77cd92e250ec5e6dbf HEAD@{2026-10-24T11:00:00+02:00} rebase (pick): fix(ci): qualify docs/releases/*.consumer-pins.json as pins-data path (o114 restore)

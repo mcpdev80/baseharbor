@@ -1,0 +1,8 @@
+d1fc46312e85f4cd5672420d51cf8daa29312cae 2026-10-24T14:38:55+02:00 2026-10-24T14:38:55+02:00 mcpdev80 ops: #1056 policy correction required, planning round 4 landed
+bb6368c0d99b8ab98e502d6a71544f3b29a8ac7d 2026-10-24T14:30:45+02:00 2026-10-24T14:30:45+02:00 mcpdev80 ops: P CI success, #1052 accepted, active audits
+6db911823ac022185f693491c0773c01aed88a1a 2026-10-24T14:28:26+02:00 2026-10-24T14:28:26+02:00 mcpdev80 ops: P candidate ready, #1052 accepted, planning round 4
+081fd26524adf7cddc7cb00d05943de3a4782373 2026-10-24T14:21:27+02:00 2026-10-24T14:21:27+02:00 mcpdev80 ops: add live v0.4.26 release plan checklist
+754cc266319d81767551ad7099e5729869a6277e 2026-10-24T14:19:26+02:00 2026-10-24T14:19:26+02:00 mcpdev80 ops: Q landed, P merge, #1052 review and #1046 recipe
+dbcaacd06e77c7e4f4a2e5c668907160e6a47554 2026-10-24T14:15:02+02:00 2026-10-24T14:15:02+02:00 mcpdev80 ops: Q correction, 1046 diagnosis, worktree audit
+66ff7772d505468c6030e9685cedac4fd342775d 2026-10-24T14:03:22+02:00 2026-10-24T14:03:22+02:00 mcpdev80 ops: recover q117 delivery, validate 1046 diagnosis, start 1052/1063 fixes
+f30540fffc5eb2a60a05a6000cae6ebf147b9aff 2026-10-24T13:52:11+02:00 2026-10-24T13:52:11+02:00 mcpdev80 ops: R accepted, q114 takeover, #1063 correction and diagnostics

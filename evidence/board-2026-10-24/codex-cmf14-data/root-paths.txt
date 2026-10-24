@@ -1,0 +1,3 @@
+/home/marcel/dev/baseharbor-ecosystem
+.git
+/home/marcel/dev/baseharbor-ecosystem/.git

@@ -1,0 +1,8 @@
+READ-ONLY active monitor, 2 short cycles only. KEIN agent send/keys/rm, KEIN git write, KEIN CI dispatch, KEIN product code/test, KEIN gh auth/config.
+ERSTER SCHRITT: evidence/board-2026-10-24/f58-active2.md mit ## PLAN + nativen Todos.
+1. q120 (09be2ce5) q117 incident #1060: status, evidence mtime, pane dialog/working, local vs remote HEAD, push events since.
+2. o136 (7b4e97b4) #1052 correction: head, checks, evidence.
+3. Codex fc55 cmf16.
+4. #1060/#1052 PR live state and conflict.
+5. Report DELIVERED/STALLED/DONE/UNKNOWN, no action.
+END F58-ACTIVE2-DONE.

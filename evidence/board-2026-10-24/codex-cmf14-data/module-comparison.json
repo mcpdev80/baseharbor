@@ -1,0 +1,484 @@
+{
+  "files": [
+    {
+      "path": "go.mod",
+      "head_sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "dirty_sha256": "abd362975a9c6c2c563aad360c4300893fac6e7fab0fbdf88f12d9b423b1c4e3",
+      "head_blob": "b09e0eacb1488538a8f53a96f552b46429849377",
+      "dirty_blob": "53b68e3196f699e1f4aea704c8e84d2398819bc2"
+    },
+    {
+      "path": "go.sum",
+      "head_sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "dirty_sha256": "4869d9ebfebaa164de2f90af74faff81f82b2efd42df9826030724ada7e16a9f",
+      "head_blob": "89d6d33e8334f411282ad5122ac9d5b953de5938",
+      "dirty_blob": "13f426906d622b4d90fc7d47a9268d5586e24f6d",
+      "added_lines": [
+        "github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=",
+        "go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=",
+        "golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=",
+        "golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=",
+        "golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=",
+        "golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=",
+        "golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=",
+        "golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=",
+        "golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=",
+        "golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=",
+        "golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=",
+        "golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=",
+        "golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=",
+        "golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=",
+        "golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=",
+        "golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=",
+        "golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=",
+        "golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=",
+        "golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=",
+        "golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=",
+        "golang.org/x/text v0.3.8/go.mod h1:E6s5w1FMmriuDzIBO73fBruAKo1PCIq6d2Q6DHfQ8WQ=",
+        "golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=",
+        "golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=",
+        "golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=",
+        "golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0="
+      ],
+      "removed_lines": [],
+      "head_lines": 117,
+      "dirty_lines": 142
+    }
+  ],
+  "worktree_files": [
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor",
+      "path": "go.mod",
+      "sha256": "abd362975a9c6c2c563aad360c4300893fac6e7fab0fbdf88f12d9b423b1c4e3",
+      "mtime_utc": "2026-10-24T11:55:25.882507+00:00",
+      "inode": 262600
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor",
+      "path": "go.sum",
+      "sha256": "4869d9ebfebaa164de2f90af74faff81f82b2efd42df9826030724ada7e16a9f",
+      "mtime_utc": "2026-10-24T11:55:25.882088+00:00",
+      "inode": 262601
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/develop-qpr",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T12:17:48.031783+00:00",
+      "inode": 1767558
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/develop-qpr",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T12:17:48.031783+00:00",
+      "inode": 1767559
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/docs-16-1022",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-22T15:49:13.323898+00:00",
+      "inode": 1513720
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/docs-16-1022",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-22T15:49:13.323898+00:00",
+      "inode": 1513721
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1039",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T03:41:02.161074+00:00",
+      "inode": 1588838
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1039",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T03:41:02.161205+00:00",
+      "inode": 1588839
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1042",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T03:41:02.361614+00:00",
+      "inode": 1591046
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1042",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T03:41:02.361614+00:00",
+      "inode": 1591047
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f33-pins",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T21:37:59.687733+00:00",
+      "inode": 1782738
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f33-pins",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T21:37:59.687783+00:00",
+      "inode": 1782739
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f43-rebase1056",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T05:29:17.988716+00:00",
+      "inode": 1788773
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f43-rebase1056",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T05:29:17.988762+00:00",
+      "inode": 1788774
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/o90",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T21:59:25.716861+00:00",
+      "inode": 1785711
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/o90",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T21:59:25.716915+00:00",
+      "inode": 1785712
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261017-podman-backup-guided-runtime",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-20T10:17:06.808360+00:00",
+      "inode": 1256667
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261017-podman-backup-guided-runtime",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-20T10:17:06.808360+00:00",
+      "inode": 1256668
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261018-podman-recovery-core-state-owner",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-20T07:23:37.796230+00:00",
+      "inode": 1039240
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261018-podman-recovery-core-state-owner",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-20T07:23:37.796230+00:00",
+      "inode": 1039241
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/v0.4.26-restfix",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T20:53:39.314301+00:00",
+      "inode": 1777250
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/v0.4.26-restfix",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T20:53:39.314349+00:00",
+      "inode": 1777251
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/q114-fix1060",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T10:25:48.084196+00:00",
+      "inode": 1794896
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/q114-fix1060",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T10:25:48.084421+00:00",
+      "inode": 1794897
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/ci-core921-coverage-binding",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-19T00:31:31.598225+00:00",
+      "inode": 798920
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/ci-core921-coverage-binding",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-19T00:31:31.598225+00:00",
+      "inode": 798921
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/core-754-mcp-precondition-classification",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-18T23:55:49.449536+00:00",
+      "inode": 341881
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/core-754-mcp-precondition-classification",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-18T23:55:49.449536+00:00",
+      "inode": 341882
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/core-921-central-cli-mcp-registration",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-18T23:55:46.564044+00:00",
+      "inode": 336392
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/core-921-central-cli-mcp-registration",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-18T23:55:46.564044+00:00",
+      "inode": 336393
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f12-atomic-bare-sha-dispatch",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-22T23:36:24.832447+00:00",
+      "inode": 1586021
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f12-atomic-bare-sha-dispatch",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-22T23:36:24.832626+00:00",
+      "inode": 1586022
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f27-appid-env-robust",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T17:15:12.685024+00:00",
+      "inode": 2010442
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f27-appid-env-robust",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T17:15:12.685087+00:00",
+      "inode": 2010443
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f27-gateplan-lane",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T17:36:45.651385+00:00",
+      "inode": 2013533
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f27-gateplan-lane",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T17:36:45.651385+00:00",
+      "inode": 2013534
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f45-rb",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T06:37:41.343718+00:00",
+      "inode": 2028445
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f45-rb",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T06:37:41.343825+00:00",
+      "inode": 2028446
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-edit-preview",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-22T20:26:00.394917+00:00",
+      "inode": 1533712
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-edit-preview",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-22T20:26:00.395001+00:00",
+      "inode": 1533713
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-planner-entry",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-22T21:01:19.558428+00:00",
+      "inode": 1574111
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-planner-entry",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-22T21:01:19.558511+00:00",
+      "inode": 1574112
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-1042-sync",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T13:21:02.140338+00:00",
+      "inode": 1774233
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-1042-sync",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T13:21:02.140338+00:00",
+      "inode": 1774234
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-sync",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T13:20:20.608380+00:00",
+      "inode": 1771458
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-sync",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T13:20:20.608466+00:00",
+      "inode": 1771459
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/podman-acceptance-typed-consent",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-19T00:36:35.213603+00:00",
+      "inode": 801851
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/podman-acceptance-typed-consent",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-19T00:36:35.213603+00:00",
+      "inode": 801852
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q110-openbao",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T07:42:08.623146+00:00",
+      "inode": 2031651
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q110-openbao",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T07:42:08.623194+00:00",
+      "inode": 2031652
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q112b-rb1060",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T09:50:29.416469+00:00",
+      "inode": 2037138
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q112b-rb1060",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T09:50:29.416531+00:00",
+      "inode": 2037139
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T09:58:16.812679+00:00",
+      "inode": 2040091
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T09:58:16.812736+00:00",
+      "inode": 2040092
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/scoped-runtime-reset-xdg-992",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-19T00:23:42.094928+00:00",
+      "inode": 763069
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/worktrees/scoped-runtime-reset-xdg-992",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-19T00:23:42.094928+00:00",
+      "inode": 763070
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/wt-wizardfix",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-23T21:20:56.500719+00:00",
+      "inode": 1780039
+    },
+    {
+      "worktree": "/home/marcel/dev/baseharbor-ecosystem/wt-wizardfix",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-23T21:20:56.500853+00:00",
+      "inode": 1780040
+    },
+    {
+      "worktree": "/tmp/bh-q118-1046/worktree",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T11:55:09.543834+00:00",
+      "inode": 2967452
+    },
+    {
+      "worktree": "/tmp/bh-q118-1046/worktree",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T11:55:09.543834+00:00",
+      "inode": 2967453
+    },
+    {
+      "worktree": "/tmp/o130-1063-worktree",
+      "path": "go.mod",
+      "sha256": "b6425197ad809467d38d3dd04cbd6093ab38fa2fbce6cd7d90b760d34db7db5f",
+      "mtime_utc": "2026-10-24T11:56:53.150744+00:00",
+      "inode": 2973054
+    },
+    {
+      "worktree": "/tmp/o130-1063-worktree",
+      "path": "go.sum",
+      "sha256": "41f1e11897e8e8ccc7e2d0e1721ae2e5403d30e5b970edd775f566b7eb23e67e",
+      "mtime_utc": "2026-10-24T11:56:53.150744+00:00",
+      "inode": 2973055
+    }
+  ]
+}

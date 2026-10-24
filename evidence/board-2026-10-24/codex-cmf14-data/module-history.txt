@@ -1,0 +1,3 @@
+84183b99194ba179101ba65dc663877e797ad97e 2026-10-15T04:59:38-07:00 2026-10-15T04:59:38-07:00 Marcel Pfingstgräf feat: v0.4.25 capability contracts and selective lifecycle (#905)
+dd1923dc73071bd34f2a15583c38bbf4ddeb1103 2026-10-08T09:32:58+02:00 2026-10-08T09:32:58+02:00 Marcel Pfingstgräf v0.4.23: secure Core and qualified application lifecycle (#809)
+083a532a85a6d9eca10eba63a48d02e197fee558 2026-10-01T18:59:32+02:00 2026-10-01T18:59:32+02:00 Marcel Pfingstgräf fix: align Python scaffold readiness with status contract (#687) (#696)

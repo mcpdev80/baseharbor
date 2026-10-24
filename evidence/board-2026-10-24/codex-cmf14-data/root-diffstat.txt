@@ -1,0 +1,15 @@
+ baseharbor                                         |  2 +-
+ baseharbor-console                                 |  2 +-
+ baseharbor-node-connector                          |  2 +-
+ baseharbor-plan                                    |  2 +-
+ .../scripts/.coord-state-cache.json                |  2 +-
+ .../board-2026-10-19/scripts/board-currency.json   |  2 +-
+ .../board-2026-10-19/scripts/dispatch-log.jsonl    |  2 +
+ evidence/board-2026-10-19/scripts/events-ack.json  |  2 +-
+ .../board-2026-10-19/scripts/gateway-latency.json  |  2 +-
+ .../board-2026-10-19/scripts/reminders-ack.json    |  2 +-
+ evidence/board-2026-10-19/scripts/tmp-sweep.log    |  1 +
+ evidence/board-2026-10-22/coordinator-plan.md      |  3 +-
+ evidence/board-2026-10-24/codex-verdict-1052-r4.md | 99 +++++++++++++++++++++-
+ .../board-2026-10-24/coordinator-state-latest.json | 71 +++++++++++-----
+ 14 files changed, 157 insertions(+), 37 deletions(-)

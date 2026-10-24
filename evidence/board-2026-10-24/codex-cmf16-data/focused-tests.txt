@@ -1,0 +1,26 @@
+=== RUN   TestUnsealConvergesAfterMemberRestartRace
+--- PASS: TestUnsealConvergesAfterMemberRestartRace (1.00s)
+=== RUN   TestUnsealFailsFastWhenMemberNeverAnswers
+--- PASS: TestUnsealFailsFastWhenMemberNeverAnswers (2.00s)
+=== RUN   TestUnsealFailsImmediatelyOnPermanentNonTransientError
+--- PASS: TestUnsealFailsImmediatelyOnPermanentNonTransientError (0.00s)
+=== RUN   TestProbeMemberStateCancellationDuringRetryBackoff
+--- PASS: TestProbeMemberStateCancellationDuringRetryBackoff (0.01s)
+=== RUN   TestProbeMemberStateInvalidJSONNoRetry
+--- PASS: TestProbeMemberStateInvalidJSONNoRetry (0.00s)
+=== RUN   TestIsTransientErrorRejectsIncidentalTemporary
+--- PASS: TestIsTransientErrorRejectsIncidentalTemporary (0.00s)
+=== RUN   TestIsTransientErrorRejectsMixedPermanentTransport
+--- PASS: TestIsTransientErrorRejectsMixedPermanentTransport (0.00s)
+=== RUN   TestUnsealFailsOnPermanentPostUnsealVerification
+--- PASS: TestUnsealFailsOnPermanentPostUnsealVerification (0.00s)
+=== RUN   TestUnsealRecoversOnTransientPostUnsealVerification
+--- PASS: TestUnsealRecoversOnTransientPostUnsealVerification (0.50s)
+=== RUN   TestMemberPhaseSequenceIsEnforcedPerMember
+--- PASS: TestMemberPhaseSequenceIsEnforcedPerMember (0.00s)
+=== RUN   TestUnsealRejectsUnknownBAOAddrDestination
+--- PASS: TestUnsealRejectsUnknownBAOAddrDestination (0.00s)
+=== RUN   TestPureTransportErrorStaysTransient
+--- PASS: TestPureTransportErrorStaysTransient (0.00s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/openbao	3.523s

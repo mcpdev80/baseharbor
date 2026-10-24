@@ -164,7 +164,8 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 ## PLAN RELEASE v0.4.26 (live, 2026-10-24 14:2xZ)
 - [ ] A Betrieb: basics/events/watcher/TMP/RAM stabil halten; idle-Lanes verifizieren/rotieren
 - [x] B Q: #1063 R-record merged (develop `65aa063e`)
-- [ ] C P: #1056 ordinary merge R+develop (o132), checks/review, autorisierter Merge
+- [x] C1 P-integration: #1056 ordinary merge R+develop produced H `b0abe105`, CI success
+- [ ] C2 P-correction: Codex REQUEST_CHANGES F1/F2 -> correction package R' -> record Q' -> H' -> autorisierter Merge
 - [ ] D OpenBao: #1060 korrekt merge-ready (q117), W-PR getrennt, dann #1052 rebase/review/CI (o133)
 - [ ] E #1046 serialized anchor qualifier nur nach C/D
 - [ ] F Freeze: OWNER/HOST Podman receipt → demo#121 → console#9 → connector#10
@@ -184,3 +185,7 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - o135 read-only design/verification der F1/F2 Korrektur gestartet, parallel zu q117 (#1060).
 - o134 Planning Runde 4 DONE board `2df5b33` (remote main). Lane rotiert.
 - q119 read-only root audit DONE (END-Nachtrag angewiesen): go.mod/go.sum sind vermutlich Dependency-Reorder durch `go mod tidy` in baseharor checkout; nicht destruktiv bereinigen.
+- 14:5xZ WICHTIGER INCIDENT: q117 hatte #1060 remote old head `6a0d36da` per amend/force-push durch `13a05ea4` ersetzt. GitHub timeline bestaetigt force-push 12:38:37Z. q117 wurde gestoppt/rotiert; aktueller Branch/Commit bleibt erhalten, keine Rueck-Force.
+- Codex cmf15: #1060 REQUEST_CHANGES. ci.yml + pr-check content haupts. erhalten, aber `pr-gate-plan.py` liest Qualifikationsrecord jetzt von candidate HEAD (target_base_sha -> head_sha) = Trust-Regression; dedicated runner wegen WIZARD_FAMILY-Guard unerreichbar; PR conflict mit develop verhindert Pull-Request-CI (0 runs).
+- q120 fuehrt #1060 safe forward correction/handoff aus (kein force/empty commit/dispatch). o136 #1052 neue Head `0b738dca` gepusht, source correction DONE, CI/Merge weiterhin durch #1060 integration blocker. Codex cmf16 reviewt #1052.
+- f57 Mission wegen Composer-/dispatch issue nie ausgefuehrt, Lane entfernt; f58 monitoriert q120/o136/Codex read-only. o135 F1/F2 design DONE. Pool qwen1, ornith1, flash1 (f58).

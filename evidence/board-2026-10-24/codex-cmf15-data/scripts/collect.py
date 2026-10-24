@@ -1,0 +1,6 @@
+import pathlib,subprocess,concurrent.futures,json
+p=pathlib.Path('evidence/board-2026-10-24/codex-cmf15-data');h='13a05ea492a98bb8922785fb828db2a8ff6324a3';old='6a0d36dad2a778ab61a58594489c9fedc88e4c0f'
+a={'identity':['gh','api','user','--jq','.login'],'pr-before':['gh','api','repos/mcpdev80/baseharbor/pulls/1060'],'develop-before':['gh','api','repos/mcpdev80/baseharbor/commits/develop'],'files':['gh','api','repos/mcpdev80/baseharbor/pulls/1060/files?per_page=100'],'diff':['gh','pr','diff','1060','--repo','mcpdev80/baseharbor'],'checks':['gh','pr','checks','1060','--repo','mcpdev80/baseharbor'],'check-runs':['gh','api','repos/mcpdev80/baseharbor/commits/'+h+'/check-runs'],'runs':['gh','api','repos/mcpdev80/baseharbor/actions/runs?head_sha='+h+'&per_page=100'],'old-runs':['gh','api','repos/mcpdev80/baseharbor/actions/runs?head_sha='+old+'&per_page=100'],'events':['gh','api','repos/mcpdev80/baseharbor/issues/1060/timeline?per_page=100'],'workflow':['gh','api','repos/mcpdev80/baseharbor/actions/workflows/ci.yml']}
+def f(t):
+ n,c=t;r=subprocess.run(c,capture_output=True,text=True);(p/(n+'.txt')).write_text(r.stdout);(p/(n+'.stderr')).write_text(r.stderr);return n,r.returncode
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as e:print(list(e.map(f,a.items())))

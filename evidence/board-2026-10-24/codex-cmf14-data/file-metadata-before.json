@@ -1,0 +1,82 @@
+{
+  "/home/marcel/dev/baseharbor-ecosystem/baseharbor/go.mod": {
+    "mtime_utc": "2026-10-24T11:55:25.882507+00:00",
+    "ctime_utc": "2026-10-24T11:55:25.882507+00:00",
+    "size": 2088,
+    "inode": 262600,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/baseharbor/go.sum": {
+    "mtime_utc": "2026-10-24T11:55:25.882088+00:00",
+    "ctime_utc": "2026-10-24T11:55:25.882088+00:00",
+    "size": 12999,
+    "inode": 262601,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/q114-fix1060/go.mod": {
+    "mtime_utc": "2026-10-24T10:25:48.084196+00:00",
+    "ctime_utc": "2026-10-24T10:25:48.084196+00:00",
+    "size": 2124,
+    "inode": 1794896,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/q114-fix1060/go.sum": {
+    "mtime_utc": "2026-10-24T10:25:48.084421+00:00",
+    "ctime_utc": "2026-10-24T10:25:48.084421+00:00",
+    "size": 10485,
+    "inode": 1794897,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/wt-wizardfix/go.mod": {
+    "mtime_utc": "2026-10-23T21:20:56.500719+00:00",
+    "ctime_utc": "2026-10-23T21:20:56.500719+00:00",
+    "size": 2124,
+    "inode": 1780039,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/wt-wizardfix/go.sum": {
+    "mtime_utc": "2026-10-23T21:20:56.500853+00:00",
+    "ctime_utc": "2026-10-23T21:20:56.500853+00:00",
+    "size": 10485,
+    "inode": 1780040,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/.gitmodules": {
+    "exists": false
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/baseharbor/site": {
+    "mtime_utc": "2026-10-23T17:14:56.155051+00:00",
+    "ctime_utc": "2026-10-23T17:14:56.155051+00:00",
+    "size": 4096,
+    "inode": 2007779,
+    "mode": "0o40775"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git/HEAD": {
+    "mtime_utc": "2026-10-24T11:58:40.948819+00:00",
+    "ctime_utc": "2026-10-24T11:58:40.949011+00:00",
+    "size": 30,
+    "inode": 338080,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git/index": {
+    "mtime_utc": "2026-10-24T11:58:48.126307+00:00",
+    "ctime_utc": "2026-10-24T11:58:48.126409+00:00",
+    "size": 279854,
+    "inode": 338091,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/.git/HEAD": {
+    "mtime_utc": "2026-10-24T09:18:24.568834+00:00",
+    "ctime_utc": "2026-10-24T09:18:24.568834+00:00",
+    "size": 23,
+    "inode": 1781539,
+    "mode": "0o100664"
+  },
+  "/home/marcel/dev/baseharbor-ecosystem/.git/index": {
+    "mtime_utc": "2026-10-24T12:38:55.600360+00:00",
+    "ctime_utc": "2026-10-24T12:38:55.600563+00:00",
+    "size": 195546,
+    "inode": 1806634,
+    "mode": "0o100664"
+  }
+}

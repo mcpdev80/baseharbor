@@ -1,0 +1,12 @@
+[
+  {
+    "path": "internal/openbao/bootstrap.go",
+    "blob": "ee06ded6894db45c54cdddbba2a13bf37618abe3",
+    "sha256": "4cf1e5139bb0a2317c89eee7d3f590ef6e2dc997e36951101f1424d3921aad9b"
+  },
+  {
+    "path": "internal/openbao/bootstrap_test.go",
+    "blob": "e49806bb91fdc1e1b024b0fd4361ce93601bc8f5",
+    "sha256": "07dfc84f9890ec0d76ea96adb631b5e60c55620a0a52e3597edddf555fc7a2fb"
+  }
+]

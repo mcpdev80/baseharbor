@@ -1,0 +1,8 @@
+7170c1b67459d4c4fccb1a0bd41b11d5cec52f51 2026-10-24T13:58:48+02:00 2026-10-24T13:58:48+02:00 Codeman Worker docs(ci): correct #1056 akte file_hashes to raw sha256 (record-only, reviewed_head=R 32b85d95)
+cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7 2026-10-24T12:49:46+02:00 2026-10-24T12:49:46+02:00 Codeman Worker docs(ci): record-only Core-921 CI binding qualification for #1056 (Q, reviewed_head=R)
+f39295680d41290fc505c0a8cc1769da51699293 2026-10-24T10:28:05+02:00 2026-10-24T10:28:05+02:00 Marcel Pfingstgräf ci(gate-plan): qualify the exact appid env-robust test-only source (#1046) (#1047)
+a2abc17a8057ba972cb9ed481fad229fe9f12824 2026-10-24T08:31:27+02:00 2026-10-24T08:31:27+02:00 Marcel Pfingstgräf ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058) (#1059)
+24c33afdc89f166bf4ed747445078fa47489b562 2026-10-24T07:23:46+02:00 2026-10-24T07:23:46+02:00 Marcel Pfingstgräf docs(ci): add Core-921 CI binding qualification for #1056 (#1058)
+79e64084d1b090d2bcd8e610f05178871ee4e716 2026-10-24T06:35:20+02:00 2026-10-24T06:35:20+02:00 Marcel Pfingstgräf fix(cli): add timeout guard to freshFacts refresh callback (#1045) (#1053)
+1861ed07888a1ec22c218ca491d23ee54f48e261 2026-10-23T16:14:48+02:00 2026-10-23T16:14:48+02:00 Marcel Pfingstgräf fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+49d396c48d2dee8b65cd59497c9f74692954975c 2026-10-23T15:15:05+02:00 2026-10-23T15:15:05+02:00 Marcel Pfingstgräf fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)

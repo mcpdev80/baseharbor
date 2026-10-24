@@ -1,0 +1,24 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052 (existing #1052 branch). KEIN Root-Repo git, KEIN #1060-Worktree, KEIN CI/Planner/Akte/workflow edit. KEIN Merge/Review-Kommando, force, --admin. GitHub: `timeout 30 gh pr view` nur; auth/config forbidden.
+ERSTER SCHRITT: evidence/board-2026-10-24/o136-1052r2.md mit ## PLAN + nativen Todos.
+
+KANDIDAT: #1052 current head `7c7cda7cc32423405d3cabe3ecf46d61289b0598`. Codex cmf13 REQUEST_CHANGES, exact one recipe in evidence/board-2026-10-24/codex-verdict-1052-r4.md lines81-87. Read that whole recipe before touching code.
+
+IMPLEMENTIERE GENAU EINE KOHÄRENTE KORREKTUR in:
+- internal/openbao/bootstrap.go54–66
+- internal/openbao/bootstrap_test.go292–367,470–484,538–563,919–1062
+Requirements:
+1. permanent TLS/permission/exec errors take precedence over transport retry words in Executor error representation; preserve bounded retries/cancel/secret behavior.
+2. neverAnswers/down fake parses BAO_ADDR destination exactly like product and counts every real member submission; unknown destination explicit error.
+3. phase counters distinguish initial Inspect, each pre probe, write, each DIRECT member post; admin proxy does not count as member post verification. No capped/first-success counters.
+4. keep permanent post-write named accurately and ADD true transient post error then success: retry verifies post without another key write.
+5. mixed negative inputs use demonstrated admitted tokens.
+6. tests prove sensitivity for member2/member3 omitted write/post, key submission after failed precondition, extra probes/retries, permanent classifier removal. Do not loosen expectations to match current code.
+
+PRUEFEN:
+- gofmt
+- focused existing 8 tests + new scenarios
+- package `go test ./internal/openbao/... -count=1 -timeout=120s`
+- `go vet ./internal/openbao/...`
+Use private GOCACHE under $TMPDIR/o136-*. No native/VM.
+Push ordinary forward to branch `work/v0.4.26-openbao-retry`. Observe checks max 25min. No merge. Report current integration blocker separately.
+END O136-1052R2-PUSHED mit new head / END O136-1052R2-BLOCKED.

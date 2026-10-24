@@ -1,0 +1,8 @@
+13a05ea492a98bb8922785fb828db2a8ff6324a3 2026-10-24T14:26:32+02:00 2026-10-24T14:29:21+02:00 Codeman Worker fix(ci): integrate openbao-package-tests case, OpenBaoValidationTests, and binding record (#1060 forward correction)
+89d87f78a4c0d410a830483af1ef7c7cb09e1fe9 2026-10-24T14:11:23+02:00 2026-10-24T14:24:17+02:00 Codeman Worker fix(ci): integrate openbao-package-tests case and OpenBaoValidationTests (#1060 forward correction)
+1c2f1fc476794b6da7c315082cf155b2d6e680bb 2026-10-24T13:34:26+02:00 2026-10-24T13:34:26+02:00 Codeman Worker fix(ci): correct binding clause to read from HEAD and match actual 3-file diff
+9ec2528253e1d91c48f81985f7c696a663a29fd6 2026-10-24T10:26:26+02:00 2026-10-24T11:51:51+02:00 Codeman Worker ci(gate-plan): add Trusted-Binding-Akte entry for #1060
+34846e6cedc3614763f49281b233ba73266ae75e 2026-10-24T10:01:21+02:00 2026-10-24T11:51:51+02:00 Codeman Worker ci(gate-plan): qualify internal/openbao paths for native validation (#1052 prerequisite)
+f39295680d41290fc505c0a8cc1769da51699293 2026-10-24T10:28:05+02:00 2026-10-24T10:28:05+02:00 Marcel Pfingstgräf ci(gate-plan): qualify the exact appid env-robust test-only source (#1046) (#1047)
+a2abc17a8057ba972cb9ed481fad229fe9f12824 2026-10-24T08:31:27+02:00 2026-10-24T08:31:27+02:00 Marcel Pfingstgräf ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058) (#1059)
+24c33afdc89f166bf4ed747445078fa47489b562 2026-10-24T07:23:46+02:00 2026-10-24T07:23:46+02:00 Marcel Pfingstgräf docs(ci): add Core-921 CI binding qualification for #1056 (#1058)

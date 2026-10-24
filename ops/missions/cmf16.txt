@@ -1,0 +1,12 @@
+ROLLE: REVIEW. KEIN Merge/Push/Produktcode/force/--admin/CI dispatch/rerun.
+KANDIDAT #1052 current head `0b738dca...` (live verify), branch work/v0.4.26-openbao-retry, base current develop (PR BEHIND due #1060). Prior Codex exact recipe: codex-verdict-1052-r4.md lines81-87. Worker o136 evidence.
+Review F1-F3 closure:
+- permanent error precedence over mixed transport words,
+- BAO_ADDR member write counting and unknown destination,
+- initial/pre/write/direct post sequence without admin proxy credit,
+- true transient post-unseal failure then success and no repeated key write.
+Run only focused Go checks in isolated reviewer worktree with private cache. Full package/vet if needed.
+Classify current `integration_sha_mismatch` / conflict with #1060 separately.
+Verdict ACCEPT_WITH_NONBLOCKING or REQUEST_CHANGES + exactly one recipe.
+Evidence codex-verdict-1052-r5.md, SHAs before/after.
+END CX-1052R5-DONE / END CX-1052R5-BLOCKED.

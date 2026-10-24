@@ -1,0 +1,15 @@
+ROLLE: REVIEW. KEIN git restore/checkout/commit/push/merge, KEIN rm, KEIN Produktcode, KEIN gh config/auth access.
+AUFGABE: root/baseharbor worktree hygiene based on q119 (evidence/board-2026-10-24/q119-isolationaudit.md) and current read-only observations.
+1. Independently inspect via `git -C ... status`/log/worktree and file mtimes:
+   - /home/marcel/dev/baseharbor-ecosystem/baseharbor branch/HEAD o124-Q-record with dirty go.mod/go.sum
+   - q114-fix1060 and wt-wizardfix
+   - root git status/origin/master, evidence commits.
+2. Identify probable origin of go.mod/go.sum reordering by blob/lane timestamps; do not claim without proof.
+3. Provide exact NONDESTRUCTIVE recovery options ranked for v0.4.26 ASAP:
+   - preserve dirty content in new evidence/worktree,
+   - leave untouched until owner,
+   - safe cleanup if no content loss and root branch restored.
+   For each: commands, risk, required owner approval.
+4. Recommend one option and one worker action only if already permitted by existing claims. No action.
+Evidence evidence/board-2026-10-24/codex-verdict-root119.md.
+END CX-ROOT119-DONE / END CX-ROOT119-BLOCKED.

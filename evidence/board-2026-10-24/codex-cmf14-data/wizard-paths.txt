@@ -1,0 +1,3 @@
+/home/marcel/dev/baseharbor-ecosystem/wt-wizardfix
+/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git
+/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git/worktrees/wt-wizardfix

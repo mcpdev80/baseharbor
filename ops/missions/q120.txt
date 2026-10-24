@@ -1,0 +1,26 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/q114-fix1060. Root-Repo fuer git VERBOTEN. KEIN force-push, KEIN amend, KEIN history rewrite, KEIN reset/restore, KEIN merge/review, KEIN --admin. GitHub reads `timeout 30 gh`; auth/config forbidden. KEIN CI dispatch unless explicitly authorized by this mission (it is NOT).
+
+HANDOFF (DATEN):
+- q117 wurde gestoppt, weil es old remote head `6a0d36dad2a778ab61a58594489c9fedc88e4c0f` durch amend/force-push auf `13a05ea492a98bb8922785fb828db2a8ff6324a3` ersetzte.
+- local worktree currently clean at 13a05ea4. Its status mapping `q117-takeover1060.md` says content mostly integrated.
+- mission q117. Your job is to safely carry #1060 forward from current state without repeating history mutation.
+
+ERSTER SCHRITT: evidence/board-2026-10-24/q120-1060handoff.md mit ## PLAN + nativen Todos.
+
+AUFGABE:
+1. Live verify current PR head 13 and local HEAD same, branch/status clean.
+2. Verify content preservation:
+   - fetch old 6a0d...
+   - full diff/stat/name-status old->current.
+   - inspect every changed hunk in 3 files and decide whether it is an intended Codex repair or content loss.
+   - compare old vs current ci.yml/openbao case and pr-check handler; do not assume.
+3. Run focused checks:
+   - `PYTHONPATH=scripts python3 -m pytest -q scripts/test_pr_gate_plan.py scripts/test_pr_check_runner.py`
+   - planner/runner/executor verifier/ci-policy tests selected for changed files (smallest relevant, no full matrix).
+4. Diagnose why exact 13 has zero Actions:
+   - inspect `.github/workflows/ci.yml` triggers/events on old/current/base
+   - gh PR events/API, but DO NOT close/reopen, push, dispatch.
+   - If ordinary no-code commit is the least legitimate way to force synchronize, STOP and report; no empty/amended commit.
+5. If local tests reveal a concrete bug in current candidate, make ONE ordinary forward commit confined to intended #1060 files and push normal (non-force). If no code bug, do not push.
+6. Report exact current PR status and recommendation for Codex review/trigger.
+END Q120-1060HANDOFF-DONE / END Q120-1060HANDOFF-BLOCKED.

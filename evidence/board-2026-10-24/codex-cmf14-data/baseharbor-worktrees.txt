@@ -1,0 +1,124 @@
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor
+HEAD 7170c1b67459d4c4fccb1a0bd41b11d5cec52f51
+branch refs/heads/o124-Q-record
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/develop-qpr
+HEAD 81cb6365f1d1c5f4c0840253cd55649bb6c0f1d0
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/docs-16-1022
+HEAD 099ab0237e88399a2ac3247036c0dd88cbd8bd88
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1039
+HEAD 7e53bc6804521b03c81673d181862a85c56ba3c9
+branch refs/heads/fix/v0426-stepcap-split
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f14-1042
+HEAD 0267dbdb71f63a2c77e193618e6fba4106e5cd5b
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f33-pins
+HEAD e551bc8bf2be88d2720deaca1317160256d49760
+branch refs/heads/work/v0.4.26-consumerpins-develop
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/f43-rebase1056
+HEAD 38ba06bb1122f61f4b0a1f72ebcd611d854002af
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/o90
+HEAD ae9afc8791325b11ad0011d3011514fd6e8af92a
+branch refs/heads/o114-pins-data
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261017-podman-backup-guided-runtime
+HEAD 2ebab0515377d3675882c9a87a8e83739e48f974
+branch refs/heads/fix/t-20261017-podman-backup-guided-runtime
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/t-20261018-podman-recovery-core-state-owner
+HEAD 335477ea96c5992c0ec5e64fc4ce16295cf853e7
+branch refs/heads/fix/t-20261018-podman-recovery-core-state-owner
+
+worktree /home/marcel/dev/baseharbor-ecosystem/baseharbor/worktrees/v0.4.26-restfix
+HEAD abbcc9642118c52e9645a25a7f5454dfc60fc547
+branch refs/heads/work/v0.4.26-restfix
+
+worktree /home/marcel/dev/baseharbor-ecosystem/q114-fix1060
+HEAD 13a05ea492a98bb8922785fb828db2a8ff6324a3
+branch refs/heads/q114-fix1060
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/ci-core921-coverage-binding
+HEAD 6ff6f04117054082f53349917370d95d4dac5bf2
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/core-754-mcp-precondition-classification
+HEAD e1c797bb5f45dfac598b5795556c733962b6d621
+branch refs/heads/fix/core-754-mcp-precondition-classification
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/core-921-central-cli-mcp-registration
+HEAD e577af947eeaf05361956761268550d136b9f69d
+branch refs/heads/runtime-validation/docker/mcp-edit-native/native-416486f5
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f12-atomic-bare-sha-dispatch
+HEAD 398bbdbd37eefd292d62b8663ce52d381bf0685d
+branch refs/heads/fix/atomic-bare-sha-dispatch
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f27-appid-env-robust
+HEAD 1ec67f8d4b259d62bd108ee678f25c288b8b0564
+branch refs/heads/fix/f27-appid-env-robust
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f27-gateplan-lane
+HEAD 40351fd30af9d1b12a3ea5b4b450056ea714f475
+branch refs/heads/fix/f27-gateplan-apptest-lane
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f45-rb
+HEAD 258872da2c0be9d80f3fbe9c25238e695860288a
+branch refs/heads/f45-rb
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-edit-preview
+HEAD 1192004d55cf92698b0a0be2c9c46db60de38c34
+branch refs/heads/fix/edit-refusal-preview-line
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/f7-t1-planner-entry
+HEAD b5ae3684e74f300ff9026e7c7626be2415cb8f68
+branch refs/heads/ci/edit-zero-preview-qualification
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-1042-sync
+HEAD 0267dbdb71f63a2c77e193618e6fba4106e5cd5b
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/o51b-sync
+HEAD 81cb6365f1d1c5f4c0840253cd55649bb6c0f1d0
+branch refs/heads/o51b-sync
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/podman-acceptance-typed-consent
+HEAD 78a72ebad0723eefe760090bc34130b55858d8a3
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/q110-openbao
+HEAD 7a3c4520946b17301ea47de4e6b202d5f35343c5
+branch refs/heads/work/v0.4.26-openbao-gateplan
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/q112b-rb1060
+HEAD 9ec2528253e1d91c48f81985f7c696a663a29fd6
+branch refs/heads/tmp-q112c-rb1060
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052
+HEAD 7c7cda7cc32423405d3cabe3ecf46d61289b0598
+branch refs/heads/work/v0.4.26-openbao-retry
+
+worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/scoped-runtime-reset-xdg-992
+HEAD b981f3b60bebfaebf6eb7f2f467dfd06142c90fe
+detached
+
+worktree /home/marcel/dev/baseharbor-ecosystem/wt-wizardfix
+HEAD 8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c
+branch refs/heads/work/v0.4.26-wizardfix
+
+worktree /tmp/bh-q118-1046/worktree
+HEAD 1ec67f8d4b259d62bd108ee678f25c288b8b0564
+branch refs/heads/tmp-pr1046
+
+worktree /tmp/o130-1063-worktree
+HEAD 32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2
+branch refs/heads/o130-1063-worktree
+
