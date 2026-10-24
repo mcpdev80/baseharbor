@@ -34,6 +34,10 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
                     or not response["jobs"]
                     or len(response["jobs"]) > 100):
                 raise OriginError("EVIDENCE_ORIGIN: invalid job inventory page")
+            if pages and response["total_count"] != pages[0]["total_count"]:
+                raise OriginError("EVIDENCE_ORIGIN: job inventory count drift")
+            if pages and len(pages[-1]["jobs"]) != 100:
+                raise OriginError("EVIDENCE_ORIGIN: incomplete preceding page")
             pages.append(response)
             jobs = verify_complete_inventory(pages) if (
                 isinstance(response, dict)

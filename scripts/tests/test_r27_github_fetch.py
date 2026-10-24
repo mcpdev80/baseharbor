@@ -57,3 +57,17 @@ class RequestValidationTests(unittest.TestCase):
    with self.subTest(response=repr(response)),self.assertRaises(OriginError):
     fetch_verified_origin(get,**ARGS)
    self.assertEqual(len(calls),2)
+
+
+class PaginationDriftTests(unittest.TestCase):
+ def test_count_drift_rejected_before_third_request(self):
+  first=[dict(JOB,id=i+1,name=f"other-{i}") for i in range(100)]
+  calls=[]
+  def get(path):
+   calls.append(path)
+   if path.endswith("/123"):return RUN
+   if path.endswith("&page=1"):return {"total_count":101,"jobs":first}
+   return {"total_count":102,"jobs":[dict(JOB,id=456)]}
+  with self.assertRaisesRegex(OriginError,"count drift"):
+   fetch_verified_origin(get,**ARGS)
+  self.assertEqual(len(calls),3)
