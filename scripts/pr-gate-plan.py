@@ -603,6 +603,35 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
+# Exact independent qualification of the four-file #1060 CI bundle. This is a
+# dedicated trusted-target binding, not a reused path-only allowlist or an
+# expansion of the three-file Akte inventory. It binds the actual immutable R
+# SHA (or a clean first-parent merge chain of authenticated target history that
+# only advances from it), the four immutable raw blob hashes, the exact four
+# modified paths, authenticated repository/branch identity, resolver/integration
+# equality, clean merge-base equality with the trusted target base, and the
+# existing clean trusted-target first-parent merge proof. R has a single
+# reviewed parent (cb3a2bf7); ordinary merge chains only advance from trusted
+# target history, so a clean first-parent merge chain from the trusted target
+# base still proves later develop integration of this binding. Authority is the
+# trusted target base, never the candidate files or the commit title;
+# bootstrap_eligible is neither used nor altered for this binding.
+EXACT_1060_REVIEWED_HEAD = '0f3bd169d4a02c5f019da822b4f45f66b972423e'
+EXACT_1060_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+}
+EXACT_1060_REVIEWED_HASHES = {
+    '.github/workflows/ci.yml': 'cf84de8ecf4ec89cd8b93c75a4e4bfe8b9e25c85',
+    'scripts/pr-check-runner.py': '4ebe9499ebdda1194e829a9b2f36bfce93548213',
+    'scripts/pr-gate-plan.py': '838fb3d68f730693d0617e930a545279a0f33be9',
+    'scripts/test_pr_gate_plan.py': '25554d0a2231d236c6f3bb2774018db39ceeb5fc',
+}
+EXACT_1060_REQUIRED_CHECKS = CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+
+
 def trusted_binding_checks(diff, repository='.', context_repository=None,
                            context_target_branch=None):
     """Verify the frozen binding from the authenticated target, never PR content.
@@ -690,6 +719,77 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
     return CI_CHECKS
+
+
+def exact_1060_binding(diff, repository='.', context_repository=None,
+                       context_target_branch=None):
+    """Dedicated exact-#1060 CI-bundle binding, before ordinary path classification.
+
+    This is a separate immutable trusted-target binding for the four-file #1060
+    CI bundle (ci.yml, pr-check-runner.py, pr-gate-plan.py, test_pr_gate_plan.py).
+    It binds the actual immutable R SHA (or a clean first-parent merge chain of
+    authenticated target history that only advances from it), the four immutable
+    raw blob hashes, the exact four modified paths, authenticated
+    repository/branch identity, resolver/integration equality, clean
+    merge-base equality with the trusted target base, and the existing clean
+    trusted-target first-parent merge proof. Authority is the trusted target
+    base, never the candidate files or the commit title; bootstrap_eligible is
+    neither used nor altered here. Requires every CI_CHECKS plus the workflow
+    syntax check.
+    """
+    if context_repository != 'mcpdev80/baseharbor':
+        return None
+    if context_target_branch != 'develop':
+        return None
+    valid, _ = validated_diff(diff)
+    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
+        return None
+    if not all(isinstance(x, str) and len(x) == 40
+               for x in (diff['target_base_sha'], diff['head_sha'],
+                         diff['merge_base_sha'])):
+        return None
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repository), *args],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              check=True).stdout
+
+    try:
+        # Integrity: the bound reviewed blob object names must match the actual
+        # reviewed tree, never an invented value.
+        for path, digest in EXACT_1060_REVIEWED_HASHES.items():
+            actual_digest = git('rev-parse',
+                                EXACT_1060_REVIEWED_HEAD + ':' + path).decode().strip()
+            if actual_digest != digest:
+                return None
+        # Clean first-parent merge chain from the reviewed head through trusted
+        # target history, then a clean target-forward chain back to the base.
+        if not core752_reviewed_merge_chain(
+                diff['target_base_sha'], diff['head_sha'],
+                EXACT_1060_REVIEWED_HEAD, repository):
+            return None
+        base = git('rev-parse', '--verify',
+                   diff['target_base_sha'] + '^{commit}').decode().strip()
+        merge_base = git('merge-base', diff['target_base_sha'],
+                         diff['head_sha']).decode().strip()
+        if base != merge_base:
+            return None
+        # Integration integrity: the resolver must re-derive the exact diff.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
+                                          diff['head_sha'], diff['integration_sha'])
+        if actual != diff or actual['broad_required']:
+            return None
+        changes = actual['changes']
+        if (len(changes) != len(EXACT_1060_REVIEWED_FILES) or
+                {c.get('path'): c.get('status') for c in changes} != EXACT_1060_REVIEWED_FILES):
+            return None
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return EXACT_1060_REQUIRED_CHECKS
 
 
 # BOOTSTRAP-Ausnahme (befristet, nur fuer die zwei Bootstrap-PRs): Der
@@ -1122,7 +1222,9 @@ def plan(diff, requirements, mapping, repository='.',
                     'or automatically run the complete release catalog.'),
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
-    binding_checks = (trusted_binding_checks(
+    binding_checks = (exact_1060_binding(
+        diff, repository, context_repository, context_target_branch)
+        if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None) or bootstrap_eligible(
         diff, repository, context_repository, context_target_branch)

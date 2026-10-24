@@ -2794,5 +2794,348 @@ class BootstrapExceptionTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
 
 
+class Exact1060BindingTests(unittest.TestCase):
+    """Dedicated exact-#1060 four-file CI-bundle binding fixtures.
+
+    Positive: the immutable R SHA and clean first-parent target-forward merges
+    resolve with the four expected CI check IDs. Negative: any extra/renamed/
+    deleted path, wrong status, changed blob/hash, wrong repo/branch, missing or
+    altered integration, candidate-only qualification, non-merge follow-up,
+    untrusted second parent, or manually altered merge tree stays unresolved.
+    The #1056 three-file Akte record still resolves, and a record-only refresh
+    cannot authorize the four-file bundle.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Exact 1060 fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+        (self.root / 'base-marker.txt').write_text('trusted develop baseline\n')
+        for path in planner.EXACT_1060_REVIEWED_FILES:
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / path).write_text('baseline\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted develop baseline with four CI files')
+
+    def git(self, *args):
+        proc = subprocess.run(['git', '-C', str(self.root), *args],
+                              text=True, capture_output=True)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        return proc.stdout.strip()
+
+    def _make_four_file_reviewed_head(self, content='reviewed ci bundle\n',
+                                      msg='independently reviewed four-file CI bundle'):
+        for path in planner.EXACT_1060_REVIEWED_FILES:
+            item = self.root / path
+            item.parent.mkdir(parents=True, exist_ok=True)
+            item.write_text(content)
+        self.git('add', '.')
+        self.git('commit', '-qm', msg)
+        return self.git('rev-parse', 'HEAD')
+
+    def _integrate(self, target, head):
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               '-m', 'validated PR integration')
+        rspec = importlib.util.spec_from_file_location(
+            'exact1060_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, target, head, integration)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        return actual
+
+    def _plan(self, actual, required=REQ):
+        return planner.plan(actual, required, MAP, repository=self.root,
+                            context_repository='mcpdev80/baseharbor',
+                            context_target_branch='develop')
+
+    def test_exact_reviewed_head_resolves_with_four_expected_checks(self):
+        develop = self.git('rev-parse', 'HEAD')
+        reviewed = self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        # The reviewed head is a single-parent commit on develop; target-base is
+        # the develop baseline, so merge-base equals target-base and the chain
+        # passes.
+        actual = self._integrate(develop, head)
+        with patch.object(planner, 'EXACT_1060_REVIEWED_HEAD', reviewed), \
+             patch.object(planner, 'EXACT_1060_REVIEWED_HASHES', {
+                 path: self.git('rev-parse', reviewed + ':' + path)
+                 for path in planner.EXACT_1060_REVIEWED_FILES}):
+            result = self._plan(actual)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual({c['id'] for c in result['required_validation_checks']},
+                         {c['id'] for c in (planner.CI_CHECKS +
+                                            planner.WORKFLOW_SYNTAX_CHECKS)})
+
+    def test_reviewed_head_on_trusted_target_chain_resolves(self):
+        # The reviewed head qualifies directly on the trusted target chain. The
+        # target base is the develop baseline and the PR head is the reviewed
+        # four-file bundle itself (single-parent, on develop), so merge-base
+        # equals target-base and the merge-chain reduces to the reviewed-head
+        # proof.
+        develop = self.git('rev-parse', 'HEAD')
+        reviewed = self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        self.assertEqual(reviewed, head)
+        actual = self._integrate(develop, head)
+        with patch.object(planner, 'EXACT_1060_REVIEWED_HEAD', reviewed), \
+             patch.object(planner, 'EXACT_1060_REVIEWED_HASHES', {
+                 path: self.git('rev-parse', reviewed + ':' + path)
+                 for path in planner.EXACT_1060_REVIEWED_FILES}):
+            result = self._plan(actual)
+        self.assertEqual('resolved', result['coverage_status'])
+
+
+    def test_extra_path_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        extra = self.git('rev-parse', 'HEAD')
+        (self.root / 'scripts' / 'pr-check-runner.py').write_text('extra line\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'unreviewed extra line in reviewed inventory')
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_renamed_path_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        (self.root / 'scripts' / 'pr-check-runner.py').unlink()
+        (self.root / 'scripts' / 'pr-check-runner-renamed.py').write_text('reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'rename a reviewed path')
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_deleted_path_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        (self.root / 'scripts' / 'test_pr_gate_plan.py').unlink()
+        self.git('add', '.')
+        self.git('commit', '-qm', 'delete a reviewed path')
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_changed_blob_hash_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        # Flip exactly one reviewed blob while keeping the four-path inventory.
+        (self.root / '.github' / 'workflows' / 'ci.yml').write_text('mutated\n')
+        self.git('add', '.')
+        self.git('commit', '-qam', 'mutate one reviewed blob')
+        head = self.git('rev-parse', 'HEAD')
+        # Rebuild an integration so the resolver still sees four modified paths.
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               '-m', 'integration after mutation')
+        rspec = importlib.util.spec_from_file_location(
+            'mut_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, target, head, integration)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_wrong_repository_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='other/repo',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_wrong_target_branch_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='main')
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_missing_integration_sha_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        actual['integration_sha'] = None
+        self.assertEqual('unresolved', self._plan(actual)['coverage_status'])
+
+    def test_altered_integration_sha_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        bad_integration = self.git('commit-tree',
+                                   self.git('merge-tree', '--write-tree', target, head).splitlines()[0],
+                                   '-p', target, '-p', head, '-m', 'alt integration')
+        actual['integration_sha'] = bad_integration
+        self.assertEqual('unresolved', self._plan(actual)['coverage_status'])
+
+    def test_candidate_only_qualification_without_trusted_base_stays_unresolved(self):
+        # A diff whose target base is not the trusted base (candidate self-claim)
+        # must not resolve: the authority is the authenticated target base.
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        # Rewrite the base to a bogus 40-char value; merge-base then differs.
+        actual['target_base_sha'] = 'f' * 40
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_non_merge_followup_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        self.git('checkout', '-q', 'HEAD')
+        (self.root / 'scripts' / 'pr-gate-plan.py').write_text('reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qam', 'clean followup still on reviewed chain')
+        # A plain single-parent follow-up that is NOT a clean target-forward
+        # merge of trusted history must lose the qualification.
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_untrusted_second_parent_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        # Forge an integration whose second parent is the reviewed head itself
+        # rather than authenticated target history.
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        forged = self.git('commit-tree', tree, '-p', target, '-p', head,
+                          '-m', 'forged integration')
+        rspec = importlib.util.spec_from_file_location(
+            'forged_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, target, head, forged)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_manually_altered_merge_tree_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        self.git('checkout', '-q', 'HEAD')
+        (self.root / 'scripts' / 'pr-gate-plan.py').write_text('reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qam', 'clean reviewed chain')
+        head = self.git('rev-parse', 'HEAD')
+        # Hand-craft a merge tree that is NOT Git's clean computed result.
+        (self.root / 'docs' / 'internal').mkdir(parents=True, exist_ok=True)
+        (self.root / 'docs' / 'internal' / 'ci-binding-qualifications.md').write_text(
+            '# tampered\n```json\n{}\n```\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'hand-altered merge tree')
+        altered = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', target, altered).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', altered,
+                               '-m', 'altered merge')
+        rspec = importlib.util.spec_from_file_location(
+            'altered_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, target, altered, integration)
+        result = self._plan(actual)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_wrong_status_set_stays_unresolved(self):
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_reviewed_head()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        for row in actual['changes']:
+            row['status'] = 'added'
+        self.assertEqual('unresolved', self._plan(actual)['coverage_status'])
+
+
+class Exact1060AndRecordRetentionTests(unittest.TestCase):
+    """The three-file #1056 Akte record still resolves; a record-only refresh
+    of the four-file bundle cannot authorize it via the three-file reader."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Record retention fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+        (self.root / 'base-marker.txt').write_text('trusted develop baseline\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted develop baseline')
+
+    def git(self, *args):
+        proc = subprocess.run(['git', '-C', str(self.root), *args],
+                              text=True, capture_output=True)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        return proc.stdout.strip()
+
+    def _three_file_akte(self, head_sha):
+        return (
+            '# Core-921 CI binding qualification (#1056)\n'
+            'Owner-authorized immutable source inventory.\n'
+            '```json\n'
+            '{"repository": "mcpdev80/baseharbor", "target_branch": "develop", '
+            '"reviewed_head": "%s", '
+            '"files": {"scripts/pr-check-runner.py": "modified", '
+            '"scripts/pr-gate-plan.py": "modified", '
+            '"scripts/test_pr_gate_plan.py": "modified"}, '
+            '"file_hashes": {"scripts/pr-check-runner.py": "%s", '
+            '"scripts/pr-gate-plan.py": "%s", '
+            '"scripts/test_pr_gate_plan.py": "%s"}, '
+            '"required_checks": ["pr-planner-tests", "ci-policy", '
+            '"ci-executor-verifier-tests"]}\n'
+            '```\n'
+        ) % (head_sha, '0' * 64, '0' * 64, '0' * 64)
+
+    def test_record_only_four_file_bundle_without_clean_merge_fails_exact_binding(self):
+        # A record-only four-file CI bundle that has no clean trusted-target
+        # first-parent merge chain must NOT pass the exact-#1060 binding: the
+        # authority is the trusted target base, not a candidate self-claim.
+        target = self.git('rev-parse', 'HEAD')
+        self._make_four_file_bundle()
+        head = self.git('rev-parse', 'HEAD')
+        actual = self._integrate(target, head)
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        # The four-file inventory is authored only in the candidate HEAD; absent a
+        # clean first-parent merge chain of authenticated target history it cannot
+        # authorize the exact binding.
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def _make_four_file_bundle(self):
+        for path in planner.EXACT_1060_REVIEWED_FILES:
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / path).write_text('reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'four-file CI bundle on base')
+
+    def _integrate(self, target, head):
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', target, '-p', head,
+                               '-m', 'merge')
+        rspec = importlib.util.spec_from_file_location(
+            'bundle_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        return resolver.resolve_pr_diff(self.root, target, head, integration)
+
+
 if __name__ == '__main__':
     unittest.main()
