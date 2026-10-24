@@ -5,6 +5,7 @@ workflow provenance, or protected signer isolation. Those are executor duties.
 """
 import re
 from r27_verified_coverage import EvidenceError, SHA
+from r27_github_transport import github_getter
 
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 _WORKFLOW = re.compile(r"\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml\Z")
@@ -23,7 +24,7 @@ def validate_workflow_run_event(payload, *, repository, workflow_path, run_id):
             or not isinstance(repo, dict) or repo.get("full_name") != repository
             or run.get("event") != "pull_request"
             or run.get("status") != "completed" or run.get("conclusion") != "success"
-            or run.get("id") != run_id
+            or type(run.get("id")) is not int or run["id"] != run_id
             or run.get("path") != workflow_path
             or not isinstance(run.get("head_repository"), dict)
             or run["head_repository"].get("full_name") != repository
@@ -46,7 +47,8 @@ def verify_workflow_run_against_api(payload, get_json, *, repository,
         raise EvidenceError("EVIDENCE_TRIGGER: API lookup failed") from exc
     if not isinstance(verified, dict) or not isinstance(verified.get("repository"), dict):
         raise EvidenceError("EVIDENCE_TRIGGER: invalid API run")
-    if (verified.get("id") != run_id or verified["repository"].get("full_name") != repository
+    if (type(verified.get("id")) is not int or verified["id"] != run_id
+            or verified["repository"].get("full_name") != repository
             or verified.get("path") != workflow_path
             or verified.get("head_sha") != event["head_sha"]
             or verified.get("event") != "pull_request"
@@ -54,3 +56,16 @@ def verify_workflow_run_against_api(payload, get_json, *, repository,
             or verified.get("conclusion") != "success"):
         raise EvidenceError("EVIDENCE_TRIGGER: API run mismatch")
     return event
+
+
+def verify_authenticated_workflow_run(payload, token, *, repository,
+                                      workflow_path, run_id):
+    """Re-fetch event identity using the restricted authenticated GitHub transport.
+
+    Call from independently protected executor code with a scoped credential.
+    Returns validated identity only; does not issue evidence or establish
+    workflow provenance, attempt/job authorization or signing-key isolation.
+    """
+    return verify_workflow_run_against_api(
+        payload, github_getter(token), repository=repository,
+        workflow_path=workflow_path, run_id=run_id)
