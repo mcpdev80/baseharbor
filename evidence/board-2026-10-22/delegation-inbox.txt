@@ -40,3 +40,4 @@ F40-PUSH haelt nicht: remote 4e737e26, lokal 19e7533d. Naechster Schritt: push-B
 1057 CLOSED ungeklaert (o103 uebernimmt). f42 analysiert 1056-Meta-Fail. o102 laeuft noch - Kollisionsrisiko auf Akten-Branch, o103 nutzt eigenen Branch (so im Prompt).MERGE-LOG: 1053->79e64084, 1058(Akte)->24c33afd. f43 rebase #1056 auf develop. Danach: 1056 merge -> Pins-Update #1050 -> W1-Redo.
 PLAN-PUBLISH OK 1f08de16 (PR-Welle dokumentiert). o106 laeuft (Merge-Kette 1055+1056). QWEN-BACKEND-PROBLEM separat klären (8 Ghosts heute, ornith/flash ok).
 GHOSTDIAG (q104): Gateway+Host+Modell OK, Fehler liegt in qwen36-SESSION Selber (write-tool-Ausfuehrung) -> naechster Admin-Schritt: qwen36 Session-Config vs. opencode-Version vergleichen (ops-Rueckstand, nicht Release-blockierend).
+QWEN-Check 08:3x: Gateway gesund (3,5ms), aktuelle qwen-Lanes liefern (q105,q106). Geister primaer auf relative-Pfade-Missionen zurueckgefuehrt - ABSOLUT-Pflicht wirkt. Kein Backend-Fehler.
