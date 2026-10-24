@@ -1,0 +1,10 @@
+ROLLE: REVIEW (abgegrenzt, nur lesend; Urteil + Rezept. Keine Umsetzung, kein Merge).
+KANDIDAT: baseharbor-demo PR #120 (head bd86c7c, target main). Dein Vorgaenger-Urteil in evidence/board-2026-10-24/codex-verdict-freeze-prs.md war REQUEST_CHANGES mit Begruendung "target-branch diff includes executable timeout changes, so this is not solely a pin change".
+
+AUFGABE (genau diese Frage klaeren, damit ein Worker minimal reparieren kann):
+1. Exakte Diff-Menge: `gh pr diff 120 --repo mcpdev80/baseharbor-demo` plus `git show bd86c7c:<pfad>` - liste JEDE Datei mit sha256. Kennzeichne: (a) reine Pin-/core.ref-Aenderungen, (b) ausführbare/Timeout-/Test-Aenderungen.
+2. Klaere, ob (b) ueberhaupt nicht-laendisch ist: Ist der Inhalt bereits auf main (anderer Commit/anderer PR, z.B. ueber #117 oder spaetere main-Commits)? `git log --left-right main...bd86c7c` und `gh compare main...<head>`. Zielentscheidung: PR muss auf den reinen Pin-Delta zurueckgestutzt werden, oder die Aenderung ist berechtigt und braucht ihr eigenes Qualifikations-Gate.
+3. Nenne das kleinste korrekte Rezept: welcher Commit/Cherry-Pick auf main-Basis, welche Datei(en), welcher Wert (Core 1861ed07888a1ec22c218ca491d23ee54f48e261 oder - wenn der Repo-Vertrag einen anderen Anker verlangt - mit datei:zeile begruendet), und welches exact-candidate Gate in DEMO noetig ist (oder nachweisbar gilt: Repo hat keine PR-triggered CI - dann benenne den gueltigen Ersatz-Nachweis + warum).
+4. Folgeabschaetzung: welche Werte muessen Console (PR #9) und Connector nach dem Demo-Merge nachgezogen werden, und in welcher Reihenfolge (Dependency-Order), inklusive Hinweis auf die spaeteren Pin-Felder in baseharbor #1050.
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-demo120-repin.md (ROLLE, UTC, SHA before/after, Dateitabelle, Rezept mit datei:zeile, Stop-Kriterium).
+END CX-DEMO120-DONE / END CX-DEMO120-BLOCKED.

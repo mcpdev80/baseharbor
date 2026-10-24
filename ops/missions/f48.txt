@@ -1,0 +1,19 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-node-connector (eigener worktree, main-Checkout NICHT switchen). KEIN root-git, KEIN Merge, KEIN force, KEIN --admin, KEIN Push auf main.
+ERSTER SCHRITT (VOR aller Analyse): evidence/board-2026-10-24/f48-connectorancestry.md mit ## PLAN + nativen Todos (Watchdog meldet sonst GHOST-CANDIDATE). LIES baseharbor-node-connector/AGENTS.md (eigene required checks, keine Runtime-Matrix fuer reine Pin-Aenderungen).
+
+BEFUND (o115b + f47b, belegt in evidence/board-2026-10-24/o115b-freeze.md und f47b-freezedemoconsole.md):
+- baseharbor/docs/releases/v0.4.26.consumer-pins.json (PR #1050) pinnt Connector **df1f4378** (q59b FROZEN).
+- Connector main ist **7c7093d**; `gh compare` zeigt df1f4378 als 3 ahead / 2 behind, also DIVERGED und KEIN Vorfahr von main.
+- Folge: pre-release.yml:122 (`ecosystem_release_pins.py`) laeuft in einen Konsistenz-/Ancestry-Konflikt, und o115c's PR #9 (head 2223506c, nur integration-candidate.json mit demo/console-Werten) loest die Linienfrage nicht.
+
+AUFGABE:
+1. Praezise Klarheit: Inhalt von df1f4378 vs main 7c7093d vergleichen (`git log --left-right`, `git diff --stat 7c7093d...df1f4378`, `git show` der betroffenen Dateien). Was fehlt auf main, was ist auf main neuer?
+2. Entscheide und begruende den kleinsten korrekten Freeze-Weg:
+   (a) PR, der den Inhalt von df1f4378 per cherry-pick auf main-Linie hebt (bevorzugt, wenn keine Fremdaenderungen), oder
+   (b) wenn df1f4378 auf einem abgelaufenen Stand sitzt: PR mit dem aktuellen main-Inhalt + den Freeze-relevanten Teilen aus df1f4378, plus ausdrueckliche Feststellung, dass der Core-Pin-Wert in #1050 spaeter auf den neuen main-Tip gezogen werden MUSS.
+3. NEUER Branch (z.B. work/v0.4.26-connector-freeze-lineage) + PR gegen main. PR #9 (o115c) NICHT weiter bearbeiten - stattdessen im PR-Body angeben, dass dieser PR PR #9 ersezt/superseded, damit der Coordinator #9 schliessen lassen kann. Keine doppelten Schreibrechte auf einem Branch (LAN-REGEL).
+4. Wenn integration-candidate.json auch geaendert wird: die demo/console Werte aus PR #9 (demo=25c31969, console=69d1d14) korrekt mit fuehren und begruenden.
+5. LOKALES/Repo-Gate: nur das kleinste zutreffende Gate des Connector-Repos (o115c nutzte 'source' run 40078538425; Repo hat push-only CI laut f47b - pruife das und begruende, wenn gar kein PR-Gate laeuft). Keine Matrix, keine VM.
+6. Evidence-Tabelle: main-SHA, df1f4378-Status, PR-Nummer + head, was nach dem Merge in #1050 nachzuziehen ist.
+ABNAHME: PR existiert, erzaehlt die whole Geschichte (Ancestry geloest ODER klar begruendeter Folgewert), keine Merges.
+END F48-CONNECTORANCESTRY-DONE mit PR+head / END F48-BLOCKED mit datei:zeile.
