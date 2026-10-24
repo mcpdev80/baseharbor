@@ -179,7 +179,7 @@ class CandidateTriggerTests(unittest.TestCase):
         spec.loader.exec_module(module)
         sha = "a" * 40
         labeled = {"draft": False, "state": "open", "head": {"sha": sha},
-                   "base": {"ref": "develop"}, "labels": [{"name": "ci:validate"}]}
+                   "base": {"ref": "develop", "sha": "c" * 40}, "labels": [{"name": "ci:validate"}]}
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "false",
                                      "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
             with patch.object(module, "gh", side_effect=[labeled, None, labeled]) as api:
