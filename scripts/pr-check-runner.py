@@ -52,6 +52,7 @@ WIZARD_TEST_FAMILIES = {
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
+               'openbao-package-tests',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
@@ -66,9 +67,37 @@ def execute_validation(check, repository):
     """
     if check not in WIZARD_TEST_FAMILIES:
         raise ValueError('unsupported executable validation')
-    patterns = WIZARD_TEST_FAMILIES[check]
-    if check == 'wizard-core918-native-sql-safety-tests':
-        patterns = tuple(pattern + chr(36) for pattern in patterns)
+    if check == 'openbao-package-tests':
+        # OpenBao tests live in ./internal/openbao/, not in ./cmd/baha.
+        # The existing wizard executor runs against cmd/baha and uses
+        # test-name patterns; OpenBao test names are TestBootstrap...,
+        # TestRetryManagerProvisioning... etc.  Run the package directly.
+        repo = Path(repository)
+        listed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-list', '.'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+        ]
+        if not matches:
+            raise RuntimeError('zero matching OpenBao tests in ./internal/openbao/...')
+        executed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-count=1', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
+        for name in matches:
+            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
+                raise RuntimeError('required OpenBao test did not execute: ' + name)
+            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
+                raise RuntimeError('OpenBao test missing PASS: ' + name)
+        return matches
+    patterns = WIZARD_TEST_FAMILIES.get(check)
+    if patterns is None:
+        raise ValueError('unsupported executable validation')
     repo = Path(repository)
     all_matches = []
     for pattern in patterns:
@@ -91,7 +120,7 @@ def execute_validation(check, repository):
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if executed.returncode:
             raise RuntimeError('test execution failed for ' + check +
-                               ' (' + pattern + '): ' + executed.stdout)
+                                ' (' + pattern + '): ' + executed.stdout)
         for name in matches:
             if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
                 raise RuntimeError('required test did not execute: ' + name)
