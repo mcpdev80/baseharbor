@@ -644,7 +644,8 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
 
     Re-run the real diff resolver so caller-supplied inventories, integration
     parents and merge trees cannot substitute for Git evidence. This bounded
-    record enables only the three CI files and the existing CI check catalog.
+    record enables only the three CI scripts, optionally with ci.yml and its
+    mandatory syntax check, through an exact immutable inventory.
     Hash the frozen reviewed blobs; later source may only add exact Git-computed
     first-parent merges of authenticated target history. This permits strict
     up-to-date integration without accepting candidate-authored follow-ups.
@@ -670,7 +671,11 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                   ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
         blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
                             flags=re.MULTILINE | re.DOTALL)
-        if len(blocks) != 1 or raw.count('```') != 2:
+        # The trusted register may accumulate one entry per reviewed candidate.
+        # Every fenced block must be a complete, well-formed supported inventory;
+        # a stray fence, duplicate anchor or weakened
+        # record fails the whole register closed.
+        if not blocks or raw.count('```') != 2 * len(blocks):
             return None
 
         def unique_object(pairs):
@@ -681,34 +686,39 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                 result[key] = value
             return result
 
-        record = json.loads(blocks[0], object_pairs_hook=unique_object)
-        expected_files = {path: 'modified' for path in (
+        script_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
             'scripts/test_pr_gate_plan.py')}
-        expected_ids = {check['id'] for check in CI_CHECKS}
-        if (not isinstance(record, dict) or set(record) != {
-                'repository', 'target_branch', 'reviewed_head', 'files',
-                'file_hashes', 'required_checks'} or
-                record['repository'] != context_repository or
-                record['target_branch'] != context_target_branch or
-                not isinstance(record['reviewed_head'], str) or
-                re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                not core752_reviewed_merge_chain(
-                    diff['target_base_sha'], diff['head_sha'],
-                    record['reviewed_head'], repository) or
-                record['files'] != expected_files or
-                not isinstance(record['file_hashes'], dict) or
-                set(record['file_hashes']) != set(expected_files) or
-                not isinstance(record['required_checks'], list) or
-                len(record['required_checks']) != len(expected_ids) or
-                set(record['required_checks']) != expected_ids):
-            return None
-        for path, digest in record['file_hashes'].items():
-            if (not isinstance(digest, str) or
-                    re.fullmatch(r'[0-9a-f]{64}', digest) is None or
-                    hashlib.sha256(git('cat-file', 'blob',
-                                       record['reviewed_head'] + ':' + path)).hexdigest() != digest):
+        workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
+        records = []
+        for block in blocks:
+            record = json.loads(block, object_pairs_hook=unique_object)
+            if not isinstance(record, dict):
                 return None
+            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+                      if record.get('files') == workflow_files else CI_CHECKS)
+            expected_ids = {check['id'] for check in checks}
+            if (not isinstance(record, dict) or set(record) != {
+                    'repository', 'target_branch', 'reviewed_head', 'files',
+                    'file_hashes', 'required_checks'} or
+                    record['repository'] != context_repository or
+                    record['target_branch'] != context_target_branch or
+                    not isinstance(record['reviewed_head'], str) or
+                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                    record['files'] not in (script_files, workflow_files) or
+                    not isinstance(record['file_hashes'], dict) or
+                    set(record['file_hashes']) != set(record['files']) or
+                    any(not isinstance(value, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', value) is None
+                        for value in record['file_hashes'].values()) or
+                    not isinstance(record['required_checks'], list) or
+                    len(record['required_checks']) != len(expected_ids) or
+                    set(record['required_checks']) != expected_ids):
+                return None
+            records.append(record)
+        anchors = [record['reviewed_head'] for record in records]
+        if len(anchors) != len(set(anchors)):
+            return None
         # Import the resolver beside this trusted planner, not from the PR tree.
         import importlib.util
         spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
@@ -719,74 +729,29 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         if actual != diff or actual['broad_required']:
             return None
         changes = actual['changes']
-        if (len(changes) != len(expected_files) or
-                {c.get('path'): c.get('status') for c in changes} != expected_files):
-            return None
+        # A register entry qualifies only through the existing review-ancestry
+        # and frozen-blob proof; entries not binding this exact candidate never
+        # contribute, so a missing entry keeps the conservative fallback.
+        for record in records:
+            if (len(changes) != len(record['files']) or
+                    {c.get('path'): c.get('status') for c in changes} != record['files']):
+                continue
+            if not core752_reviewed_merge_chain(
+                    diff['target_base_sha'], diff['head_sha'],
+                    record['reviewed_head'], repository):
+                continue
+            for path, digest in record['file_hashes'].items():
+                if (not isinstance(digest, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', digest) is None or
+                        hashlib.sha256(git('cat-file', 'blob',
+                                           record['reviewed_head'] + ':' + path)).hexdigest() != digest):
+                    break
+            else:
+                return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+                        if record['files'] == workflow_files else CI_CHECKS)
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
-    return CI_CHECKS
-
-
-# BOOTSTRAP-Ausnahme (befristet, nur fuer die zwei Bootstrap-PRs): Der
-# fail-closed Validator braucht den ersten Merge, verweigert ihn aber wegen
-# eines veralteten Core-921-Registers. Eine PR, deren Head die autoritative
-# Akte auf dem Target-Base referenziert und sonst alle Required-Checks gruen
-# sind, wird als bootstrap-eligible durchgelassen. Keine generische
-# Allowlist, kein Wegfall von Tests/Reviews: die Ausnahme liefert nur
-# coverage_status='resolved', WAIFELT NICHT.
-BOOTSTRAP_AKTE_TITLE = 'Core-921 CI binding qualification'
-BOOTSTRAP_AKTE_FILENAME = 'docs/internal/ci-binding-qualifications.md'
-
-
-def bootstrap_eligible(diff, repository='.', context_repository=None,
-                       context_target_branch=None):
-    """Acknowledge the immutable Akte on the target base for bootstrap PRs.
-
-    The fail-closed validator needs the first merge, but the Core-921 register
-    is stale (reviewed_head is not a first-parent ancestor of develop, and the
-    current PR-head blobs no longer match the recorded digests), so it can never
-    qualify the two bootstrap PRs. This bounded exception trusts only the frozen
-    Akte read from the authenticated target base: a PR whose HEAD references it
-    (title + filename present in the HEAD tree) is bootstrap-eligible. It does
-    NOT waive required checks or review; it only returns the CI check catalog
-    as binding so pr-required-final.py still enforces every green check.
-    """
-    if context_repository != 'mcpdev80/baseharbor':
-        return None
-    if context_target_branch != 'develop':
-        return None
-    valid, _ = validated_diff(diff)
-    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
-        return None
-    def git(*args):
-        return subprocess.run(['git', '-C', str(repository), *args],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              check=False)
-    try:
-        base_tree = git('rev-parse', '--verify', diff['target_base_sha'] + '^{tree}').stdout.strip()
-        if not base_tree:
-            return None
-        ref_blob = git('cat-file', '-e',
-                       diff['target_base_sha'] + ':' + BOOTSTRAP_AKTE_FILENAME)
-        if ref_blob.returncode != 0:
-            return None
-        akte = git('show', diff['target_base_sha'] +
-                   ':' + BOOTSTRAP_AKTE_FILENAME).stdout.decode('utf-8')
-        if BOOTSTRAP_AKTE_TITLE not in akte or '```json' not in akte:
-            return None
-        head_tree = git('rev-parse', '--verify', diff['head_sha'] + '^{tree}').stdout.strip()
-        if not head_tree:
-            return None
-        head_refs = git('ls-tree', '-r', '--name-only', head_tree).stdout
-        if BOOTSTRAP_AKTE_FILENAME.encode() not in head_refs:
-            return None
-        head_commit_msg = git('log', '-1', '--format=%B', diff['head_sha']).stdout
-        if (BOOTSTRAP_AKTE_FILENAME.encode() not in head_commit_msg and
-                BOOTSTRAP_AKTE_TITLE.encode() not in head_commit_msg):
-            return None
-    except (OSError, subprocess.CalledProcessError, UnicodeDecodeError):
-        return None
-    return CI_CHECKS
+    return None
 
 
 def plan(diff, requirements, mapping, repository='.',
@@ -1161,8 +1126,7 @@ def plan(diff, requirements, mapping, repository='.',
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
-        if not unresolved else None) or bootstrap_eligible(
-        diff, repository, context_repository, context_target_branch)
+        if not unresolved else None)
     if binding_checks:
         require(binding_checks)
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
