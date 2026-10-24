@@ -2632,5 +2632,131 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertIsNone(self.checks(self.resolved(head=followup)))
 
 
+class BootstrapExceptionTests(unittest.TestCase):
+    """Fail-first: only PRs whose HEAD references the trusted Akte bootstrap.
+
+    The fail-closed validator needs the first merge but its Core-921 register
+    is stale, so it can never qualify the two bootstrap PRs. This bounded,
+    time-boxed exception trusts only the frozen Akte read from the target base
+    and requires the PR HEAD to reference it. It does NOT waive required checks
+    or review; it only returns the CI check catalog so pr-required-final.py
+    still enforces every green check.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Bootstrap fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+
+    def git(self, *args):
+        result = subprocess.run(['git', '-C', str(self.root), *args],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def _bootstrap_repo(self, head_message):
+        # Trusted develop baseline with the immutable Akte present.
+        (self.root / 'docs' / 'internal').mkdir(parents=True, exist_ok=True)
+        (self.root / 'scripts').mkdir(parents=True, exist_ok=True)
+        akte = (
+            '# Core-921 CI binding qualification (#1056)\n'
+            'Owner-authorized immutable source inventory.\n'
+            '```json\n'
+            '{"repository": "mcpdev80/baseharbor", "target_branch": "develop", '
+            '"reviewed_head": "0" * 40, '
+            '"files": {"scripts/pr-check-runner.py": "modified"}, '
+            '"file_hashes": {"scripts/pr-check-runner.py": "0" * 64}, '
+            '"required_checks": ["pr-planner-tests"]}\n'
+            '```\n'
+        )
+        (self.root / 'docs' / 'internal' / 'ci-binding-qualifications.md').write_text(akte)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted develop baseline with Akte')
+        develop = self.git('rev-parse', 'HEAD')
+        # PR head: touches the three CI files and references the Akte in the
+        # commit message (bootstrap-eligible).
+        (self.root / 'scripts' / 'pr-gate-plan.py').write_text('bootstrap planner\n')
+        (self.root / 'scripts' / 'pr-check-runner.py').write_text('bootstrap runner\n')
+        (self.root / 'scripts' / 'test_pr_gate_plan.py').write_text('bootstrap test\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', head_message)
+        head = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', develop, head)
+        integration = self.git('commit-tree', tree, '-p', develop, '-p', head,
+                               '-m', 'bootstrap merge')
+        rspec = importlib.util.spec_from_file_location(
+            'bootstrap_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, develop, head, integration)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        return actual
+
+    def test_bootstrap_pr_referencing_akte_resolves(self):
+        actual = self._bootstrap_repo(
+            'ci(planner): bootstrap via '
+            'docs/internal/ci-binding-qualifications.md Core-921 CI binding qualification')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual({c['id'] for c in result['required_validation_checks']},
+                         {c['id'] for c in planner.CI_CHECKS})
+
+    def test_bootstrap_without_akte_reference_stays_blocked(self):
+        # Fail-first negative: same three CI files, no Akte reference anywhere.
+        actual = self._bootstrap_repo('ci(planner): change the three CI files')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_bootstrap_tampered_akte_on_base_stays_blocked(self):
+        # The immutable Akte on the target base is the sole authority. A base
+        # whose Akte no longer parses as a JSON block must not bootstrap, even
+        # though the CI-script paths alone would resolve via the planning lane.
+        (self.root / 'docs' / 'internal').mkdir(parents=True, exist_ok=True)
+        (self.root / 'scripts').mkdir(parents=True, exist_ok=True)
+        (self.root / 'docs' / 'internal' / 'ci-binding-qualifications.md').write_text(
+            '# not a qualification record\nno fenced json block here\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'develop with tampered Akte')
+        develop = self.git('rev-parse', 'HEAD')
+        # Adding a workflow file forces an unresolved area on top of the
+        # planning scripts so the only resolution path is the bootstrap record.
+        (self.root / '.github' / 'workflows').mkdir(parents=True, exist_ok=True)
+        (self.root / '.github' / 'workflows' / 'extra.yml').write_text('name: x\n')
+        self.git('add', '.')
+        self.git('commit', '-qm',
+                 'ci(planner): bootstrap via '
+                 'docs/internal/ci-binding-qualifications.md Core-921 CI binding qualification')
+        head = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', develop, head)
+        integration = self.git('commit-tree', tree, '-p', develop, '-p', head, '-m', 'merge')
+        rspec = importlib.util.spec_from_file_location(
+            'bootstrap_diff2', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, develop, head, integration)
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_bootstrap_wrong_repository_stays_blocked(self):
+        actual = self._bootstrap_repo(
+            'ci(planner): bootstrap via '
+            'docs/internal/ci-binding-qualifications.md')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='other/repo',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
 if __name__ == '__main__':
     unittest.main()
