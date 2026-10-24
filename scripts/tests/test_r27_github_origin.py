@@ -51,6 +51,17 @@ class GitHubOriginTests(unittest.TestCase):
             with self.subTest(pages=len(pages)), self.assertRaises(OriginError):
                 verify_complete_inventory(pages)
 
+    def test_untrusted_api_shapes_fail_with_origin_error(self):
+        for value in (None, True, "unexpected", []):
+            with self.subTest(repository=value), self.assertRaisesRegex(
+                    OriginError, "EVIDENCE_ORIGIN"):
+                checked(run=dict(RUN, repository=value))
+        for limit in (None, True, 0, -1, 1001, "1000"):
+            with self.subTest(max_jobs=limit), self.assertRaisesRegex(
+                    OriginError, "EVIDENCE_ORIGIN"):
+                verify_complete_inventory([{"total_count": 1, "jobs": [JOB]}],
+                                          max_jobs=limit)
+
     def test_exact_run_and_job_success(self):
         self.assertEqual(checked()["job_id"], 456)
 

@@ -27,7 +27,7 @@ def verify_origin(*, run, jobs, repository, head_sha, run_id, attempt, job_id,
     if not isinstance(workflow_path, str) or not workflow_path.startswith(
             ".github/workflows/") or not workflow_path.endswith(".yml"):
         raise OriginError("EVIDENCE_ORIGIN: invalid workflow path")
-    if not isinstance(run, dict) or not isinstance(jobs, list):
+    if not isinstance(run, dict) or not isinstance(jobs, list) or not isinstance(run.get("repository"), dict):
         raise OriginError("EVIDENCE_ORIGIN: invalid API response")
     expected_path = repository + "/" + workflow_path
     if (run.get("id") != run_id or type(run.get("id")) is not int
@@ -65,7 +65,7 @@ def verify_complete_inventory(pages, *, max_jobs=1000):
     Pages are fetched by an independent authenticated caller. A partial page
     listing must never qualify a required check or hide a duplicate name.
     """
-    if not isinstance(pages, list) or not pages or len(pages) > 10:
+    if type(max_jobs) is not int or max_jobs < 1 or max_jobs > 1000 or not isinstance(pages, list) or not pages or len(pages) > 10:
         raise OriginError("EVIDENCE_ORIGIN: invalid inventory pages")
     jobs = []
     expected_total = None
