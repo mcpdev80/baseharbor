@@ -35,6 +35,8 @@ class CandidateTriggerTests(unittest.TestCase):
                 self.assertIn("ready_for_review", condition)
                 self.assertIn("github.event.label.name == 'ci:validate'", condition)
                 self.assertIn("github.event.action == 'opened'", condition)
+                self.assertIn("github.event.action == 'labeled' && !github.event.pull_request.draft", condition)
+                self.assertIn("github.base_ref == 'develop'", condition)
 
     def test_finalcheck_rejects_stale_candidate(self):
         source = CI.read_text()
