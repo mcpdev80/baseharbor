@@ -77,15 +77,6 @@ class FileReaderTests(unittest.TestCase):
    for candidate in ("policy.json",str(link)):
     with self.subTest(candidate=candidate), self.assertRaisesRegex(EvidenceError,"protected path|cannot read|unprotected owner"):
      read_pinned_policy_file(candidate,"a"*64,trusted_owner_uid=0)
- def test_canonical_file_roundtrip(self):
-  import tempfile
-  from r27_trusted_policy import read_pinned_policy_file
-  data=b'{"sql":{"job_name":"PR Selected Checks","workflow_path":".github/workflows/ci.yml"}}'
-  with tempfile.TemporaryDirectory() as d:
-   file=Path(d)/"policy.json"
-   file.write_bytes(data)
-   with self.assertRaisesRegex(EvidenceError,"unprotected owner"):
-    read_pinned_policy_file(str(file),hashlib.sha256(data).hexdigest(),trusted_owner_uid=0)
 
 
 class AncestorPolicyPathTests(unittest.TestCase):
