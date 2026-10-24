@@ -1,0 +1,44 @@
+# Dormant proposal. This workflow never downloads or executes candidate code.
+name: R27 Evidence Issuer
+on:
+  workflow_run:
+    workflows: [R27 Candidate Executor]
+    types: [completed]
+permissions: {}
+jobs:
+  issue:
+    if: vars.R27_CI_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success'
+    environment: r27-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install -r deploy/ci/r27/requirements.txt
+      - name: Independently authenticate completed run and issue compact receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R27_CI_ENABLED: ${{ vars.R27_CI_ENABLED }}
+          R27_TRUSTED_EXECUTOR_SHA: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+          R27_POLICY_DIGEST: ${{ vars.R27_POLICY_DIGEST }}
+          R27_PUBLIC_KEY_HEX: ${{ vars.R27_PUBLIC_KEY_HEX }}
+          R27_SIGNING_KEY_HEX: ${{ secrets.R27_SIGNING_KEY_HEX }}
+        run: python3 scripts/r27-ci.py issue --receipt "$RUNNER_TEMP/r27-receipt.json"
+      - name: Publish create-only receipt to Planning
+        env:
+          GH_TOKEN: ${{ secrets.R27_EVIDENCE_PUBLISH_TOKEN }}
+          R27_READ_TOKEN: ${{ github.token }}
+          R27_CI_ENABLED: ${{ vars.R27_CI_ENABLED }}
+          R27_TRUSTED_EXECUTOR_SHA: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+          R27_POLICY_DIGEST: ${{ vars.R27_POLICY_DIGEST }}
+          R27_PUBLIC_KEY_HEX: ${{ vars.R27_PUBLIC_KEY_HEX }}
+        run: python3 scripts/r27-ci.py publish --receipt "$RUNNER_TEMP/r27-receipt.json"

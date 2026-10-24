@@ -1,0 +1,134 @@
+# Dormant proposal. Candidate jobs never receive issuer or publisher secrets.
+name: R27 Candidate Executor
+run-name: r27|${{ inputs.stage }}|${{ inputs.number }}|${{ inputs.candidate }}|${{ inputs.base }}|${{ inputs.integration }}|${{ inputs.artifact }}
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        type: choice
+        options: [pr, integration, release]
+        required: true
+      number:
+        type: string
+        required: true
+      candidate:
+        type: string
+        required: true
+      base:
+        type: string
+        required: true
+      integration:
+        type: string
+        required: true
+      artifact:
+        type: string
+        default: none
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: r27-${{ inputs.stage }}-${{ inputs.number }}-${{ inputs.candidate }}-${{ inputs.base }}
+  cancel-in-progress: false
+env:
+  R27_CI_ENABLED: ${{ vars.R27_CI_ENABLED }}
+  R27_TRUSTED_EXECUTOR_SHA: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+  R27_POLICY_DIGEST: ${{ vars.R27_POLICY_DIGEST }}
+jobs:
+  plan:
+    name: R27 · Plan
+    if: vars.R27_CI_ENABLED == 'true' && github.sha == vars.R27_TRUSTED_EXECUTOR_SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      checks: ${{ steps.plan.outputs.checks }}
+      native: ${{ steps.plan.outputs.native }}
+      native_required: ${{ steps.plan.outputs.native_required }}
+      demo_sha: ${{ steps.plan.outputs.demo_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install -r deploy/ci/r27/requirements.txt
+      - name: Recompute trusted candidate plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          R27_STAGE: ${{ inputs.stage }}
+          R27_PR: ${{ inputs.number }}
+          R27_CANDIDATE: ${{ inputs.candidate }}
+          R27_BASE: ${{ inputs.base }}
+          R27_INTEGRATION: ${{ inputs.integration }}
+          R27_ARTIFACT: ${{ inputs.artifact }}
+        run: python3 scripts/r27-ci.py plan
+  validation:
+    name: R27 · Validation · ${{ matrix.check }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.checks) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.R27_TRUSTED_EXECUTOR_SHA }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.integration }}
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: trusted/go.mod
+          cache: false
+      - run: python3 -m pip install -r trusted/deploy/ci/r27/requirements.txt
+      - name: Execute one selected validation without credentials
+        if: matrix.check != 'not-required'
+        env:
+          R27_CHECK: ${{ matrix.check }}
+          R27_ARTIFACT: ${{ inputs.artifact }}
+        run: python3 trusted/scripts/r27-ci.py execute --check "$R27_CHECK" --candidate candidate
+  native:
+    name: R27 · Native
+    needs: plan
+    if: needs.plan.outputs.native_required == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.native) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ inputs.integration }}
+      demo_ref: ${{ needs.plan.outputs.demo_sha }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+  finalcheck:
+    name: R27 · Finalcheck
+    needs: [plan, validation, native]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require every selected execution result
+        env:
+          PLAN: ${{ needs.plan.result }}
+          VALIDATION: ${{ needs.validation.result }}
+          NATIVE_REQUIRED: ${{ needs.plan.outputs.native_required }}
+          NATIVE: ${{ needs.native.result }}
+        run: |
+          test "$PLAN" = success
+          test "$VALIDATION" = success
+          if [ "$NATIVE_REQUIRED" = true ]; then test "$NATIVE" = success; fi
