@@ -1,0 +1,6 @@
+tree e86d0e32bb55a79f8d09c784f4e90c093ba1f574
+parent 89d87f78a4c0d410a830483af1ef7c7cb09e1fe9
+author Codeman Worker <worker@baseharbor.local> 1792844792 +0200
+committer Codeman Worker <worker@baseharbor.local> 1792844961 +0200
+
+fix(ci): integrate openbao-package-tests case, OpenBaoValidationTests, and binding record (#1060 forward correction)

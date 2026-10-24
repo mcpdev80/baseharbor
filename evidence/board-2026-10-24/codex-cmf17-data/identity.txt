@@ -1,0 +1,4 @@
+/home/marcel/dev/baseharbor-ecosystem/q114-fix1060
+/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git/worktrees/q114-fix1060
+/home/marcel/dev/baseharbor-ecosystem/baseharbor/.git
+true

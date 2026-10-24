@@ -1,0 +1,12 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl. git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/q114-fix1060. KEIN force, KEIN amend, KEIN merge, KEIN Reset, KEIN stash drop, KEIN Produktcode-Aenderung. KEIN CI dispatch/review.
+ERSTER SCHRITT: evidence/board-2026-10-24/q122-1060ff.md mit ## PLAN + Todos.
+
+ZIEL: q121 produced tested local commit `0f3bd169d4a02c5f019da822b4f45f66b972423e`, but it went to remote branch `q114-fix1060`; PR branch remains old `13a05ea4`. Verify 0f3 is descendant of current PR head.
+Commands/checks:
+1. `git status`, log parents; fetch PR ref without changing worktree:
+   `timeout 60 git fetch origin work/v0.4.26-openbao-gateplan`
+2. Verify 13a is ancestor of 0f3 and local status clean.
+3. If clean and descendant: `timeout 60 git push origin HEAD:refs/heads/work/v0.4.26-openbao-gateplan` (ordinary, no force). If non-fast-forward, STOP immediately, no force.
+4. Verify PR head via gh and current checks max 25min. Report API totals if no run.
+5. Append exact `END Q122-1060FF-PUSHED mit new head` or blocked to q121 evidence? NO, write own evidence only.
+END Q122-1060FF-PUSHED / END Q122-1060FF-BLOCKED.

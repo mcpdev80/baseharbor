@@ -1,0 +1,31 @@
+tree ed4e2c188954d01157144b11fa1fe82f4069b19c
+parent f39295680d41290fc505c0a8cc1769da51699293
+author Marcel Pfingstgräf <dev@pfingstgraef.eu> 1792843998 +0200
+committer GitHub <noreply@github.com> 1792843998 +0200
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJq3KDeCRC1aQ7uu5UhlAAAgicQAH7vdZpRmnE6E9XswYPkHWSh
+ +X396YingeLAkEWT43e0If2ei/O6TQJf4DjL9E0z/iPd9vFwFR0GKvSZHcFyuFJ8
+ qbzH/rHF0HvajLlKQrbI8tUHGm2r7hGvKxFqp/6eygzoZkBHESRcaulnBRjpn74f
+ PdkA4WHYAatwRiR4jmokt2ykQu+guKbPE0zeXT0NdCyDaA42EVIYZ5du4SfQDDAH
+ I+pDSn9eOUW22ci+TRivZDJiaMb9EqMoiv3+dQiaKFomkVhQHw1DifQ5tzbIkahM
+ 7I4Ywx1Bb838rcOTocd1GHirnCkvCdVeCmEAYm61Qw2WqaNeh1XsA/0kBjbLXj9a
+ HTcey92vcv/u1mgMqPdVz0hwkcbNaFYlQhP7BFbW17nRai5BIgRtnyMmXRoAxWll
+ ibEEp/CMFFEr9vFycKs3ftoeMC4vt6De5JX8KrCp1jyVf9WBRicTJyKhDTIqNzaD
+ Qaa+mfNwfrptm0UhQdp0UP4fv4JriKGcwCct0knabCDHmZG+GZxwAhtrZRqolxWf
+ p1FW9rp8428f29HEW23sPSkMvl54BjhKmYOAXmtzhTh9DDsEA9tG2SOaoUKXX3AO
+ 4iKeAi4Q5uA8kCMa7+gPu4wKmFZI0+ahJ/LKN8gQgv8zxAcMUC2FPV6XgU7zoDDG
+ EIIMJs0e1UDjj1cAbMAh
+ =O55y
+ -----END PGP SIGNATURE-----
+ 
+
+docs(ci): record-only Core-921 CI binding qualification for #1056 (Q) (#1063)
+
+* docs(ci): record-only Core-921 CI binding qualification for #1056 (Q, reviewed_head=R)
+
+* docs(ci): correct #1056 akte file_hashes to raw sha256 (record-only, reviewed_head=R 32b85d95)
+
+---------
+
+Co-authored-by: Codeman Worker <worker@baseharbor.local>

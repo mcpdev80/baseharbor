@@ -20,3 +20,6 @@
 {"nonce":"dispatch-1792847771-3417175-32286","sid":"ba64664b-7710-4556-94e9-5cae3c43ad27","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792847873-3439713-7257","sid":"8b576c37-f32f-4684-9e63-f874996c7826","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792848205-3528226-10498","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792848537-3645832-18942","sid":"cad8e3ae-b647-4ace-85a2-b2753de3fdba","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792848543-3649182-19279","sid":"d3eb18bc-b0bb-4d32-9e36-417e9a1ed909","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792849464-3929383-19873","sid":"f837b9da-2579-4f2e-9d90-92474ca8aa5c","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

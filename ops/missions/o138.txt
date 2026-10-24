@@ -1,0 +1,16 @@
+READ-ONLY exact-source design for future #1046 anchor qualifier. KEIN git write/product code/push, KEIN CI, KEIN agent actions.
+ERSTER SCHRITT: evidence/board-2026-10-24/o138-1046design.md mit ## PLAN + Todos.
+
+Kandidat #1046 head `1ec67f8d4b259d62bd108ee678f25c288b8b0564`.
+Read cmf10 recipe and q118 evidence. Codex recipe says future correction only:
+- scripts/pr-gate-plan.py: replace old APPID_ENV_ROBUST_TEST_REVIEWED_HEAD anchor with actual #1046 head while preserving exact six-file status inventory.
+- scripts/test_pr_gate_plan.py: extend qualifier tests for new anchor, preserve negatives.
+Current #1056/#1060 share those planner files, so serialization required.
+
+AUFGABE:
+1. In isolated detached worktree inspect current develop 65aa, #1056 H and #1060 repair candidates where relevant; DO NOT modify.
+2. Define exact minimal future diff with file/line before/after and test commands.
+3. Identify which parent integration T will contain #1056/#1060 corrections; don't invent.
+4. Prove that no runtime/Akte change is needed.
+5. State conflict risks and handoff to implementation lane.
+END O138-1046DESIGN-DONE / BLOCKED.
