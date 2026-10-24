@@ -716,6 +716,11 @@ jobs:
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
             ci-executor-verifier-tests)
               PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
+            openbao-package-tests)
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
             *) exit 2 ;;
           esac
 

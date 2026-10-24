@@ -49,9 +49,34 @@ WIZARD_TEST_FAMILIES = {
     ),
 }
 
+OPENBAO_REQUIRED_TESTS = (
+    'TestBootstrapKeepsRootAndUnsealSecretsOutOfCommandArguments',
+    'TestBootstrapRejectsRecoveryFileInsideBaseHarborState',
+    'TestBootstrapRejectsRecoveryDirectorySymlinkedIntoBaseHarborState',
+    'TestLoadAdminCredentialsRejectsBroadPermissions',
+    'TestInspectPrefersUnsealedHAMemberOverReachableSealedMember',
+    'TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit',
+    'TestRetryManagerProvisioningConvergesAfterTransientFailures',
+    'TestUnsealConvergesAfterMemberRestartRace',
+    'TestUnsealFailsFastWhenMemberNeverAnswers',
+    'TestUnsealFailsImmediatelyOnPermanentNonTransientError',
+    'TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints',
+    'TestManagerPolicyPermitsOnlyOwnCapabilityInspection',
+    'TestProbeMemberStateCancellationDuringRetryBackoff',
+    'TestProbeMemberStateInvalidJSONNoRetry',
+    'TestIsTransientErrorRejectsIncidentalTemporary',
+    'TestIsTransientErrorRejectsMixedPermanentTransport',
+    'TestUnsealFailsOnPermanentPostUnsealVerification',
+    'TestUnsealRecoversOnTransientPostUnsealVerification',
+    'TestMemberPhaseSequenceIsEnforcedPerMember',
+    'TestUnsealRejectsUnknownBAOAddrDestination',
+    'TestPureTransportErrorStaysTransient',
+)
+
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
+               'openbao-package-tests',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
@@ -64,9 +89,39 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES:
+    if check not in WIZARD_TEST_FAMILIES and check != 'openbao-package-tests':
         raise ValueError('unsupported executable validation')
-    patterns = WIZARD_TEST_FAMILIES[check]
+    if check == 'openbao-package-tests':
+        # Require the frozen bootstrap unit families; native opt-in acceptance
+        # tests keep their separate runtime gates. Discover once and run once.
+        repo = Path(repository)
+        listed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-list', '.'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+        ]
+        missing = set(OPENBAO_REQUIRED_TESTS) - set(matches)
+        if missing:
+            raise RuntimeError('missing required OpenBao tests: ' + ', '.join(sorted(missing)))
+        pattern = '^(' + '|'.join(re.escape(name) for name in OPENBAO_REQUIRED_TESTS) + ')$'
+        executed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-run', pattern, '-count=1', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
+        for name in OPENBAO_REQUIRED_TESTS:
+            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
+                raise RuntimeError('required OpenBao test did not execute: ' + name)
+            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
+                raise RuntimeError('OpenBao test missing PASS: ' + name)
+        return list(OPENBAO_REQUIRED_TESTS)
+    patterns = WIZARD_TEST_FAMILIES.get(check)
+    if patterns is None:
+        raise ValueError('unsupported executable validation')
     if check == 'wizard-core918-native-sql-safety-tests':
         patterns = tuple(pattern + chr(36) for pattern in patterns)
     repo = Path(repository)
@@ -91,7 +146,7 @@ def execute_validation(check, repository):
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if executed.returncode:
             raise RuntimeError('test execution failed for ' + check +
-                               ' (' + pattern + '): ' + executed.stdout)
+                                ' (' + pattern + '): ' + executed.stdout)
         for name in matches:
             if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
                 raise RuntimeError('required test did not execute: ' + name)

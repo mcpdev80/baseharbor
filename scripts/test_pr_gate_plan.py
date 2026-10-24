@@ -38,6 +38,59 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+def git_rev_parse(root, ref):
+    result = subprocess.run(['git', '-C', str(root), 'rev-parse', ref],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_commit_tree(root, target, head):
+    tree = subprocess.run(['git', '-C', str(root), 'merge-tree', '--write-tree',
+                           target, head], text=True, capture_output=True).stdout.strip().splitlines()[0]
+    result = subprocess.run(['git', '-C', str(root), 'commit-tree', tree,
+                             '-p', target, '-p', head, '-m', 'pins fixture'],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_merge_base(root, a, b):
+    result = subprocess.run(['git', '-C', str(root), 'merge-base', a, b],
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip())
+    return result.stdout.strip()
+
+
+def git_init(root):
+    subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'user.name', 'pins fixture'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'user.email', 'pins@example.invalid'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'config', 'commit.gpgsign', 'false'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'checkout', '-b', 'develop'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'commit', '-q', '--allow-empty', '-m', 'pins base'],
+                   check=True, capture_output=True)
+
+
+def git_add_commit(root):
+    """Commit the working tree (with the added pins file) onto a pins branch.
+
+    develop stays at the clean base so the PR diff is exactly the pins add.
+    """
+    subprocess.run(['git', '-C', str(root), 'checkout', '-qb', 'pins'],
+                   check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True, capture_output=True)
+    subprocess.run(['git', '-C', str(root), 'commit', '-q', '-m', 'add consumer-pins'],
+                   check=True, capture_output=True)
+
+
 class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)
@@ -64,6 +117,42 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
                               return_value=False):
                 self.assertEqual('unresolved',
                     planner.plan(altered, REQ, MAP)['coverage_status'])
+
+
+class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
+    def test_only_exact_reviewed_test_only_source_qualifies(self):
+        reviewed = [{'status': status, 'path': path} for path, status
+                    in sorted(planner.APPID_ENV_ROBUST_TEST_REVIEWED_FILES.items())]
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
+            result = planner.plan(diff(reviewed), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual({'source-contracts'},
+                         {c['id'] for c in result['required_validation_checks']})
+        added = next(ch for ch in reviewed if ch['path'] ==
+                     'internal/application/protected_tempdir_test.go')
+        status_flipped = copy.deepcopy(reviewed)
+        status_flipped[status_flipped.index(added)]['status'] = 'modified'
+        variants = [reviewed[:5], reviewed + paths('internal/application/manifest.go'),
+                    [{'path': reviewed[0]['path'], 'status': 'deleted'}] + reviewed[1:],
+                    status_flipped,
+                    paths('internal/application/unreviewed_test.go',
+                          *[ch['path'] for ch in reviewed[1:]])]
+        for changes in variants:
+            with self.subTest(changes=changes), patch.object(
+                    planner, 'core752_reviewed_merge_chain', return_value=True):
+                self.assertEqual('unresolved',
+                    planner.plan(diff(changes), REQ, MAP)['coverage_status'])
+        for integration in (None, '0'*40):
+            altered = diff(reviewed)
+            altered['integration_sha'] = integration
+            with patch.object(planner, 'core752_reviewed_merge_chain',
+                              return_value=False):
+                self.assertEqual('unresolved',
+                    planner.plan(altered, REQ, MAP)['coverage_status'])
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=False):
+            self.assertEqual('unresolved',
+                planner.plan(diff(reviewed), REQ, MAP)['coverage_status'])
 
 
 class Core751ImportCoverageProposalTests(unittest.TestCase):
@@ -2147,6 +2236,43 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
 
+# OpenBao package-tests validation and fail-closed handling.
+class OpenBaoValidationTests(unittest.TestCase):
+    def test_openbao_package_tests_is_a_known_check(self):
+        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
+        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
+
+    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
+        """Unreviewed OpenBao production paths must remain unresolved."""
+        for name in ['internal/openbao/unreviewed_security_mutation.go',
+                     'internal/openbao/managed_credentials.go',
+                     'internal/openbao/application_runtime_client.go',
+                     'internal/openbao/dev_access.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertTrue(
+                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
+                )
+
+    def test_openbao_add_delete_rename_stay_unresolved(self):
+        """Added, deleted, renamed OpenBao files must stay fail-closed."""
+        variants = [
+            paths('internal/openbao/bootstrap.go'),
+            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
+            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
+              'new_path': 'internal/openbao/new_bootstrap.go'}],
+            paths('internal/openbao/bootstrap.go',
+                  'internal/openbao/unreviewed_addition.go'),
+            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes):
+                result = planner.plan(diff(changes), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
 # main() entrypoint must source the authenticated evaluation context from the
 # runner environment, never from the candidate PR, and must fail closed when
 # either value is absent. These tests drive planner.main() with monkeypatched
@@ -2419,6 +2545,11 @@ if (not result.wasSuccessful() or result.skipped or
         })
 
 class TrustedBindingActivationTests(unittest.TestCase):
+    CHECKS = planner.CI_CHECKS
+    FILES = {path: 'modified' for path in (
+        'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+        'scripts/test_pr_gate_plan.py')}
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -2426,9 +2557,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.git('init', '-q')
         self.git('config', 'user.name', 'Fixture')
         self.git('config', 'user.email', 'fixture@example.invalid')
-        self.files = {path: 'modified' for path in (
-            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'scripts/test_pr_gate_plan.py')}
+        self.files = self.FILES.copy()
         for path in self.files:
             file = self.root / path
             file.parent.mkdir(parents=True, exist_ok=True)
@@ -2445,7 +2574,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
             'reviewed_head': self.head, 'files': self.files,
             'file_hashes': {p: hashlib.sha256(b'reviewed\r\nline 2\nline 3\nline 4\nline 5\nstable target field\n').hexdigest()
                             for p in self.files},
-            'required_checks': [c['id'] for c in planner.CI_CHECKS],
+            'required_checks': [c['id'] for c in self.CHECKS],
         }
         spec = importlib.util.spec_from_file_location('binding_resolver', ROOT / 'pr-diff-base.py')
         self.resolver = importlib.util.module_from_spec(spec)
@@ -2467,6 +2596,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         target = self.git('rev-parse', 'HEAD')
         head = head or self.head
         tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        self.git('reset', '-q')
         integration = self.git('commit-tree', tree, '-p', target, '-p', head,
                                '-m', 'actual PR integration')
         return self.resolver.resolve_pr_diff(self.root, target, head, integration)
@@ -2476,7 +2606,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
 
     def test_real_git_exact_candidate_and_raw_crlf_blobs_select_all_checks(self):
         actual = self.resolved()
-        self.assertEqual(planner.CI_CHECKS, self.checks(actual))
+        self.assertEqual(self.CHECKS, self.checks(actual))
         old = Path.cwd()
         try:
             os.chdir(self.root)
@@ -2487,11 +2617,12 @@ class TrustedBindingActivationTests(unittest.TestCase):
             os.chdir(old)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
-        self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+        self.assertEqual({c['id'] for c in self.CHECKS},
                          {c['id'] for c in result['required_validation_checks']})
 
     def integrated(self, target, head):
         tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        self.git('reset', '-q')
         integration = self.git('commit-tree', tree, '-p', target, '-p', head,
                                '-m', 'current PR integration')
         return self.resolver.resolve_pr_diff(self.root, target, head, integration)
@@ -2506,7 +2637,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         current = self.integrated(target, merged)
         self.assertNotEqual(self.head, merged)
         self.assertEqual(target, current['merge_base_sha'])
-        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+        self.assertEqual(self.CHECKS, self.checks(current))
         # Additional trusted target advances may be integrated by the same owner.
         self.git('checkout', '-q', '--detach', target)
         (self.root / 'accepted-target.md').write_text('accepted target advance\n')
@@ -2526,9 +2657,9 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertNotEqual(self.record['file_hashes']['scripts/pr-gate-plan.py'],
                             hashlib.sha256(actual_blob).hexdigest())
         current = self.integrated(later, advanced)
-        self.assertEqual(3, len(current['changes']))
+        self.assertEqual(len(self.files), len(current['changes']))
         self.git('merge-base', '--is-ancestor', later, advanced)
-        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+        self.assertEqual(self.CHECKS, self.checks(current))
 
     def test_real_git_untrusted_sideparent_dirty_merge_and_copied_tree_fail_closed(self):
         actual = self.resolved()
@@ -2540,7 +2671,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.git('checkout', '-q', '--detach', self.head)
         self.git('merge', '--no-ff', '-qm', 'untrusted side merge', side)
         side_head = self.git('rev-parse', 'HEAD')
-        self.assertEqual(3, len(self.integrated(target, side_head)['changes']))
+        self.assertEqual(len(self.files), len(self.integrated(target, side_head)['changes']))
         self.assertIsNone(self.checks(self.integrated(target, side_head)))
         # Matching source bytes copied into a new linear commit do not prove review ancestry.
         copied = self.git('commit-tree', self.git('rev-parse', side_head + '^{tree}'),
@@ -2632,6 +2763,11 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertIsNone(self.checks(self.resolved(head=followup)))
 
 
+class WorkflowBindingActivationTests(TrustedBindingActivationTests):
+    CHECKS = planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS
+    FILES = {**TrustedBindingActivationTests.FILES, '.github/workflows/ci.yml': 'modified'}
+
+
 class BootstrapExceptionTests(unittest.TestCase):
     """Fail-first: only PRs whose HEAD references the trusted Akte bootstrap.
 
@@ -2695,16 +2831,14 @@ class BootstrapExceptionTests(unittest.TestCase):
         self.assertFalse(actual['broad_required'], actual['reasons'])
         return actual
 
-    def test_bootstrap_pr_referencing_akte_resolves(self):
+    def test_bootstrap_pr_referencing_akte_stays_blocked(self):
         actual = self._bootstrap_repo(
             'ci(planner): bootstrap via '
             'docs/internal/ci-binding-qualifications.md Core-921 CI binding qualification')
         result = planner.plan(actual, REQ, MAP, repository=self.root,
                               context_repository='mcpdev80/baseharbor',
                               context_target_branch='develop')
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual({c['id'] for c in result['required_validation_checks']},
-                         {c['id'] for c in planner.CI_CHECKS})
+        self.assertEqual('unresolved', result['coverage_status'])
 
     def test_bootstrap_without_akte_reference_stays_blocked(self):
         # Fail-first negative: same three CI files, no Akte reference anywhere.
@@ -2756,6 +2890,311 @@ class BootstrapExceptionTests(unittest.TestCase):
                               context_repository='other/repo',
                               context_target_branch='develop')
         self.assertEqual('unresolved', result['coverage_status'])
+
+
+class OpenBaoExactRetryRouteTests(unittest.TestCase):
+    def runner(self):
+        spec = importlib.util.spec_from_file_location('openbao_runner', ROOT / 'pr-check-runner.py')
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        return runner
+
+    def test_actual_workflow_route_runs_trusted_helper_and_rejects_missing_or_skipped_tests(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        start = workflow.index('            openbao-package-tests)\n') + len('            openbao-package-tests)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted, candidate, temp = (root / name for name in ('trusted', 'candidate', 'temp'))
+            for directory in (trusted, candidate, temp):
+                directory.mkdir()
+            def git(directory, *args):
+                return subprocess.check_output(['git', '-C', str(directory), *args], text=True).strip()
+            for directory in (trusted, candidate):
+                git(directory, 'init', '-q')
+                git(directory, 'config', 'user.name', 'Workflow fixture')
+                git(directory, 'config', 'user.email', 'fixture@example.invalid')
+            (trusted / 'scripts').mkdir()
+            (trusted / 'scripts/pr-check-runner.py').write_text((ROOT / 'pr-check-runner.py').read_text())
+            git(trusted, 'add', '.')
+            git(trusted, 'commit', '-qm', 'trusted helper')
+            git(candidate, 'remote', 'add', 'origin', str(trusted))
+            (candidate / 'go.mod').write_text('module example.test/openbaoroute\n\ngo 1.25\n')
+            package = candidate / 'internal/openbao'
+            package.mkdir(parents=True)
+            environment = dict(os.environ, BASE_SHA=git(trusted, 'rev-parse', 'HEAD'),
+                               VALIDATION='openbao-package-tests', RUNNER_TEMP=str(temp),
+                               GITHUB_WORKSPACE=str(candidate))
+            names = self.runner().OPENBAO_REQUIRED_TESTS
+            for mode in ('pass', 'missing', 'skip'):
+                selected = names[:-1] if mode == 'missing' else names
+                text = 'package openbao\nimport "testing"\n'
+                text += '\n'.join('func %s(t *testing.T) { %s }' %
+                                  (name, 't.Skip("not executed")' if mode == 'skip' and name == names[0] else '')
+                                  for name in selected)
+                (package / 'bootstrap_test.go').write_text(text)
+                execution = subprocess.run(['bash', '-euo', 'pipefail', '-c', fragment],
+                                           cwd=candidate, env=environment, capture_output=True, text=True)
+                if mode == 'pass':
+                    self.assertEqual(0, execution.returncode, execution.stderr)
+                    self.assertEqual(list(names), json.loads(execution.stdout)['matched_tests'])
+                else:
+                    self.assertNotEqual(0, execution.returncode, execution.stdout)
+                    self.assertIn('OpenBao', execution.stderr)
+
+    def test_strict_discovery_execution_and_existing_safety_names(self):
+        from types import SimpleNamespace
+        runner = self.runner()
+        names = runner.OPENBAO_REQUIRED_TESTS
+        discovery = '\n'.join(names)
+        execution = ''.join('=== RUN   ' + n + '\n--- PASS: ' + n + ' (0.00s)\n' for n in names)
+        for listed, output, code, success in (
+                (discovery, execution, 0, True), ('', execution, 0, False),
+                ('\n'.join(names[:-1]), execution, 0, False),
+                (discovery, '', 0, False), (discovery, execution, 1, False),
+                (discovery, execution.replace('--- PASS: ' + names[0], '--- SKIP: ' + names[0]), 0, False)):
+            with self.subTest(listed=listed, code=code, success=success):
+                results = [SimpleNamespace(returncode=0, stdout=listed, stderr=''),
+                           SimpleNamespace(returncode=code, stdout=output)]
+                with patch.object(runner.subprocess, 'run', side_effect=results) as process:
+                    if success:
+                        self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
+                        self.assertIn('./internal/openbao/...', process.call_args.args[0])
+                        self.assertIn('-run', process.call_args.args[0])
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            runner.execute_validation('openbao-package-tests', '.')
+        # A renamed replacement must not satisfy an existing exact SQL safety family.
+        replacements = '\n'.join(p.removeprefix('^') + 'Replacement'
+                                  for p in runner.WIZARD_TEST_FAMILIES['wizard-core918-native-sql-safety-tests'])
+        with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=0, stdout=replacements, stderr='')):
+            with self.assertRaises(RuntimeError):
+                runner.execute_validation('wizard-core918-native-sql-safety-tests', '.')
+
+    def test_real_git_frozen_source_forward_merge_and_rejections(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Retry fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            for path in planner.OPENBAO_RETRY_FILES:
+                item = root / path
+                item.parent.mkdir(parents=True, exist_ok=True)
+                item.write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            target = git('rev-parse', 'HEAD')
+            for path in planner.OPENBAO_RETRY_FILES:
+                (root / path).write_text('frozen retry\n')
+            git('commit', '-qam', 'frozen retry')
+            reviewed = git('rev-parse', 'HEAD')
+            spec = importlib.util.spec_from_file_location('retry_diff', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(resolver)
+            def actual(base, head):
+                tree = git('merge-tree', '--write-tree', base, head).splitlines()[0]
+                integration = git('commit-tree', tree, '-p', base, '-p', head, '-m', 'integration')
+                return resolver.resolve_pr_diff(root, base, head, integration)
+            def checks(value, repo='mcpdev80/baseharbor', branch='develop'):
+                return planner.openbao_retry_checks(value, root, repo, branch)
+            with patch.object(planner, 'OPENBAO_RETRY_HEAD', reviewed):
+                value = actual(target, reviewed)
+                self.assertEqual(planner.CODE_CHECKS + planner.OPENBAO_CHECKS, checks(value))
+                planned = planner.plan(value, REQ, MAP, repository=root,
+                                       context_repository='mcpdev80/baseharbor', context_target_branch='develop')
+                self.assertEqual('resolved', planned['coverage_status'], planned)
+                self.assertIn('openbao-package-tests', [c['id'] for c in planned['required_validation_checks']])
+                self.assertIsNone(checks(value, repo='other/repo'))
+                self.assertIsNone(checks(value, branch='main'))
+                for key, changed in (('integration_sha', None), ('merge_base_sha', 'f' * 40),
+                                     ('changes', value['changes'][:1])):
+                    forged = copy.deepcopy(value)
+                    forged[key] = changed
+                    self.assertIsNone(checks(forged))
+                git('checkout', '-q', '--detach', target)
+                (root / 'accepted-target.md').write_text('accepted target\n')
+                git('add', '.')
+                git('commit', '-qm', 'advance trusted target')
+                target = git('rev-parse', 'HEAD')
+                git('checkout', '-q', '--detach', reviewed)
+                git('merge', '--no-ff', '-qm', 'forward target', target)
+                head = git('rev-parse', 'HEAD')
+                self.assertIsNotNone(checks(actual(target, head)))
+                (root / 'internal/openbao/bootstrap.go').write_text('unreviewed followup\n')
+                git('commit', '-qam', 'unreviewed followup')
+                self.assertIsNone(checks(actual(target, git('rev-parse', 'HEAD'))))
+
+
+class AktenRegisterQualificationTests(unittest.TestCase):
+    # F40: the qualification register may accumulate one well-formed entry per
+    # reviewed candidate. A PR that changes ONLY the three CI scripts resolves
+    # exactly when the authenticated base register carries the entry binding
+    # this candidate (head chain + raw blob hashes); without that entry the
+    # conservative ci-executor-unresolved fallback must keep it unresolved.
+
+    CI_PATHS = ('scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+                'scripts/test_pr_gate_plan.py')
+    RECORD_PATH = 'docs/internal/ci-binding-qualifications.md'
+    CHECKS = planner.CI_CHECKS
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Register fixture')
+        self.git('config', 'user.email', 'register@example.invalid')
+        for path in self.CI_PATHS:
+            file = self.root / path
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_text('baseline\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'base')
+        self.base = self.git('rev-parse', 'HEAD')
+        # Historical reviewed head H_old: same three paths, other content, on a
+        # dead-end branch that is not an ancestor of the current candidate.
+        self.git('checkout', '-q', '--detach', self.base)
+        self.git('checkout', '-q', '-b', 'historical')
+        for path in self.CI_PATHS:
+            (self.root / path).write_text('historical reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'historical reviewed head')
+        self.old_head = self.git('rev-parse', 'HEAD')
+        # Current PR-only-CI-scripts candidate head H.
+        self.git('checkout', '-q', '--detach', self.base)
+        self.git('checkout', '-q', '-b', 'candidate')
+        for path in self.CI_PATHS:
+            (self.root / path).write_text('candidate reviewed\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'candidate head')
+        self.head = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', '--detach', self.base)
+        spec = importlib.util.spec_from_file_location(
+            'register_resolver', ROOT / 'pr-diff-base.py')
+        self.resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.resolver)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args],
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def blob_sha(self, head, path):
+        blob = subprocess.run(['git', '-C', str(self.root), 'cat-file', 'blob',
+                               f'{head}:{path}'], check=True,
+                              capture_output=True).stdout
+        return hashlib.sha256(blob).hexdigest()
+
+    def entry(self, head_sha):
+        return {'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
+                'reviewed_head': head_sha,
+                'files': {path: 'modified' for path in self.CI_PATHS},
+                'file_hashes': {path: self.blob_sha(head_sha, path)
+                                for path in self.CI_PATHS},
+                'required_checks': [c['id'] for c in self.CHECKS]}
+
+    def plan_with_register(self, entries):
+        record = ''.join('```json\n' + json.dumps(entry) + '\n```\n'
+                         for entry in entries)
+        path = self.root / self.RECORD_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(record)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'register entry on trusted base')
+        target = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', target, self.head).splitlines()[0]
+        self.git('reset', '-q')
+        integration = self.git('commit-tree', tree, '-p', target, '-p', self.head,
+                               '-m', 'register integration')
+        actual = self.resolver.resolve_pr_diff(self.root, target, self.head,
+                                               integration)
+        previous = os.getcwd()
+        os.chdir(str(self.root))
+        try:
+            return planner.plan(actual, REQ, MAP,
+                                context_repository='mcpdev80/baseharbor',
+                                context_target_branch='develop')
+        finally:
+            os.chdir(previous)
+
+    def test_pr_only_ci_scripts_without_entry_stays_unresolved(self):
+        # Register carries only the historical entry; the current candidate has
+        # no entry, so the exact pr-check-runner.py blocker must remain.
+        planned = self.plan_with_register([self.entry(self.old_head)])
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+        self.assertIn('CI execution/evidence impact requires specific '
+                      'qualification: scripts/pr-check-runner.py',
+                      planned['unresolved_coverage'])
+
+    def test_pr_only_ci_scripts_with_entry_resolves(self):
+        # Same historical entry PLUS the current candidate's entry: the
+        # register-driven proof must resolve with the CI check catalog only.
+        planned = self.plan_with_register([self.entry(self.old_head),
+                                           self.entry(self.head)])
+        self.assertEqual('resolved', planned['coverage_status'], planned)
+        self.assertEqual([], planned['unresolved_coverage'])
+        self.assertEqual([], planned['selected_gates'])
+        self.assertEqual({c['id'] for c in self.CHECKS},
+                         {c['id'] for c in planned['required_validation_checks']})
+
+    def test_duplicate_or_foreign_register_entries_fail_closed(self):
+        # An identical entry twice is a malformed register and never silently
+        # qualifies; a single current entry still resolves (record-per-file).
+        duplicate = self.plan_with_register([self.entry(self.head),
+                                             self.entry(self.head)])
+        self.assertEqual('unresolved', duplicate['coverage_status'], duplicate)
+        single = self.plan_with_register([self.entry(self.head)])
+        self.assertEqual('resolved', single['coverage_status'], single)
+
+
+class WorkflowRegisterQualificationTests(AktenRegisterQualificationTests):
+    CI_PATHS = (*AktenRegisterQualificationTests.CI_PATHS, '.github/workflows/ci.yml')
+    CHECKS = planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS
+
+    def test_workflow_inventory_cannot_omit_syntax_validation(self):
+        entry = self.entry(self.head)
+        entry['required_checks'].remove('ci-actionlint')
+        planned = self.plan_with_register([entry])
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+
+
+class BootstrapClaimRejectionTests(unittest.TestCase):
+    def test_noncanonical_pins_paths_never_select_the_top_level_validator(self):
+        for path in ('docs/releases/nested/v0.4.26.consumer-pins.json',
+                     'docs/releases/unknown.consumer-pins.json',
+                     'docs/releases/v0.4.27.consumer-pins.json'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'], result)
+
+    def test_commit_message_and_record_title_never_qualify_unreviewed_content(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git_init(root)
+            record = root / 'docs/internal/ci-binding-qualifications.md'
+            record.parent.mkdir(parents=True)
+            record.write_text('# Core-921 CI binding qualification\n```json\n{}\n```\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'target record'], check=True)
+            target = git_rev_parse(root, 'HEAD')
+            unreviewed = root / 'scripts/pr-check-runner.py'
+            unreviewed.parent.mkdir()
+            unreviewed.write_text('unreviewed executor\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm',
+                            'mention docs/internal/ci-binding-qualifications.md'], check=True)
+            head = git_rev_parse(root, 'HEAD')
+            spec = importlib.util.spec_from_file_location('bootstrap_diff', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(resolver)
+            actual = resolver.resolve_pr_diff(root, target, head, git_commit_tree(root, target, head))
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            result = planner.plan(actual, REQ, MAP, repository=root,
+                                  context_repository='mcpdev80/baseharbor',
+                                  context_target_branch='develop')
+            self.assertEqual('unresolved', result['coverage_status'], result)
 
 
 if __name__ == '__main__':
