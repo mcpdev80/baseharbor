@@ -1,0 +1,26 @@
+[
+  {
+    "path": "scripts/pr-check-runner.py",
+    "head": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+    "R": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+    "target": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed"
+  },
+  {
+    "path": "scripts/pr-gate-plan.py",
+    "head": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+    "R": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+    "target": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0"
+  },
+  {
+    "path": "scripts/test_pr_gate_plan.py",
+    "head": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0",
+    "R": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0",
+    "target": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e"
+  },
+  {
+    "path": "docs/internal/ci-binding-qualifications.md",
+    "head": "4a664f95e1adc459879e85f1b993affe3ef7f00ff8ee0e1c66a65152ddb32dd6",
+    "R": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86",
+    "target": "4a664f95e1adc459879e85f1b993affe3ef7f00ff8ee0e1c66a65152ddb32dd6"
+  }
+]

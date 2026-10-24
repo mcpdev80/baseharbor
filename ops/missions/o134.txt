@@ -1,0 +1,17 @@
+pwd-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan. KEIN git in Root/Produkt-Repos. KEIN Task-Abschluss ohne Bestaetigung, KEINE r27-Karten anfassen, KEINE Tags/Releases.
+ERSTER SCHRITT: evidence/board-2026-10-24/o134-planboard26r4.md mit ## PLAN + nativen Todos.
+
+MISSION: Planning/CardBoard v0.4.26 auf Live-Merges/Reviews aktualisieren (Basis o127 `223f379`, current remote main).
+1. Reality check mit gh: #1063 merged; develop `65aa063e`; #1056 H `b0abe105` CI success awaiting review/merge; #1052 head `7c7cda7c` independent worker ACCEPT but blocked behind #1060; #1060 q117 active/conflicting with new develop; #1046 runtime diagnosis ACCEPTED as serialized later.
+2. Karten:
+   - t-20261017-release-0-4-26-prepare (active): update Handoff/blocker table.
+   - t-20261019-core-923-ci-execution-trust-boundary (active): update chain Q landed/P/#1056 state; no acceptance.
+   - t-20261020-develop-appid-manifest-test-regression (review): #1046 diagnosis/review state, still runtime gate/serializer.
+   - t-20261019-v0426-complete-defect-audit (review, Owner STOP): DO NOT change status; link current evidence only if card schema allows.
+   - accepted cards remain accepted; no self-acceptance.
+3. Status values strict schema; generated views only tools:
+   - `python3 scripts/release_cycles.py sync`
+   - `python3 scripts/plan.py render`
+   - `python3 scripts/plan.py check` (must 0 errors)
+4. One bundle commit + push origin main, fast-forward. Re-fetch first, no force. board-sha in evidence.
+END O134-PLANBOARD26R4-DONE mit board-sha / END O134-BLOCKED.

@@ -1,0 +1,6 @@
+import pathlib,subprocess,json,concurrent.futures
+p=pathlib.Path('evidence/board-2026-10-24/codex-cmf12-data');h='b0abe10526554960b827dd0f4a503a10cebff911'
+a={'identity':['gh','api','user'],'pr-before':['gh','api','repos/mcpdev80/baseharbor/pulls/1056'],'develop-before':['gh','api','repos/mcpdev80/baseharbor/commits/develop'],'files':['gh','api','repos/mcpdev80/baseharbor/pulls/1056/files?per_page=100'],'diff':['gh','pr','diff','1056','--repo','mcpdev80/baseharbor'],'checks':['gh','pr','checks','1056','--repo','mcpdev80/baseharbor'],'check-runs':['gh','api','repos/mcpdev80/baseharbor/commits/'+h+'/check-runs'],'run':['gh','api','repos/mcpdev80/baseharbor/actions/runs/40093488851'],'rules':['gh','api','repos/mcpdev80/baseharbor/rules/branches/develop'],'threads':['gh','api','graphql','-f','query=query { repository(owner:"mcpdev80",name:"baseharbor") { pullRequest(number:1056) { headRefOid baseRefOid mergeable mergeStateStatus reviewDecision reviewThreads(first:100) { nodes { isResolved path line } pageInfo { hasNextPage } } reviews(first:100) { nodes { author { login } state commit { oid } } } } } }']}
+def f(t):
+ n,c=t;r=subprocess.run(c,capture_output=True,text=True);(p/(n+'.txt')).write_text(r.stdout);(p/(n+'.stderr')).write_text(r.stderr);return n,r.returncode
+with concurrent.futures.ThreadPoolExecutor(max_workers=5) as e:print(list(e.map(f,a.items())))

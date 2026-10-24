@@ -1,0 +1,17 @@
+PR · Consumer Pins	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870847447	
+PR · Demo Pin	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870847419	
+PR · Exact Candidate	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870847652	
+PR · Public Contracts	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870847776	
+PR · Runner Interface	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870847899	
+PR Selected Checks	pass	11s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120871182195	
+PR · Focused Python	pass	1m2s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870846388	
+PR · Validation · ci-executor-verifier-tests	pass	11s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870846423	
+PR · Validation · ci-policy	pass	9s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870846416	
+PR · Validation · pr-planner-tests	pass	1m36s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870846381	
+PR · Selected Runtime	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870848295	
+PR · Trusted Plan	pass	7s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814347	
+Workflow policy	pass	19s	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814071	
+Release Source Preflight	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814821	
+Targeted HA · docker	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814733	
+Targeted HA · podman	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814944	
+validate	skipping	0	https://github.com/mcpdev80/baseharbor/actions/runs/40093488851/job/120870814804	
