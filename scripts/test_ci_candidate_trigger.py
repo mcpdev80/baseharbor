@@ -110,18 +110,18 @@ class CandidateTriggerTests(unittest.TestCase):
         }
 
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "false", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
-            with patch.object(module, "gh", side_effect=[base, base, None]) as api:
+            with patch.object(module, "gh", side_effect=[base, base, None, dict(base, labels=[{"name": "ci:validate"}])]) as api:
                 module.publish("example/repo", 15, sha)
                 self.assertEqual([call.args[0] for call in api.call_args_list],
-                                 ["GET", "GET", "POST"])
+                                 ["GET", "GET", "POST", "GET"])
                 self.assertEqual(api.call_args_list[-1].kwargs["data"],
                                  {"labels": ["ci:validate"]})
 
             labeled = dict(base, labels=[{"name": "ci:validate"}])
-            with patch.object(module, "gh", side_effect=[labeled, None, base, None]) as api:
+            with patch.object(module, "gh", side_effect=[labeled, None, base, None, labeled]) as api:
                 module.publish("example/repo", 15, sha)
                 self.assertEqual([call.args[0] for call in api.call_args_list],
-                                 ["GET", "DELETE", "GET", "POST"])
+                                 ["GET", "DELETE", "GET", "POST", "GET"])
 
             stale = dict(base, head={"sha": "b" * 40})
             with patch.object(module, "gh", return_value=stale) as api:
@@ -155,6 +155,26 @@ class CandidateTriggerTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "outside GitHub Actions"):
                     module.publish("example/repo", 15, sha)
                 api.assert_not_called()
+
+    def test_post_label_confirmation_fails_closed(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate_confirmation", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sha = "a" * 40
+        base = {"draft": False, "state": "open", "head": {"sha": sha},
+                "base": {"ref": "develop", "sha": "c" * 40}, "labels": []}
+        with patch.dict("os.environ", {"GITHUB_ACTIONS": "false",
+                                     "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
+            for observed in (base, dict(base, head={"sha": "b" * 40}),
+                             dict(base, base={"ref": "develop", "sha": "d" * 40}),
+                             dict(base, draft=True)):
+                with self.subTest(observed=observed):
+                    with patch.object(module, "gh", side_effect=[base, base, None, observed]) as api:
+                        with self.assertRaisesRegex(RuntimeError, "not confirmed"):
+                            module.publish("example/repo", 15, sha)
+                        self.assertEqual([call.args[0] for call in api.call_args_list],
+                                         ["GET", "GET", "POST", "GET"])
 
     def test_label_removal_failure_aborts_submission(self):
         path = ROOT / "scripts/submit-pr-candidate.py"
