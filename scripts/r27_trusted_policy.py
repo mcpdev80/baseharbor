@@ -107,3 +107,23 @@ def read_pinned_policy_file(policy_path, protected_digest, *, trusted_owner_uid=
     except OSError as exc:
         raise EvidenceError("EVIDENCE_POLICY: cannot read protected file") from exc
     return load_pinned_policy(raw, protected_digest=protected_digest)
+
+
+def issue_from_protected_policy_file(*, policy_path, protected_digest,
+                                     trusted_owner_uid, **kwargs):
+    """Prototype composition. Protected CI must supply path, digest and key."""
+    if any(k in kwargs for k in ("policy_bytes", "policy_jobs", "policy_digest",
+                                  "trusted_policy_digest", "expected_job_name",
+                                  "workflow_path")):
+        raise EvidenceError("EVIDENCE_POLICY: issuer policy override forbidden")
+    from r27_verified_issuer import issue_from_github
+    jobs, digest = read_pinned_policy_file(policy_path, protected_digest,
+                                           trusted_owner_uid=trusted_owner_uid)
+    gate = kwargs.get("gate")
+    if gate not in jobs:
+        raise EvidenceError("EVIDENCE_POLICY: gate missing from protected file")
+    mapping = jobs[gate]
+    return issue_from_github(**kwargs, policy_jobs=jobs, policy_digest=digest,
+                             trusted_policy_digest=digest,
+                             expected_job_name=mapping["job_name"],
+                             workflow_path=mapping["workflow_path"])
