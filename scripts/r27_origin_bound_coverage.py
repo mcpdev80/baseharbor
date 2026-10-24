@@ -11,6 +11,9 @@ import re
 def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
                                 repository, stage, candidate, policy_digest,
                                 artifact_digest=None, expected_event="pull_request"):
+    if (not isinstance(required, (list, tuple, set, frozenset))
+            or not all(isinstance(gate, str) for gate in required)):
+        raise OriginError("EVIDENCE_POLICY: invalid required gates")
     if not isinstance(policy_jobs, dict) or set(policy_jobs) != set(required):
         raise OriginError("EVIDENCE_POLICY: incomplete trusted gate-job mapping")
     if not isinstance(receipts, dict) or set(receipts) - set(required):

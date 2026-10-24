@@ -69,3 +69,12 @@ class StrictPolicyMappingTests(unittest.TestCase):
      check_origin_bound_coverage(["sql"],{"sql":receipt()},
        {"sql":{"workflow_path":workflow,"job_name":job}},**ARGS)
     fetch.assert_not_called()
+
+
+class MalformedRequiredTests(unittest.TestCase):
+ def test_invalid_collection_never_raises_unhandled_exception(self):
+  for value in (None, 5, True, {"sql":1}, "sql", [None], [[]]):
+   with self.subTest(required=repr(value)), patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
+    with self.assertRaisesRegex(OriginError, "invalid required gates"):
+     check_origin_bound_coverage(value, {}, JOBS, **ARGS)
+    fetch.assert_not_called()
