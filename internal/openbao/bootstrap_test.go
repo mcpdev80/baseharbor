@@ -601,6 +601,10 @@ func TestUnsealFailsImmediatelyOnPermanentNonTransientError(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "x509") {
 		t.Fatalf("error = %v, want x509-permanent error", err)
 	}
+	// Zero unseal writes: permanent error prevents unseal from being attempted.
+	if ms1.writes != 0 {
+		t.Fatalf("member-1 unseal writes = %d, want 0 (permanent error blocks unseal)", ms1.writes)
+	}
 }
 
 type permErrorExecutor struct {
@@ -628,8 +632,58 @@ func (p *permErrorExecutor) ExecProject(_ context.Context, _, _, _, service stri
 	return "", errors.New("x509: certificate signed by unknown authority")
 }
 
-func (p *permErrorExecutor) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, _ ...string) (string, error) {
-	return "", nil
+func (p *permErrorExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, svc string, args ...string) (string, error) {
+	unsealing := false
+	var payload struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(input, &payload); err == nil {
+		if payload.Key != "" {
+			unsealing = true
+		}
+	}
+	for _, arg := range args {
+		if strings.Contains(arg, "sys/unseal") {
+			unsealing = true
+		}
+	}
+	if !unsealing {
+		return "", nil
+	}
+
+	// Parse target member from BAO_ADDR in shell script arguments.
+	var targetMember string
+	for _, arg := range args {
+		if idx := strings.Index(arg, "BAO_ADDR=https://"); idx >= 0 {
+			rest := arg[idx+len("BAO_ADDR="):]
+			addr := ""
+			if eqIdx := strings.Index(rest, "="); eqIdx >= 0 {
+				addr = rest[:eqIdx]
+			} else {
+				addr = rest
+			}
+			addr = strings.TrimPrefix(addr, "https://")
+			if spIdx := strings.Index(addr, " "); spIdx >= 0 {
+				addr = addr[:spIdx]
+			}
+			addr = strings.TrimSuffix(addr, ":8200")
+			targetMember = addr
+		}
+	}
+	if targetMember == "" {
+		targetMember = svc
+	}
+	ms, ok := p.memberStates[targetMember]
+	if !ok {
+		ms = &haMemberState{
+			initialized: true,
+			sealed:      true,
+		}
+		p.memberStates[targetMember] = ms
+	}
+	ms.writes++
+	ms.sealed = false
+	return "{\"sealed\":false}", nil
 }
 
 func TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints(t *testing.T) {
