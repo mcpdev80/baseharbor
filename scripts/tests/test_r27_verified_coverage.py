@@ -124,6 +124,15 @@ class VerifiedCoverageTests(unittest.TestCase):
                 with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
                     check(raw, stage=stage, gate="sql", artifact_digest="d" * 64)
 
+    def test_nonfinite_receipt_rejected_at_parser_boundary(self):
+        raw = signed()
+        for constant in (b"NaN", b"Infinity", b"-Infinity"):
+            with self.subTest(constant=constant):
+                mutated = raw.replace(b'"attempt":1', b'"attempt":' + constant)
+                self.assertNotEqual(mutated, raw)
+                with self.assertRaisesRegex(EvidenceError, "EVIDENCE_SCHEMA"):
+                    check(mutated)
+
     def test_invalid_expected_scope_rejected_before_comparison(self):
         cases = [
             ({"stage": []}, "EVIDENCE_SCHEMA"),
