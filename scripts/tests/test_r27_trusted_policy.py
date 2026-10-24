@@ -104,3 +104,18 @@ class AncestorPolicyPathTests(unittest.TestCase):
   from r27_trusted_policy import read_pinned_policy_file
   with self.assertRaisesRegex(EvidenceError,"unsafe protected path"):
    read_pinned_policy_file("/tmp/../policy.json","a"*64)
+
+
+class ProtectedOwnerTests(unittest.TestCase):
+ def test_rejects_writable_ancestor_before_file(self):
+  import tempfile,os
+  from r27_trusted_policy import read_pinned_policy_file
+  with tempfile.TemporaryDirectory() as d:
+   p=Path(d)/"policy.json"
+   p.write_bytes(b"{}")
+   with self.assertRaisesRegex(EvidenceError,"unprotected owner or permissions"):
+    read_pinned_policy_file(str(p),"a"*64,trusted_owner_uid=os.getuid())
+ def test_rejects_invalid_owner(self):
+  from r27_trusted_policy import read_pinned_policy_file
+  with self.assertRaisesRegex(EvidenceError,"invalid trusted owner"):
+   read_pinned_policy_file("/tmp/file","a"*64,trusted_owner_uid=True)
