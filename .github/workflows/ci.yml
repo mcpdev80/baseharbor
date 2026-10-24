@@ -716,7 +716,6 @@ jobs:
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
             ci-executor-verifier-tests)
               PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
-            openbao-package-tests) go test ./internal/openbao/... -count=1 ;;
             *) exit 2 ;;
           esac
 

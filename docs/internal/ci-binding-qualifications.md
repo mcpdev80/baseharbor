@@ -1,21 +1,21 @@
-# Core-1060 CI binding qualification for #1060
+# Core-921 CI binding qualification (#1056)
 
-Owner-authorized immutable source inventory for the exact #1060 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
+Owner-authorized immutable source inventory for the exact #1056 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
 
 ```json
 {
   "repository": "mcpdev80/baseharbor",
   "target_branch": "develop",
-  "reviewed_head": "89d87f7814242f0732779995b6a06c65e99b3f1a",
+  "reviewed_head": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
   "files": {
     "scripts/pr-check-runner.py": "modified",
     "scripts/pr-gate-plan.py": "modified",
     "scripts/test_pr_gate_plan.py": "modified"
   },
   "file_hashes": {
-    "scripts/pr-check-runner.py": "f71bf2cf1dac197ff0b998630c165c70f1c83a742e38245bfbc256f8c630c36d",
-    "scripts/pr-gate-plan.py": "38967c37f3d11c5e5c392cc6c39e7ba5711be0f3c2bacad861b4b7b02ec8f673",
-    "scripts/test_pr_gate_plan.py": "c291efdd8146a8d801ad747a59e889d5d6ecf91285829a7476c4788a37e285d7"
+    "scripts/pr-check-runner.py": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+    "scripts/pr-gate-plan.py": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+    "scripts/test_pr_gate_plan.py": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0"
   },
   "required_checks": [
     "pr-planner-tests",
