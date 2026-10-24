@@ -1,0 +1,144 @@
+{
+  "base": "f39295680d41290fc505c0a8cc1769da51699293",
+  "q": "cbb275d259b849b74b9c8d4c24f370f3fcc4c1f7",
+  "r": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+  "record": {
+    "repository": "mcpdev80/baseharbor",
+    "target_branch": "develop",
+    "reviewed_head": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "files": {
+      "scripts/pr-check-runner.py": "modified",
+      "scripts/pr-gate-plan.py": "modified",
+      "scripts/test_pr_gate_plan.py": "modified"
+    },
+    "file_hashes": {
+      "scripts/pr-check-runner.py": "34fe168fedbdcd503d0e026715372da466052853",
+      "scripts/pr-gate-plan.py": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6",
+      "scripts/test_pr_gate_plan.py": "634b0ffc9311d14a17d698162b339a3e52922e43"
+    },
+    "required_checks": [
+      "pr-planner-tests",
+      "ci-policy",
+      "ci-executor-verifier-tests"
+    ]
+  },
+  "hashes": {
+    "base": {
+      "scripts/pr-check-runner.py": {
+        "sha256": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed",
+        "blob": "46ccef9b652a5d82e986e889b0ce5c6f0642d6a3"
+      },
+      "scripts/pr-gate-plan.py": {
+        "sha256": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0",
+        "blob": "ffa7968e19524555592a43e9bea3e501615571d7"
+      },
+      "scripts/test_pr_gate_plan.py": {
+        "sha256": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e",
+        "blob": "ec027225ff97e6f6e2d807925b84ea6d6d54ed53"
+      },
+      "docs/internal/ci-binding-qualifications.md": {
+        "sha256": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86",
+        "blob": "facfe2a5d236b6cfda3371cabe91e8b330439ee6"
+      },
+      ".github/workflows/ci.yml": {
+        "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+        "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+      }
+    },
+    "q": {
+      "scripts/pr-check-runner.py": {
+        "sha256": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed",
+        "blob": "46ccef9b652a5d82e986e889b0ce5c6f0642d6a3"
+      },
+      "scripts/pr-gate-plan.py": {
+        "sha256": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0",
+        "blob": "ffa7968e19524555592a43e9bea3e501615571d7"
+      },
+      "scripts/test_pr_gate_plan.py": {
+        "sha256": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e",
+        "blob": "ec027225ff97e6f6e2d807925b84ea6d6d54ed53"
+      },
+      "docs/internal/ci-binding-qualifications.md": {
+        "sha256": "be4e0dd553a32a8f911e05420b83ea49409844f309c871b7bd3907a773d29d4d",
+        "blob": "ddab2a39eadbca50ef1d14f3a1fcb733184ef510"
+      },
+      ".github/workflows/ci.yml": {
+        "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+        "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+      }
+    },
+    "1056": {
+      "scripts/pr-check-runner.py": {
+        "sha256": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+        "blob": "34fe168fedbdcd503d0e026715372da466052853"
+      },
+      "scripts/pr-gate-plan.py": {
+        "sha256": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+        "blob": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6"
+      },
+      "scripts/test_pr_gate_plan.py": {
+        "sha256": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0",
+        "blob": "634b0ffc9311d14a17d698162b339a3e52922e43"
+      },
+      "docs/internal/ci-binding-qualifications.md": {
+        "sha256": "cb7be59b4f2cd8fed8f5c1c2c5fe9f081ffddfd4c5c93ffc224524077231f86e",
+        "blob": "3bd1a400ca13adfcbe3b1e6879dbc5dcfd862a48"
+      },
+      ".github/workflows/ci.yml": {
+        "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+        "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+      }
+    },
+    "1061": {
+      "scripts/pr-check-runner.py": {
+        "sha256": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+        "blob": "34fe168fedbdcd503d0e026715372da466052853"
+      },
+      "scripts/pr-gate-plan.py": {
+        "sha256": "7549692e5c23ed8979173e33bad492a79016c41a76013d0d940a1f89122bf0d0",
+        "blob": "f36aa13c37eb1fc25ef7db53d046165fefa70e4c"
+      },
+      "scripts/test_pr_gate_plan.py": {
+        "sha256": "9ecdd43d35c97aafa12d0b78c20c0beb7bc4c742a0701031362c5e1da7de8700",
+        "blob": "f9233ee59fa0476cddaa6bab5e8808837d90d00b"
+      },
+      "docs/internal/ci-binding-qualifications.md": {
+        "sha256": "9deafbc0d1a3055bc5e6f5d03ee957ce32dbe497f09cb6c29775a7b2db522513",
+        "blob": "cb6789de2cda34dbfb223a8136fb404dffe10d55"
+      },
+      ".github/workflows/ci.yml": {
+        "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+        "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+      }
+    },
+    "1062": {
+      "scripts/pr-check-runner.py": {
+        "sha256": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+        "blob": "34fe168fedbdcd503d0e026715372da466052853"
+      },
+      "scripts/pr-gate-plan.py": {
+        "sha256": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+        "blob": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6"
+      },
+      "scripts/test_pr_gate_plan.py": {
+        "sha256": "2ee96d581717b831da30f05099cd7efe707027f68bedd35168d4028ef88e39bc",
+        "blob": "913acd87a0c45a65bebed9e687f656bc2a8a0c6b"
+      },
+      "docs/internal/ci-binding-qualifications.md": {
+        "sha256": "cb7be59b4f2cd8fed8f5c1c2c5fe9f081ffddfd4c5c93ffc224524077231f86e",
+        "blob": "3bd1a400ca13adfcbe3b1e6879dbc5dcfd862a48"
+      },
+      ".github/workflows/ci.yml": {
+        "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+        "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+      }
+    }
+  },
+  "inventories": {
+    "base": "",
+    "q": "M\tdocs/internal/ci-binding-qualifications.md\n",
+    "1056": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n",
+    "1061": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n",
+    "1062": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n"
+  }
+}

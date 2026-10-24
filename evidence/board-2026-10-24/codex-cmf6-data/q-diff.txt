@@ -1,0 +1,25 @@
+diff --git a/docs/internal/ci-binding-qualifications.md b/docs/internal/ci-binding-qualifications.md
+index facfe2a..ddab2a3 100644
+--- a/docs/internal/ci-binding-qualifications.md
++++ b/docs/internal/ci-binding-qualifications.md
+@@ -6,16 +6,16 @@ Owner-authorized immutable source inventory for the exact #1056 candidate. This
+ {
+   "repository": "mcpdev80/baseharbor",
+   "target_branch": "develop",
+-  "reviewed_head": "4e737e26af38e7f712f2de1f631633d8d59477b9",
++  "reviewed_head": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+   "files": {
+     "scripts/pr-check-runner.py": "modified",
+     "scripts/pr-gate-plan.py": "modified",
+     "scripts/test_pr_gate_plan.py": "modified"
+   },
+   "file_hashes": {
+-    "scripts/pr-check-runner.py": "05f244d6e8de34a1f56a1123ce2a8ffb178943f064ef5cad1ed293f0a388517f",
+-    "scripts/pr-gate-plan.py": "7c285725156a0b08401dec6e18b11344795f5ed11c931230ef6bd2db0df769e8",
+-    "scripts/test_pr_gate_plan.py": "8564c6cb94b3fe035626f05b7b5d3c3cac584f354c43bcd37d80f86c9c86a010"
++    "scripts/pr-check-runner.py": "34fe168fedbdcd503d0e026715372da466052853",
++    "scripts/pr-gate-plan.py": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6",
++    "scripts/test_pr_gate_plan.py": "634b0ffc9311d14a17d698162b339a3e52922e43"
+   },
+   "required_checks": [
+     "pr-planner-tests",

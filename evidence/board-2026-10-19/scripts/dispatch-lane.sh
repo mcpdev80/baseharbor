@@ -91,6 +91,17 @@ probe_resend() { # verify via message identity; NEVER blindly resend
   return $rc
 }
 
+# Clear any residue the watcher's /compact attempt or a previous failed send left
+# in the target composer: without this, the typed pointer appends to that text and
+# the session receives a corrupt "/compactRead the file ..." command (observed
+# twice on 2026-10-24 with codex lanes).
+clear_composer() {
+  local pane="codeman-${sid:0:8}"
+  "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" C-u >/dev/null 2>&1 || true
+  sleep 1
+}
+clear_composer
+
 if [[ $base_rc -ne 0 ]]; then
   echo "dispatch-lane: baseline UNKNOWN (rc=$base_rc) - sending at most once, NO automatic resend until delivery can be proven" >&2
   "$CODEMAN" agent send "$sid" "$MSG" >/dev/null 2>&1

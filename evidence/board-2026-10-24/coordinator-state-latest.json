@@ -1,9 +1,9 @@
 {
- "at": 1792839214,
+ "at": 1792839648,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792839218,
+   "observed_at": 1792839616,
    "prs": {
     "1046": {
      "head": "1ec67f8d4",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792839219,
+   "observed_at": 1792839617,
    "prs": {
     "9": {
      "head": "6017de284",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792839218,
+   "observed_at": 1792839616,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792839220,
+   "observed_at": 1792839617,
    "prs": {
     "10": {
      "head": "e832d5651",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 6983,
-  "tmp_free_mb": 6455,
+  "mem_available_mb": 7615,
+  "tmp_free_mb": 6493,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -81,30 +81,21 @@
  "lanes": [
   {
    "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 173,
+   "idle_s": 0,
    "mode": "codex",
    "model": "GPT-6.1-Sol",
    "name": "codex-merge26",
    "self": false,
-   "status": "idle"
+   "status": "busy"
   },
   {
    "id": "240a2e36-9750-418b-9171-e9826cc9c79c",
-   "idle_s": 0,
+   "idle_s": 207,
    "mode": "opencode",
    "model": null,
    "name": "f51",
    "self": false,
-   "status": "busy"
-  },
-  {
-   "id": "b8bb8e15-67c1-4ec1-8b44-fd9fc920f406",
-   "idle_s": 0,
-   "mode": "opencode",
-   "model": null,
-   "name": "o124",
-   "self": false,
-   "status": "busy"
+   "status": "idle"
   },
   {
    "id": "804d7b7a-989a-49a0-8cbf-ebcd0c01ed6f",
@@ -117,12 +108,12 @@
   },
   {
    "id": "342b9a1d-d887-4ce6-8c81-2cc80a232469",
-   "idle_s": 172,
+   "idle_s": 0,
    "mode": "opencode",
    "model": null,
    "name": "q116",
    "self": false,
-   "status": "idle"
+   "status": "busy"
   },
   {
    "id": "adebf29e-6371-4a14-afa6-e8828693a1db",
@@ -158,6 +149,11 @@
   "cmf5": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf5.txt",
+   "state": "dispatched"
+  },
+  "cmf6": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf6.txt",
    "state": "dispatched"
   },
   "cmx": {
@@ -443,7 +439,7 @@
   "f51": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f51-demo121scope.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f51.txt",
-   "state": "dispatched"
+   "state": "DONE"
   },
   "f7": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f7-native-dispatch.md",
@@ -1123,6 +1119,11 @@
   "q115": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q115-rebase1046.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q115.txt",
+   "state": "dispatched"
+  },
+  "q116": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q116.txt",
    "state": "dispatched"
   },
   "q13": {

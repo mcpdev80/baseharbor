@@ -1,0 +1,414 @@
+diff --git a/scripts/pr-gate-plan.py b/scripts/pr-gate-plan.py
+index b0efbdc..f36aa13 100644
+--- a/scripts/pr-gate-plan.py
++++ b/scripts/pr-gate-plan.py
+@@ -142,20 +142,6 @@ APPID_FIX_REVIEWED_HEAD = '0e213d42c74cfdb91964592c17e3914a848207b9'
+ APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modified',
+                             'internal/application/manifest_test.go': 'modified'}
+ 
+-# Exact reviewed appid test-regression follow-up (#1046): six test-only sources
+-# normalizing t.TempDir() roots to 0700 so machine umask cannot mask the
+-# protected-owner guards differently between local runs and CI. No production,
+-# parser or guard semantics change; no generic internal/application exemption.
+-APPID_ENV_ROBUST_TEST_REVIEWED_HEAD = '3558250837759113b760a112e99994135d31bc00'
+-APPID_ENV_ROBUST_TEST_REVIEWED_FILES = {
+-    'internal/application/external_provider_registry_test.go': 'modified',
+-    'internal/application/external_provider_removal_retry_test.go': 'modified',
+-    'internal/application/external_provider_scope_test.go': 'modified',
+-    'internal/application/protected_tempdir_test.go': 'added',
+-    'internal/application/runtime_binding_projection_reset_test.go': 'modified',
+-    'internal/application/telemetry_authorization_test.go': 'modified',
+-}
+-
+ # Exact final-check repair: await mandatory policy and bounded authenticated
+ # API job readiness. The adapter comes only from the immutable trusted base;
+ # the verifier and original identity guards stay unchanged. No runtime exception.
+@@ -1095,28 +1081,6 @@ def plan(diff, requirements, mapping, repository='.',
+                 'validation_contract': ('All hosted checks required; native Docker '
+                                         'acceptance remains separately mandatory.'),
+                 'reasons': ['exact reviewed #1008 fixture-only correction']}
+-    # Exact reviewed appid test-regression follow-up only; coverage is the
+-    # existing static package validation that runs the changed test sources.
+-    if (valid and not diff['broad_required'] and not unresolved and
+-            identifiers['integration_sha'] is not None and
+-            len(paths) == len(APPID_ENV_ROBUST_TEST_REVIEWED_FILES) and
+-            set(paths) == set(APPID_ENV_ROBUST_TEST_REVIEWED_FILES) and
+-            all(ch.get('status') == APPID_ENV_ROBUST_TEST_REVIEWED_FILES.get(ch.get('path'))
+-                for ch in diff['changes']) and
+-            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+-                                         identifiers['head_sha'],
+-                                         APPID_ENV_ROBUST_TEST_REVIEWED_HEAD)):
+-        require(CODE_CHECKS)
+-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+-                'mapping_schema': mapping['schema'], 'release': release,
+-                'coverage_status': 'resolved', 'unresolved_coverage': [],
+-                'broad_required': False, 'selected_gates': [],
+-                'required_validation_checks': [validations[k] for k in sorted(validations)],
+-                'validation_contract': ('Require every listed validation; the exact reviewed '
+-                    'test-only source adds no product or guard behavior beyond the '
+-                    'umask-deterministic tmp roots.'),
+-                'reasons': ['exact reviewed appid test-regression follow-up: umask-deterministic '
+-                            'protected tmp roots in internal/application test sources only']}
+     # Reuse the existing clean trusted-target merge proof, bound to the exact
+     # independently reviewed wizard CI commit and its complete seven-file diff.
+     if (valid and not diff['broad_required'] and not unresolved and
+diff --git a/scripts/test_pr_gate_plan.py b/scripts/test_pr_gate_plan.py
+index 634b0ff..f9233ee 100644
+--- a/scripts/test_pr_gate_plan.py
++++ b/scripts/test_pr_gate_plan.py
+@@ -127,42 +127,6 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
+                     planner.plan(altered, REQ, MAP)['coverage_status'])
+ 
+ 
+-class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
+-    def test_only_exact_reviewed_test_only_source_qualifies(self):
+-        reviewed = [{'status': status, 'path': path} for path, status
+-                    in sorted(planner.APPID_ENV_ROBUST_TEST_REVIEWED_FILES.items())]
+-        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
+-            result = planner.plan(diff(reviewed), REQ, MAP)
+-        self.assertEqual('resolved', result['coverage_status'])
+-        self.assertEqual([], result['selected_gates'])
+-        self.assertEqual({'source-contracts'},
+-                         {c['id'] for c in result['required_validation_checks']})
+-        added = next(ch for ch in reviewed if ch['path'] ==
+-                     'internal/application/protected_tempdir_test.go')
+-        status_flipped = copy.deepcopy(reviewed)
+-        status_flipped[status_flipped.index(added)]['status'] = 'modified'
+-        variants = [reviewed[:5], reviewed + paths('internal/application/manifest.go'),
+-                    [{'path': reviewed[0]['path'], 'status': 'deleted'}] + reviewed[1:],
+-                    status_flipped,
+-                    paths('internal/application/unreviewed_test.go',
+-                          *[ch['path'] for ch in reviewed[1:]])]
+-        for changes in variants:
+-            with self.subTest(changes=changes), patch.object(
+-                    planner, 'core752_reviewed_merge_chain', return_value=True):
+-                self.assertEqual('unresolved',
+-                    planner.plan(diff(changes), REQ, MAP)['coverage_status'])
+-        for integration in (None, '0'*40):
+-            altered = diff(reviewed)
+-            altered['integration_sha'] = integration
+-            with patch.object(planner, 'core752_reviewed_merge_chain',
+-                              return_value=False):
+-                self.assertEqual('unresolved',
+-                    planner.plan(altered, REQ, MAP)['coverage_status'])
+-        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=False):
+-            self.assertEqual('unresolved',
+-                planner.plan(diff(reviewed), REQ, MAP)['coverage_status'])
+-
+-
+ class Core751ImportCoverageProposalTests(unittest.TestCase):
+     def test_candidate_selects_real_checks_but_fails_closed_without_source_binding(self):
+         changes = [{'path': path, 'status': status}
+@@ -1189,27 +1153,14 @@ class PinsDataQualificationTests(unittest.TestCase):
+         self.assertNotIn('ci-executor-verifier-tests',
+                          {c['id'] for c in result['required_validation_checks']})
+ 
+-    def setUp(self):
+-        self._tempdirs = []
+-        self.addCleanup(self._cleanup_tempdirs)
+-
+-    def _cleanup_tempdirs(self):
+-        import shutil
+-        for name in reversed(self._tempdirs):
+-            shutil.rmtree(name, ignore_errors=True)
+-
+-    def _mkrepo(self):
+-        tmp = tempfile.mkdtemp()
+-        self._tempdirs.append(tmp)
+-        return Path(tmp)
+-
+     def test_malformed_missing_and_mismatched_pins_data_stay_fail_closed(self):
+         for name in ['malformed-schema', 'missing-gates', 'wrong-repo', 'non-hex-commit']:
+             with self.subTest(name=name):
+-                root = self._mkrepo()
+-                rel = root / 'docs' / 'releases'
+-                rel.mkdir(parents=True)
+-                bad = {
++                with tempfile.TemporaryDirectory() as tmp:
++                    root = Path(tmp)
++                    rel = root / 'docs' / 'releases'
++                    rel.mkdir(parents=True)
++                    bad = {
+                         'malformed-schema': {'schema': 'wrong', 'gates': {}},
+                         'missing-gates': {'schema': 'baseharbor.consumer-evidence-pins/v1'},
+                         'wrong-repo': {'schema': 'baseharbor.consumer-evidence-pins/v1',
+@@ -1226,56 +1177,57 @@ class PinsDataQualificationTests(unittest.TestCase):
+                                 'console': {'repository': 'mcpdev80/baseharbor-console',
+                                             'commit': 'e' * 40, 'workflow': 'x'}}}},
+                     }[name]
+-                git_init(root)
+-                (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(bad))
+-                git_add_commit(root)
+-                resolver_spec = importlib.util.spec_from_file_location(
+-                    'resolver', ROOT / 'pr-diff-base.py')
+-                resolver = importlib.util.module_from_spec(resolver_spec)
+-                resolver_spec.loader.exec_module(resolver)
+-                target = git_rev_parse(root, 'develop')
+-                head = git_merge_base(root, 'develop', 'pins')
+-                head = git_rev_parse(root, 'pins')
+-                integrated = git_commit_tree(root, target, head)
+-                actual = resolver.resolve_pr_diff(root, target, head, integrated)
+-                self.assertFalse(actual['broad_required'], actual['reasons'])
+-                with self.assertRaises(RuntimeError):
+-                    validate_pins_for_test(actual, str(root))
++                    git_init(root)
++                    (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(bad))
++                    git_add_commit(root)
++                    resolver_spec = importlib.util.spec_from_file_location(
++                        'resolver', ROOT / 'pr-diff-base.py')
++                    resolver = importlib.util.module_from_spec(resolver_spec)
++                    resolver_spec.loader.exec_module(resolver)
++                    target = git_rev_parse(root, 'develop')
++                    head = git_merge_base(root, 'develop', 'pins')
++                    head = git_rev_parse(root, 'pins')
++                    integrated = git_commit_tree(root, target, head)
++                    actual = resolver.resolve_pr_diff(root, target, head, integrated)
++                    self.assertFalse(actual['broad_required'], actual['reasons'])
++                    with self.assertRaises(RuntimeError):
++                        validate_pins_for_test(actual, str(root))
+ 
+     def test_divergent_connector_commit_across_gates_fails(self):
+-        root = self._mkrepo()
+-        rel = root / 'docs' / 'releases'
+-        rel.mkdir(parents=True)
+-        divergent = {
+-            'schema': 'baseharbor.consumer-evidence-pins/v1',
+-            'gates': {
+-                'integration/docker/remote-target': {
+-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                                  'commit': 'a' * 40,
+-                                  'workflow': '.github/workflows/release-integration.yml'}},
+-                'integration/static/live-console': {
+-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                                  'commit': 'b' * 40,
+-                                  'workflow': '.github/workflows/release-integration.yml'},
+-                    'console': {'repository': 'mcpdev80/baseharbor-console',
+-                                'commit': 'c' * 40,
+-                                'workflow': '.github/workflows/release-integration.yml'}},
+-            },
+-        }
+-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(divergent))
+-        git_init(root)
+-        git_add_commit(root)
+-        resolver_spec = importlib.util.spec_from_file_location(
+-            'resolver', ROOT / 'pr-diff-base.py')
+-        resolver = importlib.util.module_from_spec(resolver_spec)
+-        resolver_spec.loader.exec_module(resolver)
+-        target = git_rev_parse(root, 'develop')
+-        head = git_rev_parse(root, 'pins')
+-        integrated = git_commit_tree(root, target, head)
+-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
+-        self.assertFalse(actual['broad_required'], actual['reasons'])
+-        with self.assertRaises(RuntimeError):
+-          validate_pins_for_test(actual, str(root))
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            rel = root / 'docs' / 'releases'
++            rel.mkdir(parents=True)
++            divergent = {
++                'schema': 'baseharbor.consumer-evidence-pins/v1',
++                'gates': {
++                    'integration/docker/remote-target': {
++                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                      'commit': 'a' * 40,
++                                      'workflow': '.github/workflows/release-integration.yml'}},
++                    'integration/static/live-console': {
++                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                      'commit': 'b' * 40,
++                                      'workflow': '.github/workflows/release-integration.yml'},
++                        'console': {'repository': 'mcpdev80/baseharbor-console',
++                                    'commit': 'c' * 40,
++                                    'workflow': '.github/workflows/release-integration.yml'}},
++                },
++            }
++            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(divergent))
++            git_init(root)
++            git_add_commit(root)
++            resolver_spec = importlib.util.spec_from_file_location(
++                'resolver', ROOT / 'pr-diff-base.py')
++            resolver = importlib.util.module_from_spec(resolver_spec)
++            resolver_spec.loader.exec_module(resolver)
++            target = git_rev_parse(root, 'develop')
++            head = git_rev_parse(root, 'pins')
++            integrated = git_commit_tree(root, target, head)
++            actual = resolver.resolve_pr_diff(root, target, head, integrated)
++            self.assertFalse(actual['broad_required'], actual['reasons'])
++            with self.assertRaises(RuntimeError):
++                validate_pins_for_test(actual, str(root))
+ 
+     def test_mixed_with_unrelated_json_keeps_own_coverage_requirements(self):
+         mixed = [
+@@ -1302,92 +1254,94 @@ class PinsDataQualificationTests(unittest.TestCase):
+         # A pins file with an immutable ecosystem chain that pins a role to the
+         # wrong repository must fail closed: the validator only trusts the
+         # pinned Core/Console/Connector origin repositories.
+-        root = self._mkrepo()
+-        rel = root / 'docs' / 'releases'
+-        rel.mkdir(parents=True)
+-        chain = {
+-            'schema': 'baseharbor.consumer-evidence-pins/v1',
+-            'gates': {
+-                'integration/static/live-console': {
+-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                                  'commit': 'd' * 40,
+-                                  'workflow': '.github/workflows/release-integration.yml'},
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            rel = root / 'docs' / 'releases'
++            rel.mkdir(parents=True)
++            chain = {
++                'schema': 'baseharbor.consumer-evidence-pins/v1',
++                'gates': {
++                    'integration/static/live-console': {
++                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                      'commit': 'd' * 40,
++                                      'workflow': '.github/workflows/release-integration.yml'},
++                        'console': {'repository': 'mcpdev80/baseharbor-console',
++                                    'commit': 'd' * 40,
++                                    'workflow': '.github/workflows/release-integration.yml'}},
++                    'integration/docker/remote-target': {
++                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                      'commit': 'd' * 40,
++                                      'workflow': '.github/workflows/release-integration.yml'}},
++                },
++                'ecosystem': {
++                    'core': {'repository': 'other/baseharbor',
++                             'commit': 'a' * 40, 'consumes': {}},
++                    'demo': {'repository': 'mcpdev80/baseharbor-demo',
++                             'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+                     'console': {'repository': 'mcpdev80/baseharbor-console',
+-                                'commit': 'd' * 40,
+-                                'workflow': '.github/workflows/release-integration.yml'}},
+-                'integration/docker/remote-target': {
++                                'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
+                     'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                                  'commit': 'd' * 40,
+-                                  'workflow': '.github/workflows/release-integration.yml'}},
+-            },
+-            'ecosystem': {
+-                'core': {'repository': 'other/baseharbor',
+-                         'commit': 'a' * 40, 'consumes': {}},
+-                'demo': {'repository': 'mcpdev80/baseharbor-demo',
+-                         'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+-                'console': {'repository': 'mcpdev80/baseharbor-console',
+-                            'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
+-                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                              'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
+-            },
+-        }
+-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
+-        git_init(root)
+-        git_add_commit(root)
+-        resolver_spec = importlib.util.spec_from_file_location(
+-            'resolver', ROOT / 'pr-diff-base.py')
+-        resolver = importlib.util.module_from_spec(resolver_spec)
+-        resolver_spec.loader.exec_module(resolver)
+-        target = git_rev_parse(root, 'develop')
+-        head = git_rev_parse(root, 'pins')
+-        integrated = git_commit_tree(root, target, head)
+-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
+-        self.assertFalse(actual['broad_required'], actual['reasons'])
+-        with self.assertRaises(RuntimeError):
+-            validate_pins_for_test(actual, str(root))
++                                  'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
++                },
++            }
++            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
++            git_init(root)
++            git_add_commit(root)
++            resolver_spec = importlib.util.spec_from_file_location(
++                'resolver', ROOT / 'pr-diff-base.py')
++            resolver = importlib.util.module_from_spec(resolver_spec)
++            resolver_spec.loader.exec_module(resolver)
++            target = git_rev_parse(root, 'develop')
++            head = git_rev_parse(root, 'pins')
++            integrated = git_commit_tree(root, target, head)
++            actual = resolver.resolve_pr_diff(root, target, head, integrated)
++            self.assertFalse(actual['broad_required'], actual['reasons'])
++            with self.assertRaises(RuntimeError):
++                validate_pins_for_test(actual, str(root))
+ 
+     def test_ecosystem_chain_wrong_hex_commit_fails(self):
+         # A pinned role whose commit is not 40-hex must fail closed even with a
+         # structurally complete ecosystem chain.
+-        root = self._mkrepo()
+-        rel = root / 'docs' / 'releases'
+-        rel.mkdir(parents=True)
+-        chain = {
+-            'schema': 'baseharbor.consumer-evidence-pins/v1',
+-            'gates': {
+-                'integration/static/live-console': {
+-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                                  'commit': 'd' * 40,
+-                                  'workflow': '.github/workflows/release-integration.yml'},
++        with tempfile.TemporaryDirectory() as tmp:
++            root = Path(tmp)
++            rel = root / 'docs' / 'releases'
++            rel.mkdir(parents=True)
++            chain = {
++                'schema': 'baseharbor.consumer-evidence-pins/v1',
++                'gates': {
++                    'integration/static/live-console': {
++                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                      'commit': 'd' * 40,
++                                      'workflow': '.github/workflows/release-integration.yml'},
++                        'console': {'repository': 'mcpdev80/baseharbor-console',
++                                    'commit': 'd' * 40,
++                                    'workflow': '.github/workflows/release-integration.yml'}},
++                },
++                'ecosystem': {
++                    'core': {'repository': 'mcpdev80/baseharbor',
++                             'commit': 'not-hex', 'consumes': {}},
++                    'demo': {'repository': 'mcpdev80/baseharbor-demo',
++                             'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+                     'console': {'repository': 'mcpdev80/baseharbor-console',
+-                                'commit': 'd' * 40,
+-                                'workflow': '.github/workflows/release-integration.yml'}},
+-            },
+-            'ecosystem': {
+-                'core': {'repository': 'mcpdev80/baseharbor',
+-                         'commit': 'not-hex', 'consumes': {}},
+-                'demo': {'repository': 'mcpdev80/baseharbor-demo',
+-                         'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+-                'console': {'repository': 'mcpdev80/baseharbor-console',
+-                            'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
+-                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+-                              'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
+-            },
+-        }
+-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
+-        git_init(root)
+-        git_add_commit(root)
+-        resolver_spec = importlib.util.spec_from_file_location(
+-            'resolver', ROOT / 'pr-diff-base.py')
+-        resolver = importlib.util.module_from_spec(resolver_spec)
+-        resolver_spec.loader.exec_module(resolver)
+-        target = git_rev_parse(root, 'develop')
+-        head = git_rev_parse(root, 'pins')
+-        integrated = git_commit_tree(root, target, head)
+-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
+-        self.assertFalse(actual['broad_required'], actual['reasons'])
+-        with self.assertRaises(RuntimeError):
+-            validate_pins_for_test(actual, str(root))
++                                'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
++                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
++                                  'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
++                },
++            }
++            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
++            git_init(root)
++            git_add_commit(root)
++            resolver_spec = importlib.util.spec_from_file_location(
++                'resolver', ROOT / 'pr-diff-base.py')
++            resolver = importlib.util.module_from_spec(resolver_spec)
++            resolver_spec.loader.exec_module(resolver)
++            target = git_rev_parse(root, 'develop')
++            head = git_rev_parse(root, 'pins')
++            integrated = git_commit_tree(root, target, head)
++            actual = resolver.resolve_pr_diff(root, target, head, integrated)
++            self.assertFalse(actual['broad_required'], actual['reasons'])
++            with self.assertRaises(RuntimeError):
++                validate_pins_for_test(actual, str(root))
+ 
+     def test_ecosystem_chain_valid_passes(self):
+         # A complete ecosystem chain with the pinned roles and 40-hex commits

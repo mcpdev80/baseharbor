@@ -1,0 +1,14 @@
+ROLLE: REVIEW, danach (nur bei ACCEPT) MERGE - Phasen klar getrennt, keine Vermischung. Owner-Freigabe `--squash --admin` fuer v0.4.26-Kandidaten steht (baseharbor + demo/console/connector).
+
+PHASE A (REVIEW + Merge): PR #1063 (baseharbor, head cbb275d2, EXAKT 1 Datei docs/internal/ci-binding-qualifications.md) - das ist das "Q"-Element des Rezepts aus evidence/board-2026-10-24/codex-mechanism-1056.md (Schritt 2). Beleg der Worker-Lane: evidence/board-2026-10-24/o124-chain1split.md (END DONE).
+1. Pruefe selbststaendig: diff = nur die Markdown-Akte; JSON-Block mit reviewed_head = R-Voll-SHA; file_hashes der drei CI-Scripts = echte sha256 aus den Git-Objekten von R; required_checks = pr-planner-tests, ci-policy, ci-executor-verifier-tests; keine Fail-Closed-Aenderung.
+2. Live-Gates: head-Wache, `gh pr checks 1063`, Threads, mergeStateStatus, Rulesets (23754541 + 25223521).
+3. Bei ACCEPT: `gh pr merge 1063 --squash --admin`, post-merge develop-SHA + develop-Checks verifizieren.
+4. Evidence: evidence/board-2026-10-24/codex-merge-q1063.md (ROLLE-Label je Phase, UTC, SHA before/after, Run-IDs, Hash-Vergleich).
+
+PHASE B (REVIEW-Adjudication, KEIN Merge): Drei PRs behandeln dieselbe pins-data-Qualifikation: #1056 (425eaa96, linear), #1061 (ae9afc87, BEHIND), #1062 (7b9fd4ae, BLOCKED) - letztere beide mit Akte + 3 Scripts (also 4 Dateien, damit laut Mechanismus nicht qualifizierbar, solange die Akte nicht schon auf develop liegt).
+1. Vergleiche die Kandidateninhaltlich: `git diff` der Script-Blobs von #1061 vs #1062 vs #1056 gegen develop (nach PHASE A). Nenne Unterschiede (datei:zeile) und ob einer die 3-Script-Invariante erfuellt, wenn die Akte durch #1063 bereits auf develop ist.
+2. Urteil: WELCHER einzelne PR die Kette fortfuehren soll (P), welche als superseded zu fuehren sind, und welche Korrektur noetig ist (z.B. Akte aus dem Diff entfernen, damit der Diff exakt 3 Scripts hat).
+3. Rezept fuer die Worker-Lane (Datei, Aenderung, Testanforderung, Stop-Kriterium) inkl. Reihenfolge P -> W -> #1050.
+Evidence: evidence/board-2026-10-24/codex-verdict-chain1-adjudication.md.
+END CX-Q1063-MERGE-DONE mit develop-SHA / END CX-Q1063-MERGE-BLOCKED mit Grund; END CX-CHAIN1-ADJ-DONE (Phase B immer).
