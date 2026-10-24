@@ -51,3 +51,20 @@ class WorkflowRunEligibility(unittest.TestCase):
             bad["workflow_run"][key] = value
             with self.subTest(key=key), self.assertRaises(EvidenceError):
                 validate_workflow_run_event(bad, repository=REPO, workflow_path=PATH, run_id=RUN_ID)
+
+
+    def test_api_run_must_match_event(self):
+        from r27_workflow_run_contract import verify_workflow_run_against_api
+        api = {"id": RUN_ID, "repository": {"full_name": REPO},
+               "path": PATH, "head_sha": "a" * 40,
+               "event": "pull_request", "status": "completed", "conclusion": "success"}
+        self.assertEqual(verify_workflow_run_against_api(
+            event(), lambda _: api, repository=REPO,
+            workflow_path=PATH, run_id=RUN_ID)["run_id"], RUN_ID)
+        for changed in ("head_sha", "conclusion", "path"):
+            mismatched = dict(api)
+            mismatched[changed] = "wrong"
+            with self.subTest(changed=changed), self.assertRaises(EvidenceError):
+                verify_workflow_run_against_api(
+                    event(), lambda _: mismatched, repository=REPO,
+                    workflow_path=PATH, run_id=RUN_ID)
