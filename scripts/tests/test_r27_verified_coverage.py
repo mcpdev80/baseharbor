@@ -117,7 +117,7 @@ class VerifiedCoverageTests(unittest.TestCase):
             with self.subTest(stage=stage):
                 raw = signed(stage=stage, gate="sql")
                 with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
-                    check(raw, stage=stage, gate="sql")
+                    check(raw, stage=stage, gate="sql", artifact_digest=None)
                 self.assertEqual(
                     check(raw, stage=stage, gate="sql",
                           artifact_digest=ARTIFACT)["job_id"], 456)
