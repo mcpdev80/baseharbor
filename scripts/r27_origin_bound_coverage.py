@@ -7,6 +7,9 @@ from r27_verified_coverage import verify
 from r27_github_fetch import fetch_authenticated_origin
 from r27_github_origin import OriginError
 import re
+import hashlib
+import hmac
+import json
 
 def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
                                 repository, stage, candidate, policy_digest,
@@ -20,9 +23,6 @@ def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
         raise OriginError("EVIDENCE_POLICY: incomplete trusted gate-job mapping")
     if not isinstance(receipts, dict) or set(receipts) - set(required):
         raise OriginError("EVIDENCE_INPUT: unexpected receipt")
-    coverage = plan_verified(required, receipts, key=key, stage=stage,
-                             candidate=candidate, policy_digest=policy_digest,
-                             artifact_digest=artifact_digest)
     # Validate the complete policy before any network requests; missing receipts
     # must not hide invalid policy configuration.
     for gate in required:
@@ -36,6 +36,20 @@ def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
                 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _./:()-]{0,127}",
                                     mapping["job_name"])):
             raise OriginError("EVIDENCE_POLICY: invalid job mapping")
+    try:
+        canonical = json.dumps(policy_jobs, sort_keys=True,
+                               separators=(",", ":"), ensure_ascii=True,
+                               allow_nan=False).encode("ascii")
+        actual = hashlib.sha256(canonical).hexdigest()
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise OriginError("EVIDENCE_POLICY: malformed complete policy") from exc
+    if (not isinstance(policy_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", policy_digest)
+            or not hmac.compare_digest(actual, policy_digest)):
+        raise OriginError("EVIDENCE_POLICY: coverage policy digest mismatch")
+    coverage = plan_verified(required, receipts, key=key, stage=stage,
+                             candidate=candidate, policy_digest=policy_digest,
+                             artifact_digest=artifact_digest)
     for gate in sorted(receipts):
         mapping = policy_jobs[gate]
         identity = verify(receipts[gate], key=key, stage=stage, candidate=candidate,

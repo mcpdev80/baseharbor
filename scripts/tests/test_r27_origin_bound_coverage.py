@@ -16,6 +16,8 @@ def receipt(gate="sql",job_id=5):
  return json.dumps(dict(body,mac=mac)).encode()
 ARGS=dict(key=KEY,token="placeholder",repository="mcpdev80/baseharbor",
           stage="pr",candidate=SHA,policy_digest=POLICY)
+ARGS["policy_digest"]=hashlib.sha256(json.dumps(JOBS,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+POLICY=ARGS["policy_digest"]
 class OriginBoundCoverageTests(unittest.TestCase):
  def test_complete_correlated_job_and_receipt(self):
   with patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
@@ -86,3 +88,12 @@ class PolicyDistinctGateTests(unittest.TestCase):
    with self.assertRaisesRegex(OriginError, "duplicate required gate"):
     check_origin_bound_coverage(["sql","sql"],{"sql":receipt()},JOBS,**ARGS)
    fetch.assert_not_called()
+
+
+class CoveragePolicyDigestTests(unittest.TestCase):
+ def test_complete_policy_mismatch_rejected_before_network(self):
+  with patch("r27_origin_bound_coverage.fetch_authenticated_origin") as api:
+   with self.assertRaisesRegex(OriginError,"coverage policy digest mismatch"):
+    check_origin_bound_coverage(["sql"],{"sql":receipt()},JOBS,
+       **dict(ARGS,policy_digest="f"*64))
+   api.assert_not_called()
