@@ -145,3 +145,7 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - o129 fuehrt #1063 auf R nach; haengt an Permission-Dialog `~/.config/gh/*` (Secret-Read nicht autorisiert) -> Human muss **Reject** waehlen.
 - q118 diagnosticke #1046 targeted runtime; f54 audit #1050 fields; Codex cmf9 review #1052. Pool: qwen 2/2, ornith 1/2+1 blocked, flash 1/1.
 - Codex-Composer `/compactRead`-Rest erneut aufgetreten; diesmal manuell mit C-a/C-k aus Composer geloescht. dispatch-lane C-u reicht nicht fuer mehrzeilige Composer-Reste -> OPS-Befund fuer Fix.
+- 14:0xZ q117-Diagnose: Mission wurde initial gelesen, aber Lane antwortete nur "Step PLAN-0" und idle ohne Evidence. Re-task gesendet: Step 0 evidence + vollstaendige Mission. Damit ist #1060 wieder besetzt.
+- q118 #1046: 14 echte Testfunktionen PASS; Failure ist planner/coverage qualification defect (`pr-gate-plan.py:1098-1119`), keine Produkttest-Luecke. Empfehlung: nach #1056/#1060 separiert qualifizieren. Lane haelt gerade END-Marker-Nachtrag.
+- o130 #1063 docs correction laeuft; o131 #1052 Codex-Rezept (bootstrap classifier/regression fakes) laeuft; f54 #1050 read-only audit laeuft; Codex cmf10 validiert q118-Diagnose.
+- Codex-Composer `/compactRead`-Klassiker erneut; `dispatch-lane` C-u hat ihn nicht entfernt, C-a/C-k im Pane war noetig. OPS-Befund: Composer-Clear vor `agent send` muss robust gemacht werden (nicht nur C-u).

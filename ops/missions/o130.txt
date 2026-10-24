@@ -1,0 +1,23 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in eigenem neuen baseharbor-Worktree fuer branch docs/v0426-q1063 (actual check). Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN Review-Kommando, KEIN force, KEIN --admin, KEIN product scripts-Aenderung.
+GitHub-SICHERHEIT: Nutze nur `timeout 30 gh pr view/api ...` fuer aktuelle PR-Head/Branch/Meta. `gh auth status`, `gh auth token` und Zugriff auf `~/.config/gh` sind VERBOTEN; wenn ein gh-Aufruf haengt, kurz wiederholen, dann BLOCKED melden - nicht in Auth-Config forschen.
+ERSTER SCHRITT: evidence/board-2026-10-24/o130-1063R.md mit ## PLAN + nativen Todos.
+
+ZIEL: PR #1063 (record-only Akte) auf den veröffentlichten, unabhängig ACCEPT-reviewten R umstellen.
+- reviewed R = `32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2`
+- source review: evidence/board-2026-10-24/o128-reviewR.md (`END O128-REVIEWR-DONE mit VERDICT: ACCEPT`)
+- prior hash work: evidence/board-2026-10-24/o126-publishR.md
+- current #1063 head expected `cbb275d2`; live values via bounded gh commands.
+
+SCHRITTE:
+1. `timeout 30 gh pr view 1063 --repo mcpdev80/baseharbor --json headRefName,headRefOid,files,state --jq .`
+2. Checkout PR head + develop `f3929568`. Bestaetige diff gegen develop = only `docs/internal/ci-binding-qualifications.md`.
+3. Miss die 3 RAW sha256-Werte von R selbst:
+   - scripts/pr-check-runner.py
+   - scripts/pr-gate-plan.py
+   - scripts/test_pr_gate_plan.py
+   Vergleiche mit `timeout 60 gh api repos/mcpdev80/baseharbor/contents/<path>?ref=<R> --jq ...` oder blob raw. Zwei Quellen, beide messen.
+4. Setze Record `reviewed_head=R`, reviewed_date laut o128, `file_hashes` auf genau diese drei raw hashes. Keine anderen Akte-/Content-Änderungen.
+5. `git diff --check`; diff develop = 1 file; diff old #1063 = only relevant Akte lines.
+6. ordinary forward commit + push zu #1063 branch.
+7. Checks maximal 25min beobachten. Kein Merge. Head + Run/Job IDs in Evidence.
+END O130-1063R-PUSHED mit head SHA / END O130-1063R-BLOCKED.

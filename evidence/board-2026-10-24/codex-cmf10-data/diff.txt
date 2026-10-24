@@ -1,0 +1,112 @@
+diff --git a/internal/application/external_provider_registry_test.go b/internal/application/external_provider_registry_test.go
+index 5a2126abe..ad209e702 100644
+--- a/internal/application/external_provider_registry_test.go
++++ b/internal/application/external_provider_registry_test.go
+@@ -9,7 +9,7 @@ import (
+ )
+ 
+ func TestExternalProviderRegistrationAndRemoval(t *testing.T) {
+-	dataDir := t.TempDir()
++	dataDir := protectedTempDir(t)
+ 	reg := externalprovider.Registration{
+ 		ID: "company-db", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app",
+ 		CredentialRef: "vault://team/app/db",
+@@ -50,7 +50,7 @@ func TestExternalProviderRegistrationAndRemoval(t *testing.T) {
+ }
+ 
+ func TestExternalProviderBindingAndReleasePreserveForeignInstance(t *testing.T) {
+-	dataDir := t.TempDir()
++	dataDir := protectedTempDir(t)
+ 	reg := externalprovider.Registration{
+ 		ID:            "company-db",
+ 		ProviderID:    "company/postgresql",
+diff --git a/internal/application/external_provider_removal_retry_test.go b/internal/application/external_provider_removal_retry_test.go
+index fa22c8240..871254526 100644
+--- a/internal/application/external_provider_removal_retry_test.go
++++ b/internal/application/external_provider_removal_retry_test.go
+@@ -10,7 +10,7 @@ import (
+ )
+ 
+ func TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry(t *testing.T) {
+-	root := t.TempDir()
++	root := protectedTempDir(t)
+ 	reg := externalprovider.Registration{ID: "company-db", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app", CredentialRef: "file:///protected/retained-credential", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Trust: externalprovider.Trust{Mode: externalprovider.TrustSystem}}
+ 	if err := RegisterExternalProviderAt(root, reg); err != nil {
+ 		t.Fatal(err)
+diff --git a/internal/application/external_provider_scope_test.go b/internal/application/external_provider_scope_test.go
+index d67ac9f91..423676115 100644
+--- a/internal/application/external_provider_scope_test.go
++++ b/internal/application/external_provider_scope_test.go
+@@ -12,7 +12,7 @@ import (
+ 
+ func externalScopeFixture(t *testing.T) (string, string) {
+ 	t.Helper()
+-	root := t.TempDir()
++	root := protectedTempDir(t)
+ 	reg := externalprovider.Registration{ID: "company-db", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app", CredentialRef: "file:///run/secrets/db", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Trust: externalprovider.Trust{Mode: externalprovider.TrustSystem}}
+ 	if err := RegisterExternalProviderAt(root, reg); err != nil {
+ 		t.Fatal(err)
+diff --git a/internal/application/protected_tempdir_test.go b/internal/application/protected_tempdir_test.go
+new file mode 100644
+index 000000000..fe4a53e7e
+--- /dev/null
++++ b/internal/application/protected_tempdir_test.go
+@@ -0,0 +1,23 @@
++package application
++
++import (
++	"os"
++	"testing"
++)
++
++// protectedTempDir returns a deterministic, owner-safe data root.
++//
++// t.TempDir() creates its numbered directory with os.Mkdir(dir, 0o777), so the
++// effective mode is the machine umask: a group-writable umask such as 002
++// yields 0775, which the protected-owner guards must reject fail-closed. The
++// CI umask 022 hid this; normalizing to 0700 keeps one real code path on every
++// machine without skipping and preserves the guards' contract, including the
++// tests that chmod deliberately unprotected modes to assert rejection.
++func protectedTempDir(t *testing.T) string {
++	t.Helper()
++	dir := t.TempDir()
++	if err := os.Chmod(dir, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	return dir
++}
+diff --git a/internal/application/runtime_binding_projection_reset_test.go b/internal/application/runtime_binding_projection_reset_test.go
+index 8a310bbd3..9468704b8 100644
+--- a/internal/application/runtime_binding_projection_reset_test.go
++++ b/internal/application/runtime_binding_projection_reset_test.go
+@@ -9,7 +9,7 @@ import (
+ func TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity(t *testing.T) {
+ 	for _, selected := range []bool{true, false} {
+ 		t.Run(map[bool]string{true: "selected", false: "removed"}[selected], func(t *testing.T) {
+-			root := t.TempDir()
++			root := protectedTempDir(t)
+ 			before, err := os.Stat(root)
+ 			if err != nil {
+ 				t.Fatal(err)
+@@ -108,7 +108,7 @@ func TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation(t
+ }
+ 
+ func TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt(t *testing.T) {
+-	root := t.TempDir()
++	root := protectedTempDir(t)
+ 	outside := t.TempDir()
+ 	marker := filepath.Join(outside, "marker")
+ 	if err := os.WriteFile(marker, []byte("outside-owner"), 0600); err != nil {
+diff --git a/internal/application/telemetry_authorization_test.go b/internal/application/telemetry_authorization_test.go
+index 60517d582..960c7982d 100644
+--- a/internal/application/telemetry_authorization_test.go
++++ b/internal/application/telemetry_authorization_test.go
+@@ -12,7 +12,7 @@ import (
+ )
+ 
+ func TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization(t *testing.T) {
+-	dir := t.TempDir()
++	dir := protectedTempDir(t)
+ 	f := RuntimeFiles{Dir: dir, Env: filepath.Join(dir, "runtime.env"), ApplicationEnv: filepath.Join(dir, "application.env"), Bindings: filepath.Join(dir, "bindings")}
+ 	for _, p := range []string{f.Env, f.ApplicationEnv} {
+ 		if err := os.WriteFile(p, nil, 0600); err != nil {

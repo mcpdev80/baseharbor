@@ -1,0 +1,33 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052 (bestehendes #1052-Worktree). Root-Repo fuer git VERBOTEN. KEIN Merge/Review-Kommando, KEIN force, KEIN --admin, KEIN Edit in #1060-Worktree oder fremden Worktrees, KEIN CI-Rerun-Spam.
+GitHub-SICHERHEIT: `timeout 30 gh ...` fuer Meta. `gh auth status/token`, `~/.config/gh` VERBOTEN.
+ERSTER SCHRITT: evidence/board-2026-10-24/o131-1052fix.md mit ## PLAN + nativen Todos.
+
+KANDIDAT:
+- PR #1052 head `789299a9364750773ac90ccefe9e6d540a2732ff`
+- base develop `f39295680d41290fc505c0a8cc1769da51699293`
+- Codex-Review: evidence/board-2026-10-24/codex-verdict-1052.md, Abschnitt "Exactly ONE minimal executable worker action".
+
+AUFGABE (EINE kohärente Korrektur):
+1. Status: branch/worktree clean? `git show --stat HEAD`. Bei dirty Worktree NICHTS löschen/resetten; dokumentiere und STOP, wenn fremde Änderungen erkennbar sind.
+2. Implementiere exakt den Reviewer-Rezept-Anteil in:
+   - `internal/openbao/bootstrap.go` (Area 41–59)
+   - `internal/openbao/bootstrap_test.go` (Areas 287–355,427–470,512–556,797–819)
+   Behalte retry bounds und ownership/secret handling normal. Bare word "temporary" darf keine Retry-Rechtferigung sein. Permanent TLS/permission/executable errors duerfen trotz inkidentellem retry-Wort nicht retryt werden.
+3. Regressionen so ergaenzen/praesizieren, dass die fuenf bestehenden Cases bleiben und folgende Invarianten failen wenn Produktverhalten fehlerhaft:
+   - exactly one retry-enabled attempt + zero writes bei permanent failure
+   - never-answers handler zaehlt echte per-member submissions, zero writes, final transport cause
+   - exact per-member phases initial/pre/write/post fuer alle 3 members
+   - transient post-unseal verification failure path exercised
+   - invalid JSON callCount == 1
+   - negative classifier cases fuer incidental "temporary" + mixed permanent/transport diagnostics.
+4. gofmt beide files.
+5. Tests in dieser Reihenfolge:
+   a) focused regressions for changed cases
+   b) `go test ./internal/openbao/... -count=1 -timeout=120s`
+   c) `go vet ./internal/openbao/...`
+   d) `gofmt -l` clean.
+   Wenn Tooling (GOCACHE) read-only: isoliert `GOCACHE=$TMPDIR/bh-o131-go-cache`, KEIN shared path.
+6. ordinary forward commit + push auf PR branch `work/v0.4.26-openbao-retry`.
+7. Checks 25min beobachten. Keine Reruns ohne neuen Fix. Ergebnis mit head/run/job IDs in Evidence.
+ABNAHME: diff scope genau die zwei Dateien, Tests/vet/gofmt outputs belegt, PR checks table.
+END O131-1052FIX-PUSHED mit head SHA / END O131-1052FIX-BLOCKED.

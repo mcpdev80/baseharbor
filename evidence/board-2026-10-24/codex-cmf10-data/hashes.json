@@ -1,0 +1,296 @@
+[
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/external_provider_registry_test.go",
+    "sha256": "75a7476276ba23e828912ae3b8a7bd5dd84ac8916af3bba74146cfa402289401",
+    "blob": "ad209e702327afe2f47dfb1527b740419818ce74"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/external_provider_removal_retry_test.go",
+    "sha256": "3fdd183a22228c21d6f240c0ca59824dee414353c147ea1a0a7194caeec9aaba",
+    "blob": "8712545260648e3fcd51ab842101a5e5484776a4"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/external_provider_scope_test.go",
+    "sha256": "d66ae7d2e13b03e21e7ee1da32b2d23c50b616d8ce6a7fc8f4d33a0fdc9eb5c8",
+    "blob": "423676115103906a9b73871bbbe0e42c23d8de62"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/protected_tempdir_test.go",
+    "sha256": "01add588257ed17c7c9449b682e96dcff29c5982efc953e28eb87b996cd4b7b8",
+    "blob": "fe4a53e7e13cbb0e1cb763a7e1b2830531d8f144"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/runtime_binding_projection_reset_test.go",
+    "sha256": "8a855cf017cd73b03bdbd5744bda981847736888a019d15fdf763113fb6d4607",
+    "blob": "9468704b82369c13c26bf76b62d5413d9038cc51"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "internal/application/telemetry_authorization_test.go",
+    "sha256": "7e56c48f5364e35aa5bb1d034874c628e2ee486601e22b4a363d28d9f024c67a",
+    "blob": "960c7982d157cfcf62bd72acdf346409225a64f3"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "scripts/pr-gate-plan.py",
+    "sha256": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0",
+    "blob": "ffa7968e19524555592a43e9bea3e501615571d7"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "scripts/test_pr_gate_plan.py",
+    "sha256": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e",
+    "blob": "ec027225ff97e6f6e2d807925b84ea6d6d54ed53"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "scripts/pr-check-runner.py",
+    "sha256": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed",
+    "blob": "46ccef9b652a5d82e986e889b0ce5c6f0642d6a3"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": "docs/internal/ci-binding-qualifications.md",
+    "sha256": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86",
+    "blob": "facfe2a5d236b6cfda3371cabe91e8b330439ee6"
+  },
+  {
+    "label": "candidate",
+    "sha": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+    "path": ".github/workflows/ci.yml",
+    "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+    "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "internal/application/external_provider_registry_test.go",
+    "sha256": "122ac4f8f718a52dfd6462a575588800a205984cc4cd74e32ba7a9b39bb3a2e3",
+    "blob": "5a2126abeba9fca4cfb788627e5b524f069d7dbf"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "internal/application/external_provider_removal_retry_test.go",
+    "sha256": "5a89381fdc46ac2d9ab631a4dc16b79f619979637dc7e6cba1a60ccc34432c98",
+    "blob": "fa22c8240d797e491d7938d376e49957f8a0c7ee"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "internal/application/external_provider_scope_test.go",
+    "sha256": "9155084dace5eb658086ca4a318d5b9d8f292d16264b08cd1904af2691d59973",
+    "blob": "d67ac9f91cbb9e422ffe5ea5a38cadacb044fb15"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "internal/application/runtime_binding_projection_reset_test.go",
+    "sha256": "51805037b295ba9aa52e0e7e4e2d1b7e3b71c58c4bd92d066845e4e23d6fd581",
+    "blob": "8a310bbd339512e9557f9b6d29acd820126b368e"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "internal/application/telemetry_authorization_test.go",
+    "sha256": "79d470a5af189cf46118b040ca3d7463a430cc26c963e54ee4900e2f780e962c",
+    "blob": "60517d58261e5111f5885e5b367e32ffa2e3a7eb"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "scripts/pr-gate-plan.py",
+    "sha256": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0",
+    "blob": "ffa7968e19524555592a43e9bea3e501615571d7"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "scripts/test_pr_gate_plan.py",
+    "sha256": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e",
+    "blob": "ec027225ff97e6f6e2d807925b84ea6d6d54ed53"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "scripts/pr-check-runner.py",
+    "sha256": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed",
+    "blob": "46ccef9b652a5d82e986e889b0ce5c6f0642d6a3"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": "docs/internal/ci-binding-qualifications.md",
+    "sha256": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86",
+    "blob": "facfe2a5d236b6cfda3371cabe91e8b330439ee6"
+  },
+  {
+    "label": "develop",
+    "sha": "f39295680d41290fc505c0a8cc1769da51699293",
+    "path": ".github/workflows/ci.yml",
+    "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+    "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/external_provider_registry_test.go",
+    "sha256": "75a7476276ba23e828912ae3b8a7bd5dd84ac8916af3bba74146cfa402289401",
+    "blob": "ad209e702327afe2f47dfb1527b740419818ce74"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/external_provider_removal_retry_test.go",
+    "sha256": "3fdd183a22228c21d6f240c0ca59824dee414353c147ea1a0a7194caeec9aaba",
+    "blob": "8712545260648e3fcd51ab842101a5e5484776a4"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/external_provider_scope_test.go",
+    "sha256": "d66ae7d2e13b03e21e7ee1da32b2d23c50b616d8ce6a7fc8f4d33a0fdc9eb5c8",
+    "blob": "423676115103906a9b73871bbbe0e42c23d8de62"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/protected_tempdir_test.go",
+    "sha256": "01add588257ed17c7c9449b682e96dcff29c5982efc953e28eb87b996cd4b7b8",
+    "blob": "fe4a53e7e13cbb0e1cb763a7e1b2830531d8f144"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/runtime_binding_projection_reset_test.go",
+    "sha256": "8a855cf017cd73b03bdbd5744bda981847736888a019d15fdf763113fb6d4607",
+    "blob": "9468704b82369c13c26bf76b62d5413d9038cc51"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "internal/application/telemetry_authorization_test.go",
+    "sha256": "7e56c48f5364e35aa5bb1d034874c628e2ee486601e22b4a363d28d9f024c67a",
+    "blob": "960c7982d157cfcf62bd72acdf346409225a64f3"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "scripts/pr-gate-plan.py",
+    "sha256": "a93842ad24e331dacd4dad9c22ed2a0c5d102ce2327bcb115aabf4a0eddf6075",
+    "blob": "36c1641204d39dc6d4ff9a344fe597912e5facb3"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "scripts/test_pr_gate_plan.py",
+    "sha256": "2ce557b9c645a341d456db24d0e754de66ee5f73780a8f553989767dde36ad76",
+    "blob": "be21c16834f74a0c66ebd43f9323c6dc5210ee37"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "scripts/pr-check-runner.py",
+    "sha256": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed",
+    "blob": "46ccef9b652a5d82e986e889b0ce5c6f0642d6a3"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": "docs/internal/ci-binding-qualifications.md",
+    "sha256": "0f0cf416a016c7817fae25552ca7fe0a14262eebb60709c7390b877d4aed394e",
+    "blob": "fa3ddf47304d9d8abebb24b8991f8b5726772f16"
+  },
+  {
+    "label": "reviewed",
+    "sha": "3558250837759113b760a112e99994135d31bc00",
+    "path": ".github/workflows/ci.yml",
+    "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+    "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "internal/application/external_provider_registry_test.go",
+    "sha256": "122ac4f8f718a52dfd6462a575588800a205984cc4cd74e32ba7a9b39bb3a2e3",
+    "blob": "5a2126abeba9fca4cfb788627e5b524f069d7dbf"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "internal/application/external_provider_removal_retry_test.go",
+    "sha256": "5a89381fdc46ac2d9ab631a4dc16b79f619979637dc7e6cba1a60ccc34432c98",
+    "blob": "fa22c8240d797e491d7938d376e49957f8a0c7ee"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "internal/application/external_provider_scope_test.go",
+    "sha256": "9155084dace5eb658086ca4a318d5b9d8f292d16264b08cd1904af2691d59973",
+    "blob": "d67ac9f91cbb9e422ffe5ea5a38cadacb044fb15"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "internal/application/runtime_binding_projection_reset_test.go",
+    "sha256": "51805037b295ba9aa52e0e7e4e2d1b7e3b71c58c4bd92d066845e4e23d6fd581",
+    "blob": "8a310bbd339512e9557f9b6d29acd820126b368e"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "internal/application/telemetry_authorization_test.go",
+    "sha256": "79d470a5af189cf46118b040ca3d7463a430cc26c963e54ee4900e2f780e962c",
+    "blob": "60517d58261e5111f5885e5b367e32ffa2e3a7eb"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "scripts/pr-gate-plan.py",
+    "sha256": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+    "blob": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "scripts/test_pr_gate_plan.py",
+    "sha256": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0",
+    "blob": "634b0ffc9311d14a17d698162b339a3e52922e43"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "scripts/pr-check-runner.py",
+    "sha256": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+    "blob": "34fe168fedbdcd503d0e026715372da466052853"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": "docs/internal/ci-binding-qualifications.md",
+    "sha256": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86",
+    "blob": "facfe2a5d236b6cfda3371cabe91e8b330439ee6"
+  },
+  {
+    "label": "1056",
+    "sha": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
+    "path": ".github/workflows/ci.yml",
+    "sha256": "d6427c83193caec8a8c98686e65505c0dcd22fea098d30094ecc9d8d86aa36dc",
+    "blob": "a434e797d471b34b48f2240e4a52642db97b6dee"
+  }
+]

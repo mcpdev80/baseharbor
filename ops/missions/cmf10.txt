@@ -1,0 +1,16 @@
+ROLLE: REVIEW. KEIN Merge, KEin Produktcode, KEIN Push, KEIN force/--admin, KEIN CI-Rerun.
+GEGENSTAND: #1046 targeted-runtime diagnosis (q118): evidence/board-2026-10-24/q118-1046runtime.md.
+- PR #1046 head live `1ec67f8d...` (selbst pruefen)
+- 6 affected files are test files under internal/application.
+- q118 classifies failure as planner/coverage qualification defect (B) and says 14 actual test functions pass.
+- proposed fix would touch scripts/pr-gate-plan.py and must serialize after #1056/#1060.
+Other data: codex-verdict-chain1-adjudication.md, o125-dagtruth.md, o128-reviewR.md.
+
+AUFGABE:
+1. Verifiziere die Diagnose selbst: PR head, diff files, checks, affected test names, planner coverage rule lines, exact current `coverage-unresolved` message.
+2. Bestaetige/widerlege, dass product test files need no source fix and only #1046 path/test qualification is missing.
+3. Definiere den spaeteren PR-Scope EXAKT (files, required tests, trusted binding record if needed). Wenn Akte/Aenderung noetig: datei:zeile und welche reviewed_head/hashes; wenn planner change noetig: datei:zeile. Wenn beides, Reihenfolge.
+4. Prüfe, ob der q118-Vorschlag einen Gate nur "gruen rechnen" wuerde oder ein gueltiges Qualification-Receipt ist. STRICT reject broadening unknown impact.
+5. Urteile: DIAGNOSIS_ACCEPT / DIAGNOSIS_REQUEST_CHANGES / NEEDS_RUNTIME. Ein Rezept, keine Umsetzung.
+Evidence: evidence/board-2026-10-24/codex-verdict-1046-runtime.md, UTC + SHAs before/after.
+END CX-1046RUNTIME-DONE / END CX-1046RUNTIME-BLOCKED.
