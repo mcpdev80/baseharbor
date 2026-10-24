@@ -65,7 +65,7 @@ def issue_with_pinned_policy(*, policy_bytes, protected_digest, **kwargs):
                              expected_job_name=job.get("job_name"),
                              workflow_path=job.get("workflow_path"))
 
-def read_pinned_policy_file(policy_path, protected_digest):
+def read_pinned_policy_file(policy_path, protected_digest, *, trusted_owner_uid=None):
     """Read a pinned policy file; trusted executor must own parent directories."""
     import os
     import stat
@@ -73,21 +73,30 @@ def read_pinned_policy_file(policy_path, protected_digest):
         raise EvidenceError("EVIDENCE_POLICY: absolute protected path required")
     if not hasattr(os, "O_NOFOLLOW"):
         raise EvidenceError("EVIDENCE_POLICY: nofollow unavailable")
+    if trusted_owner_uid is not None and (type(trusted_owner_uid) is not int or trusted_owner_uid < 0):
+        raise EvidenceError("EVIDENCE_POLICY: invalid trusted owner")
+    def check_protection(info):
+        if trusted_owner_uid is not None and (
+                info.st_uid not in (0, trusted_owner_uid) or info.st_mode & 0o022):
+            raise EvidenceError("EVIDENCE_POLICY: unprotected owner or permissions")
     try:
         parts = policy_path.split("/")[1:]
         if not parts or any(part in ("", ".", "..") for part in parts):
             raise EvidenceError("EVIDENCE_POLICY: unsafe protected path")
         dirfd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
         try:
+            check_protection(os.fstat(dirfd))
             for component in parts[:-1]:
                 nextfd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dirfd)
                 os.close(dirfd)
                 dirfd = nextfd
+                check_protection(os.fstat(dirfd))
             fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0), dir_fd=dirfd)
         finally:
             os.close(dirfd)
         try:
             info = os.fstat(fd)
+            check_protection(info)
             if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:
                 raise EvidenceError("EVIDENCE_POLICY: invalid protected file")
             raw = os.read(fd, MAX_BYTES + 1)
