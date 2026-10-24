@@ -43,13 +43,15 @@ def publish(repo, number, expected_sha):
         )
     if pr["base"]["ref"] != "develop":
         raise RuntimeError("candidate PR does not target develop")
+    base_sha = pr["base"]["sha"]
     labels = {label["name"] for label in pr.get("labels", [])}
     if "ci:validate" in labels:
         gh("DELETE", f"repos/{repo}/issues/{number}/labels/ci%3Avalidate")
     # Close the race between removing the old label and re-adding it.
     latest = gh("GET", f"repos/{repo}/pulls/{number}")
     if (latest["head"]["sha"] != expected_sha or latest["state"] != "open"
-            or latest.get("draft") or latest["base"]["ref"] != "develop"):
+            or latest.get("draft") or latest["base"]["ref"] != "develop"
+            or latest["base"]["sha"] != base_sha):
         raise RuntimeError("candidate changed while preparing event; retry")
     if "ci:validate" in {label["name"] for label in latest.get("labels", [])}:
         raise RuntimeError("candidate label remains set; no new labeled event would fire")
