@@ -155,3 +155,8 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - OPS-Befund: baseharbor checkout zeigt current branch `o124-Q-record` + dirty go.mod/go.sum, root worktree dirs. q119 macht read-only provenance audit, KEIN cleanup ohne Owner.
 - dispatch-lane robust patch: robust composer clear for idle target only, 78 tests OK. Codex war mehrfach durch `/compact`-Rest blockiert; C-a/C-k cleared.
 - Lane rotation: f54/o130/q118 removed. f55 monitors active lanes read-only.
+- 14:2xZ Q LANDED: #1063 merged at `2026-10-24T12:13:19Z`, develop `65aa063e`. Codex cmf11 Phase B defines chain Q→P #1056 clean merge→P_W→W→#1050.
+- o132 fuehrt exakt P-Aktion aus: ordinary no-edit merge R `32b85d95` with develop `65aa063e` in new isolated worktree, expects H exactly 3 scripts + target Akte; no edits.
+- o131 #1052 fix implemented/pushed head `7c7cda7c`; local tests green; CI PR Selected Checks still fails only due missing #1060 runtime coverage. o133 independent review.
+- Codex cmf10 bestaetigt q118: #1046 source tests pass; exact future PR touches `scripts/pr-gate-plan.py:149` anchor + `test_pr_gate_plan.py`, serialized after #1056/#1060.
+- q119 read-only audit root/baseharbor dirty go.mod/go.sum + stray worktrees; f55 monitors q117/o132/o131.

@@ -1,0 +1,24 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: read-only review in own detached worktree. git only /tmp or new worktree; Root-Repo fuer git VERBOTEN. KEIN Push/Merge/Review-Kommando/CI rerun/Produktedit.
+ERSTER SCHRITT: evidence/board-2026-10-24/o133-review1052fix.md mit ## PLAN + nativen Todos.
+
+KANDIDAT:
+- PR #1052 corrected head `7c7cda7c` (live verify), branch `work/v0.4.26-openbao-retry`
+- base develop currently `65aa063e90767c85af976081c100be1817370e67`, but PR is BEHIND; #1060 not landed.
+- Codex recipe: codex-verdict-1052.md section "Exactly ONE minimal executable worker action"
+- worker evidence: o131-1052fix.md
+
+REVIEW:
+1. diff candidate vs base and vs prior 789299; verify only two files.
+2. Verify exact recipe closure:
+   - bootstrap.go classifier 41–59 changes, no bare `temporary`, permanent TLS/perm/exec fail fast, bounded retry, secret/ownership unchanged.
+   - test file required additions/negatives at cited regions; list all actual test names.
+   - assertions can fail when retry contract broken (mental mutation; do not edit).
+3. Verify evidence claims:
+   - gofmt diff, focused/package tests, vet output if present.
+   - if output absent from evidence, run only the smallest focused package tests in reviewer worktree with isolated GOCACHE. No full native/VM.
+4. Classify:
+   - implementation defect vs CI blocker due #1060.
+   - current `PR Selected Checks` failure must not be transferred to source ACCEPT unless logs prove a source defect.
+5. Verdict ACCEPT/ACCEPT_WITH_NONBLOCKING/REQUEST_CHANGES. If corrections: exact file:line + test required.
+6. State future integration recipe after #1060 (ordinary merge T into existing branch, no force).
+END O133-REVIEW1052-DONE / END O133-REVIEW1052-BLOCKED.

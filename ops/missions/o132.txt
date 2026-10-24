@@ -1,0 +1,20 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: git AUSSCHLIESSLICH in einem neuen eigenen Worktree (nicht /home/marcel/dev/baseharbor-ecosystem/baseharbor, weil root Checkout dirty/branch o124-Q-record ist; nicht q114-fix1060/q113-1052/wt-wizardfix). Root-Repo fuer git VERBOTEN. KEIN force/rebase/rewrite, KEIN Merge auf GitHub, KEIN Review-Kommando, KEIN --admin, KEIN workflow/Akte hand-edit.
+ERSTER SCHRITT: evidence/board-2026-10-24/o132-Pcleanmerge.md mit ## PLAN + nativen Todos.
+
+PHASE-A-Fakten (DATEN): #1063 landed. New develop measured `65aa063e90767c85af976081c100be1817370e67`. Codex recipe exact (read full): evidence/board-2026-10-24/codex-verdict-q1063-r2.md "Exactly one executable worker recipe for the current nonaccepted P".
+P: branch o90-planner-pr frozen R `32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2`, three scripts + docs Akte? Current branch should contain R diff only scripts.
+
+ACTION:
+1. `timeout 30 gh pr view 1056 --repo mcpdev80/baseharbor --json headRefName,headRefOid,files` and fetch origin refs. Confirm remote head = R and branch ownership. Do NOT proceed if advanced.
+2. Add new worktree for branch o90-planner-pr at exact R.
+3. Ordinary no-edit merge `git merge --no-edit origin/develop` (or exact fetched develop SHA). Expected result H:
+   - three scripts unchanged from R blobs;
+   - docs/internal/ci-binding-qualifications.md taken from target develop;
+   - no conflict.
+4. If ANY conflict/hash/source drift: stop, preserve worktree, report. NO hand-resolution.
+5. Verify diff of H vs develop = exactly the three scripts; docs Akte diff = zero vs develop. `git diff --check`.
+6. Run smallest existing trusted plan/qualification checks that Codex recipe requires:
+   - planner/resolver tests and exact integration check selected by scripts, focused not full matrix. Record commands + results. If repo lacks local helper, document that CI will perform.
+7. Push ordinary merge commit to o90-planner-pr (forward from R, no force).
+8. Observe PR #1056 checks max 25min. Report new H, run/job IDs. No merge.
+END O132-PCLEANMERGE-DONE mit H-SHA / END O132-PCLEANMERGE-BLOCKED.
