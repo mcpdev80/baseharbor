@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 WIZARD_TEST_FAMILIES = {
@@ -80,7 +81,8 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
-               'inspect-consumer-tests', 'inspect-consumer-build'} | set(WIZARD_TEST_FAMILIES)
+               'inspect-consumer-tests', 'inspect-consumer-build',
+               'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 
 def execute_validation(check, repository):
@@ -185,6 +187,84 @@ def report(plan, job_conclusion, matrix_result):
     }
 
 
+def validate_pins_data(check, repository):
+    """Validate source metadata with trusted sibling contract owners, offline.
+
+    The workflow extracts this runner and its two dependencies from the pinned
+    target. Candidate modules cannot replace the canonical graph/origin owners.
+    This proves metadata consistency, not the existence of native evidence.
+    """
+    trusted = str(Path(__file__).resolve().parent)
+    sys.path.insert(0, trusted)
+    try:
+        from ecosystem_release_pins import resolve_pins, validate_ecosystem_graph
+        from private_consumer_evidence import REPOSITORIES, source_origin
+    finally:
+        sys.path.pop(0)
+    source = Path(repository).resolve()
+    releases = source / 'docs/releases'
+    if releases.resolve() != releases:
+        raise RuntimeError('consumer-pins directory must not be a symlink')
+    pins_files = sorted(releases.glob('*.consumer-pins.json'))
+    if not pins_files:
+        raise RuntimeError('no consumer-pins metadata found under docs/releases')
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('duplicate consumer-pins key')
+            value[key] = item
+        return value
+
+    validated = []
+    for pins_path in pins_files:
+        try:
+            match = re.fullmatch(r'v(0\.4\.(?:23|24|25|26))\.consumer-pins\.json', pins_path.name)
+            if not match or pins_path.is_symlink() or not pins_path.is_file():
+                raise ValueError('unsupported consumer-pins metadata path')
+            pins = json.loads(pins_path.read_text(), object_pairs_hook=unique_object)
+            release = match.group(1)
+            expected_keys = {'schema', 'gates', 'ecosystem'} if release == '0.4.26' else {'schema', 'gates'}
+            gates = {'integration/docker/remote-target': {'connector'},
+                     'integration/podman/remote-target': {'connector'},
+                     'integration/static/live-console': {'connector', 'console'}}
+            if (not isinstance(pins, dict) or set(pins) != expected_keys or
+                    pins['schema'] != 'baseharbor.consumer-evidence-pins/v1' or
+                    not isinstance(pins['gates'], dict) or set(pins['gates']) != set(gates)):
+                raise ValueError('consumer-pins schema or required gates differ')
+            commits = set()
+            for gate, roles in gates.items():
+                row = pins['gates'][gate]
+                if not isinstance(row, dict) or set(row) != roles:
+                    raise ValueError('consumer-pins gate roles differ')
+                for role, pin in row.items():
+                    source_origin(role, gate, pin)
+                commits.add(row['connector']['commit'])
+            if len(commits) != 1:
+                raise ValueError('consumer-pins Connector commits diverge')
+            joint = {'repository': REPOSITORIES['connector'], 'commit': next(iter(commits)),
+                     'gate': 'integration/docker/remote-target'}
+            for pin in pins['gates']['integration/static/live-console'].values():
+                if 'origin' in pin and pin['origin'] != joint:
+                    raise ValueError('consumer-pins joint origin differs')
+            if release == '0.4.26':
+                graph = pins['ecosystem']
+                validate_ecosystem_graph(graph)
+                candidate = {'schema': 'baseharbor.ecosystem-candidate/v1',
+                             'release': release, **{role: graph[role]['commit']
+                                                   for role in ('core', 'demo', 'console')}}
+                console = {key: candidate[key] for key in ('schema', 'release', 'core', 'demo')}
+                expected = resolve_pins(graph['core']['commit'], graph['connector']['commit'],
+                                        candidate, console, graph['core']['commit'], release=release)
+                if pins != expected:
+                    raise ValueError('consumer-pins differs from canonical ecosystem resolution')
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise RuntimeError('consumer-pins file differs: ' + str(pins_path) + ': ' + str(error)) from error
+        validated.append(pins_path.name)
+    return validated
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['matrix', 'results', 'execute'])
@@ -197,6 +277,10 @@ def main():
     if args.mode == 'execute':
         if not args.check:
             parser.error('--check is required for execute')
+        if args.check == 'pins-data-validation':
+            matched = validate_pins_data(args.check, args.repository)
+            print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
+            return
         matches = execute_validation(args.check, args.repository)
         print(json.dumps({'check': args.check, 'matched_tests': matches}, sort_keys=True))
         return

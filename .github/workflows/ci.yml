@@ -697,6 +697,14 @@ jobs:
               go test ./internal/application/... ./contracts/... -count=1 ;;
             cli-guided-tests) go test ./cmd/baha -run '^TestGuided' -count=1 ;;
             cli-gofmt) test -z "$(gofmt -l cmd/baha)" ;;
+            pins-data-validation)
+              git fetch --no-tags origin "$BASE_SHA"
+              trusted_pins=$(mktemp -d "$RUNNER_TEMP/pins-validator.XXXXXX")
+              for helper in pr-check-runner.py ecosystem_release_pins.py private_consumer_evidence.py; do
+                git show "$BASE_SHA:scripts/$helper" > "$trusted_pins/$helper"
+              done
+              python3 "$trusted_pins/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
             wizard-*-tests)
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"

@@ -91,6 +91,15 @@ def git_add_commit(root):
                    check=True, capture_output=True)
 
 
+def validate_pins_for_test(actual, root):
+    spec = importlib.util.spec_from_file_location(
+        'pr_check_runner', ROOT / 'pr-check-runner.py')
+    runner = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(runner)
+    return runner.validate_pins_data('pins-data-validation', root)
+
+
+
 class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)
@@ -3195,6 +3204,114 @@ class BootstrapClaimRejectionTests(unittest.TestCase):
                                   context_repository='mcpdev80/baseharbor',
                                   context_target_branch='develop')
             self.assertEqual('unresolved', result['coverage_status'], result)
+
+
+class PinsDataCanonicalExecutionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.path = self.root / 'docs/releases/v0.4.26.consumer-pins.json'
+        self.path.parent.mkdir(parents=True)
+        sys.path.insert(0, str(ROOT))
+        self.addCleanup(lambda: sys.path.remove(str(ROOT)))
+        from ecosystem_release_pins import resolve_pins
+        candidate = {'schema': 'baseharbor.ecosystem-candidate/v1', 'release': '0.4.26',
+                     'core': 'a' * 40, 'demo': 'b' * 40, 'console': 'c' * 40}
+        console = {k: candidate[k] for k in ('schema', 'release', 'core', 'demo')}
+        self.pins = resolve_pins('a' * 40, 'd' * 40, candidate, console,
+                                 'a' * 40, release='0.4.26')
+
+    def execute(self, pins):
+        self.path.write_text(json.dumps(pins))
+        return subprocess.run([sys.executable, str(ROOT / 'pr-check-runner.py'),
+                               'execute', '--check', 'pins-data-validation',
+                               '--repository', str(self.root)],
+                              capture_output=True, text=True)
+
+    def test_real_cli_accepts_canonical_and_historical_metadata(self):
+        execution = self.execute(self.pins)
+        self.assertEqual(0, execution.returncode, execution.stderr)
+        self.assertEqual(['v0.4.26.consumer-pins.json'],
+                         json.loads(execution.stdout)['matched_tests'])
+        historical = self.path.with_name('v0.4.23.consumer-pins.json')
+        historical.write_text((ROOT.parent / 'docs/releases/v0.4.23.consumer-pins.json').read_text())
+        execution = self.execute(self.pins)
+        self.assertEqual(0, execution.returncode, execution.stderr)
+        self.assertEqual(2, len(json.loads(execution.stdout)['matched_tests']))
+
+    def test_real_cli_rejects_inconsistent_graph_gates_and_origins(self):
+        mutations = [
+            lambda p: p.pop('ecosystem'),
+            lambda p: p['ecosystem']['demo']['consumes'].update(core='e' * 40),
+            lambda p: p['ecosystem']['core']['consumes'].update(connector='d' * 40),
+            lambda p: p['ecosystem']['console']['consumes'].pop('demo'),
+            lambda p: p['ecosystem']['connector'].update(commit='e' * 40),
+            lambda p: p['ecosystem']['console'].update(commit='e' * 40),
+            lambda p: p['ecosystem'].update(core=[]),
+            lambda p: p['gates'].pop('integration/podman/remote-target'),
+            lambda p: p['gates'].update(unknown={}),
+            lambda p: p['gates']['integration/docker/remote-target']['connector'].update(
+                repository='mcpdev80/baseharbor-console'),
+            lambda p: p['gates']['integration/podman/remote-target']['connector'].update(
+                workflow='untrusted.yml'),
+            lambda p: p['gates']['integration/static/live-console']['console'].update(commit='oops'),
+            lambda p: p['gates']['integration/static/live-console']['console']['origin'].update(
+                commit='e' * 40),
+            lambda p: p['gates']['integration/static/live-console']['connector'].pop('origin'),
+            lambda p: p['gates']['integration/static/live-console'].update(console=[]),
+        ]
+        for number, mutate in enumerate(mutations):
+            with self.subTest(case=number):
+                pins = copy.deepcopy(self.pins)
+                mutate(pins)
+                execution = self.execute(pins)
+                self.assertNotEqual(0, execution.returncode, execution.stdout)
+                self.assertIn('consumer-pins file differs', execution.stderr)
+
+    def test_exact_workflow_route_uses_trusted_modules_and_propagates_failure(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        start = workflow.index('            pins-data-validation)\n') + len('            pins-data-validation)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        trusted = self.root / 'trusted'
+        trusted.mkdir()
+        git_init(trusted)
+        (trusted / 'scripts').mkdir()
+        for helper in ('pr-check-runner.py', 'ecosystem_release_pins.py', 'private_consumer_evidence.py'):
+            (trusted / 'scripts' / helper).write_text((ROOT / helper).read_text())
+        subprocess.run(['git', '-C', str(trusted), 'add', '.'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(trusted), 'commit', '-qm', 'trusted validators'],
+                       check=True, capture_output=True)
+        base = git_rev_parse(trusted, 'HEAD')
+        candidate = self.root / 'candidate'
+        candidate.mkdir()
+        git_init(candidate)
+        subprocess.run(['git', '-C', str(candidate), 'remote', 'add', 'origin', str(trusted)], check=True)
+        # Candidate modules with the same names must never execute.
+        for helper in ('pr-check-runner.py', 'ecosystem_release_pins.py', 'private_consumer_evidence.py'):
+            (candidate / helper).write_text('raise RuntimeError("CANDIDATE MODULE EXECUTED")\n')
+        path = candidate / 'docs/releases/v0.4.26.consumer-pins.json'
+        path.parent.mkdir(parents=True)
+        temp = self.root / 'runner-temp'
+        temp.mkdir()
+        environment = dict(os.environ, BASE_SHA=base, VALIDATION='pins-data-validation',
+                           RUNNER_TEMP=str(temp), GITHUB_WORKSPACE=str(candidate))
+        for valid in (True, False):
+            payload = copy.deepcopy(self.pins)
+            if not valid:
+                payload['ecosystem']['demo']['consumes']['core'] = 'e' * 40
+            path.write_text(json.dumps(payload))
+            execution = subprocess.run(['bash', '-euo', 'pipefail', '-c', fragment],
+                                       cwd=candidate, env=environment, capture_output=True, text=True)
+            self.assertNotIn('CANDIDATE MODULE EXECUTED', execution.stderr)
+            if valid:
+                self.assertEqual(0, execution.returncode, execution.stderr)
+                self.assertEqual(['v0.4.26.consumer-pins.json'],
+                                 json.loads(execution.stdout)['matched_tests'])
+            else:
+                self.assertNotEqual(0, execution.returncode, execution.stdout)
+                self.assertIn('ecosystem consumer pin differs', execution.stderr)
+
 
 
 if __name__ == '__main__':
