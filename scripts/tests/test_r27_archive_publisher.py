@@ -133,7 +133,7 @@ class PublisherTests(unittest.TestCase):
         from unittest.mock import patch
         with patch("r27_archive_publisher.os.fsync",
                    side_effect=OSError("injected write durability failure")):
-            with self.assertRaisesRegex(OSError, "injected write durability failure"):
+            with self.assertRaisesRegex(ArchiveError, "unsafe archive publication directory"):
                 self.publish()
         staged = (Path(self.temp.name) / "evidence" / "v0.4.27" /
                   "candidate" / "run-1" / "payloads" / "check.json")
