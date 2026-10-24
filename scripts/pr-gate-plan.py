@@ -298,8 +298,11 @@ CAPABILITY_CHECKS = [
 ]
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
-     'command': 'go test ./internal/openbao/... -count=1'},
+     'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
 ]
+OPENBAO_RETRY_HEAD = '9f715184af7b89ca3011aa4a0636c45138fe2c6b'
+OPENBAO_RETRY_FILES = {'internal/openbao/bootstrap.go': 'modified',
+                       'internal/openbao/bootstrap_test.go': 'modified'}
 # Focused, package-scoped checks for the read-only repository-inspection
 # reconciliation surface. The reconcile command is pure in-memory matching with
 # package unit tests and a thin cmd/baha consumer, so these static checks cover
@@ -606,6 +609,34 @@ WORKFLOW_SYNTAX_CHECKS = [
     {'id': 'ci-actionlint', 'owner': '.github/workflows workflow syntax',
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
+
+def openbao_retry_checks(diff, repository='.', context_repository=None,
+                         context_target_branch=None):
+    """Bind the frozen retry candidate and clean target merges to strict tests."""
+    valid, _ = validated_diff(diff)
+    context_repository = os.environ.get('GITHUB_REPOSITORY', '') if context_repository is None else context_repository
+    context_target_branch = os.environ.get('GITHUB_BASE_REF', '') if context_target_branch is None else context_target_branch
+    if (not valid or diff['broad_required'] or not diff.get('integration_sha') or
+            context_repository != 'mcpdev80/baseharbor' or context_target_branch != 'develop' or
+            len(diff['changes']) != len(OPENBAO_RETRY_FILES) or
+            {row.get('path'): row.get('status') for row in diff['changes']} != OPENBAO_RETRY_FILES):
+        return None
+    if not core752_reviewed_merge_chain(diff['target_base_sha'], diff['head_sha'],
+                                        OPENBAO_RETRY_HEAD, repository):
+        return None
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('openbao_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
+                                          diff['head_sha'], diff['integration_sha'])
+        if actual != diff or actual['broad_required']:
+            return None
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return CODE_CHECKS + OPENBAO_CHECKS
+
 
 def trusted_binding_checks(diff, repository='.', context_repository=None,
                            context_target_branch=None):
@@ -1126,7 +1157,9 @@ def plan(diff, requirements, mapping, repository='.',
                     'or automatically run the complete release catalog.'),
                 'reasons': ['independently reviewed exact #953 CI executor and planner change; '
                             'trusted CI validations and mandatory focused Python regressions']}
-    binding_checks = (trusted_binding_checks(
+    binding_checks = (openbao_retry_checks(
+        diff, repository, context_repository, context_target_branch)
+        if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None) or bootstrap_eligible(
         diff, repository, context_repository, context_target_branch)
