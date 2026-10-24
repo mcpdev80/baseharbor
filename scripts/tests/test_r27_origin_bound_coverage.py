@@ -78,3 +78,11 @@ class MalformedRequiredTests(unittest.TestCase):
     with self.assertRaisesRegex(OriginError, "invalid required gates"):
      check_origin_bound_coverage(value, {}, JOBS, **ARGS)
     fetch.assert_not_called()
+
+
+class PolicyDistinctGateTests(unittest.TestCase):
+ def test_duplicate_required_gate_is_rejected(self):
+  with patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
+   with self.assertRaisesRegex(OriginError, "duplicate required gate"):
+    check_origin_bound_coverage(["sql","sql"],{"sql":receipt()},JOBS,**ARGS)
+   fetch.assert_not_called()

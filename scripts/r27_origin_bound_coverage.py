@@ -14,13 +14,12 @@ def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
     if (not isinstance(required, (list, tuple, set, frozenset))
             or not all(isinstance(gate, str) for gate in required)):
         raise OriginError("EVIDENCE_POLICY: invalid required gates")
+    if len(required) != len(set(required)):
+        raise OriginError("EVIDENCE_POLICY: duplicate required gate")
     if not isinstance(policy_jobs, dict) or set(policy_jobs) != set(required):
         raise OriginError("EVIDENCE_POLICY: incomplete trusted gate-job mapping")
     if not isinstance(receipts, dict) or set(receipts) - set(required):
         raise OriginError("EVIDENCE_INPUT: unexpected receipt")
-    if not isinstance(required, (list, tuple, set, frozenset)) or not all(
-            isinstance(g, str) for g in required):
-        raise OriginError("EVIDENCE_POLICY: invalid required gates")
     coverage = plan_verified(required, receipts, key=key, stage=stage,
                              candidate=candidate, policy_digest=policy_digest,
                              artifact_digest=artifact_digest)
