@@ -36,6 +36,19 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
             or policy_jobs[gate] != {"job_name": expected_job_name,
                                     "workflow_path": workflow_path}):
         raise EvidenceError("EVIDENCE_POLICY: trusted gate-to-job mapping required")
+    # A caller may not attach an arbitrary digest to an unrelated job mapping.
+    # All mappings in the policy participate in the canonical digest.
+    if not isinstance(policy_jobs, dict) or not policy_jobs:
+        raise EvidenceError("EVIDENCE_POLICY: trusted policy mappings unavailable")
+    try:
+        policy_bytes = json.dumps(policy_jobs, sort_keys=True,
+                                  separators=(",", ":"), ensure_ascii=True,
+                                  allow_nan=False).encode("ascii")
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise EvidenceError("EVIDENCE_POLICY: malformed mapping") from exc
+    actual_digest = hashlib.sha256(policy_bytes).hexdigest()
+    if not hmac.compare_digest(actual_digest, policy_digest):
+        raise EvidenceError("EVIDENCE_POLICY: policy digest mismatch")
     identity = fetch_authenticated_origin(token, repository=repository, head_sha=candidate,
         run_id=run_id, attempt=attempt, job_id=job_id,
         expected_job_name=expected_job_name, workflow_path=workflow_path,

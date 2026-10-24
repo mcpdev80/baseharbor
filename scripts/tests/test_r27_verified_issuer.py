@@ -1,4 +1,4 @@
-import sys,unittest
+import sys,unittest,hashlib,json
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -12,6 +12,7 @@ ARGS=dict(key=b"k"*32,token="trusted-token",repository="mcpdev80/baseharbor",
 JOBS={"sql":{"workflow_path":".github/workflows/ci.yml",
              "job_name":"PR Selected Checks"}}
 ARGS["policy_jobs"]=JOBS
+ARGS["policy_digest"]=hashlib.sha256(json.dumps(JOBS,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 PROOF=dict(run_id=11,attempt=2,job_id=12,head_sha="a"*40,name="PR Selected Checks")
 class IssuerTests(unittest.TestCase):
  def test_success_correlated_to_authenticated_job(self):
@@ -45,3 +46,13 @@ class IssuerPolicyTests(unittest.TestCase):
     with self.assertRaisesRegex(EvidenceError,"EVIDENCE_POLICY"):
      issue_from_github(**dict(ARGS,policy_jobs=policy))
     origin.assert_not_called()
+
+
+class DigestBindingTests(unittest.TestCase):
+ def test_policy_mutation_invalidates_digest_without_api(self):
+  mutated={"sql":{"workflow_path":".github/workflows/ci.yml","job_name":"PR Selected Checks"},
+           "docs":{"workflow_path":".github/workflows/docs.yml","job_name":"Docs"}}
+  with patch("r27_verified_issuer.fetch_authenticated_origin") as api:
+   with self.assertRaisesRegex(EvidenceError,"policy digest mismatch"):
+    issue_from_github(**dict(ARGS,policy_jobs=mutated))
+   api.assert_not_called()
