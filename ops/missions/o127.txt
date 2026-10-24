@@ -1,0 +1,12 @@
+pwd-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan. KEIN git im Root-Repo, KEIN git in Produkt-Repos. KEINE Akzeptanzerklaerung, KEIN Merge, keine Karten-IDs erfinden, NUR v0.4.26-Karten (27 tabu, 26-FENCE).
+ERSTER SCHRITT (VOR jedem Schreib-Tool): evidence/board-2026-10-24/o127-planboard26r3.md mit ## PLAN + nativen Todos.
+
+MISSION: Planning/CardBoard v0.4.26 auf den Stand der Merge-Welle Runde 3 ziehen (Vergleichsbasis: o116 = board 61ecae1, f50 = board 4aa61bf). Karten stets mit voller Karten-ID.
+
+SCHRITTE:
+1. Live-Realitaetsabgleich je Karte per gh (PR-Head, Checks, mergeStateStatus) - keine historischen Berichte: t-20261017-release-0-4-26-prepare (active), core-923 (active), t-20261020-develop-appid-manifest-test-regression (review; #1046/#1047), t-20261019-v0426-complete-defect-audit (review, Owner-STOP 2026-10-21 - Zustand NICHT aendern), t-20261022-q20-docs-pages.
+2. Status nur gemaess Schema (planned/claimed/active/review/accepted/blocked). Kartenbild muss den BESTAETIGTEN Zustand zeigen, nicht den geplanten. Gruende fuer jede Nicht-Akzeptanz in resolution/blocker dokumentieren (Beleg: PR+SHA+Run-ID).
+3. Prepare-Karte: Handoff-Abschnitt mit der aktuellen Blocker-Tabelle aus den Lane-Befunden: Q/R-Kette (#1056/#1063, R-Publish laeuft), #1060/#1052/#1046 (Planner-Serialisierung), Freeze demo/console/connector (Podman-Receipt in Arbeit), W1 (Dispatch-Tafel), Doku (o120-Folgearbeiten). Kurz und belegbar, keine Prosa-Erzaehlungen.
+4. Generierte Views nur ueber Werkzeuge: `python3 scripts/release_cycles.py sync` && `python3 scripts/plan.py render` && `python3 scripts/plan.py check` (0 errors; bestehende dependency-state-Warnungen ok). OPERATION: kein Push vor check=0.
+5. EIN Bundle-Commit, Push origin main (fast-forward; bei voraus-gehendem remote erst fetch + merge der Planungsinhalte, NIEMALS force). board-sha in die Evidence.
+END O127-PLANBOARD26R3-DONE mit board-sha / END O127-BLOCKED mit Grund.
