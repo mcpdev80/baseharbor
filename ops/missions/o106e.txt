@@ -1,0 +1,1 @@
+AMENDMENT (Coordination): Schritt (1) ist NICHT fertig - der rebased #1055-Branch ist nur lokal. Bitte: push origin HEAD:work/ci-explicit-candidate-trigger-20261024 --force-with-lease, dann #1055 checks abwarten, dann #1055 --admin mergen (Owner-Freigabe steht), DANN #1056 rebase+admin-merge, Post-Merge-CI.

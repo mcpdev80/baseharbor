@@ -219,6 +219,13 @@ def _send_wake(coordinator_id, message, dry_run, self_id=None, persist=True):
     if dry_run:
         sys.stdout.write("DRY-RUN send -> {}: {}\n".format(coordinator_id, message))
         return True
+    if self_id and coordinator_id == self_id:
+        # The coordinator IS the reading session: codeman refuses self-send
+        # (rc=4 "is me"), which used to turn every wake into a permanent retry
+        # and every reminder into "[send-failed, will retry]". The durable log
+        # written by the caller is the delivery channel in that case; the
+        # coordinator picks it up through events-check.py at turn start.
+        return True
     cmd = ["codeman", "agent", "send", coordinator_id, message]
     env = os.environ.copy()
     for pane_var in ("TMUX", "TMUX_PANE"):
@@ -233,6 +240,10 @@ def _send_wake(coordinator_id, message, dry_run, self_id=None, persist=True):
         sys.stderr.write("watcher: send failed: {}\n".format(exc))
         return False
     if result.returncode != 0:
+        if "is me" in (result.stdout or "") + (result.stderr or ""):
+            # codeman self-send refusal on any other call site: durable log is
+            # the delivery channel, so this counts as delivered (no retry storm).
+            return True
         sys.stderr.write(
             "watcher: send to {} exited {} (retry next poll)\n".format(
                 coordinator_id, result.returncode

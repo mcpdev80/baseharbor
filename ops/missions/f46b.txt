@@ -1,0 +1,12 @@
+ENDE DER BISHERIGEN MISSION. Sofort umschalten, keine Rueckfrage.
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen; git-NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor. NIEMALS git im Root-Repo.
+
+1. STOP ALLE MERGE-Aktionen. Merges/Approvals sind nicht Worker-Sache (Codex-Maintainer-Lane fuehrt sie aus, Ruleset-Lehne war korrekt). Fuehre KEIN `gh pr merge` und KEIN `gh pr review` mehr aus, auch nicht nach Ablauf deiner 25-Min-Guards. Beende deinen `sleep`-Loop.
+2. UEBERGABE dokumentieren (deine Rebases sind beim Coordinator verifiziert und angenommen: #1050 -> 38896762, #1052 -> 736d73c6, beide rot wegen coverage-unresolved; #1055 = v0.4.27, fuer dich nicht mehr bearbeitbar; #1056 Checks gruen aber ohne pins-data-Regel im Head). Schreibe das in deine bestehende Evidence evidence/board-2026-10-22/f46-prereqwave.md unter "## UEBERGABE 2026-10-24" und setze die PLAN-Kaestchen auf den realen Stand (nur abhaken was echt erledigt ist). Ende-Marker: END F46-PREREQWAVE-HANDED-OFF.
+3. NEUER AUFGABE-TEIL (NUR LESENDER AUDIT, keine Produkt-aenderung, keine PRs, keine Merges): Erstelle evidence/board-2026-10-24/f46b-docsaudit.md mit ## PLAN und pruefe fuer v0.4.26 den Dokumentations-/Release-Surface-Zustand:
+   - release notes surface fuer v0.4.26 (docs/releases/, changelog, EN/DE Navigation/Links) vorhanden und konsistent mit develop a2abc17a?
+   - Karten-Bezug t-20261022-q20-docs-pages (state review): welcher Kandidat/PR fuehrt sie, ist der Kandidat noch aktuell (SHA) oder ist er bereits in develop aufgegangen?
+   - strict Pages candidate build: NUR pruefen ob dafuer ein vorhandener gruener Run/Job existiert (Referenz Run-ID); KEINEN neuen Dispatch ausloesen, KEIN Deploy.
+   - Ergebnis als Dossier-Tabelle: Dokument, Zustand (ok/fehlend/veraltet), Beleg (Datei/Run/PR), Folgearbeit die ein Worker uebernehmen muss.
+4. KEINE neuen Produkteingriffe, keine CI-Dispatches, keine Labels, keine Docker/Podman/VM-Tests. Wenn ein Punkt einen Schreib-Auftrag erfordert: als "FOLGEARBEIT" in der Evidence notieren und an den Coordinator melden, nicht selbst ausfuehren.
+ABNAHME: END F46B-DOCSAUDIT-DONE mit der Dossier-Tabelle + Hinweis auf ausstehende Folgeauftraege.

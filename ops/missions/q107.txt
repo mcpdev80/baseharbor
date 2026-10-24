@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q107-bootwatch.md mit PLAN + todowrite ([wip:q107]).
+READ-ONLY ueberwachung der Bootstrap-Phase (o109 fuehrt Merges aus): alle 90s (max 20min): gh pr view 1059 state + develop log + gh pr checks 1056/1055. Sobald develop sich aendert: die verbleibenden BLOCKED-Ursachen pro PR in einer tabelle notieren. NICHTS mergen/reben/ändern.
+END Q107-BOOTWATCH-DONE mit zeitlinie.

@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o111-bootrule.md mit PLAN + todowrite ([wip:o111]).
+READ-ONLY + Mini-Fix in einem NEUEN PR: Die Bootstrap-Ausnahme (develop a2abc17a, scripts/*.py nachlesen) laesst genau EINE Ausnahme-PR zu — #1055 braucht dieselbe Erlaubnis. aendere NUR die Ausnahme-Deklaration so, dass die zwei Bootstrap-PRs (#1055 Trigger + #1059 Exception selbst) abgedeckt sind, NICHT dauerhaft alle (fail-closed bleibt). Test anpassen: dritte PRart bleibt BLOCKED. Branch work/v0.4.26-bootrule2, PR gegen develop, KEIN Merge.
+END O111-BOOTRULE-DONE mit pr + head.

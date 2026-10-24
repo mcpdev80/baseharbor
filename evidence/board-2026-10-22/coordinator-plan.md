@@ -62,3 +62,29 @@ MISSION-PFLICHT (ab sofort): Auftragsdateien liegen in ops/missions/, NIE unter 
 INCIDENT#3 (o112): Root-git erneut beschlagnahmt. Neue HART-Regel: Missionen bekommen ein Prefix "FALLS pwd ROOT: cd baseharbor PLAN SOFORT". Und ich starte keine root-git-Erlaubnis-Lane mehr ohne wtx-Zwang.
 
 RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf develop - nicht bypassbar ohne Owner-Sonderanordnung, Bypass verboten per AGENTS.
+
+## COORD-INHIBIT 2026-10-24 07:35-08:05Z (neuer Coordinator adebf29e, Qwen Flash/Gateway)
+- Alter Coordinator 73202350 wurde 09:04:39 local per `user_delete` entfernt (Session+Pane weg). Wiederherstellung: Letzter持久 Stand = coordinator-plan.md (mtime 08:59, Root-Commit cf4280bb) + codex-verdict-1050/-1052 (08:46). Transcript nicht mehr vorhanden (server 404), OpenCode-DB liefert fuer diese Sessions keine message-Zeilen.
+- Pool-Hygiene: /tmp Sweep >24h (612M->1.9G frei). root-eigene /tmp/baha-*-bin (4x ~59M) NICHT loeschbar (root) -> DISK-Flag bleibt grenzwertig, kein Spawn-Blocker bisher. Root-Repo hat KEINEN upstream (origin zeigt aufs Produkt-Repo!) -> ops-Commits bleiben lokal, NIE pushen.
+- WATCHDOG-PFLICHT erfuellt: basics-check, events-check --ack (2x), Daemon mit eigener ID neu gestartet.
+- BEFUND (kritisch): Codex-Daemon-Selbst-Wake war toend - `codeman agent send <eigene-session>` wird verweigert ("is me", rc=4) -> 237 Reminders nur als "[send-failed, will retry]" gelandet. Fix in wait-workers.py _send_wake: self-target gilt als zugestellt (Log-Pfad ist der Kanal). 78 Ops-Tests (test_f17_fixtures + test_o50_autodiscover) OK.
+## REALITAETSABGLEICH v0.4.26 (P0, 2026-10-24 ~07:40Z)
+- develop a2abc17a (#1053 #1058 #1059 gemergt). W1-Anker bleibt 1861ed07 (26-FENCE). v0.4.27-Karten/PRs (#1048 #1051 #1055) NICHT angefasst.
+- Blocker-Kette A (pins): #1050 rot "unknown impact docs/releases/v0.4.26.consumer-pins.json". DER echte Fix existiert nur lokal: 3c02f48c auf o90-planner-pr (planner area pins-data + VALIDATION pins-data-validation) und fehlt im Live-Head df8e53b9 von #1056 -> #1056 wurde ohne den Kern-Commit gerebased.
+- Blocker-Kette B (openbao): #1052 rot "unknown impact internal/openbao/bootstrap{,_test}.go" (planner else-Zweig ~:1219) + Codex REQUEST_CHANGES (4 Rezepte in bootstrap_test.go).
+- Blocker-Kette C (appid): #1047 gruen (run 39998286306) aber keine Approval -> mergefaehig erst durch Codex-Maintainer; danach #1046 rebase.
+- Bestehende Arbeit uebernommen statt neu gestartet: f46 hatte Rebases 1050@38896762 und 1052@736d73c6 bereits gepusht (merges=0, ruleset-Lehne korrekt) -> Lane auf_docs-audit umgestellt. o113 war fertig (board-sha b05ac3b) -> Lane auf Kette-A gesetzt.
+## DELEGATION (Status 08:05Z)
+- [x] o114 (ornith, Session 9348b449 formerly o113): pins-data-Commit 3c02f48c in #1056-Head wiederherstellen + Akte-hash + Tests. ops/missions/o114.txt
+- [x] q110 (qwen 51337f62): neuer kleiner CI-PR "qualify internal/openbao paths" (Planner+Runner+ci.yml+Akte+Tests). ops/missions/q110.txt
+- [x] q111 (qwen 166e39f5): #1052 bootstrap_test.go nach CX-1052 Rezept 1-4, worktree o91-fix. ops/missions/q111.txt
+- [x] cmx1047 (codex 116ae0ba, ROLLE MERGE): Live-Gates + Approval + squash merge #1047, post-merge develop-Check. ops/missions/cmx1047.txt
+- [x] f46b (flash 268b4825): Stop aller Merge-Aktionen (bestaetigt STOPPED), docs/release-surface Dossier nur lesend. ops/missions/f46b.txt
+## NAECHSTE SCHRITTE (nach Lane-END)
+- [ ] Nach #1056-Gruen: #1050 rebase auf neuen develop + Atomic-Gates (KEINE Full-Matrix), unabhaengiges Review, Merge ueber Codex-Lane.
+- [ ] Nach q110-PR gruen: #1052 rebase (q111-Aenderungen enthalten) -> Gates -> Review -> Merge.
+- [ ] Nach #1047-Merge: #1046 rebase -> Gates -> Review -> Merge (appid-Karte t-20261020-develop-appid-manifest-test-regression).
+- [ ] W1-Qualifikation: vorhandene gruene Evidence gegen Pins validieren lassen, nur fehlende Atomic-Gates beauftragen (f29-Muster: --ref develop + 4 inputs 40-hex, Core-Anker 1861ed07).
+- [ ] Ecosystem-Freeze (Core/Demo/Console/Connector SHAs) + Doku-Audit EN/DE/Pages/Changelog -> Prepare-Karte t-20261017-release-0-4-26-prepare.
+- [ ] Planning/CardBoard: 26-Karten ueber Prepare-Kette nachziehen lassen (o-Kette), nur 26.
+- [ ] Konflikt-Doku: Pausevermerk 2026-10-18 (Maintainer-Handover-Pause) in t-20261017-release-0-4-26-prepare ist ueberholt durch Owner-P0 2026-10-24; t-20261019-v0426-complete-defect-audit bleibt Owner-STOP 2026-10-21 -> ZWINGENDE OWNER-ENTSCHEIDUNG vor Release-Freigabe (Release-Readiness haengt an dieser abhaengigen Karte).

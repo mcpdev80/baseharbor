@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT, ROOT-git verboten. FIRST ACTION (SCHREIB-TOOL VOR ALLEM): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q105-wake.md mit PLAN + todowrite ([wip:q105]).
+READ-ONLY: o108 (Catch-22 bootstrap-Ausnahme) hat ihre Datei angefangen, aber es gibt keinen remote-Branch work/v0.4.26-bootstrap-exception und keinen PR. Lies ihre Evidence /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o108-unblock.md VOLLSTAENDIG und berichte NUR: (a) was laut ihrer Datei fertig sein muesste, (b) wo der Stick genau ist (Welcher ihrer 5 Steps nicht durchlief), (c) was der kuerzeste Wiederanlauf ist der KEINE Arbeit doppelt macht. Keine Aenderungen.
+END Q105-WAKE-DONE mit stand + hebel.

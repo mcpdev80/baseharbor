@@ -1,0 +1,15 @@
+ROLLE: MERGE (Codex-Maintainer-Lane). Auftrags-Kontext siehe AGENTS.md "CODEX-MERGE" und RUNBOOK.md Abschnitt 5. Keine Rezepte erfinden, keine Produktimplementierung.
+
+AUFGABE: PR #1047 (mcpdev80/baseharbor, ci(gate-plan): qualify exact appid env-robust test-only source (#1046), head 79e0aa2b, base develop) - release-kritischer prerequisite fuer #1046 (t-20261020-develop-appid-manifest-test-regression, v0.4.26).
+Live-Status vom Coordinator verifiziert: ALLE sichtbaren Checks pass inkl. "PR Selected Checks" (run 39998286306), mergeable=MERGEABLE.
+
+PROTOKOLL (Reihenfolge bindend):
+1. Live-Gates zuerst: head-SHA-Wache (vor/nachher identical 79e0aa2b), `gh pr checks 1047`, alle Review-Threads einzeln auf unresolved pruefen, `gh pr view 1047 --json reviewDecision,mergeStateStatus,files`.
+2. Rulesets pruefen: required_status_checks (Ruleset id 25223521 auf develop, nicht bypassbar), code-owner approval + last-push approval + squash-only + up-to-date. Fehlende Approval -> DU gibst die fachliche Approval nur wenn ein unabhaengiges ACCEPT-Verdict fuer exakt diesen Head vorliegt. Vorhandene Verdicts: evidence/board-2026-10-23/codex-verdict-1047.md und codex-verdict-reviewwave.md (END RW-APPID-DONE / END REVIEW-APPID-R2-DONE). Verdict-ShA gegen 79e0aa2b verifizieren; stimmt sie nicht exakt -> NICHT approve, sondern BLOCKED-Meldung mit der Differenz.
+3. Wenn alles echt gruen + Approved: `gh pr merge 1047 --squash` (KEIN --admin, KEIN force, KEIN Schutzregel-Bypass).
+4. Post-Merge: develop-Log + develop-Checks verifizieren (`gh run list --branch develop`), neue develop-SHA notieren.
+5. Evidence- Abschnitt in evidence/board-2026-10-24/codex-merge-1047.md: UTC-Zeiten, SHA before/after, Run-IDs, Urteil, Rule-Konformitaet.
+6. Zusaetzlich NUR lesende Feststellung (keine Aktion): PR #1054 ist inhaltlich durch #1056 ersetzt (gleicher Titel, #1056 ist der gruenen o90-Prerequisite-PR). Nichts closeen, nichts loeschen - nur in der Evidence benennen.
+
+STOP: sobald ein Live-Gate rot/ausstehend ist oder die Head sich geaendert hat -> BLOCKED-Eintrag mit Grund + Run-ID, keine Aktion. Release/Tag/Pre-Release: NICHT autorisiert.
+END CX-1047-MERGE-DONE mit develop-SHA / END CX-1047-BLOCKED mit Grund.

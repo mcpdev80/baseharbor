@@ -1,0 +1,3 @@
+Auftragsquelle: Coordinator (Marcel-Pool). ERSTER SCHRITT (SCHREIB-TOOL VOR ALLEM ANDEREN): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q102-planpub.md mit PLAN + todowrite ([wip:q102]) — Datei muss WAEHREND der Arbeit wachsen, nicht erst am Schluss.
+AUFGABE: baseharbor-plan Repo main, pruefe ob ein Commit mit 26-Planning-Publish (PR-Welle #1050-#1056 in Defect-Audit/prepare/appid-Karten) vorhanden ist; falls NICHT: fuehre die Aufgabe von ops/missions/q101.txt aus (Wortlaut dort). check=0 vor push, https-Evidence, Pausevermerke unangetastet.
+END Q102-PLANPUB-DONE mit board-sha ODER END Q102-PLANPUB-ALREADY-COVERED.

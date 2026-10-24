@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor-ecosystem/baseharbor-plan mit ABSOLUTEN Pfaden, ROOT-git verboten. FIRST ACTION (SCHREIB-TOOL VOR ALLEM): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o105-planpub.md mit PLAN + todowrite ([wip:o105]) - Datei waehrend der Arbeit erweitern.
+AUFGABE: 26-Planning-Publish laut /home/marcel/dev/baseharbor-ecosystem/ops/missions/q101.txt (Task-Vertrag, lies ihn): PR-Welle #1050-#1058 + Merges (1053->79e64084, 1058->24c33afd) + Verdicts in die 26er-Karten (defect-audit, prepare-Zusatzinfo, appid-Karte #1047 SKIP). check=0 vor push, render+sync, push origin main.
+END O105-PLANPUB-DONE mit board-sha.

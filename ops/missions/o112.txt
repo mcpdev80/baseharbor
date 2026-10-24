@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT, ROOT-git verboten. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o112-rebaseboth.md mit PLAN + todowrite ([wip:o112]).
+AUFGABE (beide Rebases, o109-Diagnose): 1) work/ci-explicit-candidate-trigger-20261024 (#1055) auf develop a2abc17a rebase, force-with-lease push, Checks sammeln. 2) o90-planner-pr (#1056) dito (head 38ba06bb, Meta-Fail Grund scripts/pr-gate-plan coverage-unresolved). Fuer beide: PR-body mit explizitem Akten-Referenz-Kommentar (docs/internal/ci-binding-qualifications.md + #1059) weil das laut Diagnose fehlt. KEINE Merges, KEIN Code-Fix - nur Rebase + Comments + Evidence.
+END O112-REBASEBOTH-DONE mit beiden new-heads + check-tabellen.

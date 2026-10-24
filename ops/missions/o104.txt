@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o104-merge1058.md mit PLAN + todowrite ([wip:o104]).
+OWNER-AUTORISIERUNG FUEHLT (Marcel heute): PR #1058 (Akte docs/internal/ci-binding-qualifications.md, alle 8 Checks pass, MERGEABLE) wird als Maintainer-Aktion gemergt. Vorgehen: PR-Body/Verlauf kurz pruefen (kein Offensichtlicher-Scope-Fremdes), dann gh pr merge 1058 --repo mcpdev80/baseharbor --merge (squash nur wenn AGENTS/CONTRIBUTING es verlangt), danach develop-head + Post-Merge-CI auf develop (gh run list) beobachten bis final, alles in die Datei.
+END O104-MERGE1058-DONE mit new-develop-sha + ci-status.

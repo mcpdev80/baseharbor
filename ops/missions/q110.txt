@@ -1,0 +1,20 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. Alle git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor, in einem NEUEN eigenen git worktree (`git worktree add ../worktrees/q110-openbao -b work/v0.4.26-openbao-gateplan a2abc17a`). NIEMALS git im Root-Repo, NIEMALS develop/main checkout switchen.
+ERSTER SCHRITT (vor jedem Schreib-Tool): evidence/board-2026-10-24/q110-openbaogateplan.md mit ## PLAN + identischen nativen Todos anlegen.
+
+KONTEXT (verifiziert vom Coordinator): PR #1052 (branch work/v0.4.26-openbao-retry, head 736d73c6) fails "PR Selected Checks" mit
+`BLOCKED: coverage-unresolved: unknown impact for internal/openbao/bootstrap.go; unknown impact for internal/openbao/bootstrap_test.go` (run 40073221965).
+Ursache: scripts/pr-gate-plan.py hat fuer internal/openbao/** keine Impact-Klassifikation und faellt in den finalen else-Zweig ("unknown impact", ca. Zeile 1219). Das ist ein reiner CI-Qualifikations-Mangel, kein Produktfehler.
+Muster-Vorbilder (already accepted pattern in develop): PR #1047 (ci(gate-plan): qualify exact appid env-robust test-only source) und PR #1056 (register authority for the three CI-script paths). Genau so ist vorzugehen.
+
+AUFGABE: ein KLEINES, eigenstaendiges CI-Qualifikations-PR (base develop=a2abc17a), das internal/openbao/** korrekt klassifiziert:
+1. planner-Regel fuer `internal/openbao/*.go`: area 'openbao' (oder repo-konform), require CODE_CHECKS plus eine ECHTE, ausfuehrbare targeted Validation (empfohlen: go test ./internal/openbao/... als Atomic-/Validation-Eintrag). KEIN generischer internal/**-Allowlist, KEIN "unknown" -> still resolve, KEIN Weglassen von Fail-Closed-Logik.
+2. Validation-ID in scripts/pr-check-runner.py VALIDATIONS registrieren und in .github/workflows/ci.yml real ausfuehren lassen (eigener Branch/Step, kein NOT-Required-Placeholder als PASS getarnt).
+3. Trusted-Binding-Akte docs/internal/ci-binding-qualifications.md: Eintrag fuer exakt diesen Kandidaten (files + file_hashes + required_checks).
+4. Tests: test_pr_gate_plan.py - openbao .go Aenderung loest die richtige Validation aus; unveraenderte unknown-Pfade bleiben unresolved; Fail-Closed bei/hash-mismatch der Akte; Validation wird tatsaechlich ausgefuehrt.
+5. LOKALE Pruefung minimum: `python3 -m pytest scripts/test_pr_gate_plan.py -q`. Keine Docker/Podman/K3s-Gates, keine VM-Tests, keine Full-Matrix.
+6. PR eroeffnen (gh pr create, base develop, Titel `ci(gate-plan): qualify internal/openbao paths for native validation (#1052 prerequisite)`), Body mit exakter Fehlerreferenz (run 40073221965). Push, Checks beobachten. NICHT mergen.
+
+ABNAHMEKRITERIEN: PR eroeffnet, PR Selected Checks gruen, Akte hash-konsistent, Tests belegt. Referenz in die Evidence-Datei schreiben (PR-Nr + head-SHA).
+STOP-KRITERIEN: wenn eine neue Validation-Kategorie den Gate-Katalog/Catalog-Verifikator anstoessen wuerde (erforderliche Gates aus trusted catalog fehlen) -> BLOCKED mit Datei:Zeile melden statt Katalog zu erweitern. Kein Bypass, kein Label-Trick.
+EVIDENCE: evidence/board-2026-10-24/q110-openbaogateplan.md (## PLAN, ## repo-rule compliance). END Q110-OPENBAOGATEPLAN-DONE / END Q110-BLOCKED.
+KEINE Aenderung an internal/openbao/bootstrap*.go (das macht eine andere Lane, Kollisionsverbot). Write-Set: scripts/pr-gate-plan.py, scripts/pr-check-runner.py, scripts/test_pr_gate_plan.py, .github/workflows/ci.yml, docs/internal/ci-binding-qualifications.md.

@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o110-trigger1055.md mit PLAN + todowrite ([wip:o110]).
+AUFGABE: PR #1055 (branch work/ci-explicit-candidate-trigger-20261024, head 8f40ce4f, state BEHIND) auf develop a2abc17a rebase: git -C baseharbor fetch origin work/ci-explicit-candidate-trigger-20261024 develop; eigenes worktree, rebase origin/develop, Konflikte minimal loesen (Trigger-Mechanik muss die Bootstrap-Ausnahme aus a2abc17a respektieren), tests, EIN push --force-with-lease. NICHT mergen (o109/Coordinator macht das danach).
+END O110-TRIGGER1055-DONE mit new head + checks.

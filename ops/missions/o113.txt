@@ -1,0 +1,3 @@
+pwd-PFLICHT: git AUSSCHLIESSLICH /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan oder ops/, ROOT-git verboten. ERSTER SCHRITT (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o113-planboard.md mit PLAN + todowrite ([wip:o113]).
+AUFGABE CardBoard (baseharbor-plan main): PR-Welle real nachziehen - #1053 MERGED 79e64084, #1058 MERGED 24c33afd, #1059 MERGED a2abc17a, #1056/#1055/#1050/#1052 im finalen Merge-Fenster (f46). Defect-audit + prepare + appid Karten auf tagesaktuellen Stand (https-Evidence, https-Links, resolution-Felder wo accepted), release_cycles sync + render + check=0 vor push.
+END O113-PLANBOARD-DONE mit board-sha.

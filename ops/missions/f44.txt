@@ -1,0 +1,3 @@
+pwd-PFLICHT: git NUR baseharbor ABSOLUT. FIRST ACTION (SCHREIB-TOOL): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f44-pinsupdate.md mit PLAN + todowrite ([wip:f44]).
+AUFGABE: #1050 (docs/releases/v0.4.26.consumer-pins.json, branch work/v0.4.26-consumerpins-develop) haelt core=1861ed07, aber develop ist weiter (79e64084 Wizard + 24c33afd Akte). Aktualisiere den PR so, dass core auf dem develop-tip steht wenn #1056+1055 gemergt sind (dafuer bis 15 min mit 60s intervall warten - o107 fuehrt die Merges aus; pruefe jeweils gh pr view 1056 state + develop log), sonst bleibt core=1861ed07 mit Begruendung im PR-Body-Kommentar. Schema wie 25er-Vorbild, Push auf den bestehenden PR-Branch, KEIN Merge.
+END F44-PINSUPDATE-DONE mit final-core-sha + status.

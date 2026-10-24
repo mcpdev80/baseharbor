@@ -1,0 +1,3 @@
+Auftragsquelle: Coordinator (Marcel-Pool). ERSTER SCHRITT (SCHREIB-TOOL VOR ALLEM): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o100-verify1052.md mit PLAN + todowrite ([wip:o100]). Ohne Datei keine Arbeit.
+READ-ONLY Abnahme PR #1052 (head 4cf07121): o99s COVERED-Beweis (o99-testgap.md, Datei:Zeile assertions) selbst NACHPRUEFEN am Code - existiert der false-Down-Testfall wirklich und haelt was er verspricht (assertion auf permanent-down Verhalten, nicht nur retry-Abbruch)? Zusatzfragen: 5er-Grenze erreicht? PR #1056/#1053/#1050 stehen zum Merge in dieser Reihenfolge bereit (checks live)? KEIN Merge, KEIN Kommentar.
+END O100-VERIFY1052-DONE mit verdict + merge-reife-tabelle.

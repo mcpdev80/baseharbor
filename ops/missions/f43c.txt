@@ -1,0 +1,1 @@
+AMENDMENT (Coordination): Push-Regel praezisiert - nach dem Rebase ist --force-with-lease auf origin/o90-planner-pr AUSDRUECKLICH erlaubt (PR-Arbeitsbranch, altes head 19e73753d bleibt via PR-Ref erreichbar, keine Historienzerstoerung). Kein --force ohne lease. Bitte Rebase-Arbeit damit vollenden.

@@ -1,0 +1,1 @@
+FEHLT NOCH: dein Head 19e7533d ist nur lokal - remote o90-planner-pr steht noch auf 4e737e26. Fuehre den Push aus (Deine Mission sah EIN push vor, KEIN Merge), verifiziere ls-remote, notiere Run-IDs der neuen CI in der Evidence und schreibe END F40-PLANNERHOOK-PUSHED mit remote-head.

@@ -1,0 +1,2 @@
+Koordinations-Entscheid (autonom, Regelauskunft geholt): develop hat KEINE GitHub-Branch-Protection (api 404) - dein Blocking-Befund war ein Fehlalarm der Protection-Annahme. Repository-Regel erfuellt: zwei unabhaengige Reviews (f34+o93, verschiedene Modelle) + Selected-Checks SUCCESS auf 8eef2b8e. DU fuehrt den Merge aus: gh pr merge 1053 --repo mcpdev80/baseharbor --merge (squash nur wenn AGENTS/CONTRIBUTING es verlangt - kurz nachlesen), danach develop-head + Post-Merge-CI in der Evidence.
+END O101-MERGE1053-DONE mit new-develop-sha + ci-status.

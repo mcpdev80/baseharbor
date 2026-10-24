@@ -1,0 +1,3 @@
+Auftragsquelle: Coordinator (Marcel-Pool). ERSTER SCHRITT (SCHREIB-TOOL VOR ALLEM): /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q103-planpub.md mit PLAN + todowrite ([wip:q103]).
+ALLE Pfade ABSOLUT: Plan-Repo ist /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan (pruefe mit git -C dort status). AUFGABE: 26-Planning-Publish (Aufgabenwortlaut in /home/marcel/dev/baseharbor-ecosystem/ops/missions/q101.txt - lies ihn): PR-Welle #1050-#1056 in den Karten Referenzen, Status-Konformitaet, check=0 vor push, render+sync regulaer.
+END Q103-PLANPUB-DONE mit board-sha.
