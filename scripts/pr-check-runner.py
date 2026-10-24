@@ -47,11 +47,13 @@ WIZARD_TEST_FAMILIES = {
         r'^TestHumanCommandIndexTracksExactCommandMetadata',
         r'^TestMCPRegistrationCI',
     ),
+    'openbao-package-tests': (r'^TestOpenbao',),
 }
 
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
+               'openbao-package-tests',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
