@@ -1,0 +1,4 @@
+2026-10-24T11:37:45+00:00
+podman_type_rc=1
+/usr/bin/docker
+Linux 7.0.0-38-generic

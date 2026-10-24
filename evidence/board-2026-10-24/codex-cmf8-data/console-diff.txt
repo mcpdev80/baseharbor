@@ -1,0 +1,13 @@
+diff --git a/integration-candidate.json b/integration-candidate.json
+index 9748dd8..e982a17 100644
+--- a/integration-candidate.json
++++ b/integration-candidate.json
+@@ -1,6 +1,6 @@
+ {
+   "schema": "baseharbor.ecosystem-candidate/v1",
+   "release": "0.4.26",
+-  "core": "2adae47afddc299d06dbc34eb16a8e011c14b6dc",
+-  "demo": "896dc3cb68a8c9b9585940c4696410de5a338c52"
++  "core": "1861ed07888a1ec22c218ca491d23ee54f48e261",
++  "demo": "25c319697fd3d89d894943e0f44cd3d5dde8b198"
+ }
