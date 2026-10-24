@@ -296,6 +296,10 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+OPENBAO_CHECKS = [
+    {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
+     'command': 'go test ./internal/openbao/... -count=1'},
+]
 # Focused, package-scoped checks for the read-only repository-inspection
 # reconciliation surface. The reconcile command is pure in-memory matching with
 # package unit tests and a thin cmd/baha consumer, so these static checks cover
@@ -1210,6 +1214,15 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
+        elif path.startswith('internal/openbao/'):
+            # Fail-closed OpenBao handling: no blanket path exemption.
+            # Only the reviewed bootstrap source files (bootstrap.go /
+            # bootstrap_test.go) receive resolved coverage.  Any other
+            # added, deleted, renamed or unreviewed OpenBao production
+            # file stays unresolved and requires independent diff review.
+            area = 'openbao-unreviewed'
+            require(CODE_CHECKS)
+            unresolved.append('OpenBao production impact requires source/status binding or independent diff review: ' + path)
         elif path in INSPECT_IMPORT_CANDIDATE_FILES:
             area = 'inspect-import-unreviewed-source'
             require(INSPECT_CHECKS)
