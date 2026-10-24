@@ -9,7 +9,7 @@ import re
 
 
 def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
-                          job_id, expected_job_name, workflow_path):
+                          job_id, expected_job_name, workflow_path, expected_event="pull_request"):
     if not callable(get_json):
         raise OriginError("EVIDENCE_ORIGIN: authenticated transport unavailable")
     if (not isinstance(repository, str) or repository.count("/") != 1
@@ -48,7 +48,8 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
                 return verify_origin(
                     run=run, jobs=jobs, repository=repository, head_sha=head_sha,
                     run_id=run_id, attempt=attempt, job_id=job_id,
-                    expected_job_name=expected_job_name, workflow_path=workflow_path)
+                    expected_job_name=expected_job_name, workflow_path=workflow_path,
+                    expected_event=expected_event)
             page += 1
     except OriginError:
         raise
