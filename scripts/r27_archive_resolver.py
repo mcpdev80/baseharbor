@@ -86,7 +86,10 @@ def resolve(root, release, candidate_id, run_id, expected_digest):
             value[key] = item
         return value
     try:
-        manifest = json.loads(raw, object_pairs_hook=reject_duplicate_keys)
+        manifest = json.loads(
+            raw, object_pairs_hook=reject_duplicate_keys,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ArchiveError("nonfinite manifest number")))
     except (ValueError, UnicodeError) as exc:
         raise ArchiveError("invalid manifest JSON") from exc
     if not isinstance(manifest, dict) or manifest.get("schema") != "baseharbor.ci-evidence-archive/v1":
