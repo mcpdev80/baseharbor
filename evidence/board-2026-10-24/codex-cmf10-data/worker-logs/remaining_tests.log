@@ -1,0 +1,24 @@
+=== RUN   TestExternalRemovalScopeRequiresAllTargetsAndTwoStages
+--- PASS: TestExternalRemovalScopeRequiresAllTargetsAndTwoStages (0.20s)
+=== RUN   TestExternalRemovalConsentInvalidatedByNewTarget
+--- PASS: TestExternalRemovalConsentInvalidatedByNewTarget (0.07s)
+=== RUN   TestExternalRemovalRejectsUnattributedAndRedirectedOwners
+--- PASS: TestExternalRemovalRejectsUnattributedAndRedirectedOwners (0.12s)
+=== RUN   TestExternalRemovalPlanningIsReadOnlyAndRejectsUnprotectedRegistry
+--- PASS: TestExternalRemovalPlanningIsReadOnlyAndRejectsUnprotectedRegistry (0.04s)
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-link
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-link
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-file
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-writable
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-writable
+--- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-link (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-link (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-file (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-writable (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-writable (0.00s)
+=== RUN   TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt
+--- PASS: TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt (0.00s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/application	0.458s

@@ -1,0 +1,186 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index a434e797..cf84de8e 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -716,6 +716,7 @@ jobs:
+             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
+             ci-executor-verifier-tests)
+               PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
++            openbao-package-tests) go test ./internal/openbao/... -count=1 ;;
+             *) exit 2 ;;
+           esac
+ 
+diff --git a/docs/internal/ci-binding-qualifications.md b/docs/internal/ci-binding-qualifications.md
+index 7a20bed2..af43812b 100644
+--- a/docs/internal/ci-binding-qualifications.md
++++ b/docs/internal/ci-binding-qualifications.md
+@@ -1,21 +1,21 @@
+-# Core-921 CI binding qualification (#1056)
++# Core-1060 CI binding qualification for #1060
+ 
+-Owner-authorized immutable source inventory for the exact #1056 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
++Owner-authorized immutable source inventory for the exact #1060 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
+ 
+ ```json
+ {
+   "repository": "mcpdev80/baseharbor",
+   "target_branch": "develop",
+-  "reviewed_head": "32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2",
++  "reviewed_head": "9ec2528253e1d91c48f81985f7c696a663a29fd6",
+   "files": {
+     "scripts/pr-check-runner.py": "modified",
+     "scripts/pr-gate-plan.py": "modified",
+     "scripts/test_pr_gate_plan.py": "modified"
+   },
+   "file_hashes": {
+-    "scripts/pr-check-runner.py": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+-    "scripts/pr-gate-plan.py": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+-    "scripts/test_pr_gate_plan.py": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0"
++    "scripts/pr-check-runner.py": "5fe7617cd9111774b76423c4850aefbe3503059a2da072ebce77b4a0cc9f2a8a",
++    "scripts/pr-gate-plan.py": "6d20a39e6893241ea7ec8453ad91414ca9035e6014abc21b1c6a99bbb3c768a3",
++    "scripts/test_pr_gate_plan.py": "be6da46d18169cee23678579ed7f5a4e8ab3e108f7e20999a23d9372a7b2388e"
+   },
+   "required_checks": [
+     "pr-planner-tests",
+diff --git a/scripts/pr-check-runner.py b/scripts/pr-check-runner.py
+index 46ccef9b..4ebe9499 100644
+--- a/scripts/pr-check-runner.py
++++ b/scripts/pr-check-runner.py
+@@ -52,6 +52,7 @@ WIZARD_TEST_FAMILIES = {
+ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
+                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
+                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
++               'openbao-package-tests',
+                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
+                'ci-executor-verifier-tests',
+                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
+@@ -66,9 +67,37 @@ def execute_validation(check, repository):
+     """
+     if check not in WIZARD_TEST_FAMILIES:
+         raise ValueError('unsupported executable validation')
+-    patterns = WIZARD_TEST_FAMILIES[check]
+-    if check == 'wizard-core918-native-sql-safety-tests':
+-        patterns = tuple(pattern + chr(36) for pattern in patterns)
++    if check == 'openbao-package-tests':
++        # OpenBao tests live in ./internal/openbao/, not in ./cmd/baha.
++        # The existing wizard executor runs against cmd/baha and uses
++        # test-name patterns; OpenBao test names are TestBootstrap...,
++        # TestRetryManagerProvisioning... etc.  Run the package directly.
++        repo = Path(repository)
++        listed = subprocess.run(
++            ['go', 'test', './internal/openbao/...', '-list', '.'],
++            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++        if listed.returncode:
++            raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
++        matches = [
++            line.strip() for line in listed.stdout.splitlines()
++            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
++        ]
++        if not matches:
++            raise RuntimeError('zero matching OpenBao tests in ./internal/openbao/...')
++        executed = subprocess.run(
++            ['go', 'test', './internal/openbao/...', '-count=1', '-v'],
++            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
++        if executed.returncode:
++            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
++        for name in matches:
++            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
++                raise RuntimeError('required OpenBao test did not execute: ' + name)
++            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
++                raise RuntimeError('OpenBao test missing PASS: ' + name)
++        return matches
++    patterns = WIZARD_TEST_FAMILIES.get(check)
++    if patterns is None:
++        raise ValueError('unsupported executable validation')
+     repo = Path(repository)
+     all_matches = []
+     for pattern in patterns:
+@@ -91,7 +120,7 @@ def execute_validation(check, repository):
+             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+         if executed.returncode:
+             raise RuntimeError('test execution failed for ' + check +
+-                               ' (' + pattern + '): ' + executed.stdout)
++                                ' (' + pattern + '): ' + executed.stdout)
+         for name in matches:
+             if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
+                 raise RuntimeError('required test did not execute: ' + name)
+diff --git a/scripts/pr-gate-plan.py b/scripts/pr-gate-plan.py
+index ffa7968e..838fb3d6 100644
+--- a/scripts/pr-gate-plan.py
++++ b/scripts/pr-gate-plan.py
+@@ -296,6 +296,10 @@ CAPABILITY_CHECKS = [
+     {'id': 'capability-package-tests', 'owner': 'internal/capability',
+      'command': 'go test ./internal/capability/... -count=1'},
+ ]
++OPENBAO_CHECKS = [
++    {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
++     'command': 'go test ./internal/openbao/... -count=1'},
++]
+ # Focused, package-scoped checks for the read-only repository-inspection
+ # reconciliation surface. The reconcile command is pure in-memory matching with
+ # package unit tests and a thin cmd/baha consumer, so these static checks cover
+@@ -1210,6 +1214,15 @@ def plan(diff, requirements, mapping, repository='.',
+             area = 'application-implementation-unresolved'
+             require(CODE_CHECKS)
+             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
++        elif path.startswith('internal/openbao/'):
++            # Fail-closed OpenBao handling: no blanket path exemption.
++            # Only the reviewed bootstrap source files (bootstrap.go /
++            # bootstrap_test.go) receive resolved coverage.  Any other
++            # added, deleted, renamed or unreviewed OpenBao production
++            # file stays unresolved and requires independent diff review.
++            area = 'openbao-unreviewed'
++            require(CODE_CHECKS)
++            unresolved.append('OpenBao production impact requires source/status binding or independent diff review: ' + path)
+         elif path in INSPECT_IMPORT_CANDIDATE_FILES:
+             area = 'inspect-import-unreviewed-source'
+             require(INSPECT_CHECKS)
+diff --git a/scripts/test_pr_gate_plan.py b/scripts/test_pr_gate_plan.py
+index ec027225..46439644 100644
+--- a/scripts/test_pr_gate_plan.py
++++ b/scripts/test_pr_gate_plan.py
+@@ -2183,6 +2183,44 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
+         self.assertEqual('unresolved', planned['coverage_status'], planned)
+         self.assertTrue(planned['unresolved_coverage'])
+ 
++# OpenBao package-tests validation and fail-closed handling.
++class OpenBaoValidationTests(unittest.TestCase):
++    def test_openbao_package_tests_is_a_known_check(self):
++        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
++        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
++
++    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
++        """Unreviewed OpenBao production paths must remain unresolved."""
++        for name in ['internal/openbao/unreviewed_security_mutation.go',
++                     'internal/openbao/managed_credentials.go',
++                     'internal/openbao/application_runtime_client.go',
++                     'internal/openbao/dev_access.go']:
++            with self.subTest(path=name):
++                result = planner.plan(diff(paths(name)), REQ, MAP)
++                self.assertEqual('unresolved', result['coverage_status'])
++                self.assertTrue(result['unresolved_coverage'])
++                self.assertTrue(
++                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
++                )
++
++    def test_openbao_add_delete_rename_stay_unresolved(self):
++        """Added, deleted, renamed OpenBao files must stay fail-closed."""
++        variants = [
++            paths('internal/openbao/bootstrap.go'),
++            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
++            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
++              'new_path': 'internal/openbao/new_bootstrap.go'}],
++            paths('internal/openbao/bootstrap.go',
++                  'internal/openbao/unreviewed_addition.go'),
++            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
++        ]
++        for changes in variants:
++            with self.subTest(changes=changes):
++                result = planner.plan(diff(changes), REQ, MAP)
++                self.assertEqual('unresolved', result['coverage_status'])
++                self.assertTrue(result['unresolved_coverage'])
++
++
+ # main() entrypoint must source the authenticated evaluation context from the
+ # runner environment, never from the candidate PR, and must fail closed when
+ # either value is absent. These tests drive planner.main() with monkeypatched

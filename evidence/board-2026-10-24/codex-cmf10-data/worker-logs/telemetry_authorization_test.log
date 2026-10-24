@@ -1,0 +1,6 @@
+# internal/application
+github.com/xdg-go/scram@v1.2.0 requires
+	golang.org/x/text@v0.3.8: missing go.sum entry for go.mod file; to add it:
+	go mod download golang.org/x/text
+FAIL	internal/application [setup failed]
+FAIL

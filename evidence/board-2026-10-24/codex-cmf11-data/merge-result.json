@@ -1,0 +1,16 @@
+{
+  "command": [
+    "gh",
+    "pr",
+    "merge",
+    "1063",
+    "--squash",
+    "--admin",
+    "--match-head-commit",
+    "7170c1b67459d4c4fccb1a0bd41b11d5cec52f51",
+    "--repo",
+    "mcpdev80/baseharbor"
+  ],
+  "returncode": 0,
+  "utc": "2026-10-24T12:13:20.094250+00:00"
+}

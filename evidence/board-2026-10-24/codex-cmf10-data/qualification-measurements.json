@@ -1,0 +1,63 @@
+{
+  "current_chain": false,
+  "head": "1ec67f8d4b259d62bd108ee678f25c288b8b0564",
+  "target": "f39295680d41290fc505c0a8cc1769da51699293",
+  "old_reviewed_head": "3558250837759113b760a112e99994135d31bc00",
+  "files": [
+    {
+      "path": "internal/application/external_provider_registry_test.go",
+      "status": "modified",
+      "sha256": "75a7476276ba23e828912ae3b8a7bd5dd84ac8916af3bba74146cfa402289401",
+      "blob": "ad209e702327afe2f47dfb1527b740419818ce74",
+      "identical_to_reviewed": true
+    },
+    {
+      "path": "internal/application/external_provider_removal_retry_test.go",
+      "status": "modified",
+      "sha256": "3fdd183a22228c21d6f240c0ca59824dee414353c147ea1a0a7194caeec9aaba",
+      "blob": "8712545260648e3fcd51ab842101a5e5484776a4",
+      "identical_to_reviewed": true
+    },
+    {
+      "path": "internal/application/external_provider_scope_test.go",
+      "status": "modified",
+      "sha256": "d66ae7d2e13b03e21e7ee1da32b2d23c50b616d8ce6a7fc8f4d33a0fdc9eb5c8",
+      "blob": "423676115103906a9b73871bbbe0e42c23d8de62",
+      "identical_to_reviewed": true
+    },
+    {
+      "path": "internal/application/protected_tempdir_test.go",
+      "status": "added",
+      "sha256": "01add588257ed17c7c9449b682e96dcff29c5982efc953e28eb87b996cd4b7b8",
+      "blob": "fe4a53e7e13cbb0e1cb763a7e1b2830531d8f144",
+      "identical_to_reviewed": true
+    },
+    {
+      "path": "internal/application/runtime_binding_projection_reset_test.go",
+      "status": "modified",
+      "sha256": "8a855cf017cd73b03bdbd5744bda981847736888a019d15fdf763113fb6d4607",
+      "blob": "9468704b82369c13c26bf76b62d5413d9038cc51",
+      "identical_to_reviewed": true
+    },
+    {
+      "path": "internal/application/telemetry_authorization_test.go",
+      "status": "modified",
+      "sha256": "7e56c48f5364e35aa5bb1d034874c628e2ee486601e22b4a363d28d9f024c67a",
+      "blob": "960c7982d157cfcf62bd72acdf346409225a64f3",
+      "identical_to_reviewed": true
+    }
+  ],
+  "test_names": [
+    "TestExternalProviderRegistrationAndRemoval",
+    "TestExternalProviderBindingAndReleasePreserveForeignInstance",
+    "TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry",
+    "TestExternalRemovalScopeRequiresAllTargetsAndTwoStages",
+    "TestExternalRemovalConsentInvalidatedByNewTarget",
+    "TestExternalRemovalRejectsUnattributedAndRedirectedOwners",
+    "TestExternalRemovalPlanningIsReadOnlyAndRejectsUnprotectedRegistry",
+    "TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity",
+    "TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation",
+    "TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt",
+    "TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization"
+  ]
+}

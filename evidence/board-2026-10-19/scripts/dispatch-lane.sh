@@ -96,9 +96,34 @@ probe_resend() { # verify via message identity; NEVER blindly resend
 # the session receives a corrupt "/compactRead the file ..." command (observed
 # twice on 2026-10-24 with codex lanes).
 clear_composer() {
-  local pane="codeman-${sid:0:8}"
-  "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" C-u >/dev/null 2>&1 || true
+  local pane="codeman-${sid:0:8}" status
+  status="$("$CODEMAN" agent list --json 2>/dev/null | python3 -c "
+import json,sys
+sid=sys.argv[1]
+try:
+  rows=json.load(sys.stdin)
+except Exception:
+  raise SystemExit(1)
+for row in rows:
+  if row.get('id')==sid:
+    print(row.get('status',''))
+    break
+" "$sid" 2>/dev/null || true)"
+  [[ "$status" == "idle" ]] || return 0
+
+  # C-u alone does not clear a multi-line/stale OpenCode composer.
+  "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" Escape >/dev/null 2>&1 || true
   sleep 1
+  local i
+  for i in 1 2 3; do
+    "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" C-a >/dev/null 2>&1 || true
+    "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" C-k >/dev/null 2>&1 || true
+    "${TMUX_BIN:-tmux}" -L codeman send-keys -t "$pane" C-u >/dev/null 2>&1 || true
+    sleep 1
+    "${TMUX_BIN:-tmux}" -L codeman capture-pane -p -S -8 -t "$pane" 2>/dev/null |
+      grep -qE "Read the file .*ops/missions|/compact" || return 0
+  done
+  return 0
 }
 clear_composer
 

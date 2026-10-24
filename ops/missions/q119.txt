@@ -1,0 +1,20 @@
+pwd-PFLICHT + SICHERHEITS-PFLICHT: Diese Lane darf den ROOT-Repo `/home/marcel/dev/baseharbor-ecosystem` und Produkt-Checkout `/home/marcel/dev/baseharbor-ecosystem/baseharbor` nur LESEND untersuchen. KEIN git add/commit/checkout/restore/reset/clean/stash/push/merge, KEIN rm, KEIN Aenderung an go.mod/go.sum, KEIN fremde Worktrees loeschen.
+ERSTER SCHRITT: evidence/board-2026-10-24/q119-isolationaudit.md mit ## PLAN + nativen Todos.
+
+GRUND (aktuell gemessen): root shows branch `o124-Q-record` in baseharbor checkout with dirty `go.mod`, `go.sum`; root status also lists `q114-fix1060/` and `wt-wizardfix/`. AGENTS demands each task in isolated branch/worktree; root must stay master and product edits only worktrees. Diagnose how this arose and whether worker/agent ownership is preserved.
+
+AUFGABE (read-only):
+1. For each git checkout/worktree:
+   - path, branch/HEAD, upstream, dirty files, untracked product paths.
+   - last 5 commits with author/date.
+   - whether PR owner/lane matches evidence (q114/q117 #1060, o130 #1063, q113 #1052, etc.).
+2. Inspect baseharbor dirty go.mod/go.sum diff and identify origin by blob history/commits/related PR. Do NOT decide merge.
+3. Inspect root repo status for submodules and stray worktree dirs; distinguish root operational evidence vs product working trees. Show whether `git worktree list` includes all.
+4. Identify any active lane likely writing outside its worktree. Use pane/evidence read-only + file mtimes, no session keys.
+5. Create a recovery recommendation WITHOUT executing it:
+   - if a worker owns dirty files, handoff to that owner;
+   - if orphan, preserve via new worktree/branch;
+   - which lane may be resumed and on what exact path.
+6. Update `coordinator-state-latest.json`? No - that's coordinator file. Only write evidence.
+ABNAHME: table + provenance for each dirty item. No cleanup executed.
+END Q119-ISOLATIONAUDIT-DONE / END Q119-ISOLATIONAUDIT-BLOCKED.

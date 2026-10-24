@@ -149,3 +149,9 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - q118 #1046: 14 echte Testfunktionen PASS; Failure ist planner/coverage qualification defect (`pr-gate-plan.py:1098-1119`), keine Produkttest-Luecke. Empfehlung: nach #1056/#1060 separiert qualifizieren. Lane haelt gerade END-Marker-Nachtrag.
 - o130 #1063 docs correction laeuft; o131 #1052 Codex-Rezept (bootstrap classifier/regression fakes) laeuft; f54 #1050 read-only audit laeuft; Codex cmf10 validiert q118-Diagnose.
 - Codex-Composer `/compactRead`-Klassiker erneut; `dispatch-lane` C-u hat ihn nicht entfernt, C-a/C-k im Pane war noetig. OPS-Befund: Composer-Clear vor `agent send` muss robust gemacht werden (nicht nur C-u).
+- 14:1xZ Q-PR-Korrektur fertig: o130 pushte #1063 head `7170c1b6`; reviewed_head=R `32b85d95`, raw hashes two-source verified, PR checks all green. Codex cmf11 fuehrt REVIEW/MERGE + Kettenentscheid gegen neuen develop.
+- q118 #1046 END DONE: all relevant actual tests pass; cmf10 bestaetigt als source-scope defect in planner anchor, spaeterer PR nur `scripts/pr-gate-plan.py` + `scripts/test_pr_gate_plan.py`, AFTER #1056/#1060 serialized.
+- f54 #1050 audit DONE: finale D/U/K Werte erst nach demo/console/connector merges; Reihenfolge D->U->K->pins update. q116 erklaert W1 failure durch fehlende pins in develop.
+- OPS-Befund: baseharbor checkout zeigt current branch `o124-Q-record` + dirty go.mod/go.sum, root worktree dirs. q119 macht read-only provenance audit, KEIN cleanup ohne Owner.
+- dispatch-lane robust patch: robust composer clear for idle target only, 78 tests OK. Codex war mehrfach durch `/compact`-Rest blockiert; C-a/C-k cleared.
+- Lane rotation: f54/o130/q118 removed. f55 monitors active lanes read-only.

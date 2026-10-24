@@ -1,0 +1,8 @@
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/selected
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/removed
+--- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity (0.00s)
+    --- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/selected (0.00s)
+    --- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/removed (0.00s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/application	0.006s

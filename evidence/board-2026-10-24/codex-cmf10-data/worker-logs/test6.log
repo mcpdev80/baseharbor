@@ -1,0 +1,4 @@
+=== RUN   TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization
+--- PASS: TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization (0.41s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/application	0.415s

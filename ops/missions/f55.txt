@@ -1,0 +1,15 @@
+Read-only lane diagnostics. KEIN send, KEIN tmux key, KEIN agent rm/restart, KEIN git write, KEIN product test, KEIN gh merge/review/rerun. Nutze `codeman agent list/read`, file mtimes, PR `gh` read and evidence.
+ERSTER SCHRITT: evidence/board-2026-10-24/f55-activecheck.md mit ## PLAN + nativen Todos.
+
+Ueberpruefe genau:
+1. q117 `276e1198-16bb-49ed-9388-ee8b47c9dc3d` / mission q117:
+   - status, ctx, last tool output
+   - evidence file mtime and END/intermediate markers
+   - local worktree q114-fix1060 HEAD vs remote #1060 head and whether commit/push happened.
+2. o131 `cd0b31a3-44d4-4d03-a06c-7860f732572f` / mission o131:
+   - status, evidence, local worktree q113-1052 HEAD vs remote #1052.
+3. Codex cmf11 `fc55a817`:
+   - status, evidence q1063-r2, whether #1063 merged.
+4. Report per lane: DELIVERED/STALLED/STUCK/DONE or UNKNOWN with evidence, no action. Identify any no-END/idle and any permission dialog from raw pane text (do not choose option).
+5. Note whether each active worker is writing to correct evidence path only.
+END F55-ACTIVECHECK-DONE.

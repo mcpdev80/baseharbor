@@ -1,0 +1,14 @@
+ROLLE: REVIEW, dann MERGE nur Phase A bei ACCEPT. Owner-Freigabe `gh pr merge --squash --admin` fuer v0.4.26 liegt vor. KEIN force, KEIN branch rewrite, KEIN Produktcode.
+PHASE A: PR #1063 corrected head `7170c1b67459d4c4fccb1a0bd41b11d5cec52f51`, branch `o124-Q-record`, record-only Akte pointing R `32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2`. Evidence: o128-reviewR.md (ACCEPT), o130-1063R.md, codex-verdict-chain1-adjudication.md.
+1. Independently verify:
+   - gh state/head/files/diff (must be exactly 1 docs file)
+   - reviewed_head equals R
+   - three raw sha256 values in Akte match `git show <R>:<file>` (local + gh blob two sources)
+   - develop f3929568 unchanged and candidate checks all green/current.
+2. REVIEW verdict in evidence/board-2026-10-24/codex-verdict-q1063-r2.md. If any mismatch: REQUEST_CHANGES + one exact worker recipe, NO merge.
+3. If ACCEPT: guarded live gates, then `gh pr merge 1063 --squash --admin --repo mcpdev80/baseharbor`; verify new develop SHA and current checks. ROLLE-Label.
+PHASE B: After Phase A only:
+- live inspect #1056 and #1060 against new develop.
+- state which chain candidate can proceed, what exact W/P step is missing, whether #1056 can be rebased/merged. If not accepted, give one executable worker recipe.
+Evidence same file, no implementation in this lane.
+END CX-Q1063R2-MERGE-DONE mit develop-SHA / END CX-Q1063R2-DONE ohne merge / END CX-Q1063R2-BLOCKED.

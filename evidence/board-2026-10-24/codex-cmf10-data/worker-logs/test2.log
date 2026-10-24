@@ -1,0 +1,4 @@
+=== RUN   TestExternalProviderBindingAndReleasePreserveForeignInstance
+--- PASS: TestExternalProviderBindingAndReleasePreserveForeignInstance (0.18s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/application	0.183s

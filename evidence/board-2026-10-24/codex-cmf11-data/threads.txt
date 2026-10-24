@@ -1,0 +1,1 @@
+{"data":{"repository":{"pullRequest":{"headRefOid":"7170c1b67459d4c4fccb1a0bd41b11d5cec52f51","baseRefOid":"f39295680d41290fc505c0a8cc1769da51699293","mergeable":"MERGEABLE","mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","reviewThreads":{"nodes":[]},"reviews":{"nodes":[]}}}}}

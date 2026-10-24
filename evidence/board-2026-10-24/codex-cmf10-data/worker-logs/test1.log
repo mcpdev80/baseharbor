@@ -1,0 +1,4 @@
+=== RUN   TestExternalProviderRegistrationAndRemoval
+--- PASS: TestExternalProviderRegistrationAndRemoval (0.14s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/internal/application	0.142s
