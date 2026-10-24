@@ -40,6 +40,18 @@ def verify(raw, *, key, stage, candidate, policy_digest, gate, artifact_digest=N
         raise EvidenceError("EVIDENCE_SCHEMA: unexpected fields")
     mac = record["mac"]
     body = {k: v for k, v in record.items() if k != "mac"}
+    # Reject ambiguous expected scopes before inspecting an otherwise valid receipt.
+    if stage not in ("pr", "integration", "release"):
+        raise EvidenceError("EVIDENCE_SCHEMA: invalid requested stage")
+    if not isinstance(candidate, str) or not SHA.fullmatch(candidate):
+        raise EvidenceError("EVIDENCE_TARGET: invalid expected candidate")
+    if not isinstance(policy_digest, str) or not DIGEST.fullmatch(policy_digest):
+        raise EvidenceError("EVIDENCE_POLICY: invalid expected policy")
+    if not isinstance(gate, str) or not GATE.fullmatch(gate):
+        raise EvidenceError("EVIDENCE_GATE: invalid expected gate")
+    if artifact_digest is not None and (not isinstance(artifact_digest, str)
+                                         or not DIGEST.fullmatch(artifact_digest)):
+        raise EvidenceError("EVIDENCE_ARTIFACT: invalid expected artifact")
     if record["schema"] != SCHEMA or record["stage"] not in ("pr", "integration", "release"):
         raise EvidenceError("EVIDENCE_SCHEMA: invalid stage")
     if not isinstance(record["candidate"], str) or not SHA.fullmatch(record["candidate"]):
