@@ -603,6 +603,29 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
+# Lightweight Pins-Data validation for release consumer-pins metadata. A
+# docs/releases/<tag>.consumer-pins.json file is immutable source data, not a
+# code path: it records the exact immutable Core/Connector/Console/Demo commits
+# that a release must reproduce. The pinned consumer-repository identities are
+# private, so the validation reads only the file's embedded origin repository
+# and commit and re-derives the acyclic, source-owned consumer graph without
+# publishing or fetching private sources. No runtime gate is selected: a pins
+# metadata add changes no executable code and requires no native release gate.
+PINNED_CONSUMER_REPOSITORIES = {
+    'core': 'mcpdev80/baseharbor', 'demo': 'mcpdev80/baseharbor-demo',
+    'console': 'mcpdev80/baseharbor-console',
+    'connector': 'mcpdev80/baseharbor-node-connector',
+}
+# Each gate must pin exactly one consumer role from the correct repository with
+# a 40-hex commit; the joint live-console gate additionally requires the
+# Connector origin that seeds the Console origin. This is the public surface of
+# the immutable chain the release resolver reproduces.
+PINNED_PINS_VALIDATION = [
+    {'id': 'pins-data-validation', 'owner': 'scripts/ecosystem_release_pins.py',
+     'command': ('python3 scripts/pr-check-runner.py execute --check pins-data-validation '
+                 '--repository .')},
+]
+
 def trusted_binding_checks(diff, repository='.', context_repository=None,
                            context_target_branch=None):
     """Verify the frozen binding from the authenticated target, never PR content.
@@ -1137,7 +1160,12 @@ def plan(diff, requirements, mapping, repository='.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
-        if path in REGISTRATION_COVERAGE:
+        if path.endswith('.consumer-pins.json') and path.startswith('docs/releases/'):
+            area = 'pins-data'
+            require(PINNED_PINS_VALIDATION)
+            if path_status.get(path) != 'added':
+                unresolved.append('pins-data file add requires exact reviewed candidate: ' + path)
+        elif path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
             require(CODE_CHECKS)
             require(WIZARD_BASE_CHECKS)

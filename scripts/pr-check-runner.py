@@ -55,7 +55,8 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
-               'inspect-consumer-tests', 'inspect-consumer-build'} | set(WIZARD_TEST_FAMILIES)
+               'inspect-consumer-tests', 'inspect-consumer-build',
+               'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 
 def execute_validation(check, repository):
@@ -130,6 +131,71 @@ def report(plan, job_conclusion, matrix_result):
     }
 
 
+# Immutable consumer repositories a pins-data file may reference. The Core and
+# Demo SHAs are not published in the consumer-pins file itself; the public
+# surface that can be fail-closed-validated without fetching private sources is
+# the Connector/Console origin repository plus the joint Connector commit that
+# every gate must share.
+PINNED_PINS_REPOSITORIES = {'mcpdev80/baseharbor-console',
+                            'mcpdev80/baseharbor-node-connector'}
+
+
+def pins_data_exact(value):
+    import re as _pins_re
+    return isinstance(value, str) and _pins_re.fullmatch('[0-9a-f]{40}', value) is not None
+
+
+def validate_pins_data(check, repository):
+    """Validate a docs/releases/<tag>.consumer-pins.json metadata add.
+
+    The consumer-repository identities recorded here are private, and the Core
+    and Demo SHAs are not published in the file, so this validation reads only
+    the public origin surface: the Connector/Console origin repository, a 40-hex
+    commit, and the joint Connector commit that every gate must share (the same
+    invariant the release resolver enforces). A malformed, missing, mismatched,
+    structurally different or divergent-pins file must fail, so the planner
+    cannot select a validation against unreviewed data. No private source is
+    fetched or published.
+    """
+    source = Path(repository).resolve()
+    pins_files = sorted(source.rglob('docs/releases/*.consumer-pins.json'))
+    pins_files = [p for p in pins_files if p.suffix == '.json']
+    if not pins_files:
+        raise RuntimeError('no consumer-pins metadata found under docs/releases')
+    validated = set()
+    for pins_path in pins_files:
+        if pins_path.name == 'index.md':
+            continue
+        pins = json.loads(pins_path.read_text())
+        if (not isinstance(pins, dict) or
+                pins.get('schema') != 'baseharbor.consumer-evidence-pins/v1' or
+                not isinstance(pins.get('gates'), dict) or not pins['gates']):
+            raise RuntimeError('consumer-pins file differs: ' + str(pins_path))
+        connector_commits = set()
+        console_repo = None
+        console_commit = None
+        for gate, pin in pins['gates'].items():
+            if not isinstance(pin, dict) or 'connector' not in pin:
+                raise RuntimeError('consumer-pins gate missing connector: ' + gate)
+            connector = pin['connector']
+            repo = connector.get('repository')
+            commit = connector.get('commit')
+            if not isinstance(connector, dict) or repo not in PINNED_PINS_REPOSITORIES or \
+                    not pins_data_exact(commit):
+                raise RuntimeError('consumer-pins connector origin differs: ' + gate)
+            connector_commits.add(commit)
+            if gate == 'integration/static/live-console':
+                console = pin['console']
+                console_repo = console.get('repository')
+                console_commit = console.get('commit')
+        # The joint Connector commit is identical across every gate, the same
+        # invariant the release resolver seeds into the live-console origin.
+        if len(connector_commits) != 1:
+            raise RuntimeError('consumer-pins Connector commits diverge across gates')
+        validated.add(pins_path.name)
+    return sorted(validated)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['matrix', 'results', 'execute'])
@@ -142,6 +208,10 @@ def main():
     if args.mode == 'execute':
         if not args.check:
             parser.error('--check is required for execute')
+        if args.check == 'pins-data-validation':
+            matched = validate_pins_data(args.check, args.repository)
+            print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
+            return
         matches = execute_validation(args.check, args.repository)
         print(json.dumps({'check': args.check, 'matched_tests': matches}, sort_keys=True))
         return
