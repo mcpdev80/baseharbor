@@ -1,9 +1,9 @@
 {
- "at": 1792849553,
+ "at": 1792852307,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792849491,
+   "observed_at": 1792852251,
    "prs": {
     "1046": {
      "head": "1ec67f8d4",
@@ -26,15 +26,15 @@
      "state": "OPEN"
     },
     "1060": {
-     "head": "13a05ea49",
-     "merge": "DIRTY",
+     "head": "0f3bd169d",
+     "merge": "BLOCKED",
      "state": "OPEN"
     }
    }
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792849492,
+   "observed_at": 1792852252,
    "prs": {
     "9": {
      "head": "6017de284",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792849491,
+   "observed_at": 1792852252,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792849492,
+   "observed_at": 1792852253,
    "prs": {
     "10": {
      "head": "e832d5651",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 6240,
-  "tmp_free_mb": 5720,
+  "mem_available_mb": 9056,
+  "tmp_free_mb": 5771,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -79,51 +79,6 @@
   }
  },
  "lanes": [
-  {
-   "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 231,
-   "mode": "codex",
-   "model": "GPT-6.1-Sol",
-   "name": "codex-merge26",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "cad8e3ae-b647-4ace-85a2-b2753de3fdba",
-   "idle_s": 116,
-   "mode": "opencode",
-   "model": null,
-   "name": "f59",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "ba64664b-7710-4556-94e9-5cae3c43ad27",
-   "idle_s": 79,
-   "mode": "opencode",
-   "model": null,
-   "name": "o137",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "d3eb18bc-b0bb-4d32-9e36-417e9a1ed909",
-   "idle_s": 231,
-   "mode": "opencode",
-   "model": null,
-   "name": "o138",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "f837b9da-2579-4f2e-9d90-92474ca8aa5c",
-   "idle_s": 0,
-   "mode": "opencode",
-   "model": null,
-   "name": "q122",
-   "self": false,
-   "status": "busy"
-  },
   {
    "id": "adebf29e-6371-4a14-afa6-e8828693a1db",
    "idle_s": 0,

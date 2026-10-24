@@ -194,3 +194,10 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - #1060 repair q121: ordinary merge develop, Akte=develop (kein self-authorizing), target_base_sha zurueck, runner reachable, fail-closed unknown, keine #1052-Erfindung.
 - f58 monitor: q120 stall confirmed, o136 delivered, Codex r5 done; cycle2 laeuft noch.
 - f58 END: q120 terminal stalled, stash preserved; #1060 worktree currently AA conflict in 5 files due q121 ordinary merge. q121 resolving; Codex cmf17 liefert parallele conflict-resolution-policy, ohne Lane zu stoeren.
+- 15:5xZ RESTART-PREP (alle Worker entfernt):
+  - #1052 current `9f715184`, BEHIND; o137 r6 source correction pushed, CI waits on #1060.
+  - #1060 current `0f3bd169` after q121 ordinary forward merge/repair + q122 fast-forward PR push; CI run 40099514587 FAIL: `coverage-unresolved` for ci.yml and pr-check-runner.py native/evidence impact.
+  - #1056 correction still pending serialized after #1060 planner-file ownership resolves.
+  - q120 WIP safely stash@{0}; no force-push by q122; q121 had used force-with-lease on q114-fix1060, recorded.
+  - root dirty baseharbor go.mod/go.sum intentionally preserved.
+  - health mem=9369MB tmp_free=5771MB; system restart is safe and now prepared.
