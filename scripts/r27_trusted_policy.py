@@ -27,3 +27,21 @@ def load_pinned_policy(raw, *, protected_digest):
     if raw != canonical:
         raise EvidenceError("EVIDENCE_POLICY: noncanonical protected policy")
     return decoded,actual
+
+
+def issue_with_pinned_policy(*, policy_bytes, protected_digest, **kwargs):
+    """Only the policy bytes are accepted from the policy source, not caller mappings."""
+    from r27_verified_issuer import issue_from_github
+    if "policy_jobs" in kwargs or "policy_digest" in kwargs or "trusted_policy_digest" in kwargs:
+        raise EvidenceError("EVIDENCE_POLICY: caller policy override forbidden")
+    mappings, digest = load_pinned_policy(policy_bytes, protected_digest=protected_digest)
+    gate = kwargs.get("gate")
+    if gate not in mappings or not isinstance(mappings[gate], dict):
+        raise EvidenceError("EVIDENCE_POLICY: unmapped gate")
+    job = mappings[gate]
+    if "expected_job_name" in kwargs or "workflow_path" in kwargs:
+        raise EvidenceError("EVIDENCE_POLICY: caller job override forbidden")
+    return issue_from_github(**kwargs, policy_jobs=mappings, policy_digest=digest,
+                             trusted_policy_digest=digest,
+                             expected_job_name=job.get("job_name"),
+                             workflow_path=job.get("workflow_path"))

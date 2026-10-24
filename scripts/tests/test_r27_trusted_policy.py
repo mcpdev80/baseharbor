@@ -20,3 +20,26 @@ class ProtectedPolicyTests(unittest.TestCase):
   raw=b'{ "sql":{} }'
   with self.assertRaisesRegex(EvidenceError,"noncanonical"):
    load_pinned_policy(raw,protected_digest=hashlib.sha256(raw).hexdigest())
+
+
+class PolicyIssuerBoundaryTests(unittest.TestCase):
+ def test_caller_cannot_override_policy_or_job(self):
+  from r27_trusted_policy import issue_with_pinned_policy
+  raw=b'{"sql":{"job_name":"PR Selected Checks","workflow_path":".github/workflows/ci.yml"}}'
+  pin=hashlib.sha256(raw).hexdigest()
+  for arg in ("policy_jobs","policy_digest","trusted_policy_digest",
+              "expected_job_name","workflow_path"):
+   with self.subTest(arg=arg):
+    with self.assertRaisesRegex(EvidenceError,"override forbidden"):
+     issue_with_pinned_policy(policy_bytes=raw,protected_digest=pin,
+                              gate="sql",**{arg:"fake"})
+ def test_issuer_called_only_with_protected_policy(self):
+  from r27_trusted_policy import issue_with_pinned_policy
+  from unittest.mock import patch
+  raw=b'{"sql":{"job_name":"PR Selected Checks","workflow_path":".github/workflows/ci.yml"}}'
+  pin=hashlib.sha256(raw).hexdigest()
+  with patch("r27_verified_issuer.issue_from_github",return_value=b"receipt") as issuer:
+   result=issue_with_pinned_policy(policy_bytes=raw,protected_digest=pin,gate="sql")
+  self.assertEqual(result,b"receipt")
+  self.assertEqual(issuer.call_args.kwargs["policy_digest"],pin)
+  self.assertEqual(issuer.call_args.kwargs["expected_job_name"],"PR Selected Checks")
