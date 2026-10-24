@@ -131,3 +131,4 @@
 {"nonce":"dispatch-1792816025-2238452-23963","sid":"9fa375d6-b6ce-4df5-ba53-5b3157bdb1b0","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792816117-2259801-15775","sid":"6d2b4718-24b1-44d7-9a96-6607cc563aa6","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792816189-2271495-24263","sid":"fbe7eab1-de0c-40f9-a5b6-8cac7211d2f7","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792817866-2507588-20543","sid":"9fa375d6-b6ce-4df5-ba53-5b3157bdb1b0","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

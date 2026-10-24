@@ -36,3 +36,4 @@ PLAN-PUBLISH: q101/q102/q103 dreimal Qwen-Phantom ohne Liferation - Aufgabe zuru
 MERGE#1: 1053 -> develop 79e64084. naechste: 1056(+Hook) -> 1050 -> 1052. W1-Redo ref wird dann NEUER develop-tip (nicht mehr 1861ed07!) - Pins in consumer-pins.json bleiben core=1861ed07 bis 1050 merged, danach aktualisieren. Genauer Plan folgt nach 1056-merge.
 F41-Post1053-Check in Queue (flash belegt durch f40-Hook). Trigger: f40 idle.
 Kettenreihenfolge fixiert: 1056(Hook, f40) -> merge -> 1057(Akte, o102) -> merge -> 1050+1052 green -> merge -> W1-Redo auf neuem develop-tip + aktualisierte Pins.
+F40-PUSH haelt nicht: remote 4e737e26, lokal 19e7533d. Naechster Schritt: push-Blocker aus ihrer Datei lesen oder Merge-Lane mit eigenem Rebase+Merge (Akte #1057 + Hook aus lokalem Commit) - Entscheidung nach idle-Event.
