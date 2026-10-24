@@ -60,3 +60,5 @@ SELBSTKOMM (23:5x): AGENTS.md 13-19 enthaelt bereits Vollauslastung + no-sleep/D
 MISSION-PFLICHT (ab sofort): Auftragsdateien liegen in ops/missions/, NIE unter evidence/ (worker-reachable = injection-attack-surface). Worker-Hand-Offs nur ueber Karten/Evidence-Eigaenge.
 
 INCIDENT#3 (o112): Root-git erneut beschlagnahmt. Neue HART-Regel: Missionen bekommen ein Prefix "FALLS pwd ROOT: cd baseharbor PLAN SOFORT". Und ich starte keine root-git-Erlaubnis-Lane mehr ohne wtx-Zwang.
+
+RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf develop - nicht bypassbar ohne Owner-Sonderanordnung, Bypass verboten per AGENTS.
