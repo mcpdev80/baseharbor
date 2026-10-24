@@ -36,6 +36,21 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
             or policy_jobs[gate] != {"job_name": expected_job_name,
                                     "workflow_path": workflow_path}):
         raise EvidenceError("EVIDENCE_POLICY: trusted gate-to-job mapping required")
+    # Reject malformed identities in every policy entry, not only the selected
+    # gate. A digest alone cannot validate the policy's schema.
+    import re
+    if (not isinstance(policy_jobs, dict) or not policy_jobs
+            or any(not isinstance(name,str) or not GATE.fullmatch(name)
+                   or not isinstance(value,dict)
+                   or set(value)!={"job_name","workflow_path"}
+                   or not isinstance(value["job_name"],str)
+                   or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _./:()-]{0,127}",
+                                       value["job_name"])
+                   or not isinstance(value["workflow_path"],str)
+                   or not re.fullmatch(r"\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml",
+                                       value["workflow_path"])
+                   for name,value in policy_jobs.items())):
+        raise EvidenceError("EVIDENCE_POLICY: invalid complete mapping")
     # A caller may not attach an arbitrary digest to an unrelated job mapping.
     # All mappings in the policy participate in the canonical digest.
     if not isinstance(policy_jobs, dict) or not policy_jobs:

@@ -78,3 +78,16 @@ class StageEventBindingTests(unittest.TestCase):
     with self.assertRaisesRegex(EvidenceError,"event does not match evidence stage"):
      issue_from_github(**dict(ARGS,**change))
     api.assert_not_called()
+
+
+class FullPolicyValidationTests(unittest.TestCase):
+ def test_unrelated_malformed_mapping_is_not_signable(self):
+  for extra in ({"workflow_path":"../../ci.yml","job_name":"job"},
+                {"workflow_path":".github/workflows/ci.yml","job_name":"job\nattack"},
+                {"workflow_path":".github/workflows/ci.yml","job_name":"job","extra":1}):
+   mapping=dict(JOBS,docs=extra)
+   digest=hashlib.sha256(json.dumps(mapping,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+   with self.subTest(extra=extra),patch("r27_verified_issuer.fetch_authenticated_origin") as api:
+    with self.assertRaisesRegex(EvidenceError,"invalid complete mapping"):
+     issue_from_github(**dict(ARGS,policy_jobs=mapping,policy_digest=digest,trusted_policy_digest=digest))
+    api.assert_not_called()
