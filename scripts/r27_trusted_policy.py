@@ -26,6 +26,16 @@ def load_pinned_policy(raw, *, protected_digest):
                            ensure_ascii=True,allow_nan=False).encode("ascii")
     if raw != canonical:
         raise EvidenceError("EVIDENCE_POLICY: noncanonical protected policy")
+    import re
+    if any(not isinstance(gate, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_./:-]{0,127}", gate)
+           or not isinstance(job, dict)
+           or set(job) != {"job_name", "workflow_path"}
+           or not isinstance(job["job_name"], str)
+           or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _./:()-]{0,127}", job["job_name"])
+           or not isinstance(job["workflow_path"], str)
+           or not re.fullmatch(r"\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml", job["workflow_path"])
+           for gate, job in decoded.items()):
+        raise EvidenceError("EVIDENCE_POLICY: invalid protected gate mapping")
     return decoded,actual
 
 

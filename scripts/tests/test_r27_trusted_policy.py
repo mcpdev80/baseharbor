@@ -43,3 +43,13 @@ class PolicyIssuerBoundaryTests(unittest.TestCase):
   self.assertEqual(result,b"receipt")
   self.assertEqual(issuer.call_args.kwargs["policy_digest"],pin)
   self.assertEqual(issuer.call_args.kwargs["expected_job_name"],"PR Selected Checks")
+
+
+class ProtectedPolicySchemaTests(unittest.TestCase):
+ def test_invalid_mapping_rejected_at_loader_boundary(self):
+  for mapping in ({"sql":{}},{"sql":{"job_name":"a","workflow_path":"../../evil.yml"}},
+      {"sql":{"job_name":"a\nwrong","workflow_path":".github/workflows/ci.yml"}},
+      {"sql":{"job_name":"ok","workflow_path":".github/workflows/ci.yml","extra":1}}):
+   raw=json.dumps(mapping,sort_keys=True,separators=(",",":")).encode()
+   with self.subTest(mapping=mapping),self.assertRaisesRegex(EvidenceError,"invalid protected gate mapping"):
+    load_pinned_policy(raw,protected_digest=hashlib.sha256(raw).hexdigest())
