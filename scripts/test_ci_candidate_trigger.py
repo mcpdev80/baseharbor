@@ -25,8 +25,11 @@ class CandidateTriggerTests(unittest.TestCase):
         jobs = re.split(r"(?m)^  (?=[a-z_]+:\n)", source)
         for block in jobs:
             name = block.split(":", 1)[0].strip()
-            if not name or not re.search(r"(?m)^    if: .*github.event_name == 'pull_request'", block):
+            if not name or not name.startswith("pr_"):
                 continue
+            condition = next((line for line in block.splitlines() if line.startswith("    if: ")), "")
+            self.assertTrue(condition, f"PR job {name} has no event guard")
+            self.assertIn("github.event_name == 'pull_request'", condition, name)
             condition = next((line for line in block.splitlines() if line.startswith("    if: ")), "")
             with self.subTest(job=name):
                 self.assertIn("ready_for_review", condition)
