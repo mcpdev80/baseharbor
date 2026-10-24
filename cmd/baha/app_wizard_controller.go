@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -157,11 +158,14 @@ func (w appWizardController) choicesForSelection() ([]appProviderChoice, error) 
 }
 
 // freshFacts delegates all calculations to caller-provided read-only authorities.
+// The refresh callback is wrapped with a timeout to prevent indefinite blocking.
 func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
 	if w.refresh == nil {
 		return nil, nil, errors.New("current preview authority required")
 	}
-	fp, impact, err := w.refresh(ctx, d)
+	refreshCtx, refreshCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer refreshCancel()
+	fp, impact, err := w.refresh(refreshCtx, d)
 	if err != nil {
 		return nil, nil, err
 	}
