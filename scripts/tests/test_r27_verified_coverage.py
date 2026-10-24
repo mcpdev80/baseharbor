@@ -128,7 +128,7 @@ class VerifiedCoverageTests(unittest.TestCase):
         raw = signed()
         for constant in (b"NaN", b"Infinity", b"-Infinity"):
             with self.subTest(constant=constant):
-                mutated = raw.replace(b'"attempt":1', b'"attempt":' + constant)
+                mutated = raw.replace(b'"attempt": 1', b'"attempt": ' + constant)
                 self.assertNotEqual(mutated, raw)
                 with self.assertRaisesRegex(EvidenceError, "EVIDENCE_SCHEMA"):
                     check(mutated)
