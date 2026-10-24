@@ -43,6 +43,14 @@ var (
 // window between Podman container restart and the openbao process re-attaching
 // to its TCP listener). Permanent errors (TLS/CA, permissions, missing
 // executables) are not retried.
+//
+// Admission is limited to positively-identified listener/transport failures
+// only. A bare word such as "temporary" is intentionally NOT a subclass: a
+// permanent TLS or permission failure can contain that incidental word (for
+// example "x509: ... temporary failure in name resolution" or
+// "permission denied: temporary credentials file") and must never trigger a
+// retry. Classification is by concrete failure shape, not by substring of a
+// possibly-permanent diagnostic.
 func isTransientError(err error) bool {
 	if err == nil {
 		return false
@@ -54,7 +62,6 @@ func isTransientError(err error) bool {
 		strings.Contains(s, "no such host") ||
 		strings.Contains(s, "i/o timeout") ||
 		strings.Contains(s, "operation timed out") ||
-		strings.Contains(s, "temporary") ||
 		strings.Contains(s, io.ErrUnexpectedEOF.Error()) ||
 		strings.Contains(s, "reset by peer")
 }
