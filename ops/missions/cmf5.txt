@@ -1,0 +1,20 @@
+PHASE-WEISE Session-Rollen, NIE vermischt. Reihenfolge bindend: erst REVIEW (A), dann MERGE nur wenn A ACCEPT liefert (B).
+
+=== ROLLE: REVIEW (Phase A) - Mechanismus-Klaerung Kettenblocker #1056 ===
+Befund der Worker-Lane o118b (evidence/board-2026-10-24/o118-akte1056.md, END O118B-BLOCKED):
+1. scripts/pr-gate-plan.py:566 `core752_reviewed_merge_chain` verlangt laut Worker 3-Parent-Merge-Commits in der Ancestry; ein normaler develop-merge (2 Parents) erfuellt ihn nicht.
+2. scripts/pr-gate-plan.py:711 `trusted_binding_checks` verlangt EXAKT die drei CI-Scripts im Diff; die zusaetzliche Akte-Datei (4. Datei) fuehrt zu `return None`.
+Belege aus dem Repo: #1047 wurde nach einem develop-merge (2 Parents) erfolgreich gemergt, und #1060 existiert ebenfalls mit Akte+CI-Scripts. Klaere WIDERSPRUCH AUF LOESUNG:
+- Lies pr-gate-plan.py:520-620 und :690-740 am aktuellen develop (f3929568) exakt, bestimme welche Eingabemengen die Tests realmente durchlaufen, und pruefe die Ancestry-Form der bereits gemergten Qualifikations-PRs (#1044/#1047/#1053/#1058/#1059) mit `git rev-list --parents` / cat-file.
+- Urteile, ob der Worker-Befund korrekt ist oder eine Fehlinterpretation (z.B. Octopus nur bei Multi-Base, oder die Akte muss in EINEM separaten PR vorab auf develop).
+- Liefere das minimal richtige Rezept fuer Kette 1 (#1056 pins-data -> #1050 consumer-pins), inkl. exakter PR-Aufteilung, Reihenfolge und welcher PR-Typ (docs-only/CI-scripts) welche Pruefung erfuellt. Stop-Kriterium nicht vergessen.
+
+=== ROLLE: REVIEW+MERGE (Phase B) - baseharbor-demo PR #121 ===
+Vorbehalt: Phase B nur ausfuehren, wenn Phase A dokumentiert ist.
+Kandidat: baseharbor-demo PR #121 (head f57c8b6, nur baseharbor-core.ref -> Core 1861ed07). Dein letztes Urteil war REQUEST_CHANGES wegen fehlendem identischem Run-Nachweis. Der Nachweis ist jetzt gefuehrt: evidence/board-2026-10-24/o122-demoqual.md - grener Run #39990941852 (head 25c31969, docker+podman) mit core.ref sha256 a2c83515..., identisch zum PR-Head; Release-Branch-Tip unveraendert, kein Push noetig.
+1. Pruefe den Nachweis eigenstaendig (gh run view / cat der Datei am jeweiligen SHA, sha256 Vergleich) - Worker-Behauptung ist kein Beleg.
+2. ACCEPT (oder REQUEST_CHANGES mit Grund) in evidence/board-2026-10-24/codex-verdict-demo121-r2.md.
+3. NUR bei ACCEPT: Freshness + Pflichtchecks auf dem finalen Head pruefen, dann `gh pr merge 121 --squash --admin --repo mcpdev80/baseharbor-demo` (Owner-Freigabe 2026-10-24 woertlich: `--squash --admin` gilt fuer demo/console/connector). Danach post-merge main-Stand + Runliste protokollieren.
+4. Folgebedarfe festhalten: welche demo-SHA gilt fuer console#9-Repin und connector#10-Werte; welcher baseharbor-PR (#1050) danach welche Felder nachziehen muss.
+EVIDENCE: eine Datei je Phase, UTC, SHA before/after, Run-IDs, ROLLE-Label.
+END CX-PHASE-A-MECH-DONE / END CX-DEMO121-MERGE-DONE mit neuer demo-main-SHA / END CX-...-BLOCKED mit Grund.

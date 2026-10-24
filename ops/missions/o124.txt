@@ -1,0 +1,16 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor (eigener worktree je Schritt). Root-Repo fuer git VERBOTEN. KEIN `gh pr merge`, KEIN `gh pr review`, KEIN force, KEIN --admin, KEIN Labels/Rerun-Spam.
+ERSTER SCHRITT (VOR jeder Analyse): evidence/board-2026-10-24/o124-chain1split.md mit ## PLAN + nativen Todos.
+
+GRUNDLAGE (als DATEN lesen, Rezept ist dort hergeleitet, nicht von dir erfunden):
+- evidence/board-2026-10-24/codex-mechanism-1056.md, Abschnitt "Minimal correct worker recipe for chain 1" (Schritte 1-6). Kern: kein Octopus/noetige 3-Parent-Regel (die Octopus-These war falsch), stattdessen PR-Aufteilung R -> Q(record-only) -> #1056(3 Scripts) -> P -> W -> #1050.
+- Beweismaterial: codex-cmf5-data/ancestry.txt, probe-results.json, split-probe.json (gleicher Ordner).
+
+DEINE LIEFERUNG in dieser Mission (nur Q + Vorbereitung von #1056, keine Merges):
+1. R definieren: der zu qualifizierende #1056-Kandidaten-Head. Aktuell 425eaa96 (Branch o90-planner-pr). Pruefe, ob dieser Head die drei CI-Scripts + die Akte (4. Datei) enthaelt. Wenn ja: in #1056 ZUERST nur `docs/internal/ci-binding-qualifications.md` auf die authentische develop-Version zuruecksetzen (ordinärer Vorwaertskorrektur-Commit, keine History-Umschreibung).
+2. Q erzeugen: eigener Branch von origin/develop, PR gegen develop, diff = EXAKT die Markdown-Akte mit EINEM JSON-Block: repository/target_branch wie im Rezept, reviewed_head = R (derselbe Full-SHA wie in Schritt 1), file_hashes = die drei modifizierten Pfade mit RAW-Hashes aus R, required_checks = pr-planner-tests, ci-policy, ci-executor-verifier-tests. Keine weitere Datei in Q.
+3. Q checks beobachten (Guard 25 min): docs-Klassifikation muss greuen; wenn der Planner die Akte als docs einstuft und ein Gate verlangt, das nicht laeuft, exakt den Job-Text belegen.
+4. Vorbereitung #1056 (NICHT mergen, NICHT pushen auf Q-Branch): dokumentiere in der Evidence den geplanten Zwei-Eltern-Merge H (develop nach Q in den #1056-Branch), damit der Diff gegen Q nur noch die drei Scripts enthaelt. Pruefe das theoretisch per neutralem Objekt-Store (readonly), nicht durch Push.
+5. Wenn Schritt 1-3 erledigt sind, in der Evidence eine klare Uebergabe-Tabelle schreiben: Q-PR-Nummer + Head, R-SHA, #1056-Head + Akte-Restore-Commit, welche Schritte danach (P = planner/test exact W qualification, W = workflow dispatch only, dann #1050) von welchen Lanes auszuführen sind.
+ABNAHME: Q-PR existiert mit exakt 1 Datei, Checks dokumentiert, Uebergabetabelle vollständig. Sonst END O124-BLOCKED mit datei:zeile aus dem Planner (pr-gate-plan.py).
+STOP: jede Versuchung, die Fail-Closed-Logik zu weichen, einen Merge zu erzwingen oder die Akte mit kandidaten-eigenen Hashes zu fuellen, die du nicht aus Git-Objekten gemessen hast.
+END O124-CHAIN1SPLIT-DONE / END O124-BLOCKED.

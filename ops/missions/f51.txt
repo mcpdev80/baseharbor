@@ -1,0 +1,15 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo. Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN Review-Kommando, KEIN Push (in dieser Mission nur beweisen), KEIN CI-Dispatch, KEINE VM/Docker-Läufe.
+ERSTER SCHRITT (VOR der Analyse): evidence/board-2026-10-24/f51-demo121scope.md mit ## PLAN + nativen Todos.
+
+ANLASS: Codex-Review zu demo PR #121 (evidence/board-2026-10-24/codex-verdict-demo121-r2.md) sagt: Pin ist byte-identisch und der Run #39990941852 ist gruen, ABER "the tested executable cleanup inputs differ" - es verlangt Nachweis fuer "changed diagnostic behavior" (scripts/failure-runtime-diagnostics.sh, Cleanup-Preparation, per-call limit, total budget, native isolation, artifact provenance).
+PR #121 kommt aber aus f49 (evidence/board-2026-10-24/f49-demorepin.md) und sollte AUSSCHLIESSLICH baseharbor-core.ref aendern. Die Forderung waere dann gegenstandslos. Klaere das mit harten Objekten, nicht mit Prosa.
+
+ARBEIT:
+1. PR #121 exakt identifizieren: head-SHA, base-SHA, `gh pr diff 121 --repo mcpdev80/baseharbor-demo` -> Dateiliste. Erwartung: genau 1 Datei (baseharbor-core.ref).
+2. Objekt-Hartauftrag: `git -C baseharbor-demo fetch origin`; sha256 von `scripts/failure-runtime-diagnostics.sh` messen an (a) origin/main, (b) PR-Head, (c) dem Head des gruenen Runs 39990941852 ( dessen head-SHA aus `gh run view 39990941852 --repo ... --json headSha`). Nutzung ausschliesslich `git show <sha>:<pfad> | sha256sum` im neutralen Objekt-Store des Repos; KEIN Checkout fremder Worktrees.
+3. Ergebnis-Tabelle: alle vier SHA/Pfad-Kombinationen mit Hash; ausdrueckliche Festellung, ob es ueberhaupt eine geaenderte Diagnose-Datei im Kandidaten gibt (ja/nein).
+4. Wenn NEIN (Hashes identisch): formuliere den sauberen Schluss - der Review-Punkt "changed diagnostic behavior" trifft PR #121 nicht, die Qualifikationsforderung ist uebertragen aus PR #120. Belege mit datei:zeile aus der Review-Datei, wo diese Uebertragung herkommt.
+5. Wenn DOCH (PR enthaelt die Diagnose-Aenderung): dann ist f49s Auftrag nicht erfuellt - benenne exakt die Datei/Diff-Stelle und stelle einen klaren Korrekturbedarf fest (kein Selbst-Fix in dieser Mission, weil das eine andere Lane gehoert).
+6. Zusaetzlich kurz: Was war der Inhalt von Run 39990941852 (Jobs/Marker) und gilt er damit als "compatible input" fuer einen Pin-only Kandidaten? Naehe begruendet, keine Behauptung.
+ABNAHME: Hash-Tabelle + eindeutige Festellung + ggf. Korrekturbedarf.
+END F51-DEMO121SCOPE-DONE / END F51-BLOCKED.
