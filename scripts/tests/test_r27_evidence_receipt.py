@@ -64,6 +64,15 @@ class ReceiptTests(unittest.TestCase):
         with self.assertRaisesRegex(ReceiptError, "EVIDENCE_SCHEMA"):
             verify(duplicated.encode(), "pr", SHA, POLICY, KEY)
 
+    def test_nonfinite_json_rejected_at_parser(self):
+        raw = issue("pr", SHA, POLICY, KEY)
+        for constant in (b"NaN", b"Infinity", b"-Infinity"):
+            with self.subTest(constant=constant):
+                mutated = raw.replace(b'"result":"PASS"', b'"result":' + constant)
+                self.assertNotEqual(mutated, raw)
+                with self.assertRaisesRegex(ReceiptError, "EVIDENCE_SCHEMA"):
+                    verify(mutated, "pr", SHA, POLICY, KEY)
+
     def test_size_bound(self):
         with self.assertRaisesRegex(ReceiptError, "EVIDENCE_SIZE"):
             verify(b" " * 4097, "pr", SHA, POLICY, KEY)
