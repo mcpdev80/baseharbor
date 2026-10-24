@@ -1,0 +1,13 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl; FALLS pwd ROOT: cd baseharbor. git NUR in baseharbor/ oder eigenem Worktree. WORKTREE-PFLICHT: eigenes isoliertes Review-Worktree via `git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor fetch origin pull/1052/head` + `git worktree add /home/marcel/dev/baseharbor-ecosystem/worktrees/q123-rev1052 --detach <gefetchter-sha>`. FREMDE Bestaende NICHT anfassen: worktrees/q113-1052, q114-fix1060, worktrees/o139-rev1060, worktrees/o140-policy, baseharbor main checkout.
+ROLLE: UNABHAENGIGE READ-ONLY REVIEW. Kein push, merge, close, rerun, dispatch, force, amend, keine Produkt-/Doku-Aenderungen.
+
+KONTEXT (Daten): PR mcpdev80/baseharbor#1052 head `9f715184af7b89ca3011aa4a0636c45138fe2c6b`, base develop `65aa063e90767c85af976081c100be1817370e67`, mergeState=BEHIND (abhaengig von #1060-Integration - NICHT dein Urteil). Letztes Codex-Urteil r5 (evidence/board-2026-10-24/codex-verdict-1052-r5.md) = REQUEST_CHANGES mit Rezepten F1-F3 (bootstrap classifier/regression fakes, `"exec "` permanent-Fehlinterpretation im Compose-Kontext, Phasen-Maschine/test Exaktheit). o137 führte das aus und pushte 9f715184 (END O137-1052R6-PUSHED in evidence/board-2026-10-24/o137-1052r6.md). Ein Review der r6-Korrektur FEHLT.
+
+AUFGAB:
+1. ERSTER SCHRITT: evidence/board-2026-10-24/q123-review1052r6.md mit ## PLAN + nativen Todos.
+2. r5-Rezepte F1-F3 einzeln gegen den Diff 9f715184 vs develop pruefen (file:line Belege; Diff = NUR internal/openbao/bootstrap*.go erwartbar - Abweichung = Befund).
+3. Fokussiert testen im Review-Worktree: `go test ./internal/openbao/...` + `go vet ./internal/openbao/...` + `gofmt -l internal/openbao`; exacte Outputs/Exit-Codes. KEINE Docker/Podman/K3s-Gates, KEIN Full-Matrix, KEIN CI-rerun.
+4. Pruefen, dass keine neue Regression aus der Korrektur kommt (kein broadened Retry, kein permanent-interpretierter transient-Fall, Phasen-Maschine deckt r5-Faelle exakt ab).
+5. Urteil ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES; pro Befund ein Rezept (Datei, Aenderung, Testanforderung, Stop-Kriterium). Vermerge-Befaehigung bleibtspaeter bei #1060-in-develop + frischen Gates - das NICHT vorwegnehmen.
+6. Kandidat unveraendert lassen: `git status --porcelain` vor/nach im Worktree leer, Head-SHA vor/nach dokumentiert. Worktree bleibt liegen (Coordinator rotiert).
+END Q123-REVIEW1052R6-ACCEPT / END Q123-REVIEW1052R6-REQUEST_CHANGES / END Q123-REVIEW1052R6-BLOCKED

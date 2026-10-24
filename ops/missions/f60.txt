@@ -1,0 +1,19 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl; FALLS pwd ROOT: cd baseharbor-plan. ALLE git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan. Produkt-Repos (baseharbor, demo, console, connector) und Root-Repo: NICHTS anfassen, keine Produkt-CI ausloesen.
+SCOPE: Planning/CardBoard RUNDE 5 fuer AUSSCHLIESSLICH die v0.4.26-Karten (26-FENCE: Karten/PRs der 27-Kette nie editieren; t-20261019-v0426-complete-defect-audit bleibt Owner-STOP).
+
+KONTEXT (verifizierte Ereignisse seit Runde 4/o134, Stand 2026-10-24 ~15:2xZ UTC):
+- develop = 65aa063e (Q/#1063 merged).
+- #1056 P/H b0abe105: CI green, aber Codex cmf12 REQUEST_CHANGES (F1 strict-planner bootstrap fallback, F2 pins-data validator) -> Korrekturkette R'/Q'/H' laeuft noch NICHT (serialisiert hinter #1060).
+- #1060 0f3bd169: Quelle unabhängig ACCEPT (o139), cmf18 belegt record-only unzureichend; prerequisite Policy-PR in Arbeit (o140, branch work/v0.4.26-ci-qualifier-1060).
+- #1052 9f715184: r6-Korrektur gepusht, unabhaengiges Review laeuft (q123); Merge-Reife haengt an #1060 in develop.
+- #1046 1ec67f8d: source tests pass (q118/cmf10), Qualifier-PR serialisiert nach C/D.
+- demo: #120 REQUEST_CHANGES, pin-only Nachfolger #121 haelt an OWNER/HOST Podman-receipt (CX-DEMO121R4 = OWNER-Aktion). console#9: ACCEPT_WITH_NONBLOCKING, Repin nach demo-Merge. connector#10: ACCEPT_WITH_NONBLOCKING mit Final-Pin-Schritt D/U NACH demo+console merges; #9 als superseded koordinat schliessen (Merge nicht beide).
+- W1 (H-Kette): vorlaeufig blocked bis Pins auf develop stehen (q116/f54 Tafel).
+
+AUFGAB:
+1. ERSTER SCHRITT: evidence/board-2026-10-24/f60-planboard26r5.md mit ## PLAN + nativen Todos (Evidence-Datei liegt im OPS-Root unter /home/marcel/dev/baseharbor-ecosystem/evidence/, NICHT im plan-Repo committen).
+2. In baseharbor-plan: fetch origin, dann Task-Metadaten der betroffenen 26-Karten auf den BESTAETIGTEN Zustand ziehen (nur Kartenstatus laut Board-Schema, keine generierten Views manuell editieren). Unklares Karten-ID-Mapping zuerst via plan.py/list klaeren; im Zweifel Zustand NICHT erfinden, Befund in Evidence.
+3. Pflichtablauf: `python3 scripts/plan.py render`, `python3 scripts/plan.py check` - check MUSS 0 errors liefern; bei Fehler fix+amend (check=0 VOR jedem push, Regel OPS-DEFEKT). EIN Bundle-Commit + push auf main.
+4. Altfahnen-Abriss: pruefe die 4 Draft-Dateien aus dem publish-Flag (codex-design-ruling-round3a.md, draft-codex-handoff-round3.md, draft-record-pr.md, o13-doc922-prep.md) - Existenz/Stand orten (ops root evidence-Pfade), Status als superseded/erledigt in der Evidence festhalten; nichts unnoetig ins plan-Repo kopieren.
+5. KEINE Produktkarten der 27-Kette, keine Tags/Releases, keine Deployments, keine CI-Dispatches.
+END F60-PLANBOARD5-PUBLISHED / END F60-PLANBOARD5-BLOCKED
