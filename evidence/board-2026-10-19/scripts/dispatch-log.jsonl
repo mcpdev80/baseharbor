@@ -144,3 +144,5 @@
 {"nonce":"dispatch-1792820418-2786154-5351","sid":"a88e2f11-b356-4971-8bab-bb84b54c4c8d","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792820516-2795775-3716","sid":"a88e2f11-b356-4971-8bab-bb84b54c4c8d","outcome":"currency-hold","currency":"stale"}
 {"nonce":"dispatch-1792820527-2796354-17","sid":"a88e2f11-b356-4971-8bab-bb84b54c4c8d","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792820737-2826131-18220","sid":"f6b96fc0-a1ec-49a1-8f9e-43b411e8814e","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792821065-2878843-5375","sid":"a88e2f11-b356-4971-8bab-bb84b54c4c8d","baseline_users":2,"send_rc":0,"resends":0}
