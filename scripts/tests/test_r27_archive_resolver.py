@@ -95,6 +95,20 @@ class ResolverTests(unittest.TestCase):
         payload_dir.symlink_to(self.directory, target_is_directory=True)
         with self.assertRaises(ArchiveError): self.resolve()
 
+    def test_symlink_ancestor_is_never_followed(self):
+        ancestor = pathlib.Path(self.tmp.name) / 'evidence' / 'v0.4.27'
+        destination = pathlib.Path(self.tmp.name) / 'relocated-release'
+        ancestor.rename(destination)
+        ancestor.symlink_to(destination, target_is_directory=True)
+        with self.assertRaisesRegex(ArchiveError, "unsafe archive directory"):
+            self.resolve()
+
+    def test_symlink_root_is_never_followed(self):
+        alias = pathlib.Path(self.tmp.name) / 'root-alias'
+        alias.symlink_to(pathlib.Path(self.tmp.name), target_is_directory=True)
+        with self.assertRaisesRegex(ArchiveError, "unsafe archive directory"):
+            resolve(alias, 'v0.4.27', 'candidate', 'run-1', self.digest)
+
     def test_wrong_candidate_identity(self):
         self.manifest['candidate']['id'] = 'other'
         self.save()
