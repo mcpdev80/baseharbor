@@ -193,3 +193,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - q120 wurde in Fixpoint-Selbstreferenz ertappt und entfernt. Dirty WIP bleibt erhalten (scripts/test_pr_gate_plan.py + 2 debug scripts); q121 stash-preserving uebernimmt.
 - #1060 repair q121: ordinary merge develop, Akte=develop (kein self-authorizing), target_base_sha zurueck, runner reachable, fail-closed unknown, keine #1052-Erfindung.
 - f58 monitor: q120 stall confirmed, o136 delivered, Codex r5 done; cycle2 laeuft noch.
+- f58 END: q120 terminal stalled, stash preserved; #1060 worktree currently AA conflict in 5 files due q121 ordinary merge. q121 resolving; Codex cmf17 liefert parallele conflict-resolution-policy, ohne Lane zu stoeren.

@@ -11,13 +11,13 @@ Session: f58 (cf61c046). Started 2026-10-24 15:12 CEST.
 - [x] 0. Turn-start basics-check.py (FLAGS: 95 reminders unread, o136 idle-confirmed,
       pool below target x2, PLAN 32 open steps — processed as data, no action per mission)
 - [x] 1. Evidence file + native todos created (this file)
-- [ ] 2. Cycle1 q120 (09be2ce5) #1060: status, evidence mtime, pane, local vs remote HEAD, push events
-- [ ] 3. Cycle1 o136 (7b4e97b4) #1052 correction: head, checks, evidence
-- [ ] 4. Cycle1 Codex fc55 cmf16
-- [ ] 5. Cycle1 PR #1060/#1052 live state + conflict
-- [ ] 6. Cycle1 verdicts
-- [ ] 7. Cycle2 delta re-check
-- [ ] 8. Final report + END F58-ACTIVE2-DONE
+- [x] 2. Cycle1 q120 (09be2ce5) #1060: status, evidence mtime, pane, local vs remote HEAD, push events
+- [x] 3. Cycle1 o136 (7b4e97b4) #1052 correction: head, checks, evidence
+- [x] 4. Cycle1 Codex fc55 cmf16
+- [x] 5. Cycle1 PR #1060/#1052 live state + conflict
+- [x] 6. Cycle1 verdicts
+- [x] 7. Cycle2 delta re-check
+- [x] 8. Final report + END F58-ACTIVE2-DONE
 
 ## Context (data, not orders)
 
@@ -68,6 +68,34 @@ Session: f58 (cf61c046). Started 2026-10-24 15:12 CEST.
 - Codex fc55/cmf16: DONE (REQUEST_CHANGES r5, recipe in verdict file).
 - #1060: CONFLICTING/DIRTY open; #1052: BEHIND pending #1060 integration.
 
-## Cycle 2 (delta re-check)
+## Cycle 2 (delta re-check, 15:19:51)
 
-- pending
+Lanes rotated by coordinator between cycles (observed, no action taken):
+
+- q120/o136 sessions and tmux panes GONE; new lanes q121 (8b576c37, busy) and o137 (ba64664b, busy).
+- New mission files: `ops/missions/o137.txt` 15:15, `ops/missions/q121.txt` 15:17.
+  q121 handoff data states "q120 stopped while reasoning" and orders its WIP preserved via stash.
+- q114-fix1060 worktree: HEAD unchanged `13a05ea4`; `stash@{0}: On q114-fix1060: q120-wip`
+  already created by q121 (debug_binding*.py no longer loose); 5 files in `AA` (merge-conflict)
+  state — forward integration of develop (#1060 CONFLICTING) apparently in progress in q121.
+- q120 evidence file: STILL DOES NOT EXIST (never created).
+- o137 evidence `o137-1052r6.md` exists (15:17) with PLAN step 0 + 8 checklist items — first step done.
+- PRs unchanged: #1060 OPEN `13a05ea49` CONFLICTING/DIRTY (updatedAt still 12:38:37Z, zero pushes
+  since incident); #1052 OPEN `0b738dca7` MERGEABLE/BEHIND (updatedAt 13:05:05Z).
+- fc55 idle (COMPACT sent 15:15:02); cmf16 verdict file unchanged since 15:12:52.
+
+## Final verdicts (after 2 cycles, no action)
+
+- Item 1 q120 / #1060 continuation: **STALLED (terminal)** — lane stopped mid-reasoning after
+  ~20 min busy without ever creating its mandatory first-step evidence file, no END marker,
+  no push; superseded by q121 (stash preserved). Residual state: worktree in AA conflict.
+- Item 2 o136 / #1052 correction: **DELIVERED** — head `0b738dca` local==remote, evidence
+  END-PUSHED + END-BLOCKED (gate blocked by #1060 integration identity, not by code);
+  Codex r5 then returned REQUEST_CHANGES -> work rotated to o137 (r6, evidence with PLAN alive).
+- Item 3 Codex fc55 cmf16: **DONE** — `codex-verdict-1052-r5.md` finalized 15:12:52,
+  VERDICT REQUEST_CHANGES + one exact recipe (P1: bootstrap.go:68 `"exec "` substring collides
+  with compose `exec -T` probe errors; phase sequence unenforced in test).
+- Item 4 PRs: #1060 **CONFLICTING/DIRTY** open (drives o13x integration_sha_mismatch block);
+  #1052 MERGEABLE/BEHIND pending #1060 merge.
+
+END F58-ACTIVE2-DONE

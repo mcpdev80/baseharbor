@@ -1,0 +1,9 @@
+ROLLE: REVIEW/ADVISORY. KEIN git write/merge/commit/push/restore/reset in q114-fix1060 (dort laeuft q121 aktiv), KEIN gh auth/config, KEIN Produktcode, KEIN CI dispatch, KEIN agent send/keys.
+AUFGABE: Lese q121 Mission, Codex cmf15 verdict, current #1060 remote/current conflict state, old/new heads und develop. Bestimme die exakte merge resolution policy, damit q121 nicht raten muss:
+- Welche Dateiabschnitte muessen develop bytes haben?
+- Welche muessen #1060 repair bytes behalten?
+- Welche conflicts sind durch history rewrite bedingt und duerfen NICHT durch force/reset geloest werden?
+- Welche Testinhalte muessen real command selection + zero discovery/unknown coverage fail-closed beweisen.
+Gib ein kurzes, konkretes Rezept mit file:section, aber fuehre es nicht aus. Wenn der momentane conflict-Zustand ohne History-Rewrite nicht sicher loesbar ist, STATE BLOCKED und nenne die mindestens legitime Alternative (new branch + forward merge? ordinary PR update?) klar als Owner decision.
+Evidence codex-advice-1060-conflict.md.
+END CX-1060ADVICE-DONE / END CX-1060ADVICE-BLOCKED.
