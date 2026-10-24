@@ -99,6 +99,7 @@ def validate_pins_for_test(actual, root):
     return runner.validate_pins_data('pins-data-validation', root)
 
 
+
 class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)
@@ -1176,229 +1177,6 @@ except ModuleNotFoundError:
 
 
 
-class PinsDataQualificationTests(unittest.TestCase):
-    def test_pins_only_added_file_resolves_with_exactly_pins_data_validation(self):
-        change = {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
-        result = planner.plan(diff([change]), REQ, MAP)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertFalse(result['broad_required'])
-        self.assertEqual([], result['selected_gates'])
-        self.assertEqual([], result['unresolved_coverage'])
-        self.assertEqual({'pins-data-validation'},
-                         {c['id'] for c in result['required_validation_checks']})
-        self.assertNotIn('ci-executor-verifier-tests',
-                         {c['id'] for c in result['required_validation_checks']})
-
-    def setUp(self):
-        self._tempdirs = []
-        self.addCleanup(self._cleanup_tempdirs)
-
-    def _cleanup_tempdirs(self):
-        import shutil
-        for name in reversed(self._tempdirs):
-            shutil.rmtree(name, ignore_errors=True)
-
-    def _mkrepo(self):
-        tmp = tempfile.mkdtemp()
-        self._tempdirs.append(tmp)
-        return Path(tmp)
-
-    def test_malformed_missing_and_mismatched_pins_data_stay_fail_closed(self):
-        for name in ['malformed-schema', 'missing-gates', 'wrong-repo', 'non-hex-commit']:
-            with self.subTest(name=name):
-                root = self._mkrepo()
-                rel = root / 'docs' / 'releases'
-                rel.mkdir(parents=True)
-                bad = {
-                        'malformed-schema': {'schema': 'wrong', 'gates': {}},
-                        'missing-gates': {'schema': 'baseharbor.consumer-evidence-pins/v1'},
-                        'wrong-repo': {'schema': 'baseharbor.consumer-evidence-pins/v1',
-                            'gates': {'integration/docker/remote-target': {
-                                'connector': {'repository': 'other/repo', 'commit': 'e' * 40,
-                                              'workflow': '.github/workflows/release-integration.yml'},
-                                'console': {'repository': 'mcpdev80/baseharbor-console',
-                                            'commit': 'e' * 40,
-                                            'workflow': '.github/workflows/release-integration.yml'}}}},
-                        'non-hex-commit': {'schema': 'baseharbor.consumer-evidence-pins/v1',
-                            'gates': {'integration/docker/remote-target': {
-                                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                              'commit': 'not-hex', 'workflow': 'x'},
-                                'console': {'repository': 'mcpdev80/baseharbor-console',
-                                            'commit': 'e' * 40, 'workflow': 'x'}}}},
-                    }[name]
-                git_init(root)
-                (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(bad))
-                git_add_commit(root)
-                resolver_spec = importlib.util.spec_from_file_location(
-                    'resolver', ROOT / 'pr-diff-base.py')
-                resolver = importlib.util.module_from_spec(resolver_spec)
-                resolver_spec.loader.exec_module(resolver)
-                target = git_rev_parse(root, 'develop')
-                head = git_merge_base(root, 'develop', 'pins')
-                head = git_rev_parse(root, 'pins')
-                integrated = git_commit_tree(root, target, head)
-                actual = resolver.resolve_pr_diff(root, target, head, integrated)
-                self.assertFalse(actual['broad_required'], actual['reasons'])
-                with self.assertRaises(RuntimeError):
-                    validate_pins_for_test(actual, str(root))
-
-    def test_divergent_connector_commit_across_gates_fails(self):
-        root = self._mkrepo()
-        rel = root / 'docs' / 'releases'
-        rel.mkdir(parents=True)
-        divergent = {
-            'schema': 'baseharbor.consumer-evidence-pins/v1',
-            'gates': {
-                'integration/docker/remote-target': {
-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                  'commit': 'a' * 40,
-                                  'workflow': '.github/workflows/release-integration.yml'}},
-                'integration/static/live-console': {
-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                  'commit': 'b' * 40,
-                                  'workflow': '.github/workflows/release-integration.yml'},
-                    'console': {'repository': 'mcpdev80/baseharbor-console',
-                                'commit': 'c' * 40,
-                                'workflow': '.github/workflows/release-integration.yml'}},
-            },
-        }
-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(divergent))
-        git_init(root)
-        git_add_commit(root)
-        resolver_spec = importlib.util.spec_from_file_location(
-            'resolver', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(resolver_spec)
-        resolver_spec.loader.exec_module(resolver)
-        target = git_rev_parse(root, 'develop')
-        head = git_rev_parse(root, 'pins')
-        integrated = git_commit_tree(root, target, head)
-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
-        self.assertFalse(actual['broad_required'], actual['reasons'])
-        with self.assertRaises(RuntimeError):
-          validate_pins_for_test(actual, str(root))
-
-    def test_mixed_with_unrelated_json_keeps_own_coverage_requirements(self):
-        mixed = [
-            {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'},
-            {'status': 'added', 'path': 'other/data/config.json'},
-        ]
-        result = planner.plan(diff(mixed), REQ, MAP)
-        # The unrelated JSON still resolves through its own path rule; the pins
-        # add is not left as unknown impact.
-        self.assertNotIn('other/data/config.json: unresolved', result['unresolved_coverage'])
-
-    def test_pins_add_not_added_stays_unresolved(self):
-        change = {'status': 'modified', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
-        result = planner.plan(diff([change]), REQ, MAP)
-        self.assertTrue(result['unresolved_coverage'])
-
-    def test_pins_path_outside_docs_releases_is_not_qualified(self):
-        change = {'status': 'added', 'path': 'docs/guide/v0.4.26.consumer-pins.json'}
-        result = planner.plan(diff([change]), REQ, MAP)
-        self.assertIn('unknown impact for docs/guide/v0.4.26.consumer-pins.json',
-                      result['unresolved_coverage'])
-
-    def test_ecosystem_chain_wrong_repo_fails(self):
-        # A pins file with an immutable ecosystem chain that pins a role to the
-        # wrong repository must fail closed: the validator only trusts the
-        # pinned Core/Console/Connector origin repositories.
-        root = self._mkrepo()
-        rel = root / 'docs' / 'releases'
-        rel.mkdir(parents=True)
-        chain = {
-            'schema': 'baseharbor.consumer-evidence-pins/v1',
-            'gates': {
-                'integration/static/live-console': {
-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                  'commit': 'd' * 40,
-                                  'workflow': '.github/workflows/release-integration.yml'},
-                    'console': {'repository': 'mcpdev80/baseharbor-console',
-                                'commit': 'd' * 40,
-                                'workflow': '.github/workflows/release-integration.yml'}},
-                'integration/docker/remote-target': {
-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                  'commit': 'd' * 40,
-                                  'workflow': '.github/workflows/release-integration.yml'}},
-            },
-            'ecosystem': {
-                'core': {'repository': 'other/baseharbor',
-                         'commit': 'a' * 40, 'consumes': {}},
-                'demo': {'repository': 'mcpdev80/baseharbor-demo',
-                         'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
-                'console': {'repository': 'mcpdev80/baseharbor-console',
-                            'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
-                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                              'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
-            },
-        }
-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
-        git_init(root)
-        git_add_commit(root)
-        resolver_spec = importlib.util.spec_from_file_location(
-            'resolver', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(resolver_spec)
-        resolver_spec.loader.exec_module(resolver)
-        target = git_rev_parse(root, 'develop')
-        head = git_rev_parse(root, 'pins')
-        integrated = git_commit_tree(root, target, head)
-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
-        self.assertFalse(actual['broad_required'], actual['reasons'])
-        with self.assertRaises(RuntimeError):
-            validate_pins_for_test(actual, str(root))
-
-    def test_ecosystem_chain_wrong_hex_commit_fails(self):
-        # A pinned role whose commit is not 40-hex must fail closed even with a
-        # structurally complete ecosystem chain.
-        root = self._mkrepo()
-        rel = root / 'docs' / 'releases'
-        rel.mkdir(parents=True)
-        chain = {
-            'schema': 'baseharbor.consumer-evidence-pins/v1',
-            'gates': {
-                'integration/static/live-console': {
-                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                                  'commit': 'd' * 40,
-                                  'workflow': '.github/workflows/release-integration.yml'},
-                    'console': {'repository': 'mcpdev80/baseharbor-console',
-                                'commit': 'd' * 40,
-                                'workflow': '.github/workflows/release-integration.yml'}},
-            },
-            'ecosystem': {
-                'core': {'repository': 'mcpdev80/baseharbor',
-                         'commit': 'not-hex', 'consumes': {}},
-                'demo': {'repository': 'mcpdev80/baseharbor-demo',
-                         'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
-                'console': {'repository': 'mcpdev80/baseharbor-console',
-                            'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
-                'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
-                              'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
-            },
-        }
-        (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
-        git_init(root)
-        git_add_commit(root)
-        resolver_spec = importlib.util.spec_from_file_location(
-            'resolver', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(resolver_spec)
-        resolver_spec.loader.exec_module(resolver)
-        target = git_rev_parse(root, 'develop')
-        head = git_rev_parse(root, 'pins')
-        integrated = git_commit_tree(root, target, head)
-        actual = resolver.resolve_pr_diff(root, target, head, integrated)
-        self.assertFalse(actual['broad_required'], actual['reasons'])
-        with self.assertRaises(RuntimeError):
-            validate_pins_for_test(actual, str(root))
-
-    def test_ecosystem_chain_valid_passes(self):
-        # A complete ecosystem chain with the pinned roles and 40-hex commits
-        # resolves the pins-data validation end to end via the planner.
-        change = {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
-        result = planner.plan(diff([change]), REQ, MAP)
-        self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual({'pins-data-validation'},
-                         {c['id'] for c in result['required_validation_checks']})
-
-
 class Core918TrustedCoverageTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -2275,8 +2053,7 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         self.assertTrue(planned['unresolved_coverage'])
 
     def test_two_blocks_fails_closed(self):
-        # Two fenced JSON blocks fail closed here: the second is a weakened
-        # record, and one malformed register entry voids the whole register.
+        # Two fenced JSON blocks fail closed: the loader requires exactly one.
         tmp = Path(tempfile.mkdtemp())
 
         def two_blocks(_head):
@@ -2467,6 +2244,43 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         planned = self._run(target, head, actual, root)
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
+
+# OpenBao package-tests validation and fail-closed handling.
+class OpenBaoValidationTests(unittest.TestCase):
+    def test_openbao_package_tests_is_a_known_check(self):
+        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
+        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
+
+    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
+        """Unreviewed OpenBao production paths must remain unresolved."""
+        for name in ['internal/openbao/unreviewed_security_mutation.go',
+                     'internal/openbao/managed_credentials.go',
+                     'internal/openbao/application_runtime_client.go',
+                     'internal/openbao/dev_access.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertTrue(
+                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
+                )
+
+    def test_openbao_add_delete_rename_stay_unresolved(self):
+        """Added, deleted, renamed OpenBao files must stay fail-closed."""
+        variants = [
+            paths('internal/openbao/bootstrap.go'),
+            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
+            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
+              'new_path': 'internal/openbao/new_bootstrap.go'}],
+            paths('internal/openbao/bootstrap.go',
+                  'internal/openbao/unreviewed_addition.go'),
+            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes):
+                result = planner.plan(diff(changes), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
 
 # main() entrypoint must source the authenticated evaluation context from the
 # runner environment, never from the candidate PR, and must fail closed when
@@ -2740,6 +2554,11 @@ if (not result.wasSuccessful() or result.skipped or
         })
 
 class TrustedBindingActivationTests(unittest.TestCase):
+    CHECKS = planner.CI_CHECKS
+    FILES = {path: 'modified' for path in (
+        'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+        'scripts/test_pr_gate_plan.py')}
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -2747,9 +2566,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.git('init', '-q')
         self.git('config', 'user.name', 'Fixture')
         self.git('config', 'user.email', 'fixture@example.invalid')
-        self.files = {path: 'modified' for path in (
-            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'scripts/test_pr_gate_plan.py')}
+        self.files = self.FILES.copy()
         for path in self.files:
             file = self.root / path
             file.parent.mkdir(parents=True, exist_ok=True)
@@ -2766,7 +2583,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
             'reviewed_head': self.head, 'files': self.files,
             'file_hashes': {p: hashlib.sha256(b'reviewed\r\nline 2\nline 3\nline 4\nline 5\nstable target field\n').hexdigest()
                             for p in self.files},
-            'required_checks': [c['id'] for c in planner.CI_CHECKS],
+            'required_checks': [c['id'] for c in self.CHECKS],
         }
         spec = importlib.util.spec_from_file_location('binding_resolver', ROOT / 'pr-diff-base.py')
         self.resolver = importlib.util.module_from_spec(spec)
@@ -2788,9 +2605,6 @@ class TrustedBindingActivationTests(unittest.TestCase):
         target = self.git('rev-parse', 'HEAD')
         head = head or self.head
         tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
-        # merge-tree --write-tree mutates the working-tree index; reset it so the
-        # next resolved() can detach to self.base cleanly instead of failing
-        # with exit 128 after the index was left dirty.
         self.git('reset', '-q')
         integration = self.git('commit-tree', tree, '-p', target, '-p', head,
                                '-m', 'actual PR integration')
@@ -2801,7 +2615,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
 
     def test_real_git_exact_candidate_and_raw_crlf_blobs_select_all_checks(self):
         actual = self.resolved()
-        self.assertEqual(planner.CI_CHECKS, self.checks(actual))
+        self.assertEqual(self.CHECKS, self.checks(actual))
         old = Path.cwd()
         try:
             os.chdir(self.root)
@@ -2812,11 +2626,12 @@ class TrustedBindingActivationTests(unittest.TestCase):
             os.chdir(old)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual([], result['selected_gates'])
-        self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+        self.assertEqual({c['id'] for c in self.CHECKS},
                          {c['id'] for c in result['required_validation_checks']})
 
     def integrated(self, target, head):
         tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        self.git('reset', '-q')
         integration = self.git('commit-tree', tree, '-p', target, '-p', head,
                                '-m', 'current PR integration')
         return self.resolver.resolve_pr_diff(self.root, target, head, integration)
@@ -2831,7 +2646,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         current = self.integrated(target, merged)
         self.assertNotEqual(self.head, merged)
         self.assertEqual(target, current['merge_base_sha'])
-        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+        self.assertEqual(self.CHECKS, self.checks(current))
         # Additional trusted target advances may be integrated by the same owner.
         self.git('checkout', '-q', '--detach', target)
         (self.root / 'accepted-target.md').write_text('accepted target advance\n')
@@ -2851,9 +2666,9 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertNotEqual(self.record['file_hashes']['scripts/pr-gate-plan.py'],
                             hashlib.sha256(actual_blob).hexdigest())
         current = self.integrated(later, advanced)
-        self.assertEqual(3, len(current['changes']))
+        self.assertEqual(len(self.files), len(current['changes']))
         self.git('merge-base', '--is-ancestor', later, advanced)
-        self.assertEqual(planner.CI_CHECKS, self.checks(current))
+        self.assertEqual(self.CHECKS, self.checks(current))
 
     def test_real_git_untrusted_sideparent_dirty_merge_and_copied_tree_fail_closed(self):
         actual = self.resolved()
@@ -2865,7 +2680,7 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.git('checkout', '-q', '--detach', self.head)
         self.git('merge', '--no-ff', '-qm', 'untrusted side merge', side)
         side_head = self.git('rev-parse', 'HEAD')
-        self.assertEqual(3, len(self.integrated(target, side_head)['changes']))
+        self.assertEqual(len(self.files), len(self.integrated(target, side_head)['changes']))
         self.assertIsNone(self.checks(self.integrated(target, side_head)))
         # Matching source bytes copied into a new linear commit do not prove review ancestry.
         copied = self.git('commit-tree', self.git('rev-parse', side_head + '^{tree}'),
@@ -2957,6 +2772,271 @@ class TrustedBindingActivationTests(unittest.TestCase):
         self.assertIsNone(self.checks(self.resolved(head=followup)))
 
 
+class WorkflowBindingActivationTests(TrustedBindingActivationTests):
+    CHECKS = planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS
+    FILES = {**TrustedBindingActivationTests.FILES, '.github/workflows/ci.yml': 'modified'}
+
+
+class BootstrapExceptionTests(unittest.TestCase):
+    """Fail-first: only PRs whose HEAD references the trusted Akte bootstrap.
+
+    The fail-closed validator needs the first merge but its Core-921 register
+    is stale, so it can never qualify the two bootstrap PRs. This bounded,
+    time-boxed exception trusts only the frozen Akte read from the target base
+    and requires the PR HEAD to reference it. It does NOT waive required checks
+    or review; it only returns the CI check catalog so pr-required-final.py
+    still enforces every green check.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'Bootstrap fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+
+    def git(self, *args):
+        result = subprocess.run(['git', '-C', str(self.root), *args],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def _bootstrap_repo(self, head_message):
+        # Trusted develop baseline with the immutable Akte present.
+        (self.root / 'docs' / 'internal').mkdir(parents=True, exist_ok=True)
+        (self.root / 'scripts').mkdir(parents=True, exist_ok=True)
+        akte = (
+            '# Core-921 CI binding qualification (#1056)\n'
+            'Owner-authorized immutable source inventory.\n'
+            '```json\n'
+            '{"repository": "mcpdev80/baseharbor", "target_branch": "develop", '
+            '"reviewed_head": "0" * 40, '
+            '"files": {"scripts/pr-check-runner.py": "modified"}, '
+            '"file_hashes": {"scripts/pr-check-runner.py": "0" * 64}, '
+            '"required_checks": ["pr-planner-tests"]}\n'
+            '```\n'
+        )
+        (self.root / 'docs' / 'internal' / 'ci-binding-qualifications.md').write_text(akte)
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted develop baseline with Akte')
+        develop = self.git('rev-parse', 'HEAD')
+        # PR head: touches the three CI files and references the Akte in the
+        # commit message (bootstrap-eligible).
+        (self.root / 'scripts' / 'pr-gate-plan.py').write_text('bootstrap planner\n')
+        (self.root / 'scripts' / 'pr-check-runner.py').write_text('bootstrap runner\n')
+        (self.root / 'scripts' / 'test_pr_gate_plan.py').write_text('bootstrap test\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', head_message)
+        head = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', develop, head)
+        integration = self.git('commit-tree', tree, '-p', develop, '-p', head,
+                               '-m', 'bootstrap merge')
+        rspec = importlib.util.spec_from_file_location(
+            'bootstrap_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, develop, head, integration)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        return actual
+
+    def test_bootstrap_pr_referencing_akte_stays_blocked(self):
+        actual = self._bootstrap_repo(
+            'ci(planner): bootstrap via '
+            'docs/internal/ci-binding-qualifications.md Core-921 CI binding qualification')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_bootstrap_without_akte_reference_stays_blocked(self):
+        # Fail-first negative: same three CI files, no Akte reference anywhere.
+        actual = self._bootstrap_repo('ci(planner): change the three CI files')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_bootstrap_tampered_akte_on_base_stays_blocked(self):
+        # The immutable Akte on the target base is the sole authority. A base
+        # whose Akte no longer parses as a JSON block must not bootstrap, even
+        # though the CI-script paths alone would resolve via the planning lane.
+        (self.root / 'docs' / 'internal').mkdir(parents=True, exist_ok=True)
+        (self.root / 'scripts').mkdir(parents=True, exist_ok=True)
+        (self.root / 'docs' / 'internal' / 'ci-binding-qualifications.md').write_text(
+            '# not a qualification record\nno fenced json block here\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'develop with tampered Akte')
+        develop = self.git('rev-parse', 'HEAD')
+        # Adding a workflow file forces an unresolved area on top of the
+        # planning scripts so the only resolution path is the bootstrap record.
+        (self.root / '.github' / 'workflows').mkdir(parents=True, exist_ok=True)
+        (self.root / '.github' / 'workflows' / 'extra.yml').write_text('name: x\n')
+        self.git('add', '.')
+        self.git('commit', '-qm',
+                 'ci(planner): bootstrap via '
+                 'docs/internal/ci-binding-qualifications.md Core-921 CI binding qualification')
+        head = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', develop, head)
+        integration = self.git('commit-tree', tree, '-p', develop, '-p', head, '-m', 'merge')
+        rspec = importlib.util.spec_from_file_location(
+            'bootstrap_diff2', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(self.root, develop, head, integration)
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='mcpdev80/baseharbor',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_bootstrap_wrong_repository_stays_blocked(self):
+        actual = self._bootstrap_repo(
+            'ci(planner): bootstrap via '
+            'docs/internal/ci-binding-qualifications.md')
+        result = planner.plan(actual, REQ, MAP, repository=self.root,
+                              context_repository='other/repo',
+                              context_target_branch='develop')
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
+class OpenBaoExactRetryRouteTests(unittest.TestCase):
+    def runner(self):
+        spec = importlib.util.spec_from_file_location('openbao_runner', ROOT / 'pr-check-runner.py')
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        return runner
+
+    def test_actual_workflow_route_runs_trusted_helper_and_rejects_missing_or_skipped_tests(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        start = workflow.index('            openbao-package-tests)\n') + len('            openbao-package-tests)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted, candidate, temp = (root / name for name in ('trusted', 'candidate', 'temp'))
+            for directory in (trusted, candidate, temp):
+                directory.mkdir()
+            def git(directory, *args):
+                return subprocess.check_output(['git', '-C', str(directory), *args], text=True).strip()
+            for directory in (trusted, candidate):
+                git(directory, 'init', '-q')
+                git(directory, 'config', 'user.name', 'Workflow fixture')
+                git(directory, 'config', 'user.email', 'fixture@example.invalid')
+            (trusted / 'scripts').mkdir()
+            (trusted / 'scripts/pr-check-runner.py').write_text((ROOT / 'pr-check-runner.py').read_text())
+            git(trusted, 'add', '.')
+            git(trusted, 'commit', '-qm', 'trusted helper')
+            git(candidate, 'remote', 'add', 'origin', str(trusted))
+            (candidate / 'go.mod').write_text('module example.test/openbaoroute\n\ngo 1.25\n')
+            package = candidate / 'internal/openbao'
+            package.mkdir(parents=True)
+            environment = dict(os.environ, BASE_SHA=git(trusted, 'rev-parse', 'HEAD'),
+                               VALIDATION='openbao-package-tests', RUNNER_TEMP=str(temp),
+                               GITHUB_WORKSPACE=str(candidate))
+            names = self.runner().OPENBAO_REQUIRED_TESTS
+            for mode in ('pass', 'missing', 'skip'):
+                selected = names[:-1] if mode == 'missing' else names
+                text = 'package openbao\nimport "testing"\n'
+                text += '\n'.join('func %s(t *testing.T) { %s }' %
+                                  (name, 't.Skip("not executed")' if mode == 'skip' and name == names[0] else '')
+                                  for name in selected)
+                (package / 'bootstrap_test.go').write_text(text)
+                execution = subprocess.run(['bash', '-euo', 'pipefail', '-c', fragment],
+                                           cwd=candidate, env=environment, capture_output=True, text=True)
+                if mode == 'pass':
+                    self.assertEqual(0, execution.returncode, execution.stderr)
+                    self.assertEqual(list(names), json.loads(execution.stdout)['matched_tests'])
+                else:
+                    self.assertNotEqual(0, execution.returncode, execution.stdout)
+                    self.assertIn('OpenBao', execution.stderr)
+
+    def test_strict_discovery_execution_and_existing_safety_names(self):
+        from types import SimpleNamespace
+        runner = self.runner()
+        names = runner.OPENBAO_REQUIRED_TESTS
+        discovery = '\n'.join(names)
+        execution = ''.join('=== RUN   ' + n + '\n--- PASS: ' + n + ' (0.00s)\n' for n in names)
+        for listed, output, code, success in (
+                (discovery, execution, 0, True), ('', execution, 0, False),
+                ('\n'.join(names[:-1]), execution, 0, False),
+                (discovery, '', 0, False), (discovery, execution, 1, False),
+                (discovery, execution.replace('--- PASS: ' + names[0], '--- SKIP: ' + names[0]), 0, False)):
+            with self.subTest(listed=listed, code=code, success=success):
+                results = [SimpleNamespace(returncode=0, stdout=listed, stderr=''),
+                           SimpleNamespace(returncode=code, stdout=output)]
+                with patch.object(runner.subprocess, 'run', side_effect=results) as process:
+                    if success:
+                        self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
+                        self.assertIn('./internal/openbao/...', process.call_args.args[0])
+                        self.assertIn('-run', process.call_args.args[0])
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            runner.execute_validation('openbao-package-tests', '.')
+        # A renamed replacement must not satisfy an existing exact SQL safety family.
+        replacements = '\n'.join(p.removeprefix('^') + 'Replacement'
+                                  for p in runner.WIZARD_TEST_FAMILIES['wizard-core918-native-sql-safety-tests'])
+        with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=0, stdout=replacements, stderr='')):
+            with self.assertRaises(RuntimeError):
+                runner.execute_validation('wizard-core918-native-sql-safety-tests', '.')
+
+    def test_real_git_frozen_source_forward_merge_and_rejections(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Retry fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            for path in planner.OPENBAO_RETRY_FILES:
+                item = root / path
+                item.parent.mkdir(parents=True, exist_ok=True)
+                item.write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            target = git('rev-parse', 'HEAD')
+            for path in planner.OPENBAO_RETRY_FILES:
+                (root / path).write_text('frozen retry\n')
+            git('commit', '-qam', 'frozen retry')
+            reviewed = git('rev-parse', 'HEAD')
+            spec = importlib.util.spec_from_file_location('retry_diff', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(resolver)
+            def actual(base, head):
+                tree = git('merge-tree', '--write-tree', base, head).splitlines()[0]
+                integration = git('commit-tree', tree, '-p', base, '-p', head, '-m', 'integration')
+                return resolver.resolve_pr_diff(root, base, head, integration)
+            def checks(value, repo='mcpdev80/baseharbor', branch='develop'):
+                return planner.openbao_retry_checks(value, root, repo, branch)
+            with patch.object(planner, 'OPENBAO_RETRY_HEAD', reviewed):
+                value = actual(target, reviewed)
+                self.assertEqual(planner.CODE_CHECKS + planner.OPENBAO_CHECKS, checks(value))
+                planned = planner.plan(value, REQ, MAP, repository=root,
+                                       context_repository='mcpdev80/baseharbor', context_target_branch='develop')
+                self.assertEqual('resolved', planned['coverage_status'], planned)
+                self.assertIn('openbao-package-tests', [c['id'] for c in planned['required_validation_checks']])
+                self.assertIsNone(checks(value, repo='other/repo'))
+                self.assertIsNone(checks(value, branch='main'))
+                for key, changed in (('integration_sha', None), ('merge_base_sha', 'f' * 40),
+                                     ('changes', value['changes'][:1])):
+                    forged = copy.deepcopy(value)
+                    forged[key] = changed
+                    self.assertIsNone(checks(forged))
+                git('checkout', '-q', '--detach', target)
+                (root / 'accepted-target.md').write_text('accepted target\n')
+                git('add', '.')
+                git('commit', '-qm', 'advance trusted target')
+                target = git('rev-parse', 'HEAD')
+                git('checkout', '-q', '--detach', reviewed)
+                git('merge', '--no-ff', '-qm', 'forward target', target)
+                head = git('rev-parse', 'HEAD')
+                self.assertIsNotNone(checks(actual(target, head)))
+                (root / 'internal/openbao/bootstrap.go').write_text('unreviewed followup\n')
+                git('commit', '-qam', 'unreviewed followup')
+                self.assertIsNone(checks(actual(target, git('rev-parse', 'HEAD'))))
+
+
 class AktenRegisterQualificationTests(unittest.TestCase):
     # F40: the qualification register may accumulate one well-formed entry per
     # reviewed candidate. A PR that changes ONLY the three CI scripts resolves
@@ -2967,6 +3047,7 @@ class AktenRegisterQualificationTests(unittest.TestCase):
     CI_PATHS = ('scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
                 'scripts/test_pr_gate_plan.py')
     RECORD_PATH = 'docs/internal/ci-binding-qualifications.md'
+    CHECKS = planner.CI_CHECKS
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -3021,7 +3102,7 @@ class AktenRegisterQualificationTests(unittest.TestCase):
                 'files': {path: 'modified' for path in self.CI_PATHS},
                 'file_hashes': {path: self.blob_sha(head_sha, path)
                                 for path in self.CI_PATHS},
-                'required_checks': [c['id'] for c in planner.CI_CHECKS]}
+                'required_checks': [c['id'] for c in self.CHECKS]}
 
     def plan_with_register(self, entries):
         record = ''.join('```json\n' + json.dumps(entry) + '\n```\n'
@@ -3064,7 +3145,7 @@ class AktenRegisterQualificationTests(unittest.TestCase):
         self.assertEqual('resolved', planned['coverage_status'], planned)
         self.assertEqual([], planned['unresolved_coverage'])
         self.assertEqual([], planned['selected_gates'])
-        self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+        self.assertEqual({c['id'] for c in self.CHECKS},
                          {c['id'] for c in planned['required_validation_checks']})
 
     def test_duplicate_or_foreign_register_entries_fail_closed(self):
@@ -3075,6 +3156,162 @@ class AktenRegisterQualificationTests(unittest.TestCase):
         self.assertEqual('unresolved', duplicate['coverage_status'], duplicate)
         single = self.plan_with_register([self.entry(self.head)])
         self.assertEqual('resolved', single['coverage_status'], single)
+
+
+class WorkflowRegisterQualificationTests(AktenRegisterQualificationTests):
+    CI_PATHS = (*AktenRegisterQualificationTests.CI_PATHS, '.github/workflows/ci.yml')
+    CHECKS = planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS
+
+    def test_workflow_inventory_cannot_omit_syntax_validation(self):
+        entry = self.entry(self.head)
+        entry['required_checks'].remove('ci-actionlint')
+        planned = self.plan_with_register([entry])
+        self.assertEqual('unresolved', planned['coverage_status'], planned)
+
+
+class BootstrapClaimRejectionTests(unittest.TestCase):
+    def test_noncanonical_pins_paths_never_select_the_top_level_validator(self):
+        for path in ('docs/releases/nested/v0.4.26.consumer-pins.json',
+                     'docs/releases/unknown.consumer-pins.json',
+                     'docs/releases/v0.4.27.consumer-pins.json'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'], result)
+
+    def test_commit_message_and_record_title_never_qualify_unreviewed_content(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git_init(root)
+            record = root / 'docs/internal/ci-binding-qualifications.md'
+            record.parent.mkdir(parents=True)
+            record.write_text('# Core-921 CI binding qualification\n```json\n{}\n```\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm', 'target record'], check=True)
+            target = git_rev_parse(root, 'HEAD')
+            unreviewed = root / 'scripts/pr-check-runner.py'
+            unreviewed.parent.mkdir()
+            unreviewed.write_text('unreviewed executor\n')
+            subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+            subprocess.run(['git', '-C', str(root), 'commit', '-qm',
+                            'mention docs/internal/ci-binding-qualifications.md'], check=True)
+            head = git_rev_parse(root, 'HEAD')
+            spec = importlib.util.spec_from_file_location('bootstrap_diff', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(resolver)
+            actual = resolver.resolve_pr_diff(root, target, head, git_commit_tree(root, target, head))
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            result = planner.plan(actual, REQ, MAP, repository=root,
+                                  context_repository='mcpdev80/baseharbor',
+                                  context_target_branch='develop')
+            self.assertEqual('unresolved', result['coverage_status'], result)
+
+
+class PinsDataCanonicalExecutionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.path = self.root / 'docs/releases/v0.4.26.consumer-pins.json'
+        self.path.parent.mkdir(parents=True)
+        sys.path.insert(0, str(ROOT))
+        self.addCleanup(lambda: sys.path.remove(str(ROOT)))
+        from ecosystem_release_pins import resolve_pins
+        candidate = {'schema': 'baseharbor.ecosystem-candidate/v1', 'release': '0.4.26',
+                     'core': 'a' * 40, 'demo': 'b' * 40, 'console': 'c' * 40}
+        console = {k: candidate[k] for k in ('schema', 'release', 'core', 'demo')}
+        self.pins = resolve_pins('a' * 40, 'd' * 40, candidate, console,
+                                 'a' * 40, release='0.4.26')
+
+    def execute(self, pins):
+        self.path.write_text(json.dumps(pins))
+        return subprocess.run([sys.executable, str(ROOT / 'pr-check-runner.py'),
+                               'execute', '--check', 'pins-data-validation',
+                               '--repository', str(self.root)],
+                              capture_output=True, text=True)
+
+    def test_real_cli_accepts_canonical_and_historical_metadata(self):
+        execution = self.execute(self.pins)
+        self.assertEqual(0, execution.returncode, execution.stderr)
+        self.assertEqual(['v0.4.26.consumer-pins.json'],
+                         json.loads(execution.stdout)['matched_tests'])
+        historical = self.path.with_name('v0.4.23.consumer-pins.json')
+        historical.write_text((ROOT.parent / 'docs/releases/v0.4.23.consumer-pins.json').read_text())
+        execution = self.execute(self.pins)
+        self.assertEqual(0, execution.returncode, execution.stderr)
+        self.assertEqual(2, len(json.loads(execution.stdout)['matched_tests']))
+
+    def test_real_cli_rejects_inconsistent_graph_gates_and_origins(self):
+        mutations = [
+            lambda p: p.pop('ecosystem'),
+            lambda p: p['ecosystem']['demo']['consumes'].update(core='e' * 40),
+            lambda p: p['ecosystem']['core']['consumes'].update(connector='d' * 40),
+            lambda p: p['ecosystem']['console']['consumes'].pop('demo'),
+            lambda p: p['ecosystem']['connector'].update(commit='e' * 40),
+            lambda p: p['ecosystem']['console'].update(commit='e' * 40),
+            lambda p: p['ecosystem'].update(core=[]),
+            lambda p: p['gates'].pop('integration/podman/remote-target'),
+            lambda p: p['gates'].update(unknown={}),
+            lambda p: p['gates']['integration/docker/remote-target']['connector'].update(
+                repository='mcpdev80/baseharbor-console'),
+            lambda p: p['gates']['integration/podman/remote-target']['connector'].update(
+                workflow='untrusted.yml'),
+            lambda p: p['gates']['integration/static/live-console']['console'].update(commit='oops'),
+            lambda p: p['gates']['integration/static/live-console']['console']['origin'].update(
+                commit='e' * 40),
+            lambda p: p['gates']['integration/static/live-console']['connector'].pop('origin'),
+            lambda p: p['gates']['integration/static/live-console'].update(console=[]),
+        ]
+        for number, mutate in enumerate(mutations):
+            with self.subTest(case=number):
+                pins = copy.deepcopy(self.pins)
+                mutate(pins)
+                execution = self.execute(pins)
+                self.assertNotEqual(0, execution.returncode, execution.stdout)
+                self.assertIn('consumer-pins file differs', execution.stderr)
+
+    def test_exact_workflow_route_uses_trusted_modules_and_propagates_failure(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        start = workflow.index('            pins-data-validation)\n') + len('            pins-data-validation)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        trusted = self.root / 'trusted'
+        trusted.mkdir()
+        git_init(trusted)
+        (trusted / 'scripts').mkdir()
+        for helper in ('pr-check-runner.py', 'ecosystem_release_pins.py', 'private_consumer_evidence.py'):
+            (trusted / 'scripts' / helper).write_text((ROOT / helper).read_text())
+        subprocess.run(['git', '-C', str(trusted), 'add', '.'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(trusted), 'commit', '-qm', 'trusted validators'],
+                       check=True, capture_output=True)
+        base = git_rev_parse(trusted, 'HEAD')
+        candidate = self.root / 'candidate'
+        candidate.mkdir()
+        git_init(candidate)
+        subprocess.run(['git', '-C', str(candidate), 'remote', 'add', 'origin', str(trusted)], check=True)
+        # Candidate modules with the same names must never execute.
+        for helper in ('pr-check-runner.py', 'ecosystem_release_pins.py', 'private_consumer_evidence.py'):
+            (candidate / helper).write_text('raise RuntimeError("CANDIDATE MODULE EXECUTED")\n')
+        path = candidate / 'docs/releases/v0.4.26.consumer-pins.json'
+        path.parent.mkdir(parents=True)
+        temp = self.root / 'runner-temp'
+        temp.mkdir()
+        environment = dict(os.environ, BASE_SHA=base, VALIDATION='pins-data-validation',
+                           RUNNER_TEMP=str(temp), GITHUB_WORKSPACE=str(candidate))
+        for valid in (True, False):
+            payload = copy.deepcopy(self.pins)
+            if not valid:
+                payload['ecosystem']['demo']['consumes']['core'] = 'e' * 40
+            path.write_text(json.dumps(payload))
+            execution = subprocess.run(['bash', '-euo', 'pipefail', '-c', fragment],
+                                       cwd=candidate, env=environment, capture_output=True, text=True)
+            self.assertNotIn('CANDIDATE MODULE EXECUTED', execution.stderr)
+            if valid:
+                self.assertEqual(0, execution.returncode, execution.stderr)
+                self.assertEqual(['v0.4.26.consumer-pins.json'],
+                                 json.loads(execution.stdout)['matched_tests'])
+            else:
+                self.assertNotEqual(0, execution.returncode, execution.stdout)
+                self.assertIn('ecosystem consumer pin differs', execution.stderr)
+
 
 
 if __name__ == '__main__':

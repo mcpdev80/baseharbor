@@ -4,6 +4,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 WIZARD_TEST_FAMILIES = {
@@ -49,9 +50,34 @@ WIZARD_TEST_FAMILIES = {
     ),
 }
 
+OPENBAO_REQUIRED_TESTS = (
+    'TestBootstrapKeepsRootAndUnsealSecretsOutOfCommandArguments',
+    'TestBootstrapRejectsRecoveryFileInsideBaseHarborState',
+    'TestBootstrapRejectsRecoveryDirectorySymlinkedIntoBaseHarborState',
+    'TestLoadAdminCredentialsRejectsBroadPermissions',
+    'TestInspectPrefersUnsealedHAMemberOverReachableSealedMember',
+    'TestMemberStateAllowsBaoSealedExitHandlingWithoutShellErrexit',
+    'TestRetryManagerProvisioningConvergesAfterTransientFailures',
+    'TestUnsealConvergesAfterMemberRestartRace',
+    'TestUnsealFailsFastWhenMemberNeverAnswers',
+    'TestUnsealFailsImmediatelyOnPermanentNonTransientError',
+    'TestManagerPolicyAllowsBothOpenBaoPolicyEndpoints',
+    'TestManagerPolicyPermitsOnlyOwnCapabilityInspection',
+    'TestProbeMemberStateCancellationDuringRetryBackoff',
+    'TestProbeMemberStateInvalidJSONNoRetry',
+    'TestIsTransientErrorRejectsIncidentalTemporary',
+    'TestIsTransientErrorRejectsMixedPermanentTransport',
+    'TestUnsealFailsOnPermanentPostUnsealVerification',
+    'TestUnsealRecoversOnTransientPostUnsealVerification',
+    'TestMemberPhaseSequenceIsEnforcedPerMember',
+    'TestUnsealRejectsUnknownBAOAddrDestination',
+    'TestPureTransportErrorStaysTransient',
+)
+
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
+               'openbao-package-tests',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
@@ -65,9 +91,39 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES:
+    if check not in WIZARD_TEST_FAMILIES and check != 'openbao-package-tests':
         raise ValueError('unsupported executable validation')
-    patterns = WIZARD_TEST_FAMILIES[check]
+    if check == 'openbao-package-tests':
+        # Require the frozen bootstrap unit families; native opt-in acceptance
+        # tests keep their separate runtime gates. Discover once and run once.
+        repo = Path(repository)
+        listed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-list', '.'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+        ]
+        missing = set(OPENBAO_REQUIRED_TESTS) - set(matches)
+        if missing:
+            raise RuntimeError('missing required OpenBao tests: ' + ', '.join(sorted(missing)))
+        pattern = '^(' + '|'.join(re.escape(name) for name in OPENBAO_REQUIRED_TESTS) + ')$'
+        executed = subprocess.run(
+            ['go', 'test', './internal/openbao/...', '-run', pattern, '-count=1', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
+        for name in OPENBAO_REQUIRED_TESTS:
+            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
+                raise RuntimeError('required OpenBao test did not execute: ' + name)
+            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
+                raise RuntimeError('OpenBao test missing PASS: ' + name)
+        return list(OPENBAO_REQUIRED_TESTS)
+    patterns = WIZARD_TEST_FAMILIES.get(check)
+    if patterns is None:
+        raise ValueError('unsupported executable validation')
     if check == 'wizard-core918-native-sql-safety-tests':
         patterns = tuple(pattern + chr(36) for pattern in patterns)
     repo = Path(repository)
@@ -92,7 +148,7 @@ def execute_validation(check, repository):
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if executed.returncode:
             raise RuntimeError('test execution failed for ' + check +
-                               ' (' + pattern + '): ' + executed.stdout)
+                                ' (' + pattern + '): ' + executed.stdout)
         for name in matches:
             if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
                 raise RuntimeError('required test did not execute: ' + name)
@@ -131,101 +187,82 @@ def report(plan, job_conclusion, matrix_result):
     }
 
 
-# Immutable consumer repositories a pins-data file may reference. The Core and
-# Demo SHAs are not published in the consumer-pins file itself; the public
-# surface that can be fail-closed-validated without fetching private sources is
-# the Connector/Console origin repository plus the joint Connector commit that
-# every gate must share.
-PINNED_PINS_REPOSITORIES = {'mcpdev80/baseharbor-console',
-                            'mcpdev80/baseharbor-node-connector'}
-# The immutable consumer source chain the release resolver reproduces. Each role
-# pins exactly one repository with a 40-hex commit; the joint Connector commit
-# (the same invariant the live-console origin seeds) is shared by every gate and
-# the ecosystem root that every role consumes.
-PINNED_CONSUMER_CHAIN_REPOSITORIES = {'core': 'mcpdev80/baseharbor',
-                                      'demo': 'mcpdev80/baseharbor-demo',
-                                      'console': 'mcpdev80/baseharbor-console',
-                                      'connector': 'mcpdev80/baseharbor-node-connector'}
-PINNED_CONSUMER_CHAIN_ROLES = ('core', 'demo', 'connector')
-
-
-def pins_data_exact(value):
-    import re as _pins_re
-    return isinstance(value, str) and _pins_re.fullmatch('[0-9a-f]{40}', value) is not None
-
-
 def validate_pins_data(check, repository):
-    """Validate a docs/releases/<tag>.consumer-pins.json metadata add.
+    """Validate source metadata with trusted sibling contract owners, offline.
 
-    The consumer-repository identities recorded here are private, and the Core
-    and Demo SHAs are not published in the file, so this validation reads only
-    the public origin surface: the Connector/Console origin repository, a 40-hex
-    commit, and the joint Connector commit that every gate must share (the same
-    invariant the release resolver enforces). A malformed, missing, mismatched,
-    structurally different or divergent-pins file must fail, so the planner
-    cannot select a validation against unreviewed data. No private source is
-    fetched or published.
+    The workflow extracts this runner and its two dependencies from the pinned
+    target. Candidate modules cannot replace the canonical graph/origin owners.
+    This proves metadata consistency, not the existence of native evidence.
     """
+    trusted = str(Path(__file__).resolve().parent)
+    sys.path.insert(0, trusted)
+    try:
+        from ecosystem_release_pins import resolve_pins, validate_ecosystem_graph
+        from private_consumer_evidence import REPOSITORIES, source_origin
+    finally:
+        sys.path.pop(0)
     source = Path(repository).resolve()
-    pins_files = sorted(source.rglob('docs/releases/*.consumer-pins.json'))
-    pins_files = [p for p in pins_files if p.suffix == '.json']
+    releases = source / 'docs/releases'
+    if releases.resolve() != releases:
+        raise RuntimeError('consumer-pins directory must not be a symlink')
+    pins_files = sorted(releases.glob('*.consumer-pins.json'))
     if not pins_files:
         raise RuntimeError('no consumer-pins metadata found under docs/releases')
-    validated = set()
+
+    def unique_object(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError('duplicate consumer-pins key')
+            value[key] = item
+        return value
+
+    validated = []
     for pins_path in pins_files:
-        if pins_path.name == 'index.md':
-            continue
-        pins = json.loads(pins_path.read_text())
-        if (not isinstance(pins, dict) or
-                pins.get('schema') != 'baseharbor.consumer-evidence-pins/v1' or
-                not isinstance(pins.get('gates'), dict) or not pins['gates']):
-            raise RuntimeError('consumer-pins file differs: ' + str(pins_path))
-        connector_commits = set()
-        console_repo = None
-        console_commit = None
-        for gate, pin in pins['gates'].items():
-            if not isinstance(pin, dict) or 'connector' not in pin:
-                raise RuntimeError('consumer-pins gate missing connector: ' + gate)
-            connector = pin['connector']
-            repo = connector.get('repository')
-            commit = connector.get('commit')
-            if not isinstance(connector, dict) or repo not in PINNED_PINS_REPOSITORIES or \
-                    not pins_data_exact(commit):
-                raise RuntimeError('consumer-pins connector origin differs: ' + gate)
-            connector_commits.add(commit)
-            if gate == 'integration/static/live-console':
-                console = pin['console']
-                console_repo = console.get('repository')
-                console_commit = console.get('commit')
-        # The joint Connector commit is identical across every gate, the same
-        # invariant the release resolver seeds into the live-console origin.
-        if len(connector_commits) != 1:
-            raise RuntimeError('consumer-pins Connector commits diverge across gates')
-        # A consumer-pins file that carries the immutable ecosystem chain must
-        # name exactly the pinned roles with 40-hex commits. The Connector commit
-        # is the joint root of the acyclic consumer graph (core <- demo <-
-        # console <- connector), the same invariant the release resolver
-        # reproduces. A Core/Connector/Demo SHA that is not a 40-hex commit of
-        # its pinned repository is unverifiable and must fail closed; the exact
-        # SHA is pinned by the trusted-binding Akte and re-derived from the
-        # immutable consumer source chain by the registry, not by this public
-        # surface validator. Files without an ecosystem block fall back to the
-        # gate-only joint-Connector invariant above (older pins format).
-        if 'ecosystem' in pins:
-            ecosystem = pins.get('ecosystem')
-            if (not isinstance(ecosystem, dict) or
-                    set(ecosystem) != {'core', 'demo', 'console', 'connector'} or
-                    not pins_data_exact(ecosystem['core'].get('commit')) or
-                    ecosystem['core'].get('repository') != 'mcpdev80/baseharbor' or
-                    not pins_data_exact(ecosystem['demo'].get('commit')) or
-                    ecosystem['demo'].get('repository') != 'mcpdev80/baseharbor-demo' or
-                    not pins_data_exact(ecosystem['console'].get('commit')) or
-                    ecosystem['console'].get('repository') != 'mcpdev80/baseharbor-console' or
-                    not pins_data_exact(ecosystem['connector'].get('commit')) or
-                    ecosystem['connector'].get('repository') != 'mcpdev80/baseharbor-node-connector'):
-                raise RuntimeError('consumer-pins ecosystem chain differs: ' + str(pins_path))
-        validated.add(pins_path.name)
-    return sorted(validated)
+        try:
+            match = re.fullmatch(r'v(0\.4\.(?:23|24|25|26))\.consumer-pins\.json', pins_path.name)
+            if not match or pins_path.is_symlink() or not pins_path.is_file():
+                raise ValueError('unsupported consumer-pins metadata path')
+            pins = json.loads(pins_path.read_text(), object_pairs_hook=unique_object)
+            release = match.group(1)
+            expected_keys = {'schema', 'gates', 'ecosystem'} if release == '0.4.26' else {'schema', 'gates'}
+            gates = {'integration/docker/remote-target': {'connector'},
+                     'integration/podman/remote-target': {'connector'},
+                     'integration/static/live-console': {'connector', 'console'}}
+            if (not isinstance(pins, dict) or set(pins) != expected_keys or
+                    pins['schema'] != 'baseharbor.consumer-evidence-pins/v1' or
+                    not isinstance(pins['gates'], dict) or set(pins['gates']) != set(gates)):
+                raise ValueError('consumer-pins schema or required gates differ')
+            commits = set()
+            for gate, roles in gates.items():
+                row = pins['gates'][gate]
+                if not isinstance(row, dict) or set(row) != roles:
+                    raise ValueError('consumer-pins gate roles differ')
+                for role, pin in row.items():
+                    source_origin(role, gate, pin)
+                commits.add(row['connector']['commit'])
+            if len(commits) != 1:
+                raise ValueError('consumer-pins Connector commits diverge')
+            joint = {'repository': REPOSITORIES['connector'], 'commit': next(iter(commits)),
+                     'gate': 'integration/docker/remote-target'}
+            for pin in pins['gates']['integration/static/live-console'].values():
+                if 'origin' in pin and pin['origin'] != joint:
+                    raise ValueError('consumer-pins joint origin differs')
+            if release == '0.4.26':
+                graph = pins['ecosystem']
+                validate_ecosystem_graph(graph)
+                candidate = {'schema': 'baseharbor.ecosystem-candidate/v1',
+                             'release': release, **{role: graph[role]['commit']
+                                                   for role in ('core', 'demo', 'console')}}
+                console = {key: candidate[key] for key in ('schema', 'release', 'core', 'demo')}
+                expected = resolve_pins(graph['core']['commit'], graph['connector']['commit'],
+                                        candidate, console, graph['core']['commit'], release=release)
+                if pins != expected:
+                    raise ValueError('consumer-pins differs from canonical ecosystem resolution')
+        except (OSError, ValueError, TypeError, KeyError) as error:
+            raise RuntimeError('consumer-pins file differs: ' + str(pins_path) + ': ' + str(error)) from error
+        validated.append(pins_path.name)
+    return validated
 
 
 def main():
