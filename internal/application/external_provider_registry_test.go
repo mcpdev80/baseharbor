@@ -9,7 +9,7 @@ import (
 )
 
 func TestExternalProviderRegistrationAndRemoval(t *testing.T) {
-	dataDir := t.TempDir()
+	dataDir := protectedTempDir(t)
 	reg := externalprovider.Registration{
 		ID: "company-db", ProviderID: "company/postgresql", Endpoint: "postgres://db.example:5432/app",
 		CredentialRef: "vault://team/app/db",
@@ -50,7 +50,7 @@ func TestExternalProviderRegistrationAndRemoval(t *testing.T) {
 }
 
 func TestExternalProviderBindingAndReleasePreserveForeignInstance(t *testing.T) {
-	dataDir := t.TempDir()
+	dataDir := protectedTempDir(t)
 	reg := externalprovider.Registration{
 		ID:            "company-db",
 		ProviderID:    "company/postgresql",
