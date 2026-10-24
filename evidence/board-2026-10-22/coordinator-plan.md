@@ -160,3 +160,15 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - o131 #1052 fix implemented/pushed head `7c7cda7c`; local tests green; CI PR Selected Checks still fails only due missing #1060 runtime coverage. o133 independent review.
 - Codex cmf10 bestaetigt q118: #1046 source tests pass; exact future PR touches `scripts/pr-gate-plan.py:149` anchor + `test_pr_gate_plan.py`, serialized after #1056/#1060.
 - q119 read-only audit root/baseharbor dirty go.mod/go.sum + stray worktrees; f55 monitors q117/o132/o131.
+
+## PLAN RELEASE v0.4.26 (live, 2026-10-24 14:2xZ)
+- [ ] A Betrieb: basics/events/watcher/TMP/RAM stabil halten; idle-Lanes verifizieren/rotieren
+- [x] B Q: #1063 R-record merged (develop `65aa063e`)
+- [ ] C P: #1056 ordinary merge R+develop (o132), checks/review, autorisierter Merge
+- [ ] D OpenBao: #1060 korrekt merge-ready (q117), W-PR getrennt, dann #1052 rebase/review/CI (o133)
+- [ ] E #1046 serialized anchor qualifier nur nach C/D
+- [ ] F Freeze: OWNER/HOST Podman receipt → demo#121 → console#9 → connector#10
+- [ ] G #1050 finale consumer pins aktualisieren und qualifizieren
+- [ ] H W1 release qualification per q116/f54 dispatch sheet
+- [ ] I final release readiness + planning publishing, ohne Tag/Deploy ohne gesonderte Freigabe
+- [ ] J Root/worktree hygiene nach q119-Audit sicher bereinigen
