@@ -123,3 +123,6 @@
 {"nonce":"dispatch-1792800287-691969-4900","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","outcome":"currency-hold","currency":"stale"}
 {"nonce":"dispatch-1792800309-695320-30749","sid":"6c098bb6-96fa-4ea8-a187-ab802cc155ee","baseline_users":2,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792800370-709732-7656","sid":"250b0b68-dbcd-4209-9fd3-1747ce52f51a","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792800458-727048-12577","sid":"e6f1d926-0e12-4345-a51a-0727d8e5fa85","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792800822-816609-18668","sid":"fbe7eab1-de0c-40f9-a5b6-8cac7211d2f7","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792800832-817795-15452","sid":"fbe7eab1-de0c-40f9-a5b6-8cac7211d2f7","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
