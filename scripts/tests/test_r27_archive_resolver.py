@@ -129,6 +129,17 @@ class ResolverTests(unittest.TestCase):
         self.save()
         with self.assertRaises(ArchiveError): self.resolve()
 
+    def test_nonfinite_manifest_numbers_are_rejected(self):
+        p = self.directory / 'manifest.json'
+        for constant in ('NaN', 'Infinity', '-Infinity'):
+            with self.subTest(constant=constant):
+                raw = json.dumps(self.manifest, sort_keys=True).replace(
+                    '"attempt": 1', '"attempt": ' + constant)
+                p.write_text(raw)
+                self.digest = hashlib.sha256(raw.encode()).hexdigest()
+                with self.assertRaisesRegex(ArchiveError, "invalid manifest JSON"):
+                    self.resolve()
+
     def test_duplicate_json_key(self):
         p = self.directory / 'manifest.json'
         raw = p.read_text()
