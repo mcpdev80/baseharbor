@@ -653,7 +653,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         record = json.loads(blocks[0], object_pairs_hook=unique_object)
         expected_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'docs/internal/ci-binding-qualifications.md')}
+            'scripts/test_pr_gate_plan.py')}
         expected_ids = {check['id'] for check in CI_CHECKS}
         if (not isinstance(record, dict) or set(record) != {
                 'repository', 'target_branch', 'reviewed_head', 'files',

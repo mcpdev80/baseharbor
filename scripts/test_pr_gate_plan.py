@@ -2183,6 +2183,43 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
 
+# OpenBao package-tests validation and fail-closed handling.
+class OpenBaoValidationTests(unittest.TestCase):
+    def test_openbao_package_tests_is_a_known_check(self):
+        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
+        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
+
+    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
+        """Unreviewed OpenBao production paths must remain unresolved."""
+        for name in ['internal/openbao/unreviewed_security_mutation.go',
+                     'internal/openbao/managed_credentials.go',
+                     'internal/openbao/application_runtime_client.go',
+                     'internal/openbao/dev_access.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertTrue(
+                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
+                )
+
+    def test_openbao_add_delete_rename_stay_unresolved(self):
+        """Added, deleted, renamed OpenBao files must stay fail-closed."""
+        variants = [
+            paths('internal/openbao/bootstrap.go'),
+            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
+            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
+              'new_path': 'internal/openbao/new_bootstrap.go'}],
+            paths('internal/openbao/bootstrap.go',
+                  'internal/openbao/unreviewed_addition.go'),
+            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes):
+                result = planner.plan(diff(changes), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
 # main() entrypoint must source the authenticated evaluation context from the
 # runner environment, never from the candidate PR, and must fail closed when
 # either value is absent. These tests drive planner.main() with monkeypatched
