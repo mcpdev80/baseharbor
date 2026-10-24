@@ -1753,6 +1753,8 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
             ('WORKFLOW_POLICY_DEPENDENCY', planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('RETIREMENT_PREFERENCES', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS),
+            ('UNBOUND_SQL_RETIREMENT', planner.CODE_CHECKS + planner.CLI_CHECKS +
+             planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-runtime-retirement-tests')]),
             ('PODMAN_PG17_RECOVERY', planner.CI_CHECKS + planner.CODE_CHECKS +
              planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('CORE_921_PRODUCTION', planner.CI_CHECKS + planner.CODE_CHECKS +
@@ -2901,6 +2903,32 @@ class BootstrapExceptionTests(unittest.TestCase):
                               context_repository='other/repo',
                               context_target_branch='develop')
         self.assertEqual('unresolved', result['coverage_status'])
+
+
+class RuntimeRetirementExecutionTests(unittest.TestCase):
+    def test_exact_regression_and_safety_families_must_execute_and_pass(self):
+        from types import SimpleNamespace
+        spec = importlib.util.spec_from_file_location('retirement_runner', ROOT / 'pr-check-runner.py')
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        patterns = runner.WIZARD_TEST_FAMILIES['wizard-runtime-retirement-tests']
+        self.assertEqual('^TestRuntimeRetirementVerifiesPreviouslyUnboundCoreSQLForHTTPOnlyApplication$', patterns[0])
+        for mode in ('pass', 'missing', 'skip', 'no-pass', 'failure'):
+            def run(args, **kwargs):
+                pattern = args[args.index('-list' if '-list' in args else '-run') + 1]
+                name = pattern.removeprefix('^').removesuffix('$')
+                if '-list' in args:
+                    return SimpleNamespace(returncode=0, stdout='' if mode == 'missing' else name + '\n', stderr='')
+                output = '=== RUN   ' + name + '\n'
+                if mode != 'no-pass':
+                    output += ('--- SKIP: ' if mode == 'skip' else '--- PASS: ') + name + ' (0.00s)\n'
+                return SimpleNamespace(returncode=int(mode == 'failure'), stdout=output)
+            with self.subTest(mode=mode), patch.object(runner.subprocess, 'run', side_effect=run):
+                if mode == 'pass':
+                    self.assertEqual(len(patterns), len(runner.execute_validation('wizard-runtime-retirement-tests', '.')))
+                else:
+                    with self.assertRaises(RuntimeError):
+                        runner.execute_validation('wizard-runtime-retirement-tests', '.')
 
 
 class OpenBaoExactRetryRouteTests(unittest.TestCase):

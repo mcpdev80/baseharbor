@@ -215,6 +215,14 @@ RETIREMENT_PREFERENCES_REVIEWED_FILES = {
     'cmd/baha/application_runtime_retirement_preferences_test.go': 'added',
 }
 
+# Owner-authorized exact read-only verifier correction, with a real resolver
+# regression. This is source qualification; final native acceptance is separate.
+UNBOUND_SQL_RETIREMENT_REVIEWED_HEAD = '938adee78ec2d10536f1834829facd8d9b1bec09'
+UNBOUND_SQL_RETIREMENT_REVIEWED_FILES = {
+    'cmd/baha/application_runtime_retirement_verification.go': 'modified',
+    'cmd/baha/application_runtime_retirement_verification_test.go': 'modified',
+}
+
 # Native PG17 rootless recovery passed run 39605258769, including cleanup and
 # foreign-resource preservation. Retirement must already be integrated: its
 # two files are prerequisites, not part of this exact 17-file qualification.
@@ -844,6 +852,10 @@ def plan(diff, requirements, mapping, repository='.',
         (RETIREMENT_PREFERENCES_REVIEWED_HEAD, RETIREMENT_PREFERENCES_REVIEWED_FILES,
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
          'reviewed withdrawal preferences projection preserving canonical owners'),
+        (UNBOUND_SQL_RETIREMENT_REVIEWED_HEAD, UNBOUND_SQL_RETIREMENT_REVIEWED_FILES,
+         CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+         [wizard_check('wizard-runtime-retirement-tests')],
+         'Owner-qualified already-unbound logical SQL verification; native acceptance remains separate'),
         (PODMAN_PG17_RECOVERY_REVIEWED_HEAD, PODMAN_PG17_RECOVERY_REVIEWED_FILES,
          CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed native PG17 rootless recovery and foreign-resource protection'),
