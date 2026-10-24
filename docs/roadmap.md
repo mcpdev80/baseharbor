@@ -8,9 +8,9 @@ Detailed planning lives in [baseharbor-plan/ROADMAP.md](https://github.com/mcpde
 Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
 
 
-## Current — v0.4.26 development
+## Release scope — v0.4.26
 
-[v0.4.25 is published](releases/v0.4.25.md). Development now focuses on the needs-first app wizard, capability editing and bounded development/CI improvements (#873/#888). Development progress does not imply pre-release readiness.
+[v0.4.26](releases/v0.4.26.md) covers the needs-first app wizard, capability editing and bounded development/CI improvements (#873/#888). See [GitHub releases](https://github.com/mcpdev80/baseharbor/releases) for published versions.
 
 ## Before the v0.5 freeze
 

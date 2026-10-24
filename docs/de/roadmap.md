@@ -8,9 +8,9 @@ Die detaillierte Planung steht in [baseharbor-plan/ROADMAP.md](https://github.co
 Die Planung liegt in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), aktiviert mit `47474109ea69475e60be4f065ad17476c71665bb`. Für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben gelten die dortige `AGENTS.md` und die zugewiesene Task-Notiz. Technische Entwicklungsregeln, PR-Reviews und authentifizierte Release-Nachweise bleiben in ihren bisherigen Repositories. Wegen Migration geschlossene Issues sind historische Verweise und kein Umsetzungsnachweis.
 
 
-## Aktuell — Entwicklung von v0.4.26
+## Release-Umfang — v0.4.26
 
-[v0.4.25 ist veröffentlicht](releases/v0.4.25.md). Im Fokus stehen jetzt der bedarfsorientierte App-Wizard, die Bearbeitung von Capabilities und begrenzte Verbesserungen für Entwicklung und CI (#873/#888). Entwicklungsfortschritt bedeutet keine Pre-Release-Bereitschaft.
+[v0.4.26](releases/v0.4.26.md) umfasst den bedarfsorientierten App-Wizard, die Bearbeitung von Capabilities und begrenzte Verbesserungen für Entwicklung und CI (#873/#888). Veröffentlichte Versionen findest du in den [GitHub-Releases](https://github.com/mcpdev80/baseharbor/releases).
 
 ## Vor dem v0.5-Freeze
 
