@@ -8,6 +8,14 @@ import sys
 from pathlib import Path
 
 WIZARD_TEST_FAMILIES = {
+    'wizard-runtime-retirement-tests': (
+        r'^TestRuntimeRetirementVerifiesPreviouslyUnboundCoreSQLForHTTPOnlyApplication$',
+        r'^TestRuntimeRetirementVerifiesReleasedLogicalSQLWithoutStoppingRequiredCore$',
+        r'^TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease$',
+        r'^TestRuntimeRetirementStillRequiresMeasuredPhysicalAbsence$',
+        r'^TestReusedCoreSQLObservationRequiresExactPhysicalOwner$',
+        r'^TestNativeBackendRetirement',
+    ),
     'wizard-app-edit-load-tests': (r'^TestAppEditLoad',),
     'wizard-capability-selection-tests': (r'^TestAppCapabilitySelection',),
     'wizard-provider-choice-tests': (r'^TestAppProviderChoice',),
