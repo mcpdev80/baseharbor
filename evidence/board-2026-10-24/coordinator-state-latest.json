@@ -1,9 +1,9 @@
 {
- "at": 1792838282,
+ "at": 1792839214,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792838286,
+   "observed_at": 1792839218,
    "prs": {
     "1046": {
      "head": "1ec67f8d4",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792838287,
+   "observed_at": 1792839219,
    "prs": {
     "9": {
      "head": "6017de284",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792838286,
+   "observed_at": 1792839218,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792838287,
+   "observed_at": 1792839220,
    "prs": {
     "10": {
      "head": "e832d5651",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 8577,
-  "tmp_free_mb": 6508,
+  "mem_available_mb": 6983,
+  "tmp_free_mb": 6455,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -81,10 +81,28 @@
  "lanes": [
   {
    "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 0,
+   "idle_s": 173,
    "mode": "codex",
    "model": "GPT-6.1-Sol",
    "name": "codex-merge26",
+   "self": false,
+   "status": "idle"
+  },
+  {
+   "id": "240a2e36-9750-418b-9171-e9826cc9c79c",
+   "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "f51",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "b8bb8e15-67c1-4ec1-8b44-fd9fc920f406",
+   "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "o124",
    "self": false,
    "status": "busy"
   },
@@ -98,13 +116,13 @@
    "status": "busy"
   },
   {
-   "id": "aeec5b1b-1608-464d-a807-fd0ca4da6727",
-   "idle_s": 0,
+   "id": "342b9a1d-d887-4ce6-8c81-2cc80a232469",
+   "idle_s": 172,
    "mode": "opencode",
    "model": null,
-   "name": "q115",
+   "name": "q116",
    "self": false,
-   "status": "busy"
+   "status": "idle"
   },
   {
    "id": "adebf29e-6371-4a14-afa6-e8828693a1db",
@@ -398,17 +416,17 @@
    "state": "dispatched"
   },
   "f47": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f47-rebase1047.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f47.txt",
    "state": "dispatched"
   },
   "f47b": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f47b-freezedemoconsole.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f47b.txt",
    "state": "dispatched"
   },
   "f48": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f48-connectorancestry.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f48.txt",
    "state": "dispatched"
   },
@@ -420,6 +438,11 @@
   "f50": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f50-planboard26r2.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f50.txt",
+   "state": "dispatched"
+  },
+  "f51": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f51-demo121scope.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f51.txt",
    "state": "dispatched"
   },
   "f7": {
@@ -528,7 +551,7 @@
    "state": "dispatched"
   },
   "o113": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o113-planboard.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o113.txt",
    "state": "dispatched"
   },
@@ -538,17 +561,17 @@
    "state": "dispatched"
   },
   "o115": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o115-w1evidence.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o115.txt",
    "state": "dispatched"
   },
   "o115b": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o115b-freeze.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o115b.txt",
    "state": "dispatched"
   },
   "o115c": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o115c-connectorfreeze.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o115c.txt",
    "state": "dispatched"
   },
@@ -558,7 +581,7 @@
    "state": "dispatched"
   },
   "o116": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o116-planboard26.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o116.txt",
    "state": "dispatched"
   },
@@ -595,6 +618,16 @@
   "o122": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o122-demoqual.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o122.txt",
+   "state": "dispatched"
+  },
+  "o123": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o123-review1052.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o123.txt",
+   "state": "dispatched"
+  },
+  "o124": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o124-chain1split.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o124.txt",
    "state": "dispatched"
   },
   "o13": {
@@ -1058,9 +1091,9 @@
    "state": "dispatched"
   },
   "q111": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q111-openbaotests.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q111.txt",
-   "state": "dispatched"
+   "state": "DONE"
   },
   "q111b": {
    "evidence": null,

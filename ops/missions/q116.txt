@@ -1,0 +1,14 @@
+Kurzauftrag, NUR lesend. pwd-PFLICHT: git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor; KEIN root-git, KEIN Merge/Review/Push/Dispatch/Rerun/Label.
+ERSTER SCHRITT: evidence/board-2026-10-24/q116-w1dispatchsheet.md mit ## PLAN + nativen Todos.
+
+KONTEXT (o115-Matrix, evidence/board-2026-10-24/o115-w1evidence.md): alle v0.4.26-W1-Gates sind invalid_stale/missing, jeder pre-release-Run faellt aktuell in "Resolve release candidate", weil docs/releases/v0.4.26.consumer-pins.json noch nicht in develop liegt. 0.4.25-Runs sind NICHT wiederverwendbar (andere Tag-Konfiguration + andere Pin-Kette).
+
+ZIEL: Wenn die Pins in develop sind, muss ein einziger Worker die fehlenden Gates OHNE NEUANALYSE ausloesen koennen. Erzeuge dafuer die Ausfuehrungs-Tafel.
+ARBEIT:
+1. Vollstaendige, verifizierte Pruefung: existiert WIRKLICH kein grüner v0.4.26-Run (alle workflows + alle branches, gh run list mit --workflow je Pflichtworkflow, je 10 letzte Runs; Sichten auf head-branch + attempt dokumentieren)? Liste negative Belege (workflow, branch, datum, conclusion).
+2. Jefehlendeendem Gate aus scripts/release-requirements.json (v0.4.26-Abschnitt) den exakten Ausloeseweg bestimmen: Workflow-Datei + Job/Inputs (name + erwartete Werte), inkl. der 4 Pin-Inputs (--core 1861ed07, --connector df1f4378, --demo + --console je nach rezept) und --ref (develop-Tip oder release/v0.4.26-Spitze) - jeweils mit datei:zeile aus dem Workflow.
+3. Parallelitaets-/Kostenregeln festhalten (RUNBOOK: Docker- und Podman-Gates bei Bedarf parallel, niemals serialisiert abwarten; Concurrency-Gruppen die blockieren, sind mit datei:zeile als Befund zu nennen - PR-Trigger, die dieselbe Concurrency-Group teilen, explicitly markieren).
+4. Reihenfolge + Abhaengigkeiten: welche Gates erst nach dem Freeze-Merge von demo/console/connector sinnvoll sind (weil sie deren Tips lesen).
+5. Ausgabe als Kopier-bereite Befehlsliste (gh workflow run ... mit Inputs), je Befehl eine Zeile, im Klartext als NICHT AUSGEFUEHRT gekennzeichnet.
+ABNAHME: Tafel vollstaendig + negativer Run-Nachweis. STOP: bei unklarem Input-Schema eines Workflows -> BLOCKED mit datei:zeile.
+END Q116-W1DISPATCHSHEET-DONE / END Q116-BLOCKED.
