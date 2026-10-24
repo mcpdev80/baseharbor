@@ -146,7 +146,7 @@ APPID_FIX_REVIEWED_FILES = {'cmd/baha/app_workload_integration_test.go': 'modifi
 # normalizing t.TempDir() roots to 0700 so machine umask cannot mask the
 # protected-owner guards differently between local runs and CI. No production,
 # parser or guard semantics change; no generic internal/application exemption.
-APPID_ENV_ROBUST_TEST_REVIEWED_HEAD = '3558250837759113b760a112e99994135d31bc00'
+APPID_ENV_ROBUST_TEST_REVIEWED_HEAD = '1ec67f8d4b259d62bd108ee678f25c288b8b0564'
 APPID_ENV_ROBUST_TEST_REVIEWED_FILES = {
     'internal/application/external_provider_registry_test.go': 'modified',
     'internal/application/external_provider_removal_retry_test.go': 'modified',
@@ -1165,6 +1165,21 @@ def plan(diff, requirements, mapping, repository='.',
             require(PINNED_PINS_VALIDATION)
             if path_status.get(path) != 'added':
                 unresolved.append('pins-data file add requires exact reviewed candidate: ' + path)
+        elif path == 'docs/releases/v0.4.26.selected-gates.json':
+            area = 'release-preflight-selection'
+            require(CI_CHECKS)
+            expected = sorted(gate['id'] for gate in requirements['gates']
+                              if release in gate['required_for']
+                              and not gate['id'].startswith('journey/'))
+            try:
+                selection = json.loads(subprocess.check_output(
+                    ['git', '-C', str(repository), 'show',
+                     identifiers['head_sha'] + ':' + path], stderr=subprocess.DEVNULL))
+                if (release != 'v0.4.26' or path_status.get(path) != 'added'
+                        or selection != expected):
+                    raise ValueError('selection differs from the complete preflight catalog')
+            except (OSError, subprocess.CalledProcessError, ValueError, TypeError):
+                unresolved.append('release preflight selection must match trusted non-journey catalog')
         elif path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
             require(CODE_CHECKS)

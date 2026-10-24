@@ -130,6 +130,8 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
 
 class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_test_only_source_qualifies(self):
+        self.assertEqual('1ec67f8d4b259d62bd108ee678f25c288b8b0564',
+                         planner.APPID_ENV_ROBUST_TEST_REVIEWED_HEAD)
         reviewed = [{'status': status, 'path': path} for path, status
                     in sorted(planner.APPID_ENV_ROBUST_TEST_REVIEWED_FILES.items())]
         with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
@@ -3312,6 +3314,40 @@ class PinsDataCanonicalExecutionTests(unittest.TestCase):
                 self.assertNotEqual(0, execution.returncode, execution.stdout)
                 self.assertIn('ecosystem consumer pin differs', execution.stderr)
 
+
+
+
+class ReleasePreflightSelectionTests(unittest.TestCase):
+    def test_actual_git_blob_requires_complete_trusted_non_journey_catalog(self):
+        path = 'docs/releases/v0.4.26.selected-gates.json'
+        expected = sorted(g['id'] for g in REQ['gates']
+                          if not g['id'].startswith('journey/'))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            git_init(root)
+            file = root / path
+            file.parent.mkdir(parents=True)
+            for content, status, accepted in (
+                    (expected, 'added', True),
+                    (expected[:-1], 'added', False),
+                    (expected + expected[:1], 'added', False),
+                    (expected + ['journey/docker'], 'added', False),
+                    (expected, 'modified', False),
+                    ('invalid-json', 'added', False)):
+                with self.subTest(content=content, status=status):
+                    file.write_text(json.dumps(content))
+                    subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
+                    subprocess.run(['git', '-C', str(root), 'commit', '--allow-empty',
+                                    '-qm', 'selection fixture'], check=True)
+                    value = diff([{'path': path, 'status': status}])
+                    value['head_sha'] = git_rev_parse(root, 'HEAD')
+                    result = planner.plan(value, REQ, MAP, repository=root)
+                    self.assertEqual('resolved' if accepted else 'unresolved',
+                                     result['coverage_status'], result)
+                    if accepted:
+                        self.assertEqual([], result['selected_gates'])
+                        self.assertEqual({c['id'] for c in planner.CI_CHECKS},
+                                         {c['id'] for c in result['required_validation_checks']})
 
 
 if __name__ == '__main__':
