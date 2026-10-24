@@ -55,7 +55,8 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                'ci-executor-verifier-tests',
                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
-               'inspect-consumer-tests', 'inspect-consumer-build'} | set(WIZARD_TEST_FAMILIES)
+               'inspect-consumer-tests', 'inspect-consumer-build',
+               'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 
 def execute_validation(check, repository):
@@ -130,6 +131,103 @@ def report(plan, job_conclusion, matrix_result):
     }
 
 
+# Immutable consumer repositories a pins-data file may reference. The Core and
+# Demo SHAs are not published in the consumer-pins file itself; the public
+# surface that can be fail-closed-validated without fetching private sources is
+# the Connector/Console origin repository plus the joint Connector commit that
+# every gate must share.
+PINNED_PINS_REPOSITORIES = {'mcpdev80/baseharbor-console',
+                            'mcpdev80/baseharbor-node-connector'}
+# The immutable consumer source chain the release resolver reproduces. Each role
+# pins exactly one repository with a 40-hex commit; the joint Connector commit
+# (the same invariant the live-console origin seeds) is shared by every gate and
+# the ecosystem root that every role consumes.
+PINNED_CONSUMER_CHAIN_REPOSITORIES = {'core': 'mcpdev80/baseharbor',
+                                      'demo': 'mcpdev80/baseharbor-demo',
+                                      'console': 'mcpdev80/baseharbor-console',
+                                      'connector': 'mcpdev80/baseharbor-node-connector'}
+PINNED_CONSUMER_CHAIN_ROLES = ('core', 'demo', 'connector')
+
+
+def pins_data_exact(value):
+    import re as _pins_re
+    return isinstance(value, str) and _pins_re.fullmatch('[0-9a-f]{40}', value) is not None
+
+
+def validate_pins_data(check, repository):
+    """Validate a docs/releases/<tag>.consumer-pins.json metadata add.
+
+    The consumer-repository identities recorded here are private, and the Core
+    and Demo SHAs are not published in the file, so this validation reads only
+    the public origin surface: the Connector/Console origin repository, a 40-hex
+    commit, and the joint Connector commit that every gate must share (the same
+    invariant the release resolver enforces). A malformed, missing, mismatched,
+    structurally different or divergent-pins file must fail, so the planner
+    cannot select a validation against unreviewed data. No private source is
+    fetched or published.
+    """
+    source = Path(repository).resolve()
+    pins_files = sorted(source.rglob('docs/releases/*.consumer-pins.json'))
+    pins_files = [p for p in pins_files if p.suffix == '.json']
+    if not pins_files:
+        raise RuntimeError('no consumer-pins metadata found under docs/releases')
+    validated = set()
+    for pins_path in pins_files:
+        if pins_path.name == 'index.md':
+            continue
+        pins = json.loads(pins_path.read_text())
+        if (not isinstance(pins, dict) or
+                pins.get('schema') != 'baseharbor.consumer-evidence-pins/v1' or
+                not isinstance(pins.get('gates'), dict) or not pins['gates']):
+            raise RuntimeError('consumer-pins file differs: ' + str(pins_path))
+        connector_commits = set()
+        console_repo = None
+        console_commit = None
+        for gate, pin in pins['gates'].items():
+            if not isinstance(pin, dict) or 'connector' not in pin:
+                raise RuntimeError('consumer-pins gate missing connector: ' + gate)
+            connector = pin['connector']
+            repo = connector.get('repository')
+            commit = connector.get('commit')
+            if not isinstance(connector, dict) or repo not in PINNED_PINS_REPOSITORIES or \
+                    not pins_data_exact(commit):
+                raise RuntimeError('consumer-pins connector origin differs: ' + gate)
+            connector_commits.add(commit)
+            if gate == 'integration/static/live-console':
+                console = pin['console']
+                console_repo = console.get('repository')
+                console_commit = console.get('commit')
+        # The joint Connector commit is identical across every gate, the same
+        # invariant the release resolver seeds into the live-console origin.
+        if len(connector_commits) != 1:
+            raise RuntimeError('consumer-pins Connector commits diverge across gates')
+        # A consumer-pins file that carries the immutable ecosystem chain must
+        # name exactly the pinned roles with 40-hex commits. The Connector commit
+        # is the joint root of the acyclic consumer graph (core <- demo <-
+        # console <- connector), the same invariant the release resolver
+        # reproduces. A Core/Connector/Demo SHA that is not a 40-hex commit of
+        # its pinned repository is unverifiable and must fail closed; the exact
+        # SHA is pinned by the trusted-binding Akte and re-derived from the
+        # immutable consumer source chain by the registry, not by this public
+        # surface validator. Files without an ecosystem block fall back to the
+        # gate-only joint-Connector invariant above (older pins format).
+        if 'ecosystem' in pins:
+            ecosystem = pins.get('ecosystem')
+            if (not isinstance(ecosystem, dict) or
+                    set(ecosystem) != {'core', 'demo', 'console', 'connector'} or
+                    not pins_data_exact(ecosystem['core'].get('commit')) or
+                    ecosystem['core'].get('repository') != 'mcpdev80/baseharbor' or
+                    not pins_data_exact(ecosystem['demo'].get('commit')) or
+                    ecosystem['demo'].get('repository') != 'mcpdev80/baseharbor-demo' or
+                    not pins_data_exact(ecosystem['console'].get('commit')) or
+                    ecosystem['console'].get('repository') != 'mcpdev80/baseharbor-console' or
+                    not pins_data_exact(ecosystem['connector'].get('commit')) or
+                    ecosystem['connector'].get('repository') != 'mcpdev80/baseharbor-node-connector'):
+                raise RuntimeError('consumer-pins ecosystem chain differs: ' + str(pins_path))
+        validated.add(pins_path.name)
+    return sorted(validated)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('mode', choices=['matrix', 'results', 'execute'])
@@ -142,6 +240,10 @@ def main():
     if args.mode == 'execute':
         if not args.check:
             parser.error('--check is required for execute')
+        if args.check == 'pins-data-validation':
+            matched = validate_pins_data(args.check, args.repository)
+            print(json.dumps({'check': args.check, 'matched_tests': matched}, sort_keys=True))
+            return
         matches = execute_validation(args.check, args.repository)
         print(json.dumps({'check': args.check, 'matched_tests': matches}, sort_keys=True))
         return
