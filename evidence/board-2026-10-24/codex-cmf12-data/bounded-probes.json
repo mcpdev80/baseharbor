@@ -1,0 +1,72 @@
+[
+  {
+    "probe": "unknown production path plus message reference",
+    "planner": "base",
+    "paths": [
+      {
+        "status": "added",
+        "path": "internal/application/unreviewed_probe.go"
+      }
+    ],
+    "strict_binding": null,
+    "bootstrap_ids": [
+      "pr-planner-tests",
+      "ci-policy",
+      "ci-executor-verifier-tests"
+    ],
+    "coverage": "resolved",
+    "unresolved": [],
+    "reason": [
+      "Trusted target record: exact repository, branch, head, full inventory, raw SHA-256 blobs and clean integration verified."
+    ]
+  },
+  {
+    "probe": "unknown production path plus message reference",
+    "planner": "H",
+    "paths": [
+      {
+        "status": "added",
+        "path": "internal/application/unreviewed_probe.go"
+      }
+    ],
+    "strict_binding": null,
+    "bootstrap_ids": [
+      "pr-planner-tests",
+      "ci-policy",
+      "ci-executor-verifier-tests"
+    ],
+    "coverage": "resolved",
+    "unresolved": [],
+    "reason": [
+      "Trusted target record: exact repository, branch, head, full inventory, raw SHA-256 blobs and clean integration verified."
+    ]
+  },
+  {
+    "probe": "valid",
+    "accepted": true,
+    "result": [
+      "v0.4.26.consumer-pins.json"
+    ]
+  },
+  {
+    "probe": "wrong-console-origin",
+    "accepted": true,
+    "result": [
+      "v0.4.26.consumer-pins.json"
+    ]
+  },
+  {
+    "probe": "console-repo-as-connector",
+    "accepted": true,
+    "result": [
+      "v0.4.26.consumer-pins.json"
+    ]
+  },
+  {
+    "probe": "disconnected-ecosystem",
+    "accepted": true,
+    "result": [
+      "v0.4.26.consumer-pins.json"
+    ]
+  }
+]
