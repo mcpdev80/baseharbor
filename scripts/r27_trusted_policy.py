@@ -64,3 +64,24 @@ def issue_with_pinned_policy(*, policy_bytes, protected_digest, **kwargs):
                              trusted_policy_digest=digest,
                              expected_job_name=job.get("job_name"),
                              workflow_path=job.get("workflow_path"))
+
+def read_pinned_policy_file(policy_path, protected_digest):
+    """Read a pinned policy file; trusted executor must own parent directories."""
+    import os
+    import stat
+    if not isinstance(policy_path, str) or not os.path.isabs(policy_path):
+        raise EvidenceError("EVIDENCE_POLICY: absolute protected path required")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise EvidenceError("EVIDENCE_POLICY: nofollow unavailable")
+    try:
+        fd = os.open(policy_path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:
+                raise EvidenceError("EVIDENCE_POLICY: invalid protected file")
+            raw = os.read(fd, MAX_BYTES + 1)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise EvidenceError("EVIDENCE_POLICY: cannot read protected file") from exc
+    return load_pinned_policy(raw, protected_digest=protected_digest)
