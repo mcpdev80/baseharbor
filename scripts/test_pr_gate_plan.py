@@ -66,6 +66,42 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
                     planner.plan(altered, REQ, MAP)['coverage_status'])
 
 
+class AppIDEnvRobustTestExactQualificationTests(unittest.TestCase):
+    def test_only_exact_reviewed_test_only_source_qualifies(self):
+        reviewed = [{'status': status, 'path': path} for path, status
+                    in sorted(planner.APPID_ENV_ROBUST_TEST_REVIEWED_FILES.items())]
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
+            result = planner.plan(diff(reviewed), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual({'source-contracts'},
+                         {c['id'] for c in result['required_validation_checks']})
+        added = next(ch for ch in reviewed if ch['path'] ==
+                     'internal/application/protected_tempdir_test.go')
+        status_flipped = copy.deepcopy(reviewed)
+        status_flipped[status_flipped.index(added)]['status'] = 'modified'
+        variants = [reviewed[:5], reviewed + paths('internal/application/manifest.go'),
+                    [{'path': reviewed[0]['path'], 'status': 'deleted'}] + reviewed[1:],
+                    status_flipped,
+                    paths('internal/application/unreviewed_test.go',
+                          *[ch['path'] for ch in reviewed[1:]])]
+        for changes in variants:
+            with self.subTest(changes=changes), patch.object(
+                    planner, 'core752_reviewed_merge_chain', return_value=True):
+                self.assertEqual('unresolved',
+                    planner.plan(diff(changes), REQ, MAP)['coverage_status'])
+        for integration in (None, '0'*40):
+            altered = diff(reviewed)
+            altered['integration_sha'] = integration
+            with patch.object(planner, 'core752_reviewed_merge_chain',
+                              return_value=False):
+                self.assertEqual('unresolved',
+                    planner.plan(altered, REQ, MAP)['coverage_status'])
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=False):
+            self.assertEqual('unresolved',
+                planner.plan(diff(reviewed), REQ, MAP)['coverage_status'])
+
+
 class Core751ImportCoverageProposalTests(unittest.TestCase):
     def test_candidate_selects_real_checks_but_fails_closed_without_source_binding(self):
         changes = [{'path': path, 'status': status}
