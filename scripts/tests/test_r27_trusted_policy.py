@@ -126,3 +126,12 @@ class MandatoryOwnerTests(unittest.TestCase):
   from r27_trusted_policy import read_pinned_policy_file
   with self.assertRaisesRegex(EvidenceError,"invalid trusted owner"):
    read_pinned_policy_file("/tmp/policy.json","a"*64)
+
+
+class ExecutorOwnershipTests(unittest.TestCase):
+ def test_caller_cannot_authorize_foreign_uid(self):
+  import os
+  from r27_trusted_policy import read_pinned_policy_file
+  foreign=os.geteuid()+1
+  with self.assertRaisesRegex(EvidenceError,"owner does not match executor"):
+   read_pinned_policy_file("/tmp/policy.json","a"*64,trusted_owner_uid=foreign)
