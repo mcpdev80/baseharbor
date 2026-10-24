@@ -74,7 +74,18 @@ def read_pinned_policy_file(policy_path, protected_digest):
     if not hasattr(os, "O_NOFOLLOW"):
         raise EvidenceError("EVIDENCE_POLICY: nofollow unavailable")
     try:
-        fd = os.open(policy_path, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        parts = policy_path.split("/")[1:]
+        if not parts or any(part in ("", ".", "..") for part in parts):
+            raise EvidenceError("EVIDENCE_POLICY: unsafe protected path")
+        dirfd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            for component in parts[:-1]:
+                nextfd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dirfd)
+                os.close(dirfd)
+                dirfd = nextfd
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0), dir_fd=dirfd)
+        finally:
+            os.close(dirfd)
         try:
             info = os.fstat(fd)
             if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_BYTES:

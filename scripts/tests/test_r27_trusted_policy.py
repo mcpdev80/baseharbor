@@ -86,3 +86,21 @@ class FileReaderTests(unittest.TestCase):
    file.write_bytes(data)
    mapping,pin=read_pinned_policy_file(str(file),hashlib.sha256(data).hexdigest())
    self.assertEqual(mapping["sql"]["job_name"],"PR Selected Checks")
+
+
+class AncestorPolicyPathTests(unittest.TestCase):
+ def test_symlink_ancestor_rejected(self):
+  import tempfile
+  from r27_trusted_policy import read_pinned_policy_file
+  with tempfile.TemporaryDirectory() as d:
+   real=Path(d)/"actual"
+   real.mkdir()
+   data=b'{"sql":{"job_name":"Job","workflow_path":".github/workflows/ci.yml"}}'
+   (real/"policy.json").write_bytes(data)
+   (Path(d)/"link").symlink_to(real,target_is_directory=True)
+   with self.assertRaisesRegex(EvidenceError,"cannot read protected file"):
+    read_pinned_policy_file(str(Path(d)/"link"/"policy.json"),hashlib.sha256(data).hexdigest())
+ def test_dotdot_rejected(self):
+  from r27_trusted_policy import read_pinned_policy_file
+  with self.assertRaisesRegex(EvidenceError,"unsafe protected path"):
+   read_pinned_policy_file("/tmp/../policy.json","a"*64)
