@@ -20,10 +20,11 @@ class ArchiveError(ValueError):
     pass
 
 
-def _read(path, maximum):
-    """Read only regular files, refusing symlinks and oversized inputs."""
+def _read(path, maximum, *, parent_fd=None):
+    """Read a bounded regular file relative to a verified directory descriptor."""
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+        fd = os.open(path, flags, dir_fd=parent_fd)
     except OSError as exc:
         raise ArchiveError("missing or unsafe archive file") from exc
     try:
@@ -39,6 +40,26 @@ def _read(path, maximum):
         os.close(fd)
 
 
+def _open_directory_chain(root, parts):
+    """Pin every ancestor using O_NOFOLLOW, resisting symlink replacement."""
+    fds = []
+    try:
+        anchor = os.path.abspath(os.fspath(root))
+        components = pathlib.Path(anchor).parts
+        fd = os.open(components[0], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        fds.append(fd)
+        for component in (*components[1:], *parts):
+            next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                              dir_fd=fd)
+            fds.append(next_fd)
+            fd = next_fd
+        return fds
+    except OSError as exc:
+        for opened in reversed(fds):
+            os.close(opened)
+        raise ArchiveError("unsafe archive directory") from exc
+
+
 def resolve(root, release, candidate_id, run_id, expected_digest):
     """Check archive byte integrity; no CI trust or current policy assessment."""
     if not all(isinstance(x, str) and SAFE.fullmatch(x) and x not in (".", "..")
@@ -48,10 +69,12 @@ def resolve(root, release, candidate_id, run_id, expected_digest):
         raise ArchiveError("invalid expected manifest digest")
     root = pathlib.Path(root)
     directory = root / "evidence" / release / candidate_id / run_id
-    if any(part.is_symlink() for part in (root, root / "evidence", root / "evidence" / release,
-                                         root / "evidence" / release / candidate_id, directory)):
-        raise ArchiveError("unsafe archive directory")
-    raw = _read(directory / "manifest.json", MAX_MANIFEST)
+    fds = _open_directory_chain(root, ("evidence", release, candidate_id, run_id))
+    try:
+        raw = _read("manifest.json", MAX_MANIFEST, parent_fd=fds[-1])
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
     if hashlib.sha256(raw).hexdigest() != expected_digest:
         raise ArchiveError("manifest digest mismatch")
 
@@ -98,9 +121,13 @@ def resolve(root, release, candidate_id, run_id, expected_digest):
         digest = check.get("sha256")
         if not isinstance(digest, str) or not HEX64.fullmatch(digest):
             raise ArchiveError("invalid payload digest")
-        if (directory / "payloads").is_symlink():
-            raise ArchiveError("unsafe payload directory")
-        content = _read(directory / name, MAX_PAYLOAD)
+        payload_fds = _open_directory_chain(root, ("evidence", release, candidate_id,
+                                                   run_id, "payloads"))
+        try:
+            content = _read(name.split("/")[1], MAX_PAYLOAD, parent_fd=payload_fds[-1])
+        finally:
+            for fd in reversed(payload_fds):
+                os.close(fd)
         total_bytes += len(content)
         if total_bytes > 32 * 1024 * 1024:
             raise ArchiveError("archive total payload size exceeded")
