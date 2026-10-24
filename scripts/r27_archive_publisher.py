@@ -62,43 +62,64 @@ def publish(root, release, candidate_id, run_id, manifest, payloads):
     digest = hashlib.sha256(raw).hexdigest()
     root = Path(root)
     directory = root / "evidence" / release / candidate_id / run_id
-    for parent in (root, root / "evidence", root / "evidence" / release,
-                   root / "evidence" / release / candidate_id, directory, directory / "payloads"):
-        if parent.is_symlink():
-            raise ArchiveError("unsafe archive directory")
-        parent.mkdir(parents=True, exist_ok=True)
-        if not parent.is_dir():
-            raise ArchiveError("non-directory archive component")
+    # Create and pin each directory via its parent descriptor; never follow
+    # a substituted symlink during publication.
+    from r27_archive_resolver import _read
+    chain = []
+    try:
+        anchor = os.path.abspath(os.fspath(root))
+        parts = Path(anchor).parts
+        fd = os.open(parts[0], os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        chain.append(fd)
+        for part in (*parts[1:], "evidence", release, candidate_id, run_id, "payloads"):
+            try:
+                os.mkdir(part, mode=0o700, dir_fd=fd)
+            except FileExistsError:
+                pass
+            fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                         dir_fd=fd)
+            chain.append(fd)
+        directory_fd, payload_fd = chain[-2], chain[-1]
 
-    def create_once(path, data):
-        try:
-            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-        except FileExistsError:
-            if path.is_symlink() or not path.is_file():
-                raise ArchiveError("archive identity collision")
-            from r27_archive_resolver import _read
-            if _read(path, max(len(data), 1)) != data:
-                raise ArchiveError("archive identity collision")
-            return
-        try:
-            with os.fdopen(fd, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
-        except BaseException:
-            path.unlink(missing_ok=True)
-            raise
+        def create_once(name, data, parent_fd):
+            try:
+                file_fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                                  os.O_NOFOLLOW, 0o600, dir_fd=parent_fd)
+            except FileExistsError:
+                if _read(name, max(len(data), 1), parent_fd=parent_fd) != data:
+                    raise ArchiveError("archive identity collision")
+                return
+            try:
+                with os.fdopen(file_fd, "wb") as stream:
+                    stream.write(data)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            except BaseException:
+                os.unlink(name, dir_fd=parent_fd)
+                raise
 
-    # Reject a conflicting committed identity before staging any additional blobs.
-    manifest_path = directory / "manifest.json"
-    if manifest_path.is_symlink():
-        raise ArchiveError("archive identity collision")
-    if manifest_path.exists():
-        from r27_archive_resolver import _read
-        if _read(manifest_path, 1024 * 1024) != raw:
+        try:
+            existing = _read("manifest.json", 1024 * 1024,
+                             parent_fd=directory_fd)
+        except ArchiveError as exc:
+            # Only absence is an allowed first publication; unsafe existing
+            # files must not be treated as missing.
+            try:
+                os.stat("manifest.json", dir_fd=directory_fd,
+                        follow_symlinks=False)
+            except FileNotFoundError:
+                existing = None
+            else:
+                raise ArchiveError("archive identity collision") from exc
+        if existing is not None and existing != raw:
             raise ArchiveError("archive identity collision")
-    for name, data in payloads.items():
-        create_once(directory / name, data)
-    create_once(directory / "manifest.json", raw)
+        for name, data in payloads.items():
+            create_once(name.split("/")[1], data, payload_fd)
+        create_once("manifest.json", raw, directory_fd)
+    except OSError as exc:
+        raise ArchiveError("unsafe archive publication directory") from exc
+    finally:
+        for opened in reversed(chain):
+            os.close(opened)
     resolve(root, release, candidate_id, run_id, digest)
     return digest
