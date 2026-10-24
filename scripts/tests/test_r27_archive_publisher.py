@@ -129,6 +129,18 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaises(ArchiveError):
             self.publish()
 
+    def test_failed_fsync_does_not_unlink_by_name(self):
+        from unittest.mock import patch
+        with patch("r27_archive_publisher.os.fsync",
+                   side_effect=OSError("injected write durability failure")):
+            with self.assertRaisesRegex(OSError, "injected write durability failure"):
+                self.publish()
+        staged = (Path(self.temp.name) / "evidence" / "v0.4.27" /
+                  "candidate" / "run-1" / "payloads" / "check.json")
+        self.assertTrue(staged.exists(), "failed write must not unlink a replaced entry")
+        self.assertFalse((staged.parent.parent / "manifest.json").exists(),
+                         "failed staging must never publish the manifest")
+
     def test_extra_payload(self):
         with self.assertRaises(ArchiveError):
             publish(self.temp.name, "v0.4.27", "candidate", "run-1",
