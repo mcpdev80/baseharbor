@@ -1,0 +1,15 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git-NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo und /home/marcel/dev/baseharbor-ecosystem/baseharbor-console (jeweils eigener worktree, main-Checkout NICHT switchen). KEIN git im Root-Repo. KEIN Merge, KEIN Push auf main.
+ERSTER SCHRITT: evidence/board-2026-10-24/f47b-freezedemoconsole.md mit ## PLAN + nativen Todos. LIES pro Repo zuerst dessen AGENTS.md (eigene required checks, keine Runtime-Matrix fuer reine Pin-Aenderungen).
+
+BEFUND (o115b): 
+- Demo: Pin 25c319697fd3d89d894943e0f44cd3d5dde8b198 liegt NUR auf work/v0.4.26-ecosystem-release; demo main = 82d042b. Zusaendlich: a44e2e9 (core.ref = Core 2adae47a) nur auf chore/v0426-core-pin, kein PR.
+- Console: Pin 69d1d14007fa43dc0c0457c3347280be7f802818 liegt NUR auf work/v0.4.26-integrations-docs; console main = e7d1e4a. Kein offener PR dafuer.
+
+AUFGABE (zwei PRs, repo-getrennt, keine Merges):
+1. DEMO: PR gegen main, der den Freeze-Stand auf demo main hebt - massvoll und nachvollziehbar: enthalte 25c31969 (podman cold-start fix) + die core.ref-Pin-Aenderung (a44e2e9-Inhalt, Core 2adae47a oder ggf. aktuell korrekt 1861ed07 - BEGRUENDE die Wahl gegen pre-release.yml:122-Erwartung und der Core-Pin-Grafik in baseharbor/docs/releases/v0.4.26.consumer-pins.json). Wenn ein direkter Merge der Feature-Branch-Spitze unnoetige Fremdaenderungen mitbringt, stattdessen sauberer PR mit den minimal noetigen Commits (cherry-pick) + Begruendung.
+2. CONSOLE: PR gegen main, der 69d1d14 auf main hebt (analogue Minimalpraemisse: nur freeze-relevante Inhalte; die integrations-docs-Aenderungen nur wenn sie Teil des Freezes sind).
+3. In beiden PRs: Referenz auf die v0.4.26-Freeze-Anker + o115b-Befund; checks bis final beobachten (kleinste passende Gates, keine Matrix).
+4. Querverifikation: die Vorbereitung die vier SHAs (Core 1861ed07, Demo, Connector 7c7093d-Linie, Console) als konsistente Grafik in der Evidence-Tabelle dokumentieren; jede Abweichung von baseharbor's consumer-pins (#1050) ausdruecklich benennen - das ist potenzieller Blocker fuer pre-release.yml:122.
+5. KEINE Merges (Owner-Regel "keine Merges in develop/main" ohne separate Anweisung; Merge-Lane ist Codex).
+ABNAHME: 2 PR-Nummern + heads + Check-Status + Konsistenztabelle.
+END F47B-FREEZEDEMCON-DONE / END F47B-BLOCKED mit datei:zeile.

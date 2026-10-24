@@ -1,0 +1,13 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor; eigener worktree: `git worktree add ../worktrees/q112-rb1060 -b tmp-q112-nothing 2>/dev/null || true` - bevorzuge den VORHANDENEN Branch work/v0.4.26-openbao-gateplan (PR #1060, head 7a3c4520) und arbeite in einem neuen worktree darauf: `git worktree add ../worktrees/q112-rb1060 work/v0.4.26-openbao-gateplan`. KEIN root-git, KEIN Merge, KEIN force, KEIN --admin.
+ERSTER SCHRITT: evidence/board-2026-10-24/q112-rebase1060.md mit ## PLAN + nativen Todos.
+
+KONTEXT: PR #1060 (openbao-Pfadqualifikation, prerequisite fuer #1052) enthaelt Akte + Classifier, ist aber BEHIND: develop ist seit #1047-Merge auf f3929568. strict_required_status_checks_policy=true => Merge unmöglich ohne Freshness.
+
+AUFGABE:
+1. `git fetch origin`; Branch work/v0.4.26-openbao-gateplan auf origin/develop (f3929568 oder frischer) rebasen. Inhaltliche Aenderungen verboten - nur base-Bewegung.
+2. AKTE-DRIFT-PFLICHT (Systembefund 2026-10-24): Nach dem Rebase sind die Datei-Hashes der drei CI-Scripts moeglicherweise neu; der Akte-Eintrag fuer #1060 MUSS reviewed_head = finaler Head und file_hashes = exakte sha256 am finalen Head zeigen (sonst wieder 'coverage-unresolved ... scripts/pr-check-runner.py'). Hashes aus den Git-Objekten berechnen, nicht aus dem frueheren Stand kopieren.
+3. LOKALES kleinstes Gate: `python3 -m pytest scripts/test_pr_gate_plan.py -q` (repo-ueblicher Runner), Log in Evidence. Keine Matrix, keine VM, keine Docker/Podman-Gates.
+4. Push (fast-forward fuer den PR, kein force). `gh pr checks 1060` beobachten, Guard 20 min, Run-/Job-IDs notieren.
+5. Evidence: finaler head-SHA, mergeStateStatus (`gh pr view 1060 --json mergeStateStatus,mergeable,headRefOid`), Akte-Diff, Check-Tabelle. Wenn alles gruen und fresh: vermerke "MERGE-READY fuer Codex-Lane", aber fuehre KEINEN Merge aus.
+ABNAHME: #1060 fresh auf develop + `PR Selected Checks` SUCCESS auf dem finalen Head (oder begruendeter BLOCKED mit Run-ID).
+END Q112-REBASE1060-DONE mit head / END Q112-BLOCKED.

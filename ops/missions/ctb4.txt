@@ -1,0 +1,10 @@
+ROLLE: REVIEW (SHA-genau, independent; Urteil + Rezept. Keine Umsetzung, kein Merge).
+KANDIDAT: PR #1052 (mcpdev80/baseharbor), aktueller Live-Head **bdd677a3** (Branch work/v0.4.26-openbao-retry). Der Kopf ist NEU gegenueber deinem letzten Review (736d73c6) - q111 hat die vier CX-1052 Test-Rezepte umgesetzt; eine weitere Runde (bootstrap.go transient-Klassifikation) laeuft moeglicherweise parallel, daher: pruefe EXAKT bdd677a3 und markiere dein Urteil als head-gebunden.
+
+PRUEFPFLICHTEN:
+1. Identitaet vor/nach (head + sha256 internal/openbao/bootstrap.go und bootstrap_test.go). Diff gegen origin/develop (aktuell f3929568). Kein Lesen in fremden Worktrees, keine Checkouts fremder Branches - nur `git show <sha>:<path>` / Contents API.
+2. Bewerte die vier Rezepte aus codex-verdict-1052.md (per-member Skriptmaschine statt globaler Zaehler; per-member writes aus BAO_ADDR; down-Szenario ohne false failures/writes; permanenter Fehler im retry-enabled Pfad) an dem echten Code-Stand von bdd677a3. Nicht-blockierende Randbefunde als solche kennzeichnen.
+3. Pruefe, ob die Mutationstests nachweisbar die geforderten Stop-Kriterien abdecken (weglassen -> fail). Wenn dafuer kein Run noetig ist, begruendet bei Quellpruefung bleiben; KEINE neuen Produkt-Tests selbst ausfuehren, keine CI dispatchen, keine Reruns.
+4. Sag klar, was vor einem Merge noch fehlt: (a) die #1060 Pfadqualifikation in develop, (b) ein grüner `PR Selected Checks` auf dem FINAL-Head, (c) ggf. die transient-Klassifikation aus ctb2-Rezept 1.
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-1052-r3.md mit ROLLE, UTC, SHA before/after, Urteil je Rezept-Punkt, kuerzester Weg zu ACCEPT.
+END CX-1052R3-DONE / END CX-1052R3-BLOCKED.

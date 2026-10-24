@@ -1,0 +1,13 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git-NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-node-connector (eigener worktree, main-Checkout NICHT switchen). KEIN git im Root-Repo. KEIN Merge, KEIN Review, KEIN Push auf main.
+ERSTER SCHRITT: evidence/board-2026-10-24/o115c-connectorfreeze.md mit ## PLAN + nativen Todos. LIES zuerst baseharbor-node-connector/AGENTS.md (Produkt-/CI-Regeln bleiben im Repo, keine Runtime-Matrix fuer reine Pin-/Instruktionsaenderungen).
+
+BEFUND (o115b, evidence/board-2026-10-24/o115b-freeze.md): Connector main = 7c7093d mit Core-Pin 2adae47a, aber Demo/Console-Eintraege stehen auf PENDING. Die v0.4.26-Freeze-Anker sind Demo 25c31969 und Console 69d1d14. Damit pre-release.yml:117/:122 (Core-Repo) spaeter eine konsistente OEkosystem-Grafik sieht, muss die Connector-Datei diese SHAs tragen.
+
+AUFGABE:
+1. Stand der Pin-/Kandidatendateien im Connector-Repo pruefen (integration-candidate.json o. Ä. - Dateiname aus dem Repo, nicht erfinden) und den exakten Pfad+Schluessel fuer demo/console feststellen.
+2. Eigenen Branch von origin/main + PR, der NUR die Freeze-Werte setzt: demo=25c319697fd3d89d894943e0f44cd3d5dde8b198, console=69d1d14007fa43dc0c0457c3347280be7f802818 (Core-Eintrag 7c7093d/2adae47a unangetastet, ausser der Repo-Vertrag verlangt ausdruecklich eine Aktualisierung - dann belegen).
+3. Schema-/Validierungstest des Repos laufen lassen (nur das betroffene, kleinste Gate; keine Runtime-Matrix). `plan.py`-artige Pruefungen gibt es hier nicht - nutze die repo-eigenen Tests fuer die Kandidatendatei.
+4. PR eroeffnen (base main), Body mit Referenz auf o115b-Befund + v0.4.26-Freeze-Zweck. Checks bis final beobachten, Run-IDs notieren.
+5. NICHT mergen (Owner-Regel "keine Merges in develop/main" ohne separate Anweisung + Merge ist Codex-Lane).
+ABNAHME: PR-Nummer + head-SHA + gruene Checks (oder begruendeter BLOCKED mit Run-ID).
+END O115C-CONNECTORFREEZE-DONE / END O115C-BLOCKED.

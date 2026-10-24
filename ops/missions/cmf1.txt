@@ -1,0 +1,16 @@
+ROLLE: REVIEW (SHA-genau, unabhaengig; Urteil + Rezept je Kandidat. Keine Umsetzung, kein Merge).
+KANDIDATEN (v0.4.26 Ecosystem-Freeze, drei Consumer-Repos - bisher KEIN Review):
+A) baseharbor-demo PR #120, head bd86c7c (core.ref 1861ed07, Runtime 25c31969-Linie, cherry-pick)
+B) baseharbor-console PR #9, head 6017de2 (freeze-Inhalt 69d1d14 per cherry-pick, green run 40078839364)
+C) baseharbor-node-connector PR #9, head 2223506c (integration-candidate.json: demo=25c31969, console=69d1d14), check 'source' pass run 40078538425
+
+KONTEXT: Worker-Evidence evidence/board-2026-10-24/f47b-freezedemoconsole.md und o115c-connectorfreeze.md. Wichtigster gemeldeter Befund: Connector-Historie 7c7093d ist KEIN Vorfahr von df1f4378 (diverged), die Grafik muss auf den in #1050's consumer-pins.json genannten df1f4378 zeigen; cherry-picks aendern SHAs, daher muessen die vier Pin-Felder spaeter auf die finalen Main-Tips gezogen werden.
+
+PRUEFPFLICHTEN je Kandidat:
+1. Identitaet vor/nach (head + sha256 der affected files), Diff gegen den Zielbranch des jeweiligen Repos (`gh pr diff`, `git show <sha>:<path>` ueber den neutralen Objektstore; keine fremden Worktrees lesen).
+2. Ist der Inhalt NUR Freeze/Pin-Material (keine versteckten Produkt-/Workflow-aenderungen, keine 27-Bezüge)?
+3. Stimmt die wechselseitige Grafik: Core 1861ed07, Demo, Console, Connector - zyklusfrei und mit #1050's consumer-pins.json konsistent? Nenne jede Abweichung mit datei:zeile und dem exakt richtigen Wert.
+4. Pflichtchecks des jeweiligen Repos pruefen (gh pr checks), keine Reruns, keine Labels, kein Dispatch.
+5. Urteil je Kandidat: ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES + kuemmster Weg zu Merge-Reife (inkl. Reihenfolge der Merges und was nach den Merges in #1050 nachgezogen werden muss).
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-freeze-prs.md (ROLLE, UTC, SHAs before/after, Tabelle).
+END CX-FREEZE-REVIEW-DONE / END CX-FREEZE-REVIEW-BLOCKED.

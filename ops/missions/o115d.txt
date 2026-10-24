@@ -1,0 +1,13 @@
+Kurz-Mission. pwd-PFLICHT: git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor, vorhandener worktree baseharbor/worktrees/f27-appid-env-robust (Branch fix/f27-appid-env-robust = PR #1046, head 35582508). KEIN root-git, KEIN Merge, KEIN force, KEIN --admin.
+ERSTER SCHRITT: evidence/board-2026-10-24/o115d-rebase1046.md mit ## PLAN + nativen Todos.
+
+KONTEXT: #1047 ist gemergt (develop jetzt f3929568). PR #1046 (test(application): env-robust protected-owner test dirs) ist damit BEHIND und kann nicht gemergt werden (strict_required_status_checks_policy). Karte: t-20261020-develop-appid-manifest-test-regression.
+
+AUFGABE:
+1. `git fetch origin`, Rebase des Branches auf origin/develop (f3929568 oder aktuelleren Tip, vor dem Push erneut verifizieren).
+2. Aenderungsumfang unveraendert halten (nur test/application-Dateien). Bei Konflikten: belegen, nicht raten; Diff vor/nach in der Evidence.
+3. LOKALES kleinstes Gate: die betroffene Go-Testdatei nativ ausfuehren (go test des betroffenen Pakets, -count=1). Kein Docker/Podman/VM, keine Matrix. Log in Evidence.
+4. Push auf origin/fix/f27-appid-env-robust. Dann `gh pr checks 1046` beobachten: der appid-Quelltest braucht die durch #1047 qualifizierte Gate-Route; deshalb sollten `PR Selected Checks` und die betroffenen Validations greuen. Guard 20 min, danach BLOCKED mit exaktem Run-/Job-Beleg (kein Rerun-Spam, keine Labels).
+5. In der Evidence: neuer head-SHA, mergeStateStatus (`gh pr view 1046 --json mergeStateStatus,mergeable,headRefOid,reviews`), und ob ein unabhaengiges Review noch aussteht.
+ABNAHME: PR #1046 fresh auf develop f3929568+, Checks gruen (oder begruendeter BLOCKED mit Run-ID), go test-Log vorhanden.
+END O115D-REBASE1046-DONE mit head / END O115D-BLOCKED.

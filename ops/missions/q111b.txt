@@ -1,0 +1,17 @@
+FORTSETZUNG deiner q111-Arbeit auf PR #1052 (Branch work/v0.4.26-openbao-retry, dein letzter Head bdd677a3). pwd-PFLICHT: git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor, worktree baseharbor/worktrees/o91-fix. KEIN root-git, KEIN Merge, KEIN force.
+ERSTER SCHRITT: Abschnitt "## RUNDE 2 (Produkt-Klassifikation)" in evidence/board-2026-10-24/q111-openbaotests.md + native Todos.
+
+CODEX-BEFUND (evidence/board-2026-10-24/codex-verdict-1050-1052-r2.md, P2) ist bindendes Rezept:
+- intern/openbao/bootstrap.go Zeilen 46-59 (und 148-168 Kontext): die Klassifikation sucht das nackte Wort `temporary` im formatierten Error. Damit wird eine PERMANENTE Diagnose (z.B. `open /tmp/temporary/ca.pem: permission denied`) als transient behandelt und verbraucht das Retry-Fenster. Grenze: internal/runtime/compose.go:221-223 -> compose_command.go:69-96 formatiert beliebige Runtime-stderr in den Error.
+- Umruestung: positiv identifizierte Listener-/Transport-Fehler klassifizieren (getypte Fehler bzw. eng identifizierte Diagnosen), permanente/unbekannte Fehler TERMINAL. Wort-Match `temporary` ENTFERFEREN.
+- UNVERAENDERT erhalten: fuenf Total-Ausfuehrungen pro Probe, per-attempt contexts, fail-closed JSON, phasenspezifische Fehler, Unseal-Writes werden NICHT erneut versucht, Initial Inspect bleibt retry-disabled.
+- Wenn die Boundary sicher nicht unterscheidbar ist: Interface-Limitation dokumentieren statt beliebig zu retryen (Kommentar + Evidence, kein stiller Fallback).
+
+TESTPFLICHT (in bootstrap_test.go, ohne die Struktur deiner RUNDE-1-Rezepte zu zerstoeren):
+- enabled-retry Phase bekommt permanente x509/permission/missing-executable/unknown-Diagnosen (auch mit `temporary` im nebenlaeufigen Text) -> GENAU ein Call.
+- transienter Fehler -> Erfolg spätestens attempt 5, exakt fuenf Calls, kein sechster.
+- finaler Fehler bleibt erhalten, null writes nach fehlgeschlagener Vorbedingung, per-member writes + post-unseal verification, invalid JSON, cancellation.
+VERIFIKATION: `go test ./internal/openbao/... -count=1 -timeout=120s` + die neuen Mutationen (Wort-Match entfernt -> Tests grün; wieder eingebaut -> mindestens eine Test failt). Log in Evidence.
+DANN: commit + push auf work/v0.4.26-openbao-retry, neuer Head in Evidence. Kein Merge (Codex-Lane).
+STOP: wenn eine Signaturen-Aenderung in bootstrap.go noetig wird, die ueber die Klassifikation hinausgeht (z.B. neuer Error-Typ im Producer-Vertrag) -> kurz BLOCKED mit begruendung statt Architektur zu bauen.
+END Q111B-TRANSIENTCLASS-DONE mit head-SHA / END Q111B-BLOCKED.

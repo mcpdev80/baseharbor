@@ -1,0 +1,20 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor. Du übernimmst Branch o90-planner-pr (PR #1056) - bisherige Lanes sind beendet, du bist ab JETZT der einzige Owner dieses Branches (LAN-REGEL). KEIN root-git, KEIN Merge, KEIN force, KEIN --admin.
+ERSTER SCHRITT: evidence/board-2026-10-24/o117-akte1056.md mit ## PLAN + nativen Todos.
+
+ZIEL: PR #1056 (pins-data-Qualifikation, prerequisite fuer #1050 = v0.4.26.consumer-pins.json) muss `PR Selected Checks` GRUEN bekommen.
+
+VERIFIZierter STAND (Coordinator + o114-Befund):
+- #1056 head 7a220d26: FAIL "BLOCKED: coverage-unresolved: CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py" (run 40076663163, job 120821663679) und zustzlich BEHIND (develop ist f3929568 seit #1047-Merge).
+- o114-Befund: der Planner (scripts/pr-gate-plan.py, Akte-Reader ca. Zeile 621-660 + register-Rueckgabe) liest die Trusted-Binding-Akte aus der TARGET-BASE-Kopie. Auf develop steht genau EIN Block: "# Core-921 CI binding qualification (#1056)" mit reviewed_head=4e737e26af38e7f712f2de1f631633d8d59477b9 - dieser Head ist KEIN Ancestor von 7a220d26 -> register -> None -> ci-executor-unresolved.
+- Vergleich #1060 (head 7a3c4520): dort ist `PR Selected Checks` PASS (run 40078059133). #1060 aendert auch pr-check-runner.py. Finde HERAUS, warum #1060 durchkommt und #1056 nicht (Akte-Inhalt am Head? Pruefung gegen PR-Kopie? Merge-Chain-Logik? bootstrap-eligible-Ausnahme aus #1059?). Benutze dafuer ausschliesslich `git show <sha>:<path>` und den neutralen Objektstore - keine fremden Worktrees lesen.
+
+ARBEIT:
+1. Diagnose: exakte Codepfad-Klaerung im Planner, an der die Akte gelesen/validiert wird (datei:zeile), plus Begruendung des Unterschieds #1056 vs #1060.
+2. Rebase von o90-planner-pr auf origin/develop (f3929568 oder frischer). Inhaltliche Aenderungen nur soweit der Akte-Mechanismus sie verlangt.
+3. Akte im PR so fassen, dass der finale Head sauber qualifiziert: reviewed_head = finaler PR-Head, file_hashes = echte sha256 der drei CI-Scripts an DIESEM Head. Wenn die Semantik verlangt, dass die Akte ZUERST auf develop liegen muss (Muster #1058 fuer #1056), dann: trenne das in (a) kleinen docs-only Akte-PR gegen develop und (b) deinen bestehenden CI-PR - und melde die Reihenfolge, statt zu tricksen.
+4. LOKALES最小 Gate: `python3 -m pytest scripts/test_pr_gate_plan.py -q`; kein Docker/Podman/VM, keine Matrix, keine Rerun-Spam.
+5. Push, `gh pr checks` beobachten (Guard 20 min). Evidence-Tabelle: head-SHA vor/nach, Akte-Diff, Run-/Job-IDs, mergeStateStatus.
+6. Wenn (3) einen develop-seitigen Akte-PR noetig macht: PR eroeffnen (docs only, base develop, Titel mit "ci(akte):"), Checks abwarten, NICHT mergen - Merge ist Codex-Lane.
+
+ABNAHME: #1056 (plus ggf. Akte-PR) mit gruener `PR Selected Checks` auf frischem Head, oder präziser BLOCKED-Nachweis mit datei:zeile + empfohlenem Wartungs-Schritt.
+END O117-AKTE1056-DONE / END O117-BLOCKED.
