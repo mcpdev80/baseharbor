@@ -5,6 +5,7 @@ module validates fetch shape and pagination, not token trust or CI authority.
 """
 from r27_github_origin import OriginError, verify_complete_inventory, verify_origin
 from r27_github_transport import github_getter
+import re
 
 
 def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
@@ -12,7 +13,8 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
     if not callable(get_json):
         raise OriginError("EVIDENCE_ORIGIN: authenticated transport unavailable")
     if (not isinstance(repository, str) or repository.count("/") != 1
-            or any(not p or p in (".", "..") for p in repository.split("/"))
+            or any(p in (".", "..") for p in repository.split("/"))
+            or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
             or type(run_id) is not int or run_id < 1
             or type(attempt) is not int or attempt < 1):
         raise OriginError("EVIDENCE_ORIGIN: invalid API request identity")
@@ -24,6 +26,14 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
         while page <= 10:
             response = get_json(
                 f"{root}/attempts/{attempt}/jobs?per_page=100&page={page}")
+            if (not isinstance(response, dict)
+                    or type(response.get("total_count")) is not int
+                    or response["total_count"] < 1
+                    or response["total_count"] > 1000
+                    or not isinstance(response.get("jobs"), list)
+                    or not response["jobs"]
+                    or len(response["jobs"]) > 100):
+                raise OriginError("EVIDENCE_ORIGIN: invalid job inventory page")
             pages.append(response)
             jobs = verify_complete_inventory(pages) if (
                 isinstance(response, dict)

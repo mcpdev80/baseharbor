@@ -37,3 +37,23 @@ class FetchTests(unittest.TestCase):
   def get(path):
    return dict(RUN,head_sha="b"*40) if path.endswith("/123") else {"total_count":1,"jobs":[JOB]}
   with self.assertRaises(OriginError):fetch_verified_origin(get,**ARGS)
+
+
+class RequestValidationTests(unittest.TestCase):
+ def test_bad_repository_rejected_without_network(self):
+  for repo in ("../other", "x/y?token=bad", "x/y#frag", "x/y/extra", "x/y%0a", "x/"):
+   with self.subTest(repo=repo),self.assertRaisesRegex(OriginError,"invalid API request identity"):
+    fetch_verified_origin(lambda path: self.fail("network called"),
+                          **dict(ARGS, repository=repo))
+ def test_bad_page_rejected_without_retry_storm(self):
+  for response in (None, [], {}, {"total_count":True,"jobs":[JOB]},
+                   {"total_count":1001,"jobs":[JOB]},
+                   {"total_count":1,"jobs":"wrong"},
+                   {"total_count":1,"jobs":[]}):
+   calls=[]
+   def get(path):
+    calls.append(path)
+    return RUN if path.endswith("/123") else response
+   with self.subTest(response=repr(response)),self.assertRaises(OriginError):
+    fetch_verified_origin(get,**ARGS)
+   self.assertEqual(len(calls),2)
