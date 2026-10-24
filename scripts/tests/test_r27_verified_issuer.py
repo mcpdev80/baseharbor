@@ -66,3 +66,15 @@ class IndependentPolicyPinTests(unittest.TestCase):
     with self.assertRaisesRegex(EvidenceError,"independent digest pin required"):
      issue_from_github(**dict(ARGS,trusted_policy_digest=pin))
     api.assert_not_called()
+
+
+class StageEventBindingTests(unittest.TestCase):
+ def test_mismatched_stage_and_event_block_before_fetch(self):
+  for stage,event in (("pr","push"),("pr","workflow_dispatch"),
+                      ("integration","pull_request"),("release","push")):
+   change=dict(stage=stage,expected_event=event)
+   if stage=="release":change["artifact_digest"]="c"*64
+   with self.subTest(change=change),patch("r27_verified_issuer.fetch_authenticated_origin") as api:
+    with self.assertRaisesRegex(EvidenceError,"event does not match evidence stage"):
+     issue_from_github(**dict(ARGS,**change))
+    api.assert_not_called()

@@ -53,6 +53,13 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
             or not DIGEST.fullmatch(trusted_policy_digest)
             or not hmac.compare_digest(actual_digest, trusted_policy_digest)):
         raise EvidenceError("EVIDENCE_POLICY: independent digest pin required")
+    # A receipt bound to a release artifact may not be issued based on an
+    # unrelated PR event; release and integration require explicit event scope.
+    allowed_events = {"pr": ("pull_request",),
+                      "integration": ("push",),
+                      "release": ("workflow_dispatch",)}
+    if expected_event not in allowed_events[stage]:
+        raise EvidenceError("EVIDENCE_ORIGIN: event does not match evidence stage")
     identity = fetch_authenticated_origin(token, repository=repository, head_sha=candidate,
         run_id=run_id, attempt=attempt, job_id=job_id,
         expected_job_name=expected_job_name, workflow_path=workflow_path,
