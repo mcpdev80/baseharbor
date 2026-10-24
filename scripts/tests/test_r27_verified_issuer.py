@@ -9,6 +9,9 @@ ARGS=dict(key=b"k"*32,token="trusted-token",repository="mcpdev80/baseharbor",
           stage="pr",candidate="a"*40,policy_digest="b"*64,gate="sql",
           run_id=11,attempt=2,job_id=12,expected_job_name="PR Selected Checks",
           workflow_path=".github/workflows/ci.yml")
+JOBS={"sql":{"workflow_path":".github/workflows/ci.yml",
+             "job_name":"PR Selected Checks"}}
+ARGS["policy_jobs"]=JOBS
 PROOF=dict(run_id=11,attempt=2,job_id=12,head_sha="a"*40,name="PR Selected Checks")
 class IssuerTests(unittest.TestCase):
  def test_success_correlated_to_authenticated_job(self):
@@ -32,3 +35,13 @@ class IssuerTests(unittest.TestCase):
     with self.assertRaises((EvidenceError,OriginError)):
      issue_from_github(**dict(ARGS,**changes))
     fetch.assert_not_called()
+
+
+class IssuerPolicyTests(unittest.TestCase):
+ def test_unmapped_gate_denied_before_api(self):
+  for policy in (None, {}, {"sql":{"workflow_path":".github/workflows/ci.yml",
+                                    "job_name":"Unrelated Job"}}):
+   with self.subTest(policy=policy),patch("r27_verified_issuer.fetch_authenticated_origin") as origin:
+    with self.assertRaisesRegex(EvidenceError,"EVIDENCE_POLICY"):
+     issue_from_github(**dict(ARGS,policy_jobs=policy))
+    origin.assert_not_called()

@@ -12,7 +12,7 @@ from r27_github_fetch import fetch_authenticated_origin
 def issue_from_github(*, key, token, repository, stage, candidate, policy_digest,
                       gate, run_id, attempt, job_id, expected_job_name,
                       workflow_path, expected_event="pull_request",
-                      artifact_digest=None):
+                      artifact_digest=None, policy_jobs=None):
     if type(key) is not bytes or len(key) < 32:
         raise EvidenceError("EVIDENCE_TRUST: trusted signing key unavailable")
     if stage not in ("pr", "integration", "release"):
@@ -30,6 +30,12 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
         raise EvidenceError("EVIDENCE_ARTIFACT: release requires artifact")
     if gate == "release/smoke" and stage != "release":
         raise EvidenceError("EVIDENCE_ARTIFACT: smoke requires release")
+    if (not isinstance(policy_jobs, dict) or gate not in policy_jobs
+            or not isinstance(policy_jobs[gate], dict)
+            or set(policy_jobs[gate]) != {"job_name", "workflow_path"}
+            or policy_jobs[gate] != {"job_name": expected_job_name,
+                                    "workflow_path": workflow_path}):
+        raise EvidenceError("EVIDENCE_POLICY: trusted gate-to-job mapping required")
     identity = fetch_authenticated_origin(token, repository=repository, head_sha=candidate,
         run_id=run_id, attempt=attempt, job_id=job_id,
         expected_job_name=expected_job_name, workflow_path=workflow_path,
