@@ -119,7 +119,7 @@ class CandidateTriggerTests(unittest.TestCase):
                 module.publish("example/repo", 15, sha)
                 self.assertEqual([call.args[0] for call in api.call_args_list],
                                  ["GET", "GET", "POST", "GET"])
-                self.assertEqual(api.call_args_list[-1].kwargs["data"],
+                self.assertEqual(api.call_args_list[-2].kwargs["data"],
                                  {"labels": ["ci:validate"]})
 
             labeled = dict(base, labels=[{"name": "ci:validate"}])
