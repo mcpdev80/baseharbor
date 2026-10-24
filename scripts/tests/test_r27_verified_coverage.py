@@ -124,6 +124,18 @@ class VerifiedCoverageTests(unittest.TestCase):
                 with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
                     check(raw, stage=stage, gate="sql", artifact_digest="d" * 64)
 
+    def test_invalid_expected_scope_rejected_before_comparison(self):
+        cases = [
+            ({"stage": []}, "EVIDENCE_SCHEMA"),
+            ({"candidate": None}, "EVIDENCE_TARGET"),
+            ({"policy_digest": 42}, "EVIDENCE_POLICY"),
+            ({"gate": ["sql"]}, "EVIDENCE_GATE"),
+            ({"artifact_digest": False}, "EVIDENCE_ARTIFACT"),
+        ]
+        for changed, code in cases:
+            with self.subTest(changed=changed), self.assertRaisesRegex(EvidenceError, code):
+                check(signed(), **changed)
+
     def test_missing_release_artifact_rejected(self):
         with self.assertRaisesRegex(EvidenceError, "EVIDENCE_ARTIFACT"):
             check(signed(), artifact_digest=None)
