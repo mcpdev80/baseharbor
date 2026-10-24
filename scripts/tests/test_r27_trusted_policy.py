@@ -63,3 +63,26 @@ class DuplicatePolicyKeyTests(unittest.TestCase):
   ):
    with self.subTest(raw=raw), self.assertRaisesRegex(EvidenceError,"duplicate protected key"):
     load_pinned_policy(raw,protected_digest=hashlib.sha256(raw).hexdigest())
+
+
+class FileReaderTests(unittest.TestCase):
+ def test_rejects_symlink_and_relative_file(self):
+  import tempfile
+  from r27_trusted_policy import read_pinned_policy_file
+  with tempfile.TemporaryDirectory() as d:
+   source=Path(d)/"policy.json"
+   source.write_bytes(b"{}")
+   link=Path(d)/"link.json"
+   link.symlink_to(source)
+   for candidate in ("policy.json",str(link)):
+    with self.subTest(candidate=candidate), self.assertRaisesRegex(EvidenceError,"protected path|cannot read"):
+     read_pinned_policy_file(candidate,"a"*64)
+ def test_canonical_file_roundtrip(self):
+  import tempfile
+  from r27_trusted_policy import read_pinned_policy_file
+  data=b'{"sql":{"job_name":"PR Selected Checks","workflow_path":".github/workflows/ci.yml"}}'
+  with tempfile.TemporaryDirectory() as d:
+   file=Path(d)/"policy.json"
+   file.write_bytes(data)
+   mapping,pin=read_pinned_policy_file(str(file),hashlib.sha256(data).hexdigest())
+   self.assertEqual(mapping["sql"]["job_name"],"PR Selected Checks")
