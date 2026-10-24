@@ -138,6 +138,15 @@ def report(plan, job_conclusion, matrix_result):
 # every gate must share.
 PINNED_PINS_REPOSITORIES = {'mcpdev80/baseharbor-console',
                             'mcpdev80/baseharbor-node-connector'}
+# The immutable consumer source chain the release resolver reproduces. Each role
+# pins exactly one repository with a 40-hex commit; the joint Connector commit
+# (the same invariant the live-console origin seeds) is shared by every gate and
+# the ecosystem root that every role consumes.
+PINNED_CONSUMER_CHAIN_REPOSITORIES = {'core': 'mcpdev80/baseharbor',
+                                      'demo': 'mcpdev80/baseharbor-demo',
+                                      'console': 'mcpdev80/baseharbor-console',
+                                      'connector': 'mcpdev80/baseharbor-node-connector'}
+PINNED_CONSUMER_CHAIN_ROLES = ('core', 'demo', 'connector')
 
 
 def pins_data_exact(value):
@@ -192,6 +201,29 @@ def validate_pins_data(check, repository):
         # invariant the release resolver seeds into the live-console origin.
         if len(connector_commits) != 1:
             raise RuntimeError('consumer-pins Connector commits diverge across gates')
+        # A consumer-pins file that carries the immutable ecosystem chain must
+        # name exactly the pinned roles with 40-hex commits. The Connector commit
+        # is the joint root of the acyclic consumer graph (core <- demo <-
+        # console <- connector), the same invariant the release resolver
+        # reproduces. A Core/Connector/Demo SHA that is not a 40-hex commit of
+        # its pinned repository is unverifiable and must fail closed; the exact
+        # SHA is pinned by the trusted-binding Akte and re-derived from the
+        # immutable consumer source chain by the registry, not by this public
+        # surface validator. Files without an ecosystem block fall back to the
+        # gate-only joint-Connector invariant above (older pins format).
+        if 'ecosystem' in pins:
+            ecosystem = pins.get('ecosystem')
+            if (not isinstance(ecosystem, dict) or
+                    set(ecosystem) != {'core', 'demo', 'console', 'connector'} or
+                    not pins_data_exact(ecosystem['core'].get('commit')) or
+                    ecosystem['core'].get('repository') != 'mcpdev80/baseharbor' or
+                    not pins_data_exact(ecosystem['demo'].get('commit')) or
+                    ecosystem['demo'].get('repository') != 'mcpdev80/baseharbor-demo' or
+                    not pins_data_exact(ecosystem['console'].get('commit')) or
+                    ecosystem['console'].get('repository') != 'mcpdev80/baseharbor-console' or
+                    not pins_data_exact(ecosystem['connector'].get('commit')) or
+                    ecosystem['connector'].get('repository') != 'mcpdev80/baseharbor-node-connector'):
+                raise RuntimeError('consumer-pins ecosystem chain differs: ' + str(pins_path))
         validated.add(pins_path.name)
     return sorted(validated)
 
