@@ -13,7 +13,7 @@ class OriginError(ValueError):
 
 
 def verify_origin(*, run, jobs, repository, head_sha, run_id, attempt, job_id,
-                  expected_job_name, workflow_path):
+                  expected_job_name, workflow_path, expected_event='pull_request'):
     """Validate exact run, attempt, job and workflow identity using API-fetched objects."""
     if not isinstance(repository, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
@@ -29,12 +29,14 @@ def verify_origin(*, run, jobs, repository, head_sha, run_id, attempt, job_id,
         raise OriginError("EVIDENCE_ORIGIN: invalid workflow path")
     if not isinstance(run, dict) or not isinstance(jobs, list) or not isinstance(run.get("repository"), dict):
         raise OriginError("EVIDENCE_ORIGIN: invalid API response")
-    expected_path = repository + "/" + workflow_path
+    if expected_event not in ("pull_request", "push", "workflow_dispatch"):
+        raise OriginError("EVIDENCE_ORIGIN: unsupported expected event")
     if (run.get("id") != run_id or type(run.get("id")) is not int
             or run.get("run_attempt") != attempt
             or type(run.get("run_attempt")) is not int
             or run.get("head_sha") != head_sha
             or run.get("path") != workflow_path
+            or run.get("event") != expected_event
             or run.get("repository", {}).get("full_name") != repository
             or run.get("status") != "completed"
             or run.get("conclusion") != "success"):

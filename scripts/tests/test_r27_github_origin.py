@@ -9,7 +9,7 @@ REPO = "mcpdev80/baseharbor"
 SHA = "a" * 40
 PATH = ".github/workflows/ci.yml"
 NAME = "PR Selected Checks"
-RUN = {"id": 123, "run_attempt": 2, "head_sha": SHA, "path": PATH,
+RUN = {"id": 123, "run_attempt": 2, "head_sha": SHA, "path": PATH, "event": "pull_request",
        "repository": {"full_name": REPO}, "status": "completed", "conclusion": "success"}
 JOB = {"id": 456, "run_id": 123, "run_attempt": 2, "name": NAME,
        "status": "completed", "conclusion": "success"}
@@ -62,12 +62,17 @@ class GitHubOriginTests(unittest.TestCase):
                 verify_complete_inventory([{"total_count": 1, "jobs": [JOB]}],
                                           max_jobs=limit)
 
+    def test_expected_event_is_required(self):
+        with self.assertRaises(OriginError):
+            checked(expected_event="untrusted")
+        self.assertEqual(checked(run=dict(RUN, event="workflow_dispatch"), expected_event="workflow_dispatch")["job_id"], 456)
+
     def test_exact_run_and_job_success(self):
         self.assertEqual(checked()["job_id"], 456)
 
     def test_bad_run_and_job_fields_fail_closed(self):
         for field, value in (("id", 999), ("run_attempt", 3), ("head_sha", "b" * 40),
-                             ("path", ".github/workflows/other.yml"),
+                             ("path", ".github/workflows/other.yml"), ("event", "workflow_dispatch"),
                              ("repository", {"full_name": "other/repo"}),
                              ("status", "in_progress"), ("conclusion", "failure")):
             with self.subTest(run=field):

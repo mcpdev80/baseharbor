@@ -8,7 +8,7 @@ REPO="mcpdev80/baseharbor"
 SHA="a"*40
 PATH=".github/workflows/ci.yml"
 NAME="PR Selected Checks"
-RUN={"id":123,"run_attempt":2,"head_sha":SHA,"path":PATH,
+RUN={"id":123,"run_attempt":2,"head_sha":SHA,"path":PATH,"event":"pull_request",
      "repository":{"full_name":REPO},"status":"completed","conclusion":"success"}
 JOB={"id":456,"run_id":123,"run_attempt":2,"name":NAME,
      "status":"completed","conclusion":"success"}
