@@ -75,6 +75,9 @@ def read_pinned_policy_file(policy_path, protected_digest, *, trusted_owner_uid=
         raise EvidenceError("EVIDENCE_POLICY: nofollow unavailable")
     if type(trusted_owner_uid) is not int or trusted_owner_uid < 0:
         raise EvidenceError("EVIDENCE_POLICY: invalid trusted owner")
+    # Reject arbitrary foreign owners; executor identity is supplied by OS.
+    if trusted_owner_uid != os.geteuid():
+        raise EvidenceError("EVIDENCE_POLICY: owner does not match executor")
     def check_protection(info):
         if info.st_uid not in (0, trusted_owner_uid) or info.st_mode & 0o022:
             raise EvidenceError("EVIDENCE_POLICY: unprotected owner or permissions")
