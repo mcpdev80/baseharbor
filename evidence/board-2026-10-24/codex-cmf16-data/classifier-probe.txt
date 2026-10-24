@@ -1,0 +1,6 @@
+"connection refused" => permanent="" retry=true
+"compose exec -T openbao-member-1 sh -c bao status -format=json: connection refused" => permanent="exec" retry=false
+"compose exec -T openbao-member-1 sh -c bao status -format=json: connection reset by peer" => permanent="exec" retry=false
+"x509: certificate signed by unknown authority; connection reset by peer" => permanent="tls" retry=false
+"permission denied: credential file unavailable after connection refused" => permanent="permission" retry=false
+"exec bao: executable file not found; i/o timeout" => permanent="exec" retry=false

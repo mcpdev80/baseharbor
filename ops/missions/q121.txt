@@ -1,0 +1,30 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/q114-fix1060. KEIN Root-Repo git. KEIN force-push, KEIN amend, KEIN history rewrite. KEIN close/reopen, KEIN workflow_dispatch/rerun, KEIN empty commit. KEIN Merge/Review. GitHub reads only.
+
+HANDOFF (fakten):
+- q117 force-pushed #1060 old `6a0d36da` -> current `13a05ea4`. Do NOT force back.
+- q120 stopped while reasoning; it left `scripts/test_pr_gate_plan.py` dirty plus untracked `debug_binding.py`, `debug_binding2.py`. PRESERVE them via `git stash push -u -m q120-wip` before new work; mention stash SHA in evidence.
+- Codex cmf15 review evidence `codex-verdict-1060-history.md`. It says current source REQUEST_CHANGES:
+  A planner now reads record from candidate `head_sha`; must restore authenticated `target_base_sha`.
+  B `docs/internal/ci-binding-qualifications.md` must NOT be self-authorizing; restore target/develop version in candidate (no hash fixpoint).
+  C dedicated runner at `pr-check-runner.py:68-70` is unreachable because wizard-family guard runs first; route `openbao-package-tests` correctly, preserving zero discovery/failure rejection.
+  D workflow case at ci.yml is byte correct.
+  E PR conflict with develop (Akte) blocks pull_request CI; clean forward integration is required.
+  F positive selection for #1052 cannot name an unaccepted #1052 source; keep unknown fail-closed until a separate trusted-source qualification lands. Do not invent SHA/placeholder or broad allowlist.
+
+ERSTER SCHRITT: evidence/board-2026-10-24/q121-1060repair.md mit ## PLAN + nativen Todos.
+
+ACTION:
+1. Verify current branch status and remote head; stash q120 WIP preserving debug files.
+2. Ordinary `git merge origin/develop` into branch; for Akte conflict choose exact develop bytes (this is a legitimate trust restore, not hand-authored self-hash). If any non-Akte conflict or tree drift appears, STOP and report.
+3. Apply minimal corrections:
+   - scripts/pr-gate-plan.py: target_base_sha reader restored; OpenBao unknown fail-closed, no generic bootstrap fallback.
+   - scripts/pr-check-runner.py: dedicated openbao-package-tests reachable before wizard map.
+   - scripts/test_pr_gate_plan.py: real command selection/discovery tests and negative cases from Codex; no #1052 fixed-point.
+   - ci.yml unchanged unless a demonstrably needed existing-workflow test is missing; avoid scope creep.
+4. Verify diff vs develop expected: only ci.yml + three scripts, Akte zero diff. `git diff --check`.
+5. Run smallest focused suites:
+   - `PYTHONPATH=scripts python3 -m pytest -q scripts/test_pr_gate_plan.py scripts/test_pr_check_runner.py`
+   - selected executor/verifier/ci-policy tests. Record exact outputs.
+6. If green, one ordinary forward commit + normal push to PR branch. If not green, do not push; evidence exact failure.
+7. Observe PR CI max 25min. If no checks after clean merge/push, report API totals and likely event/condition; no workaround.
+END Q121-1060REPAIR-PUSHED / END Q121-1060REPAIR-BLOCKED.

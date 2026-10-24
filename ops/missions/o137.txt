@@ -1,0 +1,25 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/worktrees/q113-1052. KEIN Root/product git, KEIN #1060 worktree. KEIN force/amend/history rewrite/merge/review/--admin. GitHub only `timeout 30 gh pr view`; auth/config forbidden.
+ERSTER SCHRITT: evidence/board-2026-10-24/o137-1052r6.md mit ## PLAN + nativen Todos.
+
+Current #1052 head `0b738dca76a8f3bedbe6635164260d8828128f6d`.
+Read Codex cmf16 r5 recipe fully, especially lines90-98:
+- product bootstrap.go52–73: remove bare `"exec "` permanent context misclassification; actual permanent executable failure only.
+- add Compose-wrapped transient `connection refused/reset` tests and permanent exec cause cases.
+- flaky/mixed fake phase machine: initial Inspect, pre probes, destination write, direct member post; admin proxy excluded. Exact per-member counts/order, no vacuous phase knob.
+- make omitted write/post and extra pre probes actually observable/rejected.
+- preserve BAO_ADDR destination accounting and true transient post recovery.
+Confine edits to bootstrap.go52–73 and bootstrap_test.go292–342,491–495,1243–1402 plus directly affected focused cases.
+
+WORKFLOW:
+1. status clean/current; if q120 debug files in unrelated worktrees, ignore.
+2. inspect prior code/test, write precise diff plan.
+3. implement one coherent forward commit.
+4. run 12 focused tests + new wrapper/phase cases; package go test; go vet; gofmt. Use private GOCACHE.
+5. show at least 4 sensitivity checks/mutants:
+   - transient compose exec wrapper now retries
+   - permanent exec still fail-fast
+   - omitted member post fails
+   - extra pre-probe/order fails
+   Record commands/output.
+6. ordinary commit + push branch. Observe checks 25min, current integration_sha_mismatch may remain due #1060/base; classify separately.
+END O137-1052R6-PUSHED / END O137-1052R6-BLOCKED.
