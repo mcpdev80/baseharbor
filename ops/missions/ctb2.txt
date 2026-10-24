@@ -1,0 +1,14 @@
+ROLLE: REVIEW (SHA-genauer Diff, Evidence, Pflichtchecks; Urteil IMMER plus umsetzbares Loesungsrezept Datei/Aenderung/Testanforderung/Stop-Kriterium). Diese Lane implementiert NICHTS und merged NICHTS.
+
+AUFGABE: zwei von Worker-Lanes frisch gerebaste v0.4.26-Kandidaten pruefen (beide Koepfe sind NEU, ein fruheres Review bezog sich auf die alten SHAs - kein doppeltes Review):
+A) PR #1050 docs: add v0.4.26.consumer-pins.json - Live head 388967621c90750e59c5faab35344b46d4108fef, base develop a2abc17a, run 40073196114 failed "coverage-unresolved: unknown impact docs/releases/v0.4.26.consumer-pins.json".
+B) PR #1052 fix(openbao) - Live head 736d73c670ffb0eaa78b277e1033d5bc26401931, base develop a2abc17a, run 40073221965 failed "unknown impact internal/openbao/bootstrap.go + bootstrap_test.go". Vorlaeufiger Stand: q111 arbeitet bereits an den 4 CX-1052 Test-Rezepten auf dieser Branch (Koepfe koennen sich waehrend deiner Pruefung noch einmal aendern - pruefe den von dir festgestellten SHA und benenne ihn).
+
+FUER JEDEN Kandidaten:
+1. Read-only Feststellung von Kandidat-Identitaet VOR und NACH der Pruefung (head SHA + Dateihashes der affected files), exakter Diff gegen origin/develop (`gh pr diff`, `git show <sha>:<path>`). Kein Lesen im Arbeitsbaum einer fremden Lane, kein Checkout fremder Worktrees.
+2. Pruefen: (a) ist der CI-Fehler ausschliesslich der bekannte Klassifikations-Mangel oder gibt es echte inhaltliche Defekte? (b) fuer #1050: inhaltliche Korrektheit der pins-Datei (Core 1861ed07, Connector df1f4378, Demo 25c31969, DAG, public schema, origins) gegen die immutable consumer sources. (c) fuer #1052: ob die Retry-Logik in bootstrap.go die 5-attempt cap + transient-only Regel erfuellt (Testseite ist q111, nicht dein Fokus).
+3. Pflichtchecks gemaess Repository-Regeln, keine Eigenausfuehrung von Produkt-CI, keine Reruns, keine Labels.
+4. Urteil je Kandidat: ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES, plus Loesungsrezept (Datei, Aenderung, Testanforderung, Stop-Kriterium). Bestaetige explizit ob das CX1050-Rezept (pins-data validation prerequisite) durch die laufenden Arbeiten o114/#1056 + q110-Prinzip abgedeckt ist oder eine Luecke laesst.
+
+EVIDENCE: append in evidence/board-2026-10-24/codex-verdict-1050-1052-r2.md mit ROLLE-Label, Session-/Modellangabe soweit verfuegbar (nicht erfinden), UTC-Zeit, SHA before/after. Ende-Marker: END CX-R2-10501052-DONE.
+STOP: keine Mutation an Produkt, Planning, PRs oder fremden Aendarbeiten. Bei unklarem Kandidaten (head drift) abbruch mit Feststellung statt Review gegen falschen Stand.

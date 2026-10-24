@@ -1,0 +1,13 @@
+KURZ-AUFTRAG (Fortsetzung deines q110-PRs #1060). pwd-PFLICHT: git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor, worktree deines q110-Branches. KEIN Merge, KEIN root-git.
+BEFUND (vom Coordinator verifiziert): PR #1060 head 3fa4989e hat "PR Selected Checks" FAIL (run 40076435784, job 120820980049):
+`BLOCKED: coverage-unresolved: CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py`
+Deine Annahme "No extension of the trusted binding Akte" ist falsch: weil du scripts/pr-check-runner.py (und ggf. pr-gate-plan.py) aenderst, verlangt der Planner einen Trusted-Binding-Akteneintrag fuer genau diesen Kandidaten (Muster: PR #1058 hatte die Akte fuer #1056 nachgereicht; siehe docs/internal/ci-binding-qualifications.md und scripts/pr-gate-plan.py beim Akte-Parser).
+
+AUFGABE:
+1. Akte-Eintrag fuer #1060 anlegen/ergaenzen: repository/target_branch/reviewed_head = dein neuer PR-Head, files + file_hashes exakt fuer die betroffenen CI-Scripts (pr-check-runner.py, pr-gate-plan.py, test_pr_gate_plan.py - nur die tatsaechlich geaenderten), required_checks = pr-planner-tests, ci-policy, ci-executor-verifier-tests.
+2. Wenn der Akte-Parser mehrere Bloecke erst durch #1056 unterstuetzt: prüfe ob dein Branch bereits auf develop basisiert, das #1056 enthaelt. Falls nicht, Rebase auf origin/develop ist Pflicht (sonst bleibt der Parser einblockig und deine Akte wird ignoriert).
+3. Hashwerte aus den tatsaechlichen Git-Objekten berechnen (sha256 der Datei-Inhalte am finalen Head), nicht raten. Testerweiterung: Fall "Akte mit hash-Mismatch auf einen der drei Scripts" faellt fail-closed.
+4. Push, `gh pr checks 1060` bis final beobachten. Nur wenn ein Gate nachweislich fuer DEINEN Pfad fehlt/rot ist,最小 passendes Atomic-Gate ergaenzen; KEINE Full-Matrix, KEIN Rerun-Spam.
+ABNAHME: PR Selected Checks SUCCESS auf dem neuen Head, Akte hash-konsistent.
+Evidence: in evidence/board-2026-10-24/q110-openbaogateplan.md unter "## RUNDE 2" (neue head-SHA, Akte-Diff, Check-Run-IDs).
+END Q110B-GATEPLANAKTE-DONE / END Q110B-BLOCKED mit Run-ID.

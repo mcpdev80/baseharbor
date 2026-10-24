@@ -1,0 +1,18 @@
+FOLGEAUFTRAG zu o115 (du hast die Pin-Kette bereits verifiziert). pwd-PFLICHT: git NUR in den betroffenen Repo-Checkout/Worktrees unter /home/marcel/dev/baseharbor-ecosystem/, KEIN git im Root-Repo. Rein lesend, KEIN Merge/Review/Dispatch/Push.
+ERSTER SCHRITT: evidence/board-2026-10-24/o115b-freeze.md mit ## PLAN + nativen Todos.
+
+MISSION: OEkosystem-Freeze-Zustand fuer v0.4.26 vollstaendig klaeren (4 Repos), damit der W1-/Pre-Release-Dispatch gezielt moeglich ist.
+Bekannt (von dir verifiziert): Core 1861ed07, Demo 25c31969, Connector df1f4378, Console 69d1d14 - alle reale Commits.
+
+ZU PRUEFEN:
+1. Fuer JEDES der vier Repos: ist der jeweilige Pin-Commit auf dem offiziellen Branch (develop/main) des Repos enthalten (ancestry-Check), oder nur auf einem Feature-Branch? Konkrete Verdachtsfaelle:
+   - baseharbor-demo: worktree worktrees/demo-integrated-1022 zeigt Branch chore/v0426-core-pin @ a44e2e9 - ist dieser Pin-Commit in demo develop/main enthalten oder wartet er auf einen PR/Merge?
+   - baseharbor-console: HEAD 69d1d14 auf work/v0.4.26-integrations-docs - Verhaeltnis zu console develop/main?
+   - baseharbor-node-connector: df1f4378 (q59b FROZEN) - in connector develop/main?
+2. Offene PRs in demo/console/node-connector, die fuer den Freeze noetig sind (gh pr list pro Repo, state=open), inkl. Check-Status und ob sie releasekritisch oder 27 sind (27NICHT anfassen, nur benennen).
+3. Konsistenz der wechselseitigen Pin-Grafik: verweist Core's consumer-pins (#1050 Datei) auf exakt diese vier SHAs, und verweisen Demo/Console/Connector (falls sie eigene Pin-Dateien haben) konsistent zurueck? Zyklus-/DAG-Fehler benennen.
+4. Ergebnis als Freeze-Dossier-Tabelle pro Repo: Branch-Spitze, pin-in-ancestry ja/nein, fehlende Aktion (PR-Nummer/Merge), Beleg (SHA/Run).
+5. Explizite Empfehlung: welche Aktionen MUSS der Pool noch ausfuehren, damit `docs/releases/v0.4.26.consumer-pins.json` + pre-release.yml:117/:122 erfuellbar sind.
+
+ABNAHME: Dossier vollstaendig + klare Liste offener Freeze-Aktionen. STOP: jede Aenderung an Repos/PRs.
+END O115B-FREEZE-DONE / END O115B-BLOCKED mit datei:zeile.

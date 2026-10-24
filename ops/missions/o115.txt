@@ -1,0 +1,20 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor (eigener worktree, main/develop checkout NICHT switchen). KEIN git im Root-Repo. KEIN `gh workflow run`, KEIN `gh run rerun`, KEIN Merge/Review.
+ERSTER SCHRITT (vor jedem Schreib-Tool): evidence/board-2026-10-24/o115-w1evidence.md mit ## PLAN + identischen nativen Todos.
+
+MISSION: W1-Qualifikation fuer v0.4.26 vorbereiten - Beweis-Wiederverwendung statt neuer Laeufe.
+Ausgangslage (Coordinator + f46b Audit, evidence/board-2026-10-24/f46b-docsaudit.md):
+- docs/releases/v0.4.26.evidence-runs und docs/releases/v0.4.26.selected-gates.json FEHLEN (Muster existiert fuer 0.4.23-0.4.25).
+- v0.4.26.consumer-pins.json haengt in PR #1050 (blocked bis pins-data-Qualifikation in develop ist, siehe #1056/o114).
+- pre-release.yml develop-Dispatches schlagen bei "Resolve release candidate" fehl (f46b hat das beobachtet).
+- W1-Anker laut 26-FENCE: Core = 1861ed07888a1ec22c218ca491d23ee54f48e261, Demo 25c31969, Connector df1f4378, Console 69d1d14 (bitte gegen develop/Pin-Dateien verifizieren, nicht blind uebernehmen).
+
+ARBEIT:
+1. ROOT-CAUSE "Resolve release candidate": die fehlgeschlagenen pre-release-Runs via `gh run list --workflow` + `gh run view --log` lesen, exakte Fehlerstelle und fehlendes Input/Artefakt benennen (datei:zeile im Workflow). Keine Aenderung, kein Rerun.
+2. REUSE-MATRIX: fuer jedes v0.4.26-Pflichtgate aus scripts/release-requirements.json + dem 0.4.25-Muster pruefen, ob es einen GUENSTIGEN, noch GUELTIGEN gruenen Nachweis gibt: Run-ID, Commit-SHA, Datum, Gate-Name, und ob die SHA zur aktuellen develop/Pin-Kette passt (Policy: nur gleicher unveraenderter Commit + gleiche Konfiguration = wiederverwendbar). Ergebnis als Tabelle: reuse_ok / invalid_stale / missing.
+3. FEHLERLISTE: exakt die Atomic-Gates benennen, die FEHLEN oder ungültig sind - mit dem kleinsten passenden Workflow/Job-Namen, damit spaeter nur diese beauftragt werden. Ausdruecklich KEINE Full-Matrix vorschlagen ohne Begruendung.
+4. EVIDENCE-RUN/SELECTED-GATES ENTWURF: wenn und nur wenn die benoetigten Runs bereits gruen und gueltig sind, einen PR-ready Entwurf von docs/releases/v0.4.26.evidence-runs + .selected-gates.json im eigenen worktree/branch vorbereiten (Datei-Inhalt + Verifikationsbefehle in der Evidence dokumentieren; PR erst NACH Coordinator-Freigabe eroeffnen - also noch NICHT pushen, sondern Pfad + Diff in der Evidence zeigen). Sonst: als blocked-on-W1 markieren.
+5. KEINE Produkt-aenderungen, keine Labels, keine VM-Tests, keine Docker/Podman-K3s-Dispatches. Reine Lese-Diagnose + Auswertung + Entwurf.
+
+ABNAHMEKRITERIEN: (a) Root-Cause "Resolve release candidate" mit Run-ID/Zeile, (b) reuse-Matrix komplett, (c) Liste der minimal nachzuqualifizierenden Gates, (d) Entwurf oder begrundetes blocked-on-W1.
+STOP: wenn Release-Requirements unlesbar/entsprechend nicht existieren oder die Pin-Kette nicht eindeutig ist -> BLOCKED mit Datei:Zeile.
+END O115-W1EVIDENCE-DONE / END O115-BLOCKED.

@@ -1,0 +1,26 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git-Arbeit AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan. KEIN git im Root-Repo, KEIN git in Produkt-Repos.
+ERSTER SCHRITT (vor jedem Schreib-Tool): evidence/board-2026-10-24/o116-planboard26.md mit ## PLAN + identischen nativen Todos.
+
+MISSION: Planning/CardBoard fuer v0.4.26 LAUFEND auf wahrheitsgetreuem Stand halten (nicht erst am Release-Ende). Karten immer mit voller Karten-ID benennen.
+
+KARTEMENGE (nur 26; v0.4.27-Karten sind tabu, 26-FENCE):
+- t-20261017-release-0-4-26-prepare (active)
+- t-20261019-v0426-complete-defect-audit (review, Owner-STOP 2026-10-21 - Zustand NICHT aendern)
+- t-20261020-develop-appid-manifest-test-regression (review; PRs #1046 #1047)
+- t-20261022-q20-docs-pages (review; f46b-Befund: Kandidat #1031 MERGED 103f58b1, korrigiert durch #1041 9f4916be, in develop aufgegangen -> Kartenstatus nur mit Beleg klaeren)
+- core-923 (active; W1-/Journeys-Abhaengigkeit)
+
+REGELN:
+1. Realitaetsabgleich pro Karte ueber Live-`gh` (PR-State, head-SHA, Check-Ergebnisse) - keine historischen Berichte als Ersatz.
+2. Status nur gemaess Schema des Repos: planned/claimed/active/review/accepted/blocked. Kein Sammelstatus "blocked" fuer wartende CI. Fuer jede Aenderung: Beleg (PR-URL + SHA + Run-ID) in die Karte.
+3. Generierte Views NIEMALS von Hand: Metadaten aendern -> `python3 scripts/release_cycles.py sync` -> `python3 scripts/plan.py render` -> `python3 scripts/plan.py check` muss 0 errors (bestehende dependency-state warnings okay). Erst dann EIN Bundle-Commit, Push origin main.
+4. OPERATION: kein Push vor check=0.
+5. KEINE Akzeptanzerklaerungen erfinden, KEINE Merges, keine Produktarbeit, keine Karten-IDs erfinden, keine 27-Karten.
+
+LIEFERUMFANG pro Durchlauf:
+- Stand der PR-Kette #1046/#1047/#1050/#1052/#1056 in den betroffenen Karten nachziehen (Evidence-Links + resolution only wenn belegt).
+- t-20261019-v0426-complete-defect-audit: Owner-STOP bleibt; nur aktuelle Evidence/Links ergaenzen.
+- t-20261022-q20-docs-pages: wenn und nur wenn die Develop-Aufnahme belegt ist, Karte auf accepted mit Belegen setzen und Begruendung im body; sonst blocked/review mit Grund.
+- Prepare-Karte: Blockerliste als Handoff-Abschnitt (welche Gates offen, welche wiederverwendet, welche PRs ausstehend).
+- Am Ende: board-sha (plan HEAD) in die Evidence.
+END O116-PLANBOARD26-DONE mit board-sha / END O116-BLOCKED mit Grund.

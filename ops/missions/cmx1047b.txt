@@ -1,0 +1,10 @@
+ROLLE: MERGE. Kandidat ist neu gerebased: PR #1047 (mcpdev80/baseharbor) head **40351fd30af9d1b12a3ea5b4b450056ea714f475**, base develop a2abc17a.
+Vorbedingungen bereits vom Worker verifiziert (evidence/board-2026-10-24/f47-rebase1047.md, END F47-REBASE1047-DONE): run 40076426268 conclusion success, PR Selected Checks pass, mergeable=MERGEABLE, mergeStateStatus=BLOCKED wegen Review-Gate (Ruleset 23754541: approving review + code-owner + last-push approval, dismiss_stale_reviews_on_push). Fachliche ACCEPT-Verdicts existieren fuer den ALTEN head 79e0aa2b (codex-verdict-1047.md, REVIEW-APPID-R2) - der Rebase war inhaltlich leer (nur base-Bewegung).
+AUFGABE:
+1. Prüfe, ob der Rebase inhaltlich leer war: exakter Diff 79e0aa2b vs 40351fd3 gegen develop (Vergleich der PR-File-Inhalte/Hashes). Wenn NUR base-Aenderung: die bestehenden Verdicts sind mit dokumentierter Begruendung auf den neuen Head uebertragbar - das musst du in der Evidence ausdruecklich festhalten (kein stilles Re-Use). Bei inhaltlicher Divergenz: STOP + REVIEW-Anforderung, kein Merge.
+2. Live-Gates erneut pruefen (head-Wache vor/nach, gh pr checks, offene Threads, up-to-date Status).
+3. Bei erfuellten Bedingungen: approve (code-owner/last-push gemäss Ruleset) + `gh pr merge 1047 --squash`. KEIN --admin, KEIN Bypass, KEIN force.
+4. Post-merge: develop-Log + develop-Checks verifizieren (`gh run list --branch develop`), neue develop-SHA notieren.
+5. Evidence: evidence/board-2026-10-24/codex-merge-1047.md im Abschnitt "## RUNDE 2 (rebased head)" mit UTC, SHA before/after, Run-IDs, Urteil.
+Danach, falls noch Zeit im Auftrag: PR #1046 (appid test, head 35582508, base develop) pruefen - die Kette ist #1047 zuerst; wenn #1047 gemergt ist, fuer #1046 nur den naechsten Schritt benennen (Rebase-Bedarf), NICHT selbst rebasen (Worker-Auftrag).
+END CX-1047-MERGE-DONE mit develop-SHA / END CX-1047-BLOCKED mit Grund.

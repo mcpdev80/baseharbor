@@ -1,0 +1,17 @@
+pwd-PFLICHT: vor JEDEM git-Befehl pwd pruefen. git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor. KEIN git im Root-Repo /home/marcel/dev/baseharbor-ecosystem. KEIN `gh pr merge`, KEIN `gh pr review` (Merge/Approval ist Codex-Lane).
+ERSTER SCHRITT (vor jedem Schreib-Tool): evidence/board-2026-10-24/f47-rebase1047.md mit ## PLAN + identischen nativen Todos.
+
+KONTEXT (vom Coordinator verifiziert, Evidence evidence/board-2026-10-24/codex-merge-1047.md END CX-1047-BLOCKED):
+PR #1047 (branch fix/f27-gateplan-apptest-lane, worktree baseharbor/worktrees/f27-gateplan-lane, head 79e0aa2b) ist fachlich ACCEPT-reviewt (codex-verdict-1047.md + REVIEW-APPID-R2) und alle Checks waren gruen (run 39998286306) ABER mergeStateStatus=BEHIND: 3 develop-Commits voraus (develop a2abc17a), merge_base 1861ed07. Das aktive Ruleset verlangt strikte Freshness -> Merge unmöglich ohne Rebase.
+
+AUFGABE (nur Rebase + Beleg, kein Merge):
+1. worktree baseharbor/worktrees/f27-gateplan-lane verwenden (Branch fix/f27-gateplan-apptest-lane). `git fetch origin`, Rebase auf origin/develop (a2abc17a oder aktuelleren develop-Tip, den du vor dem Push nochmal verifizierst).
+2. Konfliktfall: dieser PR ändert NUR scripts/pr-gate-plan.py + zugehörige Tests (.github/workflows/gate-plan.yml falls vorhanden). Bei Konflikten mit den inzwischen in develop befindlichen Qualifikations-Akten (#1058/#1059) die TRUSTED-Seite (develop) behalten und die PR-eigene Testabdeckung ergaenzen - Begruendung Zeile fuer Zeile in die Evidence. Kein loses "ours/theirs"-Raten.
+3. LOKALE minimum Pruefung: `python3 -m pytest scripts/test_pr_gate_plan.py -q` (oder repo-ueblicher Runner) + `python3 scripts/pr-gate-plan.py --selftest` falls vorhanden. Keine Docker/Podman/VM/Full-Matrix.
+4. Push auf origin/fix/f27-gateplan-apptest-lane (fast-forward fuer den PR, KEIN force-push, KEIN --admin).
+5. `gh pr checks 1047` beobachten: new head SHA notieren; wenn "PR Selected Checks" oder ein Pflichtgate NICHT innerhalb 20 min gruen wird -> BLOCKED-Eintrag mit Run-ID (kein Rerun-Spam, keine Labels).
+6. In die Evidence-Datei: PR-URL, base, neuer head-SHA, Diff-Umfang (files), pytest-Auszug, Check-IDs/Run-IDs, und die exakte Feststellung ob der PR jetzt mergeStateStatus=CLEAN ist (`gh pr view 1047 --json mergeStateStatus,mergeable,headRefOid`).
+
+ABNAHMEKRITERIEN: neuer head auf develop-Basis gepusht, lokale Planner-Tests gruen, Checks gruen ODER begruendeter BLOCKED-Run-Beleg, mergeStateStatus dokumentiert.
+STOP-KRITERIEN: force-push, Admin-Bypass, Merge, Review-Abgabe, Aenderung an develop/main oder an fremden Branches.
+END F47-REBASE1047-DONE (mit neuer head-SHA) / END F47-BLOCKED (mit Run-ID + Grund).

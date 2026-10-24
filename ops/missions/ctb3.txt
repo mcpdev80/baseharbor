@@ -1,0 +1,14 @@
+ROLLE: REVIEW (unabhaengig, SHA-genau, Urteil + umsetzbares Rezept; keine Umsetzung, kein Merge).
+KANDIDAT: PR #1056 (mcpdev80/baseharbor), Live head 7a220d26 (Branch o90-planner-pr, base develop). Aenderung gegenueber dem zuvorReviewten df8e53b9 = Wiederherstellung des in einem Rebase verlorenen pins-data-Kerncommits 3c02f48c (planner area 'pins-data' + VALIDATION 'pins-data-validation' + ci.yml execution + Akte).
+RUNDE 2 heisst: der Kopf ist NEU, das fruhere Review (df8e53b9, run 40071701320) ist nicht anrechenbar.
+
+PRUEFPFLICHTEN:
+1. Kandidat-Identitaet vor/nach der Pruefung (head SHA + sha256 der 5 affected files). Exakter Diff 7a220d26 vs origin/develop.
+2. Ist die pins-data-Klassifikation exakt und schmal? (a) nur docs/releases/*.consumer-pins.json, (b) kein generischer docs/JSON-Allowlist, (c) required_validation_checks NICHT leer, (d) Fail-Closed unveraendert (unbekannte Pfade bleiben unresolved).
+3. Fuehrt die Validation tatsaechlich aus und prueft sie die eingebetteten immutable SHAs (Core 1861ed07 / Connector df1f4378 / Demo 25c31969) gegen die Consumer-Sources - NICHT den synthetischen integration_sha? Vergleiche mit scripts/ecosystem_release_pins.py Conditionen.
+4. Trusted-Binding-Akte: reviewed_head + file_hashes deckungsgleich mit dem finalen Head? Ein Block pro Kandidat, kein toter/veralteter Eintrag der die Parser-Logik schwaecht?
+5. Tests: decken sie exact-one-file-Erfolg + Malformed/Mismatch-Fail + unrelated-JSON-eigene-Coverage ab? Laeuft der Validator wirklich (kein reiner Filename-in-Matrix-Nachweis)?
+6. Beantworte ausdruecklich: macht dieser Kandidat PR #1050 (docs/releases/v0.4.26.consumer-pins.json) qualifizierbar, d.h. wuerde der Planner nach Merge nur noch 'pins-data-validation' + Focused Python + Workflow policy verlangen und 'PR Selected Checks' GREEN werden? Wenn nein: konkrete Luecke mit datei:zeile.
+
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-1056-r2.md (ROLLE-Label, UTC, SHA before/after, Urteil, Rezept mit Datei/Aenderung/Testanforderung/Stop-Kriterium).
+END CX-1056R2-DONE / END CX-1056R2-BLOCKED.
