@@ -75,8 +75,8 @@ class FileReaderTests(unittest.TestCase):
    link=Path(d)/"link.json"
    link.symlink_to(source)
    for candidate in ("policy.json",str(link)):
-    with self.subTest(candidate=candidate), self.assertRaisesRegex(EvidenceError,"protected path|cannot read"):
-     read_pinned_policy_file(candidate,"a"*64)
+    with self.subTest(candidate=candidate), self.assertRaisesRegex(EvidenceError,"protected path|cannot read|unprotected owner"):
+     read_pinned_policy_file(candidate,"a"*64,trusted_owner_uid=0)
  def test_canonical_file_roundtrip(self):
   import tempfile
   from r27_trusted_policy import read_pinned_policy_file
@@ -84,8 +84,8 @@ class FileReaderTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as d:
    file=Path(d)/"policy.json"
    file.write_bytes(data)
-   mapping,pin=read_pinned_policy_file(str(file),hashlib.sha256(data).hexdigest())
-   self.assertEqual(mapping["sql"]["job_name"],"PR Selected Checks")
+   with self.assertRaisesRegex(EvidenceError,"unprotected owner"):
+    read_pinned_policy_file(str(file),hashlib.sha256(data).hexdigest(),trusted_owner_uid=0)
 
 
 class AncestorPolicyPathTests(unittest.TestCase):
@@ -98,12 +98,12 @@ class AncestorPolicyPathTests(unittest.TestCase):
    data=b'{"sql":{"job_name":"Job","workflow_path":".github/workflows/ci.yml"}}'
    (real/"policy.json").write_bytes(data)
    (Path(d)/"link").symlink_to(real,target_is_directory=True)
-   with self.assertRaisesRegex(EvidenceError,"cannot read protected file"):
-    read_pinned_policy_file(str(Path(d)/"link"/"policy.json"),hashlib.sha256(data).hexdigest())
+   with self.assertRaisesRegex(EvidenceError,"cannot read protected file|unprotected owner"):
+    read_pinned_policy_file(str(Path(d)/"link"/"policy.json"),hashlib.sha256(data).hexdigest(),trusted_owner_uid=0)
  def test_dotdot_rejected(self):
   from r27_trusted_policy import read_pinned_policy_file
   with self.assertRaisesRegex(EvidenceError,"unsafe protected path"):
-   read_pinned_policy_file("/tmp/../policy.json","a"*64)
+   read_pinned_policy_file("/tmp/../policy.json","a"*64,trusted_owner_uid=0)
 
 
 class ProtectedOwnerTests(unittest.TestCase):
@@ -119,3 +119,10 @@ class ProtectedOwnerTests(unittest.TestCase):
   from r27_trusted_policy import read_pinned_policy_file
   with self.assertRaisesRegex(EvidenceError,"invalid trusted owner"):
    read_pinned_policy_file("/tmp/file","a"*64,trusted_owner_uid=True)
+
+
+class MandatoryOwnerTests(unittest.TestCase):
+ def test_owner_is_mandatory(self):
+  from r27_trusted_policy import read_pinned_policy_file
+  with self.assertRaisesRegex(EvidenceError,"invalid trusted owner"):
+   read_pinned_policy_file("/tmp/policy.json","a"*64)
