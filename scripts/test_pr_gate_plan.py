@@ -2236,6 +2236,43 @@ class BindingPR1007TrustedBasePolicyTests(unittest.TestCase):
         self.assertEqual('unresolved', planned['coverage_status'], planned)
         self.assertTrue(planned['unresolved_coverage'])
 
+# OpenBao package-tests validation and fail-closed handling.
+class OpenBaoValidationTests(unittest.TestCase):
+    def test_openbao_package_tests_is_a_known_check(self):
+        """openbao-package-tests must resolve to unresolved for any unreviewed path."""
+        self.assertIn('internal/openbao', planner.__dict__.get('OPENBAO_CHECKS', [])[0]['owner'])
+
+    def test_any_unreviewed_openbao_path_stays_fail_closed(self):
+        """Unreviewed OpenBao production paths must remain unresolved."""
+        for name in ['internal/openbao/unreviewed_security_mutation.go',
+                     'internal/openbao/managed_credentials.go',
+                     'internal/openbao/application_runtime_client.go',
+                     'internal/openbao/dev_access.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertTrue(
+                    any('OpenBao production impact' in u for u in result['unresolved_coverage'])
+                )
+
+    def test_openbao_add_delete_rename_stay_unresolved(self):
+        """Added, deleted, renamed OpenBao files must stay fail-closed."""
+        variants = [
+            paths('internal/openbao/bootstrap.go'),
+            [{'status': 'deleted', 'path': 'internal/openbao/bootstrap.go'}],
+            [{'status': 'renamed', 'old_path': 'internal/openbao/bootstrap.go',
+              'new_path': 'internal/openbao/new_bootstrap.go'}],
+            paths('internal/openbao/bootstrap.go',
+                  'internal/openbao/unreviewed_addition.go'),
+            [{'status': 'added', 'path': 'internal/openbao/new_handler.go'}],
+        ]
+        for changes in variants:
+            with self.subTest(changes=changes):
+                result = planner.plan(diff(changes), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
 # main() entrypoint must source the authenticated evaluation context from the
 # runner environment, never from the candidate PR, and must fail closed when
 # either value is absent. These tests drive planner.main() with monkeypatched
@@ -2853,6 +2890,142 @@ class BootstrapExceptionTests(unittest.TestCase):
                               context_repository='other/repo',
                               context_target_branch='develop')
         self.assertEqual('unresolved', result['coverage_status'])
+
+
+class OpenBaoExactRetryRouteTests(unittest.TestCase):
+    def runner(self):
+        spec = importlib.util.spec_from_file_location('openbao_runner', ROOT / 'pr-check-runner.py')
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        return runner
+
+    def test_actual_workflow_route_runs_trusted_helper_and_rejects_missing_or_skipped_tests(self):
+        workflow = (ROOT.parent / '.github/workflows/ci.yml').read_text()
+        start = workflow.index('            openbao-package-tests)\n') + len('            openbao-package-tests)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            trusted, candidate, temp = (root / name for name in ('trusted', 'candidate', 'temp'))
+            for directory in (trusted, candidate, temp):
+                directory.mkdir()
+            def git(directory, *args):
+                return subprocess.check_output(['git', '-C', str(directory), *args], text=True).strip()
+            for directory in (trusted, candidate):
+                git(directory, 'init', '-q')
+                git(directory, 'config', 'user.name', 'Workflow fixture')
+                git(directory, 'config', 'user.email', 'fixture@example.invalid')
+            (trusted / 'scripts').mkdir()
+            (trusted / 'scripts/pr-check-runner.py').write_text((ROOT / 'pr-check-runner.py').read_text())
+            git(trusted, 'add', '.')
+            git(trusted, 'commit', '-qm', 'trusted helper')
+            git(candidate, 'remote', 'add', 'origin', str(trusted))
+            (candidate / 'go.mod').write_text('module example.test/openbaoroute\n\ngo 1.25\n')
+            package = candidate / 'internal/openbao'
+            package.mkdir(parents=True)
+            environment = dict(os.environ, BASE_SHA=git(trusted, 'rev-parse', 'HEAD'),
+                               VALIDATION='openbao-package-tests', RUNNER_TEMP=str(temp),
+                               GITHUB_WORKSPACE=str(candidate))
+            names = self.runner().OPENBAO_REQUIRED_TESTS
+            for mode in ('pass', 'missing', 'skip'):
+                selected = names[:-1] if mode == 'missing' else names
+                text = 'package openbao\nimport "testing"\n'
+                text += '\n'.join('func %s(t *testing.T) { %s }' %
+                                  (name, 't.Skip("not executed")' if mode == 'skip' and name == names[0] else '')
+                                  for name in selected)
+                (package / 'bootstrap_test.go').write_text(text)
+                execution = subprocess.run(['bash', '-euo', 'pipefail', '-c', fragment],
+                                           cwd=candidate, env=environment, capture_output=True, text=True)
+                if mode == 'pass':
+                    self.assertEqual(0, execution.returncode, execution.stderr)
+                    self.assertEqual(list(names), json.loads(execution.stdout)['matched_tests'])
+                else:
+                    self.assertNotEqual(0, execution.returncode, execution.stdout)
+                    self.assertIn('OpenBao', execution.stderr)
+
+    def test_strict_discovery_execution_and_existing_safety_names(self):
+        from types import SimpleNamespace
+        runner = self.runner()
+        names = runner.OPENBAO_REQUIRED_TESTS
+        discovery = '\n'.join(names)
+        execution = ''.join('=== RUN   ' + n + '\n--- PASS: ' + n + ' (0.00s)\n' for n in names)
+        for listed, output, code, success in (
+                (discovery, execution, 0, True), ('', execution, 0, False),
+                ('\n'.join(names[:-1]), execution, 0, False),
+                (discovery, '', 0, False), (discovery, execution, 1, False),
+                (discovery, execution.replace('--- PASS: ' + names[0], '--- SKIP: ' + names[0]), 0, False)):
+            with self.subTest(listed=listed, code=code, success=success):
+                results = [SimpleNamespace(returncode=0, stdout=listed, stderr=''),
+                           SimpleNamespace(returncode=code, stdout=output)]
+                with patch.object(runner.subprocess, 'run', side_effect=results) as process:
+                    if success:
+                        self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
+                        self.assertIn('./internal/openbao/...', process.call_args.args[0])
+                        self.assertIn('-run', process.call_args.args[0])
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            runner.execute_validation('openbao-package-tests', '.')
+        # A renamed replacement must not satisfy an existing exact SQL safety family.
+        replacements = '\n'.join(p.removeprefix('^') + 'Replacement'
+                                  for p in runner.WIZARD_TEST_FAMILIES['wizard-core918-native-sql-safety-tests'])
+        with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=0, stdout=replacements, stderr='')):
+            with self.assertRaises(RuntimeError):
+                runner.execute_validation('wizard-core918-native-sql-safety-tests', '.')
+
+    def test_real_git_frozen_source_forward_merge_and_rejections(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(root), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.name', 'Retry fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            for path in planner.OPENBAO_RETRY_FILES:
+                item = root / path
+                item.parent.mkdir(parents=True, exist_ok=True)
+                item.write_text('base\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            target = git('rev-parse', 'HEAD')
+            for path in planner.OPENBAO_RETRY_FILES:
+                (root / path).write_text('frozen retry\n')
+            git('commit', '-qam', 'frozen retry')
+            reviewed = git('rev-parse', 'HEAD')
+            spec = importlib.util.spec_from_file_location('retry_diff', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(resolver)
+            def actual(base, head):
+                tree = git('merge-tree', '--write-tree', base, head).splitlines()[0]
+                integration = git('commit-tree', tree, '-p', base, '-p', head, '-m', 'integration')
+                return resolver.resolve_pr_diff(root, base, head, integration)
+            def checks(value, repo='mcpdev80/baseharbor', branch='develop'):
+                return planner.openbao_retry_checks(value, root, repo, branch)
+            with patch.object(planner, 'OPENBAO_RETRY_HEAD', reviewed):
+                value = actual(target, reviewed)
+                self.assertEqual(planner.CODE_CHECKS + planner.OPENBAO_CHECKS, checks(value))
+                planned = planner.plan(value, REQ, MAP, repository=root,
+                                       context_repository='mcpdev80/baseharbor', context_target_branch='develop')
+                self.assertEqual('resolved', planned['coverage_status'], planned)
+                self.assertIn('openbao-package-tests', [c['id'] for c in planned['required_validation_checks']])
+                self.assertIsNone(checks(value, repo='other/repo'))
+                self.assertIsNone(checks(value, branch='main'))
+                for key, changed in (('integration_sha', None), ('merge_base_sha', 'f' * 40),
+                                     ('changes', value['changes'][:1])):
+                    forged = copy.deepcopy(value)
+                    forged[key] = changed
+                    self.assertIsNone(checks(forged))
+                git('checkout', '-q', '--detach', target)
+                (root / 'accepted-target.md').write_text('accepted target\n')
+                git('add', '.')
+                git('commit', '-qm', 'advance trusted target')
+                target = git('rev-parse', 'HEAD')
+                git('checkout', '-q', '--detach', reviewed)
+                git('merge', '--no-ff', '-qm', 'forward target', target)
+                head = git('rev-parse', 'HEAD')
+                self.assertIsNotNone(checks(actual(target, head)))
+                (root / 'internal/openbao/bootstrap.go').write_text('unreviewed followup\n')
+                git('commit', '-qam', 'unreviewed followup')
+                self.assertIsNone(checks(actual(target, git('rev-parse', 'HEAD'))))
 
 
 class AktenRegisterQualificationTests(unittest.TestCase):
