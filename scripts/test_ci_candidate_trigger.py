@@ -182,6 +182,12 @@ class CandidateTriggerTests(unittest.TestCase):
                 self.assertEqual([call.args[0] for call in api.call_args_list],
                                  ["GET", "DELETE", "GET"])
 
+    def test_candidate_message_never_claims_ci_success(self):
+        source = (ROOT / "scripts/submit-pr-candidate.py").read_text()
+        self.assertIn("candidate label requested:", source)
+        self.assertIn("CI result must be verified separately", source)
+        self.assertNotIn("candidate submitted:", source)
+
     def test_release_rollout_lock_denies_api_calls(self):
         path = ROOT / "scripts/submit-pr-candidate.py"
         spec = importlib.util.spec_from_file_location("submit_pr_candidate_lock", path)
