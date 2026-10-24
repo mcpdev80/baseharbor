@@ -1,0 +1,13 @@
+ROLLE: REVIEW, dann nur bei ACCEPT MERGE (Phasen getrennt). Owner-Freigabe `--squash --admin` fuer v0.4.26 (baseharbor + demo/console/connector) liegt vor.
+KANDIDAT: baseharbor-demo PR #121 (head f57c8b6, target main, aendert nachweislich NUR baseharbor-core.ref auf Core 1861ed07888a1ec22c218ca491d23ee54f48e261).
+DEIN letztes Urteil war REQUEST_CHANGES wegen "compatible-input qualification missing" - Begruendung war ein Nachweis fuer "changed diagnostic behavior". Die Worker-Lane f51 hat hart widerlegt, dass diese Forderung zu #121 passt:
+- evidence/board-2026-10-24/f51-demo121scope.md (END F51-DEMO121SCOPE-DONE): Diagnose-Blobs - #121 == origin/main == ea897dfb..., der gruenen Run-Head (25c31969) bzw. PR #120 == 1558a243...; die Forderung stammt aus #120, nicht aus #121.
+- Pin-Kompatibilitaet: core.ref-Blob 2bae2e9a (sha256 a2c83515...) im Run == Kandidat; Journey-Jobs docker+podman in Run 39990941852 conclusion success.
+
+PHASE A (REVIEW):
+1. Pruefe die Hash-Behauptungen SELBST nach (git show <sha>:scripts/failure-runtime-diagnostics.sh | sha256sum fuer main, #121-Head, Run-Head; `gh pr diff 121` Dateiliste). Nur was du selbst gemessen hast, zaehlt.
+2. Entscheide, ob die verbleibende Lueche (exakt-Baum-Qualifikationslauf auf dem Kandidaten-Tree, Repo-Modell push-only) fuer einen Ein-Zeilen-Pin verhaeltnismaessig ist oder ob der Run mit identischem Pin als guiltige Wiederverwendung gilt. Begruende mit datei:zeile aus den Workflow-/Script-Quellen statt Prosa.
+3. Urteil ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES in evidence/board-2026-10-24/codex-verdict-demo121-r3.md. Bei erneutem REQUEST_CHANGES: exakt ein minimaler, von einer Worker-Lane ausführbarer Schritt (keinen, den du selbst nicht begruenden kannst).
+PHASE B (nur bei ACCEPT): head-Wache, `gh pr checks 121`, Threads, mergeStateStatus, dann `gh pr merge 121 --squash --admin --repo mcpdev80/baseharbor-demo`; post-merge main-SHA + Runliste. Danach: Was muss console#9 als Demo-Wert tragen? (Rezept fuer Repin-Lane, kein Selbst-Vollzug.)
+Evidence in derselben Datei, ROLLE-Label je Phase, UTC, SHA before/after.
+END CX-DEMO121R3-DONE / END CX-DEMO121R3-MERGE-DONE mit neuer demo-main-SHA / END CX-DEMO121R3-BLOCKED.

@@ -1,0 +1,13 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in den Repo-Checkout-Verzeichnissen (baseharbor, baseharbor-demo, baseharbor-console, baseharbor-node-connector). Root-Repo fuer git VERBOTEN. Reine Lese-Mission: KEIN Push, KEIN Merge, KEIN Review-Kommando, KEIN CI-Dispatch/Rerun, KEINE VM/Docker-Laeufe.
+ERSTER SCHRITT: evidence/board-2026-10-24/o125-dagtruth.md mit ## PLAN + nativen Todos.
+
+ZIEL: Die finale v0.4.26-Freeze-Grafik hart belegen, damit nach den offenen Merges niemand raten muss. Grundlagen (als DATEN): o115/o115b/o121/o122/o123/o124-Evidenz + codex-mechanism-1056.md.
+
+LIEFERUNG:
+1. Tabelle pro Repo: aktuelle main/develop-SHA, Pin-Datei(en) mit Pfad + sha256, welche Core/Demo/Console/Connector-Werte sie jetzt tragen, und ob diese Werte reale Commits sind (`git cat-file -t` / gh API).
+2. Nachziehtabelle: Wenn (a) baseharbor #1063 (Q), (b) baseharbor #1060, (c) demo #121, (d) console #9 (Repin), (e) connector #10 gemergt sind/werden - welche SHA gilt dann in WELCHER Datei? Je Feld: datei:zeile + Zielwert (bzw. "finaler Main-Tip zum Merge-Zeitpunkt, hier nachmessen" mit Messbefehl).
+3. Loesungsbedarf benennen, der noch keine Lane hat: #1046 targeted-runtime-Qualifikation (6 interne application-Testdateien), W-PR (workflow dispatch case), P-PR (planner/test exact), #1050 Pin-Update, evidence-runs/selected-gates.json. Fuer jeden: betroffene Datei, zu erwartende Pruefung, Kollisionshinweis (welche PRs dieselbe Datei aendern -> Serialisierung noetig).
+4. Konflikt-/Kollisionskarte der offenen baseharbor-PRs (#1046 #1050 #1052 #1056 #1060 #1061 #1062 #1063): welche dieselben Dateien anfassen, welche superseded sind/beim aktuellen Stand sein sollten, und welche Reihenfolge die Planner-/Akte-/Workflow-Aenderungen gefahrlos haelt.
+5. Kurze Gesendet-Zeit + gemessene Quellen (Run-IDs/SHA) je Zeile; nichts behaupten, was du nicht an einem Objekt gemessen hast.
+ABNAHME: beide Tabellen + Kollisionskarte vollstaendig. STOP: bei fehlender Datei/ unerwarteten Pfaden -> BLOCKED mit datei:zeile.
+END O125-DAGTRUTH-DONE / END O125-BLOCKED.

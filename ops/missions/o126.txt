@@ -1,0 +1,16 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor (eigener worktree). Root-Repo fuer git VERBOTEN. KEIN Merge/Review-Kommando, KEIN force, KEIN --admin, KEIN Labels, KEIN Rerun-Spam.
+ERSTER SCHRITT (VOR jeder Analyse): evidence/board-2026-10-24/o126-publishR.md mit ## PLAN + nativen Todos.
+
+GRUNDLAGE (DATEN): evidence/board-2026-10-24/codex-verdict-chain1-adjudication.md (END CX-CHAIN1-ADJ-DONE) + codex-merge-q1063.md (END CX-Q1063-MERGE-BLOCKED: "wrong SHA-256 entries and unavailable/unreviewed R").
+Kurzfassung des Rezeptschritts 1: R muss ein realer, von GitHub auslieferbarer und unabhängig reviewbarer Head auf dem #1056-Branch sein; erst danach darf #1063 (record-only Akte) die exakte R + rohe sha256-Werte enthalten.
+
+ARBEIT (nur dieser Teilschritt):
+1. Worktree vom Branch o90-planner-pr (PR #1056). Aktuellen Stand pruefen: head, diff gegen origin/develop (f3929568), Dateiliste.
+2. `docs/internal/ci-binding-qualifications.md` im Branch auf die authentische develop-Version zuruecksetzen (ordinärer Vorwaertskorrektur-Commit). Die drei CI-Scripts + alle pins-data-Inhalte bleiben erhalten. KEINE History-Umschreibung, KEIN Rebase, KEIN Squash.
+3. Pruefe hart: Diff des resultierenden Heads gegen develop = NUR die drei CI-Scripts (Akte identisch zu develop). Sonst korrigieren, nicht pushen.
+4. Push auf origin/o90-planner-pr -> dieser Head IST R. Verifiziere, dass GitHub ihn ausliefert (`gh api repos/mcpdev80/baseharbor/commits/<R>` + sha256 der drei Script-Blobs aus `git show <R>:<pfad>` - beide Quellen vergleichen).
+5. In der Evidence eine Kolumne "R-Werte fuer #1063": reviewed_head=R (Voll-SHA) + die drei RAW-sha256-Werte, exakt so wie die Akte sie braucht. Nichts erfinden, nur Messwerte.
+6. Supersession-Handoff dokumentieren (KEINE Aktion auf GitHub): #1061 und #1062 sind durch #1056 ersetzt; ihre Arbeit ist durch die Aufzaehlung der Inhalte gesichert, P-W-#1050-Reihenfolge laut Adjudication.
+7. PR #1056 Checks beobachten (Guard 25 min): mit der Akte = develop-Version faellt die 4-Dateien-Kollision weg; Ergebnis tabellieren (Run-/Job-IDs). Wenn `PR Selected Checks` jetzt "coverage-unresolved" meldet, exakt die Zeile + datei:zeile des Planners notieren (das ist der P-Schritt, nicht dein Fix hier).
+ABNAHME: R gepusht + auslieferbar + hashes gemessen, Diff-Nachweis (nur 3 Dateien), Tabelleneintrag fuer #1063, Check-Tabelle.
+END O126-PUBLISHR-DONE mit R-SHA / END O126-BLOCKED mit datei:zeile.
