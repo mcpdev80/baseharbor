@@ -56,3 +56,16 @@ class PolicyPreflightTests(unittest.TestCase):
     with self.assertRaisesRegex(OriginError,"invalid job mapping"):
      check_origin_bound_coverage(["sql","docs"],{"sql":receipt()},policy,**ARGS)
     fetch.assert_not_called()
+
+
+class StrictPolicyMappingTests(unittest.TestCase):
+ def test_path_traversal_and_bad_job_names_fail_before_fetch(self):
+  for workflow,job in ((".github/workflows/../ci.yml","Job"),
+                       (".github/workflows//ci.yml","Job"),
+                       (".github/workflows/ci.yaml/evil.yml","Job"),
+                       (".github/workflows/ci.yml","job\nmalicious")):
+   with self.subTest(workflow=workflow,job=job),patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
+    with self.assertRaisesRegex(OriginError,"invalid job mapping"):
+     check_origin_bound_coverage(["sql"],{"sql":receipt()},
+       {"sql":{"workflow_path":workflow,"job_name":job}},**ARGS)
+    fetch.assert_not_called()
