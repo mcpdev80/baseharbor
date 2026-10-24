@@ -1250,6 +1250,108 @@ class PinsDataQualificationTests(unittest.TestCase):
         self.assertIn('unknown impact for docs/guide/v0.4.26.consumer-pins.json',
                       result['unresolved_coverage'])
 
+    def test_ecosystem_chain_wrong_repo_fails(self):
+        # A pins file with an immutable ecosystem chain that pins a role to the
+        # wrong repository must fail closed: the validator only trusts the
+        # pinned Core/Console/Connector origin repositories.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rel = root / 'docs' / 'releases'
+            rel.mkdir(parents=True)
+            chain = {
+                'schema': 'baseharbor.consumer-evidence-pins/v1',
+                'gates': {
+                    'integration/static/live-console': {
+                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                      'commit': 'd' * 40,
+                                      'workflow': '.github/workflows/release-integration.yml'},
+                        'console': {'repository': 'mcpdev80/baseharbor-console',
+                                    'commit': 'd' * 40,
+                                    'workflow': '.github/workflows/release-integration.yml'}},
+                    'integration/docker/remote-target': {
+                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                      'commit': 'd' * 40,
+                                      'workflow': '.github/workflows/release-integration.yml'}},
+                },
+                'ecosystem': {
+                    'core': {'repository': 'other/baseharbor',
+                             'commit': 'a' * 40, 'consumes': {}},
+                    'demo': {'repository': 'mcpdev80/baseharbor-demo',
+                             'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+                    'console': {'repository': 'mcpdev80/baseharbor-console',
+                                'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
+                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                  'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
+                },
+            }
+            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
+            git_init(root)
+            git_add_commit(root)
+            resolver_spec = importlib.util.spec_from_file_location(
+                'resolver', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(resolver_spec)
+            resolver_spec.loader.exec_module(resolver)
+            target = git_rev_parse(root, 'develop')
+            head = git_rev_parse(root, 'pins')
+            integrated = git_commit_tree(root, target, head)
+            actual = resolver.resolve_pr_diff(root, target, head, integrated)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            with self.assertRaises(RuntimeError):
+                validate_pins_for_test(actual, str(root))
+
+    def test_ecosystem_chain_wrong_hex_commit_fails(self):
+        # A pinned role whose commit is not 40-hex must fail closed even with a
+        # structurally complete ecosystem chain.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rel = root / 'docs' / 'releases'
+            rel.mkdir(parents=True)
+            chain = {
+                'schema': 'baseharbor.consumer-evidence-pins/v1',
+                'gates': {
+                    'integration/static/live-console': {
+                        'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                      'commit': 'd' * 40,
+                                      'workflow': '.github/workflows/release-integration.yml'},
+                        'console': {'repository': 'mcpdev80/baseharbor-console',
+                                    'commit': 'd' * 40,
+                                    'workflow': '.github/workflows/release-integration.yml'}},
+                },
+                'ecosystem': {
+                    'core': {'repository': 'mcpdev80/baseharbor',
+                             'commit': 'not-hex', 'consumes': {}},
+                    'demo': {'repository': 'mcpdev80/baseharbor-demo',
+                             'commit': 'b' * 40, 'consumes': {'core': 'a' * 40}},
+                    'console': {'repository': 'mcpdev80/baseharbor-console',
+                                'commit': 'c' * 40, 'consumes': {'core': 'a' * 40}},
+                    'connector': {'repository': 'mcpdev80/baseharbor-node-connector',
+                                  'commit': 'd' * 40, 'consumes': {'core': 'a' * 40}},
+                },
+            }
+            (rel / 'v0.4.26.consumer-pins.json').write_text(json.dumps(chain))
+            git_init(root)
+            git_add_commit(root)
+            resolver_spec = importlib.util.spec_from_file_location(
+                'resolver', ROOT / 'pr-diff-base.py')
+            resolver = importlib.util.module_from_spec(resolver_spec)
+            resolver_spec.loader.exec_module(resolver)
+            target = git_rev_parse(root, 'develop')
+            head = git_rev_parse(root, 'pins')
+            integrated = git_commit_tree(root, target, head)
+            actual = resolver.resolve_pr_diff(root, target, head, integrated)
+            self.assertFalse(actual['broad_required'], actual['reasons'])
+            with self.assertRaises(RuntimeError):
+                validate_pins_for_test(actual, str(root))
+
+    def test_ecosystem_chain_valid_passes(self):
+        # A complete ecosystem chain with the pinned roles and 40-hex commits
+        # resolves the pins-data validation end to end via the planner.
+        change = {'status': 'added', 'path': 'docs/releases/v0.4.26.consumer-pins.json'}
+        result = planner.plan(diff([change]), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual({'pins-data-validation'},
+                         {c['id'] for c in result['required_validation_checks']})
+
 
 class Core918TrustedCoverageTests(unittest.TestCase):
     def setUp(self):
