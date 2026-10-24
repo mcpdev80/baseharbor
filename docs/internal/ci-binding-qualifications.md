@@ -6,7 +6,7 @@ Owner-authorized immutable source inventory for the exact #1060 candidate. This 
 {
   "repository": "mcpdev80/baseharbor",
   "target_branch": "develop",
-  "reviewed_head": "1c2f1fc476794b6da7c315082cf155b2d6e680bb",
+  "reviewed_head": "89d87f7814242f0732779995b6a06c65e99b3f1a",
   "files": {
     "scripts/pr-check-runner.py": "modified",
     "scripts/pr-gate-plan.py": "modified",
