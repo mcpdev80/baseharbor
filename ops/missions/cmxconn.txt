@@ -1,0 +1,11 @@
+ROLLE: MERGE. Owner-Freigabe (Marcel 2026-10-24, woertlich): `--squash --admin` gilt fuer baseharbor UND die Consumer-Repos (demo, console, node-connector) - Ziel: Ecosystem-Freeze, damit pre-release.yml:117/:122 und W1 durchkommen.
+KANDIDAT: baseharbor-node-connector PR #10, head e832d5651752121dea9484e18422d3e4..., target main (7c7093d). State: OPEN, mergeable, mergeStateStatus=CLEAN. Review: ACCEPT_WITH_NONBLOCKING in evidence/board-2026-10-24/codex-verdict-connector10.md (exakt dieser Head, non-blockierende Randbefunde).
+VORBEDINGUNG VOR DEM MERGE (Dependency-Graph!): der Connector pinnt demo/console. Pruefe deshalb ZUERST, ob die im PR gesetzten demo-/console-Werte die finalen Main-Tips sind:
+- demo main aktuell? `gh api repos/mcpdev80/baseharbor-demo/commits/main --jq .sha` (demo#120 ist noch NICHT gemergt; wenn der Connector-Wert auf demo 25c31969 zeigt, das aber nach demo#120 ein anderer Main-Tip gilt, dann NICHT mergen, sondern BLOCKED mit Begruendung + empfohlener Reihenfolge demo -> console -> connector).
+- analog console.
+Wenn die Werte korrekt und final sind (oder der Connector bewusst auf historisch unveraenderliche Commits zeigt und die Review-Begruendung das so ausdrueckt):
+1. Head-Wache (sha256 der affected files vor/nach) + Pflichtchecks final gruen.
+2. `gh pr merge 10 --squash --admin --repo mcpdev80/baseharbor-node-connector`. KEIN force, KEINE Ruleset-Aenderung, KEIN zweiter Account.
+3. Post-merge: connector main-Log + neue SHA + PR #9 als superseded notieren (NICHT selbst schliessen, nur vorschlagen).
+4. Evidence: evidence/board-2026-10-24/codex-merge-connector10.md (UTC, Owner-Zitat, Graph-Pruefung, SHA before/after, Run-IDs).
+END CX-CONNECTOR10-MERGE-DONE mit neuer main-SHA / END CX-CONNECTOR10-MERGE-BLOCKED mit Grund (z.B. Reihenfolge demo/console zuerst).

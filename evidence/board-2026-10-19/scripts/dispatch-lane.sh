@@ -141,6 +141,8 @@ case $rc in
     python3 "$DIR/wait-workers.py" watch add "$sid" >/dev/null 2>&1 || {
       echo "dispatch-lane: MONITORING-HOLD - delivered but watcher registration FAILED; fix watcher, do NOT re-dispatch" >&2
       exit 9; }
+    # keep the takeover snapshot current (non-blocking, never fails a dispatch)
+    (python3 "$DIR/coord-state.py" --quiet >/dev/null 2>&1 &) || true
     exit 0 ;;
   4)
     echo "dispatch-lane: delivered-pending behind an ACTIVE DIALOG - human decision required, no auto-approval, no resend" >&2

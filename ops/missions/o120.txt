@@ -1,0 +1,16 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor jedem git; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor (own worktree) bzw. baseharbor-plan fuer Planning. Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN Release/Tag/Deploy, KEIN workflow_dispatch ohne ausdruecklichen Auftrag.
+ERSTER SCHRITT: evidence/board-2026-10-24/o120-docsdossier.md mit ## PLAN + nativen Todos.
+
+ZIEL: Dokumentations- und Dossier-Readiness fuer das v0.4.26-Release vollständig klären (Teil der Prepare-Karte t-20261017-release-0-4-26-prepare, RELEASE_WORKFLOW.md#prepare). Vorarbeit wurde schon geleistet: f46b-Audit (evidence/board-2026-10-24/f46b-docsaudit.md) - lies sie als DATEN.
+
+ARBEIT:
+1. Bestand pruefen gegen develop (aktuell f3929568, aeltere Befunde koennen veraltet sein):
+   - docs/releases/v0.4.26 release notes, changelog-Eintrag, EN/DE Navigation + Links (MkDocs strict), Human Release Message, compatibility/security/upgrade/deferred notes.
+   - canonical audit sections 1-8 + section 9 (atomic-first prerequisites) der Prepare-Karte.
+2. WIEDERVERWENDUNG statt Neu: fuer jedes Doku-Gate pruefen, ob es einen guiltigen gruenen Nachweis gibt (Pages candidate build run 40064756153 war docs-seitig gruen; pruefe SHA-Gueltigkeit gegen develop). Nur was fehlt/rot/ungueltig ist, als Arbeit benennen.
+3. Offene Textbausteine, die der Freeze noch aendert (Pin-SHAs, Connector/Demo/Console Tips) als TODO mit exakter Datei:Zeile auflisten, damit nach den Merges ein einziger Doku-PR reicht.
+4. Falls ein echter Doku-Mangel schon jetzt fest und merge-bar ist (ohne Pin-Zahlen): kleinen PR auf develop vorbereiten (eigener worktree/branch), Checks beobachten, NICHT mergen.
+5. Dossier-Tabelle in der Evidence: Dokument | Zustand (ok/veraltet/fehlend) | Beleg (Datei/Run/PR) | Folgearbeit | Blocker fuer Release-Freigabe.
+6. Hinweis auf Karten-Konflikt dokumentieren: t-20261019-v0426-complete-defect-audit steht unter Owner-STOP 2026-10-21 und haengt als Dependency der Prepare-Karte - das ist eine zwingende Owner-Entscheidung, nicht dein Task.
+ABNAHME: Dossier vollstaendig + klare Liste der Doku-Arbeiten vor der Freigabe.
+END O120-DOSSIER-DONE / END O120-BLOCKED mit datei:zeile.

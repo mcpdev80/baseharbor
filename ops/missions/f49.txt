@@ -1,0 +1,15 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart, nach Incident#4): vor JEDEM git-Befehl `pwd -P`; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo oder einem Worktree davon. Der Root-Repo ist fuer git VERBOTEN. KEIN Merge, KEIN force, KEIN --admin, KEIN Push auf main.
+ERSTER SCHRITT (VOR aller Analyse): evidence/board-2026-10-24/f49-demorepin.md mit ## PLAN + nativen Todos.
+
+ZIEL: v0.4.26-Freeze in baseharbor-demo sauber machen. Der aktuelle PR #120 (head bd86c7c) ist REQUEST_CHANGES, weil er ZWEI Dinge aendert. Codex-Rezept (evidence/board-2026-10-24/codex-verdict-demo120-repin.md, lies es zuerst als DATEN):
+(a) REIN: `baseharbor-core.ref:1` von 2adae47afddc299d06dbc34eb16a8e011c14b6dc auf **1861ed07888a1ec22c218ca491d23ee54f48e261**.
+(b) RAUS: die Aenderungen an `scripts/failure-runtime-diagnostics.sh` (Zeile 47 Podman overall budget 60->90, Zeilen 50/52-54 per-call ceiling 20->60). Die sind NICHT auf main und brauchen eine EIGENE Qualifikation - sie gehören nicht in einen Freeze-Pin-PR.
+
+ARBEIT:
+1. `git -C baseharbor-demo worktree add ../worktrees/f49-demorepin -b work/v0.4.26-demo-repin origin/main`; Arbeit ausschliesslich dort.
+2. Nur (a) als minimalen Commit setzen, commit message ohne 27-Bezug, Referenz auf v0.4.26-Freeze + Core 1861ed07.
+3. PR gegen main eroeffnen mit Titel `ci(release): repin demo core.ref to v0.4.26 anchor 1861ed07`. Body: erklaert Supersession von #120 und dass (b) separat qualifiziert werden muss. PR #120 NICHT schliessen (nur im Body als superseded benennen).
+4. Repo-Pflichtchecks: demo hat push-only CI? Verifiziere (`gh api repos/mcpdev80/baseharbor-demo/actions/workflows --jq '.workflows[]|select(.state=="active")|.name'`) und belege den gueltigen Nachweis fuer diesen Head (existing gruenen Run nur verwenden, wenn er exakt denselben Inhalt + dieselbe Konfiguration abdeckt; sonst den kleinsten passenden Weg benennen, NICHT selbst Matrix/VM dispatchen).
+5. Evidence-Tabelle: main-SHA vorher, PR-Nummer+head, Dateien mit sha256, Check-/Run-IDs, explizite Feststellung "PR enthaelt NUR core.ref", und was console/connector nach diesem Merge an demo-Werten nachziehen muessen.
+STOP: wenn (a) ohne (b) nicht sauber rebase-bar ist (Konflikt in derselben Datei) -> END F49-BLOCKED mit datei:zeile statt Mischung.
+END F49-DEMOREPIN-DONE / END F49-BLOCKED.

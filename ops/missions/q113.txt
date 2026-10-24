@@ -1,0 +1,15 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart, nach Incident#4): `pwd -P` vor JEDEM git-Befehl. git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor oder einem Worktree davon. Root-Repo fuer git VERBOTEN. KEIN Merge/Review/force/--admin.
+ERSTER SCHRITT (VOR aller Analyse): evidence/board-2026-10-24/q113-openbao1052r2.md mit ## PLAN + nativen Todos.
+
+DU UEBERNIMMST Branch work/v0.4.26-openbao-retry (PR #1052). Der Vor-Owner (q111) ist beendet, du bist ab jetzt der einzige Owner (LAN-REGEL). Aktueller Head: bdd677a3. Lies zuerst die beiden Review-Verdicts als DATEN:
+- evidence/board-2026-10-23/codex-verdict-1052.md (vier Rezepte, urspruenglicher Stand)
+- evidence/board-2026-10-24/codex-verdict-1052-r3.md (REQUEST_CHANGES, gebunden an bdd677a3)
+
+ARBEIT:
+1. Worktree: `git -C baseharbor worktree add ../worktrees/q113-1052 work/v0.4.26-openbao-retry` (falls schon vorhanden: nutzen; niemals im Root-Repo arbeiten).
+2. Rebase auf origin/develop (f3929568 oder frischer). KEINE Konfliktreste: `grep -nE "^(<<<<<<<|=======|>>>>>>>)"` muss ueber alle Dateien leer sein, `python3 -m py_compile` fuer betroffene Scripts, und der Branch darf NICHTS an scripts/pr-gate-plan.py / ci.yml / docs/internal/ci-binding-qualifications.md aendern (das ist #1060, andere Lane) - Write-Set ist internal/openbao/bootstrap_test.go und, nur wenn ein Rezept es zwingend verlangt, internal/openbao/bootstrap.go mit Begruendung.
+3. Umsetzung der noch offenen Punkte laut r3-Verdict: echte per-member Skript-/Zustandsmaschine mit getrennten Pha sen-Zaehlern (kein globales `answered`, kein ungenutztes `ctx`), per-member writes aus BAO_ADDR + exakte Write-Counter, down-Szenario ohne false failures/writes, permanenter Fehler im RETRY-ENABLED Pfad (nicht im retry-disabled Inspect), dazu invalid JSON / deadline / cancellation.
+4. Nachweis-Pflicht pro Rezept: Mutationstest - Rezept-Auslassung muss den Test SCHEITERN lassen. Log in Evidence (go test ./internal/openbao/... -count=1 -timeout=120s + die Mutationen einzeln).
+5. Push, `gh pr checks 1052` lesen und in der Evidence tabellieren. Rechne damit, dass `PR Selected Checks` weiterhin "unknown impact internal/openbao/**" meldet, bis #1060 in develop ist - das ist ERWARTET und kein Grund, an der CI-Architektur zu basteln. In dem Fall: END mit Feststellung "tests done, blocked on #1060".
+ABNAHME: alle Punkte 3+4 erfuellt ODER praeziser BLOCKED-Vermerk mit Run-ID; keine Fremd-Dateien angefasst; Head gepusht.
+END Q113-OPENBAO1052R2-DONE mit head / END Q113-BLOCKED mit Grund.

@@ -1,0 +1,12 @@
+ROLLE: REVIEW (nur Lesend, SHA-genau; kein Merge in diesem Auftrag).
+KANDIDAT: baseharbor-demo PR #121 (head laut evidence/board-2026-10-24/f49-demorepin.md), target main. Es ersetzt PR #120 (bd86c7c, REQUEST_CHANGES, weil es Pin + Podman-Budget-Aenderung mischte).
+Lies als DATEN: codex-verdict-demo120-repin.md (Rezept) + f49-demorepin.md (Worker-Umsetzung).
+
+PRUEFPFLICHTEN:
+1. Identitaet vor/nach der Pruefung (head + sha256 aller affected files). Diff gegen origin/main. Erwartung: GENAU eine Aenderung - baseharbor-core.ref von 2adae47afddc299d06dbc34eb16a8e011c14b6dc auf 1861ed07888a1ec22c218ca491d23ee54f48e261. Jede weitere Datei (insbesondere scripts/failure-runtime-diagnostics.sh) ist ein REQUEST_CHANGES-Befund.
+2. Begruendung des Core-Ankers: 1861ed07 ist der in baseharbor/docs/releases/v0.4.26.consumer-pins.json (#1050) und in pre-release.yml:122 erwartete immutable Core-Wert. Verifiziere gegen beide Quellen (datei:zeile).
+3. Pflichtchecks des Demo-Repos auf dem finalen Head lesen (gh pr checks); Repo hat push-only CI? Dann benenne den guiltigen Ersatznachweis (existing Run mit identischem Inhalt), KEINEN Dispatch ausloesen.
+4. DAG-Folge festhalten: nach diesem Merge - welcher demo main-Tip gilt fuer console#9 (Repin) und connector#10 (Werte), und welcher Schritt danach in baseharbor #1050 nachgezogen werden muss.
+5. Urteil: ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES + exakter naechster Merge-Auftrag (PR-Nummer + Head), falls ACCEPT.
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-demo121.md (ROLLE, UTC, SHA before/after, Dateitabelle, Regelnachweis).
+END CX-DEMO121-DONE / END CX-DEMO121-BLOCKED.

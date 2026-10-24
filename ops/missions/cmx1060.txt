@@ -1,0 +1,9 @@
+ROLLE: MERGE. Owner-Freigabe 2026-10-24 (woertlich): `--squash --admin` fuer v0.4.26-Kandidaten in baseharbor UND den Consumer-Repos.
+KANDIDAT: PR #1060 (mcpdev80/baseharbor, head laut Worker Evidence evidence/board-2026-10-24/q112c-repair1060.md = MERGE-READY; run 40083762150 'PR Selected Checks' + 'Focused Python' pass).
+SCHRITTE:
+1. Head-Wache: live `gh pr view 1060 --json headRefOid,mergeStateStatus,mergeable,reviewDecision` + sha256 der 5 affected files. Pruefe, dass der Head NICHT groesser/anders ist als in der Worker-Evidence genannt (sonst BLOCKED).
+2. Freshness + Pflichtchecks auf dem finalen Head erneut lesen (`gh pr checks 1060`), offene Threads pruefen. Review-Basis: dieses PR ist die Pfadqualifikation fuer #1052, Codex-Reviews liegen vor (codex-verdict-1050-1052-r2.md Rezept an q110, codex-verdict-freeze-prs.md) - pruefe ausdruecklich, ob ein unabhaengiges ACCEPT fuer DIESEN Head existiert; wenn nein: erst REVIEW (dann in dieser Mission zu Ende fuehren) statt blinder Approval.
+3. Erfuellte Bedingungen => `gh pr merge 1060 --squash --admin`. Kein force, keine Ruleset-Aenderung.
+4. Post-merge: develop-Log + develop-Checks, neue develop-SHA; danach #1052 (head bdd677a3, laeuft gerade unter q113) nur als "naechster Kandidat nach Rebase auf neue develop-SHA" vermerken - NICHT selbst rebasen.
+5. Evidence: evidence/board-2026-10-24/codex-merge-1060.md (UTC, Owner-Zitat, SHA before/after, Run-IDs, Review-Nachweis).
+END CX-1060-MERGE-DONE mit develop-SHA / END CX-1060-MERGE-BLOCKED mit Grund.

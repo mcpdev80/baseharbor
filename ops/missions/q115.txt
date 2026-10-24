@@ -1,0 +1,12 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor oder eigenem worktree. Root-Repo fuer git VERBOTEN. KEIN Merge/Review/force/--admin.
+ERSTER SCHRITT (VOR der Analyse): evidence/board-2026-10-24/q115-rebase1046.md mit ## PLAN + nativen Todos.
+
+KONTEXT: #1047 ist gemergt (develop f3929568). PR #1046 (test(application): env-robust protected-owner test dirs, Branch fix/f27-appid-env-robust, Head 35582508, worktree baseharbor/worktrees/f27-appid-env-robust) ist dadurch BEHIND und kann nicht gemergt werden (strict_required_status_checks_policy=true). Karte: t-20261020-develop-appid-manifest-test-regression. Bisheriger Versuch (o115d) wurde nie zugestellt - du machst das sauber.
+
+ARBEIT:
+1. Worktree: `git -C baseharbor worktree add ../worktrees/q115-rb1046 fix/f27-appid-env-robust` (falls vorhanden: nutzen; niemals im Root arbeiten).
+2. Rebase auf origin/develop (f3929568 oder beim Push aktueller). Write-Set bleibt test/application; keine Fremdfiles. Konfliktreste-Pruefen: grep '^(<<<<<<<|=======|>>>>>>>)' leer.
+3. Kleinstes lokales Gate: `go test ./internal/application/... -count=1` fuer die betroffene Datei (Pfad aus dem Diff nehmen) + `go build ./...`. Log in Evidence. Keine Docker/Podman/VM, keine Matrix.
+4. Push, `gh pr checks 1046` (Guard 20 min) mit Run-/Job-IDs tabellieren. Wenn `PR Selected Checks` rot bleibt, exakt den BLOCKED-Text zitieren ( coverage/unknown impact? ) und NUR benennen, welches Qualifikations-PR dafuer fehlt - nichts selbst aendern an scripts/pr-gate-plan.py.
+5. Evidence: head vor/nach, mergeStateStatus, reviewDecision, Check-Tabelle, Festellung ob Merge-Ready.
+END Q115-REBASE1046-DONE mit head / END Q115-BLOCKED mit Run-ID.

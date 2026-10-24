@@ -1,0 +1,26 @@
+pwd-PFLICHT: git-NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan. KEIN git im Root-Repo, KEIN git in Produkt-Repos.
+ERSTER SCHRITT (VOR jedem Schreib-Tool): evidence/board-2026-10-24/f50-planboard26r2.md mit ## PLAN + nativen Todos.
+
+MISSION: Planning/CardBoard v0.4.26 auf den JETZIGEN wahren Stand ziehen (Runde 2; Runde 1 = o116, board-sha 61ecae1). Karten stets mit voller Karten-ID benennen. NUR 26-Karten (27 ist tabu, 26-FENCE).
+
+SEIT o116 ist passiert (per gh verifizieren, nicht uebernehmen):
+- #1047 GEMERGED -> develop f3929568; #1046 wartet auf Rebase.
+- #1052: Testseite fertig (head 789299a9, q113 DONE), wartet auf #1060 in develop.
+- #1060: Codex REQUEST_CHANGES (4 Punkte), Reparatur laeuft.
+- #1056: pins-data-Wiederherstellung laeuft (o118), Akte/Register-Semantik in Klaerung.
+- Freeze: demo#121 (statt #120) im Review, console#9 + connector#10 folgen in Dependency-Reihenfolge.
+- Doku-Dossier fertig (o120): 4 Folgearbeiten, alle freeze/pin-abhaengig.
+- Owner-Entscheidungen dokumentiert: `--squash --admin` fuer baseharbor + demo/console/connector.
+
+ARBEIT:
+1. Pro betroffener Karte Live-Abgleich mit gh (PR-Head, Checks, mergeStateStatus) und Metadaten (prs/sources/evidence/blocker/resolution) nachziehen:
+   - t-20261017-release-0-4-26-prepare: Handoff-Block um neue Develop-SHA + offenen Kettenstand (Tabelle), Zustand bleibt active.
+   - t-20261020-develop-appid-manifest-test-regression (review): PRs #1046/#1047 + Run-IDs, Status nur aendern wenn die Karte wirklich abgenommen ist (sonst review lassen).
+   - core-923 (active): W1-/Journeys-Abhaengigkeit mit aktuellem Begruendungstext.
+   - t-20261019-v0426-complete-defect-audit: Owner-STOP 2026-10-21 bleibt unveraendert; NUR aktuelle PR-/Run-Links ergaenzen.
+   - t-20261022-q20-docs-pages: o120-Befund eintragen (Pages candidate build run 40064756153, develop a2abc17a/f3929568-Gueltigkeit pruefen).
+2. Generierte Views NUR ueber die Werkzeuge: `python3 scripts/release_cycles.py sync` && `python3 scripts/plan.py render` && `python3 scripts/plan.py check` (0 errors; bestehende dependency-state-Warnungen ok). NIE von Hand editieren.
+3. EIN Bundle-Commit, dann Push origin main. OPERATION: kein Push vor check=0. Bei Fehler: beheben, erneut render/check, DANN committen (kein Push vorher).
+4. board-sha (plan HEAD) in die Evidence + kurze Rueckmeldung, was sich am Kartenbild geaendert hat.
+ABNAHME: Kartenbild = Wahrheit, check=0, gepusht, board-sha notiert. KEINE Akzeptanzen erfinden, KEINE Merges, keine Karten-IDs erfinden, kein 27.
+END F50-PLANBOARD26R2-DONE mit board-sha / END F50-BLOCKED mit Grund.

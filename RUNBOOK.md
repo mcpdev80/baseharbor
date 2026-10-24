@@ -158,3 +158,18 @@ Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-2
 | VM-Uhr driftet | CLOCK JUMP + Fetch-Pflicht + HEARTBEAT |
 | Beweise an VM-Sessions hängend | CI-Job-Prinzip (Abschnitt 7/8) |
 | Worker übergreift Status 'accepted' | nur Owner/Codex; Lane-Kommandos verbieten es |
+
+## 7. Coordinator-Takeover (Session weggebrochen)
+
+Reihenfolge in einer neuen Session im Ecosystem-Workspace, damit die Arbeit sofort weiterläuft:
+1. `python3 evidence/board-2026-10-19/scripts/basics-check.py` (Pflichtprogramm, FLAGS abarbeiten)
+2. `python3 evidence/board-2026-10-19/scripts/coord-state.py --resume`
+   -> Resume-Brief aus Platte: laufende Lanes, je Lane Mission + END-Status (DONE/BLOCKED/dispatched),
+      PR-Kandidaten mit Head/mergeStateStatus, Gesundheit (RAM/tmp/Watcher/Board-Currency), offene PLAN-Schritte.
+3. `python3 evidence/board-2026-10-19/scripts/events-check.py --ack` und `--reminders --ack` (Nachrichten der toten Session)
+4. Daemon auf die neue Session umbiegen: `kill $(jq -r .watcher.pid watcher-state.json)` (Pid aus der Datei, nie pkill)
+   dann `python3 evidence/board-2026-10-19/scripts/wait-workers.py watch start <neue-session-id>`
+5. Native Todos aus dem letzten `## PLAN`-Block in `evidence/board-2026-10-22/coordinator-plan.md` rekonstruieren (todowrite).
+Maßgebliche durable Quellen: `ops/missions/*.txt` (Aufträge), `evidence/board-*/<lane>*.md` (Evidence/END-Marker),
+`evidence/board-2026-10-19/scripts/dispatch-log.jsonl` (Zustellbeweis), `coordinator-state-latest.json` (Snapshot,
+aktualisiert durch `coord-state.py` nach jedem Dispatch und alle 15 min durch den Watcher).

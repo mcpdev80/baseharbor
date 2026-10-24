@@ -1564,6 +1564,17 @@ def _watchdog_layer(state, coordinator_id, dry_run, mono_now):
     if mono_now - wref.get("last_watchdog", 0) < 60:
         return
     wref["last_watchdog"] = mono_now
+    # Snapshot the orchestration state so a new coordinator session can resume
+    # from disk alone (takeover insurance). Cheap, throttled, non-blocking.
+    if mono_now - wref.get("last_snapshot", 0) > 900:
+        wref["last_snapshot"] = mono_now
+        try:
+            subprocess.Popen(
+                [sys.executable, os.path.join(HERE, "coord-state.py"), "--quiet"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, start_new_session=True)
+        except Exception:
+            pass
     # /tmp is tmpfs on this host, so lane debris there is stolen RAM. Sweep at
     # most every 30 min, fire-and-forget, never blocking the observe loop.
     if mono_now - wref.get("last_sweep", 0) > 1800:
