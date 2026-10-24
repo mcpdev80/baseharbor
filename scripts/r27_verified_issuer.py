@@ -12,7 +12,7 @@ from r27_github_fetch import fetch_authenticated_origin
 def issue_from_github(*, key, token, repository, stage, candidate, policy_digest,
                       gate, run_id, attempt, job_id, expected_job_name,
                       workflow_path, expected_event="pull_request",
-                      artifact_digest=None, policy_jobs=None):
+                      artifact_digest=None, policy_jobs=None, trusted_policy_digest=None):
     if type(key) is not bytes or len(key) < 32:
         raise EvidenceError("EVIDENCE_TRUST: trusted signing key unavailable")
     if stage not in ("pr", "integration", "release"):
@@ -49,6 +49,10 @@ def issue_from_github(*, key, token, repository, stage, candidate, policy_digest
     actual_digest = hashlib.sha256(policy_bytes).hexdigest()
     if not hmac.compare_digest(actual_digest, policy_digest):
         raise EvidenceError("EVIDENCE_POLICY: policy digest mismatch")
+    if (not isinstance(trusted_policy_digest, str)
+            or not DIGEST.fullmatch(trusted_policy_digest)
+            or not hmac.compare_digest(actual_digest, trusted_policy_digest)):
+        raise EvidenceError("EVIDENCE_POLICY: independent digest pin required")
     identity = fetch_authenticated_origin(token, repository=repository, head_sha=candidate,
         run_id=run_id, attempt=attempt, job_id=job_id,
         expected_job_name=expected_job_name, workflow_path=workflow_path,

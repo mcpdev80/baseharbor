@@ -13,6 +13,7 @@ JOBS={"sql":{"workflow_path":".github/workflows/ci.yml",
              "job_name":"PR Selected Checks"}}
 ARGS["policy_jobs"]=JOBS
 ARGS["policy_digest"]=hashlib.sha256(json.dumps(JOBS,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+ARGS["trusted_policy_digest"]=ARGS["policy_digest"]
 PROOF=dict(run_id=11,attempt=2,job_id=12,head_sha="a"*40,name="PR Selected Checks")
 class IssuerTests(unittest.TestCase):
  def test_success_correlated_to_authenticated_job(self):
@@ -56,3 +57,12 @@ class DigestBindingTests(unittest.TestCase):
    with self.assertRaisesRegex(EvidenceError,"policy digest mismatch"):
     issue_from_github(**dict(ARGS,policy_jobs=mutated))
    api.assert_not_called()
+
+
+class IndependentPolicyPinTests(unittest.TestCase):
+ def test_policy_pin_required(self):
+  for pin in (None, "x"*64, "", True):
+   with self.subTest(pin=pin),patch("r27_verified_issuer.fetch_authenticated_origin") as api:
+    with self.assertRaisesRegex(EvidenceError,"independent digest pin required"):
+     issue_from_github(**dict(ARGS,trusted_policy_digest=pin))
+    api.assert_not_called()
