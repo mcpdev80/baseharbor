@@ -13,9 +13,9 @@ Owner-authorized immutable source inventory for the exact #1056 candidate. This 
     "scripts/test_pr_gate_plan.py": "modified"
   },
   "file_hashes": {
-    "scripts/pr-check-runner.py": "34fe168fedbdcd503d0e026715372da466052853",
-    "scripts/pr-gate-plan.py": "b0efbdc7ca354574316aa6b1d38517f9280ffdf6",
-    "scripts/test_pr_gate_plan.py": "634b0ffc9311d14a17d698162b339a3e52922e43"
+    "scripts/pr-check-runner.py": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+    "scripts/pr-gate-plan.py": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+    "scripts/test_pr_gate_plan.py": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0"
   },
   "required_checks": [
     "pr-planner-tests",
