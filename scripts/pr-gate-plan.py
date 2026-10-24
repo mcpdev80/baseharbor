@@ -635,7 +635,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                               check=True).stdout
 
     try:
-        raw = git('show', diff['head_sha'] +
+        raw = git('show', diff['target_base_sha'] +
                   ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
         blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
                             flags=re.MULTILINE | re.DOTALL)
