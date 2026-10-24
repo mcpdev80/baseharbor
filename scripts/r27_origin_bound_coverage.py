@@ -17,12 +17,18 @@ def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
     coverage = plan_verified(required, receipts, key=key, stage=stage,
                              candidate=candidate, policy_digest=policy_digest,
                              artifact_digest=artifact_digest)
-    for gate in sorted(receipts):
+    # Validate the complete policy before any network requests; missing receipts
+    # must not hide invalid policy configuration.
+    for gate in required:
         mapping = policy_jobs[gate]
         if (not isinstance(mapping, dict)
                 or set(mapping) != {"workflow_path", "job_name"}
-                or not all(isinstance(x, str) and x for x in mapping.values())):
+                or not all(isinstance(x, str) and x.strip() for x in mapping.values())
+                or not mapping["workflow_path"].startswith(".github/workflows/")
+                or not mapping["workflow_path"].endswith(".yml")):
             raise OriginError("EVIDENCE_POLICY: invalid job mapping")
+    for gate in sorted(receipts):
+        mapping = policy_jobs[gate]
         identity = verify(receipts[gate], key=key, stage=stage, candidate=candidate,
                           policy_digest=policy_digest, gate=gate,
                           artifact_digest=artifact_digest)

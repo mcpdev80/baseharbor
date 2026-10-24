@@ -44,3 +44,15 @@ class OriginBoundCoverageTests(unittest.TestCase):
    with self.assertRaisesRegex(OriginError,"incomplete"):
     check_origin_bound_coverage(["sql"],{"sql":receipt()}, {},**ARGS)
   fetch.assert_not_called()
+
+
+class PolicyPreflightTests(unittest.TestCase):
+ def test_invalid_missing_gate_policy_never_fetches(self):
+  for mapping in ({}, {"workflow_path":"not-a-workflow","job_name":"job"},
+                  {"workflow_path":".github/workflows/ci.yml","job_name":" "},
+                  {"workflow_path":".github/workflows/ci.yml","job_name":"job","unexpected":1}):
+   policy=dict(JOBS, docs=mapping)
+   with self.subTest(mapping=mapping), patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
+    with self.assertRaisesRegex(OriginError,"invalid job mapping"):
+     check_origin_bound_coverage(["sql","docs"],{"sql":receipt()},policy,**ARGS)
+    fetch.assert_not_called()
