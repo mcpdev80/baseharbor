@@ -13,7 +13,8 @@ import json
 
 def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
                                 repository, stage, candidate, policy_digest,
-                                artifact_digest=None, expected_event="pull_request"):
+                                artifact_digest=None, expected_event="pull_request",
+                                trusted_policy_digest=None):
     if (not isinstance(required, (list, tuple, set, frozenset))
             or not all(isinstance(gate, str) for gate in required)):
         raise OriginError("EVIDENCE_POLICY: invalid required gates")
@@ -47,6 +48,14 @@ def check_origin_bound_coverage(required, receipts, policy_jobs, *, key, token,
             or not re.fullmatch(r"[0-9a-f]{64}", policy_digest)
             or not hmac.compare_digest(actual, policy_digest)):
         raise OriginError("EVIDENCE_POLICY: coverage policy digest mismatch")
+    if (not isinstance(trusted_policy_digest, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", trusted_policy_digest)
+            or not hmac.compare_digest(actual, trusted_policy_digest)):
+        raise OriginError("EVIDENCE_POLICY: independent coverage policy pin required")
+    allowed_events = {"pr": "pull_request", "integration": "push",
+                      "release": "workflow_dispatch"}
+    if expected_event != allowed_events.get(stage):
+        raise OriginError("EVIDENCE_ORIGIN: event does not match coverage stage")
     coverage = plan_verified(required, receipts, key=key, stage=stage,
                              candidate=candidate, policy_digest=policy_digest,
                              artifact_digest=artifact_digest)

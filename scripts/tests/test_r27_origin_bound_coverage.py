@@ -18,6 +18,7 @@ ARGS=dict(key=KEY,token="placeholder",repository="mcpdev80/baseharbor",
           stage="pr",candidate=SHA,policy_digest=POLICY)
 ARGS["policy_digest"]=hashlib.sha256(json.dumps(JOBS,sort_keys=True,separators=(",",":")).encode()).hexdigest()
 POLICY=ARGS["policy_digest"]
+ARGS["trusted_policy_digest"]=POLICY
 class OriginBoundCoverageTests(unittest.TestCase):
  def test_complete_correlated_job_and_receipt(self):
   with patch("r27_origin_bound_coverage.fetch_authenticated_origin") as fetch:
@@ -96,4 +97,18 @@ class CoveragePolicyDigestTests(unittest.TestCase):
    with self.assertRaisesRegex(OriginError,"coverage policy digest mismatch"):
     check_origin_bound_coverage(["sql"],{"sql":receipt()},JOBS,
        **dict(ARGS,policy_digest="f"*64))
+   api.assert_not_called()
+
+
+class CoverageIndependentPinTests(unittest.TestCase):
+ def test_unpinned_policy_rejected_before_origin_lookup(self):
+  for pin in (None,"0"*64,"",True):
+   with self.subTest(pin=pin),patch("r27_origin_bound_coverage.fetch_authenticated_origin") as api:
+    with self.assertRaisesRegex(OriginError,"independent coverage policy pin required"):
+     check_origin_bound_coverage(["sql"],{},JOBS,**dict(ARGS,trusted_policy_digest=pin))
+    api.assert_not_called()
+ def test_wrong_stage_event_rejected(self):
+  with patch("r27_origin_bound_coverage.fetch_authenticated_origin") as api:
+   with self.assertRaisesRegex(OriginError,"event does not match coverage stage"):
+    check_origin_bound_coverage(["sql"],{},JOBS,**dict(ARGS,stage="release",artifact_digest="a"*64))
    api.assert_not_called()
