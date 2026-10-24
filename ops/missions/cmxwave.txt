@@ -1,0 +1,11 @@
+ROLLE: MERGE. OWNER-FREIGABE 2026-10-24 (Marcel, woerentlich): "**Freigabe: Option 1 - `gh pr merge --squash --admin`.**"
+Einordnung zum Konflikt mit AGENTS.md ("kein Schutzregel-Bypass"): neuerer ausdruecklicher Owner-Befehl fuer v0.4.26, beschraenkt auf Kandidaten mit (a) gruener Mandatory-CI auf dem finalen Head, (b) dokumentiertem unabhaengigem Review/Verdict, (c) nachgewiesener Freshness. Kein force-push, keine Ruleset-Aenderung, kein zweiter Account. Jede Merge-Evidence enthaelt: Owner-Zitat, API-Nachweis der Berechtigung (permissions.admin=true), SHA before/after, Run-IDs.
+
+AUFGABE RUNDE 4: PR #1047 (head 40351fd30af9d1b12a3ea5b4b450056ea714f475) - alle Vorbedingungen sind in RUNDE 1-3 belegt (Checks success run 40076426268, freshness CLEAN, inhaltlich leerer Rebase, source-verdicts 79e0aa2b uebertragbar).
+1. Head-Wache (muss 40351fd3... sein) + `gh pr checks 1047` final gruen.
+2. `gh pr merge 1047 --squash --admin`.
+3. Post-merge: develop fetch, neue develop-SHA + `gh run list --branch develop --limit 5` (post-merge Checks), Ergebnis in Evidence.
+4. Danach im selben Auftrag, je nach Reifegrad (nur was WIRKLICH die drei Bedingungen erfuellt, sonst ueberspringen und Begrundung): PR #1056 (head aktuell 7a220d26, o114 zieht Akte nach - pruefe den LIVE-Head, nicht diesen) und #1060 (head 3fa4989e, q110b zieht Akte nach). Fuer beide gilt: erst grüne `PR Selected Checks` auf dem finalen Head + Review-Verdict, dann merge.
+5. Reihenfolge zwingend: #1047 -> (#1056 vor #1050) -> (#1060 vor #1052). Nach jedem Merge die neue develop-SHA notieren, damit folgende Rebases darauf zielen.
+6. Evidenzabschnitt "## RUNDE 4 (Owner --admin-Freigabe)" in evidence/board-2026-10-24/codex-merge-1047.md, plus je ein kurzes Log-File evidence/board-2026-10-24/codex-merge-<PR>.md fuer #1056/#1060 falls in diesem Auftrag gemergt.
+END CX-MERGEWAVE-26-DONE mit Liste (PR, develop-SHA nach Merge) / END CX-MERGEWAVE-26-BLOCKED mit exaktem GitHub-Fehlerwortlaut.
