@@ -135,3 +135,21 @@ class ExecutorOwnershipTests(unittest.TestCase):
   foreign=os.geteuid()+1
   with self.assertRaisesRegex(EvidenceError,"owner does not match executor"):
    read_pinned_policy_file("/tmp/policy.json","a"*64,trusted_owner_uid=foreign)
+
+
+class ProtectedFileIssuerTests(unittest.TestCase):
+ def test_rejects_job_override(self):
+  from r27_trusted_policy import issue_from_protected_policy_file
+  with self.assertRaisesRegex(EvidenceError,"override forbidden"):
+   issue_from_protected_policy_file(policy_path="/unused",protected_digest="a"*64,
+      trusted_owner_uid=0,gate="sql",expected_job_name="untrusted")
+ def test_uses_policy_mapping_from_reader(self):
+  from unittest.mock import patch
+  from r27_trusted_policy import issue_from_protected_policy_file
+  mapping={"sql":{"job_name":"PR Selected Checks","workflow_path":".github/workflows/ci.yml"}}
+  with patch("r27_trusted_policy.read_pinned_policy_file",return_value=(mapping,"a"*64)):
+   with patch("r27_verified_issuer.issue_from_github",return_value=b"receipt") as issued:
+    result=issue_from_protected_policy_file(policy_path="/protected/policy.json",
+       protected_digest="a"*64,trusted_owner_uid=1000,gate="sql")
+  self.assertEqual(result,b"receipt")
+  self.assertEqual(issued.call_args.kwargs["expected_job_name"],"PR Selected Checks")
