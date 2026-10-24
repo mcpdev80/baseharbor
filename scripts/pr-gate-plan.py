@@ -603,6 +603,29 @@ WORKFLOW_SYNTAX_CHECKS = [
      'command': 'go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck='},
 ]
 
+# Lightweight Pins-Data validation for release consumer-pins metadata. A
+# docs/releases/<tag>.consumer-pins.json file is immutable source data, not a
+# code path: it records the exact immutable Core/Connector/Console/Demo commits
+# that a release must reproduce. The pinned consumer-repository identities are
+# private, so the validation reads only the file's embedded origin repository
+# and commit and re-derives the acyclic, source-owned consumer graph without
+# publishing or fetching private sources. No runtime gate is selected: a pins
+# metadata add changes no executable code and requires no native release gate.
+PINNED_CONSUMER_REPOSITORIES = {
+    'core': 'mcpdev80/baseharbor', 'demo': 'mcpdev80/baseharbor-demo',
+    'console': 'mcpdev80/baseharbor-console',
+    'connector': 'mcpdev80/baseharbor-node-connector',
+}
+# Each gate must pin exactly one consumer role from the correct repository with
+# a 40-hex commit; the joint live-console gate additionally requires the
+# Connector origin that seeds the Console origin. This is the public surface of
+# the immutable chain the release resolver reproduces.
+PINNED_PINS_VALIDATION = [
+    {'id': 'pins-data-validation', 'owner': 'scripts/ecosystem_release_pins.py',
+     'command': ('python3 scripts/pr-check-runner.py execute --check pins-data-validation '
+                 '--repository .')},
+]
+
 def trusted_binding_checks(diff, repository='.', context_repository=None,
                            context_target_branch=None):
     """Verify the frozen binding from the authenticated target, never PR content.
@@ -635,7 +658,11 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                   ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
         blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
                             flags=re.MULTILINE | re.DOTALL)
-        if len(blocks) != 1 or raw.count('```') != 2:
+        # The trusted register may accumulate one entry per reviewed candidate.
+        # Every fenced block must be a complete, well-formed record for exactly
+        # the three CI scripts; a stray fence, duplicate anchor or weakened
+        # record fails the whole register closed.
+        if not blocks or raw.count('```') != 2 * len(blocks):
             return None
 
         def unique_object(pairs):
@@ -646,34 +673,31 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                 result[key] = value
             return result
 
-        record = json.loads(blocks[0], object_pairs_hook=unique_object)
         expected_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
             'scripts/test_pr_gate_plan.py')}
         expected_ids = {check['id'] for check in CI_CHECKS}
-        if (not isinstance(record, dict) or set(record) != {
-                'repository', 'target_branch', 'reviewed_head', 'files',
-                'file_hashes', 'required_checks'} or
-                record['repository'] != context_repository or
-                record['target_branch'] != context_target_branch or
-                not isinstance(record['reviewed_head'], str) or
-                re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                not core752_reviewed_merge_chain(
-                    diff['target_base_sha'], diff['head_sha'],
-                    record['reviewed_head'], repository) or
-                record['files'] != expected_files or
-                not isinstance(record['file_hashes'], dict) or
-                set(record['file_hashes']) != set(expected_files) or
-                not isinstance(record['required_checks'], list) or
-                len(record['required_checks']) != len(expected_ids) or
-                set(record['required_checks']) != expected_ids):
-            return None
-        for path, digest in record['file_hashes'].items():
-            if (not isinstance(digest, str) or
-                    re.fullmatch(r'[0-9a-f]{64}', digest) is None or
-                    hashlib.sha256(git('cat-file', 'blob',
-                                       record['reviewed_head'] + ':' + path)).hexdigest() != digest):
+        records = []
+        for block in blocks:
+            record = json.loads(block, object_pairs_hook=unique_object)
+            if (not isinstance(record, dict) or set(record) != {
+                    'repository', 'target_branch', 'reviewed_head', 'files',
+                    'file_hashes', 'required_checks'} or
+                    record['repository'] != context_repository or
+                    record['target_branch'] != context_target_branch or
+                    not isinstance(record['reviewed_head'], str) or
+                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                    record['files'] != expected_files or
+                    not isinstance(record['file_hashes'], dict) or
+                    set(record['file_hashes']) != set(expected_files) or
+                    not isinstance(record['required_checks'], list) or
+                    len(record['required_checks']) != len(expected_ids) or
+                    set(record['required_checks']) != expected_ids):
                 return None
+            records.append(record)
+        anchors = [record['reviewed_head'] for record in records]
+        if len(anchors) != len(set(anchors)):
+            return None
         # Import the resolver beside this trusted planner, not from the PR tree.
         import importlib.util
         spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
@@ -687,9 +711,25 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         if (len(changes) != len(expected_files) or
                 {c.get('path'): c.get('status') for c in changes} != expected_files):
             return None
+        # A register entry qualifies only through the existing review-ancestry
+        # and frozen-blob proof; entries not binding this exact candidate never
+        # contribute, so a missing entry keeps the conservative fallback.
+        for record in records:
+            if not core752_reviewed_merge_chain(
+                    diff['target_base_sha'], diff['head_sha'],
+                    record['reviewed_head'], repository):
+                continue
+            for path, digest in record['file_hashes'].items():
+                if (not isinstance(digest, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', digest) is None or
+                        hashlib.sha256(git('cat-file', 'blob',
+                                           record['reviewed_head'] + ':' + path)).hexdigest() != digest):
+                    break
+            else:
+                return CI_CHECKS
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
-    return CI_CHECKS
+    return None
 
 
 # BOOTSTRAP-Ausnahme (befristet, nur fuer die zwei Bootstrap-PRs): Der
@@ -1137,7 +1177,12 @@ def plan(diff, requirements, mapping, repository='.',
                 'reasons': ['Trusted target record: exact repository, branch, head, full '
                             'inventory, raw SHA-256 blobs and clean integration verified.']}
     for path in paths:
-        if path in REGISTRATION_COVERAGE:
+        if path.endswith('.consumer-pins.json') and path.startswith('docs/releases/'):
+            area = 'pins-data'
+            require(PINNED_PINS_VALIDATION)
+            if path_status.get(path) != 'added':
+                unresolved.append('pins-data file add requires exact reviewed candidate: ' + path)
+        elif path in REGISTRATION_COVERAGE:
             area = 'registration-reviewed-path'
             require(CODE_CHECKS)
             require(WIZARD_BASE_CHECKS)
