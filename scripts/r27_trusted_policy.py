@@ -73,11 +73,10 @@ def read_pinned_policy_file(policy_path, protected_digest, *, trusted_owner_uid=
         raise EvidenceError("EVIDENCE_POLICY: absolute protected path required")
     if not hasattr(os, "O_NOFOLLOW"):
         raise EvidenceError("EVIDENCE_POLICY: nofollow unavailable")
-    if trusted_owner_uid is not None and (type(trusted_owner_uid) is not int or trusted_owner_uid < 0):
+    if type(trusted_owner_uid) is not int or trusted_owner_uid < 0:
         raise EvidenceError("EVIDENCE_POLICY: invalid trusted owner")
     def check_protection(info):
-        if trusted_owner_uid is not None and (
-                info.st_uid not in (0, trusted_owner_uid) or info.st_mode & 0o022):
+        if info.st_uid not in (0, trusted_owner_uid) or info.st_mode & 0o022:
             raise EvidenceError("EVIDENCE_POLICY: unprotected owner or permissions")
     try:
         parts = policy_path.split("/")[1:]
