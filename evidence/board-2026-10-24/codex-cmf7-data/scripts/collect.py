@@ -1,0 +1,7 @@
+import pathlib,subprocess,concurrent.futures,json
+p=pathlib.Path('evidence/board-2026-10-24/codex-cmf7-data')
+jobs=[('identity',['gh','api','user']),('main',['gh','api','repos/mcpdev80/baseharbor-demo/branches/main']),('pr121',['gh','api','repos/mcpdev80/baseharbor-demo/pulls/121']),('diffnames',['gh','pr','diff','121','--name-only','--repo','mcpdev80/baseharbor-demo']),('diff',['gh','pr','diff','121','--repo','mcpdev80/baseharbor-demo']),('run',['gh','api','repos/mcpdev80/baseharbor-demo/actions/runs/39990941852']),('jobs',['gh','api','repos/mcpdev80/baseharbor-demo/actions/runs/39990941852/jobs?per_page=100']),('checks',['gh','pr','checks','121','--repo','mcpdev80/baseharbor-demo']),('rules',['gh','api','repos/mcpdev80/baseharbor-demo/rules/branches/main']),('threads',['gh','api','graphql','-f','query={repository(owner:"mcpdev80",name:"baseharbor-demo"){pullRequest(number:121){headRefOid baseRefOid mergeStateStatus reviewDecision reviewThreads(first:100){nodes{isResolved isOutdated comments(first:20){nodes{body author{login}}}}}}}']),('runs',['gh','api','repos/mcpdev80/baseharbor-demo/actions/runs?per_page=20'])]
+def run(x):
+ name,args=x;r=subprocess.run(args,capture_output=True,text=True);(p/(name+'.txt')).write_text(r.stdout);(p/(name+'.stderr')).write_text(r.stderr);return name,r.returncode,r.stdout[:120]
+with concurrent.futures.ThreadPoolExecutor(max_workers=6) as e:
+ for r in e.map(run,jobs):print(r)

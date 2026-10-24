@@ -1,0 +1,20 @@
+{
+  "1056": {
+    "sha": "425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68",
+    "parents": "425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68 49c94d8bf7a1767c7c3472958b12bbc7f0b4db62",
+    "diff_if_Q_landed": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n",
+    "focused_exit": 0
+  },
+  "1061": {
+    "sha": "ae9afc8791325b11ad0011d3011514fd6e8af92a",
+    "parents": "ae9afc8791325b11ad0011d3011514fd6e8af92a 7a220d2609bd2881dfcb32b94bfb1a32490d7401",
+    "diff_if_Q_landed": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n",
+    "focused_exit": 0
+  },
+  "1062": {
+    "sha": "7b9fd4ae1447c47c6c7e21386f30715031ff9be0",
+    "parents": "7b9fd4ae1447c47c6c7e21386f30715031ff9be0 9d1624e2b6641404d09cfd77cd92e250ec5e6dbf",
+    "diff_if_Q_landed": "M\tdocs/internal/ci-binding-qualifications.md\nM\tscripts/pr-check-runner.py\nM\tscripts/pr-gate-plan.py\nM\tscripts/test_pr_gate_plan.py\n",
+    "focused_exit": 0
+  }
+}

@@ -1,1 +1,1 @@
-{"ahead": 0, "behind": 0, "branch": "main", "currency": "ok", "dirty": 0, "observed_at": 1792839648, "repo": "/home/marcel/dev/baseharbor-ecosystem/baseharbor-plan"}
+{"ahead": 0, "behind": 2, "branch": "main", "currency": "stale", "dirty": 0, "observed_at": 1792841610, "repo": "/home/marcel/dev/baseharbor-ecosystem/baseharbor-plan", "why": "remote planning 2 commit(s) ahead - REALITAETSABGLEICH"}

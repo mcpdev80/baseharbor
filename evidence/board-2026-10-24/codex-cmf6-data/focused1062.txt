@@ -1,0 +1,14 @@
+test_divergent_connector_commit_across_gates_fails (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_divergent_connector_commit_across_gates_fails) ... ok
+test_ecosystem_chain_valid_passes (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_ecosystem_chain_valid_passes) ... ok
+test_ecosystem_chain_wrong_hex_commit_fails (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_ecosystem_chain_wrong_hex_commit_fails) ... ok
+test_ecosystem_chain_wrong_repo_fails (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_ecosystem_chain_wrong_repo_fails) ... ok
+test_malformed_missing_and_mismatched_pins_data_stay_fail_closed (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_malformed_missing_and_mismatched_pins_data_stay_fail_closed) ... ok
+test_mixed_with_unrelated_json_keeps_own_coverage_requirements (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_mixed_with_unrelated_json_keeps_own_coverage_requirements) ... ok
+test_pins_add_not_added_stays_unresolved (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_pins_add_not_added_stays_unresolved) ... ok
+test_pins_only_added_file_resolves_with_exactly_pins_data_validation (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_pins_only_added_file_resolves_with_exactly_pins_data_validation) ... ok
+test_pins_path_outside_docs_releases_is_not_qualified (scripts.test_pr_gate_plan.PinsDataQualificationTests.test_pins_path_outside_docs_releases_is_not_qualified) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.278s
+
+OK

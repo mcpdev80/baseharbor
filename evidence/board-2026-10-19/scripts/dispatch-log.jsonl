@@ -1,0 +1,6 @@
+{"nonce":"dispatch-1792839751-1932154-1626","sid":"e2b1f782-6f7e-4d72-b62f-66b7dbd2ac05","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792839888-1953342-25139","sid":"02926a90-7ab9-4b0e-85a1-b0f20c341785","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792839943-1963817-31428","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792840314-2030611-159","sid":"79ccca4f-8a32-4ae3-9a46-4564405e9d63","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792840439-2052579-29739","sid":"0a620e1d-9c3b-4ed2-b2a3-93b85955eef8","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792840462-2060354-3820","sid":"0a620e1d-9c3b-4ed2-b2a3-93b85955eef8","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

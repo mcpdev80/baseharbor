@@ -1,0 +1,68 @@
+{
+  "main": {
+    "sha": "82d042bc9b2393733858fd5fc9dd42a7f5491ea9",
+    "tree": "c5b7966f482a198b2a6167126b794bfbb1f63ba5",
+    "files": {
+      "scripts/failure-runtime-diagnostics.sh": {
+        "blob": "ea897dfb184dc7f043869174f1e5753b7144f91c",
+        "sha256": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f"
+      },
+      "baseharbor-core.ref": {
+        "blob": "0f47491bf48b77de8eca9b8b4d1676adf9a14111",
+        "sha256": "ec94c09ef271d04cba2291e3d11b71f0f322394d2713b1c30a55abbad4e05b66"
+      },
+      ".github/workflows/v0424-targeted.yml": {
+        "blob": "bc0b72570cbbd79f780c5e2d77658d56a7e9e887",
+        "sha256": "146e001a906714e5290d2fa91289733573e3572186f1aa6e7f4001ecee370926"
+      },
+      "scripts/acceptance.sh": {
+        "blob": "626aac60cbfc1347715e86efebc4f33afb6a4e79",
+        "sha256": "6f4f313fec93b36d84e0160a8541ad6123fdd4aa7e141a508fd3c522771f724a"
+      }
+    }
+  },
+  "candidate": {
+    "sha": "f57c8b6e5ff39d0873df62b26272962765e88d6e",
+    "tree": "9a25907b7561d07c734022cf585ee43b06311c6a",
+    "files": {
+      "scripts/failure-runtime-diagnostics.sh": {
+        "blob": "ea897dfb184dc7f043869174f1e5753b7144f91c",
+        "sha256": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f"
+      },
+      "baseharbor-core.ref": {
+        "blob": "2bae2e9ac10a4a1efe2b026531e0a41cbc9eeceb",
+        "sha256": "a2c83515831054bb90a7df37e7b1c01c12463a3f6478a41b08f3b132a47f58b7"
+      },
+      ".github/workflows/v0424-targeted.yml": {
+        "blob": "bc0b72570cbbd79f780c5e2d77658d56a7e9e887",
+        "sha256": "146e001a906714e5290d2fa91289733573e3572186f1aa6e7f4001ecee370926"
+      },
+      "scripts/acceptance.sh": {
+        "blob": "626aac60cbfc1347715e86efebc4f33afb6a4e79",
+        "sha256": "6f4f313fec93b36d84e0160a8541ad6123fdd4aa7e141a508fd3c522771f724a"
+      }
+    }
+  },
+  "run": {
+    "sha": "25c319697fd3d89d894943e0f44cd3d5dde8b198",
+    "tree": "1a2e53aaf7f228a2dc865133696434c012e4ff20",
+    "files": {
+      "scripts/failure-runtime-diagnostics.sh": {
+        "blob": "1558a2435f9cc34dc068430598cdfc143b331429",
+        "sha256": "f31bb1c0131d0f22c8449d696cd0c7bebd4e113211504e25bdf96c217625a276"
+      },
+      "baseharbor-core.ref": {
+        "blob": "2bae2e9ac10a4a1efe2b026531e0a41cbc9eeceb",
+        "sha256": "a2c83515831054bb90a7df37e7b1c01c12463a3f6478a41b08f3b132a47f58b7"
+      },
+      ".github/workflows/v0424-targeted.yml": {
+        "blob": "0693ee4db7cd6964f81fd978b4dd0b40c2817697",
+        "sha256": "dd75f298e381bd9c663683324f8a5c93380744934f3bce16f98c9fdfdf4a7b29"
+      },
+      "scripts/acceptance.sh": {
+        "blob": "626aac60cbfc1347715e86efebc4f33afb6a4e79",
+        "sha256": "6f4f313fec93b36d84e0160a8541ad6123fdd4aa7e141a508fd3c522771f724a"
+      }
+    }
+  }
+}
