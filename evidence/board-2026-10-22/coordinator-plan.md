@@ -166,7 +166,7 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [x] B Q: #1063 R-record merged (develop `65aa063e`)
 - [x] C1 P-integration: #1056 ordinary merge R+develop produced H `b0abe105`, CI success
 - [ ] C2 P-correction: Codex REQUEST_CHANGES F1/F2 -> correction package R' -> record Q' -> H' -> autorisierter Merge
-- [ ] D OpenBao: #1060 korrekt merge-ready (q117), W-PR getrennt, dann #1052 rebase/review/CI (o133)
+- [ ] D OpenBao: cmf18-Rezept (codex-recipe-1060-qualification.md): 1) R = finaler 4-File-#1060-Kandidat NUR nach o139-ACCEPT, 2) separater Policy-PR (nur pr-gate-plan.py+test_pr_gate_plan.py) mit Exakt-Bindung an R (4 Hashes, 4 Pfade, CI_CHECKS+WORKFLOW_SYNTAX), 3) Policy-PR review+CI+Merge, 4) ordinary forward merge develop in R -> frische PR-CI -> #1060 merge-ready, dann #1052 rebase/review/CI (o133)
 - [ ] E #1046 serialized anchor qualifier nur nach C/D
 - [ ] F Freeze: OWNER/HOST Podman receipt → demo#121 → console#9 → connector#10
 - [ ] G #1050 finale consumer pins aktualisieren und qualifizieren
@@ -206,3 +206,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - DELEGATION: cmf18 (Codex 606819bd, ROLLE REVIEW): exakt EIN Rezept fuer #1060 Qualifikations-Luecke (run 40099514587, Akte-Muster #1058/#1063). ops/missions/cmf18.txt. o139 (ornith fb3e062c): unabhaengige read-only Quelle-Review von #1060@0f3bd169 gegen cmf15 A-F + Tests. ops/missions/o139.txt. Beide Zustellungen per Pane-Beweis (busy/PLAN sichtbar), Watch registriert. Codex-Composer-/compact-Rest wieder entfernt (C-a/C-k) - OPS-Befund besteht weiter.
 - OFFENE OWNER-PUNKTE (Marcel): (1) Freezer-Kette F haengt an Podman-receipt - kein podman auf diesem Host; Entscheidung noetig: podman-faehiger Host/VM, maintainer-Runner-Route, oder formale Pin-Kompatibilitaets-Akzeptanz mit spaeterem W1-Journey-Run. (2) J: Root-/worktree-Hygiene-Cleanup (q119-Audit) braucht Owner-Go, destruktive Schritte bleiben gesperrt.
 - POOL: 1/5ornith + Codex beschaefigt; flash/qwen bewusst vacant, bis cmf18-Rezept + o139-Urteil vorliegen (C2-R' und weitere planner-file-Arbeit sind serialisiert, keine Scheinauftraege).
+- 15:1xZ ZWISCHENSTAND D: cmf18 RECIPE-DONE (record-only NICHT ausreichend; 4-File-Exakt-Bindung noetig) + o139 REVIEW END ACCEPT fuer R=0f3bd169 (before/after identisch, worktree clean, 267 Tests ok). R ist damit冻结. Lanes cmf18+o139 rotiert. o140 (ornith 13cbd072) baut cmf18-Punkt-2/3 prerequisite Policy-PR (nur pr-gate-plan.py+test_pr_gate_plan.py, branch work/v0.4.26-ci-qualifier-1060). ops/missions/o140.txt. Danach: unabhaengiges Review + CI + autorisierter Merge des Policy-PRs, dann #1060-owner ordinary forward merge -> frische PR-CI -> Merge-Welle (#1060 -> #1052 -> C2 R').
