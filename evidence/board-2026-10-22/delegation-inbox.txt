@@ -32,3 +32,4 @@ REVIEW-KANON nach q91-precheck: Reihenfolge 1056 -> 1050 -> Re-Check 1052/1053 -
 CURRENCY-Drift durch externe 27-Lanes (board hintergrund-sync vor JEDEM dispatch noetig, Gate schuetzt). o96 nach Nudge aktiv.
 ENTSCHEIDUNG #1052: false-Down test ABGEDECKT (o99 Test-Luecke mit Datei:Zeile bewiesen, CODE-X Beweispflicht erfuellt). Review-Kette 1052 komplett: ACCEPT-reif nach Meta-Gate-Fix.
 MERGE-WELLE GESTARTET: #1053 wird von o101 gemergt (Doppel-Approve+Clean-CI). Rest-PRs haengen an einem gemeinsamen Root-Cause (Meta-Gate coverage) - f39 Rezept laeuft.
+PLAN-PUBLISH: q101/q102/q103 dreimal Qwen-Phantom ohne Liferation - Aufgabe zurueckgestellt bis Meta-Gate-Welle durch ist (Reihenfolge-Sinn: publish nach merge). Kein vierter Versuch auf qwen.

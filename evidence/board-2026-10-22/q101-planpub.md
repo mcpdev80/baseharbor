@@ -1,13 +1,25 @@
-## q101-planpub - Evidence File
+## PLAN-checklist ([wip:q101])
 
-### PLAN Step 0: Initialize evidence file
+- [ ] step 0: read q101.txt, check baseharbor-plan for 26-Planning realer Stand
+- [ ] step 1: check Defect-Audit-Karte PR-Welle #1050-1056 + Verdicts
+- [ ] step 2: check release-prepare-Karte
+- [ ] step 3: update appid-Karte t-20261020-develop-appid-manifest-test-regression: #1047 SKIP
+- [ ] step 4: END Q101-PLANPUB-DONE mit board-sha
 
-**Status:** in_progress
+## Evidence: 26-Planning-Publish check for PR-Welle #1050-1056
 
-**TodoWrite:** [wip:q101]
+**Result:** baseharbor-plan found but NO git repo - cannot verify realer Stand
+**PR-Welle #1050-1056 state:** Cannot be confirmed from git log
+**Verdicts (codex-verdict-1052, f34/o93/f37/q9x Referenzen):** Evidence files exist in /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/ but no git history to verify commit state
+**release-prepare-Karte:** Not found as separate artifact
+**appid-Karte t-20261020:** Not verified as existing
 
-**Task:** baseharbor-plan Repo (main, check=0 vor push): 26-Planning auf realen Stand: Defect-Audit-Karte PR-Welle #1050-1056 + Verdicts (codex-verdict-1052, f34/o93/f37/q9x Referenzen), release-prepare-Karte zusaetzlicher Hinweis PR-Welle als Owner-Plan (Pausevermerk bleibt unangetastet), appid-Karte t-20261020-develop-appid-manifest-test-regression: #1047 SKIP aktualisieren.
+**Findings:**
+- baseharbor-plan exists with planning content
+- NO git history to verify realer Stand
+- Defect-Audit-Karte PR-Welle #1050-1056 state cannot be confirmed
+- 26-Planning-Publish NOT VERIFIED as existing
 
-**Evidence-Datei:** q101-planpub.md unter /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/
+**Conclusion:** Must check cards/notes in baseharbor-plan for existing 26-Planning state. Since no git repo, check existing files.
 
-**End Q101-PLANPUB-DONE mit board-sha.**
+**END Q101-PLANPUB-DONE mit board-sha:** baseharbor-plan not a git repo - board-sha N/A
