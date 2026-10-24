@@ -1,0 +1,49 @@
+"""Isolated gate issuer: a successful authenticated GitHub job is mandatory.
+
+Requires trusted caller to pin gate policy and provision secret credentials.
+Never a substitute for policy authorization or promotion qualification.
+"""
+import hashlib
+import hmac
+import json
+from r27_verified_coverage import SCHEMA, SHA, DIGEST, GATE, MAX_BYTES, EvidenceError
+from r27_github_fetch import fetch_authenticated_origin
+
+def issue_from_github(*, key, token, repository, stage, candidate, policy_digest,
+                      gate, run_id, attempt, job_id, expected_job_name,
+                      workflow_path, expected_event="pull_request",
+                      artifact_digest=None):
+    if type(key) is not bytes or len(key) < 32:
+        raise EvidenceError("EVIDENCE_TRUST: trusted signing key unavailable")
+    if stage not in ("pr", "integration", "release"):
+        raise EvidenceError("EVIDENCE_SCHEMA: invalid stage")
+    if not isinstance(candidate, str) or not SHA.fullmatch(candidate):
+        raise EvidenceError("EVIDENCE_TARGET: invalid candidate")
+    if not isinstance(policy_digest, str) or not DIGEST.fullmatch(policy_digest):
+        raise EvidenceError("EVIDENCE_POLICY: invalid policy digest")
+    if not isinstance(gate, str) or not GATE.fullmatch(gate):
+        raise EvidenceError("EVIDENCE_GATE: invalid gate")
+    if artifact_digest is not None and (not isinstance(artifact_digest,str)
+                                        or not DIGEST.fullmatch(artifact_digest)):
+        raise EvidenceError("EVIDENCE_ARTIFACT: invalid artifact digest")
+    if stage == "release" and artifact_digest is None:
+        raise EvidenceError("EVIDENCE_ARTIFACT: release requires artifact")
+    if gate == "release/smoke" and stage != "release":
+        raise EvidenceError("EVIDENCE_ARTIFACT: smoke requires release")
+    identity = fetch_authenticated_origin(token, repository=repository, head_sha=candidate,
+        run_id=run_id, attempt=attempt, job_id=job_id,
+        expected_job_name=expected_job_name, workflow_path=workflow_path,
+        expected_event=expected_event)
+    if not isinstance(identity,dict) or any(identity.get(k) != v for k,v in
+            (("run_id",run_id),("attempt",attempt),("job_id",job_id),
+             ("head_sha",candidate),("name",expected_job_name))):
+        raise EvidenceError("EVIDENCE_ORIGIN: invalid authenticated result")
+    body = dict(schema=SCHEMA,stage=stage,candidate=candidate,
+                policy_digest=policy_digest,gate=gate,artifact_digest=artifact_digest,
+                result="PASS",run_id=run_id,attempt=attempt,job_id=job_id)
+    canonical = json.dumps(body,sort_keys=True,separators=(",",":")).encode()
+    mac = hmac.new(key,canonical,hashlib.sha256).hexdigest()
+    raw = json.dumps(dict(body,mac=mac),sort_keys=True,separators=(",",":")).encode()
+    if len(raw) > MAX_BYTES:
+        raise EvidenceError("EVIDENCE_SIZE: oversized receipt")
+    return raw
