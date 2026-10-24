@@ -1,0 +1,21 @@
+ROLLE: REVIEW. KEIN Merge, KEIN Produktcode, KEIN force/--admin, KEIN CI rerun.
+KANDIDAT: baseharbor PR #1052 head `7c7cda7cc32423405d3cabe3ecf46d61289b0598`, branch work/v0.4.26-openbao-retry, target develop `65aa063e...`.
+Context:
+- previous Codex verdict: codex-verdict-1052.md (REQUEST_CHANGES + one exact recipe)
+- worker fix: o131-1052fix.md
+- independent worker review: o133-review1052fix.md ACCEPT (source)
+- #1060 repair still unlanded and may share CI write-set; #1052 required runtime cannot pass until #1060 lands.
+
+AUFGABE:
+1. Independently compare current H against cmf9's exact recipe and files/diff/hash. Verify no #1060/product files touched.
+2. Review bootstrap classifier and regressions:
+   - permanent errors fail fast/no writes, despite incidental temporary words;
+   - only transient retry; bounded attempts;
+   - phase/member assertions can actually fail on wrong behavior;
+   - mutation logic in worker evidence is credible.
+3. Run only focused local Go checks in isolated worktree with private GOCACHE if required; no native/VM/full matrix.
+4. Decide ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES. Do not ACCEPT for merge because current required CI cannot be green before #1060; classify blocker.
+5. If REQUEST_CHANGES, exactly one worker recipe with file:line and test.
+6. Record future integration recipe: after #1060 merges, ordinary merge T into #1052, fresh exact-H CI/review.
+Evidence codex-verdict-1052-r4.md, before/after SHAs.
+END CX-1052R4-DONE / END CX-1052R4-BLOCKED.

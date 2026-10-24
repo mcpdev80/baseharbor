@@ -1,0 +1,17 @@
+READ-ONLY policy correction design. KEIN git write/push/merge, KEIN Produktcode, KEIN Agent send, KEIN CI. You may create disposable worktrees under $TMPDIR only.
+ERSTER SCHRITT: evidence/board-2026-10-24/o135-1056design.md mit ## PLAN + nativen Todos.
+
+KANDIDAT #1056 H `b0abe10526554960b827dd0f4a503a10cebff911`, develop `65aa063e90767c85af976081c100be1817370e67`.
+Review Codex cmf12 REQUEST_CHANGES in codex-verdict-1056-H.md (F1 P1 bootstrap fallback, F2 P2 pins validator).
+Context: q117 is concurrently working #1060 and shares planner files; DO NOT touch any existing checkout/worktree. Work only new disposable worktree.
+
+AUFGABE:
+1. Reproduce/verify F1 and F2 independently from immutable H and Codex helpers, focusing on exact code paths.
+2. Produce exact implementation design for one correction worker:
+   - file/function/line before -> proposed behavior (pseudocode allowed; no edit)
+   - all callers/tests to adjust in same three files
+   - how to preserve existing strict Q/R/H behavior and #1046/AppID qualification.
+3. Define exact negative cases and focused commands.
+4. Estimate impact on #1060 shared write-set and serialization; no merge advice.
+5. State whether a correction is necessary and sufficient. If no, cite evidence.
+END O135-1056DESIGN-DONE / BLOCKED.

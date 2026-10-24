@@ -1,0 +1,474 @@
+diff --git a/internal/openbao/bootstrap.go b/internal/openbao/bootstrap.go
+index cf56ed2..467eed5 100644
+--- a/internal/openbao/bootstrap.go
++++ b/internal/openbao/bootstrap.go
+@@ -43,6 +43,14 @@ var (
+ // window between Podman container restart and the openbao process re-attaching
+ // to its TCP listener). Permanent errors (TLS/CA, permissions, missing
+ // executables) are not retried.
++//
++// Admission is limited to positively-identified listener/transport failures
++// only. A bare word such as "temporary" is intentionally NOT a subclass: a
++// permanent TLS or permission failure can contain that incidental word (for
++// example "x509: ... temporary failure in name resolution" or
++// "permission denied: temporary credentials file") and must never trigger a
++// retry. Classification is by concrete failure shape, not by substring of a
++// possibly-permanent diagnostic.
+ func isTransientError(err error) bool {
+ 	if err == nil {
+ 		return false
+@@ -54,7 +62,6 @@ func isTransientError(err error) bool {
+ 		strings.Contains(s, "no such host") ||
+ 		strings.Contains(s, "i/o timeout") ||
+ 		strings.Contains(s, "operation timed out") ||
+-		strings.Contains(s, "temporary") ||
+ 		strings.Contains(s, io.ErrUnexpectedEOF.Error()) ||
+ 		strings.Contains(s, "reset by peer")
+ }
+diff --git a/internal/openbao/bootstrap_test.go b/internal/openbao/bootstrap_test.go
+index 6e6a835..063fe7c 100644
+--- a/internal/openbao/bootstrap_test.go
++++ b/internal/openbao/bootstrap_test.go
+@@ -266,15 +266,19 @@ type flakyMemberExecutor struct {
+ }
+ 
+ type haMemberState struct {
+-	initialized          bool
+-	sealed               bool
+-	tries                int
+-	inspectCount         int
+-	preUnsealAttempts    int
+-	writes               int
++	initialized            bool
++	sealed                 bool
++	tries                  int
++	inspectCount           int
++	preUnsealAttempts      int
++	writes                 int
+ 	postUnsealVerification int
+-	verifiedAfterUnseal  bool
+-	retryAttempts        int
++	verifiedAfterUnseal    bool
++	retryAttempts          int
++	postUnsealAttempts     int
++	execAttempts           int
++	isRealMember           bool
++	postVerified           bool
+ }
+ 
+ func newHaMemberState(initialized, sealed bool) *haMemberState {
+@@ -309,6 +313,7 @@ func (f *flakyMemberExecutor) ExecProject(ctx context.Context, _, _, _, service
+ 				break
+ 			}
+ 		}
++		ms.isRealMember = true
+ 	} else {
+ 		ms, ok = f.memberStates[service]
+ 		if !ok {
+@@ -325,6 +330,7 @@ func (f *flakyMemberExecutor) ExecProject(ctx context.Context, _, _, _, service
+ 				}
+ 			} else {
+ 				ms = newHaMemberState(st.Initialized, st.Sealed)
++				ms.isRealMember = true
+ 				f.memberStates[service] = ms
+ 			}
+ 		}
+@@ -333,10 +339,16 @@ func (f *flakyMemberExecutor) ExecProject(ctx context.Context, _, _, _, service
+ 	ms.tries++
+ 
+ 	// If this is a post-unseal verification call (ms.writes > 0), return current sealed state.
++	// Only a real HA member probe counts as post-unseal verification; the admin
++	// service status proxy resolves to an unsealed member's state and must not.
+ 	if ms.writes > 0 {
+-		ms.postUnsealVerification++
+-		if !ms.sealed {
+-			ms.verifiedAfterUnseal = true
++		ms.postUnsealAttempts++
++		if ms.isRealMember && !ms.postVerified {
++			ms.postVerified = true
++			ms.postUnsealVerification++
++			if !ms.sealed {
++				ms.verifiedAfterUnseal = true
++			}
+ 		}
+ 		return statusJSON(ms.initialized, ms.sealed), nil
+ 	}
+@@ -449,30 +461,43 @@ func TestUnsealConvergesAfterMemberRestartRace(t *testing.T) {
+ 		t.Fatalf("unseal failed on transient member probe: %v", err)
+ 	}
+ 
+-	ms1 := executor.memberStates["openbao-member-1"]
+-	if ms1 == nil {
+-		t.Fatal("no member-1 state recorded")
+-	}
+-	if ms1.inspectCount == 0 {
+-		t.Fatal("member-1: expected at least one successful initial Inspect")
+-	}
+-	if ms1.preUnsealAttempts < 3 {
+-		t.Fatalf("member-1 pre-unseal attempts = %d, want at least 3 after transient failures", ms1.preUnsealAttempts)
+-	}
+-	if ms1.writes == 0 {
+-		t.Fatal("member-1: unseal write was never executed")
+-	}
+-	if ms1.postUnsealVerification == 0 {
+-		t.Fatal("member-1: post-unseal verification was never executed")
+-	}
+-	if !ms1.verifiedAfterUnseal {
+-		t.Fatal("member-1: sealed=false not verified after unseal")
++	// Exactly one successful initial Inspect per member (pre-unseal phase).
++	// Exactly one unseal write per member (write phase).
++	// Exactly one successful post-unseal verification per member (post phase).
++	for member := 1; member <= 3; member++ {
++		name := fmt.Sprintf("openbao-member-%d", member)
++		ms := executor.memberStates[name]
++		if ms == nil {
++			t.Fatalf("%s: no member state recorded", name)
++		}
++		if ms.inspectCount != 1 {
++			t.Fatalf("%s: initial Inspect phase = %d, want exactly 1", name, ms.inspectCount)
++		}
++		expectedWindow := map[string]int{"openbao-member-1": 3}
++		if ms.preUnsealAttempts != expectedWindow[name] {
++			t.Fatalf("%s: pre-unseal attempts = %d, want %d (transient window)", name, ms.preUnsealAttempts, expectedWindow[name])
++		}
++		if ms.writes != 1 {
++			t.Fatalf("%s: unseal writes = %d, want exactly 1", name, ms.writes)
++		}
++		if ms.postUnsealVerification != 1 {
++			t.Fatalf("%s: post-unseal verification calls = %d, want exactly 1", name, ms.postUnsealVerification)
++		}
++		if !ms.verifiedAfterUnseal {
++			t.Fatalf("%s: sealed=false not verified after unseal", name)
++		}
++		if ms.preUnsealAttempts >= memberRestartAttempts || ms.postUnsealAttempts >= memberRestartAttempts {
++			t.Fatalf("%s: exceeded retry cap (preUnseal=%d postUnseal=%d)", name, ms.preUnsealAttempts, ms.postUnsealAttempts)
++		}
+ 	}
+ }
+ 
+ // neverAnswersExecutor simulates a member that passes initial Inspect but
+ // permanently fails during probeMemberState retry: first ExecProject returns
+-// the member's state, all subsequent calls return connection-refused.
++// the member's state, all subsequent calls return connection-refused. It counts
++// every real per-member submission (probe and unseal) so the test can assert
++// that a permanent pre-unseal failure leaves zero unseal writes even when an
++// erroneous key submission occurs, and that exactly five real probes happen.
+ type neverAnswersExecutor struct {
+ 	states       map[string]State
+ 	memberStates map[string]*haMemberState
+@@ -506,11 +531,36 @@ func (f *neverAnswersExecutor) ExecProject(_ context.Context, _, _, _, service s
+ 	}
+ 	// All subsequent calls are probeMemberState with retry=true: fail with transient error.
+ 	ms.preUnsealAttempts++
++	ms.execAttempts++
+ 	return "", errors.New("connection refused")
+ }
+ 
+-func (f *neverAnswersExecutor) ExecProjectInput(_ context.Context, _, _, _ string, _ []byte, _ string, _ ...string) (string, error) {
+-	return "", nil
++func (f *neverAnswersExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, svc string, args ...string) (string, error) {
++	unsealing := false
++	var payload struct {
++		Key string `json:"key"`
++	}
++	if err := json.Unmarshal(input, &payload); err == nil {
++		if payload.Key != "" {
++			unsealing = true
++		}
++	}
++	for _, arg := range args {
++		if strings.Contains(arg, "sys/unseal") {
++			unsealing = true
++		}
++	}
++	if !unsealing {
++		return "", nil
++	}
++	// A real per-member unseal submission occurred; it is counted but must not
++	// be treated as a successful write because the pre-unseal probe never
++	// cleared. The final transport cause is surfaced so the caller fails fast.
++	if ms, ok := f.memberStates[svc]; ok {
++		ms.writes++
++		ms.execAttempts++
++	}
++	return "", errors.New("connection reset by peer")
+ }
+ 
+ // TestUnsealFailsFastWhenMemberNeverAnswers proves fail-fast is preserved: a
+@@ -555,6 +605,15 @@ func TestUnsealFailsFastWhenMemberNeverAnswers(t *testing.T) {
+ 	if ms1.writes != 0 {
+ 		t.Fatalf("member-1 unseal writes = %d, want 0 (precondition failed)", ms1.writes)
+ 	}
++	// Exactly five real per-member probe submissions occurred; the final
++	// transport cause must surface to the caller rather than being swallowed
++	// or retried past the last attempt.
++	if ms1.execAttempts != 5 {
++		t.Fatalf("member-1 real probe submissions = %d, want exactly 5", ms1.execAttempts)
++	}
++	if !strings.Contains(err.Error(), "connection refused") {
++		t.Fatalf("final transport cause not surfaced: %v", err)
++	}
+ }
+ 
+ // TestUnsealFailsImmediatelyOnPermanentNonTransientError proves that
+@@ -576,7 +635,6 @@ func TestUnsealFailsImmediatelyOnPermanentNonTransientError(t *testing.T) {
+ 				sealed:      true,
+ 			},
+ 		},
+-		permanentDuringRetry: true,
+ 	}
+ 	files := bhruntime.Files{HA: true, Compose: "compose.yaml", Env: "runtime.env"}
+ 	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
+@@ -592,15 +650,23 @@ func TestUnsealFailsImmediatelyOnPermanentNonTransientError(t *testing.T) {
+ 	if ms1 == nil {
+ 		t.Fatal("no member-1 state recorded")
+ 	}
+-	// Exactly one attempt in the pre-unseal phase: permanent error is not retried.
+-	// Note: Inspect also makes one call (tries=2 total), but ms1.retryAttempts=1.
+-	if ms1.retryAttempts != 1 {
+-		t.Fatalf("member-1 retry attempts = %d, want exactly 1 (no retry for permanent error)", ms1.retryAttempts)
++	// Exactly one pre-unseal probe execution: permanent error is not retried.
++	// Inspect also makes one successful call, but preUnsealAttempts stays 1.
++	if ms1.preUnsealAttempts != 1 {
++		t.Fatalf("member-1 pre-unseal attempts = %d, want exactly 1 (no retry for permanent error)", ms1.preUnsealAttempts)
++	}
++	// Exactly one probe execution total on the retry-enabled path.
++	if ms1.execAttempts != 1 {
++		t.Fatalf("member-1 probe executions = %d, want exactly 1 (permanent error not retried)", ms1.execAttempts)
+ 	}
+-	// Error identity preserved: x509 error is returned.
++	// Error identity preserved: a permanent TLS error carrying the incidental
++	// word "temporary" must still be classified permanent and returned as-is.
+ 	if err == nil || !strings.Contains(err.Error(), "x509") {
+ 		t.Fatalf("error = %v, want x509-permanent error", err)
+ 	}
++	if !strings.Contains(err.Error(), "temporary") {
++		t.Fatalf("error must still contain incidental word 'temporary' to test bare-word exclusion: %v", err)
++	}
+ 	// Zero unseal writes: permanent error prevents unseal from being attempted.
+ 	if ms1.writes != 0 {
+ 		t.Fatalf("member-1 unseal writes = %d, want 0 (permanent error blocks unseal)", ms1.writes)
+@@ -608,9 +674,8 @@ func TestUnsealFailsImmediatelyOnPermanentNonTransientError(t *testing.T) {
+ }
+ 
+ type permErrorExecutor struct {
+-	memberStates         map[string]*haMemberState
+-	permanentDuringRetry bool
+-	inspectSuccessOnce   bool
++	memberStates       map[string]*haMemberState
++	inspectSuccessOnce bool
+ }
+ 
+ func (p *permErrorExecutor) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
+@@ -623,13 +688,16 @@ func (p *permErrorExecutor) ExecProject(_ context.Context, _, _, _, service stri
+ 		return "", nil
+ 	}
+ 	// First call (initial Inspect via inspectMemberState): succeeds.
+-	// Subsequent calls (probeMemberState retry path): permanent error, 1 retry attempt.
++	// Subsequent calls (probeMemberState retry path): permanent TLS error that
++	// still contains the incidental word "temporary". isTransientError must not
++	// admit it by bare word; the probe must fail after exactly one execution.
+ 	if !p.inspectSuccessOnce {
+ 		p.inspectSuccessOnce = true
+ 		return statusJSON(ms.initialized, ms.sealed), nil
+ 	}
+-	ms.retryAttempts++
+-	return "", errors.New("x509: certificate signed by unknown authority")
++	ms.preUnsealAttempts++
++	ms.execAttempts++
++	return "", errors.New("x509: certificate signed by unknown authority: temporary failure in name resolution")
+ }
+ 
+ func (p *permErrorExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, svc string, args ...string) (string, error) {
+@@ -782,8 +850,14 @@ func (f *invalidJSONExecutor) ExecProject(_ context.Context, _, _, _, service st
+ 	if !strings.Contains(joined, "bao status -format=json") {
+ 		return "", nil
+ 	}
+-	f.callCount++
+-	// Return non-JSON that is not a transient error.
++	ms := f.memberStates[service]
++	if ms == nil {
++		ms = &haMemberState{initialized: true, sealed: true}
++		f.memberStates[service] = ms
++	}
++	ms.execAttempts++
++	// Return non-JSON that is not a transient error: probeMemberState must
++	// fail on the first attempt with zero retries.
+ 	return "{not valid json", nil
+ }
+ 
+@@ -815,4 +889,174 @@ func TestProbeMemberStateInvalidJSONNoRetry(t *testing.T) {
+ 	if err.Error() != "invalid status response" {
+ 		t.Fatalf("error = %v, want 'invalid status response'", err)
+ 	}
++	// Exactly one probe execution: invalid JSON is not a transient error and
++	// must not be retried.
++	if executor.memberStates["openbao-member-1"].execAttempts != 1 {
++		t.Fatalf("invalid-JSON probe executions = %d, want exactly 1 (no retry)", executor.memberStates["openbao-member-1"].execAttempts)
++	}
++}
++
++// TestIsTransientErrorRejectsIncidentalTemporary proves a permanent error that
++// merely contains the incidental word "temporary" is classified permanent and
++// not retried. This guards against any reintroduction of a bare-word admission.
++func TestIsTransientErrorRejectsIncidentalTemporary(t *testing.T) {
++	permanentCases := []string{
++		"x509: certificate signed by unknown authority: temporary failure in name resolution",
++		"permission denied: temporary credentials file",
++		"openbao binary is not executable",
++	}
++	for _, msg := range permanentCases {
++		if isTransientError(errors.New(msg)) {
++			t.Fatalf("permanent error %q must not be classified transient", msg)
++		}
++	}
++}
++
++// TestIsTransientErrorRejectsMixedPermanentTransport proves a diagnostic that
++// mixes a permanent cause with a transient-looking token (for example a TLS
++// failure that also mentions connection reset) is classified permanent so the
++// whole unseal fails fast instead of retrying a terminal error.
++func TestIsTransientErrorRejectsMixedPermanentTransport(t *testing.T) {
++	mixed := []string{
++		"dial tcp 127.0.0.1:8200: x509: certificate signed by unknown authority while dialing",
++		"openbao handshake failed: x509: certificate expired before connecting to listener",
++	}
++	for _, msg := range mixed {
++		if isTransientError(errors.New(msg)) {
++			t.Fatalf("mixed permanent/transport error %q must not be classified transient", msg)
++		}
++	}
++}
++
++// transientPostUnsealVerificationExecutor answers pre-unseal, accepts the
++// unseal write, then fails the post-unseal verification probe with a permanent
++// TLS error (carrying the incidental word "temporary"), exercising the
++// post-unseal verification retry path with a non-transient failure.
++type transientPostUnsealVerificationExecutor struct {
++	memberStates map[string]*haMemberState
++	failPost     bool
++}
++
++func (f *transientPostUnsealVerificationExecutor) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
++	joined := strings.Join(args, " ")
++	if !strings.Contains(joined, "bao status -format=json") {
++		return "", nil
++	}
++	ms, ok := f.memberStates[service]
++	if !ok {
++		ms = &haMemberState{initialized: true, sealed: true}
++		f.memberStates[service] = ms
++	}
++	ms.tries++
++
++	// Post-unseal verification (writes > 0): count this verification call, then
++	// optionally fail with a permanent TLS error.
++	if ms.writes > 0 {
++		ms.postUnsealAttempts++
++		ms.preUnsealAttempts++
++		ms.execAttempts++
++		ms.postUnsealVerification++
++		if f.failPost {
++			return "", errors.New("x509: certificate signed by unknown authority: temporary failure in name resolution")
++		}
++		return statusJSON(ms.initialized, ms.sealed), nil
++	}
++
++	// Pre-unseal probe succeeds on the first call.
++	if ms.inspectCount == 0 {
++		ms.inspectCount++
++	}
++	return statusJSON(ms.initialized, ms.sealed), nil
++}
++
++func (f *transientPostUnsealVerificationExecutor) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, svc string, args ...string) (string, error) {
++	unsealing := false
++	var payload struct {
++		Key string `json:"key"`
++	}
++	if err := json.Unmarshal(input, &payload); err == nil {
++		if payload.Key != "" {
++			unsealing = true
++		}
++	}
++	for _, arg := range args {
++		if strings.Contains(arg, "sys/unseal") {
++			unsealing = true
++		}
++	}
++	if !unsealing {
++		return "", nil
++	}
++	// Resolve the target member from BAO_ADDR so the write lands on the real
++	// member state the post-unseal verification probe reads.
++	targetMember := svc
++	for _, arg := range args {
++		if idx := strings.Index(arg, "BAO_ADDR=https://"); idx >= 0 {
++			rest := arg[idx+len("BAO_ADDR="):]
++			addr := ""
++			if eqIdx := strings.Index(rest, "="); eqIdx >= 0 {
++				addr = rest[:eqIdx]
++			} else {
++				addr = rest
++			}
++			addr = strings.TrimPrefix(addr, "https://")
++			if spIdx := strings.Index(addr, " "); spIdx >= 0 {
++				addr = addr[:spIdx]
++			}
++			addr = strings.TrimSuffix(addr, ":8200")
++			targetMember = addr
++			break
++		}
++	}
++	ms := f.memberStates[targetMember]
++	if ms == nil {
++		ms = &haMemberState{initialized: true, sealed: true}
++		f.memberStates[targetMember] = ms
++	}
++	ms.writes++
++	ms.sealed = false
++	return "{\"sealed\":false}", nil
++}
++
++// TestUnsealFailsOnTransientPostUnsealVerification proves that a member which
++// answers pre-unseal and accepts the unseal write, but then fails the
++// post-unseal verification probe with a permanent TLS error, fails the unseal
++// call fast with the wrapped permanent cause after exactly one write and one
++// post-unseal verification attempt.
++func TestUnsealFailsOnTransientPostUnsealVerification(t *testing.T) {
++	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
++	defer cancel()
++
++	executor := &transientPostUnsealVerificationExecutor{
++		memberStates: map[string]*haMemberState{
++			"openbao-member-1": {initialized: true, sealed: true},
++		},
++		failPost: true,
++	}
++	files := bhruntime.Files{HA: true, Compose: "compose.yaml", Env: "runtime.env"}
++	recovery := filepath.Join(t.TempDir(), "openbao-recovery.json")
++	if err := os.WriteFile(recovery, []byte("{\"version\":1,\"key_shares\":1,\"key_threshold\":1,\"unseal_keys\":[\"unseal-secret\"]}"), 0o600); err != nil {
++		t.Fatal(err)
++	}
++
++	err := Unseal(ctx, executor, files, recovery)
++	if err == nil {
++		t.Fatal("expected unseal to fail on permanent post-unseal verification error")
++	}
++	if !strings.Contains(err.Error(), "x509") {
++		t.Fatalf("permanent verification cause must surface: %v", err)
++	}
++	ms1 := executor.memberStates["openbao-member-1"]
++	if ms1 == nil {
++		t.Fatal("no member-1 state recorded")
++	}
++	if ms1.writes != 1 {
++		t.Fatalf("member-1 unseal writes = %d, want exactly 1", ms1.writes)
++	}
++	if ms1.postUnsealVerification != 1 {
++		t.Fatalf("member-1 post-unseal verification calls = %d, want exactly 1", ms1.postUnsealVerification)
++	}
++	if !strings.Contains(err.Error(), "temporary") {
++		t.Fatalf("permanent cause must carry incidental word 'temporary': %v", err)
++	}
+ }

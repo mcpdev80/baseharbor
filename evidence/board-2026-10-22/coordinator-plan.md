@@ -177,3 +177,10 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - o134 planning board Runde 4 gestartet; Codex q117 #1060/q119 root audit/f55 monitor arbeiten weiter.
 - 14:3xZ f55 audit: q117 mid-task no END (normal), o131/cm11 clean. #1056 P H success CI. #1052 independent ACCEPT. #1060 remote still conflict against develop `65aa063e`; q117 must resolve integration without force.
 - o134 planning Runde 4, f56 release-readiness gap audit live. Codex cmf12 reviews/merges #1056. q119 audits root dirty worktrees.
+- 14:4xZ cmf12: #1056 H object/merge/CI correctly verified but source verdict REQUEST_CHANGES:
+  F1 P1 executable title bootstrap fallback still can mark unreviewed production changes resolved.
+  F2 P2 pins-data validator accepts wrong repo/commit/DAG edges. No merge. Exact correction recipe:
+  remove fallback from strict planner path, bind role-specific origins/canonical DAG validator, extend tests.
+- o135 read-only design/verification der F1/F2 Korrektur gestartet, parallel zu q117 (#1060).
+- o134 Planning Runde 4 DONE board `2df5b33` (remote main). Lane rotiert.
+- q119 read-only root audit DONE (END-Nachtrag angewiesen): go.mod/go.sum sind vermutlich Dependency-Reorder durch `go mod tidy` in baseharor checkout; nicht destruktiv bereinigen.

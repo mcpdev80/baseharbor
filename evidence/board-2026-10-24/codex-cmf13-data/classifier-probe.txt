@@ -1,0 +1,5 @@
+"x509: certificate signed by unknown authority; connection reset by peer" => retry=true
+"permission denied: credential file unavailable after connection refused" => retry=true
+"exec bao: executable file not found; i/o timeout" => retry=true
+"connection refused" => retry=true
+"permission denied: temporary credentials file" => retry=false
