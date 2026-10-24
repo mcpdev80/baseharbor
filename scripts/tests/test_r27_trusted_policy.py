@@ -53,3 +53,13 @@ class ProtectedPolicySchemaTests(unittest.TestCase):
    raw=json.dumps(mapping,sort_keys=True,separators=(",",":")).encode()
    with self.subTest(mapping=mapping),self.assertRaisesRegex(EvidenceError,"invalid protected gate mapping"):
     load_pinned_policy(raw,protected_digest=hashlib.sha256(raw).hexdigest())
+
+
+class DuplicatePolicyKeyTests(unittest.TestCase):
+ def test_duplicate_gate_or_job_property_is_rejected(self):
+  for raw in (
+      b'{"sql":{"job_name":"Job","workflow_path":".github/workflows/ci.yml"},"sql":{"job_name":"Other","workflow_path":".github/workflows/other.yml"}}',
+      b'{"sql":{"job_name":"Job","job_name":"Other","workflow_path":".github/workflows/ci.yml"}}'
+  ):
+   with self.subTest(raw=raw), self.assertRaisesRegex(EvidenceError,"duplicate protected key"):
+    load_pinned_policy(raw,protected_digest=hashlib.sha256(raw).hexdigest())

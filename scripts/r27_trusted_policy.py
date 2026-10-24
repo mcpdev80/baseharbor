@@ -16,8 +16,17 @@ def load_pinned_policy(raw, *, protected_digest):
     actual = hashlib.sha256(raw).hexdigest()
     if not hmac.compare_digest(actual, protected_digest):
         raise EvidenceError("EVIDENCE_POLICY: protected policy source mismatch")
+    def unique_pairs(pairs):
+        result = {}
+        for name, value in pairs:
+            if name in result:
+                raise EvidenceError("EVIDENCE_POLICY: duplicate protected key")
+            result[name] = value
+        return result
     try:
-        decoded = json.loads(raw)
+        decoded = json.loads(raw, object_pairs_hook=unique_pairs)
+    except EvidenceError:
+        raise
     except (ValueError, UnicodeError) as exc:
         raise EvidenceError("EVIDENCE_POLICY: invalid protected policy") from exc
     if not isinstance(decoded, dict) or not decoded:
