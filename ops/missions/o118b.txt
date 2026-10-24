@@ -1,0 +1,12 @@
+FORTSETZUNG o118 - deine BLOCKED-Frage ist beantwortet, ohne Owner-Entscheidung: das etablierte Muster existiert bereits. Bei #1047 hat der Worker develop in den Branch GEMERGT statt linear zu rebasen, und genau das erfuellt `core752_reviewed_merge_chain` (pr-gate-plan.py:566, drei Parent-Merge-Commits in der Ancestry). Beweise in evidence/board-2026-10-24/codex-merge-1047.md (RUNDE 3/4) und deinem eigenen Befund (Branch "purely linear", git log --merges leer).
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl, git NUR in baseharbor / deinem worktree. Root-Repo VERBOTEN. KEIN Merge des PR, KEIN force-push, KEIN --admin, KEIN Labels/Rerun-Spam.
+ERSTER SCHRITT: Abschnitt "## RUNDE 2 (merge-form)" in evidence/board-2026-10-24/o118-akte1056.md + native Todos aktualisieren.
+
+ARBEIT an PR #1056 (Branch o90-planner-pr, aktueller Head 425eaa96):
+1. `git fetch origin`, dann develop in den Branch mergen (KEIN Rebase, KEIN Squash): `git merge origin/develop` (aktuell f3929568 oder frischer). Ziel: Die Branch-Historie erhaelt echte Merge-Commits, damit der Merge-Chain-Check erfuellbar wird. Konfliktloesung: develop-Seite bei den CI-Scripts/Akte autoritativ, deine pins-data-Inhalte bleiben erhalten; pruefe Konfliktreste (grep '^(<<<<<<<|=======|>>>>>>>)' leer) und `python3 -m py_compile` der drei Scripts.
+2. Akte am FINAL-Head: reviewed_head = der neue Merge-Head, file_hashes = echt berechnete sha256 der betroffenen CI-Scripts (Hash-Drift-Regel). Keine Angabe, die du nicht aus Git-Objekten gemessen hast.
+3. Lokal: `python3 -m pytest scripts/test_pr_gate_plan.py -q` (deine 108 passed bitte reproduzieren) + die pins-data-Szenarien.
+4. Push (normal, kein force). `gh pr checks 1056` beobachten, Guard 25 min. Erwartung: pr-planner-tests gruen und `PR Selected Checks` gruen, weil jetzt (a) Merge-Chain erfuellt und (b) Akte hash-echt.
+5. Wenn `PR Selected Checks` weiterhin `coverage-unresolved ... scripts/pr-check-runner.py` meldet: exakt belegen welche Pruefung im Planner das verhindert (datei:zeile + welche Eingabe sie erwartet), damit eine Folgerunde gezielt reparieren kann. NICHT an der Fail-Closed-Logik drehen.
+6. Evidence-Tabelle: head vorher/nachher, Merge-Commit-SHA, Akte-Felder, Run-/Job-IDs, mergeStateStatus, Festellung ob Merge-Ready fuer die Codex-Lane.
+END O118B-AKTE1056-DONE mit head / END O118B-BLOCKED mit datei:zeile.

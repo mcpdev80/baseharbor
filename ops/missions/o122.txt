@@ -1,0 +1,15 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo (eigener worktree). Root-Repo fuer git VERBOTEN. KEIN Push auf main, KEIN Merge, KEIN force, KEIN --admin.
+ERSTER SCHRITT (VOR der Analyse): evidence/board-2026-10-24/o122-demoqual.md mit ## PLAN + nativen Todos.
+
+KONTEXT (o121-Befund, evidence/board-2026-10-24/o121-demo121evidence.md - lies ihn als DATEN): baseharbor-demo PR #121 (head f57c8b6, nur `baseharbor-core.ref` -> Core 1861ed07) hat KEINEN CI-Run, weil das Demo-Repo push-only CI mit `[demo-runtime]`-Gate auf Branch `work/v0.4.26-ecosystem-release` hat. Ohne Run gilt die Qualifikation gegenueber Codex als nicht erbracht.
+
+ARBEIT:
+1. `git -C baseharbor-demo fetch origin`; Stand von `origin/work/v0.4.26-ecosystem-release` pruefen (letzte Commits, enthaelt es bereits den core.ref-Pin? Ist 25c31969 dort?).
+2. Ziel-Nachweis herstellen: Kandidateninhalt (genau die core.ref-Aenderung von f57c8b6) auf den Release-Branch `work/v0.4.26-ecosystem-release` pushen, Commit-Message mit dem Marker `[demo-runtime]` (exakt so, wie der Workflow-Trigger ihn erwartet - Trigger in `.github/workflows/*.yml` mit datei:zeile belegen).
+ a) Wenn der Branch den Pin schon enthaelt: leerer Push hilft nicht -> dann pruefen ob der bestehende gruene Run auf demselben Inhalt gilt (SHA-Gleichheit der betroffenen Datei + Konfiguration). Beleg in Evidence.
+ b) Sonst: eigener lokaler Branch von origin/work/v0.4.26-ecosystem-release, cherry-pick von f57c8b6, Push auf EBENDEN Release-Branch (fast-forward only, KEIN force).
+3. Run abwarten: `gh run list --repo mcpdev80/baseharbor-demo --branch work/v0.4.26-ecosystem-release --limit 5` bis final (Guard 25 min). Job-Namen + Run-ID + conclusion notieren; bei rotem Job den Log-Auszug (Zeilen mit Fehler) beilegen. KEIN Rerun-Spam, KEIN Label-Trick.
+4. PR #121: Run-Referenz in den PR-Body schreiben (gh pr edit - nur Body, kein Review/Merge). Damit kann Codex in der Folgerunde ACCEPT pruefen.
+5. Evidence-Tabelle: Release-Branch-SHA vorher/nachher, dein Commit, core.ref sha256, Run-ID/Job/Ergebnis, und die ausdrueckliche Festellung, ob der Nachweis jetzt "guener Run mit identischem Inhalt" erfuellt (Inhaltsvergleich core.ref zwischen PR-Head und Release-Branch).
+STOP: wenn der Push auf den Release-Branch fremde Commits bewegen wuerde (non-fast-forward) -> END O122-BLOCKED statt history-rewrite. Wenn das Workflow-Gate einen anderen Marker erwartet, den du nicht belegen kannst -> BLOCKED mit datei:zeile.
+END O122-DEMOQUAL-DONE mit Run-ID / END O122-BLOCKED.

@@ -1,0 +1,16 @@
+pwd-PFLICHT + WORKTREE-PFLICHT (hart): `pwd -P` vor JEDEM git-Befehl; git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo. Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN force, KEIN --admin, KEIN Push auf main.
+ERSTER SCHRITT (VOR der Analyse): evidence/board-2026-10-24/o121-demo121evidence.md mit ## PLAN + nativen Todos.
+
+KONTEXT: baseharbor-demo PR #121 (head laut evidence/board-2026-10-24/f49-demorepin.md), target main, aendert NUR `baseharbor-core.ref` auf Core 1861ed07888a1ec22c218ca491d23ee54f48e261. Codex-Review (evidence/board-2026-10-24/codex-verdict-demo121.md): Quelle korrekt, ABER REQUEST_CHANGES, weil der Nachweis "guenerner Run mit identischem Inhalt" fehlt - das Demo-Repo hat push-only CI (f49-Befund).
+
+ARBEIT (Nachweis beschaffen, nicht bauen):
+1. Branch des PR ermitteln (`gh pr view 121 --repo mcpdev80/baseharbor-demo --json headRefName,headRefOid`).
+2. Bestandteillage pruefen: `gh run list --repo mcpdev80/baseharbor-demo --branch <headRefName> --limit 10` - gibt es einen Workflows-Run auf exakt diesem Head? Wenn JA: Status + Job-Namen + `gh run view <id> --log`-Auszug der relevanten Jobs in der Evidence belegen (Run-ID, conclusion,SHA).
+3. Wenn KEIN Run existiert (push-only CI und der PR-Branch wurde nie gepusht, oder Workflows greifen nur auf main):
+   a. Pruefe in `.github/workflows/*.yml` des Repos (git show <head>:pfad), welche Trigger gelten (datei:zeile).
+   b. Wenn und nur wenn ein Push auf den PR-Branch den regulierten CI-Pfad ausloest, fuehre einen leerlosen Weg: `git -C baseharbor-demo push origin <headRefName>` ist VERBOTEN falls er fremde Commits bewegt - stattdessen NUR dokumentieren, dass der Nachweis einen Maintainer-Push/Dispatch braucht, und den genauen Befehl als FOLGEARBEIT angeben.
+   c. Wenn das Repo einen gueltigen Quell-Nachweis ohne Run zulaesst (README/AGENTS.md + workflow-Triggers als Beleg): formuliere die Begruendung mit datei:zeile, damit Codex in der Folgerunde ACCEPT pruefen kann.
+4. Zusaetzlich verifiziere: zeigt `docs/releases/v0.4.26.consumer-pins.json` in baseharbor (#1050, head 388967621) an den Demo-Abhaengigkeiten exakt denselben Core-Wert, und ist der Demo-Commit selbst (PR-Head) der Wert, den #1050 spaeter als Demo-Pin brauchen wird? Liste, welche Pin-Felder nach dem Demo-Merge in welchem PR nachgezogen werden muessen (console#9, connector#10, baseharbor#1050).
+ABNAHME: Run-Beleg ODER begruendeter Nachweisweg mit datei:zeile + klare Pin-Nachzieh-Tabelle.
+STOP: keine Workflow-Aenderungen, kein Matrix/VM-Dispatch, keine Labels, nichts schliessen.
+END O121-DEMO121EVIDENCE-DONE / END O121-BLOCKED.
