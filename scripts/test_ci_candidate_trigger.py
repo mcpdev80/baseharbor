@@ -106,7 +106,7 @@ class CandidateTriggerTests(unittest.TestCase):
         sha = "a" * 40
         base = {
             "state": "open", "head": {"sha": sha},
-            "base": {"ref": "develop"}, "labels": [],
+            "base": {"ref": "develop", "sha": "c" * 40}, "labels": [],
         }
 
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "false", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
@@ -134,10 +134,16 @@ class CandidateTriggerTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "not open"):
                     module.publish("example/repo", 15, sha)
 
-            wrong_base = dict(base, base={"ref": "main"})
+            wrong_base = dict(base, base={"ref": "main", "sha": "c" * 40})
             with patch.object(module, "gh", return_value=wrong_base):
                 with self.assertRaisesRegex(RuntimeError, "does not target develop"):
                     module.publish("example/repo", 15, sha)
+
+            changed_base = dict(base, base={"ref": "develop", "sha": "d" * 40})
+            with patch.object(module, "gh", side_effect=[base, changed_base]) as api:
+                with self.assertRaisesRegex(RuntimeError, "candidate changed"):
+                    module.publish("example/repo", 15, sha)
+                self.assertEqual([call.args[0] for call in api.call_args_list], ["GET", "GET"])
 
             with patch.object(module, "gh", side_effect=[labeled, None, stale]) as api:
                 with self.assertRaisesRegex(RuntimeError, "candidate changed"):
@@ -157,7 +163,7 @@ class CandidateTriggerTests(unittest.TestCase):
         spec.loader.exec_module(module)
         sha = "a" * 40
         labeled = {"draft": False, "state": "open", "head": {"sha": sha},
-                   "base": {"ref": "develop"}, "labels": [{"name": "ci:validate"}]}
+                   "base": {"ref": "develop", "sha": "c" * 40}, "labels": [{"name": "ci:validate"}]}
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "false",
                                      "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
             with patch.object(module, "gh", side_effect=[labeled, RuntimeError("HTTP 404")]) as api:
@@ -205,7 +211,7 @@ class CandidateTriggerTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         draft = {"draft": True, "state": "open", "head": {"sha": "a" * 40},
-                 "base": {"ref": "develop"}, "labels": []}
+                 "base": {"ref": "develop", "sha": "c" * 40}, "labels": []}
         with patch.dict("os.environ", {"GITHUB_ACTIONS": "false", "BASEHARBOR_CANDIDATE_CI_ROLLOUT": "enabled"}):
             with patch.object(module, "gh", return_value=draft) as api:
                 with self.assertRaisesRegex(RuntimeError, "draft PR"):
