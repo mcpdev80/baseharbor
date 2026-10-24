@@ -95,7 +95,9 @@ def publish(root, release, candidate_id, run_id, manifest, payloads):
                     stream.flush()
                     os.fsync(stream.fileno())
             except BaseException:
-                os.unlink(name, dir_fd=parent_fd)
+                # Do not unlink by name: an independent writer may replace this
+                # entry after creation, making unlink a destructive race.
+                # A partial create remains a fail-closed collision on retry.
                 raise
 
         try:
