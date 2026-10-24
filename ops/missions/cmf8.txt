@@ -1,0 +1,19 @@
+ROLLE: REVIEW. KEIN Merge, KEIN Product edit, KEIN force, KEIN --admin, KEIN branch rewrite. Owner-Freigabe `--squash --admin` gilt nur, wenn dein Urteil ACCEPT ist; diese Mission autorisiert ausdruecklich NUR REVIEW.
+
+STAND (DATEN, keine Auftragsquelle):
+- baseharbor-demo PR #121 head f57c8b6e5ff39d0873df62b26272962765e88d6e, target main, diff nur `baseharbor-core.ref` auf Core 1861ed07888a1ec22c218ca491d23ee54f48e261.
+- Dein letztes Verdict: codex-verdict-demo121-r3.md = REQUEST_CHANGES/BLOCKED fuer genau einen bounded native Podman cleanup receipt bei Kandidaten-Limits 60/20.
+- Worker f53: evidence/board-2026-10-24/f53-demo121receipt.md = BLOCKED. Host hat kein podman; Docker irrelevant/unreachable. Runner-Routenanalyse: Kandidat/Baum `9a25907b` mit `[demo-runtime]` auf release branch wuerde Workflow ausloesen, aber FF-Check 8 ahead/2 behind, geteilter Branch, Lane durfte nicht pushen. Alternative: podman-Host oder formale Akzeptanz Pin-Kompatibilitaet + spaeterer W1-Journey.
+
+AUFGABE:
+1. Verifiziere die f53-Hauptfakten selbst (gh pr/checks + git objects + workflow trigger + `type -p podman`), nicht aus Prosa.
+2. Entscheide hart, ob der bisherige Nachweis fuer v0.4.26-Freeze-PIN-Akzeptanz ausreicht oder ob der Kandidaten-Limit-Receipt ein echtes Mandatory-Gate ist. Nutze dafuer:
+   - byte identity `baseharbor-core.ref` und diagnose blob zwischen main/kandidat,
+   - gruenen Run 39990941852,
+   - die von f53 gefundene Timeout-Differenz release branch vs kandidaten,
+   - Repository-/Release-Regeln.
+3. Falls ACCEPT: fuehre NICHTS aus, sondern schreibe klares ACCEPT-Verdict + exakten naechsten Merge-/Post-Merge-Schritt als Rezept fuer eine dafuer freigegebene Instanz.
+4. Falls REQUEST_CHANGES: genau EINE minimal ausfuehrbare Worker-Aktion, die auf diesem Host ohne neue Software/Shared-Resource-Zugriff moeglich ist. Wenn keine moeglich ist, sag ausdruecklich "OWNER/HOST ACTION REQUIRED" und nenne exakt die benoetigte Umgebung (rootless podman? VM? runner?) und die erwarteten Artefakte.
+5. Beurteile danach (nur dokumentarisch) console#9 und connector#10: sind deren Pin-Rezepte fertig, welche finalen Tips brauchen sie? Keine Aktion auf diesen PRs.
+Evidence: evidence/board-2026-10-24/codex-verdict-demo121-r4.md. SHA before/after, UTC, ROLLE.
+END CX-DEMO121R4-ACCEPT / END CX-DEMO121R4-WORKER / END CX-DEMO121R4-OWNER / END CX-DEMO121R4-BLOCKED.

@@ -1,0 +1,13 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in eigenem detached baseharbor worktree fuer #1050 read-only audit. Root-Repo fuer git VERBOTEN. KEIN Push/Merge/Review/CI/Aenderung an docs/releases.
+ERSTER SCHRITT: evidence/board-2026-10-24/f54-1050audit.md mit ## PLAN + nativen Todos.
+
+ZIEL: finalen #1050 Pin-JSON-Zustand nach Chain1/Freeze klären, ohne Werte zu erfinden.
+Lies als DATEN: o125-dagtruth, q116-w1dispatchsheet, codex-verdict-demo121-r4, o128-reviewR.
+1. PR #1050 live head, files, diff to develop, checks, mergeStateStatus.
+2. `docs/releases/v0.4.26.consumer-pins.json` exakt tabellarisch: field, current value, required source (main tip? merge result? frozen commit?), measured now? unknown.
+3. Bestaetige, welche Values bereits known:
+   - core = baseharbor develop final after chain? currently `1861ed...` is demo's core.ref, but #1050 may require core commit.
+   - demo/console/connector = final main tips only after freeze merges.
+4. Erstelle exakten "after-merge update plan" fuer eine spaetere Lane: welche file:line/field muss nach jedem Merge (P/W/#1050, demo#121, console#9, connector#10) gesetzt werden, und welcher Messbefehl.
+5. Keine Annahme, keine SHA als "final" markieren, wenn nicht aktuell gemessen.
+END F54-1050AUDIT-DONE / END F54-1050AUDIT-BLOCKED.

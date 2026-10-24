@@ -1,0 +1,28 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in einem eigenen neuen baseharbor-Worktree/branch fuer #1046 diagnosis. Root-Repo fuer git VERBOTEN. Diese Mission ist TARGETED-RUNTIME DIAGNOSE, kein Produktfix, KEIN Push, KEIN Merge/Review-Kommando, KEIN CI-Rerun.
+ERSTER SCHRITT: evidence/board-2026-10-24/q118-1046runtime.md mit ## PLAN + nativen Todos.
+
+BEKANNTES ERGEBNIS (DATEN): #1046 fails `coverage-unresolved` fuer genau 6 application test files:
+- internal/application/external_provider_registry_test.go
+- internal/application/external_provider_removal_retry_test.go
+- internal/application/external_provider_scope_test.go
+- internal/application/protected_tempdir_test.go
+- internal/application/runtime_binding_projection_reset_test.go
+- internal/application/telemetry_authorization_test.go
+Grundlagen: evidence/board-2026-10-24/o125-dagtruth.md + existing #1046 checks.
+
+AUFGABE:
+1. Checkout exakt PR #1046 head + develop basis. Lese `scripts/pr-gate-plan.py` und `scripts/pr-check-runner.py`, bestimme welche Test selection/coverage-Regel die 6 Dateien betrifft. Dokumentiere datei:zeile der Regel und der betroffenen Testnamen.
+2. Fuehre nur die 6 targeted Go-Tests auf diesem Kandidaten aus, mit repo-üblichem Environment/flags, isoliert in `ARTIFACT_DIR=$TMPDIR/bh-q118-1046`. Kein Full suite, kein Docker/Podman, keine VM, keine shared resources.
+3. Erfasse pro Test:
+   - exact command
+   - exit status
+   - pass/fail/skip reason
+   - relevante Logzeile datei:zeile + 5 Kontextzeilen.
+4. Klassifiziere ohne Produktänderung:
+   A) genuine test/source defect;
+   B) planner/coverage qualification defect (needs targeted code PR);
+   C) environment/missing dependency defect;
+   D) already fixed by current #1060/#1056 chain.
+5. Empfohlene naechste Lane-Aktion mit exaktem Write-Set und Testkommando. Wenn Aenderung Plannerdateien betrifft, Serialisierung gegen #1060/#1056 explizit nennen.
+ABNAHME: 6 rows complete + classification. STOP: wenn target tests environment unmoeglich machen, praeziser Fehler + keine Spekulation.
+END Q118-1046RUNTIME-DONE / END Q118-1046RUNTIME-BLOCKED.

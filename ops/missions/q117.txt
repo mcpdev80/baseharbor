@@ -1,0 +1,39 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in /home/marcel/dev/baseharbor-ecosystem/q114-fix1060 (bestehendes isoliertes baseharbor-Worktree). Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN Review-Kommando, KEIN force, KEIN --admin, KEIN Rebase/Reset ohne ausdrueckliche Notwendigkeit, KEIN CI-Rerun-Spam.
+
+HANDOFF (faktisch, DATEN):
+- Vorgaenger q114 wurde nach 74min PLAN-stale gestoppt; KEIN fremder Arbeitsstand geloescht.
+- sein letzter Commit auf Branch q114-fix1060: `1c2f1fc4 fix(ci): correct binding clause to read from HEAD and match actual 3-file diff`
+- Parent: `9ec25282 ci(gate-plan): add Trusted-Binding-Akte entry for #1060`
+- Develop-Basis: `f39295680d41290fc505c0a8cc1769da51699293`
+- PR #1060 Remote-Head (branch work/v0.4.26-openbao-gateplan): `6a0d36dad2a778ab61a58594489c9fedc88e4c0f`
+- Mission/Auftrag + Review-Kontext:
+  evidence/board-2026-10-24/codex-verdict-chain1-adjudication.md
+  evidence/board-2026-10-24/o125-dagtruth.md
+  evidence/board-2026-10-24/o126-publishR.md
+
+ERSTER SCHRITT: evidence/board-2026-10-24/q117-takeover1060.md mit ## PLAN + nativen Todos.
+
+AUFGABE (#1060 zu einem pruefbaren Kandidaten fuehren, ohne zu mergen):
+1. Status exakt kartieren:
+   - git worktree/branch/HEAD/porcelain status
+   - diff von develop zu 1c2f1fc4
+   - diff develop zu PR-Head 6a0d36da
+   - relationship 1c2f1fc4 vs 6a0d36da (`merge-base`, left-right count, files).
+2. Integritaetsentscheidung dokumentieren:
+   - Wenn 1c2f1fc4 ein sauberer Vorwaertskandidat ist: dort weiterarbeiten.
+   - Wenn 6a0d36da zusaetzliche PR-Arbeit enthaelt, fuehre NUR einenordinären Merge/Forward-Korrektur-Commit durch, der beide Inhalte erhaelt. KEIN force, KEIN Squash, KEIN History-Rewrite.
+   - Wenn das ohne Kollisionsraten nicht sauber geht: BLOCKED mit exakten datei:zeilen, nicht selbst kreativ umbauen.
+3. Review-Befunde gezielt schliessen (nicht alle Gates blind wiederholen):
+   - fail-closed handler fuer internal/openbao Pfad statt pauschalem catch-all
+   - runner uses dedicated ./internal/openbao command selection, not cmd/baha ^TestOpenbao guess
+   - binding clause expected_files must exactly equal actual diff file set
+   - binding record hashes must be raw hashes of the candidate HEAD blobs (not develop or stale head)
+4. Kleinste passende lokale Checks:
+   - `python3 -m pytest -q scripts/test_pr_gate_plan.py scripts/test_pr_check_runner.py`
+   - affected binding-record consistency check / repo-aequivalent if defined.
+   Wenn fehlende Umgebung/Permission: exakt melden, nicht uminterpretieren.
+5. Bei gruenen lokalen Checks ordinary commit + push zu PR branch `work/v0.4.26-openbao-gateplan`.
+6. Checks maximal 25min beobachten; Ergebnis und Run-/Job-IDs in Evidence. Wenn `PR Selected Checks` weiterhin coverage-unresolved meldet: exakt Log-Auszug + planner/test file:line. Aendere NICHT dieselbe Plannerdatei erneut, wenn #1056/#1063 dieselbe Kette blockiert; melde Serialisierungsbedarf.
+7. W-PR-Bedarf explizit in Evidence separieren: `ci.yml` executor case + regression tests = eigener Kandidat, nicht #1060 untermischen.
+ABNAHME: Kandidat gepusht und Checks tabelliert ODER praeziser Blocker mit exakten Objekten.
+END Q117-1060-PUSHED mit neuer PR-Head-SHA / END Q117-1060-BLOCKED.

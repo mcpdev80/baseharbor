@@ -6,3 +6,10 @@
 {"nonce":"dispatch-1792840462-2060354-3820","sid":"0a620e1d-9c3b-4ed2-b2a3-93b85955eef8","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792841763-2244123-1924","sid":"4b7db9cd-5226-46ab-b42b-121a48b7ad2d","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792841830-2253333-11585","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792842278-2338907-18729","sid":"276e1198-16bb-49ed-9388-ee8b47c9dc3d","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792842434-2358123-11630","sid":"fae2e44f-7be8-4826-bdea-f59675646906","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792842438-2358387-18038","sid":"2b1c29d4-d8f0-4974-a19f-e11419d5b80d","baseline_users":1,"send_rc":0,"resends":0}
+{"nonce":"dispatch-1792842443-2358612-24693","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792842521-2367872-30913","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"currency-hold","currency":"stale"}
+{"nonce":"dispatch-1792842545-2368884-9832","sid":"fc55a817-eb39-4c90-92c3-e48e70f6f25f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792842673-2389352-6967","sid":"d9883498-393a-46b8-a741-ca23d9f5e4e3","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

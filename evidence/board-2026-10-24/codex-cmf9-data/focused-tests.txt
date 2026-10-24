@@ -1,0 +1,4 @@
+# ./internal/openbao/...
+pattern ./internal/openbao/...: open /home/marcel/.cache/go-build/e5/e56b264c81c22b44ab43cc27bc6628e91ecb5004f98374955e30891f4963f04c-d: read-only file system
+FAIL	./internal/openbao/... [setup failed]
+FAIL

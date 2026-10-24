@@ -140,3 +140,8 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - q114 war nach 67min PLAN-stale/Endlossschleife. Pointer gesendet: analysieren stoppen, focused tests, ordinary forward commit + push oder exact blocked evidence. q114 commit `1c2f1fc4` lokal, Tests laufen jetzt.
 - o128 gestartet: unabhaengiges SOURCE REVIEW von R `#1056` (read-only, evidence only). Codex laeuft cmf8: demo#121 nach f53-Umgebungsbefund neu qualifizieren; moegliche Ausgaenge: ACCEPT / one worker action / OWNER/HOST action required.
 - f53-Befund fuer Release: Podman-Rceipt kann auf diesem Host nicht erzeugt werden; kein Docker-Ersatz. Optionen: podman-faehiger Host/VM, maintainer-FF-Runner-Route (bewusst nicht Lane-Aktion) oder formale Akzeptanz der Pin-Kompatibilitaet mit spaeterem W1-Journey-Run.
+- 14:0xZ Takeover-Korrektur: q114 nach 74min PLAN-stale gestoppt; sein lokaler saubere Commit `1c2f1fc4` im Worktree `q114-fix1060` bleibt erhalten. q117 fuehrt #1060 von dort weiter (Delivery busy).
+- o128 R-Review END: **ACCEPT** fuer `32b85d95`; object/diff/3-file/raw hashes GitHub-verifiziert.
+- o129 fuehrt #1063 auf R nach; haengt an Permission-Dialog `~/.config/gh/*` (Secret-Read nicht autorisiert) -> Human muss **Reject** waehlen.
+- q118 diagnosticke #1046 targeted runtime; f54 audit #1050 fields; Codex cmf9 review #1052. Pool: qwen 2/2, ornith 1/2+1 blocked, flash 1/1.
+- Codex-Composer `/compactRead`-Rest erneut aufgetreten; diesmal manuell mit C-a/C-k aus Composer geloescht. dispatch-lane C-u reicht nicht fuer mehrzeilige Composer-Reste -> OPS-Befund fuer Fix.

@@ -1,0 +1,18 @@
+pwd-PFLICHT + WORKTREE-PFLICHT: `pwd -P` vor JEDEM git-Befehl; git AUSSCHLIESSLICH in eigenem neuen baseharbor-Worktree fuer branch q1063-docs-record-only. Root-Repo fuer git VERBOTEN. KEIN Merge, KEIN Review-Kommando, KEIN force, KEIN --admin, KEIN product scripts-Aenderung.
+ERSTER SCHRITT: evidence/board-2026-10-24/o129-1063R.md mit ## PLAN + nativen Todos.
+
+ZIEL: PR #1063 (record-only Akte) auf den nun veröffentlichten und unabhängig ACCEPT-reviewten R umstellen.
+- reviewed R = `32b85d950b3d0d73aa5b1ff41d69dba1ab1912b2`
+- R source review: evidence/board-2026-10-24/o128-reviewR.md (END O128-REVIEWR-DONE mit VERDICT: ACCEPT)
+- R hash measurements: evidence/board-2026-10-24/o126-publishR.md
+- current #1063 head `cbb275d2`, branch docs/v0426-q1063? (check via gh).
+
+SCHRITTE:
+1. Checkout PR #1063 head + develop `f3929568`. Bestaetige, dass Diff derzeit nur `docs/internal/ci-binding-qualifications.md` ist.
+2. Hole die 3 RAW sha256-Werte von HEAD R selbst aus `git show <R>:<file>` und pruefe mit `gh api .../blobs` gegenueber (zwei Quellen). Werte NICHT von o126 abschreiben ohne Messung.
+3. Setze den Record-Eintrag so, dass reviewed_head exakt R, reviewed_date=Reviewdatum, file_hashes exakt die 3 raw SHA-256 values sind, no other content changes. Keep Core-921 prose minimal; no new claim beyond GitHub-detectable evidence.
+4. Pruefe: diff gegen develop = exactly one file; diff gegen old #1063 = only Akte lines. `git diff --check`.
+5. Optional docs-lint/repo-aequivalent for Akte JSON/YAML? Run existing targeted validation, not full matrix.
+6. ordinary forward commit + push to #1063 branch.
+7. Checks 25min beobachten. Kein merge. Report run IDs and head.
+END O129-1063R-PUSHED mit head SHA / END O129-1063R-BLOCKED.

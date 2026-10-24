@@ -1,9 +1,9 @@
 {
- "at": 1792841053,
+ "at": 1792842017,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792841057,
+   "observed_at": 1792842021,
    "prs": {
     "1046": {
      "head": "1ec67f8d4",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792841058,
+   "observed_at": 1792842022,
    "prs": {
     "9": {
      "head": "6017de284",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792841057,
+   "observed_at": 1792842021,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792841058,
+   "observed_at": 1792842023,
    "prs": {
     "10": {
      "head": "e832d5651",
@@ -67,9 +67,9 @@
   }
  },
  "health": {
-  "board_currency": "ok",
-  "mem_available_mb": 5627,
-  "tmp_free_mb": 6540,
+  "board_currency": "stale",
+  "mem_available_mb": 8249,
+  "tmp_free_mb": 6568,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -81,7 +81,7 @@
  "lanes": [
   {
    "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 208,
+   "idle_s": 20,
    "mode": "codex",
    "model": "GPT-6.1-Sol",
    "name": "codex-merge26",
@@ -89,31 +89,13 @@
    "status": "idle"
   },
   {
-   "id": "79ccca4f-8a32-4ae3-9a46-4564405e9d63",
+   "id": "4b7db9cd-5226-46ab-b42b-121a48b7ad2d",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "f53",
+   "name": "o128",
    "self": false,
    "status": "busy"
-  },
-  {
-   "id": "02926a90-7ab9-4b0e-85a1-b0f20c341785",
-   "idle_s": 626,
-   "mode": "opencode",
-   "model": null,
-   "name": "o126",
-   "self": false,
-   "status": "idle"
-  },
-  {
-   "id": "0a620e1d-9c3b-4ed2-b2a3-93b85955eef8",
-   "idle_s": 140,
-   "mode": "opencode",
-   "model": null,
-   "name": "o127",
-   "self": false,
-   "status": "idle"
   },
   {
    "id": "804d7b7a-989a-49a0-8cbf-ebcd0c01ed6f",
@@ -123,15 +105,6 @@
    "name": "q114",
    "self": false,
    "status": "busy"
-  },
-  {
-   "id": "342b9a1d-d887-4ce6-8c81-2cc80a232469",
-   "idle_s": 155,
-   "mode": "opencode",
-   "model": null,
-   "name": "q116",
-   "self": false,
-   "status": "idle"
   },
   {
    "id": "adebf29e-6371-4a14-afa6-e8828693a1db",
@@ -177,6 +150,11 @@
   "cmf7": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf7.txt",
+   "state": "dispatched"
+  },
+  "cmf8": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf8.txt",
    "state": "dispatched"
   },
   "cmx": {
@@ -467,7 +445,7 @@
   "f53": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/f53-demo121receipt.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f53.txt",
-   "state": "dispatched"
+   "state": "BLOCKED"
   },
   "f7": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f7-native-dispatch.md",
@@ -667,6 +645,11 @@
   "o127": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o127.txt",
+   "state": "dispatched"
+  },
+  "o128": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o128.txt",
    "state": "dispatched"
   },
   "o13": {

@@ -1,0 +1,40 @@
+diff --git a/.github/workflows/v0424-targeted.yml b/.github/workflows/v0424-targeted.yml
+index 0693ee4..bc0b725 100644
+--- a/.github/workflows/v0424-targeted.yml
++++ b/.github/workflows/v0424-targeted.yml
+@@ -88,7 +88,5 @@ jobs:
+             ${{ runner.temp }}/demo-evidence/report.md
+             ${{ runner.temp }}/demo-evidence/native-topology-*.json
+             ${{ runner.temp }}/demo-evidence/recovery-qualified.json
+-            ${{ runner.temp }}/demo-evidence/failure-runtime/cleanup-preparation/scope-result.json
++            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
+           if-no-files-found: warn
+-
+-# re-trigger verified Core serveability pre-check [demo-runtime]
+diff --git a/scripts/failure-runtime-diagnostics.sh b/scripts/failure-runtime-diagnostics.sh
+index 1558a24..ea897df 100644
+--- a/scripts/failure-runtime-diagnostics.sh
++++ b/scripts/failure-runtime-diagnostics.sh
+@@ -38,20 +38,9 @@ native_env = dict(os.environ)
+ if engine == 'podman':
+     native_env.pop('XDG_CONFIG_HOME', None)
+     native_env.pop('XDG_DATA_HOME', None)
+-# The podman rootless daemon is socket-activated and can stall on its first
+-# native call after a long acceptance run (observed: a single `podman ps` on a
+-# cold runner exceeds the 20s per-call ceiling and raises TimeoutExpired, which
+-# surfaces as a spurious cleanup-preparation=1 even though every owned container
+-# is present). Allow a longer overall budget and a wider first-call ceiling for
+-# podman; a genuinely hung call still times out within this budget.
+-deadline = time.monotonic() + (90 if engine == 'podman' else 60)
+-# Per-call ceiling: podman's rootless daemon is socket-activated and can stall
+-# on its first native call after a long acceptance run; docker stays tight.
+-call_limit = 60 if engine == 'podman' else 20
++deadline = time.monotonic() + 60
+ 
+-def run(args, *, native=False, limit=0, inputdata=None):
+-    if limit == 0:
+-        limit = call_limit
++def run(args, *, native=False, limit=20, inputdata=None):
+     remaining = deadline - time.monotonic()
+     if remaining <= 0:
+         raise TimeoutError('owned runtime diagnostic budget exhausted')

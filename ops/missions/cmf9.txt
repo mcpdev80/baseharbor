@@ -1,0 +1,13 @@
+ROLLE: REVIEW. KEIN Merge, KEIN force, KEIN --admin, KEIN Produktcode, KEIN CI-Rerun.
+KANDIDAT: baseharbor PR #1052 (openbao retry) — current head bitte selbst messen; context: evidence/board-2026-10-24/o123-review1052.md (worker ACCEPT_WITH_NONBLOCKING), #1052 waiting #1060.
+AUFGABE:
+1. Fetch live PR state/files/checks/mergeability; diff gegen develop `f3929568`.
+2. Bestaetige oder widerlege worker review:
+   - exact code scope,
+   - tests/regression,
+   - dependency auf #1060,
+   - nonblocking findings classification.
+3. Verdict ACCEPT/REQUEST_CHANGES/ACCEPT_WITH_NONBLOCKING. Falls REQUEST_CHANGES: genau eine minimal umsetzbare Workeraktion mit datei:zeile + required tests. Falls nur Merge-Order-Abhaengigkeit: ACCEPT_WITH_NONBLOCKING + Wartebedingung (nicht selbst warten).
+4. Plane (nur dokumentarisch) nach #1060 green: rebase target, required gates, merge recipe.
+Evidence evidence/board-2026-10-24/codex-verdict-1052.md. SHA before/after, UTC, ROLLE.
+END CX-1052-DONE / END CX-1052-BLOCKED.

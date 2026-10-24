@@ -1,0 +1,27 @@
+diff internal/openbao/bootstrap_test.go.orig internal/openbao/bootstrap_test.go
+--- internal/openbao/bootstrap_test.go.orig
++++ internal/openbao/bootstrap_test.go
+@@ -266,15 +266,15 @@
+ }
+ 
+ type haMemberState struct {
+-	initialized          bool
+-	sealed               bool
+-	tries                int
+-	inspectCount         int
+-	preUnsealAttempts    int
+-	writes               int
++	initialized            bool
++	sealed                 bool
++	tries                  int
++	inspectCount           int
++	preUnsealAttempts      int
++	writes                 int
+ 	postUnsealVerification int
+-	verifiedAfterUnseal  bool
+-	retryAttempts        int
++	verifiedAfterUnseal    bool
++	retryAttempts          int
+ }
+ 
+ func newHaMemberState(initialized, sealed bool) *haMemberState {
