@@ -31,3 +31,26 @@ def validate_workflow_run_event(payload, *, repository, workflow_path, run_id):
             or not SHA.fullmatch(run["head_sha"])):
         raise EvidenceError("EVIDENCE_TRIGGER: workflow run is not eligible")
     return {"run_id": run_id, "head_sha": run["head_sha"], "workflow_path": workflow_path}
+
+
+def verify_workflow_run_against_api(payload, get_json, *, repository,
+                                    workflow_path, run_id):
+    """Cross-check untrusted event identity with independently fetched API run."""
+    event = validate_workflow_run_event(payload, repository=repository,
+                                        workflow_path=workflow_path, run_id=run_id)
+    if not callable(get_json):
+        raise EvidenceError("EVIDENCE_TRIGGER: authenticated API transport required")
+    try:
+        verified = get_json(f"repos/{repository}/actions/runs/{run_id}")
+    except Exception as exc:
+        raise EvidenceError("EVIDENCE_TRIGGER: API lookup failed") from exc
+    if not isinstance(verified, dict) or not isinstance(verified.get("repository"), dict):
+        raise EvidenceError("EVIDENCE_TRIGGER: invalid API run")
+    if (verified.get("id") != run_id or verified["repository"].get("full_name") != repository
+            or verified.get("path") != workflow_path
+            or verified.get("head_sha") != event["head_sha"]
+            or verified.get("event") != "pull_request"
+            or verified.get("status") != "completed"
+            or verified.get("conclusion") != "success"):
+        raise EvidenceError("EVIDENCE_TRIGGER: API run mismatch")
+    return event
