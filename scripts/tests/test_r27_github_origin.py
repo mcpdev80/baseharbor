@@ -3,7 +3,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from r27_github_origin import OriginError, verify_origin
+from r27_github_origin import OriginError, verify_origin, verify_complete_inventory
 
 REPO = "mcpdev80/baseharbor"
 SHA = "a" * 40
@@ -25,6 +25,32 @@ def checked(run=None, jobs=None, **changes):
 
 
 class GitHubOriginTests(unittest.TestCase):
+    def test_complete_job_inventory(self):
+        self.assertEqual(verify_complete_inventory(
+            [{"total_count": 1, "jobs": [JOB]}]), [JOB])
+        batch = [dict(JOB, id=i + 1, name=f"job-{i}") for i in range(100)]
+        tail = dict(JOB, id=200, name=NAME)
+        self.assertEqual(len(verify_complete_inventory([
+            {"total_count": 101, "jobs": batch},
+            {"total_count": 101, "jobs": [tail]}])), 101)
+
+    def test_partial_or_inconsistent_job_inventory_is_rejected(self):
+        batch = [dict(JOB, id=i + 1) for i in range(100)]
+        cases = [
+            [{"total_count": 2, "jobs": [JOB]}],
+            [{"total_count": 2, "jobs": [JOB, JOB]}],
+            [{"total_count": 101, "jobs": batch}],
+            [{"total_count": 101, "jobs": batch},
+             {"total_count": 102, "jobs": [dict(JOB, id=200)]}],
+            [{"total_count": 2, "jobs": [JOB]},
+             {"total_count": 2, "jobs": [dict(JOB, id=200)]}],
+            [{"total_count": True, "jobs": [JOB]}],
+            [{"total_count": 0, "jobs": []}],
+        ]
+        for pages in cases:
+            with self.subTest(pages=len(pages)), self.assertRaises(OriginError):
+                verify_complete_inventory(pages)
+
     def test_exact_run_and_job_success(self):
         self.assertEqual(checked()["job_id"], 456)
 
