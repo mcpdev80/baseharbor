@@ -1,5 +1,5 @@
 {
- "at": 1792849486,
+ "at": 1792849553,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
@@ -68,7 +68,7 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 6215,
+  "mem_available_mb": 6240,
   "tmp_free_mb": 5720,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
@@ -81,7 +81,7 @@
  "lanes": [
   {
    "id": "fc55a817-eb39-4c90-92c3-e48e70f6f25f",
-   "idle_s": 165,
+   "idle_s": 231,
    "mode": "codex",
    "model": "GPT-6.1-Sol",
    "name": "codex-merge26",
@@ -90,7 +90,7 @@
   },
   {
    "id": "cad8e3ae-b647-4ace-85a2-b2753de3fdba",
-   "idle_s": 49,
+   "idle_s": 116,
    "mode": "opencode",
    "model": null,
    "name": "f59",
@@ -99,7 +99,7 @@
   },
   {
    "id": "ba64664b-7710-4556-94e9-5cae3c43ad27",
-   "idle_s": 13,
+   "idle_s": 79,
    "mode": "opencode",
    "model": null,
    "name": "o137",
@@ -108,7 +108,7 @@
   },
   {
    "id": "d3eb18bc-b0bb-4d32-9e36-417e9a1ed909",
-   "idle_s": 165,
+   "idle_s": 231,
    "mode": "opencode",
    "model": null,
    "name": "o138",
@@ -1316,7 +1316,7 @@
    "state": "dispatched"
   },
   "q122": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q122-1060ff.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q122.txt",
    "state": "dispatched"
   },
