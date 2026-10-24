@@ -124,6 +124,44 @@ func TestRuntimeRetirementVerifiesReleasedLogicalSQLWithoutStoppingRequiredCore(
 	}
 }
 
+func TestRuntimeRetirementVerifiesPreviouslyUnboundCoreSQLForHTTPOnlyApplication(t *testing.T) {
+	f := newCoreSQLRetirementFixture(t)
+	f.resolved.Manifest = application.New("http-only", "dev", false, false, false)
+	management := application.New("management", "core", false, false, false)
+	for id, fact := range f.facts {
+		fact.Containers.Source = "canonical owned runtime fixture observation"
+		fact.MemoryBytes = application.Quantity{Classification: "unknown"}
+		f.facts[id] = fact
+	}
+	snapshot := application.ResolutionSnapshot{Target: f.resolved.Target.Name, Registry: f.registry, Facts: f.facts,
+		Ancillary: []capability.ProviderInstance{application.SharedBackendRuntimeDependency(f.resolved.Target.Name, capability.ProviderPostgreSQL), application.RuntimeStorageDependency(f.resolved.Target.Name)}}
+	plan, err := application.ResolveProviderPlan(snapshot, []application.ConsumerIntent{
+		{Key: "installation/current", Active: true, Manifest: management, DependencyRoots: []string{f.storage}},
+		{Key: "http-only", Active: true, Manifest: f.resolved.Manifest, DependencyRoots: []string{}},
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Complete || len(plan.ReleasedBindings) != 0 {
+		t.Fatal("expected a complete real plan with SQL already unbound")
+	}
+	stops := 0
+	for _, change := range plan.Changes {
+		if (change.InstanceID == f.logical || change.InstanceID == f.module) && change.Action == "stop" {
+			stops++
+		}
+		if change.InstanceID == f.storage && change.Action != "reuse" {
+			t.Fatal("management must retain physical Core SQL")
+		}
+	}
+	if stops != 2 {
+		t.Fatal("real resolver did not select both unused logical SQL owners")
+	}
+	if err := verifyApplicationRuntimeRetirement(f.resolved, plan, f.facts); err != nil {
+		t.Fatal("HTTP-only retirement falsely requires a new SQL binding release", err)
+	}
+}
+
 func TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease(t *testing.T) {
 	cases := map[string]func(*testing.T, *coreSQLRetirementFixture){
 		"unknown logical state": func(_ *testing.T, f *coreSQLRetirementFixture) {
@@ -161,8 +199,10 @@ func TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease(t *testing.T) {
 		"physical retirement selected": func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.Changes[0].Action = "stop" },
 		"incomplete plan":              func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.Complete = false },
 		"wrong plan target":            func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.Target = "foreign" },
-		"no released binding":          func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.ReleasedBindings = nil },
-		"foreign released owner":       func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.ReleasedBindings[0].ApplicationID = "foreign" },
+		"wrong released capability": func(_ *testing.T, f *coreSQLRetirementFixture) {
+			f.plan.ReleasedBindings[0].Resource.Kind = capability.KeyValue
+		},
+		"foreign released owner": func(_ *testing.T, f *coreSQLRetirementFixture) { f.plan.ReleasedBindings[0].ApplicationID = "foreign" },
 		"remaining SQL reference": func(t *testing.T, f *coreSQLRetirementFixture) {
 			f.registry.Bindings = append(f.registry.Bindings, f.plan.ReleasedBindings[0])
 			if err := (capability.RegistryStore{Path: filepath.Join(f.resolved.TargetStateRoot, "provider-registry.json")}).Save(f.registry); err != nil {
