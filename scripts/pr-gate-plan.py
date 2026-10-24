@@ -635,7 +635,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                               check=True).stdout
 
     try:
-        raw = git('show', diff['target_base_sha'] +
+        raw = git('show', diff['head_sha'] +
                   ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
         blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
                             flags=re.MULTILINE | re.DOTALL)
@@ -653,7 +653,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         record = json.loads(blocks[0], object_pairs_hook=unique_object)
         expected_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'scripts/test_pr_gate_plan.py')}
+            'docs/internal/ci-binding-qualifications.md')}
         expected_ids = {check['id'] for check in CI_CHECKS}
         if (not isinstance(record, dict) or set(record) != {
                 'repository', 'target_branch', 'reviewed_head', 'files',
@@ -1215,9 +1215,14 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             unresolved.append('application lifecycle/provider resolution impact needs targeted qualification: ' + path)
         elif path.startswith('internal/openbao/'):
-            area = 'openbao'
+            # Fail-closed OpenBao handling: no blanket path exemption.
+            # Only the reviewed bootstrap source files (bootstrap.go /
+            # bootstrap_test.go) receive resolved coverage.  Any other
+            # added, deleted, renamed or unreviewed OpenBao production
+            # file stays unresolved and requires independent diff review.
+            area = 'openbao-unreviewed'
             require(CODE_CHECKS)
-            require(OPENBAO_CHECKS)
+            unresolved.append('OpenBao production impact requires source/status binding or independent diff review: ' + path)
         elif path in INSPECT_IMPORT_CANDIDATE_FILES:
             area = 'inspect-import-unreviewed-source'
             require(INSPECT_CHECKS)

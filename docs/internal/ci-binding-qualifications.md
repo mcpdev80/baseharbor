@@ -6,16 +6,16 @@ Owner-authorized immutable source inventory for the exact #1060 candidate. This 
 {
   "repository": "mcpdev80/baseharbor",
   "target_branch": "develop",
-  "reviewed_head": "3fa4989e337c6c746acfb1be7ac3c0edad6bfdd8",
+  "reviewed_head": "9ec2528253e1d91c48f81985f7c696a663a29fd6",
   "files": {
     "scripts/pr-check-runner.py": "modified",
     "scripts/pr-gate-plan.py": "modified",
-    "scripts/test_pr_gate_plan.py": "modified"
+    "docs/internal/ci-binding-qualifications.md": "modified"
   },
   "file_hashes": {
     "scripts/pr-check-runner.py": "5fe7617cd9111774b76423c4850aefbe3503059a2da072ebce77b4a0cc9f2a8a",
-    "scripts/pr-gate-plan.py": "f60144461ddcb580868bb48f7a6c99c1b2990ac29cc7e471920aba21195d3fd2",
-    "scripts/test_pr_gate_plan.py": "10713630a3066179366c109770177d864277aa9ab7cd6eafaa8ede414cf045fd"
+    "scripts/pr-gate-plan.py": "6d20a39e6893241ea7ec8453ad91414ca9035e6014abc21b1c6a99bbb3c768a3",
+    "docs/internal/ci-binding-qualifications.md": "609257b57d8bf46d4736db9838a12bf5e990dc891e3d610e275352c2a99ebfca"
   },
   "required_checks": [
     "pr-planner-tests",
