@@ -38,6 +38,40 @@ var (
 	ErrInvalidRecoveryFile  = errors.New("invalid OpenBao recovery file")
 )
 
+// permanentErrorCause reports a concrete permanent failure cause when the
+// diagnostic carries one, or "" when the message shows no such cause. Permanent
+// causes are matched before any transport token so that a TLS/CA, permission or
+// executable failure is not retried merely because it also contains a
+// transient-looking word.
+//
+// The incidental word "temporary" is intentionally NOT a permanent cause: a
+// diagnostic such as "x509: ... temporary failure in name resolution" or
+// "permission denied: temporary credentials file" has a real permanent cause
+// (x509/permission) that this matcher reports instead, so the bare word never
+// drives classification on its own.
+func permanentErrorCause(err error) string {
+	if err == nil {
+		return ""
+	}
+	s := err.Error()
+	switch {
+	case strings.Contains(s, "x509"),
+		strings.Contains(s, "handshake"),
+		strings.Contains(s, "certificate"):
+		return "tls"
+	case strings.Contains(s, "permission denied"),
+		strings.Contains(s, "permission"):
+		return "permission"
+	case strings.Contains(s, "executable file not found"),
+		strings.Contains(s, "is not executable"),
+		strings.Contains(s, "no such file or directory"),
+		strings.Contains(s, "exec "):
+		return "exec"
+	default:
+		return ""
+	}
+}
+
 // isTransientError reports whether err represents a transient transport or
 // listener error that is likely to resolve on retry (for example a brief
 // window between Podman container restart and the openbao process re-attaching
@@ -45,14 +79,18 @@ var (
 // executables) are not retried.
 //
 // Admission is limited to positively-identified listener/transport failures
-// only. A bare word such as "temporary" is intentionally NOT a subclass: a
-// permanent TLS or permission failure can contain that incidental word (for
-// example "x509: ... temporary failure in name resolution" or
+// only, and only when the diagnostic carries no concrete permanent cause.
+// A bare word such as "temporary" is intentionally NOT a subclass: a permanent
+// TLS or permission failure can contain that incidental word (for example
+// "x509: ... temporary failure in name resolution" or
 // "permission denied: temporary credentials file") and must never trigger a
 // retry. Classification is by concrete failure shape, not by substring of a
 // possibly-permanent diagnostic.
 func isTransientError(err error) bool {
 	if err == nil {
+		return false
+	}
+	if permanentErrorCause(err) != "" {
 		return false
 	}
 	s := err.Error()
