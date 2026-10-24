@@ -132,3 +132,9 @@
 {"nonce":"dispatch-1792816117-2259801-15775","sid":"6d2b4718-24b1-44d7-9a96-6607cc563aa6","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1792816189-2271495-24263","sid":"fbe7eab1-de0c-40f9-a5b6-8cac7211d2f7","baseline_users":1,"send_rc":0,"resends":0}
 {"nonce":"dispatch-1792817866-2507588-20543","sid":"9fa375d6-b6ce-4df5-ba53-5b3157bdb1b0","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792817993-2519659-28800","sid":"c95e6852-70b2-40f5-ad92-c0c368a6a2c4","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792818113-2533154-12384","sid":"7be24963-420a-44e7-a009-f58a5fb3f34c","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792818202-2540851-12340","sid":"e1c38030-4d43-4168-93e5-5ce38aca3325","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792819313-2646518-24190","sid":"7315b163-d923-4b1e-9f9e-e26751f1b5c2","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792819355-2651603-22272","sid":"5b112419-4dad-49b9-a5da-f519b9fcfabe","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1792819565-2676593-6940","sid":"1bc4063c-3f9d-453a-bb16-d60acaaa4d77","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

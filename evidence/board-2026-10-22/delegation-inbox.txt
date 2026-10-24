@@ -37,3 +37,4 @@ MERGE#1: 1053 -> develop 79e64084. naechste: 1056(+Hook) -> 1050 -> 1052. W1-Red
 F41-Post1053-Check in Queue (flash belegt durch f40-Hook). Trigger: f40 idle.
 Kettenreihenfolge fixiert: 1056(Hook, f40) -> merge -> 1057(Akte, o102) -> merge -> 1050+1052 green -> merge -> W1-Redo auf neuem develop-tip + aktualisierte Pins.
 F40-PUSH haelt nicht: remote 4e737e26, lokal 19e7533d. Naechster Schritt: push-Blocker aus ihrer Datei lesen oder Merge-Lane mit eigenem Rebase+Merge (Akte #1057 + Hook aus lokalem Commit) - Entscheidung nach idle-Event.
+1057 CLOSED ungeklaert (o103 uebernimmt). f42 analysiert 1056-Meta-Fail. o102 laeuft noch - Kollisionsrisiko auf Akten-Branch, o103 nutzt eigenen Branch (so im Prompt).MERGE-LOG: 1053->79e64084, 1058(Akte)->24c33afd. f43 rebase #1056 auf develop. Danach: 1056 merge -> Pins-Update #1050 -> W1-Redo.
