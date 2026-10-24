@@ -54,6 +54,10 @@ def issue(kind, commit, policy_digest, key):
     return encoded + b"\n"
 
 
+def _reject_nonfinite(value):
+    raise ReceiptError("EVIDENCE_SCHEMA: nonfinite JSON constant")
+
+
 def verify(raw, expected_kind, expected_commit, expected_policy_digest, key):
     """Verify a receipt offline; no GitHub run, API or artifact lookup."""
     _validate_key(key)
@@ -67,7 +71,7 @@ def verify(raw, expected_kind, expected_commit, expected_policy_digest, key):
                     raise ReceiptError("EVIDENCE_SCHEMA: duplicate JSON key")
                 result[k] = v
             return result
-        envelope = json.loads(raw, object_pairs_hook=unique)
+        envelope = json.loads(raw, object_pairs_hook=unique, parse_constant=_reject_nonfinite)
     except (UnicodeError, ValueError) as exc:
         raise ReceiptError("EVIDENCE_SCHEMA: malformed receipt JSON") from exc
     if not isinstance(envelope, dict) or set(envelope) != {
