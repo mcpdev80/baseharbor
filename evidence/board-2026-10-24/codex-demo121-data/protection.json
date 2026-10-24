@@ -1,0 +1,11 @@
+{
+  "utc": "2026-10-24T10:10:16.602390+00:00",
+  "command": [
+    "gh",
+    "api",
+    "repos/mcpdev80/baseharbor-demo/branches/main/protection"
+  ],
+  "exit": 1,
+  "stdout": "{\"message\":\"Branch not protected\",\"documentation_url\":\"https://docs.github.com/rest/branches/branch-protection#get-branch-protection\",\"status\":\"404\"}",
+  "stderr": "gh: Branch not protected (HTTP 404)\n"
+}

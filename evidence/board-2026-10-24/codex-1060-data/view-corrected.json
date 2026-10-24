@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "{\"headRefOid\":\"9ec2528253e1d91c48f81985f7c696a663a29fd6\",\"mergeStateStatus\":\"BLOCKED\",\"mergeable\":\"MERGEABLE\",\"reviewDecision\":\"REVIEW_REQUIRED\"}\n",
+  "stderr": ""
+}

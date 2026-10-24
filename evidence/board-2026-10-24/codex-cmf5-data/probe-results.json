@@ -1,0 +1,530 @@
+[
+  {
+    "pr": 1044,
+    "target": "49d396c48d2dee8b65cd59497c9f74692954975c",
+    "head": "665f5bea0044ecda3ae155f46b03510a5b02f96d",
+    "local_integration_not_CI": "ec256fac0b816e92a00daefd1746f27b6e17033c",
+    "diff": {
+      "target_base_sha": "49d396c48d2dee8b65cd59497c9f74692954975c",
+      "head_sha": "665f5bea0044ecda3ae155f46b03510a5b02f96d",
+      "integration_sha": "ec256fac0b816e92a00daefd1746f27b6e17033c",
+      "merge_base_sha": "49d396c48d2dee8b65cd59497c9f74692954975c",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": ".github/workflows/ci.yml"
+        },
+        {
+          "status": "modified",
+          "path": ".github/workflows/pre-release-runtime-suite.yml"
+        },
+        {
+          "status": "modified",
+          "path": ".github/workflows/targeted-demo-acceptance.yml"
+        },
+        {
+          "status": "added",
+          "path": "scripts/targeted-gate-ref.py"
+        },
+        {
+          "status": "added",
+          "path": "scripts/test_targeted_gate_ref.py"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "49d396c48d2dee8b65cd59497c9f74692954975c",
+      "head_sha": "665f5bea0044ecda3ae155f46b03510a5b02f96d",
+      "merge_base_sha": "49d396c48d2dee8b65cd59497c9f74692954975c",
+      "integration_sha": "ec256fac0b816e92a00daefd1746f27b6e17033c",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "resolved",
+      "unresolved_coverage": [],
+      "broad_required": false,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "ci-actionlint",
+          "owner": ".github/workflows workflow syntax",
+          "command": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck="
+        },
+        {
+          "id": "ci-executor-verifier-tests",
+          "owner": "core-893 CI executor/verifier",
+          "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+        },
+        {
+          "id": "ci-policy",
+          "owner": "scripts/ci-workflow-policy.sh",
+          "command": "bash scripts/ci-workflow-policy.sh"
+        },
+        {
+          "id": "pr-planner-tests",
+          "owner": "scripts/test_pr_gate_plan.py",
+          "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+        }
+      ],
+      "validation_contract": "Every listed test must execute and PASS on the authenticated current integration. Missing, skipped and failed validations block in the existing trusted final verifier.",
+      "reasons": [
+        "reviewed bare-SHA dispatch input resolution before atomic gate checkout: exact source hash, complete changed status set and proven clean trusted-target merge only"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": "absent"
+  },
+  {
+    "pr": 1047,
+    "target": "a2abc17a8057ba972cb9ed481fad229fe9f12824",
+    "head": "40351fd30af9d1b12a3ea5b4b450056ea714f475",
+    "local_integration_not_CI": "d4c78e638f93313e427bd890c2bcf733f6fe6bf5",
+    "diff": {
+      "target_base_sha": "a2abc17a8057ba972cb9ed481fad229fe9f12824",
+      "head_sha": "40351fd30af9d1b12a3ea5b4b450056ea714f475",
+      "integration_sha": "d4c78e638f93313e427bd890c2bcf733f6fe6bf5",
+      "merge_base_sha": "a2abc17a8057ba972cb9ed481fad229fe9f12824",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": "scripts/pr-gate-plan.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/test_pr_gate_plan.py"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "a2abc17a8057ba972cb9ed481fad229fe9f12824",
+      "head_sha": "40351fd30af9d1b12a3ea5b4b450056ea714f475",
+      "merge_base_sha": "a2abc17a8057ba972cb9ed481fad229fe9f12824",
+      "integration_sha": "d4c78e638f93313e427bd890c2bcf733f6fe6bf5",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "resolved",
+      "unresolved_coverage": [],
+      "broad_required": false,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "ci-executor-verifier-tests",
+          "owner": "core-893 CI executor/verifier",
+          "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+        },
+        {
+          "id": "ci-policy",
+          "owner": "scripts/ci-workflow-policy.sh",
+          "command": "bash scripts/ci-workflow-policy.sh"
+        },
+        {
+          "id": "pr-planner-tests",
+          "owner": "scripts/test_pr_gate_plan.py",
+          "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        "scripts/pr-gate-plan.py: ci-planner",
+        "scripts/test_pr_gate_plan.py: ci-planner"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": null
+  },
+  {
+    "pr": 1053,
+    "target": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+    "head": "8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c",
+    "local_integration_not_CI": "58c48987c042036f39c9f146aeacbe255a3e1730",
+    "diff": {
+      "target_base_sha": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+      "head_sha": "8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c",
+      "integration_sha": "58c48987c042036f39c9f146aeacbe255a3e1730",
+      "merge_base_sha": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": "cmd/baha/app_wizard_controller.go"
+        },
+        {
+          "status": "modified",
+          "path": "cmd/baha/app_wizard_controller_test.go"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+      "head_sha": "8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c",
+      "merge_base_sha": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+      "integration_sha": "58c48987c042036f39c9f146aeacbe255a3e1730",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "resolved",
+      "unresolved_coverage": [],
+      "broad_required": false,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "cli-build",
+          "owner": "cmd/baha package",
+          "command": "go build ./cmd/baha"
+        },
+        {
+          "id": "cli-gofmt",
+          "owner": "cmd/baha formatting",
+          "command": "test -z \"$(gofmt -l cmd/baha)\""
+        },
+        {
+          "id": "cli-vet",
+          "owner": "cmd/baha package",
+          "command": "go vet ./cmd/baha"
+        },
+        {
+          "id": "source-contracts",
+          "owner": "CI source / contracts",
+          "command": "go test ./internal/application/... ./contracts/..."
+        },
+        {
+          "id": "wizard-controller-tests",
+          "owner": "trusted wizard component executor",
+          "command": "python3 scripts/pr-check-runner.py execute --check wizard-controller-tests --repository ."
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        "cmd/baha/app_wizard_controller.go: wizard-component",
+        "cmd/baha/app_wizard_controller_test.go: wizard-component"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": "absent"
+  },
+  {
+    "pr": 1058,
+    "target": "79e64084d1b090d2bcd8e610f05178871ee4e716",
+    "head": "4046bc93ebc7ce346d50d776551fba5ec60b6abf",
+    "local_integration_not_CI": "ce32fe5ad95afff99f620fc9a8295eee36829a2c",
+    "diff": {
+      "target_base_sha": "79e64084d1b090d2bcd8e610f05178871ee4e716",
+      "head_sha": "4046bc93ebc7ce346d50d776551fba5ec60b6abf",
+      "integration_sha": "ce32fe5ad95afff99f620fc9a8295eee36829a2c",
+      "merge_base_sha": "79e64084d1b090d2bcd8e610f05178871ee4e716",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": "docs/internal/ci-binding-qualifications.md"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "79e64084d1b090d2bcd8e610f05178871ee4e716",
+      "head_sha": "4046bc93ebc7ce346d50d776551fba5ec60b6abf",
+      "merge_base_sha": "79e64084d1b090d2bcd8e610f05178871ee4e716",
+      "integration_sha": "ce32fe5ad95afff99f620fc9a8295eee36829a2c",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "resolved",
+      "unresolved_coverage": [],
+      "broad_required": false,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "documentation-audit",
+          "owner": "scripts/documentation-audit.sh",
+          "command": "bash scripts/documentation-audit.sh"
+        },
+        {
+          "id": "mkdocs-de-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.de.yml"
+        },
+        {
+          "id": "mkdocs-en-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.yml"
+        },
+        {
+          "id": "pages-candidate-build",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "build candidate documentation without deploying Pages"
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        "docs/internal/ci-binding-qualifications.md: documentation"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": "absent"
+  },
+  {
+    "pr": 1059,
+    "target": "24c33afdc89f166bf4ed747445078fa47489b562",
+    "head": "c73b9c70c4dd43609146fe12fdb5b6180a430674",
+    "local_integration_not_CI": "6f8254fc73852145feab6e97425e453d1f104be7",
+    "diff": {
+      "target_base_sha": "24c33afdc89f166bf4ed747445078fa47489b562",
+      "head_sha": "c73b9c70c4dd43609146fe12fdb5b6180a430674",
+      "integration_sha": "6f8254fc73852145feab6e97425e453d1f104be7",
+      "merge_base_sha": "24c33afdc89f166bf4ed747445078fa47489b562",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": "scripts/pr-gate-plan.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/test_pr_gate_plan.py"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "24c33afdc89f166bf4ed747445078fa47489b562",
+      "head_sha": "c73b9c70c4dd43609146fe12fdb5b6180a430674",
+      "merge_base_sha": "24c33afdc89f166bf4ed747445078fa47489b562",
+      "integration_sha": "6f8254fc73852145feab6e97425e453d1f104be7",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "resolved",
+      "unresolved_coverage": [],
+      "broad_required": false,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "ci-executor-verifier-tests",
+          "owner": "core-893 CI executor/verifier",
+          "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+        },
+        {
+          "id": "ci-policy",
+          "owner": "scripts/ci-workflow-policy.sh",
+          "command": "bash scripts/ci-workflow-policy.sh"
+        },
+        {
+          "id": "pr-planner-tests",
+          "owner": "scripts/test_pr_gate_plan.py",
+          "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        "scripts/pr-gate-plan.py: ci-planner",
+        "scripts/test_pr_gate_plan.py: ci-planner"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": "absent"
+  },
+  {
+    "pr": 1056,
+    "target": "f39295680d41290fc505c0a8cc1769da51699293",
+    "head": "425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68",
+    "local_integration_not_CI": "a9eeb0827cf77fb5b9fe2dd1f01416002f9ece30",
+    "diff": {
+      "target_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "head_sha": "425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68",
+      "integration_sha": "a9eeb0827cf77fb5b9fe2dd1f01416002f9ece30",
+      "merge_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": "docs/internal/ci-binding-qualifications.md"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/pr-check-runner.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/pr-gate-plan.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/test_pr_gate_plan.py"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "head_sha": "425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68",
+      "merge_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "integration_sha": "a9eeb0827cf77fb5b9fe2dd1f01416002f9ece30",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "unresolved",
+      "unresolved_coverage": [
+        "CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py"
+      ],
+      "broad_required": true,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "ci-executor-verifier-tests",
+          "owner": "core-893 CI executor/verifier",
+          "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+        },
+        {
+          "id": "ci-policy",
+          "owner": "scripts/ci-workflow-policy.sh",
+          "command": "bash scripts/ci-workflow-policy.sh"
+        },
+        {
+          "id": "documentation-audit",
+          "owner": "scripts/documentation-audit.sh",
+          "command": "bash scripts/documentation-audit.sh"
+        },
+        {
+          "id": "mkdocs-de-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.de.yml"
+        },
+        {
+          "id": "mkdocs-en-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.yml"
+        },
+        {
+          "id": "pages-candidate-build",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "build candidate documentation without deploying Pages"
+        },
+        {
+          "id": "pr-planner-tests",
+          "owner": "scripts/test_pr_gate_plan.py",
+          "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        "docs/internal/ci-binding-qualifications.md: documentation",
+        "scripts/pr-check-runner.py: ci-executor-unresolved",
+        "scripts/pr-gate-plan.py: ci-planner",
+        "scripts/test_pr_gate_plan.py: ci-planner"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": null
+  },
+  {
+    "pr": 1060,
+    "target": "f39295680d41290fc505c0a8cc1769da51699293",
+    "head": "6a0d36dad2a778ab61a58594489c9fedc88e4c0f",
+    "local_integration_not_CI": "7938541dcd0c439faddce194bdcacff95e22cd2d",
+    "diff": {
+      "target_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "head_sha": "6a0d36dad2a778ab61a58594489c9fedc88e4c0f",
+      "integration_sha": "7938541dcd0c439faddce194bdcacff95e22cd2d",
+      "merge_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "broad_required": false,
+      "reasons": [],
+      "changes": [
+        {
+          "status": "modified",
+          "path": ".github/workflows/ci.yml"
+        },
+        {
+          "status": "modified",
+          "path": "docs/internal/ci-binding-qualifications.md"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/pr-check-runner.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/pr-gate-plan.py"
+        },
+        {
+          "status": "modified",
+          "path": "scripts/test_pr_gate_plan.py"
+        }
+      ]
+    },
+    "plan": {
+      "schema": "baseharbor.pr-gate-plan/v1",
+      "target_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "head_sha": "6a0d36dad2a778ab61a58594489c9fedc88e4c0f",
+      "merge_base_sha": "f39295680d41290fc505c0a8cc1769da51699293",
+      "integration_sha": "7938541dcd0c439faddce194bdcacff95e22cd2d",
+      "mapping_schema": "baseharbor.pr-gate-map/v1",
+      "release": "v0.4.26",
+      "coverage_status": "unresolved",
+      "unresolved_coverage": [
+        "workflow execution/cleanup/evidence impact requires native qualification: .github/workflows/ci.yml",
+        "CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py"
+      ],
+      "broad_required": true,
+      "selected_gates": [],
+      "required_validation_checks": [
+        {
+          "id": "ci-actionlint",
+          "owner": ".github/workflows workflow syntax",
+          "command": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck="
+        },
+        {
+          "id": "ci-executor-verifier-tests",
+          "owner": "core-893 CI executor/verifier",
+          "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+        },
+        {
+          "id": "ci-policy",
+          "owner": "scripts/ci-workflow-policy.sh",
+          "command": "bash scripts/ci-workflow-policy.sh"
+        },
+        {
+          "id": "documentation-audit",
+          "owner": "scripts/documentation-audit.sh",
+          "command": "bash scripts/documentation-audit.sh"
+        },
+        {
+          "id": "mkdocs-de-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.de.yml"
+        },
+        {
+          "id": "mkdocs-en-strict",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "mkdocs build --strict --config-file mkdocs.yml"
+        },
+        {
+          "id": "pages-candidate-build",
+          "owner": ".github/workflows/pages.yml:build",
+          "command": "build candidate documentation without deploying Pages"
+        },
+        {
+          "id": "pr-planner-tests",
+          "owner": "scripts/test_pr_gate_plan.py",
+          "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+        }
+      ],
+      "validation_contract": "Enforce all required_validation_checks independently of selected_gates; zero selected_gates is valid only when coverage_status is resolved. If unresolved, final check MUST fail closed; never treat as no checks or automatically run the complete release catalog.",
+      "reasons": [
+        ".github/workflows/ci.yml: runtime-workflow-unresolved",
+        "docs/internal/ci-binding-qualifications.md: documentation",
+        "scripts/pr-check-runner.py: ci-executor-unresolved",
+        "scripts/pr-gate-plan.py: ci-planner",
+        "scripts/test_pr_gate_plan.py: ci-planner"
+      ]
+    },
+    "trusted_binding": null,
+    "bootstrap": null
+  }
+]

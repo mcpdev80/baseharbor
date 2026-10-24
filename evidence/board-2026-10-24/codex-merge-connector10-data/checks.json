@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "Actual encrypted transport \u00b7 ${{ matrix.runtime }}\tskipping\t0\thttps://github.com/mcpdev80/baseharbor-node-connector/actions/runs/40081652928/job/120836304169\t\nsource\tpass\t1m13s\thttps://github.com/mcpdev80/baseharbor-node-connector/actions/runs/40081652928/job/120836283698\t\nManaged native enrollment \u00b7 ${{ matrix.runtime }}\tskipping\t0\thttps://github.com/mcpdev80/baseharbor-node-connector/actions/runs/40081652928/job/120836284408\t\n",
+  "stderr": ""
+}

@@ -1,0 +1,121 @@
+PR 1044 head 665f5bea0044ecda3ae155f46b03510a5b02f96d base 49d396c48d2dee8b65cd59497c9f74692954975c merge 1861ed07888a1ec22c218ca491d23ee54f48e261
+665f5bea0044ecda3ae155f46b03510a5b02f96d 0267dbdb71f63a2c77e193618e6fba4106e5cd5b 49d396c48d2dee8b65cd59497c9f74692954975c
+
+665f5bea0044ecda3ae155f46b03510a5b02f96d 0267dbdb71f63a2c77e193618e6fba4106e5cd5b 49d396c48d2dee8b65cd59497c9f74692954975c Merge remote-tracking branch 'origin/develop' into HEAD
+49d396c48d2dee8b65cd59497c9f74692954975c 5be7dabd5c40a99e1623eb1a72cae943f9e0470d fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)
+5be7dabd5c40a99e1623eb1a72cae943f9e0470d 9f4916be333d0f99d7e40001441d9dbb87e993e2 fix(ci): anchor accepted stepcap/bare-sha sources in trusted-base selector qualification (#1043)
+0267dbdb71f63a2c77e193618e6fba4106e5cd5b c34740fa5fee5c5c7b07af03c3eb929386840e93 fix #1042: restore pr-gate-plan.py to accepted D0 blob (remove residual blank line at L748)
+c34740fa5fee5c5c7b07af03c3eb929386840e93 267152e8ef1c8873bb1ec6518d4d714052ad8e10 fix #1042: remove residual blank lines from planner files to match accepted D0 blobs
+267152e8ef1c8873bb1ec6518d4d714052ad8e10 7bdd46fd7cba2a78c56eebe0da7076dc6a252321 fix(ci): remove f14's branch-local DISPATCH_GATE_REF_* block for #1042 PR atomic gate
+9f4916be333d0f99d7e40001441d9dbb87e993e2 2f005813dc6d7fa94de164388b2531d025af31bc docs(v0.4.26): correct release notes + changelog dates and attribution (#1041)
+7bdd46fd7cba2a78c56eebe0da7076dc6a252321 526f6a87c13b98e26f66e9c3cee7537dc11eb016 2f005813dc6d7fa94de164388b2531d025af31bc Merge develop 2f005813 into fix/atomic-bare-sha-dispatch (F14 selector sync)
+
+M	.github/workflows/ci.yml
+M	.github/workflows/pre-release-runtime-suite.yml
+M	.github/workflows/targeted-demo-acceptance.yml
+A	scripts/targeted-gate-ref.py
+A	scripts/test_targeted_gate_ref.py
+
+landed 1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c
+
+PR 1047 head 40351fd30af9d1b12a3ea5b4b450056ea714f475 base a2abc17a8057ba972cb9ed481fad229fe9f12824 merge f39295680d41290fc505c0a8cc1769da51699293
+40351fd30af9d1b12a3ea5b4b450056ea714f475 79e0aa2b03f66e1a056976d018f4f97949e51417 a2abc17a8057ba972cb9ed481fad229fe9f12824
+
+40351fd30af9d1b12a3ea5b4b450056ea714f475 79e0aa2b03f66e1a056976d018f4f97949e51417 a2abc17a8057ba972cb9ed481fad229fe9f12824 Merge remote-tracking branch 'origin/develop' into fix/f27-gateplan-apptest-lane
+a2abc17a8057ba972cb9ed481fad229fe9f12824 24c33afdc89f166bf4ed747445078fa47489b562 ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058) (#1059)
+24c33afdc89f166bf4ed747445078fa47489b562 79e64084d1b090d2bcd8e610f05178871ee4e716 docs(ci): add Core-921 CI binding qualification for #1056 (#1058)
+79e64084d1b090d2bcd8e610f05178871ee4e716 1861ed07888a1ec22c218ca491d23ee54f48e261 fix(cli): add timeout guard to freshFacts refresh callback (#1045) (#1053)
+79e0aa2b03f66e1a056976d018f4f97949e51417 1861ed07888a1ec22c218ca491d23ee54f48e261 ci(gate-plan): qualify the exact appid env-robust test-only source (#1046)
+1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+49d396c48d2dee8b65cd59497c9f74692954975c 5be7dabd5c40a99e1623eb1a72cae943f9e0470d fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)
+5be7dabd5c40a99e1623eb1a72cae943f9e0470d 9f4916be333d0f99d7e40001441d9dbb87e993e2 fix(ci): anchor accepted stepcap/bare-sha sources in trusted-base selector qualification (#1043)
+
+M	scripts/pr-gate-plan.py
+M	scripts/test_pr_gate_plan.py
+
+landed f39295680d41290fc505c0a8cc1769da51699293 a2abc17a8057ba972cb9ed481fad229fe9f12824
+
+PR 1053 head 8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c base 1861ed07888a1ec22c218ca491d23ee54f48e261 merge 79e64084d1b090d2bcd8e610f05178871ee4e716
+8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c 1861ed07888a1ec22c218ca491d23ee54f48e261
+
+8eef2b8e25fa92dd7e7cf6ece4c7c5ff50b69d3c 1861ed07888a1ec22c218ca491d23ee54f48e261 fix(cli): add timeout guard to freshFacts refresh callback (#1045)
+1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+49d396c48d2dee8b65cd59497c9f74692954975c 5be7dabd5c40a99e1623eb1a72cae943f9e0470d fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)
+5be7dabd5c40a99e1623eb1a72cae943f9e0470d 9f4916be333d0f99d7e40001441d9dbb87e993e2 fix(ci): anchor accepted stepcap/bare-sha sources in trusted-base selector qualification (#1043)
+9f4916be333d0f99d7e40001441d9dbb87e993e2 2f005813dc6d7fa94de164388b2531d025af31bc docs(v0.4.26): correct release notes + changelog dates and attribution (#1041)
+2f005813dc6d7fa94de164388b2531d025af31bc 281d1ae0735a85148eb143064043f5509a19e20e fix(cli): plan authoritative zero-impact envelope for Edit preview (#1038)
+281d1ae0735a85148eb143064043f5509a19e20e 2adae47afddc299d06dbc34eb16a8e011c14b6dc ci(gate-plan): qualify the zero-needs Edit preview envelope source (#1040)
+2adae47afddc299d06dbc34eb16a8e011c14b6dc 078fdd0a57092f2649c92c93df901a70b3d2b11f test(core-921): execute edit refusal and partial-result guards via Guided lane (Source C) (#1036)
+
+M	cmd/baha/app_wizard_controller.go
+M	cmd/baha/app_wizard_controller_test.go
+
+landed 79e64084d1b090d2bcd8e610f05178871ee4e716 1861ed07888a1ec22c218ca491d23ee54f48e261
+
+PR 1058 head 4046bc93ebc7ce346d50d776551fba5ec60b6abf base 79e64084d1b090d2bcd8e610f05178871ee4e716 merge 24c33afdc89f166bf4ed747445078fa47489b562
+4046bc93ebc7ce346d50d776551fba5ec60b6abf 79e64084d1b090d2bcd8e610f05178871ee4e716
+
+4046bc93ebc7ce346d50d776551fba5ec60b6abf 79e64084d1b090d2bcd8e610f05178871ee4e716 docs(ci): add Core-921 CI binding qualification for #1056
+79e64084d1b090d2bcd8e610f05178871ee4e716 1861ed07888a1ec22c218ca491d23ee54f48e261 fix(cli): add timeout guard to freshFacts refresh callback (#1045) (#1053)
+1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+49d396c48d2dee8b65cd59497c9f74692954975c 5be7dabd5c40a99e1623eb1a72cae943f9e0470d fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)
+5be7dabd5c40a99e1623eb1a72cae943f9e0470d 9f4916be333d0f99d7e40001441d9dbb87e993e2 fix(ci): anchor accepted stepcap/bare-sha sources in trusted-base selector qualification (#1043)
+9f4916be333d0f99d7e40001441d9dbb87e993e2 2f005813dc6d7fa94de164388b2531d025af31bc docs(v0.4.26): correct release notes + changelog dates and attribution (#1041)
+2f005813dc6d7fa94de164388b2531d025af31bc 281d1ae0735a85148eb143064043f5509a19e20e fix(cli): plan authoritative zero-impact envelope for Edit preview (#1038)
+281d1ae0735a85148eb143064043f5509a19e20e 2adae47afddc299d06dbc34eb16a8e011c14b6dc ci(gate-plan): qualify the zero-needs Edit preview envelope source (#1040)
+
+M	docs/internal/ci-binding-qualifications.md
+
+landed 24c33afdc89f166bf4ed747445078fa47489b562 79e64084d1b090d2bcd8e610f05178871ee4e716
+
+PR 1059 head c73b9c70c4dd43609146fe12fdb5b6180a430674 base 24c33afdc89f166bf4ed747445078fa47489b562 merge a2abc17a8057ba972cb9ed481fad229fe9f12824
+c73b9c70c4dd43609146fe12fdb5b6180a430674 24c33afdc89f166bf4ed747445078fa47489b562
+
+c73b9c70c4dd43609146fe12fdb5b6180a430674 24c33afdc89f166bf4ed747445078fa47489b562 ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058)
+24c33afdc89f166bf4ed747445078fa47489b562 79e64084d1b090d2bcd8e610f05178871ee4e716 docs(ci): add Core-921 CI binding qualification for #1056 (#1058)
+79e64084d1b090d2bcd8e610f05178871ee4e716 1861ed07888a1ec22c218ca491d23ee54f48e261 fix(cli): add timeout guard to freshFacts refresh callback (#1045) (#1053)
+1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+49d396c48d2dee8b65cd59497c9f74692954975c 5be7dabd5c40a99e1623eb1a72cae943f9e0470d fix(ci): data-capabilities gate step budget 8->25 min per q21 recipe (#1039)
+5be7dabd5c40a99e1623eb1a72cae943f9e0470d 9f4916be333d0f99d7e40001441d9dbb87e993e2 fix(ci): anchor accepted stepcap/bare-sha sources in trusted-base selector qualification (#1043)
+9f4916be333d0f99d7e40001441d9dbb87e993e2 2f005813dc6d7fa94de164388b2531d025af31bc docs(v0.4.26): correct release notes + changelog dates and attribution (#1041)
+2f005813dc6d7fa94de164388b2531d025af31bc 281d1ae0735a85148eb143064043f5509a19e20e fix(cli): plan authoritative zero-impact envelope for Edit preview (#1038)
+
+M	scripts/pr-gate-plan.py
+M	scripts/test_pr_gate_plan.py
+
+landed a2abc17a8057ba972cb9ed481fad229fe9f12824 24c33afdc89f166bf4ed747445078fa47489b562
+
+PR 1056 head 425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68 base f39295680d41290fc505c0a8cc1769da51699293 merge af48b3a3c404e55215f42f5eb5b8bdd8ce5bed05
+425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68 49c94d8bf7a1767c7c3472958b12bbc7f0b4db62
+
+425eaa9671ca8911d5fe8d420fdc5e4f3a7f5a68 49c94d8bf7a1767c7c3472958b12bbc7f0b4db62 test(ci): use ignore_errors cleanup for nested .git in pins-data tests
+49c94d8bf7a1767c7c3472958b12bbc7f0b4db62 9d1624e2b6641404d09cfd77cd92e250ec5e6dbf ci(akte): Core-921 CI binding qualification for #1056 - refresh reviewed_head/file_hashes for PR head 9d1624e2
+9d1624e2b6641404d09cfd77cd92e250ec5e6dbf 9243059d5622ed5f66eebc44ae047591ed8b9d70 fix(ci): qualify docs/releases/*.consumer-pins.json as pins-data path (o114 restore)
+9243059d5622ed5f66eebc44ae047591ed8b9d70 1e305cf82783365c0774fb0a218286d92b0f8a24 fix(ci): qualify docs/releases/*.consumer-pins.json as pins-data path
+1e305cf82783365c0774fb0a218286d92b0f8a24 8a47a1d55b579c553252eb40ff06145bf882f9bd ci(planner): accept qualification register entries as sole authority for the three CI-script paths
+8a47a1d55b579c553252eb40ff06145bf882f9bd f39295680d41290fc505c0a8cc1769da51699293 test(ci): fix TrustedBindingActivationTests index-reset race (o90 prereq)
+f39295680d41290fc505c0a8cc1769da51699293 a2abc17a8057ba972cb9ed481fad229fe9f12824 ci(gate-plan): qualify the exact appid env-robust test-only source (#1046) (#1047)
+a2abc17a8057ba972cb9ed481fad229fe9f12824 24c33afdc89f166bf4ed747445078fa47489b562 ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058) (#1059)
+
+M	docs/internal/ci-binding-qualifications.md
+M	scripts/pr-check-runner.py
+M	scripts/pr-gate-plan.py
+M	scripts/test_pr_gate_plan.py
+
+PR 1060 head 6a0d36dad2a778ab61a58594489c9fedc88e4c0f base f39295680d41290fc505c0a8cc1769da51699293 merge 0189f74058c0e0507382c5eeb44c9068e297a167
+6a0d36dad2a778ab61a58594489c9fedc88e4c0f 9ec2528253e1d91c48f81985f7c696a663a29fd6
+
+6a0d36dad2a778ab61a58594489c9fedc88e4c0f 9ec2528253e1d91c48f81985f7c696a663a29fd6 fix(ci): complete OpenBao gate-plan execution and fail-closed handling (#1060 fix)
+9ec2528253e1d91c48f81985f7c696a663a29fd6 34846e6cedc3614763f49281b233ba73266ae75e ci(gate-plan): add Trusted-Binding-Akte entry for #1060
+34846e6cedc3614763f49281b233ba73266ae75e f39295680d41290fc505c0a8cc1769da51699293 ci(gate-plan): qualify internal/openbao paths for native validation (#1052 prerequisite)
+f39295680d41290fc505c0a8cc1769da51699293 a2abc17a8057ba972cb9ed481fad229fe9f12824 ci(gate-plan): qualify the exact appid env-robust test-only source (#1046) (#1047)
+a2abc17a8057ba972cb9ed481fad229fe9f12824 24c33afdc89f166bf4ed747445078fa47489b562 ci(gate-plan): bootstrap-eligible exception for the two bootstrap PRs (#1058) (#1059)
+24c33afdc89f166bf4ed747445078fa47489b562 79e64084d1b090d2bcd8e610f05178871ee4e716 docs(ci): add Core-921 CI binding qualification for #1056 (#1058)
+79e64084d1b090d2bcd8e610f05178871ee4e716 1861ed07888a1ec22c218ca491d23ee54f48e261 fix(cli): add timeout guard to freshFacts refresh callback (#1045) (#1053)
+1861ed07888a1ec22c218ca491d23ee54f48e261 49d396c48d2dee8b65cd59497c9f74692954975c fix(ci): resolve bare-SHA dispatch inputs before atomic gate checkout (v2, fresh base event) (#1044)
+
+M	.github/workflows/ci.yml
+M	docs/internal/ci-binding-qualifications.md
+M	scripts/pr-check-runner.py
+M	scripts/pr-gate-plan.py
+M	scripts/test_pr_gate_plan.py

@@ -1,0 +1,13 @@
+{
+  "utc": "2026-10-24T09:47:20.215509+00:00",
+  "command": [
+    "gh",
+    "api",
+    "user",
+    "--jq",
+    ".login"
+  ],
+  "exit": 0,
+  "stdout": "mcpdev80\n",
+  "stderr": ""
+}

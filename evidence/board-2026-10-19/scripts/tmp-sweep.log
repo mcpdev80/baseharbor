@@ -1,0 +1,3 @@
+tmp-sweep: /tmp avail 2310844kB -> 2310840kB (age>6h, protected=42 worktrees)
+tmp-sweep: /tmp avail 6625908kB -> 6625908kB (age>6h, protected=46 worktrees)
+tmp-sweep: /tmp avail 6664256kB -> 6664256kB (age>6h, protected=46 worktrees)

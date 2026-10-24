@@ -1,0 +1,13 @@
+{
+  "utc": "2026-10-24T09:52:05.884673+00:00",
+  "head": "e832d5651752121dea9484e18422d3e6459f9a72",
+  "base": "7c7093d9671dfaa1aafeb92d62bbe9d074f9f47e",
+  "file_sha256": "0915a4a8e4f8c31c3bf07c6f122b28bf301b55f3e94e3b34c7b5459073f219a0",
+  "bindings": {
+    "schema": "baseharbor.ecosystem-candidate/v1",
+    "release": "0.4.26",
+    "core": "1861ed07888a1ec22c218ca491d23ee54f48e261",
+    "demo": "25c319697fd3d89d894943e0f44cd3d5dde8b198",
+    "console": "69d1d14007fa43dc0c0457c3347280be7f802818"
+  }
+}

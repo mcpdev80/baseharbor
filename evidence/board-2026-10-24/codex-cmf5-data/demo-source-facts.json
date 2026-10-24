@@ -1,0 +1,34 @@
+{
+  "head": {
+    "sha": "f57c8b6e5ff39d0873df62b26272962765e88d6e",
+    "tree": "9a25907b7561d07c734022cf585ee43b06311c6a",
+    "hashes": {
+      "baseharbor-core.ref": "a2c83515831054bb90a7df37e7b1c01c12463a3f6478a41b08f3b132a47f58b7",
+      "scripts/failure-runtime-diagnostics.sh": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f",
+      ".github/workflows/v0424-targeted.yml": "146e001a906714e5290d2fa91289733573e3572186f1aa6e7f4001ecee370926"
+    },
+    "core_ref": "1861ed07888a1ec22c218ca491d23ee54f48e261"
+  },
+  "base": {
+    "sha": "82d042bc9b2393733858fd5fc9dd42a7f5491ea9",
+    "tree": "c5b7966f482a198b2a6167126b794bfbb1f63ba5",
+    "hashes": {
+      "baseharbor-core.ref": "ec94c09ef271d04cba2291e3d11b71f0f322394d2713b1c30a55abbad4e05b66",
+      "scripts/failure-runtime-diagnostics.sh": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f",
+      ".github/workflows/v0424-targeted.yml": "146e001a906714e5290d2fa91289733573e3572186f1aa6e7f4001ecee370926"
+    },
+    "core_ref": "2adae47afddc299d06dbc34eb16a8e011c14b6dc"
+  },
+  "run": {
+    "sha": "25c319697fd3d89d894943e0f44cd3d5dde8b198",
+    "tree": "1a2e53aaf7f228a2dc865133696434c012e4ff20",
+    "hashes": {
+      "baseharbor-core.ref": "a2c83515831054bb90a7df37e7b1c01c12463a3f6478a41b08f3b132a47f58b7",
+      "scripts/failure-runtime-diagnostics.sh": "f31bb1c0131d0f22c8449d696cd0c7bebd4e113211504e25bdf96c217625a276",
+      ".github/workflows/v0424-targeted.yml": "dd75f298e381bd9c663683324f8a5c93380744934f3bce16f98c9fdfdf4a7b29"
+    },
+    "core_ref": "1861ed07888a1ec22c218ca491d23ee54f48e261"
+  },
+  "PR_diff": "M\tbaseharbor-core.ref\n",
+  "run_to_candidate_diff": "diff --git a/.github/workflows/v0424-targeted.yml b/.github/workflows/v0424-targeted.yml\nindex 0693ee4d..bc0b7257 100644\n--- a/.github/workflows/v0424-targeted.yml\n+++ b/.github/workflows/v0424-targeted.yml\n@@ -88,7 +88,5 @@ jobs:\n             ${{ runner.temp }}/demo-evidence/report.md\n             ${{ runner.temp }}/demo-evidence/native-topology-*.json\n             ${{ runner.temp }}/demo-evidence/recovery-qualified.json\n-            ${{ runner.temp }}/demo-evidence/failure-runtime/cleanup-preparation/scope-result.json\n+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log\n           if-no-files-found: warn\n-\n-# re-trigger verified Core serveability pre-check [demo-runtime]\ndiff --git a/scripts/failure-runtime-diagnostics.sh b/scripts/failure-runtime-diagnostics.sh\nindex 1558a243..ea897dfb 100644\n--- a/scripts/failure-runtime-diagnostics.sh\n+++ b/scripts/failure-runtime-diagnostics.sh\n@@ -38,20 +38,9 @@ native_env = dict(os.environ)\n if engine == 'podman':\n     native_env.pop('XDG_CONFIG_HOME', None)\n     native_env.pop('XDG_DATA_HOME', None)\n-# The podman rootless daemon is socket-activated and can stall on its first\n-# native call after a long acceptance run (observed: a single `podman ps` on a\n-# cold runner exceeds the 20s per-call ceiling and raises TimeoutExpired, which\n-# surfaces as a spurious cleanup-preparation=1 even though every owned container\n-# is present). Allow a longer overall budget and a wider first-call ceiling for\n-# podman; a genuinely hung call still times out within this budget.\n-deadline = time.monotonic() + (90 if engine == 'podman' else 60)\n-# Per-call ceiling: podman's rootless daemon is socket-activated and can stall\n-# on its first native call after a long acceptance run; docker stays tight.\n-call_limit = 60 if engine == 'podman' else 20\n+deadline = time.monotonic() + 60\n \n-def run(args, *, native=False, limit=0, inputdata=None):\n-    if limit == 0:\n-        limit = call_limit\n+def run(args, *, native=False, limit=20, inputdata=None):\n     remaining = deadline - time.monotonic()\n     if remaining <= 0:\n         raise TimeoutError('owned runtime diagnostic budget exhausted')\n"
+}

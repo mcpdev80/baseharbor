@@ -1,0 +1,12 @@
+{
+  "utc": "2026-10-24T10:00:35.666785+00:00",
+  "command": [
+    "gh",
+    "api",
+    "--paginate",
+    "repos/mcpdev80/baseharbor/pulls/1060/reviews"
+  ],
+  "exit": 0,
+  "stdout": "[]",
+  "stderr": ""
+}

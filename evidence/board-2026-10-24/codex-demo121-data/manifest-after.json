@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-24T10:11:20.508065+00:00",
+  "head": "f57c8b6e5ff39d0873df62b26272962765e88d6e",
+  "base": "82d042bc9b2393733858fd5fc9dd42a7f5491ea9",
+  "state": "open",
+  "merged": false,
+  "files": {
+    "baseharbor-core.ref": {
+      "head": "a2c83515831054bb90a7df37e7b1c01c12463a3f6478a41b08f3b132a47f58b7",
+      "base": "ec94c09ef271d04cba2291e3d11b71f0f322394d2713b1c30a55abbad4e05b66"
+    },
+    "scripts/failure-runtime-diagnostics.sh": {
+      "head": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f",
+      "base": "650ac86e89d881bda640b49ae2ac177e7510da3df513aef762123b1579ccba8f"
+    }
+  }
+}

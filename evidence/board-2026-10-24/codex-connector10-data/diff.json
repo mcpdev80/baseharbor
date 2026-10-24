@@ -1,0 +1,5 @@
+{
+  "exit": 0,
+  "stdout": "diff --git a/integration-candidate.json b/integration-candidate.json\nindex ebd75bc..9463207 100644\n--- a/integration-candidate.json\n+++ b/integration-candidate.json\n@@ -1,7 +1,7 @@\n {\n   \"schema\": \"baseharbor.ecosystem-candidate/v1\",\n   \"release\": \"0.4.26\",\n-  \"core\": \"2adae47afddc299d06dbc34eb16a8e011c14b6dc\",\n-  \"demo\": \"896dc3cb68a8c9b9585940c4696410de5a338c52\",\n-  \"console\": \"PENDING-FREEZE-DEMO: replace with the v0.4.26 frozen Console SHA once Console U is built from D (stays PENDING until Console U exists)\"\n+  \"core\": \"1861ed07888a1ec22c218ca491d23ee54f48e261\",\n+  \"demo\": \"25c319697fd3d89d894943e0f44cd3d5dde8b198\",\n+  \"console\": \"69d1d14007fa43dc0c0457c3347280be7f802818\"\n }\n",
+  "stderr": ""
+}

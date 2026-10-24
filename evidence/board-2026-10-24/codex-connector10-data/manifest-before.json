@@ -1,0 +1,12 @@
+{
+  "head": "e832d5651752121dea9484e18422d3e6459f9a72",
+  "base": "7c7093d9671dfaa1aafeb92d62bbe9d074f9f47e",
+  "files": {
+    "integration-candidate.json": {
+      "head": "0915a4a8e4f8c31c3bf07c6f122b28bf301b55f3e94e3b34c7b5459073f219a0",
+      "base": "e9d5a6b0deb01e111ae58f463385d413c97aab0a56cf19872cbe03892758781f",
+      "canonical": "0915a4a8e4f8c31c3bf07c6f122b28bf301b55f3e94e3b34c7b5459073f219a0",
+      "old-pr": "a7100fd701b36c6c4d45b0a9669f5257b965c9ebf38a0e9bf7d0b3cab2585b4d"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "ancestor": "7c7093d9671dfaa1aafeb92d62bbe9d074f9f47e",
+    "descendant": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+    "exit": 1,
+    "left_right_count": "2\t3"
+  },
+  {
+    "ancestor": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+    "descendant": "7c7093d9671dfaa1aafeb92d62bbe9d074f9f47e",
+    "exit": 1,
+    "left_right_count": "3\t2"
+  },
+  {
+    "ancestor": "7c7093d9671dfaa1aafeb92d62bbe9d074f9f47e",
+    "descendant": "e832d5651752121dea9484e18422d3e6459f9a72",
+    "exit": 0,
+    "left_right_count": "0\t1"
+  },
+  {
+    "ancestor": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+    "descendant": "e832d5651752121dea9484e18422d3e6459f9a72",
+    "exit": 1,
+    "left_right_count": "3\t3"
+  },
+  {
+    "ancestor": "e832d5651752121dea9484e18422d3e6459f9a72",
+    "descendant": "df1f4378d8c7fdc3e174a1e9dc8ad0155a955571",
+    "exit": 1,
+    "left_right_count": "3\t3"
+  },
+  {
+    "ancestor": "2223506cca5c388752a6d6c88567fcc77f46119b",
+    "descendant": "e832d5651752121dea9484e18422d3e6459f9a72",
+    "exit": 1,
+    "left_right_count": "1\t1"
+  }
+]

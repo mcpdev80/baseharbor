@@ -1,0 +1,69 @@
+{
+  "fixture_only_not_remote_commits": true,
+  "R": "14731c1015c34d0b93d1020814c5943d7d588e5b",
+  "Q": "1097db3684f4ff0d50c06127dc1dc6e3dadb2eaa",
+  "H": "3d6b1009810c11ba6c03836e9b0cad3b444c63c8",
+  "H_parents": "3d6b1009810c11ba6c03836e9b0cad3b444c63c8 14731c1015c34d0b93d1020814c5943d7d588e5b 1097db3684f4ff0d50c06127dc1dc6e3dadb2eaa",
+  "record": {
+    "repository": "mcpdev80/baseharbor",
+    "target_branch": "develop",
+    "reviewed_head": "14731c1015c34d0b93d1020814c5943d7d588e5b",
+    "files": {
+      "scripts/pr-check-runner.py": "modified",
+      "scripts/pr-gate-plan.py": "modified",
+      "scripts/test_pr_gate_plan.py": "modified"
+    },
+    "file_hashes": {
+      "scripts/pr-check-runner.py": "5f255bc2ebd20c2d96112104788cbefbd2633001556ab9509e405196b12b26fe",
+      "scripts/pr-gate-plan.py": "0218dbad0dc324795ef420e08705889be79700c05c5211b83e67c0e0f8616db2",
+      "scripts/test_pr_gate_plan.py": "91aa561c42aac415084f1852f2afec6b6b317378650d8def1060832ff0b4b4b0"
+    },
+    "required_checks": [
+      "pr-planner-tests",
+      "ci-policy",
+      "ci-executor-verifier-tests"
+    ]
+  },
+  "diff": {
+    "target_base_sha": "1097db3684f4ff0d50c06127dc1dc6e3dadb2eaa",
+    "head_sha": "3d6b1009810c11ba6c03836e9b0cad3b444c63c8",
+    "integration_sha": "8bebf844fc84732e727dc2eb316ff3b330fe78aa",
+    "merge_base_sha": "1097db3684f4ff0d50c06127dc1dc6e3dadb2eaa",
+    "broad_required": false,
+    "reasons": [],
+    "changes": [
+      {
+        "status": "modified",
+        "path": "scripts/pr-check-runner.py"
+      },
+      {
+        "status": "modified",
+        "path": "scripts/pr-gate-plan.py"
+      },
+      {
+        "status": "modified",
+        "path": "scripts/test_pr_gate_plan.py"
+      }
+    ]
+  },
+  "binding_checks": [
+    {
+      "id": "pr-planner-tests",
+      "owner": "scripts/test_pr_gate_plan.py",
+      "command": "python3 -m unittest scripts/test_pr_gate_plan.py"
+    },
+    {
+      "id": "ci-policy",
+      "owner": "scripts/ci-workflow-policy.sh",
+      "command": "bash scripts/ci-workflow-policy.sh"
+    },
+    {
+      "id": "ci-executor-verifier-tests",
+      "owner": "core-893 CI executor/verifier",
+      "command": "PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py"
+    }
+  ],
+  "zero_merge_head_equals_reviewed": true,
+  "clean_two_parent_merge": true,
+  "real_head_stale_record_chain": false
+}

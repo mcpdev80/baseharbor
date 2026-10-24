@@ -1,0 +1,14 @@
+{
+  "utc": "2026-10-24T10:10:16.219748+00:00",
+  "command": [
+    "gh",
+    "pr",
+    "diff",
+    "121",
+    "--repo",
+    "mcpdev80/baseharbor-demo"
+  ],
+  "exit": 0,
+  "stdout": "diff --git a/baseharbor-core.ref b/baseharbor-core.ref\nindex 0f47491..2bae2e9 100644\n--- a/baseharbor-core.ref\n+++ b/baseharbor-core.ref\n@@ -1 +1 @@\n-2adae47afddc299d06dbc34eb16a8e011c14b6dc\n+1861ed07888a1ec22c218ca491d23ee54f48e261\n",
+  "stderr": ""
+}

@@ -1,0 +1,1 @@
+> e832d5651752121dea9484e18422d3e6459f9a72 v0.4.26: connector freeze candidate on main lineage (Ancestry fix)

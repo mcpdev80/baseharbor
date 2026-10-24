@@ -1,0 +1,49 @@
+{
+  "probe_scope": "Bounded deterministic source review; synthetic planner inputs, no native tests or CI execution.",
+  "internal/openbao/bootstrap_test.go modified": {
+    "coverage_status": "resolved",
+    "selected_gates": [],
+    "validations": [
+      "openbao-package-tests",
+      "source-contracts"
+    ],
+    "unresolved": []
+  },
+  "internal/openbao/unreviewed_security_mutation.go added": {
+    "coverage_status": "resolved",
+    "selected_gates": [],
+    "validations": [
+      "openbao-package-tests",
+      "source-contracts"
+    ],
+    "unresolved": []
+  },
+  "internal/openbao/bootstrap.go deleted": {
+    "coverage_status": "resolved",
+    "selected_gates": [],
+    "validations": [
+      "openbao-package-tests",
+      "source-contracts"
+    ],
+    "unresolved": []
+  },
+  "internal/unreviewed_security_mutation.go added": {
+    "coverage_status": "unresolved",
+    "selected_gates": [],
+    "validations": [],
+    "unresolved": [
+      "unknown impact for internal/unreviewed_security_mutation.go"
+    ]
+  },
+  "actual_validation_case_with_openbao_id": {
+    "exit": 2,
+    "stdout": "",
+    "stderr": "",
+    "expected_failure": true
+  },
+  "cmd_baha_TestOpenbao_source_search": {
+    "exit": 1,
+    "stdout": "",
+    "stderr": ""
+  }
+}

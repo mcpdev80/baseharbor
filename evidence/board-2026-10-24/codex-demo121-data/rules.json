@@ -1,0 +1,11 @@
+{
+  "utc": "2026-10-24T10:10:16.413828+00:00",
+  "command": [
+    "gh",
+    "api",
+    "repos/mcpdev80/baseharbor-demo/rules/branches/main"
+  ],
+  "exit": 0,
+  "stdout": "[]",
+  "stderr": ""
+}

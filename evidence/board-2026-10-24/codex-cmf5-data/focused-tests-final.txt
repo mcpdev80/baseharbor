@@ -1,0 +1,11 @@
+test_forged_inventory_integration_and_followup_content_fail_closed (isolated_trusted_tests.TrustedBindingActivationTests.test_forged_inventory_integration_and_followup_content_fail_closed) ... ok
+test_malformed_incomplete_or_weakened_records_fail_closed (isolated_trusted_tests.TrustedBindingActivationTests.test_malformed_incomplete_or_weakened_records_fail_closed) ... ok
+test_real_git_exact_candidate_and_raw_crlf_blobs_select_all_checks (isolated_trusted_tests.TrustedBindingActivationTests.test_real_git_exact_candidate_and_raw_crlf_blobs_select_all_checks) ... ok
+test_real_git_record_target_merge_keeps_frozen_bytes_and_current_target_ancestry (isolated_trusted_tests.TrustedBindingActivationTests.test_real_git_record_target_merge_keeps_frozen_bytes_and_current_target_ancestry) ... ok
+test_real_git_untrusted_sideparent_dirty_merge_and_copied_tree_fail_closed (isolated_trusted_tests.TrustedBindingActivationTests.test_real_git_untrusted_sideparent_dirty_merge_and_copied_tree_fail_closed) ... ok
+test_untrusted_missing_and_wrong_context_fail_closed (isolated_trusted_tests.TrustedBindingActivationTests.test_untrusted_missing_and_wrong_context_fail_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 1.377s
+
+OK

@@ -1,0 +1,18 @@
+{
+  "head": "9ec2528253e1d91c48f81985f7c696a663a29fd6",
+  "base": "f39295680d41290fc505c0a8cc1769da51699293",
+  "files": {
+    "docs/internal/ci-binding-qualifications.md": {
+      "head": "609257b57d8bf46d4736db9838a12bf5e990dc891e3d610e275352c2a99ebfca",
+      "base": "cd88a170a45a001e13fb4f88bcdbfa906352746ff7f145630791efe46aa43c86"
+    },
+    "scripts/pr-check-runner.py": {
+      "head": "5fe7617cd9111774b76423c4850aefbe3503059a2da072ebce77b4a0cc9f2a8a",
+      "base": "ec6b22d98eb9191d170af5149d489add136ec3d2d692d4e1008cb18f616b76ed"
+    },
+    "scripts/pr-gate-plan.py": {
+      "head": "6d20a39e6893241ea7ec8453ad91414ca9035e6014abc21b1c6a99bbb3c768a3",
+      "base": "253d6bec0801b2155fcf61527839522c0b00ed1e08fd8e7739ff66d601c09ba0"
+    }
+  }
+}
