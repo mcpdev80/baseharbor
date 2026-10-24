@@ -238,6 +238,18 @@ class CandidateTriggerTests(unittest.TestCase):
                     module.publish("example/repo", 15, "a" * 40)
                 self.assertEqual(api.call_count, 1)
 
+    def test_gh_api_failure_does_not_claim_success(self):
+        path = ROOT / "scripts/submit-pr-candidate.py"
+        spec = importlib.util.spec_from_file_location("submit_pr_candidate_api", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        import subprocess
+        with patch.object(module.subprocess, "run", return_value=subprocess.CompletedProcess(
+                args=[], returncode=1, stdout="", stderr="HTTP 403 forbidden")):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                module.gh("POST", "repos/example/repo/issues/15/labels",
+                          data={"labels": ["ci:validate"]})
+
     def test_gc_pr_events_are_candidate_only(self):
         source = GC.read_text()
         self.assertIn("types: [opened, ready_for_review, labeled]", source)
