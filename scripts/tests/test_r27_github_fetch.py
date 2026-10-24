@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from r27_github_fetch import fetch_verified_origin
+from r27_github_fetch import fetch_verified_origin, fetch_authenticated_origin
 from r27_github_origin import OriginError
 REPO="mcpdev80/baseharbor"
 SHA="a"*40
@@ -15,6 +15,9 @@ JOB={"id":456,"run_id":123,"run_attempt":2,"name":NAME,
 ARGS=dict(repository=REPO,head_sha=SHA,run_id=123,attempt=2,job_id=456,
           expected_job_name=NAME,workflow_path=PATH)
 class FetchTests(unittest.TestCase):
+ def test_authenticated_entrypoint_rejects_missing_token(self):
+  with self.assertRaisesRegex(OriginError,"EVIDENCE_TRUST"):
+   fetch_authenticated_origin("",**ARGS)
  def test_exact_success(self):
   seen=[]
   def get(path):

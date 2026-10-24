@@ -4,6 +4,7 @@ The injected transport must supply authenticated HTTPS GET responses. This
 module validates fetch shape and pagination, not token trust or CI authority.
 """
 from r27_github_origin import OriginError, verify_complete_inventory, verify_origin
+from r27_github_transport import github_getter
 
 
 def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
@@ -40,3 +41,8 @@ def fetch_verified_origin(get_json, *, repository, head_sha, run_id, attempt,
     except Exception as exc:
         raise OriginError("EVIDENCE_ORIGIN: authenticated fetch failed") from exc
     raise OriginError("EVIDENCE_ORIGIN: job inventory never completed")
+
+
+def fetch_authenticated_origin(token, **scope):
+    """Use the pinned GitHub API origin with caller-provided trusted credential."""
+    return fetch_verified_origin(github_getter(token), **scope)
