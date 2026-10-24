@@ -38,6 +38,43 @@ def planner_core752_merge(root, target, head, reviewed):
     return planner.core752_reviewed_merge_chain(target, head, reviewed, root)
 
 
+class R27PrototypeExactPathTests(unittest.TestCase):
+    def test_each_reviewed_path_requires_focused_checks(self):
+        for path in sorted(planner.R27_PROTOTYPE_PATHS):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'],
+                                 result['unresolved_coverage'])
+                checks = {c['id'] for c in result['required_validation_checks']}
+                self.assertIn('r27-prototype-regressions', checks)
+                self.assertIn('pr-planner-tests', checks)
+
+    def test_unreviewed_paths_remain_unresolved(self):
+        for path in ('scripts/r27_unreviewed.py',
+                     'scripts/tests/test_r27_unreviewed.py',
+                     '.github/workflows/r27-unreviewed.yml',
+                     'scripts/evidence-unreviewed.py'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_delete_rename_type_change_and_broad_diff_fail_closed(self):
+        path = 'scripts/r27_archive_resolver.py'
+        for change in ({'path': path, 'status': 'deleted'},
+                       {'path': path, 'status': 'type_changed'},
+                       {'old_path': path, 'new_path': 'scripts/r27_unreviewed.py',
+                        'status': 'renamed'}):
+            with self.subTest(change=change):
+                result = planner.plan(diff([change]), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+        result = planner.plan(diff(paths(path), broad=True), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_no_prototype_check_can_be_satisfied_by_empty_inventory(self):
+        result = planner.plan(diff([]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
 class AppIDFixtureExactQualificationTests(unittest.TestCase):
     def test_only_exact_reviewed_fixture_source_qualifies(self):
         reviewed = paths(*planner.APPID_FIX_REVIEWED_FILES)

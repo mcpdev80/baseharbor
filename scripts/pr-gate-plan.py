@@ -589,6 +589,29 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
+R27_PROTOTYPE_PATHS = frozenset({
+    'scripts/r27_archive_publisher.py',
+    'scripts/r27_archive_resolver.py',
+    'scripts/r27_evidence_receipt.py',
+    'scripts/r27_evidence_coverage.py',
+    'scripts/r27_verified_coverage.py',
+    'scripts/tests/test_r27_archive_publisher.py',
+    'scripts/tests/test_r27_archive_resolver.py',
+    'scripts/tests/test_r27_evidence_receipt.py',
+    'scripts/tests/test_r27_evidence_coverage.py',
+    'scripts/tests/test_r27_verified_coverage.py',
+})
+R27_PROTOTYPE_CHECKS = [{
+    'id': 'r27-prototype-regressions',
+    'owner': 'scripts/tests/test_r27_*.py (untrusted prototype, no issuer authority)',
+    'command': 'PYTHONPATH=scripts python3 -m unittest '
+               'scripts/tests/test_r27_archive_publisher.py '
+               'scripts/tests/test_r27_archive_resolver.py '
+               'scripts/tests/test_r27_evidence_receipt.py '
+               'scripts/tests/test_r27_evidence_coverage.py '
+               'scripts/tests/test_r27_verified_coverage.py',
+}]
+
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -1231,6 +1254,12 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'docker-deployment-unresolved'
             require(CODE_CHECKS)
             unresolved.append('deployment/security/backup script impact needs specific native qualification: ' + path)
+        elif path in R27_PROTOTYPE_PATHS:
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('r27 prototype deletion/rename/type change requires independent review: ' + path)
+            area = 'r27-prototype-exact-path'
+            require(R27_PROTOTYPE_CHECKS)
+            require(CI_CHECKS)
         elif path in PLANNING_WORKFLOWS:
             area = 'documentation-workflow'
             require(DOC_CHECKS)
