@@ -57,3 +57,36 @@ def verify_origin(*, run, jobs, repository, head_sha, run_id, attempt, job_id,
         raise OriginError("EVIDENCE_ORIGIN: ambiguous job name")
     return {"run_id": run_id, "attempt": attempt, "job_id": job_id,
             "head_sha": head_sha, "name": expected_job_name}
+
+
+def verify_complete_inventory(pages, *, max_jobs=1000):
+    """Require all API job pages and declared total before using any job evidence.
+
+    Pages are fetched by an independent authenticated caller. A partial page
+    listing must never qualify a required check or hide a duplicate name.
+    """
+    if not isinstance(pages, list) or not pages or len(pages) > 10:
+        raise OriginError("EVIDENCE_ORIGIN: invalid inventory pages")
+    jobs = []
+    expected_total = None
+    for index, page in enumerate(pages):
+        if not isinstance(page, dict) or type(page.get("total_count")) is not int:
+            raise OriginError("EVIDENCE_ORIGIN: missing inventory total")
+        total = page["total_count"]
+        if total < 1 or total > max_jobs or (expected_total is not None and total != expected_total):
+            raise OriginError("EVIDENCE_ORIGIN: inconsistent inventory count")
+        expected_total = total
+        batch = page.get("jobs")
+        if not isinstance(batch, list) or not batch or len(batch) > 100:
+            raise OriginError("EVIDENCE_ORIGIN: invalid inventory page")
+        if index < len(pages) - 1 and len(batch) != 100:
+            raise OriginError("EVIDENCE_ORIGIN: incomplete intermediate page")
+        jobs.extend(batch)
+    if len(jobs) != expected_total:
+        raise OriginError("EVIDENCE_ORIGIN: incomplete job inventory")
+    ids = [job.get("id") for job in jobs if isinstance(job, dict)]
+    if len(ids) != len(jobs) or any(type(n) is not int or n < 1 for n in ids):
+        raise OriginError("EVIDENCE_ORIGIN: malformed job inventory")
+    if len(set(ids)) != len(ids):
+        raise OriginError("EVIDENCE_ORIGIN: duplicate job IDs")
+    return jobs
