@@ -104,6 +104,31 @@ class PublisherTests(unittest.TestCase):
         with self.assertRaises(ArchiveError):
             self.publish()
 
+    def test_symlink_root_is_rejected_before_staging(self):
+        alias = Path(self.temp.name) / "root-alias"
+        alias.symlink_to(Path(self.temp.name), target_is_directory=True)
+        with self.assertRaises(ArchiveError):
+            publish(alias, "v0.4.27", "candidate", "run-1",
+                    self.manifest, {self.name: self.payload})
+
+    def test_symlink_ancestor_is_rejected_before_staging(self):
+        parent = Path(self.temp.name) / "evidence"
+        external = Path(self.temp.name) / "outside"
+        external.mkdir()
+        parent.symlink_to(external, target_is_directory=True)
+        with self.assertRaises(ArchiveError):
+            self.publish()
+        self.assertEqual(list(external.iterdir()), [])
+
+    def test_symlink_payload_directory_is_rejected(self):
+        self.publish()
+        directory = Path(self.temp.name) / "evidence" / "v0.4.27" / "candidate" / "run-1"
+        payload_dir = directory / "payloads"
+        payload_dir.rename(directory / "saved-payloads")
+        payload_dir.symlink_to(directory / "saved-payloads", target_is_directory=True)
+        with self.assertRaises(ArchiveError):
+            self.publish()
+
     def test_extra_payload(self):
         with self.assertRaises(ArchiveError):
             publish(self.temp.name, "v0.4.27", "candidate", "run-1",
