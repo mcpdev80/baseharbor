@@ -11,7 +11,10 @@
 - #1052: `9f715184`, OPEN, BEHIND; local worktree clean at same head.
 - #1056 P: `b0abe105`, OPEN/BLOCKED after CI success; Codex REQUEST_CHANGES (F1/F2) – correction not started.
 - #1060: fast-forwarded at 13:45:26Z from old `13a05ea4` to tested repair `0f3bd169d4a02c5f019da822b4f45f66b972423e`.
-  - CI run: `40099514587`; observed Workflow policy pass, selected checks still in progress before this handoff.
+  - CI run: `40099514587`, completed failure.
+  - Plan/focused/validation passed; PR Selected Checks error:
+    `BLOCKED: coverage-unresolved: workflow execution/cleanup/evidence impact requires native qualification: .github/workflows/ci.yml; CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py`.
+  - This is a real qualification gap, not GitHub/network or force-push.
   - q122 may have been killed mid evidence; remote state is durable.
 - #1063/Q: MERGED, develop `65aa...`.
 - #1046: `1ec67f8d`, OPEN; exact-anchor qualifier serialized after #1056/#1060.
@@ -41,8 +44,8 @@
    - `evidence/board-2026-10-22/coordinator-plan.md` PLAN section.
 6. Start coordinator/worker pool per RUNBOOK.
 7. Next lane after #1060 CI:
-   - if #1060 exact-H CI green: Codex independent review/merge #1060, then #1052 integration review, then serialized #1056 correction and #1046 qualifier.
-   - if red: one worker correction per failing check, no force/rerun spam.
+   - Next #1060 action is a targeted repair/native-qualification decision for ci.yml and pr-check-runner.py impact.
+   - Do not rerun same CI and do not broaden unknown impact. Codex should inspect run 40099514587 and give one exact recipe.
 
 ## Active at handoff
 - Codex lane fc55 idle (cmf17 advice done, no running action).
