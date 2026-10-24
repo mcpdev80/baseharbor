@@ -49,6 +49,14 @@ trap restore EXIT INT TERM
 exec 9>"$LOCK" || { echo "spawn-lane: cannot open lock $LOCK" >&2; exit 1; }
 flock 9 || { echo "spawn-lane: cannot acquire lock" >&2; exit 1; }
 
+# /tmp is tmpfs (=RAM). Sweep stale lane debris before any new session adds
+# load; stamp keeps it to at most once per 30 min and never blocks a spawn.
+SWEEP_STAMP="$DIR/.tmp-sweep.stamp"
+if [[ ! -f "$SWEEP_STAMP" || -n "$(find "$SWEEP_STAMP" -mmin +30 2>/dev/null)" ]]; then
+  touch "$SWEEP_STAMP" 2>/dev/null || true
+  (setsid bash "$DIR/tmp-sweep.sh" 6 </dev/null >>"$DIR/tmp-sweep.log" 2>&1 &) || true
+fi
+
 # Capacity admission WITH reservation inside the lock (unknown => hold).
 adm="$(RES_OWNER=$$ python3 "$DIR/pool-admission.py" check "$want" 2>&1)"
 adm_rc=$?

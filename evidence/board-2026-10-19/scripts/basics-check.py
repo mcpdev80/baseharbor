@@ -178,7 +178,8 @@ def main(argv):
         st = os.statvfs("/tmp")
         free_mb = st.f_bavail * st.f_frsize // 1048576
         if free_mb < 1500:
-            flags.append("DISK: /tmp only {}MB free (<1500) - bun EFS extraction will fail, sweep before ANY spawn".format(free_mb))
+            flags.append("DISK: /tmp (tmpfs=RAM) only {}MB free (<1500) - "
+                         "run scripts/tmp-sweep.sh before ANY spawn".format(free_mb))
     except Exception:
         pass
     rc, ev, err = sh([sys.executable, os.path.join(HERE, "events-check.py")])
@@ -307,6 +308,26 @@ def main(argv):
                 flags.append("PLAN: {} open step(s), newest lane work must appear here".format(open_steps))
         except Exception as exc:
             flags.append("PLAN: coordinator-plan unreadable ({}) - UNKNOWN".format(exc))
+    # /tmp is tmpfs on this host: every byte there is a byte of RAM. These
+    # pressure signals are appended last so ordering-sensitive dispatch gates
+    # (BOARD/EVENTS/OBS/POOL) keep their positions.
+    try:
+        mem = {}
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                parts = line.split()
+                if parts:
+                    mem[parts[0].rstrip(":")] = int(parts[1])
+        avail_mb = mem.get("MemAvailable", 0) // 1024
+        if avail_mb < 2048:
+            flags.append("RAM: MemAvailable only {}MB (<2048) - /tmp ist tmpfs; "
+                         "scripts/tmp-sweep.sh 3 + Lane-Rotation, keine neuen Spawns".format(avail_mb))
+        eph = os.environ.get("TMPDIR") or "/tmp"
+        if eph.startswith("/tmp"):
+            flags.append("RAM: TMPDIR={} liegt auf tmpfs - ephemere Writes verbrauchen RAM "
+                         "(tmux set-environment -g TMPDIR /home/marcel/tmp-ops)".format(eph))
+    except Exception:
+        pass
     if "--json" in argv:
         print(json.dumps({"flags": flags, "board": detail.get("currency", "unknown"), "reminder-summary": reminder_summary}))
         return 0

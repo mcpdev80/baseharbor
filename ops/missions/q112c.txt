@@ -1,0 +1,21 @@
+FORTSETZUNG deines q112-Auftrags, Ziel bleibt PR #1060 gruen+fresh. Dein Kontext ist ok, deshalb keine neue Lane.
+ARBEITSORT-PFLICHT (neue harte Regel nach Incident#4): erzwinge Worktree-Isolation VOR jedem git-Befehl:
+  cd /home/marcel/dev/baseharbor-ecosystem && pwd   -> MUSS root sein
+  git -C baseharbor worktree add ../worktrees/q112b-rb1060 work/v0.4.26-openbao-gateplan 2>/dev/null || cd worktrees/q112b-rb1060
+  PRUEFE mit pwd -P: der Pfad MUSS .../worktrees/q112b-rb1060 enthalten. Falls nicht: STOP + END Q112C-NOWORKTREE (Root-git ist verboten, du warst dort schon einmal).
+KEIN git im Root-Repo /home/marcel/dev/baseharbor-ecosystem. KEIN Merge/Review/force/--admin.
+ERSTER SCHRITT: Abschnitt "## RUNDE 2 (repair)" in evidence/board-2026-10-24/q112-rebase1060.md + native Todos.
+
+VERFIZIERTER FEHLERSTAND (run 40081554168):
+- PR · Focused Python FAIL: IndentationError unexpected indent in scripts/test_pr_gate_plan.py Zeile 2971 (deine Konfliktloesung hat eine kaputte Zeile hinterlassen: `self.assertEqual('unresolved', result['coverage_status'])` falsch eingerueckt).
+- PR · Validation · pr-planner-tests FAIL (derselbe Grund).
+- PR Selected Checks FAIL (7s, Folge davon).
+- Dein Rebase ging auf a2abc17a; develop ist laengst f3929568 (#1047 gemergt) -> zuschaetzlich BEHIND.
+
+ARBEIT:
+1. Rebase des Branches work/v0.4.26-openbao-gateplan auf origin/develop (f3929568 oder frischer, vor Push neu verifizieren).
+2. scripts/test_pr_gate_plan.py säubern: IndentationError beheben, alle Konfliktreste prüfen (`grep -nE "^(<<<<<<<|=======|>>>>>>>)" scripts/*.py docs/internal/*.md` muss leer sein) und die Testlogik am finalen Stand ernsthaft ausfuehren.
+3. Akte-Hash-Pflicht: reviewed_head = finaler Head, file_hashes = echte sha256 der drei CI-Scripts an DIESEM Head (Hash-Drift-Regel vom 2026-10-24).
+4. LOKAL: `python3 -m pytest scripts/test_pr_gate_plan.py -q` (oder repo-Runner) muss gruen sein, Log in Evidence; `python3 -m py_compile scripts/test_pr_gate_plan.py scripts/pr-gate-plan.py scripts/pr-check-runner.py`.
+5. Push, `gh pr checks 1060` bis final (Guard 20 min). Wenn gruen+CLEAN: "MERGE-READY", aber NICHT mergen.
+END Q112C-REBASE1060-DONE mit head / END Q112C-BLOCKED mit Job-ID.

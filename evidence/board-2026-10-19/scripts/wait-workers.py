@@ -1564,6 +1564,17 @@ def _watchdog_layer(state, coordinator_id, dry_run, mono_now):
     if mono_now - wref.get("last_watchdog", 0) < 60:
         return
     wref["last_watchdog"] = mono_now
+    # /tmp is tmpfs on this host, so lane debris there is stolen RAM. Sweep at
+    # most every 30 min, fire-and-forget, never blocking the observe loop.
+    if mono_now - wref.get("last_sweep", 0) > 1800:
+        wref["last_sweep"] = mono_now
+        try:
+            subprocess.Popen(
+                ["bash", os.path.join(HERE, "tmp-sweep.sh"), "6"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, start_new_session=True)
+        except Exception:
+            pass
     ok_live, live = observed.list_sessions()
     if not ok_live:
         # Finding 1: a failed list is UNKNOWN, never "zero sessions".

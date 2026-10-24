@@ -1,0 +1,13 @@
+ROLLE: REVIEW (SHA-genau, unabhaengig; Urteil + Rezept, kein Merge, keine Umsetzung).
+KANDIDAT: baseharbor-node-connector PR #10, head e832d56, target main - ersetzt/supersedet PR #9 (2223506c, REQUEST_CHANGES wegen falscher Core-SHA in integration-candidate.json:4).
+Worker-Evidence: evidence/board-2026-10-24/f48-connectorancestry.md (falls vorhanden; sonst Pane-Beweistabelle in dieser Datei dokumentieren) + Codex-Befunde codex-verdict-freeze-prs.md.
+
+PRUEFPFLICHTEN:
+1. Identitaet vor/nach (head + sha256 affected files), Diff gegen connector main 7c7093d. Kein Checkout fremder Worktrees.
+2. Ist die Core-SHA in integration-candidate.json jetzt exakt 1861ed07888a1ec22c218ca491d23ee54f48e261 (Kanon- Wert fuer v0.4.26), und sind demo/console auf den korrekten Anker-Werten (demo 25c31969 bzw. dem nach demo#120-Merge gueltigen Finalwert, console analog)? Zyklus-/DAG-Konsistenz zum Core-Pin-Graphen pruefen.
+3. Ancestry-Frage: macht PR #10 die Linien-Klemme (7c7093d vs df1f4378 diverged) wirklich geloest, oder verschiebt sie nur die PinReferenz? Belege mit `git merge-base --is-ancestor`-Praezisierung und datei:zeile.
+4. Pflichtchecks des Connector-Repos lesen (keine Reruns, keine Labels). Repo hat push-only CI lt. Worker-Befund - pruefe das und benenne, welcher Nachweis als Ersatz gilt.
+5. Supersession-Feststellung: ist PR #9 damit inhaltlich erfuellt (dann Begruendung, damit der Coordinator ihn schliessen lassen kann)?
+6. Urteil: ACCEPT / ACCEPT_WITH_NONBLOCKING / REQUEST_CHANGES + kuerzester Weg zur Merge-Reife inkl. Reihenfolge demo -> console -> connector und was danach in baseharbor #1050 nachgezogen werden muss.
+EVIDENCE: evidence/board-2026-10-24/codex-verdict-connector10.md (ROLLE, UTC, SHA before/after, Tabelle).
+END CX-CONNECTOR10-DONE / END CX-CONNECTOR10-BLOCKED.
