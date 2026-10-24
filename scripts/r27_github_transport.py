@@ -15,12 +15,30 @@ _ALLOWED = re.compile(
 _LIMIT = 4 * 1024 * 1024
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise OriginError("EVIDENCE_ORIGIN: GitHub API redirect denied")
+
+
+def _strict_pairs(pairs):
+    out = {}
+    for key, value in pairs:
+        if key in out:
+            raise OriginError("EVIDENCE_ORIGIN: duplicate GitHub API JSON key")
+        out[key] = value
+    return out
+
+
+def _nonfinite(value):
+    raise OriginError("EVIDENCE_ORIGIN: nonfinite GitHub API JSON constant")
+
+
 def github_getter(token, *, opener=None):
     """Return a restricted API getter; token comes from trusted caller secret."""
     if not isinstance(token, str) or not token.strip() or "\r" in token or "\n" in token:
         raise OriginError("EVIDENCE_TRUST: GitHub credential unavailable")
     if opener is None:
-        opener = urllib.request.urlopen
+        opener = urllib.request.build_opener(_NoRedirect()).open
 
     def get_json(path):
         if not isinstance(path, str) or not _ALLOWED.fullmatch(path):
@@ -44,7 +62,7 @@ def github_getter(token, *, opener=None):
         if len(payload) > _LIMIT:
             raise OriginError("EVIDENCE_ORIGIN: GitHub API response too large")
         try:
-            return json.loads(payload)
+            return json.loads(payload, object_pairs_hook=_strict_pairs, parse_constant=_nonfinite)
         except (ValueError, UnicodeError) as exc:
             raise OriginError("EVIDENCE_ORIGIN: invalid GitHub API JSON") from exc
 

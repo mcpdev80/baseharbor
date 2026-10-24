@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from r27_github_transport import github_getter
+from r27_github_transport import github_getter, _NoRedirect
 from r27_github_origin import OriginError
 
 PATH="repos/mcpdev80/baseharbor/actions/runs/123"
@@ -40,3 +40,14 @@ class TransportTests(unittest.TestCase):
   with self.assertRaisesRegex(OriginError,"transport failed") as failure:
    github_getter("secret-do-not-leak",opener=denied)(PATH)
   self.assertNotIn("secret-do-not-leak",str(failure.exception))
+
+
+class TransportSecurityRegressions(unittest.TestCase):
+ def test_cross_origin_redirect_is_denied(self):
+  handler=_NoRedirect()
+  with self.assertRaisesRegex(OriginError,"redirect denied"):
+   handler.redirect_request(None,None,302,"Found",{},"https://evil.invalid/secret")
+ def test_ambiguous_api_json_is_denied(self):
+  for payload in (b'{"id":1,"id":2}',b'{"id":NaN}',b'{"id":Infinity}'):
+   with self.subTest(payload=payload),self.assertRaises(OriginError):
+    github_getter("token",opener=lambda req,timeout:Response(payload))(PATH)
