@@ -173,3 +173,9 @@ Reihenfolge in einer neuen Session im Ecosystem-Workspace, damit die Arbeit sofo
 Maßgebliche durable Quellen: `ops/missions/*.txt` (Aufträge), `evidence/board-*/<lane>*.md` (Evidence/END-Marker),
 `evidence/board-2026-10-19/scripts/dispatch-log.jsonl` (Zustellbeweis), `coordinator-state-latest.json` (Snapshot,
 aktualisiert durch `coord-state.py` nach jedem Dispatch und alle 15 min durch den Watcher).
+
+Vor Schritt 1 jede Session die BETRIEBSREGELN im coordinator-plan.md lesen
+(Abschnitt "BETRIEBSREGELN BEI JEDEM TAKEOVER"): Rollentrennung, Vollauslastung
+ohne Scheinauftraege, Lane-Rotation statt Kontext-Wiederverwendung, keine
+langen Waits/Sleeps, Zustellbeweis per Pane, Evidence-Pflicht, Ressourcen-
+und Root-Git-Regeln, 26-FENCE, Planning-Publikation erst bei check=0.

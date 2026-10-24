@@ -222,6 +222,7 @@ def resume_brief(snap):
         hh.get("mem_available_mb"), hh.get("tmp_free_mb"),
         (hh.get("watcher") or {}).get("alive"), hh.get("board_currency")))
     lines.append("  naechster Schritt der Daemon-Regel: basics-check.py + events-check.py --ack")
+    lines.append("  BETRIEBSREGELN vor jeder Delegation lesen: evidence/board-2026-10-22/coordinator-plan.md (Abschnitt BETRIEBSREGELN BEI JEDEM TAKEOVER)")
     return "\n".join(lines)
 
 
