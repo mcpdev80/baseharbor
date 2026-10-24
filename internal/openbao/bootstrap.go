@@ -64,8 +64,7 @@ func permanentErrorCause(err error) string {
 		return "permission"
 	case strings.Contains(s, "executable file not found"),
 		strings.Contains(s, "is not executable"),
-		strings.Contains(s, "no such file or directory"),
-		strings.Contains(s, "exec "):
+		strings.Contains(s, "no such file or directory"):
 		return "exec"
 	default:
 		return ""

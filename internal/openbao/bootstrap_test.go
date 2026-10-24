@@ -280,6 +280,11 @@ type haMemberState struct {
 	postUnsealVerif    int
 	execAttempts       int
 	isRealMember       bool
+	// sequence records the ordered per-member phase kinds actually observed:
+	// 1=initial Inspect, 2=each pre-unseal probe, 3=destination write,
+	// 4=each direct member post probe. It is the observable proof of exact
+	// member phase order and count; an empty body cannot advance it.
+	sequence []int
 }
 
 func newHaMemberState(initialized, sealed bool) *haMemberState {
@@ -288,6 +293,16 @@ func newHaMemberState(initialized, sealed bool) *haMemberState {
 		sealed:      sealed,
 	}
 }
+
+// Ordered per-member phase kinds recorded in haMemberState.sequence. The
+// Unseal path visits a member as: initial Inspect, zero or more pre-unseal
+// probes, the destination write, then zero or more direct member post probes.
+const (
+	initialInspectPhase = 1
+	preProbePhase       = 2
+	writePhase          = 3
+	postProbePhase      = 4
+)
 
 func (f *flakyMemberExecutor) ExecProject(ctx context.Context, _, _, _, service string, args ...string) (string, error) {
 	joined := strings.Join(args, " ")
@@ -312,30 +327,44 @@ func (f *flakyMemberExecutor) ExecProject(ctx context.Context, _, _, _, service 
 	ms.tries++
 
 	// Post-unseal verification phase: a real HA member probe counts; the admin
-	// proxy does not. Every direct member probe in this phase increments the
-	// post sequence so extra probes cannot remain invisible.
+	// proxy does not. Every direct member probe in this phase appends a post
+	// probe to the explicit ordered sequence so extra probes cannot remain
+	// invisible in a plain counter or a capped flag.
 	if ms.writes > 0 {
 		ms.postUnsealAttempts++
 		if ms.isRealMember {
 			ms.postUnsealVerif++
+			ms.sequence = append(ms.sequence, postProbePhase)
 		}
 		return statusJSON(ms.initialized, ms.sealed), nil
 	}
 
-	// Pre-unseal probing: check transient window.
+	// Pre-unseal probing: check transient window. The first probe attempt for
+	// this member is the initial Inspect. A failing transient probe is the
+	// initial Inspect failing, so it records the inspect phase on the first
+	// attempt and the pre-probe phase on every later failing attempt.
 	if fails, ok := f.transientWindow[service]; ok && fails > 0 {
 		f.transientWindow[service]--
 		ms.preUnsealAttempts++
 		ms.phase++
+		if len(ms.sequence) == 0 {
+			ms.sequence = append(ms.sequence, initialInspectPhase)
+		} else {
+			ms.sequence = append(ms.sequence, preProbePhase)
+		}
 		return "", errors.New("connection refused")
 	}
 
-	// Successful pre-unseal probe. Distinguish the initial Inspect (first
-	// successful call for this member) from later retry-success probes via the
-	// explicit phase sequence.
+	// Successful pre-unseal probe. The first successful probe for this member
+	// is the initial Inspect; every later successful probe is an additional
+	// pre-probe. Both advance the explicit ordered sequence, so an extra
+	// successful pre-probe cannot remain invisible in a plain counter or a
+	// first-success flag.
 	ms.phase++
-	if ms.phase == 1 {
-		// Initial Inspect.
+	if len(ms.sequence) == 0 {
+		ms.sequence = append(ms.sequence, initialInspectPhase)
+	} else {
+		ms.sequence = append(ms.sequence, preProbePhase)
 	}
 	return statusJSON(ms.initialized, ms.sealed), nil
 }
@@ -433,6 +462,7 @@ func (f *flakyMemberExecutor) ExecProjectInput(_ context.Context, _, _, _ string
 	}
 	ms.writes++
 	ms.phase++
+	ms.sequence = append(ms.sequence, writePhase)
 	ms.sealed = false
 	return "{\"sealed\":false}", nil
 }
@@ -468,10 +498,14 @@ func TestUnsealConvergesAfterMemberRestartRace(t *testing.T) {
 		t.Fatalf("unseal failed on transient member probe: %v", err)
 	}
 
-	// Each member advances an explicit phase sequence: 1 initial Inspect, 3
-	// transient pre-probes for member-1 (1 success), 1 unseal write, 1 direct
-	// post probe. The admin-service status proxy must not advance any member's
-	// sequence or count as a member post probe.
+	// Each member advances an explicit ordered sequence that must contain
+	// exactly one initial Inspect, then only pre-unseal probes, then exactly
+	// the destination write and a single direct post probe, in that order, with
+	// no admin-proxy entry anywhere. For member-1 the pre phase is exactly the
+	// 3-element transient window plus its single success (4 pre probes, 3
+	// failing); members 2/3 have a clean initial Inspect plus one subsequent
+	// pre-probe. The admin-service status proxy must not appear in any member's
+	// sequence nor count as a post probe.
 	for member := 1; member <= 3; member++ {
 		name := fmt.Sprintf("openbao-member-%d", member)
 		ms := executor.memberStates[name]
@@ -488,10 +522,61 @@ func TestUnsealConvergesAfterMemberRestartRace(t *testing.T) {
 		if ms.postUnsealVerif != 1 {
 			t.Fatalf("%s: direct post-unseal verification calls = %d, want exactly 1", name, ms.postUnsealVerif)
 		}
-		// The explicit per-member phase counter advanced through inspect,
-		// pre-probes, write and post; it must be at least inspect+write+post.
-		if ms.phase < 3 {
-			t.Fatalf("%s: per-member phase sequence = %d, want at least 3 (inspect + write + post)", name, ms.phase)
+		// Structural invariant of the ordered sequence: exactly one initial
+		// Inspect, all pre probes grouped after it, the single write after all
+		// pre probes, and the single post last. An omitted or extra probe would
+		// violate one of these order/count rules.
+		var inspectCount, preCount, writeCount int
+		var lastKind int
+		seenWriteBeforePost := false
+		for _, k := range ms.sequence {
+			switch k {
+			case initialInspectPhase:
+				inspectCount++
+				if lastKind != 0 && lastKind != initialInspectPhase && lastKind != preProbePhase {
+					t.Fatalf("%s: initial Inspect must not follow a write/post in sequence %v", name, ms.sequence)
+				}
+			case preProbePhase:
+				preCount++
+				if lastKind == writePhase || lastKind == postProbePhase {
+					t.Fatalf("%s: pre probe must not follow a write/post in sequence %v", name, ms.sequence)
+				}
+			case writePhase:
+				writeCount++
+				if lastKind == postProbePhase {
+					t.Fatalf("%s: write must not follow a post probe in sequence %v", name, ms.sequence)
+				}
+				seenWriteBeforePost = true
+			case postProbePhase:
+				if lastKind == writePhase {
+					// ok, post follows write
+				} else {
+					t.Fatalf("%s: post probe must follow the write in sequence %v", name, ms.sequence)
+				}
+			default:
+				t.Fatalf("%s: unknown phase kind %d in sequence %v", name, k, ms.sequence)
+			}
+			lastKind = k
+		}
+		if inspectCount != 1 {
+			t.Fatalf("%s: initial Inspect count = %d, want exactly 1 (sequence %v)", name, inspectCount, ms.sequence)
+		}
+		// The pre-probe sequence entries equal the transient failures when any
+		// occurred (member-1's failing first probe is the initial Inspect, its
+		// later failures are pre-probes), and are exactly one when the member
+		// answers cleanly (members 2/3: the successful retry-state probe).
+		wantPre := ms.preUnsealAttempts
+		if wantPre < 1 {
+			wantPre = 1
+		}
+		if preCount != wantPre {
+			t.Fatalf("%s: pre-probe sequence entries = %d, want %d (transient window %d)", name, preCount, wantPre, ms.preUnsealAttempts)
+		}
+		if writeCount != 1 {
+			t.Fatalf("%s: write sequence entries = %d, want exactly 1 (sequence %v)", name, writeCount, ms.sequence)
+		}
+		if !seenWriteBeforePost {
+			t.Fatalf("%s: sequence %v must end with write then post", name, ms.sequence)
 		}
 		if ms.sealed {
 			t.Fatalf("%s: member still sealed after unseal", name)
@@ -500,6 +585,30 @@ func TestUnsealConvergesAfterMemberRestartRace(t *testing.T) {
 			t.Fatalf("%s: exceeded retry cap (preUnseal=%d postUnseal=%d)", name, ms.preUnsealAttempts, ms.postUnsealAttempts)
 		}
 	}
+}
+
+// repeatPhase returns n copies of phase, used to build the expected exact
+// per-member sequence.
+func repeatPhase(phase, n int) []int {
+	out := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, phase)
+	}
+	return out
+}
+
+// equalSequence reports whether a and b contain the same ordered per-member
+// phase kinds.
+func equalSequence(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // neverAnswersExecutor simulates a member that passes initial Inspect but
@@ -950,10 +1059,37 @@ func TestIsTransientErrorRejectsIncidentalTemporary(t *testing.T) {
 		"x509: certificate signed by unknown authority: temporary failure in name resolution",
 		"permission denied: temporary credentials file",
 		"openbao binary is not executable",
+		"exec bao: executable file not found",
+		"exec bao: openbao is not executable",
+		"exec bao: no such file or directory",
 	}
 	for _, msg := range permanentCases {
 		if isTransientError(errors.New(msg)) {
 			t.Fatalf("permanent error %q must not be classified transient", msg)
+		}
+	}
+
+	// A shell context marker carrying "exec " is not a permanent executable
+	// failure on its own: the bare "exec " context word must not be read as a
+	// permanent exec cause, and must fall through to proper classification.
+	shellContext := "sh -ec BAO_ADDR=https://openbao-member-1:8200 exec bao write -format=json sys/unseal -"
+	if permanentErrorCause(errors.New(shellContext)) != "" {
+		t.Fatalf("bare shell 'exec ' context %q must not be classified a permanent exec cause", shellContext)
+	}
+
+	// Compose-wrapped transient failures during the restart race window stay
+	// transient so the Unseal probe retries and converges.
+	composeTransient := []string{
+		"exec bao status: dial tcp openbao-member-1:8200: connect: connection refused",
+		"exec bao status: dial tcp openbao-member-2:8200: connect: connection reset by peer",
+		"sh -ec BAO_ADDR=https://openbao-member-1:8200 exec bao status -format=json: connection refused",
+	}
+	for _, msg := range composeTransient {
+		if permanentErrorCause(errors.New(msg)) != "" {
+			t.Fatalf("compose-wrapped transient error %q must not carry a permanent cause", msg)
+		}
+		if !isTransientError(errors.New(msg)) {
+			t.Fatalf("compose-wrapped transient error %q must be classified transient", msg)
 		}
 	}
 }
@@ -969,6 +1105,8 @@ func TestIsTransientErrorRejectsMixedPermanentTransport(t *testing.T) {
 		"x509: certificate signed by unknown authority; connection reset by peer",
 		"permission denied: credential file unavailable after connection refused",
 		"exec bao: executable file not found; i/o timeout",
+		"exec bao: openbao is not executable; connection reset by peer",
+		"exec bao: no such file or directory; connection refused",
 	}
 	for _, msg := range mixed {
 		if isTransientError(errors.New(msg)) {
@@ -1280,13 +1418,16 @@ func (f *mixedPhaseExecutor) ExecProject(_ context.Context, _, _, _, service str
 		ms.postUnsealAttempts++
 		if ms.isRealMember {
 			ms.postUnsealVerif++
+			ms.sequence = append(ms.sequence, postProbePhase)
 		}
 		ms.phase++
 		return statusJSON(ms.initialized, ms.sealed), nil
 	}
 	ms.phase++
+	ms.sequence = append(ms.sequence, initialInspectPhase)
 	if n := f.extraProbes[service]; n > 0 {
 		f.extraProbes[service]--
+		ms.sequence = append(ms.sequence, preProbePhase)
 	}
 	return statusJSON(ms.initialized, ms.sealed), nil
 }
@@ -1353,6 +1494,7 @@ func (f *mixedPhaseExecutor) ExecProjectInput(_ context.Context, _, _, _ string,
 	}
 	ms.writes++
 	ms.phase++
+	ms.sequence = append(ms.sequence, writePhase)
 	ms.sealed = false
 	return "{\"sealed\":false}", nil
 }
