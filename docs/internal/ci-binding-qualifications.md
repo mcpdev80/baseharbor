@@ -54,3 +54,33 @@ Independent source review by /root/independent_review approves the exact integra
   ]
 }
 ```
+
+## Canonical pins metadata qualification (#1056)
+
+Independent source review by /root/independent_review approves the exact four-file source below. It removes the rejected bootstrap fallback and validates metadata through the canonical graph, pins resolver and private-origin owners extracted from the trusted base. The complete 150-test coordinator selection passed; the independent reviewer additionally passed eight targeted execution, source-binding and fail-closed tests. Final required CI remains mandatory after trusted-target integration.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "ae3f3ae20a56f406e9c461f405bb60d463658aa2",
+  "files": {
+    ".github/workflows/ci.yml": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    ".github/workflows/ci.yml": "89e1c640d8822c417423d1880eb12afca7aa77b97b78f4c7205193a9dab65762",
+    "scripts/pr-check-runner.py": "8f8ec65653dff492268285358cb6e103c37e6226883f2fdd1129cf620e9f8646",
+    "scripts/pr-gate-plan.py": "b5e7f5e049f7e10e18b727eb0b61bc04c049a3f2eb1bb8cb83d6eaba11f2b118",
+    "scripts/test_pr_gate_plan.py": "2b72e3203a993cf7c3473bca0a0c99f8cb32a861670dee64eb8934becd5bc055"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests",
+    "ci-actionlint"
+  ]
+}
+```
