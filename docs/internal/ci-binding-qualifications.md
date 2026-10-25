@@ -250,3 +250,33 @@ Owner-authorized release repair under Marcel's explicit completion mandate; no i
   ]
 }
 ```
+
+
+## Coherent Edit observation and expired-read qualification
+
+Owner-authorized continuation of Marcel's complete-release repair mandate; no independent-review claim. This exact CI source binds only product `da4d919bffeeebf8824a5a9a6e5b0f0f8d273381` and all ten modified Go files through clean trusted-target integration. Guided reads use the lifecycle's own internal snapshot instead of observing twice. Each Edit refresh may display the exact desired plan's projection only for identical resolved ownership/source/Target/preferences; no projection crosses a refresh or enters execution. Expired observer responses cannot become confirmable previews, even when the observer returns partial data without an error. Existing 30-second bounds remain unchanged; stale diagnostics disclose only the changed authority category. Public plan JSON excludes internal snapshot/preference fields.
+
+Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks and both real Docker/rootless Podman SQL gates remain binding. Local125 focused Go families, vet, build and readability pass, including real30-second expired-partial regression;146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Earlier SQL failures stay failed; Demo124/125 repair SQL workload migration and explicit retained-provider selection. Fresh native qualification is required. This entry claims no native success, gate waiver or complete release approval.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "f7efb903d97eff50a4c088293adb11025b42e940",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "544b089644db516829151f9a8eab353f5835449ded178acb8d7c26463516817c",
+    "scripts/pr-check-runner.py": "756b55a4b92feee35e94b8899bb442c809099ba9b9a5fbc1b2ed6acdf8ebf84e",
+    "scripts/test_pr_gate_plan.py": "faafb561e62bc943147527a88250a62a69036731f2e66bdaef3678143284c33a"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
