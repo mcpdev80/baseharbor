@@ -138,7 +138,11 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 		}
 		switch session.Controller.phase {
 		case appWizardNeeds:
-			session = driveAppEditNeeds(ctx, session, key, out)
+			var err error
+			session, err = driveAppEditNeeds(ctx, session, key, out)
+			if err != nil {
+				return session, err
+			}
 		case appWizardPreview:
 			next, err := driveAppEditPreview(ctx, session, key)
 			session.Controller = next
@@ -152,30 +156,30 @@ func driveAppEditWizard(ctx context.Context, session appEditSession, reader *buf
 
 // driveAppEditNeeds applies a selection, provider-choice or navigation command on
 // the needs screen. It never confirms a decision or reaches execution.
-func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, out io.Writer) appEditSession {
+func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, out io.Writer) (appEditSession, error) {
 	switch key {
 	case "", "next", "enter":
-		next, _ := session.Controller.Step(ctx, appWizardNext)
+		next, err := session.Controller.Step(ctx, appWizardNext)
 		session.Controller = next
-		return session
+		return session, err
 	case "c", "cancel", "q", "quit":
 		session.Controller, _ = session.Controller.Step(ctx, appWizardCancel)
-		return session
+		return session, nil
 	case " ", "space":
 		next, _ := session.Controller.SelectNeed(ctx, "space")
 		session.Controller = next
-		return session
+		return session, nil
 	case "up", "k":
 		next, _ := session.Controller.SelectNeed(ctx, "up")
 		session.Controller = next
-		return session
+		return session, nil
 	case "down", "j":
 		next, _ := session.Controller.SelectNeed(ctx, "down")
 		session.Controller = next
-		return session
+		return session, nil
 	case "n", "no", "back", "b":
 		fmt.Fprintln(out, "already on the needs screen; adjust the checklist or press enter to preview")
-		return session
+		return session, nil
 	}
 	if strings.HasPrefix(key, "provider ") {
 		fields := strings.Fields(strings.TrimPrefix(key, "provider "))
@@ -188,17 +192,17 @@ func driveAppEditNeeds(ctx context.Context, session appEditSession, key string, 
 				next, err := session.Controller.SelectProvider(ctx, requirement, instanceID)
 				if err == nil {
 					session.Controller = next
-					return session
+					return session, nil
 				}
 				fmt.Fprintf(out, "provider selection failed: %v\n", err)
-				return session
+				return session, nil
 			}
 		}
 		fmt.Fprintln(out, "usage: provider <kind/name> <instance-id|automatic>")
-		return session
+		return session, nil
 	}
 	fmt.Fprintln(out, "use space/up/down to edit needs, 'provider <kind/name> <id|automatic>' to choose a provider, enter to preview, or cancel to quit without changes")
-	return session
+	return session, nil
 }
 
 // driveAppEditPreview confirms or returns from the read-only preview. Enter and

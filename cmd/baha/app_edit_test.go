@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -120,4 +122,36 @@ func mustAppEditManifest(t *testing.T, loaded appEditLoaded) application.Manifes
 		t.Fatal(err)
 	}
 	return manifest
+}
+
+func TestAppEditCommandPreviewErrorPreservesCauseWithoutDecision(t *testing.T) {
+	for _, cause := range []error{errors.New("preview authority unavailable"), context.DeadlineExceeded} {
+		for _, key := range []string{"", "next", "enter"} {
+			t.Run(cause.Error()+"/"+key, func(t *testing.T) {
+				input := appWizardTestInput(t)
+				calls := 0
+				input.Refresh = func(context.Context, appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+					calls++
+					return nil, nil, cause
+				}
+				controller, err := newAppWizardController(context.Background(), input)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var output bytes.Buffer
+				session, err := driveAppEditWizard(context.Background(), appEditSession{Controller: controller},
+					bufio.NewReader(strings.NewReader(key+"\nyes\n")), &output)
+				if !errors.Is(err, cause) || calls != 1 {
+					t.Fatalf("preview cause lost or repeated: err=%v calls=%d", err, calls)
+				}
+				if _, confirmed := session.Controller.Decision(); confirmed || session.Controller.phase != appWizardNeeds {
+					t.Fatal("failed preview created a decision or changed navigation")
+				}
+				if !reflect.DeepEqual(session.Controller.manifest, controller.manifest) ||
+					strings.Contains(output.String(), "Read-only decision preview (not execution)") {
+					t.Fatal("failed preview changed intent or presented an approvable preview")
+				}
+			})
+		}
+	}
 }
