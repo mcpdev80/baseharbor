@@ -139,3 +139,32 @@ Owner-authorized qualification of exact source; no independent-review claim. Thi
   ]
 }
 ```
+
+
+## SQL Edit gate selection
+
+Owner-authorized exact public CI source; no independent-review claim. Select the two SQL New/Edit gates and require the preview-error regression. Local127 planner checks and existing8/7/5 utilities pass. No gate waiver or native-success claim.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "114a3d70dc51a48a661590dbee34d275d946c490",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "ce7c48675f9f3fec50ca2664c0424891204ffe1b6d6fb3f72d16bce05b31d228",
+    "scripts/pr-check-runner.py": "600bec6402b907f6ad4d00a05178bdc6929d99363b794bf2f9084704d60ed492",
+    "scripts/test_pr_gate_plan.py": "dc001ae1854ef85670e71ac4d7fe2f431d1ac7b655c360e77840f9bc7ecdeb23"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
+
