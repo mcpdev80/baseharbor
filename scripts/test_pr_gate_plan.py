@@ -3443,7 +3443,7 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 result = plan(value)
                 self.assertEqual('resolved', result['coverage_status'], result)
                 self.assertEqual(sorted(planner.EDIT_SQL_PREVIEW_GATES), result['selected_gates'])
-                required = planner.CODE_CHECKS + planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests'), wizard_check('wizard-provider-choice-tests')]
+                required = planner.CODE_CHECKS + planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + [wizard_check(name) for name in planner.EDIT_SQL_PREVIEW_CHECKS]
                 self.assertEqual({c['id'] for c in required}, {c['id'] for c in result['required_validation_checks']})
                 for changes in [value['changes'][:-1], value['changes'] + paths('unreviewed.go'),
                                 [dict(c, status='deleted') if i == 0 else c for i, c in enumerate(value['changes'])]]:
