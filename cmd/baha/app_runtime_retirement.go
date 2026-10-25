@@ -75,8 +75,8 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if err := application.ReleaseApplicationProviderReferencesAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 		return err
 	}
-	observed := observeApplicationProviderFacts(ctx, withdrawn)
-	if err := verifyApplicationRuntimeRetirement(e.resolved, plan, observed); err != nil {
+	observed, diagnostics := observeApplicationProviderFactsWithDiagnostics(ctx, withdrawn)
+	if err := withMaterializationDiagnostics(verifyApplicationRuntimeRetirement(e.resolved, plan, observed), diagnostics); err != nil {
 		return err
 	}
 	if err := recordVerifiedApplicationRuntimeRetirement(e.resolved, *plan.Impact, nil, retained); err != nil {

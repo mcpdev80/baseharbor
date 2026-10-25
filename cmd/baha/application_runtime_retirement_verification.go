@@ -16,7 +16,10 @@ func verifyApplicationRuntimeRetirement(resolved resolvedApplication, plan appli
 			continue
 		}
 		fact, found := observed[change.InstanceID]
-		zero := found && fact.Target == resolved.Target.Name && fact.Containers.Value != nil && fact.Containers.Classification == "measured" && *fact.Containers.Value == 0
+		// Retirement is verified only by an actual runtime measurement on
+		// the Target. A preview-only registry projection never verifies
+		// (fail-closed, matching the 2f9afafd baseline).
+		zero := found && fact.Target == resolved.Target.Name && providerFactIsRuntimeMeasurement(fact) && *fact.Containers.Value == 0
 		if zero && (fact.State == application.ProviderStoppedOwned || verifiedReleasedCoreSQLReference(resolved, plan, change, observed)) {
 			continue
 		}

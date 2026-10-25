@@ -218,9 +218,11 @@ func canonicalRuntimeDirectoryMissing(files application.RuntimeFiles) bool {
 // an exact binding (provider instance, application UUID, environment, offered
 // capability and logical resource name derived from the manifest) plus a
 // derivable canonical resource union before it receives its own
-// stopped-but-owned fact. One instance's proof is never transferred to a peer,
-// and no proven instance short-circuits the others. Every recorded fact is
-// paired with the typed materialization diagnostic so callers cannot consume
+// stopped-but-owned preview. One instance's proof is never transferred to a
+// peer, and no proven instance short-circuits the others. The recorded fact is
+// preview-only: it carries unknown quantities, never a measured zero, and is
+// paired with the typed materialization diagnostic so consumers must
+// explicitly distinguish the preview from verification and can never consume
 // the registry projection as verified runtime success.
 func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts map[string]application.ProviderFact) (bool, error) {
 	intents, err := nativeBackendOwnerIntents(resolved)
@@ -250,11 +252,15 @@ func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts 
 			continue
 		}
 		facts[instance.ID] = application.ProviderFact{
-			Target:       resolved.Target.Name,
-			State:        application.ProviderStoppedOwned,
-			Core:         application.CoreNotRequired,
+			Target: resolved.Target.Name,
+			State:  application.ProviderStoppedOwned,
+			Core:   application.CoreNotRequired,
+			// A registry projection is preview evidence, never a runtime
+			// measurement: the container quantity stays unknown so no
+			// verification or authorization consumer can accept it as a
+			// measured zero (CMF20 R1).
 			Dependencies: []string{},
-			Containers:   application.Quantity{Value: ptr(int64(0)), Classification: "measured", Source: "registry-bound owned application-scoped native backend " + string(binding.Resource.Kind) + "/" + binding.Resource.Name + " without a materialized canonical runtime inventory"},
+			Containers:   application.Quantity{Classification: "unknown", Source: "preview-only registry projection: registry-bound owned application-scoped native backend " + string(binding.Resource.Kind) + "/" + binding.Resource.Name + " without a materialized canonical runtime inventory"},
 			MemoryBytes:  application.Quantity{Classification: "unknown"},
 		}
 		diagnostics = append(diagnostics, runtimeInventoryNotYetMaterialized(resolved, instance, binding.Resource))
@@ -345,4 +351,69 @@ func runtimeInventoryNotYetMaterialized(resolved resolvedApplication, instance c
 	}
 }
 
-func ptr[T any](v T) *T { return &v }
+// providerFactIsRuntimeMeasurement reports whether an observed fact is backed
+// by an actual runtime measurement. The preview-only registry projection
+// never qualifies: it carries a stopped-owned preview state with unknown
+// quantities, so verification and authorization consumers can explicitly
+// distinguish preview from verification.
+func providerFactIsRuntimeMeasurement(fact application.ProviderFact) bool {
+	return fact.Containers.Classification == "measured" && fact.Containers.Value != nil
+}
+
+// materializationDiagnosticView projects the typed per-instance materialization
+// diagnostics into a serialized machine.Error.Details view. Machine output
+// reaches CLI/JSON consumers this way; machine.Error.Cause is json:"-"
+// (internal/machine/contract.go), so a Go-only error chain is insufficient.
+func materializationDiagnosticView(err error) any {
+	var entries []map[string]any
+	collectMaterializationDiagnostics(err, &entries)
+	if len(entries) == 0 {
+		return nil
+	}
+	return map[string]any{"materialization_diagnostics": entries}
+}
+
+func collectMaterializationDiagnostics(err error, entries *[]map[string]any) {
+	switch typed := err.(type) {
+	case nil:
+		return
+	case *machine.Error:
+		if typed.CauseCode == causeRuntimeInventoryNotYetMaterialized {
+			*entries = append(*entries, map[string]any{
+				"code":     string(typed.Code),
+				"cause":    typed.CauseCode,
+				"resource": typed.Resource,
+				"details":  typed.Details,
+			})
+		}
+		collectMaterializationDiagnostics(typed.Cause, entries)
+	case interface{ Unwrap() []error }:
+		for _, element := range typed.Unwrap() {
+			collectMaterializationDiagnostics(element, entries)
+		}
+	default:
+		collectMaterializationDiagnostics(errors.Unwrap(err), entries)
+	}
+}
+
+// withMaterializationDiagnostics attaches the typed materialization diagnostics
+// of a preview observation to a fail-closed verification error so lifecycle
+// CLI/JSON output preserves the stable cause instead of discarding the
+// observer's return value.
+func withMaterializationDiagnostics(err error, diagnostics error) error {
+	if err == nil || diagnostics == nil {
+		return err
+	}
+	view := materializationDiagnosticView(diagnostics)
+	if view == nil {
+		return err
+	}
+	var typed *machine.Error
+	if errors.As(err, &typed) && typed != nil {
+		if typed.Details == nil {
+			typed.Details = view
+		}
+		typed.Cause = errors.Join(typed.Cause, diagnostics)
+	}
+	return err
+}

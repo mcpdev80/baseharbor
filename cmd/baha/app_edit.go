@@ -297,6 +297,8 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 	}
 	authorities := defaultAppEditAuthorities(store, args)
 	authorities.Execute = appEditRuntimeExecuteAuthority(store, args, resolved, source, authorities, out, errOut, nil, nil)
+	// Edit preview only: a registry projection appears here as a preview fact
+	// with unknown quantities and never authorizes verification.
 	snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return appEditApplyResult{}, err

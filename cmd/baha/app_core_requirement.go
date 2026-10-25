@@ -223,6 +223,9 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}
+	// Read-only plan surfaces consume the observation for preview state only:
+	// registry projections stay distinguishable through their unknown
+	// quantities and never authorize verification from this path.
 	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
 	if err != nil {
 		return applicationLifecyclePlan{}, err
@@ -307,11 +310,14 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 		}
 		if len(registry.BindingsForProviderInstance(instance.ID)) == 0 {
 			fact, verified := facts[instance.ID]
-			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || fact.Containers.Value == nil {
-				// A preview materialization diagnostic never authorizes retained
-				// ownership; it is chained so callers can distinguish the
-				// unmaterialized-inventory condition from a verified runtime.
-				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available.", Cause: diagnostics}
+			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || !providerFactIsRuntimeMeasurement(fact) {
+				// A preview-only registry projection never authorizes retained
+				// ownership. The typed materialization diagnostics are attached
+				// to the serialized machine result (Details), not only to the
+				// Go cause chain, so CLI/JSON output preserves
+				// runtime-inventory-not-yet-materialized alongside the
+				// ownership verification failure.
+				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available.", Details: materializationDiagnosticView(diagnostics), Cause: diagnostics}
 			}
 		}
 	}
@@ -320,6 +326,15 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 
 // Observe existing native owners even after their capability leaves desired
 // intent. The common resolver remains the sole dependency/removal authority.
+//
+// The returned map may contain preview-only registry projections for the
+// narrowly qualified missing-canonical-inventory condition; such facts carry
+// unknown quantities and are distinguishable through
+// providerFactIsRuntimeMeasurement. This convenience wrapper discards the
+// typed materialization diagnostics, so every verification or authorization
+// consumer must either apply that predicate to the facts it consumes or use
+// observeApplicationProviderFactsWithDiagnostics and carry the diagnostics
+// into its machine result; an ignored return value is insufficient.
 func observeApplicationProviderFacts(ctx context.Context, resolved resolvedApplication) map[string]application.ProviderFact {
 	facts, _ := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
 	return facts
