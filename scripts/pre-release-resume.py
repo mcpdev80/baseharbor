@@ -98,7 +98,8 @@ def release_metadata(path):
 
 def demo_gate_input(path, key):
     # Atomic bootstrap and EXIT cleanup call these helpers across gate scopes.
-    if path in {'tests/guided/drive.py', 'tests/data-capabilities/new_edit.py'}:
+    if path in {'tests/guided/drive.py', 'tests/guided/new_edit.py',
+                'tests/data-capabilities/new_edit.py'}:
         return True
     parts = pathlib.PurePosixPath(path).parts
     known = set(STATIC + LIGHT + HEAVY)
@@ -527,7 +528,9 @@ def discover_runs(api, inputs, candidate, demo, tag, current_run):
     requirements = inputs.requirements(candidate, tag)
     target = {row['id']: inputs.fingerprint(candidate, demo, tag, row['id'])
               for row in requirements}
-    runs = api.pages('actions/workflows/pre-release.yml/runs?per_page=100', 'workflow_runs')
+    runs = [run for workflow in sorted(TRUSTED)
+            for run in api.pages('actions/workflows/' + pathlib.PurePosixPath(workflow).name +
+                                 '/runs?per_page=100', 'workflow_runs')]
     compatible, examined = [], {}
     for run in sorted(runs, key=lambda row: row['id'], reverse=True):
         if (run['id'] == current_run or run.get('path') not in TRUSTED or

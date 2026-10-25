@@ -1026,10 +1026,11 @@ class EvidenceReuseTests(unittest.TestCase):
                            ('journey/docker', False)]:
             with self.subTest(gate=gate):
                 self.assertEqual(self.v026(gate=gate) == self.v026(demo=changed, gate=gate), same)
-        common = self.demo / 'tests/guided/drive.py'
-        common.parent.mkdir(parents=True, exist_ok=True)
-        common.write_text('changed shared bootstrap\n')
-        self.assertNotEqual(self.v026(demo=changed), self.v026(demo=self.commit(self.demo)))
+        for name in ['drive.py', 'new_edit.py']:
+            common = self.demo / 'tests/guided' / name
+            common.parent.mkdir(parents=True, exist_ok=True)
+            common.write_text('changed shared bootstrap or imported helper\n')
+            self.assertNotEqual(self.v026(demo=changed), self.v026(demo=self.commit(self.demo)))
 
 
 class OriginDiscoveryTests(unittest.TestCase):
@@ -1069,8 +1070,10 @@ class OriginDiscoveryTests(unittest.TestCase):
                 return candidate + key
         class API:
             def pages(self, path, field):
-                self_path = 'actions/workflows/pre-release.yml/runs?per_page=100'
-                assert path == self_path and field == 'workflow_runs'
+                assert field == 'workflow_runs'
+                if path == 'actions/workflows/targeted-demo-acceptance.yml/runs?per_page=100':
+                    return []
+                assert path == 'actions/workflows/pre-release.yml/runs?per_page=100'
                 return [run(1, event='workflow_dispatch'), run(2), run(3, owner='foreign/fork'),
                         run(4, source='c' * 40), run(5)]
         API.repository = repository
