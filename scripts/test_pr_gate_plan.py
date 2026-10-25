@@ -3395,5 +3395,74 @@ class ReleasePreflightSelectionTests(unittest.TestCase):
                                          {c['id'] for c in result['required_validation_checks']})
 
 
+class SQLPreviewQualificationTests(unittest.TestCase):
+    def test_exact_source_clean_integration_and_authority_failures(self):
+        spec = importlib.util.spec_from_file_location('sql_preview_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            def git(*args):
+                result = subprocess.run(['git', '-C', str(root), *args], text=True, capture_output=True)
+                self.assertEqual(0, result.returncode, result.stderr)
+                return result.stdout.strip()
+            git_init(root)
+            files = planner.EDIT_SQL_PREVIEW_REVIEWED_FILES
+            for path in files:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_text('baseline\n')
+            git('add', '.')
+            git('commit', '-qm', 'baseline')
+            baseline = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'source')
+            for path in files:
+                (root / path).write_text('reviewed\n')
+            git('commit', '-qam', 'reviewed SQL projection')
+            reviewed = git('rev-parse', 'HEAD')
+            git('checkout', '-qb', 'target', baseline)
+            (root / 'README.md').write_text('trusted update\n')
+            git('add', '.')
+            git('commit', '-qm', 'trusted target')
+            target = git('rev-parse', 'HEAD')
+            git('checkout', '-q', 'source')
+            git('merge', '--no-ff', '-qm', 'clean integration', target)
+            head = git('rev-parse', 'HEAD')
+            def actual(candidate):
+                tree = git('merge-tree', '--write-tree', target, candidate).splitlines()[0]
+                integration = git('commit-tree', tree, '-p', target, '-p', candidate, '-m', 'PR integration')
+                return resolver.resolve_pr_diff(root, target, candidate, integration)
+            def plan(value, requirements=REQ):
+                return planner.plan(value, requirements, MAP, repository=root)
+            def assert_rejected(value):
+                result = plan(value)
+                self.assertFalse(any(reason.startswith('Owner-qualified SQL Edit source:') for reason in result['reasons']), result)
+                if any(c['path'] == 'cmd/baha/app_edit_apply_result.go' for c in value['changes']):
+                    self.assertEqual('unresolved', result['coverage_status'], result)
+            with patch.object(planner, 'EDIT_SQL_PREVIEW_REVIEWED_HEAD', reviewed):
+                value = actual(head)
+                result = plan(value)
+                self.assertEqual('resolved', result['coverage_status'], result)
+                self.assertEqual(sorted(planner.EDIT_SQL_PREVIEW_GATES), result['selected_gates'])
+                required = planner.CODE_CHECKS + planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-app-edit-tests'), wizard_check('wizard-provider-choice-tests')]
+                self.assertEqual({c['id'] for c in required}, {c['id'] for c in result['required_validation_checks']})
+                for changes in [value['changes'][:-1], value['changes'] + paths('unreviewed.go'),
+                                [dict(c, status='deleted') if i == 0 else c for i, c in enumerate(value['changes'])]]:
+                    assert_rejected(dict(value, changes=changes))
+                assert_rejected(dict(value, integration_sha=None))
+                assert_rejected(dict(value, broad_required=True))
+                with patch.object(planner, 'EDIT_SQL_PREVIEW_REVIEWED_HEAD', 'f' * 40):
+                    assert_rejected(value)
+                missing = copy.deepcopy(REQ)
+                missing['gates'] = [g for g in missing['gates'] if g['id'] != 'atomic/podman/data-capabilities']
+                self.assertEqual('unresolved', plan(value, missing)['coverage_status'])
+                (root / 'cmd/baha/app_edit_apply_result.go').write_text('unreviewed followup\n')
+                git('commit', '-qam', 'unreviewed followup')
+                followup = git('rev-parse', 'HEAD')
+                assert_rejected(actual(followup))
+                dirty = git('commit-tree', git('rev-parse', followup + '^{tree}'),
+                            '-p', reviewed, '-p', target, '-m', 'injected merge')
+                assert_rejected(actual(dirty))
+
+
 if __name__ == '__main__':
     unittest.main()
