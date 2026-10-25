@@ -300,7 +300,7 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 	if err != nil {
 		return err
 	}
-	facts := observeApplicationProviderFacts(ctx, resolved)
+	facts, diagnostics := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
 	for _, instance := range registry.Instances {
 		if instance.Scope != capability.ScopeApplication || instance.OwnerApplicationID != resolved.Manifest.ApplicationID || (instance.OwnerEnvironment != "" && instance.OwnerEnvironment != resolved.Manifest.Environment) {
 			continue
@@ -308,7 +308,10 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 		if len(registry.BindingsForProviderInstance(instance.ID)) == 0 {
 			fact, verified := facts[instance.ID]
 			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || fact.Containers.Value == nil {
-				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available."}
+				// A preview materialization diagnostic never authorizes retained
+				// ownership; it is chained so callers can distinguish the
+				// unmaterialized-inventory condition from a verified runtime.
+				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available.", Cause: diagnostics}
 			}
 		}
 	}
@@ -318,17 +321,31 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
 // Observe existing native owners even after their capability leaves desired
 // intent. The common resolver remains the sole dependency/removal authority.
 func observeApplicationProviderFacts(ctx context.Context, resolved resolvedApplication) map[string]application.ProviderFact {
+	facts, _ := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
+	return facts
+}
+
+// observeApplicationProviderFactsWithDiagnostics is the structured observation
+// entry point for callers that must distinguish a preview-only registry
+// projection from verified runtime success. The returned error carries the
+// typed machine diagnostics of narrowly qualified materialization conditions;
+// genuine runtime failures stay fail-closed and produce neither facts nor
+// diagnostics.
+func observeApplicationProviderFactsWithDiagnostics(ctx context.Context, resolved resolvedApplication) (map[string]application.ProviderFact, error) {
 	facts := observeIdentityProviderFacts(ctx, resolved)
 	observeBrokerProviderFacts(ctx, resolved, facts)
 	observeSharedBackendProviderFacts(ctx, resolved, facts)
 	observeApplicationBrokerFacts(ctx, resolved, facts)
+	var diagnostics []error
 	owners, err := applicationRuntimeOwners(resolved)
 	if err == nil {
 		for _, owner := range owners {
 			observeStandaloneProviderFacts(ctx, owner, facts)
-			observeNativeBackendProviderFacts(ctx, owner, facts)
+			if diagnostic := observeNativeBackendProviderFacts(ctx, owner, facts); diagnostic != nil {
+				diagnostics = append(diagnostics, diagnostic)
+			}
 			observeApplicationExposureFacts(ctx, owner, facts)
 		}
 	}
-	return facts
+	return facts, errors.Join(diagnostics...)
 }

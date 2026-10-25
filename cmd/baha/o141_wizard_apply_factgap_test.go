@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -74,17 +76,25 @@ func TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable(t *te
 	}
 
 	// The first-touch Read in the Apply path creates the canonical runtime
-	// directory with its protected compose.yaml (state/<app>/runtime/compose
-	// .yaml). Once present, the same inventory is inspectable and the fact is
-	// no longer structurally unverifiable.
-	if err := os.MkdirAll(filepath.Join(deploymentRoot, "state", app.Name, "runtime"), 0o700); err != nil {
+	// directory before its protected compose.yaml (state/<app>/runtime/compose
+	// .yaml) is supplied. Distinguish the two absences: once the directory is
+	// materialized, the structural gap is closed and any remaining inventory
+	// ENOENT must originate from the missing owner file, never from the
+	// canonical directory itself.
+	runtimeDir := filepath.Join(deploymentRoot, "state", app.Name, "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
 		t.Fatalf("materialize canonical runtime dir: %v", err)
 	}
-	if _, _, _, err := nativeBackendInventory(apply); !os.IsNotExist(err) {
-		// CheckExistingNativeBackendInventory still fails (missing compose.yaml),
-		// but it no longer ENOENTs on the directory -- the structural gap is
-		// closed; only the file content remains to be supplied by the Read.
-		t.Fatalf("Apply store with materialized runtime dir must not ENOENT on the directory (only a missing compose.yaml is allowed): %v", err)
+	if info, err := os.Lstat(filepath.Join(runtimeDir, "compose.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("fixture must leave only the owner compose.yaml missing: info=%v err=%v", info, err)
+	}
+	if _, _, _, err := nativeBackendInventory(apply); err == nil {
+		t.Fatalf("Apply store with a missing owner compose.yaml must not pass the inventory")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("remaining inventory failure must be the missing owner file ENOENT: %v", err)
+	}
+	if info, err := os.Lstat(runtimeDir); err != nil || !info.IsDir() {
+		t.Fatalf("canonical runtime directory must be materialized; its absence is no longer the failure cause: info=%v err=%v", info, err)
 	}
 }
 
@@ -185,17 +195,22 @@ func TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk(t *testing.T) {
 	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, registryStore); err != nil {
 		t.Fatalf("seed application-scoped postgresql instance: %v", err)
 	}
+	instanceID := application.ApplicationProviderInstanceIDForScopedPostgreSQL(app.ApplicationID, "dev", "default")
+	// The advertised condition requires an exact registry binding, so the
+	// positive fixture must carry a real one (CMF19 F2), not only an instance.
+	if err := bindApplicationScopedPostgreSQLInstance(t, registryStore, app, instanceID, "default"); err != nil {
+		t.Fatalf("bind application-scoped postgresql instance: %v", err)
+	}
 	registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
 
 	facts := map[string]application.ProviderFact{}
-	observeNativeBackendProviderFacts(context.Background(), resolvedApplication{
+	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolvedApplication{
 		Target:          target,
 		TargetStateRoot: targetStateRoot,
 		Manifest:        app,
 		FromRepository:  true,
 	}, facts)
 
-	instanceID := application.ApplicationProviderInstanceIDForScopedPostgreSQL(app.ApplicationID, "dev", "default")
 	fact, observed := facts[instanceID]
 	if !observed {
 		t.Fatalf("wizard preview recorded no fact for the registry-bound application-scoped instance %q", instanceID)
@@ -205,6 +220,12 @@ func TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk(t *testing.T) {
 	}
 	if fact.Target != target.Name {
 		t.Fatalf("wizard fact target is %q, want %q", fact.Target, target.Name)
+	}
+	// The preview fact must be accompanied by the typed machine diagnostic so
+	// it can never be consumed as verified runtime success (CMF19 F5).
+	var machineErr *machine.Error
+	if !errors.As(diagnostic, &machineErr) || machineErr.CauseCode != causeRuntimeInventoryNotYetMaterialized || machineErr.Resource != instanceID {
+		t.Fatalf("wizard observation diagnostic is not the typed materialization error for %q: %+v", instanceID, diagnostic)
 	}
 }
 
@@ -283,6 +304,20 @@ func TestWizardRegistryBoundUnionProvableWithoutAnyDisk(t *testing.T) {
 	if bhruntime.ContainerMatchesProjectResource("docker", bhruntime.RuntimeContainer{}, "", bhruntime.ProjectResource{Kind: "container", Name: ""}) {
 		t.Fatalf("expected no container match for an empty runtime resource")
 	}
+}
+
+// bindApplicationScopedPostgreSQLInstance creates the real registry binding for
+// a named, application-scoped PostgreSQL instance of this manifest consumer.
+func bindApplicationScopedPostgreSQLInstance(t *testing.T, store capability.RegistryStore, app application.Manifest, instanceID, resourceName string) error {
+	t.Helper()
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if err := registry.BindDeployment(capability.Resource{Application: app.Name, Kind: capability.SQL, Name: resourceName, Provider: capability.ProviderPostgreSQL}, app.ApplicationID, app.Environment, instanceID); err != nil {
+		return err
+	}
+	return store.Save(registry)
 }
 
 func seedApplicationScopedPostgreSQLInstance(t *testing.T, target deployment.ResolvedTarget, app application.Manifest, store capability.RegistryStore) error {

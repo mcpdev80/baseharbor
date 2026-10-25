@@ -8,11 +8,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -64,9 +67,25 @@ func nativeBackendInventory(resolved resolvedApplication) (application.RuntimeFi
 	return files, prior, resources, err
 }
 
-func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) {
+// detectRuntimeForTargetFunc is the observer's runtime-detection seam. It
+// defaults to detectRuntimeForTarget and lets failure regressions inject a
+// deterministic detector/inspector outage without a live runtime gate.
+var detectRuntimeForTargetFunc = detectRuntimeForTarget
+
+// observeNativeBackendProviderFacts records one fact per provable native
+// backend instance. Genuine detection, inspection, listing or ownership
+// failures stay fail-closed and unverifiable: a registry entry can never
+// substitute an inferred zero for a failed measurement. The only registry-only
+// exception is the narrowly qualified missing-canonical-inventory preview
+// condition (F1-F3): an exact registry binding for the instance plus a missing
+// canonical runtime directory (or an absent canonical Store identity in the
+// wizard preview, which performs no CWD-relative lookup at all). Every
+// independently proven instance receives its own fact and a typed machine
+// diagnostic so callers never consume the preview state as verified runtime
+// success.
+func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) error {
 	if isRemoteApplication(resolved) {
-		return
+		return nil
 	}
 	dbg := func(tag string, err error) {
 		if dir := os.Getenv("BAHA_DEBUG_PLAN_DIR"); dir != "" {
@@ -76,64 +95,64 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 			}
 		}
 	}
-	files, _, expected, err := nativeBackendInventory(resolved)
-	if err != nil {
-		// An unmaterialized runtime owner directory must not abandon provider
-		// facts while the protected registry still proves the module owner:
-		// keep the derivable files and fall through to the per-instance
-		// intent/binding proof below. Every other inventory failure, including
-		// unprotected or noncanonical owner files, stays fail-closed.
-		dbg("inventory", err)
-		if !errors.Is(err, fs.ErrNotExist) {
-			return
+	var files application.RuntimeFiles
+	var expected []bhruntime.ProjectResource
+	if strings.TrimSpace(resolved.Store.Root) == "" {
+		// Wizard preview: no trusted canonical Store identity. Prove the
+		// condition from registry and binding alone; never touch the CWD.
+		files = application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+		proven, err := recordCanonicalMissingRuntimeInventory(resolved, facts)
+		if proven {
+			return err
 		}
-		// The wizard preview resolves with an empty Store.Root, so the canonical
-		// runtime path is CWD-relative ("state/<app>/runtime") and never exists
-		// during a refresh. When a bound, owned, application-scoped native
-		// backend is provable from the registry and its binding alone (no disk
-		// inspection), record the stopped-but-owned fact now and return; the
-		// Apply path observes the same present-but-empty runtime after its
-		// first-touch Read. The unverifiable default stays for genuine owner /
-		// instance absence.
-		registryBoundOwnedReason, registryBoundOwned := registryBoundStoppedOwnedReason(resolved)
-		if registryBoundOwned {
-			recordRegistryBoundStoppedOwned(resolved, facts, registryBoundOwnedReason)
-			return
+	} else {
+		inventoryFiles, _, inventoryExpected, err := nativeBackendInventory(resolved)
+		files = inventoryFiles
+		switch {
+		case err == nil:
+			expected = inventoryExpected
+		case errors.Is(err, fs.ErrNotExist) && canonicalRuntimeDirectoryMissing(inventoryFiles):
+			// The verified canonical runtime directory itself is absent.
+			dbg("inventory", err)
+			proven, derr := recordCanonicalMissingRuntimeInventory(resolved, facts)
+			if proven {
+				return derr
+			}
+		case errors.Is(err, fs.ErrNotExist):
+			// The canonical directory exists; the ENOENT came from a missing
+			// compose/env or later owner file. That is not absence proof. Fall
+			// through with no expectation so the actual runtime must observe
+			// or fail closed.
+			dbg("inventory", err)
+			expected = nil
+		default:
+			dbg("inventory", err)
+			return nil
 		}
-		expected = nil
 	}
-	registryBoundOwnedReason, registryBoundOwned := registryBoundStoppedOwnedReason(resolved)
-	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
+	provider, err := detectRuntimeForTargetFunc(ctx, resolved.Target)
 	if err != nil {
-		if registryBoundOwned {
-			recordRegistryBoundStoppedOwned(resolved, facts, registryBoundOwnedReason)
-			return
-		}
 		dbg("detect", err)
-		return
+		return nil
 	}
 	if _, err := provider.InspectProjectResources(ctx, files.Project, expected); err != nil {
-		if registryBoundOwned {
-			recordRegistryBoundStoppedOwned(resolved, facts, registryBoundOwnedReason)
-			return
-		}
 		dbg("inspect-expected", err)
-		return
+		return nil
 	}
 	containers, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
 		dbg("list", err)
-		return
+		return nil
 	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
 		dbg("registry", err)
-		return
+		return nil
 	}
 	intents, err := nativeBackendOwnerIntents(resolved)
 	if err != nil {
 		dbg("intents", err)
-		return
+		return nil
 	}
 	for _, instance := range registry.Instances {
 		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
@@ -181,87 +200,149 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 		}
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: []string{}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "protected canonical applied backend intent and native ownership inventory"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
+	return nil
 }
 
-// registryBoundStoppedOwnedReason proves a bound, owned, application-scoped
-// native backend whose canonical runtime directory is missing. It resolves
-// purely from the registry and its binding projection -- no disk inspection --
-// so the wizard preview (empty Store.Root) observes the same stopped-but-owned
-// state the apply path observes once its first-touch Read has created the
-// runtime directory. ok is false when the manifest carries no bound owned
-// instance, preserving the unverifiable fail-closed default.
-func registryBoundStoppedOwnedReason(resolved resolvedApplication) (inventoryMiss, bool) {
+// canonicalRuntimeDirectoryMissing reports whether the canonical runtime
+// directory itself is absent. An ENOENT raised while the directory exists came
+// from a missing compose/env or later owner file and never proves runtime
+// absence.
+func canonicalRuntimeDirectoryMissing(files application.RuntimeFiles) bool {
+	_, err := os.Lstat(files.Dir)
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+// recordCanonicalMissingRuntimeInventory is the narrowly qualified missing-
+// canonical-inventory exception. It evaluates every registry instance
+// independently: an owned, application-scoped PostgreSQL/Valkey instance needs
+// an exact binding (provider instance, application UUID, environment, offered
+// capability and logical resource name derived from the manifest) plus a
+// derivable canonical resource union before it receives its own
+// stopped-but-owned fact. One instance's proof is never transferred to a peer,
+// and no proven instance short-circuits the others. Every recorded fact is
+// paired with the typed materialization diagnostic so callers cannot consume
+// the registry projection as verified runtime success.
+func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts map[string]application.ProviderFact) (bool, error) {
 	intents, err := nativeBackendOwnerIntents(resolved)
 	if err != nil || len(intents) == 0 {
-		return inventoryMiss{}, false
+		return false, nil
 	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
-		return inventoryMiss{}, false
+		return false, nil
 	}
+	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+	proven := 0
+	var diagnostics []error
 	for _, instance := range registry.Instances {
+		if instance.Provider.Kind != capability.ProviderPostgreSQL && instance.Provider.Kind != capability.ProviderValkey {
+			continue
+		}
 		if !applicationNativeBackendInstance(instance, resolved.Manifest) {
 			continue
 		}
-		files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
+		binding, ok := nativeBackendBindingProof(registry, instance, resolved.Manifest)
+		if !ok {
+			continue
+		}
 		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
 		if err != nil || len(resources) == 0 {
 			continue
 		}
-		miss := inventoryMiss{InstanceID: instance.ID, Kind: instance.Provider.Kind, Source: "registry-bound owned application-scoped native backend without materialized canonical runtime inventory"}
-		if name := bindingSQLNameForInstance(registry, instance, resolved.Manifest); name != "" {
-			miss.Source = "registry-bound owned application-scoped native backend and its binding without materialized canonical runtime inventory"
+		facts[instance.ID] = application.ProviderFact{
+			Target:       resolved.Target.Name,
+			State:        application.ProviderStoppedOwned,
+			Core:         application.CoreNotRequired,
+			Dependencies: []string{},
+			Containers:   application.Quantity{Value: ptr(int64(0)), Classification: "measured", Source: "registry-bound owned application-scoped native backend " + string(binding.Resource.Kind) + "/" + binding.Resource.Name + " without a materialized canonical runtime inventory"},
+			MemoryBytes:  application.Quantity{Classification: "unknown"},
 		}
-		return miss, true
+		diagnostics = append(diagnostics, runtimeInventoryNotYetMaterialized(resolved, instance, binding.Resource))
+		proven++
 	}
-	return inventoryMiss{}, false
+	return proven > 0, errors.Join(diagnostics...)
 }
 
-// bindingSQLNameForInstance returns the bound SQL resource name of an instance,
-// or "" when the instance carries no binding for this manifest's consumer.
-func bindingSQLNameForInstance(registry capability.Registry, instance capability.ProviderInstance, m application.Manifest) string {
+// nativeBackendBindingProof reports the exact consumer binding of a named,
+// application-scoped native backend instance: same provider instance, same
+// application UUID, same environment, a provider of the instance's own
+// capability kind and the logical resource name the manifest derives to that
+// instance. Missing, foreign-application, foreign-environment or
+// foreign-resource bindings never match.
+func nativeBackendBindingProof(registry capability.Registry, instance capability.ProviderInstance, m application.Manifest) (capability.ProviderBinding, bool) {
+	name, ok := nativeBackendLogicalResourceName(instance, m)
+	if !ok {
+		return capability.ProviderBinding{}, false
+	}
 	for _, binding := range registry.Bindings {
-		if binding.ProviderInstanceID == instance.ID &&
-			binding.ApplicationID == m.ApplicationID &&
-			binding.Environment == m.Environment &&
-			binding.Resource.Kind == capability.SQL {
-			return binding.Resource.Name
+		if binding.ProviderInstanceID != instance.ID ||
+			binding.ApplicationID != m.ApplicationID ||
+			binding.Environment != m.Environment ||
+			binding.Resource.Provider != instance.Provider.Kind ||
+			binding.Resource.Name != name {
+			continue
+		}
+		var offered bool
+		for _, capabilityKind := range instance.Provider.Capabilities {
+			if binding.Resource.Kind == capabilityKind {
+				offered = true
+				break
+			}
+		}
+		if !offered {
+			continue
+		}
+		return binding, true
+	}
+	return capability.ProviderBinding{}, false
+}
+
+// nativeBackendLogicalResourceName derives the logical resource name whose
+// canonical instance ID equals the registry instance for this manifest.
+func nativeBackendLogicalResourceName(instance capability.ProviderInstance, m application.Manifest) (string, bool) {
+	switch instance.Provider.Kind {
+	case capability.ProviderPostgreSQL:
+		for _, name := range application.SQLInstanceNames(m) {
+			if application.ApplicationProviderInstanceIDForScopedPostgreSQL(m.ApplicationID, m.Environment, name) == instance.ID {
+				return name, true
+			}
+		}
+	case capability.ProviderValkey:
+		for _, name := range application.ValkeyInstanceNames(m) {
+			if application.ApplicationProviderInstanceIDForScopedValkey(m.ApplicationID, m.Environment, name) == instance.ID {
+				return name, true
+			}
 		}
 	}
-	return ""
+	return "", false
 }
 
-// auditProviderInventoryMiss surfaces the inventory race as a typed machine
-// error so operators can distinguish a materialization gap from a genuine
-// owner/instance absence, which stays unverifiable.
-func auditProviderInventoryMiss(resolved resolvedApplication, miss inventoryMiss) {
-	fmt.Fprintf(os.Stderr, "warning: %s (manifest %s/%s target %s)\n", runtimeInventoryNotYetMaterialized(miss.InstanceID), resolved.Manifest.ApplicationID, resolved.Manifest.Environment, resolved.Target.Name)
-}
+// causeRuntimeInventoryNotYetMaterialized is the stable machine cause code of
+// the preview-only materialization condition. It is distinct from verified
+// runtime success and from genuine runtime failure.
+const causeRuntimeInventoryNotYetMaterialized = "runtime-inventory-not-yet-materialized"
 
-// recordRegistryBoundStoppedOwned writes the registry-proof stopped-but-owned
-// fact and audits the inventory race. It is the single write path shared by the
-// inventory-ENOENT and the runtime-inspector-fail branches of
-// observeNativeBackendProviderFacts.
-func recordRegistryBoundStoppedOwned(resolved resolvedApplication, facts map[string]application.ProviderFact, miss inventoryMiss) {
-	facts[miss.InstanceID] = application.ProviderFact{
-		Target:       resolved.Target.Name,
-		State:        application.ProviderStoppedOwned,
-		Core:         application.CoreNotRequired,
-		Dependencies: []string{},
-		Containers:   application.Quantity{Value: ptr(int64(0)), Classification: "measured", Source: miss.Source},
-		MemoryBytes:  application.Quantity{Classification: "unknown"},
+// runtimeInventoryNotYetMaterialized represents the condition as a typed
+// machine error with stable cause/code plus instance and target context, so it
+// propagates through the structured result/error path and machine JSON clients
+// instead of being discarded as process-global stderr text.
+func runtimeInventoryNotYetMaterialized(resolved resolvedApplication, instance capability.ProviderInstance, resource capability.Resource) error {
+	return &machine.Error{
+		Code:      machine.ErrorRuntimeUnavailable,
+		CauseCode: causeRuntimeInventoryNotYetMaterialized,
+		Resource:  instance.ID,
+		Message:   "Native backend " + instance.ID + " runtime inventory is not yet materialized: the registry-bound owned instance is proven without a canonical runtime directory.",
+		Next:      "Materialize the canonical runtime inventory through apply and re-observe; do not consume this stopped-but-owned preview fact as verified runtime success.",
+		Details: map[string]any{
+			"instance":         instance.ID,
+			"provider":         string(instance.Provider.Kind),
+			"capability":       string(resource.Kind),
+			"logical_resource": resource.Name,
+			"target":           resolved.Target.Name,
+			"application_id":   resolved.Manifest.ApplicationID,
+			"environment":      resolved.Manifest.Environment,
+		},
 	}
-	auditProviderInventoryMiss(resolved, miss)
-}
-
-type inventoryMiss struct {
-	InstanceID string
-	Kind       capability.ProviderKind
-	Source     string
-}
-
-func runtimeInventoryNotYetMaterialized(instanceID string) error {
-	return fmt.Errorf("native backend %s runtime inventory not yet materialized: bound owned instance present without a canonical runtime directory", instanceID)
 }
 
 func ptr[T any](v T) *T { return &v }
