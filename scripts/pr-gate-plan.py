@@ -288,7 +288,7 @@ ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
     'scripts/test_pre_release_resume.py': 'modified',
 }
 
-EVIDENCE_REUSE_REVIEWED_HEAD = 'efe87f2cf26b13c3c630cef97fdd7711b53e255a'
+EVIDENCE_REUSE_REVIEWED_HEAD = 'c7e629c2876772493edc037769f1643c45c92fe8'
 EVIDENCE_REUSE_REVIEWED_FILES = {
     'scripts/pre-release-resume.py': 'modified',
     'scripts/test_pre_release_resume.py': 'modified',
