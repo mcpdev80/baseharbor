@@ -42,7 +42,7 @@ func observeBrokerProviderFacts(ctx context.Context, resolved resolvedApplicatio
 	}
 	for index, services := range [][]string{inventory.SQLServices, inventory.SecretsServices} {
 		resources := canonicalProviderServiceResources(inventory.Files.Project, inventory.ContinuousServices(services))
-		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.Files.Project, resources, containers)
+		count, state := observeCanonicalProviderContainersConfirmed(ctx, provider, provider.Kind(), inventory.Files.Project, resources, containers)
 		oneShots := []string{}
 		for _, service := range inventory.OneShotServices {
 			for _, owned := range services {

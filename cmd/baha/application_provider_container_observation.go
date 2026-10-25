@@ -1,9 +1,27 @@
 package main
 
 import (
+	"context"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+// A single engine listing can transiently omit existing containers while
+// unrelated lifecycle work races with it. A zero count must never become a
+// stopped verdict from one sample: confirm with one fresh listing before the
+// consequence plan (and its consent digest) changes shape.
+func observeCanonicalProviderContainersConfirmed(ctx context.Context, lister interface {
+	ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error)
+}, kind bhruntime.ProviderKind, project string, resources []bhruntime.ProjectResource, containers []bhruntime.RuntimeContainer) (int64, application.ProviderState) {
+	count, state := observeCanonicalProviderContainers(kind, project, resources, containers)
+	if count == 0 && state == application.ProviderStoppedOwned {
+		if fresh, err := lister.ListRuntimeContainers(ctx); err == nil {
+			count, state = observeCanonicalProviderContainers(kind, project, resources, fresh)
+		}
+	}
+	return count, state
+}
 
 // Observe the complete selected canonical module, not the first running member.
 // The caller proves ownership separately. Running is process/health evidence,

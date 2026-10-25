@@ -36,7 +36,7 @@ func observeStandaloneProviderFacts(ctx context.Context, resolved resolvedApplic
 		if _, err := provider.InspectProjectResources(ctx, inventory.project, inventory.resources); err != nil {
 			continue
 		}
-		count, state := observeCanonicalProviderContainers(provider.Kind(), inventory.project, inventory.resources, containers)
+		count, state := observeCanonicalProviderContainersConfirmed(ctx, provider, provider.Kind(), inventory.project, inventory.resources, containers)
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: inventory.dependencies, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "retained canonical provider renderer and ownership-checked selected module"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
 }

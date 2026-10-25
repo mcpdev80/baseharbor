@@ -73,8 +73,8 @@ func observeIdentityProviderFacts(ctx context.Context, resolved resolvedApplicat
 				identityResources = append(identityResources, resource)
 			}
 		}
-		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, identityResources, containers)
-		sqlCount, sqlState := observeCanonicalProviderContainers(provider.Kind(), files.Project, sqlResources, containers)
+		count, state := observeCanonicalProviderContainersConfirmed(ctx, provider, provider.Kind(), files.Project, identityResources, containers)
+		sqlCount, sqlState := observeCanonicalProviderContainersConfirmed(ctx, provider, provider.Kind(), files.Project, sqlResources, containers)
 		completedCount, completed := observeCanonicalProviderInitializers(ctx, provider, files.Project, files.Compose, files.Env, oneShots, containers)
 		sqlCount += completedCount
 		if sqlState == application.ProviderRunning && !completed {

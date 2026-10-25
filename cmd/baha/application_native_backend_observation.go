@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
@@ -66,27 +68,49 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 	if isRemoteApplication(resolved) {
 		return
 	}
+	dbg := func(tag string, err error) {
+		if dir := os.Getenv("BAHA_DEBUG_PLAN_DIR"); dir != "" {
+			if f, e := os.OpenFile(dir+"/observe.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); e == nil {
+				fmt.Fprintf(f, "%s native-backend %s err=%v\n", time.Now().UTC().Format("15:04:05.000"), tag, err)
+				f.Close()
+			}
+		}
+	}
 	files, _, expected, err := nativeBackendInventory(resolved)
 	if err != nil {
-		return
+		// An unmaterialized runtime owner directory must not abandon provider
+		// facts while the protected registry still proves the module owner:
+		// keep the derivable files and fall through to the per-instance
+		// intent/binding proof below. Every other inventory failure, including
+		// unprotected or noncanonical owner files, stays fail-closed.
+		dbg("inventory", err)
+		if !errors.Is(err, fs.ErrNotExist) || files.Project == "" {
+			return
+		}
+		expected = nil
 	}
 	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
 	if err != nil {
+		dbg("detect", err)
 		return
 	}
 	if _, err := provider.InspectProjectResources(ctx, files.Project, expected); err != nil {
+		dbg("inspect-expected", err)
 		return
 	}
 	containers, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
+		dbg("list", err)
 		return
 	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
+		dbg("registry", err)
 		return
 	}
 	intents, err := nativeBackendOwnerIntents(resolved)
 	if err != nil {
+		dbg("intents", err)
 		return
 	}
 	for _, instance := range registry.Instances {
@@ -124,7 +148,15 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
 				continue
 			}
 		}
-		count, state := observeCanonicalProviderContainers(provider.Kind(), files.Project, resources, containers)
+		count, state := observeCanonicalProviderContainersConfirmed(ctx, provider, provider.Kind(), files.Project, resources, containers)
+		dbgset := state
+		_ = dbgset
+		if dir := os.Getenv("BAHA_DEBUG_PLAN_DIR"); dir != "" {
+			if f, e := os.OpenFile(dir+"/observe.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); e == nil {
+				fmt.Fprintf(f, "%s native-set %s count=%v state=%s\n", time.Now().UTC().Format("15:04:05.000"), instance.ID[:40], count, state)
+				f.Close()
+			}
+		}
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: []string{}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "protected canonical applied backend intent and native ownership inventory"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
 	}
 }

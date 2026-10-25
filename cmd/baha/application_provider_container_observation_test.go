@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -100,5 +101,38 @@ func TestProviderContinuationRequiresSuccessfulOwnedInitCompletion(t *testing.T)
 				t.Fatalf("unverified init completion accepted: %s %s", kind, mutation)
 			}
 		}
+	}
+}
+
+type scriptedContainerLister struct {
+	lists [][]bhruntime.RuntimeContainer
+	calls int
+}
+
+func (s *scriptedContainerLister) ListRuntimeContainers(context.Context) ([]bhruntime.RuntimeContainer, error) {
+	i := s.calls
+	if i >= len(s.lists) {
+		i = len(s.lists) - 1
+	}
+	s.calls++
+	return s.lists[i], nil
+}
+
+func TestZeroContainerListingIsConfirmedByFreshListing(t *testing.T) {
+	resources := canonicalProviderServiceResources("owned", []string{"db"})
+	running := []bhruntime.RuntimeContainer{{Name: "owned-db-1", Project: "owned", Service: "db", Running: true, Health: "healthy"}}
+	flaky := &scriptedContainerLister{lists: [][]bhruntime.RuntimeContainer{running}}
+	if count, state := observeCanonicalProviderContainersConfirmed(context.Background(), flaky, bhruntime.ProviderDocker, "owned", resources, nil); count != 1 || state != application.ProviderRunning {
+		t.Fatalf("transiently unlisted running container changed the verdict: %d %s (calls=%d)", count, state, flaky.calls)
+	}
+	if flaky.calls != 1 {
+		t.Fatalf("confirmation must re-list exactly once: calls=%d", flaky.calls)
+	}
+	absent := &scriptedContainerLister{lists: [][]bhruntime.RuntimeContainer{{}}}
+	if count, state := observeCanonicalProviderContainersConfirmed(context.Background(), absent, bhruntime.ProviderDocker, "owned", resources, nil); count != 0 || state != application.ProviderStoppedOwned {
+		t.Fatalf("consistently absent resources must remain stopped-but-owned: %d %s", count, state)
+	}
+	if absent.calls != 1 {
+		t.Fatalf("stable absence must also confirm once: calls=%d", absent.calls)
 	}
 }
