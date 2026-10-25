@@ -195,3 +195,30 @@ Owner-authorized continuation of the explicitly approved public CI register upda
   ]
 }
 ```
+
+## Exact SQL desired-preferences preview qualification
+
+Owner-authorized continuation of the approved public CI register publication; no independent-review claim. This exact CI source binds only product `fda031e4fe98aedddcf89f082c85bc2df5525fa1` to mandatory Go/Guided/Edit checks and both real SQL gates. The product adds explicit desired preferences to Plan/Preview rather than inheriting the removed SQL choice. Its regression fails the original assignments and passes the correction while persisted preferences remain unchanged. Full146 planner/runner tests, nested8/7/5 utilities and19 workflow-policy checks pass locally. Real Git tests reject incomplete/status-altered inventories, changed anchors, unreviewed followups and injected merge trees. Native failures remain recorded; no gate waiver or native success is claimed.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "f34a6789565d1d9c86f0c2e4d4a4204bf9c0d15c",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "5a5b9b5fb475d733b127662d2f98111ef8863b55656fc2ddb8e28c6b054cead1",
+    "scripts/pr-check-runner.py": "3701eccd85aa87fab01755f1b0fa6d6947285dd2ad0b27189ba9b5f4e68dab6f",
+    "scripts/test_pr_gate_plan.py": "2455d0566549da9e7085cadd753a6094119dfee64b236a0478fe111e99120f89"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
