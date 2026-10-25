@@ -455,6 +455,14 @@ func applicationProviderInstanceID(provider capability.ProviderKind, m Manifest,
 	}
 }
 
+// ApplicationProviderInstanceIDForScopedPostgreSQL is the exported, test- and
+// adapter-facing mirror of applicationProviderInstanceID for a named,
+// application-scoped baseharbor-owned PostgreSQL instance. It lets consumers
+// match a registry offer without re-deriving the instance ID layout.
+func ApplicationProviderInstanceIDForScopedPostgreSQL(applicationID, environment, resourceName string) string {
+	return applicationProviderInstanceID(capability.ProviderPostgreSQL, Manifest{ApplicationID: applicationID, Environment: environment}, resourceName)
+}
+
 func externalProviderInstanceID(provider capability.ProviderKind, reference string) string {
 	if provider == capability.ProviderExternalOTLP && reference == "default" {
 		return "external-otlp/default"
