@@ -278,7 +278,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 			return application.ProviderImpactPlan{}, err
 		}
 		desiredResolved := resolved
-		desiredResolved.Manifest = desired
+		desiredResolved.Manifest = application.WithProviderPreferences(desired, preferences)
 		snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
@@ -295,7 +295,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 				return GuidedReadContext{}, err
 			}
 			desiredResolved := resolved
-			desiredResolved.Manifest = desired.Manifest
+			desiredResolved.Manifest = application.WithProviderPreferences(desired.Manifest, desired.Preferences)
 			return readGuidedApplicationContext(ctx, desiredResolved)
 		},
 		Authorize: func(ctx context.Context, target, applicationID string) error {

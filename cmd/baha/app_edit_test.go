@@ -218,3 +218,28 @@ func TestAppEditCommandPreviewDiagnosticKeepsPublicCauseCodeWithoutDetails(t *te
 		})
 	}
 }
+
+func TestAppEditCommandSQLRemovalPreviewDoesNotInheritPersistedPreferences(t *testing.T) {
+	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
+	prefs := []application.ProviderPreference{{Requirement: capability.Requirement{Kind: capability.SQL, Name: "default"}}}
+	if err := application.SaveDesiredProviderPreferencesAt(r.TargetStateRoot, r.Target.Name, r.Manifest, prefs); err != nil {
+		t.Fatal(err)
+	}
+	authorities := defaultAppEditAuthorities(r.Store, nil)
+	plan, err := authorities.Plan(context.Background(), r.Target.Name, nil, []application.ProviderPreference{})
+	if err != nil || plan.PlanID == "" {
+		t.Fatalf("SQL removal inherited its old selection: %v", err)
+	}
+	desired, err := appEditProjectRequirements(r.Manifest, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := authorities.Preview(context.Background(), appEditDesired{Manifest: desired, Target: r.Target.Name, Preferences: []application.ProviderPreference{}})
+	if err != nil || len(preview.Capabilities) != 0 {
+		t.Fatalf("removed SQL returned to the preview: capabilities=%v err=%v", preview.Capabilities, err)
+	}
+	retained, err := application.DesiredProviderPreferencesAt(r.TargetStateRoot, r.Manifest)
+	if err != nil || !reflect.DeepEqual(retained, prefs) {
+		t.Fatalf("read-only preview changed persisted preferences: %v %v", retained, err)
+	}
+}
