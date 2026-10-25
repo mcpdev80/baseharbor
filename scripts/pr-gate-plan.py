@@ -264,7 +264,7 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
-EDIT_SQL_PREVIEW_REVIEWED_HEAD = 'da4d919bffeeebf8824a5a9a6e5b0f0f8d273381'
+EDIT_SQL_PREVIEW_REVIEWED_HEAD = 'd26a69c88e6a42ee3de5c0b9fb1aef8ff73d851d'
 EDIT_SQL_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_apply.go': 'modified',
     'cmd/baha/app_apply_result.go': 'modified',

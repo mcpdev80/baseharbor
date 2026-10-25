@@ -3407,7 +3407,7 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 self.assertEqual(0, result.returncode, result.stderr)
                 return result.stdout.strip()
             git_init(root)
-            # Bind every product/observation/test path, never just the entry point.
+            # Bind all product/read-scope/authored-source regression paths.
             files = planner.EDIT_SQL_PREVIEW_REVIEWED_FILES
             for path in files:
                 (root / path).parent.mkdir(parents=True, exist_ok=True)
