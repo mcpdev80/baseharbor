@@ -1755,6 +1755,7 @@ class ReviewedSourceQualificationTests(unittest.TestCase):
              planner.WIZARD_BASE_CHECKS),
             ('UNBOUND_SQL_RETIREMENT', planner.CODE_CHECKS + planner.CLI_CHECKS +
              planner.WIZARD_BASE_CHECKS + [wizard_check('wizard-runtime-retirement-tests')]),
+            ('EVIDENCE_REUSE', planner.CI_CHECKS),
             ('PODMAN_PG17_RECOVERY', planner.CI_CHECKS + planner.CODE_CHECKS +
              planner.CLI_CHECKS + planner.WIZARD_BASE_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS),
             ('CORE_921_PRODUCTION', planner.CI_CHECKS + planner.CODE_CHECKS +
