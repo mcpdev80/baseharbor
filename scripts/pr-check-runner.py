@@ -25,7 +25,8 @@ WIZARD_TEST_FAMILIES = {
     'wizard-app-new-tests': (r'^TestAppNewWizard',),
     # Command regressions cover preview failures, SQL preferences and replacement intent.
     # Stable-preview regressions execute in the existing Edit family; shared
-    # controller, New and machine-adapter families are independently required.
+    # controller, New and machine-adapter families also verify coherent reads
+    # and rejection of expired partial observations across source/read scopes.
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),

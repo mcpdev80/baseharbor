@@ -250,3 +250,63 @@ Owner-authorized release repair under Marcel's explicit completion mandate; no i
   ]
 }
 ```
+
+
+## Coherent Edit observation and expired-read qualification
+
+Owner-authorized continuation of Marcel's complete-release repair mandate; no independent-review claim. This exact CI source binds only product `da4d919bffeeebf8824a5a9a6e5b0f0f8d273381` and all ten modified Go files through clean trusted-target integration. Guided reads use the lifecycle's own internal snapshot instead of observing twice. Each Edit refresh may display the exact desired plan's projection only for identical resolved ownership/source/Target/preferences; no projection crosses a refresh or enters execution. Expired observer responses cannot become confirmable previews, even when the observer returns partial data without an error. Existing 30-second bounds remain unchanged; stale diagnostics disclose only the changed authority category. Public plan JSON excludes internal snapshot/preference fields.
+
+Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks and both real Docker/rootless Podman SQL gates remain binding. Local125 focused Go families, vet, build and readability pass, including real30-second expired-partial regression;146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Earlier SQL failures stay failed; Demo124/125 repair SQL workload migration and explicit retained-provider selection. Fresh native qualification is required. This entry claims no native success, gate waiver or complete release approval.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "f7efb903d97eff50a4c088293adb11025b42e940",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "544b089644db516829151f9a8eab353f5835449ded178acb8d7c26463516817c",
+    "scripts/pr-check-runner.py": "756b55a4b92feee35e94b8899bb442c809099ba9b9a5fbc1b2ed6acdf8ebf84e",
+    "scripts/test_pr_gate_plan.py": "faafb561e62bc943147527a88250a62a69036731f2e66bdaef3678143284c33a"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
+
+
+## Current source snapshot and authored-intent qualification
+
+Owner-authorized complete-release repair; no independent-review claim. Supersedes the earlier pending CI candidate after a realistic authored-source regression exposed a remaining cache miss. This exact CI source binds only product `d26a69c88e6a42ee3de5c0b9fb1aef8ff73d851d` and the same complete ten-file inventory through clean trusted-target merges. The current read's snapshot supplies provider choices within that single refresh. A desired plan supplies its preview only when the fresh actual source/owner/Target still match exactly, system-owned application identity and canonical authored intent agree, and explicit provider preferences match. Internal runtime placement projections remain bound through the actual source, rather than being confused with portable authored intent. New preview/confirmation scopes and execution validations always read afresh.
+
+All existing source, expiry, ownership, consequence, consent and Target-lock protections remain. The30-second bound is unchanged; expired partial observations are rejected. Source regressions exercise the real default Read/Choices and Plan/Preview authorities, parsed authored source, changed placement/intent/owner/Target and new/cancelled scopes. Local126 Go families, vet/build/readability,146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Both real SQL gates and mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks remain required. No native failure is converted to success and no complete release approval is claimed.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "87d554f215e88e1a69df30e318aca7b60ce53640",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "3a4151236d6ecc833df6aa0a22bcb0ee1ffaa1e76bcb12a28f3f1ba5b8fe232d",
+    "scripts/pr-check-runner.py": "736af102b28a8ff13cdff0f921c1c0842349906315d9999665a63f3ce087692e",
+    "scripts/test_pr_gate_plan.py": "7245e2b480c6494f59246f52bf6642b87362ff3d4fc981e9f4abcf54c46fc796"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
