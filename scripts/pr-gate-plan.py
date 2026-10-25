@@ -264,6 +264,13 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
+EDIT_SQL_PREVIEW_REVIEWED_HEAD = '57f5d268835a07f4b66607a29a8f4f2331f19b36'
+EDIT_SQL_PREVIEW_REVIEWED_FILES = {
+    'cmd/baha/app_edit.go': 'modified',
+    'cmd/baha/app_edit_test.go': 'modified',
+    'cmd/baha/app_edit_apply_result.go': 'modified',
+}
+EDIT_SQL_PREVIEW_GATES = {'atomic/docker/data-capabilities', 'atomic/podman/data-capabilities'}
 RUNTIME_STEP_CAP_REVIEWED_HEAD = '75efeef89b61d848d5ea351877ba6423a31e58a6'
 RUNTIME_STEP_CAP_REVIEWED_FILES = {
     '.github/workflows/pre-release-runtime-suite.yml': 'modified',
@@ -836,6 +843,25 @@ def plan(diff, requirements, mapping, repository='.',
     def require(checks):
         for check in checks:
             validations[check['id']] = check
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(EDIT_SQL_PREVIEW_REVIEWED_FILES) and
+            path_status == EDIT_SQL_PREVIEW_REVIEWED_FILES and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'],
+                                         EDIT_SQL_PREVIEW_REVIEWED_HEAD, repository)):
+        require(CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS +
+                [wizard_check('wizard-app-edit-tests'), wizard_check('wizard-provider-choice-tests')])
+        absent = sorted(EDIT_SQL_PREVIEW_GATES - available)
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if absent else 'resolved',
+                'unresolved_coverage': ['required SQL Edit gates absent: ' + ', '.join(absent)] if absent else [],
+                'broad_required': bool(absent),
+                'selected_gates': sorted(EDIT_SQL_PREVIEW_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': 'Every required validation and both native SQL gates must execute and pass.',
+                'reasons': ['Owner-qualified SQL Edit source: exact three-file source and clean trusted-target integration; no native waiver.']}
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
