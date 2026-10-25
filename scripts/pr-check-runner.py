@@ -23,6 +23,7 @@ WIZARD_TEST_FAMILIES = {
     'wizard-change-presentation-tests': (r'^TestAppChangePreview', r'^TestAppChangeResultPresenter'),
     'wizard-controller-tests': (r'^TestAppWizardController',),
     'wizard-app-new-tests': (r'^TestAppNewWizard',),
+    # Command regressions, including preview failures, run in this family.
     'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
