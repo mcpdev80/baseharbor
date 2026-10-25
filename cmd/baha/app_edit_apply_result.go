@@ -263,7 +263,8 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return nil, err
 		}
-		return appProviderChoices(resolved.Manifest, snapshot, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}))
+		selection := appEditSelectionSnapshot(snapshot, resolved.Manifest.ApplicationID, resolved.Manifest.Environment)
+		return appProviderChoices(resolved.Manifest, selection, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}))
 	}
 	planner := func(ctx context.Context, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 		resolved, err := reresolve(ctx, target)
@@ -279,7 +280,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		}
 		desiredResolved := resolved
 		desiredResolved.Manifest = application.WithProviderPreferences(desired, preferences)
-		snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		snapshot, _, err := applicationLifecycleSnapshot(desiredResolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}

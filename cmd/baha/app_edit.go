@@ -55,7 +55,7 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 	controller, err := newAppWizardController(ctx, appWizardInput{
 		Manifest: manifest,
-		Snapshot: snapshot,
+		Snapshot: appEditSelectionSnapshot(snapshot, loaded.ApplicationID, manifest.Environment),
 		Selection: appCapabilitySelectionInput{
 			Current: loaded.Capabilities,
 		},
@@ -102,6 +102,21 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 
 	return appEditSession{Loaded: loaded, Controller: controller}, nil
+}
+
+// Provider selection projects a possible replacement without rebinding the
+// current application. Actual reads and consequence planning retain its applied
+// binding; other applications and environments remain in this detached view.
+func appEditSelectionSnapshot(snapshot application.ResolutionSnapshot, applicationID, environment string) application.ResolutionSnapshot {
+	bindings := make([]capability.ProviderBinding, 0, len(snapshot.Registry.Bindings))
+	for _, binding := range snapshot.Registry.Bindings {
+		if binding.ApplicationID == applicationID && (binding.Environment == "" || binding.Environment == environment) {
+			continue
+		}
+		bindings = append(bindings, binding)
+	}
+	snapshot.Registry.Bindings = bindings
+	return snapshot
 }
 
 // One refresh uses its freshly observed snapshot throughout proposal validation.

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -241,5 +242,106 @@ func TestAppEditCommandSQLRemovalPreviewDoesNotInheritPersistedPreferences(t *te
 	retained, err := application.DesiredProviderPreferencesAt(r.TargetStateRoot, r.Manifest)
 	if err != nil || !reflect.DeepEqual(retained, prefs) {
 		t.Fatalf("read-only preview changed persisted preferences: %v %v", retained, err)
+	}
+}
+
+func TestAppEditCommandBoundProviderChoiceRemainsReadOnly(t *testing.T) {
+	m := application.WithWorkloadComponents(providerChoiceManifest("dev", "primary"), "api")
+	req := capability.Requirement{Kind: capability.SQL, Name: "primary"}
+	snapshot := providerChoiceSnapshot("dev", providerChoiceShared("sql-old", "old"), providerChoiceShared("sql-new", "new"))
+	resource, err := capability.Resolve(m.Name, req, capability.PostgreSQL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, environment := range []string{"dev", "prod"} {
+		if err := snapshot.Registry.BindDeployment(resource, m.ApplicationID, environment, "sql-old"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bindings := append([]capability.ProviderBinding(nil), snapshot.Registry.Bindings...)
+	view := GuidedReadContext{ApplicationID: m.ApplicationID, Name: m.Name, Environment: "dev", Target: "dev", SnapshotRevision: "fresh",
+		Capabilities: []capability.Requirement{req}, Preferences: []application.ProviderPreference{{Requirement: req, InstanceID: "sql-old"}},
+		Footprint: application.Footprint{Version: application.FootprintVersion, Target: "dev"}}
+	a := appEditAuthorities{
+		Read:    func(context.Context, string) (GuidedReadContext, error) { return view, nil },
+		Choices: func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error) { return nil, nil },
+		Plan: func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+			return application.ProviderImpactPlan{}, nil
+		},
+		Preview: func(context.Context, appEditDesired) (GuidedReadContext, error) { return view, nil },
+	}
+	session, err := appEditStart(context.Background(), "dev", []byte(m.AuthoredYAML()), snapshot, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed, err := session.Controller.SelectProvider(context.Background(), req, "sql-new")
+	if err != nil {
+		t.Fatalf("bound application cannot propose a replacement: %v", err)
+	}
+	if changed.phase != appWizardNeeds || !reflect.DeepEqual(snapshot.Registry.Bindings, bindings) {
+		t.Fatal("provider proposal changed actual bindings or bypassed preview")
+	}
+	otherEnvironment := false
+	for _, binding := range changed.snapshot.Registry.Bindings {
+		otherEnvironment = otherEnvironment || binding.Environment == "prod" && binding.ProviderInstanceID == "sql-old"
+	}
+	if !otherEnvironment {
+		t.Fatal("provider proposal lost the other environment's binding")
+	}
+}
+
+func TestAppEditCommandBoundProviderProposalKeepsAppliedRegistry(t *testing.T) {
+	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
+	store := capability.RegistryStore{Path: filepath.Join(r.TargetStateRoot, "provider-registry.json")}
+	registry, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projected, err := application.WithBackendPlacementProjection(r.Manifest, map[capability.ProviderKind]capability.ProviderPlacement{
+		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offers, err := application.PreviewReferenceProviderRegistryAt(r.TargetStateRoot, projected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var destination capability.ProviderInstance
+	for _, offer := range offers.Instances {
+		if offer.Provider.Kind == capability.ProviderPostgreSQL && offer.Scope == capability.ScopeApplication && offer.OwnerApplicationID == r.Manifest.ApplicationID {
+			destination = offer
+		}
+	}
+	if destination.ID == "" {
+		t.Fatal("missing canonical destination")
+	}
+	if err := registry.Register(destination); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(registry); err != nil {
+		t.Fatal(err)
+	}
+	req := capability.Requirement{Kind: capability.SQL, Name: "default"}
+	a := defaultAppEditAuthorities(r.Store, nil)
+	choices, err := a.Choices(context.Background(), r.Target.Name, []capability.Requirement{req})
+	if err != nil || len(choices) != 1 {
+		t.Fatalf("choices: %v %v", choices, err)
+	}
+	if _, err := choices[0].Select(destination.ID); err != nil {
+		t.Fatalf("existing binding blocked proposed replacement: %v", err)
+	}
+	prefs := []application.ProviderPreference{{Requirement: req, InstanceID: destination.ID, ProviderKind: capability.ProviderPostgreSQL}}
+	plan, err := a.Plan(context.Background(), r.Target.Name, []capability.Requirement{req}, prefs)
+	if err != nil || plan.PlanID == "" {
+		t.Fatalf("replacement plan: %v", err)
+	}
+	preview, err := a.Preview(context.Background(), appEditDesired{Target: r.Target.Name, Manifest: r.Manifest, Preferences: prefs})
+	if err != nil || len(preview.Footprint.Requirements) != 1 || preview.Footprint.Requirements[0].InstanceID != destination.ID {
+		t.Fatalf("replacement preview: %+v %v", preview.Footprint, err)
+	}
+	after, err := store.Load()
+	if err != nil || !reflect.DeepEqual(after, registry) {
+		t.Fatal("read-only replacement changed applied registry", err)
 	}
 }
