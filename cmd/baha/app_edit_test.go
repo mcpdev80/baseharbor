@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -332,13 +333,26 @@ func TestAppEditCommandBoundProviderProposalKeepsAppliedRegistry(t *testing.T) {
 		t.Fatalf("existing binding blocked proposed replacement: %v", err)
 	}
 	prefs := []application.ProviderPreference{{Requirement: req, InstanceID: destination.ID, ProviderKind: capability.ProviderPostgreSQL}}
-	plan, err := a.Plan(context.Background(), r.Target.Name, []capability.Requirement{req}, prefs)
+	projection := &appEditPreviewProjection{}
+	ctx := context.WithValue(context.Background(), appEditPreviewProjectionKey{}, projection)
+	plan, err := a.Plan(ctx, r.Target.Name, []capability.Requirement{req}, prefs)
 	if err != nil || plan.PlanID == "" {
 		t.Fatalf("replacement plan: %v", err)
 	}
-	preview, err := a.Preview(context.Background(), appEditDesired{Target: r.Target.Name, Manifest: r.Manifest, Preferences: prefs})
+	if projection.view == nil {
+		t.Fatal("desired planner omitted its coherent preview")
+	}
+	projection.view.SnapshotRevision = "same-observation-only"
+	desired, err := appEditProjectRequirements(r.Manifest, []capability.Requirement{req})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := a.Preview(ctx, appEditDesired{Target: r.Target.Name, Manifest: desired, Preferences: prefs})
 	if err != nil || len(preview.Footprint.Requirements) != 1 || preview.Footprint.Requirements[0].InstanceID != destination.ID {
 		t.Fatalf("replacement preview: %+v %v", preview.Footprint, err)
+	}
+	if preview.SnapshotRevision != "same-observation-only" || preview.PlanRevision != plan.PlanID {
+		t.Fatal("preview independently rebuilt the desired plan instead of using its authoritative observation")
 	}
 	after, err := store.Load()
 	if err != nil || !reflect.DeepEqual(after, registry) {
@@ -530,5 +544,84 @@ func TestAppEditApplyFreshMachinePlanCountdownAndAuthority(t *testing.T) {
 				t.Fatalf("authority drift executed: %s %v (%d)", drift, err, executed)
 			}
 		})
+	}
+}
+
+func TestAppEditCommandPreviewProjectionNeverCrossesAuthorityOrReadScope(t *testing.T) {
+	r := appEditResultResolved("dev")
+	r.Manifest = application.New("coherent", "dev", false, false, false)
+	snapshot := application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry(), Facts: map[string]application.ProviderFact{}}
+	prefs := []application.ProviderPreference{}
+	union := application.ProviderPlan{Target: "dev", Complete: true}
+	impact := application.ProviderImpactPlan{Target: "dev", PlanID: "approved"}
+	projection := &appEditPreviewProjection{}
+	ctx := context.WithValue(context.Background(), appEditPreviewProjectionKey{}, projection)
+	if err := recordAppEditPreviewProjection(ctx, r, snapshot, prefs, union, impact); err != nil {
+		t.Fatal(err)
+	}
+	view, ok := currentAppEditPreviewProjection(ctx, r, prefs)
+	if !ok || view.ApplicationID != r.Manifest.ApplicationID || view.PlanRevision != impact.PlanID {
+		t.Fatalf("projection lost authority: %+v %v", view, ok)
+	}
+	for _, change := range []string{"target", "endpoint", "manifest", "owner", "state-root", "preferences", "new-read", "cancelled"} {
+		t.Run(change, func(t *testing.T) {
+			changed := r
+			selected := prefs
+			scope := ctx
+			switch change {
+			case "target":
+				changed.Target.Name = "other"
+			case "endpoint":
+				changed.Target.DockerEndpoint = "other-endpoint"
+			case "manifest":
+				changed.Manifest.Name = "other"
+			case "owner":
+				changed.Manifest.ApplicationID = "other"
+			case "state-root":
+				changed.TargetStateRoot = "other-state"
+			case "preferences":
+				selected = []application.ProviderPreference{{InstanceID: "other"}}
+			case "new-read":
+				scope = context.WithValue(context.Background(), appEditPreviewProjectionKey{}, &appEditPreviewProjection{})
+			case "cancelled":
+				cancelled, cancel := context.WithCancel(ctx)
+				cancel()
+				scope = cancelled
+			}
+			if _, ok := currentAppEditPreviewProjection(scope, changed, selected); ok {
+				t.Fatalf("%s reused stale projected facts", change)
+			}
+		})
+	}
+	if _, ok := currentAppEditPreviewProjection(context.Background(), r, prefs); ok {
+		t.Fatal("execution inherited a read-scope projection")
+	}
+}
+
+func TestAppEditCommandGuidedSnapshotStaysPrivateAndUsesPlanObservation(t *testing.T) {
+	r := appEditResultResolved("dev")
+	r.Manifest = application.WithWorkloadComponents(application.New("coherent-plan", "dev", false, false, false), "api")
+	r.Store.Root = t.TempDir()
+	r.TargetStateRoot = t.TempDir()
+	plan, err := buildResolvedApplicationPlan(context.Background(), r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.snapshot.Target != r.Target.Name || !reflect.DeepEqual(plan.Footprint.Target, plan.snapshot.Target) {
+		t.Fatal("lifecycle omitted the snapshot that produced its footprint")
+	}
+	raw, err := json.Marshal(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var public map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &public); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := public["snapshot"]; ok {
+		t.Fatal("internal observation leaked into public plan")
+	}
+	if _, ok := public["preferences"]; ok {
+		t.Fatal("internal observation preferences leaked into public plan")
 	}
 }

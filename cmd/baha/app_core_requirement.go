@@ -210,6 +210,8 @@ func materializeResolvedApplicationBroker(ctx context.Context, resolved resolved
 
 // All read surfaces share the same desired plan and Target resolver snapshot.
 type applicationLifecyclePlan struct {
+	snapshot    application.ResolutionSnapshot
+	preferences []application.ProviderPreference
 	application.Plan
 	Footprint         application.Footprint        `json:"footprint"`
 	RetainedResources []capability.ProviderBinding `json:"retained_resources,omitempty"`
@@ -265,7 +267,7 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 		}
 		union.Impact = &impact
 	}
-	return applicationLifecyclePlan{Plan: plan, Footprint: footprint, RetainedResources: retained, ProviderPlan: union}, nil
+	return applicationLifecyclePlan{Plan: plan, Footprint: footprint, RetainedResources: retained, ProviderPlan: union, snapshot: snapshot, preferences: preferences}, nil
 }
 
 func removedApplicationProviderBindings(resolved resolvedApplication) ([]capability.ProviderBinding, error) {

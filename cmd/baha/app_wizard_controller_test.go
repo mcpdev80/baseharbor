@@ -370,30 +370,33 @@ func TestAppWizardControllerProviderRowsUseRealNewlines(t *testing.T) {
 
 func TestAppWizardControllerFreshFactsBlocksWithoutTimeout(t *testing.T) {
 	input := appWizardTestInput(t)
+	refresh := input.Refresh
 	input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
-		// Block indefinitely – simulates the Cluster B wizard-hang
-		// After fix: freshFacts wraps refresh in context.WithTimeout(30s)
-		// so this test will get a timeout error instead of hanging forever
+		// Some observers return partial facts after a deadline without an error.
+		// Such a response must never become a confirmable preview.
 		<-ctx.Done()
-		return nil, nil, ctx.Err()
+		return refresh(context.Background(), d)
 	}
 	w, err := newAppWizardController(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Step with appWizardNext triggers freshFacts in appWizardNeeds case
-	// With the fix, this should timeout rather than hang forever
-	type testDone struct{}
-	done := make(chan testDone, 1)
+	done := make(chan error, 1)
 	go func() {
-		w.Step(context.Background(), appWizardNext)
-		done <- testDone{}
+		next, err := w.Step(context.Background(), appWizardNext)
+		if next.phase != appWizardNeeds {
+			done <- errors.New("expired observation became a preview")
+			return
+		}
+		done <- err
 	}()
 	select {
-	case <-done:
-		// Test completed – if the fix is in place, freshFacts timed out
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expired partial observation accepted: %v", err)
+		}
 	case <-time.After(35 * time.Second):
-		t.Fatal("freshFacts blocked indefinitely – no timeout on refresh callback")
+		t.Fatal("freshFacts blocked indefinitely")
 	}
 }
 

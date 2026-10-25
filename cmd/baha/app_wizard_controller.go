@@ -169,8 +169,8 @@ func (w appWizardController) freshFacts(ctx context.Context, d appWizardDecision
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+	if err := refreshCtx.Err(); err != nil {
+		return nil, nil, fmt.Errorf("preview observation deadline: %w", err)
 	}
 	if fp == nil || impact == nil || fp.Footprint.Target != d.Target || impact.Target != d.Target {
 		return nil, nil, errors.New("missing or wrong-Target required preview")
@@ -259,7 +259,7 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 				return w, err
 			}
 			if !reflect.DeepEqual(fresh, next.previewFacts) {
-				return w, errors.New("stale preview: return to selection and refresh")
+				return w, appWizardPreviewDrift(next.footprint, next.impact, fp, impact)
 			}
 			d := next.intent()
 			next.decision = &d
@@ -402,4 +402,17 @@ func stableAppProviderImpact(plan application.ProviderImpactPlan) application.Pr
 		}
 	}
 	return stable
+}
+
+// Report only the changed authority category, never observation contents.
+func appWizardPreviewDrift(before *GuidedReadContext, approved *application.ProviderImpactPlan, after *GuidedReadContext, current *application.ProviderImpactPlan) error {
+	category := "displayed consequences"
+	if before.SnapshotRevision != after.SnapshotRevision {
+		category = "application snapshot"
+	} else if approved.PlanID != current.PlanID || approved.Revision != current.Revision {
+		category = "provider authority"
+	} else if before.PlanRevision != after.PlanRevision {
+		category = "application plan"
+	}
+	return fmt.Errorf("stale preview (%s): return to selection and refresh", category)
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -78,6 +79,7 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 
 	controller.refresh = func(refreshCtx context.Context, decision appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+		refreshCtx = context.WithValue(refreshCtx, appEditPreviewProjectionKey{}, &appEditPreviewProjection{})
 		fresh, err := authorities.Read(refreshCtx, decision.Target)
 		if err != nil {
 			return nil, nil, err
@@ -317,4 +319,57 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 		return appEditApplyResult{Source: appEditLoadSource(session.Loaded)}, driveErr
 	}
 	return runAppEditCommand(ctx, session, reader, out, authorities)
+}
+
+// A desired plan and its displayed projection share one read-only refresh.
+// Each preview/confirmation creates a new holder; execution never receives it.
+type appEditPreviewProjectionKey struct{}
+type appEditPreviewProjection struct {
+	resolved    resolvedApplication
+	preferences []application.ProviderPreference
+	view        *GuidedReadContext
+}
+
+func recordAppEditPreviewProjection(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference, union application.ProviderPlan, impact application.ProviderImpactPlan) error {
+	projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection)
+	if !ok {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
+	if err != nil {
+		return err
+	}
+	contract, err := application.PortableContractFromManifest(resolved.Manifest)
+	if err != nil {
+		return err
+	}
+	revision, err := guidedSnapshotRevision(resolved.Manifest, snapshot, preferences)
+	if err != nil {
+		return err
+	}
+	projection.resolved = resolved
+	projection.preferences = appEditSortedPreferences(preferences)
+	projection.view = &GuidedReadContext{
+		ApplicationID: resolved.Manifest.ApplicationID, Name: resolved.Manifest.Name,
+		Environment: resolved.Manifest.Environment, Target: resolved.Target.Name,
+		Capabilities: append([]capability.Requirement{}, contract.Capabilities...),
+		Preferences:  append([]application.ProviderPreference{}, preferences...),
+		Footprint:    footprint, Changes: append([]application.ProviderChange{}, union.Changes...),
+		Complete: footprint.Complete && union.Complete, SnapshotRevision: revision, PlanRevision: impact.PlanID,
+	}
+	return nil
+}
+
+func currentAppEditPreviewProjection(ctx context.Context, resolved resolvedApplication, preferences []application.ProviderPreference) (GuidedReadContext, bool) {
+	projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection)
+
+	if !ok || projection.view == nil || ctx.Err() != nil ||
+		!reflect.DeepEqual(projection.resolved, resolved) ||
+		!reflect.DeepEqual(projection.preferences, appEditSortedPreferences(preferences)) {
+		return GuidedReadContext{}, false
+	}
+	return *projection.view, true
 }

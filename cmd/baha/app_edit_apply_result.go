@@ -297,6 +297,9 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 			}
 			desiredResolved := resolved
 			desiredResolved.Manifest = application.WithProviderPreferences(desired.Manifest, desired.Preferences)
+			if preview, ok := currentAppEditPreviewProjection(ctx, desiredResolved, desired.Preferences); ok {
+				return preview, nil
+			}
 			return readGuidedApplicationContext(ctx, desiredResolved)
 		},
 		Authorize: func(ctx context.Context, target, applicationID string) error {
@@ -342,7 +345,14 @@ func planApplicationProviderImpactForDesired(ctx context.Context, resolved resol
 	if err != nil {
 		return application.ProviderImpactPlan{}, err
 	}
-	return resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	impact, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	if err := recordAppEditPreviewProjection(ctx, resolved, snapshot, preferences, union, impact); err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	return impact, nil
 }
 
 // appEditSourceBytes returns the exact authoritative source bytes for a

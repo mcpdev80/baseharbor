@@ -73,22 +73,15 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "incompatible")
 	}
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
-	if err != nil {
-		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
-	}
-	footprint, err := application.ResolveFootprint(resolved.Manifest, snapshot, preferences)
-	if err != nil {
-		return GuidedReadContext{}, &GuidedReadError{Kind: "incompatible", Cause: err}
-	}
 	// The lifecycle preview is the existing owner of provider consequences and
 	// the authoritative consent PlanID; a bare union has no impact PlanID.
 	lifecycle, err := buildResolvedApplicationPlan(ctx, resolved)
 	if err != nil {
-		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
+		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}
 	plan := lifecycle.ProviderPlan
-	footprint = lifecycle.Footprint
+	footprint := lifecycle.Footprint
+	snapshot, preferences := lifecycle.snapshot, lifecycle.preferences
 	snapshotRev, err := guidedSnapshotRevision(resolved.Manifest, snapshot, preferences)
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
