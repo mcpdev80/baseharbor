@@ -111,3 +111,31 @@ Owner-authorized exact CI source qualification; no independent review is claimed
   ]
 }
 ```
+
+
+## Input-equivalent release evidence reuse CI qualification
+
+Owner-authorized qualification of exact source; no independent-review claim. This three-file CI source binds only the two-file collector/regression candidate `efe87f2cf26b13c3c630cef97fdd7711b53e255a` to the existing planner, workflow-policy and executable verifier suites. The existing real-Git authority mutation matrix covers clean target integration and rejects missing/extra/status-altered files, changed anchors, unreviewed followups and injected merge trees. The runner docstring is clarified without execution changes. Collector validation passes104 targeted checks, with four new regressions failing against original source. Source-only65-gate input comparison remains equal across the collector-only change; no new execution or release approval is claimed. Original ZIP/source/attempt, cleanup, current consumer bindings and newer negative outcomes remain required.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "7f250daf71030c1e8359ff207fbcf7cb70daba64",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "913acf8200ea736120df76921e292888b348f70d6e7081cb64478f081810519f",
+    "scripts/pr-check-runner.py": "91a3078c34f848a434bba4525670127e7cc8c012fa43cd935edd22aea0c61595",
+    "scripts/test_pr_gate_plan.py": "5f07dbf0bb008713e7dfc7f3d2e039adf4fc18ba190759be0c4cb6393697ed0c"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
