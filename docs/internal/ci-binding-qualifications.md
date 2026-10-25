@@ -196,24 +196,24 @@ Owner-authorized continuation of the explicitly approved public CI register upda
 }
 ```
 
-## Exact SQL desired-preferences preview qualification
+## Exact SQL remove and replacement preview qualification
 
-Owner-authorized continuation of the approved public CI register publication; no independent-review claim. This exact CI source binds only product `fda031e4fe98aedddcf89f082c85bc2df5525fa1` to mandatory Go/Guided/Edit checks and both real SQL gates. The product adds explicit desired preferences to Plan/Preview rather than inheriting the removed SQL choice. Its regression fails the original assignments and passes the correction while persisted preferences remain unchanged. Full146 planner/runner tests, nested8/7/5 utilities and19 workflow-policy checks pass locally. Real Git tests reject incomplete/status-altered inventories, changed anchors, unreviewed followups and injected merge trees. Native failures remain recorded; no gate waiver or native success is claimed.
+Owner-authorized continuation of the approved public CI register publication; no independent-review claim. This exact CI source binds only product `57f5d268835a07f4b66607a29a8f4f2331f19b36` to mandatory Go/Guided/Edit/provider-choice checks and both real SQL gates. Regressions reproduce inherited removed preferences, a bound-selection refusal and a replacement binding-conflict. Corrected detached projections preserve persisted choices, the actual registry and other environments; execution remains under existing consequence consent. Full146 planner/runner tests, nested8/7/5 utilities and19 workflow-policy checks pass locally. Real Git tests reject incomplete/status-altered inventories, changed anchors, unreviewed followups and injected merge trees. Native failures remain recorded; no native success or gate waiver is claimed.
 
 ```json
 {
   "repository": "mcpdev80/baseharbor",
   "target_branch": "develop",
-  "reviewed_head": "f34a6789565d1d9c86f0c2e4d4a4204bf9c0d15c",
+  "reviewed_head": "15af842967511591616c1504ac841f05a099519b",
   "files": {
     "scripts/pr-gate-plan.py": "modified",
     "scripts/pr-check-runner.py": "modified",
     "scripts/test_pr_gate_plan.py": "modified"
   },
   "file_hashes": {
-    "scripts/pr-gate-plan.py": "5a5b9b5fb475d733b127662d2f98111ef8863b55656fc2ddb8e28c6b054cead1",
-    "scripts/pr-check-runner.py": "3701eccd85aa87fab01755f1b0fa6d6947285dd2ad0b27189ba9b5f4e68dab6f",
-    "scripts/test_pr_gate_plan.py": "2455d0566549da9e7085cadd753a6094119dfee64b236a0478fe111e99120f89"
+    "scripts/pr-gate-plan.py": "2b31755edac73f159e1a06f461e410298abc10fa628f2673a4f4604bef002aad",
+    "scripts/pr-check-runner.py": "03d1b38b2f8e6a0c2ec6c783e42bc1acc23aaff7eb275a44c1920528734541ef",
+    "scripts/test_pr_gate_plan.py": "008eab8dfa214e52e9c4c881f28997d273d8af065004a15cce9649f8304703e7"
   },
   "required_checks": [
     "pr-planner-tests",
