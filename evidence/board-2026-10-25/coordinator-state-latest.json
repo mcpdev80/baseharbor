@@ -1,9 +1,9 @@
 {
- "at": 1792940890,
+ "at": 1792941852,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792940892,
+   "observed_at": 1792941854,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792940893,
+   "observed_at": 1792941855,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792940893,
+   "observed_at": 1792941854,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792940894,
+   "observed_at": 1792941855,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -67,8 +67,8 @@
   }
  },
  "health": {
-  "board_currency": "stale",
-  "mem_available_mb": 21030,
+  "board_currency": "ok",
+  "mem_available_mb": 20587,
   "tmp_free_mb": 11990,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
@@ -80,13 +80,22 @@
  },
  "lanes": [
   {
-   "id": "41e61806-074a-4472-91cf-b32fdab3b766",
+   "id": "583dd853-672b-4a88-9c44-bf535c8a13b8",
    "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "o141",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "41e61806-074a-4472-91cf-b32fdab3b766",
+   "idle_s": 132,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
    "self": true,
-   "status": "busy"
+   "status": "idle"
   }
  ],
  "missions": {
@@ -770,6 +779,11 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o140-stop-preserve.txt",
    "state": "DONE"
   },
+  "o141": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o141.txt",
+   "state": "dispatched"
+  },
   "o30": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o30-notes-fix.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o30-notes-fix.txt",
@@ -1299,6 +1313,11 @@
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q123-review1052r6.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q123.txt",
    "state": "DONE"
+  },
+  "q124": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/q124-observe-stability.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q124.txt",
+   "state": "dispatched"
   },
   "q13": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q13-rolling-packet.md",
