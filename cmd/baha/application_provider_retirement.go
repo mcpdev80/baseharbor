@@ -15,7 +15,7 @@ import (
 )
 
 func prepareApplicationProviderRetirement(ctx context.Context, resolved resolvedApplication) (application.ProviderPlan, error) {
-	observed := observeApplicationProviderFacts(ctx, resolved)
+	observed, diagnostics := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
 	plan, err := resolveApplicationProviderPlan(resolved, observed)
 	if err != nil {
 		return application.ProviderPlan{}, err
@@ -34,10 +34,18 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 			continue
 		}
 		if !plan.Complete || change.Action == "preserve" {
-			return application.ProviderPlan{}, &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_retirement_unverifiable", Resource: change.InstanceID, Message: "The last consumer cannot be released without verified runtime and complete consumer inventory.", Next: "Recover the existing provider/deployment inventory and retry; ownership and runtime remain available.", Details: struct {
-				Plan     application.ProviderPlan            `json:"plan"`
-				Observed map[string]application.ProviderFact `json:"observed"`
-			}{plan, observed}}
+			return application.ProviderPlan{}, providerRetirementUnverifiable(plan, observed, diagnostics, change.InstanceID)
+		}
+		if change.Action == "stop" || change.Action == "remove-runtime" {
+			fact, found := observed[change.InstanceID]
+			// A selected last-consumer stop/remove-runtime is authorized only
+			// by an actual Target-scoped runtime measurement. The registry-only
+			// preview projection remains usable on preview surfaces and the
+			// common resolver stays the sole dependency/removal authority, but
+			// it can never qualify this preparation gate (CMF21 R2).
+			if !found || fact.Target != resolved.Target.Name || !providerFactIsRuntimeMeasurement(fact) {
+				return application.ProviderPlan{}, providerRetirementUnverifiable(plan, observed, diagnostics, change.InstanceID)
+			}
 		}
 		for _, instance := range registry.Instances {
 			sharedBackend := instance.Scope == capability.ScopeShared && (instance.Provider.Kind == capability.ProviderPostgreSQL || instance.Provider.Kind == capability.ProviderValkey)
@@ -48,6 +56,19 @@ func prepareApplicationProviderRetirement(ctx context.Context, resolved resolved
 		}
 	}
 	return plan, nil
+}
+
+// providerRetirementUnverifiable is the existing fail-closed preparation
+// error. Diagnostic-only (preview) facts keep their typed materialization
+// code/cause plus instance/Target context in the serialized Details alongside
+// the plan/observation evidence, because machine.Error.Cause is json:"-" and a
+// Go-only error chain never reaches CLI/JSON consumers.
+func providerRetirementUnverifiable(plan application.ProviderPlan, observed map[string]application.ProviderFact, diagnostics error, instanceID string) error {
+	details := map[string]any{"plan": plan, "observed": observed}
+	if view, ok := materializationDiagnosticView(diagnostics).(map[string]any); ok {
+		details["materialization_diagnostics"] = view["materialization_diagnostics"]
+	}
+	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_retirement_unverifiable", Resource: instanceID, Message: "The last consumer cannot be released without verified runtime and complete consumer inventory.", Next: "Recover the existing provider/deployment inventory and retry; ownership and runtime remain available.", Details: details, Cause: diagnostics}
 }
 
 func retireReleasedApplicationProviders(ctx context.Context, resolved resolvedApplication, provider bhruntime.RuntimeProvider, issuer serviceaccess.Issuer, plan application.ProviderPlan, out io.Writer) error {
