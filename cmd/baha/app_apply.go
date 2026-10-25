@@ -126,7 +126,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		if isRemoteApplication(reresolved) {
 			return evidence, errors.New("application source changed to a remote target during mutation")
 		}
-		execution, err = newApplicationApplyExecutionFromResolved(ctx, reresolved, io.Discard, io.Discard)
+		execution, err = rebuildApplicationApplyExecution(ctx, reresolved, out, errOut)
 		if err != nil {
 			return evidence, err
 		}
@@ -406,4 +406,15 @@ func renderRuntimeReady(term *cli.Terminal, m application.Manifest) {
 			term.Result("VERIFIED", "required-secrets", fmt.Sprintf("%d declared secret(s) present", len(m.Secrets.Required)))
 		}
 	}
+}
+
+// Rebuild the changed source without repeating the header; runtime output remains visible.
+func rebuildApplicationApplyExecution(ctx context.Context, resolved resolvedApplication, out, errOut io.Writer) (*applicationApplyExecution, error) {
+	execution, err := newApplicationApplyExecutionFromResolved(ctx, resolved, io.Discard, io.Discard)
+	if err != nil {
+		return nil, err
+	}
+	execution.out, execution.errOut = out, errOut
+	execution.term = cli.NewTerminal(ctx, out, errOut)
+	return execution, nil
 }

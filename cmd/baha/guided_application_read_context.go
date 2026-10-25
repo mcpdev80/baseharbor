@@ -89,11 +89,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	}
 	plan := lifecycle.ProviderPlan
 	footprint = lifecycle.Footprint
-	snapshotRev, err := guidedRevision(struct {
-		Manifest    application.Manifest
-		Snapshot    application.ResolutionSnapshot
-		Preferences []application.ProviderPreference
-	}{resolved.Manifest, snapshot, preferences})
+	snapshotRev, err := guidedSnapshotRevision(resolved.Manifest, snapshot, preferences)
 	if err != nil {
 		return GuidedReadContext{}, &GuidedReadError{Kind: "unverifiable", Cause: err}
 	}
@@ -114,4 +110,20 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 		Complete:         footprint.Complete && plan.Complete,
 		SnapshotRevision: snapshotRev, PlanRevision: planRev,
 	}, nil
+}
+
+// Bind intent and provider structure without invalidating decisions on sampled usage.
+func guidedSnapshotRevision(manifest application.Manifest, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (string, error) {
+	stable := snapshot
+	stable.Facts = make(map[string]application.ProviderFact, len(snapshot.Facts))
+	for id, fact := range snapshot.Facts {
+		fact.MemoryBytes = application.Quantity{}
+		fact.Containers = application.Quantity{}
+		stable.Facts[id] = fact
+	}
+	return guidedRevision(struct {
+		Manifest    application.Manifest
+		Snapshot    application.ResolutionSnapshot
+		Preferences []application.ProviderPreference
+	}{manifest, stable, preferences})
 }

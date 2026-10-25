@@ -410,8 +410,8 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 	}
 	// Compare the public plan values after the proposal's JSON round-trip;
 	// omitted optional empty collections must not create artificial drift.
-	freshPlan, freshErr := json.Marshal(fresh.Plan)
-	proposedPlan, proposedErr := json.Marshal(req.Proposal.Plan)
+	freshPlan, freshErr := json.Marshal(stableAppProviderImpact(fresh.Plan))
+	proposedPlan, proposedErr := json.Marshal(stableAppProviderImpact(req.Proposal.Plan))
 	if freshErr != nil || proposedErr != nil || string(freshPlan) != string(proposedPlan) {
 		return application.ProviderChangeResult{}, &appMachineError{Code: "conflict"}
 	}

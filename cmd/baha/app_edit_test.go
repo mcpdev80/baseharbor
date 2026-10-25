@@ -345,3 +345,190 @@ func TestAppEditCommandBoundProviderProposalKeepsAppliedRegistry(t *testing.T) {
 		t.Fatal("read-only replacement changed applied registry", err)
 	}
 }
+
+func TestAppEditCommandPreviewSamplingKeepsAuthorityAndDisplay(t *testing.T) {
+	for _, drift := range []string{"sampling", "owner", "state", "expiry", "outcome", "confirmations", "plan", "snapshot"} {
+		t.Run(drift, func(t *testing.T) {
+			input := appWizardTestInput(t)
+			refresh := input.Refresh
+			calls := 0
+			var observed *GuidedReadContext
+			var observedPlan *application.ProviderImpactPlan
+			input.Refresh = func(ctx context.Context, d appWizardDecision) (*GuidedReadContext, *application.ProviderImpactPlan, error) {
+				fp, plan, err := refresh(ctx, d)
+				calls++
+				quantity, remaining := int64(calls*1024), int64(120-calls)
+				fp.SnapshotRevision = "stable-structure"
+				fp.Footprint.Existing = []application.ProviderFootprint{{InstanceID: "sql-a", MemoryBytes: application.Quantity{Value: &quantity}, Containers: application.Quantity{Value: &quantity}}}
+				fp.Footprint.Additional = []application.ProviderFootprint{{InstanceID: "sql-b", MemoryBytes: application.Quantity{Value: &quantity}}}
+				plan.Impacts[0].Functions = []application.FunctionConsequence{{Consumer: "app", Outcome: "remains", ValidUntil: "2030-01-01T00:00:00Z", RemainingValiditySeconds: &remaining}}
+				plan.Impacts[0].Materials = []application.MaterialConsequence{{Before: application.ProviderMaterial{ID: "certificate", ExpiresAt: "2030-01-01T00:00:00Z"}, RemainingValiditySeconds: &remaining}}
+				if calls > 1 {
+					switch drift {
+					case "owner":
+						fp.Footprint.Existing[0].Ownership = capability.OwnershipBaseHarbor
+					case "state":
+						fp.Footprint.Existing[0].State = application.ProviderState("changed")
+					case "expiry":
+						plan.Impacts[0].Materials[0].Before.ExpiresAt = "2029-01-01T00:00:00Z"
+					case "outcome":
+						plan.Impacts[0].Functions[0].Outcome = "unavailable"
+					case "confirmations":
+						plan.ConfirmationsRequired++
+					case "plan":
+						plan.PlanID = "other"
+					case "snapshot":
+						fp.SnapshotRevision = "changed-structure"
+					}
+				}
+				observed, observedPlan = fp, plan
+				return fp, plan, err
+			}
+			w, err := newAppWizardController(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			w = appWizardAdvance(t, w, appWizardNext)
+			if *observed.Footprint.Existing[0].MemoryBytes.Value != 1024 || observedPlan.Impacts[0].Functions[0].RemainingValiditySeconds == nil || w.impact.Impacts[0].Materials[0].RemainingValiditySeconds == nil {
+				t.Fatal("comparison changed displayed authority data")
+			}
+			next, err := w.Step(context.Background(), appWizardYes)
+			_, decided := next.Decision()
+			if drift == "sampling" {
+				if err != nil || !decided {
+					t.Fatalf("sample-only refresh rejected: %v", err)
+				}
+			} else if err == nil || decided {
+				t.Fatalf("authority drift %s accepted", drift)
+			}
+			if *w.footprint.Footprint.Existing[0].MemoryBytes.Value != 1024 {
+				t.Fatal("detached preview was changed by refresh")
+			}
+		})
+	}
+}
+
+func TestAppEditCommandSnapshotRevisionIgnoresOnlyUsageSamples(t *testing.T) {
+	input := appWizardTestInput(t)
+	value := int64(1024)
+	input.Snapshot.Facts = map[string]application.ProviderFact{"sql-a": {Target: "dev", OwnerReference: "app", MemoryBytes: application.Quantity{Value: &value}, Containers: application.Quantity{Value: &value}}}
+	original, err := guidedSnapshotRevision(input.Manifest, input.Snapshot, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, drift := range []string{"sampling", "state", "owner", "target", "dependencies", "manifest", "preferences", "binding"} {
+		t.Run(drift, func(t *testing.T) {
+			snapshot := input.Snapshot
+			snapshot.Facts = map[string]application.ProviderFact{"sql-a": input.Snapshot.Facts["sql-a"]}
+			fact := snapshot.Facts["sql-a"]
+			manifest := input.Manifest
+			var preferences []application.ProviderPreference
+			switch drift {
+			case "sampling":
+				sample := int64(2048)
+				fact.MemoryBytes.Value = &sample
+				fact.Containers.Value = &sample
+			case "state":
+				fact.State = application.ProviderState("changed")
+			case "owner":
+				fact.OwnerReference = "other"
+			case "target":
+				snapshot.Target = "other"
+			case "dependencies":
+				fact.Dependencies = []string{"other"}
+			case "manifest":
+				manifest.Name = "other"
+			case "preferences":
+				preferences = []application.ProviderPreference{{InstanceID: "sql-b"}}
+			case "binding":
+				snapshot.Registry.Bindings = append([]capability.ProviderBinding(nil), snapshot.Registry.Bindings...)
+				snapshot.Registry.Bindings = append(snapshot.Registry.Bindings, capability.ProviderBinding{ProviderInstanceID: "sql-a"})
+			}
+			snapshot.Facts["sql-a"] = fact
+			revision, err := guidedSnapshotRevision(manifest, snapshot, preferences)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if (revision == original) != (drift == "sampling") {
+				t.Fatalf("incorrect revision equality for %s", drift)
+			}
+		})
+	}
+	if *input.Snapshot.Facts["sql-a"].MemoryBytes.Value != 1024 {
+		t.Fatal("revision changed original facts")
+	}
+}
+
+func TestAppEditApplyConsentCountdownBindsAbsoluteExpiry(t *testing.T) {
+	seconds := int64(120)
+	plan := application.ProviderImpactPlan{PlanID: "approved", Impacts: []application.ProviderImpact{{Functions: []application.FunctionConsequence{{ValidUntil: "2030-01-01T00:00:00Z", RemainingValiditySeconds: &seconds}}, Materials: []application.MaterialConsequence{{Before: application.ProviderMaterial{ID: "cert", ExpiresAt: "2030-01-01T00:00:00Z"}, RemainingValiditySeconds: &seconds}}}}}
+	original, err := appEditAuthorizationSurface(plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seconds--
+	refreshed, err := appEditAuthorizationSurface(plan)
+	if err != nil || !bytes.Equal(original, refreshed) {
+		t.Fatal("countdown invalidated consent")
+	}
+	plan.Impacts[0].Materials[0].Before.ExpiresAt = "2029-01-01T00:00:00Z"
+	changed, err := appEditAuthorizationSurface(plan)
+	if err != nil || bytes.Equal(original, changed) {
+		t.Fatal("changed absolute expiry inherited consent")
+	}
+}
+
+func TestAppEditApplyRebuildKeepsRuntimeOutput(t *testing.T) {
+	resolved := appEditResultResolved("dev")
+	resolved.Manifest = application.WithWorkloadComponents(application.New("edit-output", "dev", false, false, false), "api")
+	var out, errOut bytes.Buffer
+	execution, err := rebuildApplicationApplyExecution(context.Background(), resolved, &out, &errOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() != 0 || errOut.Len() != 0 {
+		t.Fatal("rebuild repeated initial header")
+	}
+	execution.term.Info("applying", "visible-progress")
+	fmt.Fprintln(execution.out, "runtime-output")
+	fmt.Fprintln(execution.errOut, "runtime-diagnostic")
+	execution.term.Fail("verification", "visible-failure")
+	if !strings.Contains(out.String(), "visible-progress") || !strings.Contains(out.String(), "runtime-output") || !strings.Contains(out.String(), "visible-failure") || !strings.Contains(errOut.String(), "runtime-diagnostic") {
+		t.Fatalf("rebuilt execution swallowed output: %q / %q", out.String(), errOut.String())
+	}
+}
+
+func TestAppEditApplyFreshMachinePlanCountdownAndAuthority(t *testing.T) {
+	for _, drift := range []string{"countdown", "expiry", "verification", "outcome", "plan"} {
+		t.Run(drift, func(t *testing.T) {
+			before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
+			after := append(append([]capability.Requirement(nil), before...), capability.Requirement{Kind: capability.KeyValue, Name: "cache"})
+			loaded := appEditTestLoaded(t, "dev", before, nil)
+			seconds, changedSeconds := int64(120), int64(119)
+			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: "r", PlanID: "p", Complete: true, ConfirmationsRequired: 1, Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "add", Functions: []application.FunctionConsequence{{ValidUntil: "2030-01-01T00:00:00Z", RemainingValiditySeconds: &seconds, Outcome: "remains"}}, Materials: []application.MaterialConsequence{{Before: application.ProviderMaterial{ID: "cert", ExpiresAt: "2030-01-01T00:00:00Z", Verified: true}, RemainingValiditySeconds: &seconds}}}}}
+			fresh := stableAppProviderImpact(plan)
+			fresh.Impacts[0].Functions[0].RemainingValiditySeconds = &changedSeconds
+			fresh.Impacts[0].Materials[0].RemainingValiditySeconds = &changedSeconds
+			switch drift {
+			case "expiry":
+				fresh.Impacts[0].Materials[0].Before.ExpiresAt = "2029-01-01T00:00:00Z"
+			case "verification":
+				fresh.Impacts[0].Materials[0].Before.Verified = false
+			case "outcome":
+				fresh.Impacts[0].Functions[0].Outcome = "unavailable"
+			case "plan":
+				fresh.PlanID = "other"
+			}
+			executed := 0
+			authorities := appEditTestAuthorities("dev", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{plan, fresh}, &executed)
+			_, err := appEditApplyConfirmed(context.Background(), appEditTestController("dev", after, nil, plan), loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
+			if drift == "countdown" {
+				if err != nil || executed != 1 {
+					t.Fatalf("countdown blocked execution: %v (%d)", err, executed)
+				}
+			} else if err == nil || executed != 0 {
+				t.Fatalf("authority drift executed: %s %v (%d)", drift, err, executed)
+			}
+		})
+	}
+}

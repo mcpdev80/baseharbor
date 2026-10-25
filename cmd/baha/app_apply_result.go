@@ -74,8 +74,9 @@ func executeApplicationApplyLifecycleResults(ctx context.Context, store applicat
 }
 
 // authorizeConfirmedApplicationEdit reuses an Edit acknowledgement only when
-// the post-mutation plan differs solely in plan/revision identity or evidence
-// text. Any changed consequence, verification state or confirmation requirement
+// the post-mutation plan differs solely in plan/revision identity, evidence
+// text or remaining-validity countdowns. Changed absolute validity,
+// consequences, verification state or confirmation requirements
 // remains stale and requires fresh consent.
 func authorizeConfirmedApplicationEdit(ctx context.Context, resolved resolvedApplication, approved application.ProviderImpactPlan, in io.Reader, out io.Writer) error {
 	consent := providerChangeConsentFromContext(ctx)
@@ -107,7 +108,7 @@ func sameAppEditAuthorizationSurface(left, right application.ProviderImpactPlan)
 }
 
 func appEditAuthorizationSurface(plan application.ProviderImpactPlan) ([]byte, error) {
-	raw, err := json.Marshal(plan)
+	raw, err := json.Marshal(stableAppProviderImpact(plan))
 	if err != nil {
 		return nil, err
 	}

@@ -132,11 +132,11 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 					InstanceID:  preference.InstanceID,
 				})
 			}
-			proposal, err := appMachinePropose(ctx, request, authorities.Read, authorities.Choices, authorities.Plan)
+			proposal, err := appEditPropose(ctx, request, view, authorities)
 			if err != nil {
 				return err
 			}
-			if proposal.ApplicationID != desired.ApplicationID || !reflect.DeepEqual(proposal.Plan, plan) {
+			if proposal.ApplicationID != desired.ApplicationID || !reflect.DeepEqual(stableAppProviderImpact(proposal.Plan), stableAppProviderImpact(plan)) {
 				return errAppEditPlanDrifted
 			}
 			if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {

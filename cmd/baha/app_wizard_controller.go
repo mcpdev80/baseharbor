@@ -198,7 +198,8 @@ func snapshotAppWizardFacts(fp *GuidedReadContext, impact *application.ProviderI
 	if detached.Footprint == nil || detached.Impact == nil {
 		return nil, nil, nil, errors.New("missing preview data")
 	}
-	return detached.Footprint, detached.Impact, facts, nil
+	comparison, err := appWizardPreviewFacts(detached.Footprint, detached.Impact)
+	return detached.Footprint, detached.Impact, comparison, err
 }
 
 // Step never invokes a mutation or consent hook. A decision requires verified
@@ -253,10 +254,7 @@ func (w appWizardController) Step(ctx context.Context, event appWizardEvent) (ap
 			if err != nil {
 				return w, err
 			}
-			fresh, err := json.Marshal(struct {
-				Footprint *GuidedReadContext
-				Impact    *application.ProviderImpactPlan
-			}{fp, impact})
+			fresh, err := appWizardPreviewFacts(fp, impact)
 			if err != nil {
 				return w, err
 			}
@@ -367,4 +365,41 @@ func (w appWizardController) Decision() (appWizardDecision, bool) {
 	d.Requirements = append([]capability.Requirement(nil), d.Requirements...)
 	d.Preferences = append([]appProviderPreference(nil), d.Preferences...)
 	return d, true
+}
+
+// Sampling and countdowns change without changing the approved consequences.
+// Absolute validity, ownership, dependencies and all decision authority stay bound.
+func appWizardPreviewFacts(fp *GuidedReadContext, impact *application.ProviderImpactPlan) ([]byte, error) {
+	stable := *fp
+	stable.Footprint.Existing = stableAppProviderFootprints(fp.Footprint.Existing)
+	stable.Footprint.Additional = stableAppProviderFootprints(fp.Footprint.Additional)
+	return json.Marshal(struct {
+		Footprint *GuidedReadContext
+		Impact    application.ProviderImpactPlan
+	}{&stable, stableAppProviderImpact(*impact)})
+}
+
+func stableAppProviderFootprints(providers []application.ProviderFootprint) []application.ProviderFootprint {
+	stable := append([]application.ProviderFootprint(nil), providers...)
+	for i := range stable {
+		stable[i].MemoryBytes = application.Quantity{}
+		stable[i].Containers = application.Quantity{}
+	}
+	return stable
+}
+
+func stableAppProviderImpact(plan application.ProviderImpactPlan) application.ProviderImpactPlan {
+	stable := plan
+	stable.Impacts = append([]application.ProviderImpact(nil), plan.Impacts...)
+	for i, impact := range plan.Impacts {
+		stable.Impacts[i].Functions = append([]application.FunctionConsequence(nil), impact.Functions...)
+		for j := range stable.Impacts[i].Functions {
+			stable.Impacts[i].Functions[j].RemainingValiditySeconds = nil
+		}
+		stable.Impacts[i].Materials = append([]application.MaterialConsequence(nil), impact.Materials...)
+		for j := range stable.Impacts[i].Materials {
+			stable.Impacts[i].Materials[j].RemainingValiditySeconds = nil
+		}
+	}
+	return stable
 }
