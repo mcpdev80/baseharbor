@@ -168,3 +168,30 @@ Owner-authorized exact public CI source; no independent-review claim. Select the
 }
 ```
 
+
+## Corrected SQL Edit selection qualification
+
+Owner-authorized continuation of the explicitly approved public CI register update. Supersedes the earlier SQL Edit candidate, whose redundant extra test-family entry failed the existing runner fixture. The existing TestAppEditCommand family runs the preview regression without an extra overlapping selector. Full145 planner/runner tests and nested8/7/5 utility checks pass locally. Both real SQL gates and required CI remain mandatory; no native success, gate waiver or independent review claimed.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "555f07d529c8389c8fccdd1089cf6c54bb97873f",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "ce7c48675f9f3fec50ca2664c0424891204ffe1b6d6fb3f72d16bce05b31d228",
+    "scripts/pr-check-runner.py": "262e6e079d6bdaa7f67734cfc758718953bcac2ced3004c4038605e81459d165",
+    "scripts/test_pr_gate_plan.py": "dc001ae1854ef85670e71ac4d7fe2f431d1ac7b655c360e77840f9bc7ecdeb23"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
