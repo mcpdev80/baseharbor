@@ -343,7 +343,11 @@ func TestAppEditCommandBoundProviderProposalKeepsAppliedRegistry(t *testing.T) {
 		t.Fatal("desired planner omitted its coherent preview")
 	}
 	projection.view.SnapshotRevision = "same-observation-only"
-	desired, err := appEditProjectRequirements(r.Manifest, []capability.Requirement{req})
+	authored, err := appEditParseSource(appEditLoaded{Source: []byte(r.Manifest.AuthoredYAML()), ApplicationID: r.Manifest.ApplicationID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired, err := appEditProjectRequirements(authored, []capability.Requirement{req})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,16 +558,20 @@ func TestAppEditCommandPreviewProjectionNeverCrossesAuthorityOrReadScope(t *test
 	prefs := []application.ProviderPreference{}
 	union := application.ProviderPlan{Target: "dev", Complete: true}
 	impact := application.ProviderImpactPlan{Target: "dev", PlanID: "approved"}
-	projection := &appEditPreviewProjection{}
+	projection := &appEditPreviewProjection{source: r}
 	ctx := context.WithValue(context.Background(), appEditPreviewProjectionKey{}, projection)
+	recordAppEditSourceSnapshot(ctx, r, snapshot)
+	if captured, ok := currentAppEditSourceSnapshot(ctx, r); !ok || captured.Target != r.Target.Name {
+		t.Fatal("current read omitted its source snapshot")
+	}
 	if err := recordAppEditPreviewProjection(ctx, r, snapshot, prefs, union, impact); err != nil {
 		t.Fatal(err)
 	}
-	view, ok := currentAppEditPreviewProjection(ctx, r, prefs)
+	view, ok := currentAppEditPreviewProjection(ctx, r, r.Manifest, prefs)
 	if !ok || view.ApplicationID != r.Manifest.ApplicationID || view.PlanRevision != impact.PlanID {
 		t.Fatalf("projection lost authority: %+v %v", view, ok)
 	}
-	for _, change := range []string{"target", "endpoint", "manifest", "owner", "state-root", "preferences", "new-read", "cancelled"} {
+	for _, change := range []string{"target", "endpoint", "manifest", "owner", "state-root", "preferences", "placement", "desired-intent", "new-read", "cancelled"} {
 		t.Run(change, func(t *testing.T) {
 			changed := r
 			selected := prefs
@@ -581,6 +589,19 @@ func TestAppEditCommandPreviewProjectionNeverCrossesAuthorityOrReadScope(t *test
 				changed.TargetStateRoot = "other-state"
 			case "preferences":
 				selected = []application.ProviderPreference{{InstanceID: "other"}}
+			case "placement":
+				var err error
+				changed.Manifest, err = application.WithBackendPlacementProjection(changed.Manifest, map[capability.ProviderKind]capability.ProviderPlacement{capability.ProviderPostgreSQL: {Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			case "desired-intent":
+				intent := r.Manifest
+				intent.Name = "different-intended-source"
+				if _, ok := currentAppEditPreviewProjection(scope, r, intent, selected); ok {
+					t.Fatal("changed authored intent inherited preview")
+				}
+				return
 			case "new-read":
 				scope = context.WithValue(context.Background(), appEditPreviewProjectionKey{}, &appEditPreviewProjection{})
 			case "cancelled":
@@ -588,12 +609,17 @@ func TestAppEditCommandPreviewProjectionNeverCrossesAuthorityOrReadScope(t *test
 				cancel()
 				scope = cancelled
 			}
-			if _, ok := currentAppEditPreviewProjection(scope, changed, selected); ok {
+			if change != "preferences" {
+				if _, ok := currentAppEditSourceSnapshot(scope, changed); ok {
+					t.Fatalf("%s reused another read/source snapshot", change)
+				}
+			}
+			if _, ok := currentAppEditPreviewProjection(scope, changed, changed.Manifest, selected); ok {
 				t.Fatalf("%s reused stale projected facts", change)
 			}
 		})
 	}
-	if _, ok := currentAppEditPreviewProjection(context.Background(), r, prefs); ok {
+	if _, ok := currentAppEditPreviewProjection(context.Background(), r, r.Manifest, prefs); ok {
 		t.Fatal("execution inherited a read-scope projection")
 	}
 }
@@ -623,5 +649,45 @@ func TestAppEditCommandGuidedSnapshotStaysPrivateAndUsesPlanObservation(t *testi
 	}
 	if _, ok := public["preferences"]; ok {
 		t.Fatal("internal observation preferences leaked into public plan")
+	}
+}
+
+func TestAppEditCommandCurrentChoicesUseTheirOwnReadSnapshot(t *testing.T) {
+	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
+	authorities := defaultAppEditAuthorities(r.Store, nil)
+	projection := &appEditPreviewProjection{}
+	ctx := context.WithValue(context.Background(), appEditPreviewProjectionKey{}, projection)
+	if _, err := authorities.Read(ctx, r.Target.Name); err != nil {
+		t.Fatal(err)
+	}
+	if projection.snapshot == nil {
+		t.Fatal("current read did not retain its authoritative snapshot")
+	}
+	previous := observeApplicationProviderFactsFunc
+	defer func() { observeApplicationProviderFactsFunc = previous }()
+	observations := 0
+	observeApplicationProviderFactsFunc = func(context.Context, resolvedApplication) map[string]application.ProviderFact {
+		observations++
+		return nil
+	}
+	reqs := []capability.Requirement{{Kind: capability.SQL, Name: "default"}}
+	if _, err := authorities.Choices(ctx, r.Target.Name, reqs); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 0 {
+		t.Fatal("provider choices redundantly re-observed the same source in one preview")
+	}
+	fresh := context.WithValue(context.Background(), appEditPreviewProjectionKey{}, &appEditPreviewProjection{})
+	if _, err := authorities.Choices(fresh, r.Target.Name, reqs); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 1 {
+		t.Fatal("a new preview inherited an earlier observation")
+	}
+	if _, err := authorities.Choices(context.Background(), r.Target.Name, reqs); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 2 {
+		t.Fatal("execution-side choice validation reused preview observations")
 	}
 }

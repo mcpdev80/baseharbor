@@ -259,9 +259,12 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return nil, err
 		}
-		snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
-		if err != nil {
-			return nil, err
+		snapshot, current := currentAppEditSourceSnapshot(ctx, resolved)
+		if !current {
+			snapshot, _, err = applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+			if err != nil {
+				return nil, err
+			}
 		}
 		selection := appEditSelectionSnapshot(snapshot, resolved.Manifest.ApplicationID, resolved.Manifest.Environment)
 		return appProviderChoices(resolved.Manifest, selection, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}))
@@ -284,6 +287,9 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}
+		if projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection); ok {
+			projection.source = resolved
+		}
 		return planApplicationProviderImpactForDesired(ctx, desiredResolved, snapshot, preferences)
 	}
 	return appEditAuthorities{
@@ -297,7 +303,7 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 			}
 			desiredResolved := resolved
 			desiredResolved.Manifest = application.WithProviderPreferences(desired.Manifest, desired.Preferences)
-			if preview, ok := currentAppEditPreviewProjection(ctx, desiredResolved, desired.Preferences); ok {
+			if preview, ok := currentAppEditPreviewProjection(ctx, resolved, desiredResolved.Manifest, desired.Preferences); ok {
 				return preview, nil
 			}
 			return readGuidedApplicationContext(ctx, desiredResolved)

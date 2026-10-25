@@ -325,9 +325,12 @@ func runAppEdit(ctx context.Context, store application.Store, args []string, in 
 // Each preview/confirmation creates a new holder; execution never receives it.
 type appEditPreviewProjectionKey struct{}
 type appEditPreviewProjection struct {
-	resolved    resolvedApplication
-	preferences []application.ProviderPreference
-	view        *GuidedReadContext
+	snapshotSource resolvedApplication
+	snapshot       *application.ResolutionSnapshot
+	source         resolvedApplication
+	resolved       resolvedApplication
+	preferences    []application.ProviderPreference
+	view           *GuidedReadContext
 }
 
 func recordAppEditPreviewProjection(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference, union application.ProviderPlan, impact application.ProviderImpactPlan) error {
@@ -363,13 +366,31 @@ func recordAppEditPreviewProjection(ctx context.Context, resolved resolvedApplic
 	return nil
 }
 
-func currentAppEditPreviewProjection(ctx context.Context, resolved resolvedApplication, preferences []application.ProviderPreference) (GuidedReadContext, bool) {
+func currentAppEditPreviewProjection(ctx context.Context, source resolvedApplication, desired application.Manifest, preferences []application.ProviderPreference) (GuidedReadContext, bool) {
 	projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection)
 
 	if !ok || projection.view == nil || ctx.Err() != nil ||
-		!reflect.DeepEqual(projection.resolved, resolved) ||
+		!reflect.DeepEqual(projection.source, source) ||
+		projection.resolved.Manifest.ApplicationID != desired.ApplicationID ||
+		projection.resolved.Manifest.AuthoredYAML() != desired.AuthoredYAML() ||
 		!reflect.DeepEqual(projection.preferences, appEditSortedPreferences(preferences)) {
 		return GuidedReadContext{}, false
 	}
 	return *projection.view, true
+}
+
+func recordAppEditSourceSnapshot(ctx context.Context, source resolvedApplication, snapshot application.ResolutionSnapshot) {
+	projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection)
+	if !ok || ctx.Err() != nil {
+		return
+	}
+	projection.snapshotSource, projection.snapshot = source, &snapshot
+}
+
+func currentAppEditSourceSnapshot(ctx context.Context, source resolvedApplication) (application.ResolutionSnapshot, bool) {
+	projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection)
+	if !ok || projection.snapshot == nil || ctx.Err() != nil || !reflect.DeepEqual(projection.snapshotSource, source) {
+		return application.ResolutionSnapshot{}, false
+	}
+	return *projection.snapshot, true
 }

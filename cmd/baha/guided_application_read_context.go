@@ -79,6 +79,7 @@ func readGuidedApplicationContext(ctx context.Context, resolved resolvedApplicat
 	if err != nil {
 		return GuidedReadContext{}, guidedReadAuthorityError(err, "unverifiable")
 	}
+	recordAppEditSourceSnapshot(ctx, resolved, lifecycle.snapshot)
 	plan := lifecycle.ProviderPlan
 	footprint := lifecycle.Footprint
 	snapshot, preferences := lifecycle.snapshot, lifecycle.preferences
