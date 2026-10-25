@@ -17,7 +17,8 @@ planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
 wizard_check = planner.wizard_check
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
-GATES = ['integration/static/public-contracts', 'atomic/docker/lifecycle',
+GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
+         'integration/static/public-contracts', 'atomic/docker/lifecycle',
          'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
@@ -743,6 +744,16 @@ class Core921ProductionRegistrationCoverageTests(unittest.TestCase):
 
 
 class MappingTests(unittest.TestCase):
+    def test_edit_navigation_uses_actual_sql_new_edit_gates(self):
+        for path in ['cmd/baha/app_edit.go', 'cmd/baha/app_edit_test.go']:
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities'],
+                                 result['selected_gates'])
+                self.assertIn('wizard-app-edit-tests',
+                              {check['id'] for check in result['required_validation_checks']})
+
     def test_documentation_requires_validation_but_zero_release_gates(self):
         for name in ['docs/how-to/example.md', 'docs/internal/reference.md',
                      'README.md', 'CHANGELOG.md', 'mkdocs.yml']:
@@ -1478,7 +1489,8 @@ class ExactIndependentCore751And991CoverageTests(unittest.TestCase):
                     result = planner.plan(actual, REQ, MAP)
                 if reviewed_name == 'EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD':
                     self.assertEqual('resolved', result['coverage_status'])
-                    self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                    self.assertEqual(['atomic/docker/data-capabilities', 'atomic/docker/lifecycle',
+                                      'atomic/podman/data-capabilities', 'atomic/podman/lifecycle'],
                                      result['selected_gates'])
                 else:
                     self.assertEqual('unresolved', result['coverage_status'])
@@ -1590,8 +1602,10 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                     result = planner.plan(diff(variant), REQ, MAP)
                     if result['coverage_status'] == 'resolved':
                         self.assertTrue(is_edit)
-                        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
-                                         result['selected_gates'])
+                        expected = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities']
+                        if any(c['path'] == 'cmd/baha/app_edit_apply_test.go' for c in variant):
+                            expected += ['atomic/docker/lifecycle', 'atomic/podman/lifecycle']
+                        self.assertEqual(sorted(expected), result['selected_gates'])
                     else:
                         self.assertTrue(result['unresolved_coverage'])
 
@@ -1650,7 +1664,8 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                     result = planner.plan(actual, REQ, MAP)
                 if anchor == 'EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD':
                     self.assertEqual('resolved', result['coverage_status'])
-                    self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                    self.assertEqual(['atomic/docker/data-capabilities', 'atomic/docker/lifecycle',
+                                      'atomic/podman/data-capabilities', 'atomic/podman/lifecycle'],
                                      result['selected_gates'])
                 else:
                     self.assertEqual('unresolved', result['coverage_status'])
@@ -1660,7 +1675,8 @@ class ReadinessRepairCoverageTests(unittest.TestCase):
                         result = planner.plan(missing, REQ, MAP)
                         if result['coverage_status'] == 'resolved':
                             self.assertEqual('EDIT_AUTOMATIC_INPUT_REVIEWED_HEAD', anchor)
-                            self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                            self.assertEqual(['atomic/docker/data-capabilities', 'atomic/docker/lifecycle',
+                                      'atomic/podman/data-capabilities', 'atomic/podman/lifecycle'],
                                              result['selected_gates'])
                         else:
                             self.assertTrue(result['unresolved_coverage'])

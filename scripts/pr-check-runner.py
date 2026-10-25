@@ -23,7 +23,8 @@ WIZARD_TEST_FAMILIES = {
     'wizard-change-presentation-tests': (r'^TestAppChangePreview', r'^TestAppChangeResultPresenter'),
     'wizard-controller-tests': (r'^TestAppWizardController',),
     'wizard-app-new-tests': (r'^TestAppNewWizard',),
-    'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand'),
+    'wizard-app-edit-tests': (r'^TestAppEditApply', r'^TestAppEditCommand',
+                              r'^TestAppEditCommandPreviewErrorPreservesCauseWithoutDecision$'),
     'wizard-footprint-command-tests': (r'^TestAppFootprintShow',),
     'wizard-machine-adapter-tests': (r'^TestAppMachineAdapters',),
     # core-921 reviewed production registration regressions; each family distinct
