@@ -222,3 +222,31 @@ Owner-authorized continuation of the approved public CI register publication; no
   ]
 }
 ```
+
+
+## Stable Edit confirmation and apply output qualification
+
+Owner-authorized release repair under Marcel's explicit completion mandate; no independent-review claim. This exact CI source qualifies only product `f9c1f0186b9a47143142be048ffcff7f3e1a5f02` and its eight-file inventory through clean trusted-target integration. Mandatory checks include Go/Guided, Edit, provider choices, controller, New and machine adapters, plus both real Docker and rootless Podman SQL gates. Sampling and remaining-validity countdowns do not invalidate unchanged consequences; absolute expiry, ownership, state, verification, outcomes, confirmations and plan identity remain bound. Rebuilt post-Edit execution retains runtime output without a duplicate header. Previous failed run40183518498 remains failed; no native success, gate waiver or release approval is claimed.
+
+```json
+{
+  "repository": "mcpdev80/baseharbor",
+  "target_branch": "develop",
+  "reviewed_head": "4e39398c902870a008bd3ae98b67cfed54c21410",
+  "files": {
+    "scripts/pr-gate-plan.py": "modified",
+    "scripts/pr-check-runner.py": "modified",
+    "scripts/test_pr_gate_plan.py": "modified"
+  },
+  "file_hashes": {
+    "scripts/pr-gate-plan.py": "02060f2591afb64b5154263e7ecc53dd30334db4058fcce0317d00030bed693b",
+    "scripts/pr-check-runner.py": "23a7f7ac8f5e08769d07d123f999ebb67ed5fbe191530247328f6ccba3765786",
+    "scripts/test_pr_gate_plan.py": "05dec42f035cbd54724a692ff89b781c7b1ae62908d5be2466185c82975981a6"
+  },
+  "required_checks": [
+    "pr-planner-tests",
+    "ci-policy",
+    "ci-executor-verifier-tests"
+  ]
+}
+```
