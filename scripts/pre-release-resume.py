@@ -14,7 +14,7 @@ import stat
 import subprocess
 import zipfile
 
-from private_consumer_evidence import private_verifier_from_environment
+from private_consumer_evidence import commitment, private_verifier_from_environment
 
 
 STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
@@ -84,6 +84,27 @@ TRUSTED = {'.github/workflows/pre-release.yml', '.github/workflows/targeted-demo
 METADATA = {'CHANGELOG.md', 'docs/roadmap.md',
             'docs/development/v0.4.22-evidence-resume.md',
             'docs/development/v0.4.20-release-runbook.md'}
+
+# These files govern PR selection or evidence collection, not gate execution.
+# Receipts are always re-authenticated by the current collector below.
+REVIEW_ONLY = {'.github/workflows/ci.yml', 'scripts/pr-gate-plan.py',
+               'scripts/pr-check-runner.py', 'scripts/test_pr_gate_plan.py',
+               'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+
+
+def release_metadata(path):
+    return path.endswith('.md') and (path == 'README.md' or path.startswith('docs/'))
+
+
+def demo_gate_input(path, key):
+    # Atomic bootstrap and EXIT cleanup call these helpers across gate scopes.
+    if path in {'tests/guided/drive.py', 'tests/data-capabilities/new_edit.py'}:
+        return True
+    parts = pathlib.PurePosixPath(path).parts
+    known = set(STATIC + LIGHT + HEAVY)
+    if key.startswith('atomic/') and len(parts) >= 3 and parts[0] == 'tests' and parts[1] in known:
+        return parts[1] == key.split('/')[2]
+    return True  # Shared helpers, workload, unknown inputs and journeys stay bound.
 
 
 def metadata_path(path):
@@ -192,12 +213,27 @@ class GitInputs:
                                  '--', 'cmd/baha/*.go'], cwd=self.product)
         return result.returncode == 1
 
+    @functools.lru_cache(maxsize=None)
+    def embeds_prose(self, repo, candidate):
+        result = subprocess.run(['git', 'grep', '-h', '//go:embed', candidate, '--', '*.go'],
+                                cwd=repo, stdout=subprocess.PIPE, check=False)
+        if result.returncode not in (0, 1):
+            raise ValueError('embedded source inventory could not be read')
+        # Directory or unbounded patterns may contain Markdown. Unknown patterns
+        # retain all prose rather than assuming it is outside the built product.
+        for line in result.stdout.decode().splitlines():
+            for pattern in line.split('//go:embed', 1)[1].split():
+                suffix = pathlib.PurePosixPath(pattern.strip('"`')).suffix
+                if suffix in ('', '.md') or '*' in suffix or '?' in suffix or '[' in suffix:
+                    return True
+        return False
+
     def fingerprint(self, candidate, demo, tag, key):
         requirements = self.requirements(candidate, tag)
         requirement = next((gate for gate in requirements if gate['id'] == key), None)
         if requirement is None:
             raise ValueError('gate is outside candidate release requirements')
-        native_runtime = tag in {'v0.4.24', 'v0.4.25'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        native_runtime = tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
         # Source-plan tools do not execute inside native runtime jobs. The current
         # verifier still authenticates every immutable origin and ZIP. Static
         # evidence keeps these tooling bytes as part of its execution inputs.
@@ -206,10 +242,12 @@ class GitInputs:
         # as an evidence identity, never files from the Demo checkout. Their
         # canonical requirements declare only Core execution dependencies.
         # They DO import this collector: keep its bytes in their product inputs.
-        core_owned = tag == 'v0.4.25' and requirement['dependencies'] == ['core'] and key in {
+        core_owned = tag in {'v0.4.25', 'v0.4.26'} and requirement['dependencies'] == ['core'] and key in {
             'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap',
             'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'}
-        pin_independent = native_runtime or core_owned
+        # Every v0.4.26 origin separately authenticates its Demo -> Core pin.
+        # The identity file is not an additional execution input on any gate.
+        pin_independent = native_runtime or core_owned or tag == 'v0.4.26'
         objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
         cli_only_fixture = (tag == 'v0.4.25' and key in {
             'atomic/docker/backup-restore', 'atomic/podman/backup-restore',
@@ -222,10 +260,15 @@ class GitInputs:
             self.cli_ignores_bootstrap_test_source(candidate))
         product = [(path, obj) for path, obj in objects
                    if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
+                   and not (tag == 'v0.4.26' and (path in REVIEW_ONLY or
+                            (release_metadata(path) and not self.embeds_prose(self.product, candidate))))
                    and not (native_runtime and path in collectors)
                    and not (cli_only_fixture and path == 'cmd/baha/core_installation_runtime_test.go')]
         demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
                         if not core_owned
+                        and not (tag == 'v0.4.26' and not demo_gate_input(path, key))
+                        and not (tag == 'v0.4.26' and release_metadata(path)
+                                 and not self.embeds_prose(self.demo, demo))
                         and not (tag == 'v0.4.25' and path == 'tests/config-matrix/run.sh'
                                  and key != 'atomic/static/config-matrix' and not key.startswith('journey/'))
                         and not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
@@ -242,16 +285,20 @@ class GitInputs:
         jobs = self.workflow(candidate)
         # Only scheduling edges and fan-out may change without new evidence.
         # Static/reusable call arguments, all build steps and evidence generation
-        # are execution inputs. Keep unrelated job contracts conservatively too.
+        # are execution inputs. v0.4.26 binds only the gate's jobs and the
+        # shared source/toolchain/binary producer; older policies stay intact.
         execution = {}
         for name, job in jobs.items():
+            if tag == 'v0.4.26' and name not in set(requirement['jobs']) | {'source'}:
+                continue
             execution[name] = {field: value for field, value in job.items()
                                if field not in {'needs', 'if', 'strategy'}}
             strategy = {field: value for field, value in job.get('strategy', {}).items()
                         if field not in {'matrix', 'max-parallel'}}
             if strategy:
                 execution[name]['strategy'] = strategy
-        return digest({'policy': 'baseharbor.gate-inputs/v4', 'tag': tag, 'gate': key,
+        policy = 'baseharbor.gate-inputs/v5' if tag == 'v0.4.26' else 'baseharbor.gate-inputs/v4'
+        return digest({'policy': policy, 'tag': tag, 'gate': key,
                        'requirement': requirement, 'product': product, 'demo': demo_objects,
                        'execution': execution})
 
@@ -475,6 +522,38 @@ def executed_jobs(jobs, expected):
     return result
 
 
+def discover_runs(api, inputs, candidate, demo, tag, current_run):
+    """Find compatible origins; collection still checks every original proof."""
+    requirements = inputs.requirements(candidate, tag)
+    target = {row['id']: inputs.fingerprint(candidate, demo, tag, row['id'])
+              for row in requirements}
+    runs = api.pages('actions/workflows/pre-release.yml/runs?per_page=100', 'workflow_runs')
+    compatible, examined = [], {}
+    for run in sorted(runs, key=lambda row: row['id'], reverse=True):
+        if (run['id'] == current_run or run.get('path') not in TRUSTED or
+                run.get('event') not in {'push', 'workflow_dispatch'} or
+                run.get('repository', {}).get('full_name') != api.repository or
+                run.get('head_repository', {}).get('full_name') != api.repository):
+            continue
+        source = run.get('head_sha', '')
+        if not re.fullmatch('[0-9a-f]{40}', source):
+            raise ValueError('discovered origin has no immutable source')
+        if source not in examined:
+            inputs.ensure(source, demo)
+            try:
+                # Comparing with the same Demo isolates product/execution input
+                # changes. The actual origin Demo is authenticated by collect.
+                examined[source] = any(inputs.fingerprint(source, demo, tag, key) == value
+                                       for key, value in target.items())
+            except ValueError:
+                examined[source] = False  # Source does not support this release.
+        if examined[source]:
+            compatible.append(run['id'])
+        if len(compatible) == 20:
+            break
+    return sorted(compatible)
+
+
 def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
             private_verifier=None):
     inputs.ensure(candidate, demo)
@@ -487,11 +566,12 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
     latest, pending = {}, {}
     for run_id in sorted(set(run_ids)):
         run = api.get(f'actions/runs/{run_id}')
-        if (run.get('path') not in TRUSTED or run.get('event') != 'push' or
+        events = {'push', 'workflow_dispatch'} if tag == 'v0.4.26' else {'push'}
+        if (run.get('path') not in TRUSTED or run.get('event') not in events or
                 run.get('head_repository', {}).get('full_name') != api.repository or
                 run.get('repository', {}).get('full_name') != api.repository or
                 (run_id != current_run and run.get('status') != 'completed')):
-            raise ValueError(f'run {run_id} is not an immutable trusted push origin')
+            raise ValueError(f'run {run_id} is not an immutable trusted origin')
         origin_candidate = run['head_sha']
         inputs.ensure(origin_candidate, demo)
         artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
@@ -538,6 +618,12 @@ def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None
                 if set(requirement['dependencies']) & {'console', 'connector'}:
                     if private_verifier is None:
                         raise ValueError('authenticated private consumer evidence configuration is required')
+                    pins = private_verifier.pins.get(key)
+                    if (tag == 'v0.4.26' and isinstance(pins, dict) and
+                            manifest.get('consumer_commitments') !=
+                            {role: commitment(pin) for role, pin in pins.items()}):
+                        pending[key] = f'run {run_id}: consumer source inputs changed'
+                        continue
                     private_verifier.verify(manifest, requirement, origin_candidate, origin_demo)
             origin = {'repository': api.repository, 'workflow': run['path'], 'run_id': run_id,
                       'attempt': attempt, 'job_id': job['id'], 'artifact_id': artifact['id'],
@@ -624,7 +710,9 @@ def main():
         runs = sorted({p['origin']['run_id'] for p in approved['proofs']})
     else:
         path = pathlib.Path(args.runs or f'docs/releases/{args.tag}.evidence-runs')
-        runs = json.loads(path.read_text()) if path.exists() else []
+        runs = (json.loads(path.read_text()) if path.exists() else
+                discover_runs(api, inputs, args.candidate, args.demo, args.tag, current)
+                if args.tag == 'v0.4.26' else [])
         if not isinstance(runs, list) or any(type(r) is not int or r < 1 for r in runs) or len(runs) > 20:
             raise ValueError('resume origins must be at most 20 positive run ids')
         if args.mode == 'approve':
