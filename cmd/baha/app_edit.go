@@ -10,6 +10,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 // appEditPreviewAuthority projects desired intent through the existing read-only
@@ -86,7 +87,7 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 			return nil, nil, err
 		}
 		request := appEditMachineRequest(decision, fresh.SnapshotRevision)
-		proposal, err := appMachinePropose(refreshCtx, request, authorities.Read, authorities.Choices, authorities.Plan)
+		proposal, err := appEditPropose(refreshCtx, request, fresh, authorities)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -101,6 +102,40 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	}
 
 	return appEditSession{Loaded: loaded, Controller: controller}, nil
+}
+
+// One refresh uses its freshly observed snapshot throughout proposal validation.
+// Re-entering or confirming a preview starts another refresh; no snapshot is
+// cached across decisions. Diagnostic context contains public codes only.
+func appEditPropose(ctx context.Context, request appMachineDesiredRequest, fresh GuidedReadContext, authorities appEditAuthorities) (appMachineDesiredResult, error) {
+	stage, code := "", ""
+	record := func(name string, err error) error {
+		if err != nil {
+			stage = name
+			var classified *machine.Error
+			if errors.As(err, &classified) {
+				code = classified.CauseCode
+			}
+		}
+		return err
+	}
+	read := func(context.Context, string) (GuidedReadContext, error) { return fresh, nil }
+	choices := func(ctx context.Context, target string, requirements []capability.Requirement) ([]appProviderChoice, error) {
+		result, err := authorities.Choices(ctx, target, requirements)
+		return result, record("provider choices", err)
+	}
+	plan := func(ctx context.Context, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+		result, err := authorities.Plan(ctx, target, requirements, preferences)
+		return result, record("provider plan", err)
+	}
+	proposal, err := appMachinePropose(ctx, request, read, choices, plan)
+	if err != nil && stage != "" {
+		if code != "" {
+			stage += " (" + code + ")"
+		}
+		return proposal, fmt.Errorf("edit preview %s: %w", stage, err)
+	}
+	return proposal, err
 }
 
 func appEditMachineRequest(decision appWizardDecision, snapshotRevision string) appMachineDesiredRequest {

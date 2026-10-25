@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
 func TestAppEditCommandHydratesExactSourceAndNoCancelWrites(t *testing.T) {
@@ -153,5 +155,66 @@ func TestAppEditCommandPreviewErrorPreservesCauseWithoutDecision(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestAppEditCommandPreviewUsesOneFreshSnapshotPerDecision(t *testing.T) {
+	loaded := appEditTestLoaded(t, "dev", nil, nil)
+	reads, plans := 0, 0
+	view := GuidedReadContext{ApplicationID: loaded.ApplicationID, Name: "edit-safe", Environment: "dev", Target: "dev",
+		Footprint: application.Footprint{Version: application.FootprintVersion, Target: "dev"}}
+	authorities := appEditAuthorities{
+		Read: func(context.Context, string) (GuidedReadContext, error) {
+			reads++
+			view.SnapshotRevision = fmt.Sprint(reads)
+			return view, nil
+		},
+		Choices: func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error) { return nil, nil },
+		Plan: func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+			plans++
+			return application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "dev", Revision: view.SnapshotRevision, PlanID: view.SnapshotRevision}, nil
+		},
+		Preview: func(context.Context, appEditDesired) (GuidedReadContext, error) { return view, nil },
+	}
+	session, err := appEditStart(context.Background(), "dev", loaded.Source,
+		application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()}, authorities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	session, err = driveAppEditWizard(context.Background(), session,
+		bufio.NewReader(strings.NewReader("enter\nno\nenter\ncancel\n")), &output)
+	if !errors.Is(err, errAppWizardAbort) || reads != 3 || plans != 2 {
+		t.Fatalf("each preview needs one new read: reads=%d plans=%d err=%v\n%s", reads, plans, err, output.String())
+	}
+	if session.Controller.impact == nil || session.Controller.impact.PlanID != "3" {
+		t.Fatal("second preview reused the first decision's snapshot")
+	}
+}
+
+func TestAppEditCommandPreviewDiagnosticKeepsPublicCauseCodeWithoutDetails(t *testing.T) {
+	for _, stage := range []string{"provider choices", "provider plan"} {
+		t.Run(stage, func(t *testing.T) {
+			cause := &machine.Error{Code: machine.ErrorValidationFailed, CauseCode: "invalid-impact-plan",
+				Message: "private-message-value", Cause: errors.New("private-inner-value")}
+			a := appEditAuthorities{
+				Choices: func(context.Context, string, []capability.Requirement) ([]appProviderChoice, error) {
+					if stage == "provider choices" {
+						return nil, cause
+					}
+					return nil, nil
+				},
+				Plan: func(context.Context, string, []capability.Requirement, []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+					return application.ProviderImpactPlan{}, cause
+				},
+			}
+			view := GuidedReadContext{Target: "dev", SnapshotRevision: "fresh", Footprint: application.Footprint{Target: "dev"}}
+			_, err := appEditPropose(context.Background(), appMachineDesiredRequest{Target: "dev", SnapshotRevision: "fresh"}, view, a)
+			var classified *appMachineError
+			if !errors.As(err, &classified) || classified.Code != "denied" ||
+				!strings.Contains(err.Error(), stage+" (invalid-impact-plan)") || strings.Contains(err.Error(), "private-") {
+				t.Fatalf("unsafe or missing diagnostic: %v", err)
+			}
+		})
 	}
 }
