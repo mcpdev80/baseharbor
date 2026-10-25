@@ -288,6 +288,12 @@ ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
     'scripts/test_pre_release_resume.py': 'modified',
 }
 
+EVIDENCE_REUSE_REVIEWED_HEAD = 'efe87f2cf26b13c3c630cef97fdd7711b53e255a'
+EVIDENCE_REUSE_REVIEWED_FILES = {
+    'scripts/pre-release-resume.py': 'modified',
+    'scripts/test_pre_release_resume.py': 'modified',
+}
+
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
 READ_ONLY_CLI = {
@@ -876,6 +882,9 @@ def plan(diff, requirements, mapping, repository='.',
         (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed v0.4.26 immutable ecosystem resolver activation'),
+        (EVIDENCE_REUSE_REVIEWED_HEAD, EVIDENCE_REUSE_REVIEWED_FILES,
+         CI_CHECKS,
+         'Owner-qualified input-equivalent evidence reuse with authenticated original receipts'),
         (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,

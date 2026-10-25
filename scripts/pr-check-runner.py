@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted #893 PR job matrix and final result adapter (no PR-controlled evidence)."""
+"""Trusted selected-check execution and authenticated final-result verification."""
 import argparse
 import json
 import re
