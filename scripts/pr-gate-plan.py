@@ -264,15 +264,17 @@ EDIT_ZERO_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_zero_preview_test.go': 'added',
 }
-EDIT_SQL_PREVIEW_REVIEWED_HEAD = 'f9c1f0186b9a47143142be048ffcff7f3e1a5f02'
+EDIT_SQL_PREVIEW_REVIEWED_HEAD = 'd26a69c88e6a42ee3de5c0b9fb1aef8ff73d851d'
 EDIT_SQL_PREVIEW_REVIEWED_FILES = {
     'cmd/baha/app_apply.go': 'modified',
     'cmd/baha/app_apply_result.go': 'modified',
+    'cmd/baha/app_core_requirement.go': 'modified',
     'cmd/baha/app_edit.go': 'modified',
     'cmd/baha/app_edit_apply_result.go': 'modified',
     'cmd/baha/app_edit_test.go': 'modified',
     'cmd/baha/app_machine_adapters.go': 'modified',
     'cmd/baha/app_wizard_controller.go': 'modified',
+    'cmd/baha/app_wizard_controller_test.go': 'modified',
     'cmd/baha/guided_application_read_context.go': 'modified',
 }
 EDIT_SQL_PREVIEW_CHECKS = ('wizard-app-edit-tests', 'wizard-provider-choice-tests',
@@ -869,7 +871,7 @@ def plan(diff, requirements, mapping, repository='.',
                 'selected_gates': sorted(EDIT_SQL_PREVIEW_GATES & available),
                 'required_validation_checks': [validations[k] for k in sorted(validations)],
                 'validation_contract': 'Every required validation and both native SQL gates must execute and pass.',
-                'reasons': ['Owner-qualified SQL Edit source: exact eight-file source and clean trusted-target integration; no native waiver.']}
+                'reasons': ['Owner-qualified SQL Edit source: exact ten-file source and clean trusted-target integration; no native waiver.']}
     # Exact source hashes bind all content, including individual file status.
     # Each clean develop merge is proved by the existing Git tree/ancestry owner.
     for reviewed, expected, checks, label in (
