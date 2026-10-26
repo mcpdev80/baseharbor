@@ -275,8 +275,8 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [x] 2. FREEZE-PR1.md: Interfaces/Hashes/Write-Sets
 - [x] 3. W1 Mapping (0b6f098d) + Shadow (692fc3d9) + W2 Writer (bb2ed8c8) + W3 Verifier (4a680643)
 - [x] 4. Reviews W2/W3 Slice FREIGEBEN; A2 Abnahme-PREP; P2 Shadow-Runbook; L4 Allowlist (2 Commits)
-- [x] 5. L6: exaktes Voll-Mapping im Trusted Plan (busy)
-- [x] 6. Integration L6 (+L5 Tasklink als separater PR2-Commit) -> FF-Push -> CI gruen
-- [x] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
-- [x] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
-- [x] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
+- [ ] 5. L6: exaktes Voll-Mapping im Trusted Plan (busy)
+- [ ] 6. Integration L6 (+L5 Tasklink als separater PR2-Commit) -> FF-Push -> CI gruen
+- [ ] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
+- [ ] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
+- [ ] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
