@@ -46,7 +46,7 @@ jobs:
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
           BASE_SHA: ${{ github.event.workflow_run.base.sha || github.event.workflow_run.base_ref }}
-          WORKFLOW_ID: ${{ github.workflow_id }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.id }}
         shell: bash
         run: |
           set -euo pipefail
