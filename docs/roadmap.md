@@ -1,16 +1,16 @@
 # Roadmap
 
-Detailed planning lives in GitHub Issues. This page shows product direction; [issue #155](https://github.com/mcpdev80/baseharbor/issues/155) is the overarching roadmap.
+Detailed planning lives in [baseharbor-plan/ROADMAP.md](https://github.com/mcpdev80/baseharbor-plan/blob/main/ROADMAP.md). This page shows product direction; historical issue links retain discussion and context.
 
-## Current — v0.4.25 candidate
 
-[v0.4.24 is published](releases/v0.4.24.md). The current candidate follows
-[issue #872](https://github.com/mcpdev80/baseharbor/issues/872) and
-[PR #881](https://github.com/mcpdev80/baseharbor/pull/881): capability-first contracts,
-minimal authoring with stable application identity, truthful footprint and a
-Core-less local application lifecycle. Explicit management Core remains intact.
-Complete ecosystem/release preparation is reviewed separately; development
-qualification does not automatically mean pre-release-ready.
+## Planning transition
+
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
+
+
+## Release scope — v0.4.26
+
+[v0.4.26](releases/v0.4.26.md) covers the needs-first app wizard, capability editing and bounded development/CI improvements (#873/#888). See [GitHub releases](https://github.com/mcpdev80/baseharbor/releases) for published versions.
 
 ## Before the v0.5 freeze
 
@@ -20,7 +20,8 @@ The binding split is recorded in [#427](https://github.com/mcpdev80/baseharbor/i
 - v0.4.27: onboarding, profiles and Node authority (#874).
 - v0.4.28: Console API and UX (#875).
 - v0.4.29: host platforms including WSL2/macOS (#876).
-- v0.4.30: final semantic acceptance (#174).
+- v0.4.30: native TLS, justified proxies and attack-protection boundaries (#904).
+- v0.4.31: final semantic acceptance (#174).
 
 ## v0.5
 
@@ -51,3 +52,4 @@ observability, update/migration, agent/DX and production-hardening parity.
 
 OpenShift, enterprise and cloud/runtime expansion build on the frozen portable
 contracts rather than changing them.
+

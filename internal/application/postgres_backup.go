@@ -85,21 +85,13 @@ func DumpPostgresInstances(ctx context.Context, runtime PostgresBackupRuntime, m
 	backups := make([]PostgresBackup, 0, len(instances))
 	for _, instance := range instances {
 		service := runtimeServiceName("postgres", instance)
-		database := postgresDatabaseName(m, instance)
 		out, err := runtime.ExecProject(
 			ctx,
 			files.Project,
 			files.Compose,
 			files.Env,
 			service,
-			"pg_dump",
-			"--clean",
-			"--if-exists",
-			"--no-owner",
-			"--no-privileges",
-			"--format=plain",
-			"-U", "baseharbor",
-			"-d", database,
+			"sh", "-ec", postgresBackupClientCommand(instance, "pg_dump", "--clean --if-exists --no-owner --no-privileges --format=plain"),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("dump postgres instance %s: %w", instance, err)
@@ -182,7 +174,6 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 	}
 	for _, instance := range SQLInstanceNames(m) {
 		service := runtimeServiceName("postgres", instance)
-		database := postgresDatabaseName(m, instance)
 		if _, err := runtime.ExecProjectInput(
 			ctx,
 			files.Project,
@@ -190,10 +181,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 			files.Env,
 			byInstance[instance],
 			service,
-			"psql",
-			"-v", "ON_ERROR_STOP=1",
-			"-U", "baseharbor",
-			"-d", database,
+			"sh", "-ec", postgresBackupClientCommand(instance, "psql", "--no-psqlrc -v ON_ERROR_STOP=1"),
 		); err != nil {
 			return fmt.Errorf("restore postgres instance %s: %w", instance, err)
 		}
@@ -203,10 +191,7 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 			files.Compose,
 			files.Env,
 			service,
-			"psql",
-			"-U", "baseharbor",
-			"-d", database,
-			"-tAc", "SELECT 1",
+			"sh", "-ec", postgresBackupClientCommand(instance, "psql", "--no-psqlrc -v ON_ERROR_STOP=1 -tAc 'SELECT 1'"),
 		)
 		if err != nil {
 			return fmt.Errorf("verify restored postgres instance %s: %w", instance, err)
@@ -216,6 +201,13 @@ func RestorePostgresInstances(ctx context.Context, runtime PostgresBackupRuntime
 		}
 	}
 	return nil
+}
+
+// Use the protected native container's retained credentials and TLS trust,
+// matching the existing backend readiness owner. Credentials stay out of argv
+// and restore SQL stays on stdin; provider roles are never guessed.
+func postgresBackupClientCommand(instance, client, options string) string {
+	return fmt.Sprintf(`PGPASSWORD="$POSTGRES_PASSWORD" PGHOST=%s PGPORT=5432 PGUSER="$POSTGRES_USER" PGDATABASE="$POSTGRES_DB" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/tls/ca.pem %s %s`, shellQuote(postgresAccessService(instance)), client, options)
 }
 
 func ValidatePostgresBackupSet(m Manifest, backups []PostgresBackup) error {

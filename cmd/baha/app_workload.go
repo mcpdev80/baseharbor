@@ -607,28 +607,29 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
-	if !resolved.FromRepository {
-		return false, nil
+	workload, found, err := materializeRepositoryWorkload(resolved, files)
+	if err != nil || !found {
+		return false, err
 	}
-	project := application.WorkloadProjectNameForRuntime(resolved.Manifest, files)
-	containers, err := compose.ListRuntimeContainers(ctx)
+	environment, err := repositoryWorkloadEnvironment(ctx, resolved, files)
 	if err != nil {
-		return false, fmt.Errorf("inspect application workload ownership before stop: %w", err)
+		return false, err
 	}
-	found := false
-	for _, container := range containers {
-		if container.Project == project {
-			found = true
-			break
-		}
+	composeFiles, err := repositoryWorkloadComposeFiles(ctx, compose, resolved, workload, files, environment)
+	if err != nil {
+		return false, err
 	}
-	if !found {
-		return false, nil
+	expected := make([]bhruntime.ProjectResource, 0, len(workload.Services))
+	for _, service := range workload.Services {
+		expected = append(expected, bhruntime.ProjectResource{Kind: "container", Name: workload.Project + "-" + service + "-1"})
 	}
-	if err := compose.StopOwnedProjectContainers(ctx, project); err != nil {
-		return false, fmt.Errorf("stop application workload by observed runtime ownership: %w", err)
+	// Runtime modules share one deployment project. Only the repository's
+	// selected workload services may stop; SQL, broker and other modules stay up.
+	result, err := bhruntime.StopOwnedProjectServices(ctx, compose, workload.Project, workload.RepositoryRoot, environment, expected, workload.Services, composeFiles...)
+	if err != nil {
+		return len(result.Stopped) > 0, fmt.Errorf("stop selected application workload services: %w", err)
 	}
-	return true, nil
+	return len(result.Stopped) > 0, nil
 }
 
 func destroyRepositoryWorkloadRuntime(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {

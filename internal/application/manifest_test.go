@@ -123,6 +123,39 @@ func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
 	}
 }
 
+func TestDeveloperManifestWithoutAppIDParses(t *testing.T) {
+	man := `version: 1
+app:
+  name: workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: true
+`
+	m, err := ParseYAML(man)
+	if err != nil {
+		t.Fatalf("developer manifest without app.id must parse: %v", err)
+	}
+	if m.ApplicationID != "" {
+		t.Fatalf("developer manifest must not carry an application id, got %q", m.ApplicationID)
+	}
+}
+
+func TestDeveloperManifestWithAppIDIsRejected(t *testing.T) {
+	man := `version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: true
+`
+	if _, err := ParseYAML(man); err == nil {
+		t.Fatalf("authored app.id in a developer manifest must be rejected")
+	}
+}
+
 func TestManifestValidationFailsClosed(t *testing.T) {
 	cases := []Manifest{
 		New("UPPER", "dev", true, false, false),

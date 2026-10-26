@@ -1,9 +1,11 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -13,9 +15,10 @@ import (
 )
 
 type postgresBackupCall struct {
-	service string
-	args    []string
-	input   []byte
+	project, compose, env string
+	service               string
+	args                  []string
+	input                 []byte
 }
 
 type fakePostgresBackupRuntime struct {
@@ -26,15 +29,15 @@ type fakePostgresBackupRuntime struct {
 	calls        []postgresBackupCall
 }
 
-func (f *fakePostgresBackupRuntime) ExecProject(_ context.Context, _, _, _, service string, args ...string) (string, error) {
-	f.calls = append(f.calls, postgresBackupCall{service: service, args: append([]string(nil), args...)})
+func (f *fakePostgresBackupRuntime) ExecProject(_ context.Context, project, compose, env, service string, args ...string) (string, error) {
+	f.calls = append(f.calls, postgresBackupCall{project: project, compose: compose, env: env, service: service, args: append([]string(nil), args...)})
 	if err := f.execErr[service]; err != nil {
 		return "", err
 	}
-	if len(args) > 0 && args[0] == "pg_dump" {
+	if strings.Contains(strings.Join(args, " "), "pg_dump") {
 		return f.dumps[service], nil
 	}
-	if len(args) > 0 && args[0] == "psql" {
+	if strings.Contains(strings.Join(args, " "), "psql") {
 		if result, ok := f.verifyResult[service]; ok {
 			return result, nil
 		}
@@ -43,8 +46,8 @@ func (f *fakePostgresBackupRuntime) ExecProject(_ context.Context, _, _, _, serv
 	return "", nil
 }
 
-func (f *fakePostgresBackupRuntime) ExecProjectInput(_ context.Context, _, _, _ string, input []byte, service string, args ...string) (string, error) {
-	f.calls = append(f.calls, postgresBackupCall{service: service, args: append([]string(nil), args...), input: append([]byte(nil), input...)})
+func (f *fakePostgresBackupRuntime) ExecProjectInput(_ context.Context, project, compose, env string, input []byte, service string, args ...string) (string, error) {
+	f.calls = append(f.calls, postgresBackupCall{project: project, compose: compose, env: env, service: service, args: append([]string(nil), args...), input: append([]byte(nil), input...)})
 	if err := f.restoreErr[service]; err != nil {
 		return "", err
 	}
@@ -74,17 +77,17 @@ func TestDumpPostgresInstancesUsesStableMultiInstanceIdentity(t *testing.T) {
 	}
 	for _, call := range runtime.calls {
 		joined := strings.Join(call.args, " ")
-		if !strings.Contains(joined, "pg_dump --clean --if-exists --no-owner --no-privileges --format=plain") {
+		if !strings.Contains(joined, "--clean --if-exists --no-owner --no-privileges --format=plain") {
 			t.Fatalf("dump args = %q", joined)
 		}
-		if strings.Contains(joined, "PASSWORD") {
-			t.Fatalf("dump command must not contain a password: %q", joined)
+		if !strings.Contains(joined, `PGPASSWORD="$POSTGRES_PASSWORD"`) || !strings.Contains(joined, "PGSSLMODE=verify-ca") || strings.Contains(joined, "-U baseharbor") {
+			t.Fatalf("dump must use retained protected credentials and TLS: %q", joined)
 		}
 	}
-	if got := strings.Join(runtime.calls[0].args, " "); !strings.Contains(got, "-d mailflow_dev_analytics") {
+	if got := strings.Join(runtime.calls[0].args, " "); !strings.Contains(got, "PGHOST='postgres-analytics'") || !strings.Contains(got, `PGDATABASE="$POSTGRES_DB"`) {
 		t.Fatalf("analytics database not selected: %q", got)
 	}
-	if got := strings.Join(runtime.calls[1].args, " "); !strings.Contains(got, "-d mailflow_dev_primary") {
+	if got := strings.Join(runtime.calls[1].args, " "); !strings.Contains(got, "PGHOST='postgres-primary'") || !strings.Contains(got, `PGDATABASE="$POSTGRES_DB"`) {
 		t.Fatalf("primary database not selected: %q", got)
 	}
 }
@@ -114,13 +117,13 @@ func TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance(t *testing.T) 
 			t.Fatalf("restore for %s did not receive SQL over stdin", restore.service)
 		}
 		joined := strings.Join(restore.args, " ")
-		if !strings.Contains(joined, "psql -v ON_ERROR_STOP=1") {
+		if !strings.Contains(joined, "--no-psqlrc -v ON_ERROR_STOP=1") {
 			t.Fatalf("restore args = %q", joined)
 		}
 		if strings.Contains(joined, string(restore.input)) {
 			t.Fatalf("restore SQL leaked into process arguments")
 		}
-		if got := strings.Join(verify.args, " "); !strings.Contains(got, "-tAc SELECT 1") {
+		if got := strings.Join(verify.args, " "); !strings.Contains(got, "-tAc 'SELECT 1'") {
 			t.Fatalf("verify args = %q", got)
 		}
 	}
@@ -297,4 +300,126 @@ func TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources(t *testing.T
 	if strings.Contains(restore, "baseharbor_admin") {
 		t.Fatalf("restore used provider administrator credentials: %q", restore)
 	}
+}
+
+type postgresBackupShellRuntime struct {
+	t     *testing.T
+	files RuntimeFiles
+	calls int
+}
+
+func (r *postgresBackupShellRuntime) ExecProject(ctx context.Context, project, compose, env, service string, args ...string) (string, error) {
+	return r.execute(ctx, project, compose, env, nil, service, args...)
+}
+func (r *postgresBackupShellRuntime) ExecProjectInput(ctx context.Context, project, compose, env string, input []byte, service string, args ...string) (string, error) {
+	return r.execute(ctx, project, compose, env, input, service, args...)
+}
+func (r *postgresBackupShellRuntime) execute(ctx context.Context, project, compose, env string, input []byte, service string, args ...string) (string, error) {
+	r.t.Helper()
+	if project != r.files.Project || compose != r.files.Compose || env != r.files.Env || service != "postgres-analytics" {
+		r.t.Fatal("backup escaped selected Target runtime files or instance")
+	}
+	if strings.Contains(strings.Join(args, " "), os.Getenv("POSTGRES_PASSWORD")) || strings.Contains(strings.Join(args, " "), "-U baseharbor") {
+		r.t.Fatal("credential material or guessed role in transport argv")
+	}
+	r.calls++
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Stdin = bytes.NewReader(input)
+	output, err := cmd.CombinedOutput()
+	if bytes.Contains(output, []byte(os.Getenv("POSTGRES_PASSWORD"))) {
+		r.t.Fatal("client output leaked protected SQL credentials")
+	}
+	return string(output), err
+}
+
+func TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner(t *testing.T) {
+	for _, scenario := range []struct{ name, user, database, password string }{
+		{"simple", "retained_consumer", "retained_database", "retained-private-password"},
+		{"special-values", `retained 'role" \ $(touch "$BACKUP_SHELL_INJECTION_MARKER")`, `retained db'" host=other-target.invalid sslmode=disable`, "retained p'ass\"word\\\n$(touch \"$BACKUP_SHELL_INJECTION_MARKER\")"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			root := t.TempDir()
+			m := WithSQLInstances(New("same-app", "dev", true, false, false), "analytics")
+			files := RuntimeFilesFor(Store{Root: filepath.Join(root, "canonical-deployment-uuid", "state"), Namespace: "selected-target"}, m)
+			bin := filepath.Join(root, "bin")
+			if err := os.MkdirAll(bin, 0700); err != nil {
+				t.Fatal(err)
+			}
+			restored := filepath.Join(root, "restored.sql")
+			t.Setenv("BACKUP_RESTORE_TEST_SQL", restored)
+			script := `#!/bin/sh
+set -eu
+test "$PGPASSWORD" = "$EXPECT_POSTGRES_PASSWORD"
+test "$PGUSER" = "$EXPECT_POSTGRES_USER"
+test "$PGDATABASE" = "$EXPECT_POSTGRES_DB"
+test "$PGHOST" = postgres-analytics
+test "$PGPORT" = 5432
+test "$PGSSLMODE" = verify-ca
+test "$PGSSLROOTCERT" = /run/baseharbor/tls/ca.pem
+case "$0" in
+  */pg_dump) printf '%s\n' 'CREATE TABLE retained_probe(id integer);' ;;
+  */psql)
+    case "$*" in
+      *"SELECT 1"*) printf '1\n' ;;
+      *) cat > "$BACKUP_RESTORE_TEST_SQL" ;;
+    esac ;;
+  *) exit 91 ;;
+esac
+`
+			for _, name := range []string{"pg_dump", "psql"} {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			for key, value := range map[string]string{"USER": scenario.user, "DB": scenario.database, "PASSWORD": scenario.password} {
+				t.Setenv("POSTGRES_"+key, value)
+				t.Setenv("EXPECT_POSTGRES_"+key, value)
+			}
+			t.Setenv("PGSSLMODE", "disable")
+			t.Setenv("PGHOST", "other-target.invalid")
+			marker := filepath.Join(root, "shell-injection")
+			t.Setenv("BACKUP_SHELL_INJECTION_MARKER", marker)
+			r := &postgresBackupShellRuntime{t: t, files: files}
+			backups, err := DumpPostgresInstances(t.Context(), r, m, files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := RestorePostgresInstances(t.Context(), r, m, files, backups); err != nil {
+				t.Fatal(err)
+			}
+			actual, err := os.ReadFile(restored)
+			if err != nil || len(backups) != 1 || !bytes.Equal(actual, backups[0].SQL) || r.calls != 3 {
+				t.Fatalf("protected dump/restore/verify did not roundtrip selected SQL: calls=%d err=%v", r.calls, err)
+			}
+			// SELECT failure after a successful import must also fail the restore.
+			verifyFailure := strings.Replace(script, `*"SELECT 1"*) printf '1\n' ;;`, `*"SELECT 1"*) exit 94 ;;`, 1)
+			if verifyFailure == script {
+				t.Fatal("verification negative did not modify its shell scenario")
+			}
+			if err := os.WriteFile(filepath.Join(bin, "psql"), []byte(verifyFailure), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := RestorePostgresInstances(t.Context(), r, m, files, backups); err == nil || !strings.Contains(err.Error(), "verify restored postgres") {
+				t.Fatal("failed SQL verification accepted", err)
+			}
+			// A native command failure must propagate for dump, SQL import and SELECT.
+			for _, client := range []string{"pg_dump", "psql"} {
+				if err := os.WriteFile(filepath.Join(bin, client), []byte("#!/bin/sh\nexit 93\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if client == "pg_dump" {
+					if _, err := DumpPostgresInstances(t.Context(), r, m, files); err == nil {
+						t.Fatal("failed native dump accepted")
+					}
+				} else if err := RestorePostgresInstances(t.Context(), r, m, files, backups); err == nil {
+					t.Fatal("failed native SQL restore accepted")
+				}
+			}
+			if _, err := os.Stat(marker); !os.IsNotExist(err) {
+				t.Fatal("protected connection values were evaluated as shell syntax")
+			}
+		})
+	}
+
 }

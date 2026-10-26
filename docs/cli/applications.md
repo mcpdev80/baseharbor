@@ -2,11 +2,16 @@
 
 Application commands operate on the portable Application Contract and its deployment state.
 
+Use [Create and edit application needs](../how-to/application-needs.md) for the interactive checklist, Target provider preferences and footprint preview.
+
 ## Authoring and adoption
 
 | Command | Purpose |
 | --- | --- |
 | `baha new application` | Create a new ecosystem-native application |
+| `baha app new` | Open the interactive needs wizard |
+| `baha app edit` | Edit existing needs with preview and consent |
+| `baha app footprint show` | Read the Target-bound footprint |
 | `baha init` | Create/adopt a repository-owned `baseharbor.yaml` |
 | `baha inspect` | Inspect repository/application evidence |
 | `baha app show` | Show the resolved application contract |
@@ -152,5 +157,5 @@ unknown consequences display **Achtung** and require two explicit acknowledgemen
 of the current plan. Ordinary `--yes` supplies neither these acknowledgements nor
 data-deletion consent. Actual authority, ownership and post-mutation verification
 remain required. Failed or interrupted execution stays partial and retryable.
-The v0.4.25 candidate still requires complete all-provider, mutation-path and
-native ecosystem acceptance; individual green fixtures do not establish readiness.
+Release readiness requires the applicable provider, mutation-path and native
+ecosystem acceptance; individual green fixtures do not establish readiness.

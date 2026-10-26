@@ -102,35 +102,30 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 			return fmt.Errorf("backup preflight OpenBao verification: %w", err)
 		}
 	}
-	exposureStopped := false
+	var stopExposure func(context.Context) error
 	if len(m.Exposures) > 0 {
 		if _, err := inspectManagedExposure(ctx, compose, m, files); err != nil {
 			return fmt.Errorf("backup preflight managed exposure verification: %w", err)
 		}
-		if err := stopManagedExposure(ctx, compose, m, files); err != nil {
-			return err
+		stopExposure = func(stopCtx context.Context) error {
+			return stopManagedExposure(stopCtx, compose, m, files)
 		}
-		exposureStopped = true
 	}
-
-	workloadStopped, err := stopRepositoryWorkload(ctx, compose, resolved, files)
-	if err != nil {
-		if exposureStopped {
-			if prepared, prepareErr := prepareManagedExposure(ctx, compose, resolved); prepareErr == nil {
-				_ = convergeManagedExposure(ctx, io.Discard, prepared)
-			}
-		}
-		return err
-	}
-	brokerStopped := false
+	var stopBroker func(context.Context) error
 	if application.RequiresRuntimeBroker(m) {
-		if err := stopRuntimeBroker(ctx, compose, m, files); err != nil {
-			if workloadStopped {
-				_, _ = applyRepositoryWorkload(ctx, io.Discard, compose, resolved, files)
-			}
-			return err
+		stopBroker = func(stopCtx context.Context) error {
+			return stopRuntimeBroker(stopCtx, compose, m, files)
 		}
-		brokerStopped = true
+	}
+	recovery, err := stopBackupWriters(ctx, stopExposure,
+		func(stopCtx context.Context) (bool, error) {
+			return stopRepositoryWorkload(stopCtx, compose, resolved, files)
+		}, stopBroker,
+		func(recoveryCtx context.Context, targets backupWriterRecovery) error {
+			return restartAfterBackup(recoveryCtx, compose, platformFiles, resolved, files, targets.broker, targets.workload, targets.exposure)
+		})
+	if err != nil {
+		return err
 	}
 
 	captureErr := captureApplicationBackup(ctx, compose, platformFiles, resolved, files, selectionArgs, password, outputPath)
@@ -139,7 +134,7 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	// runtime. Recovery is bounded and uses the normal application lifecycle.
 	recoveryCtx, recoveryCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
 	defer recoveryCancel()
-	restartErr := restartAfterBackup(recoveryCtx, compose, platformFiles, resolved, files, brokerStopped, workloadStopped, exposureStopped)
+	restartErr := restartAfterBackup(recoveryCtx, compose, platformFiles, resolved, files, recovery.broker, recovery.workload, recovery.exposure)
 	if restartErr != nil {
 		restartErr = fmt.Errorf("backup runtime recovery failed; run 'baha app up' for the same target/application/environment before retrying: %w", restartErr)
 	}
@@ -149,6 +144,40 @@ func executeApplicationBackupLifecycle(ctx context.Context, store application.St
 	fmt.Fprintf(out, "Backup for %s / %s / %s written to %s.\n", resolved.Target.Name, m.Name, m.Environment, outputPath)
 	return nil
 
+}
+
+// These flags request convergence of the existing owners. A failed native stop
+// can have retired some processes, so broker/exposure flags do not claim that
+// the stop completed; they include every attempted stop which may need recovery.
+type backupWriterRecovery struct {
+	broker, workload, exposure bool
+}
+
+func stopBackupWriters(ctx context.Context, stopExposure func(context.Context) error, stopWorkload func(context.Context) (bool, error), stopBroker func(context.Context) error, restart func(context.Context, backupWriterRecovery) error) (backupWriterRecovery, error) {
+	var targets backupWriterRecovery
+	recoverFailure := func(cause error) (backupWriterRecovery, error) {
+		recoveryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+		defer cancel()
+		return targets, errors.Join(cause, restart(recoveryCtx, targets))
+	}
+	if stopExposure != nil {
+		targets.exposure = true
+		if err := stopExposure(ctx); err != nil {
+			return recoverFailure(err)
+		}
+	}
+	var err error
+	targets.workload, err = stopWorkload(ctx)
+	if err != nil {
+		return recoverFailure(err)
+	}
+	if stopBroker != nil {
+		targets.broker = true
+		if err := stopBroker(ctx); err != nil {
+			return recoverFailure(err)
+		}
+	}
+	return targets, nil
 }
 
 func executeApplicationRestoreLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {

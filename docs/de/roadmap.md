@@ -1,16 +1,16 @@
 # Fahrplan
 
-Detaillierte Planung steht in GitHub Issues. Diese Seite zeigt die Produktrichtung; [Issue #155](https://github.com/mcpdev80/baseharbor/issues/155) ist die übergeordnete Roadmap.
+Die detaillierte Planung steht in [baseharbor-plan/ROADMAP.md](https://github.com/mcpdev80/baseharbor-plan/blob/main/ROADMAP.md). Diese Seite zeigt die Produktrichtung; historische Issue-Links erhalten Diskussionen und Kontext.
 
-## Aktuell — v0.4.25-Kandidat
 
-[v0.4.24 ist veröffentlicht](releases/v0.4.24.md). Der aktuelle Kandidat folgt
-[Issue #872](https://github.com/mcpdev80/baseharbor/issues/872) und
-[PR #881](https://github.com/mcpdev80/baseharbor/pull/881): Capability-first-Verträge,
-minimales Manifest mit stabiler App-ID, ehrlicher Footprint und Core-loser lokaler
-Application-Lifecycle. Der explizite Management-Core bleibt unverändert.
-Die vollständige Ecosystem-/Release-Vorbereitung wird separat geprüft;
-entwicklungsfertig bedeutet nicht automatisch Pre-Release-ready.
+## Übergang der Planung
+
+Die Planung liegt in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), aktiviert mit `47474109ea69475e60be4f065ad17476c71665bb`. Für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben gelten die dortige `AGENTS.md` und die zugewiesene Task-Notiz. Technische Entwicklungsregeln, PR-Reviews und authentifizierte Release-Nachweise bleiben in ihren bisherigen Repositories. Wegen Migration geschlossene Issues sind historische Verweise und kein Umsetzungsnachweis.
+
+
+## Release-Umfang — v0.4.26
+
+[v0.4.26](releases/v0.4.26.md) umfasst den bedarfsorientierten App-Wizard, die Bearbeitung von Capabilities und begrenzte Verbesserungen für Entwicklung und CI (#873/#888). Veröffentlichte Versionen findest du in den [GitHub-Releases](https://github.com/mcpdev80/baseharbor/releases).
 
 ## Vor dem v0.5-Freeze
 
@@ -20,7 +20,8 @@ Die verbindliche Aufteilung steht in [#427](https://github.com/mcpdev80/baseharb
 - v0.4.27: Onboarding, Profile und Node-Authority (#874).
 - v0.4.28: Console-API und UX (#875).
 - v0.4.29: Host-Plattformen einschließlich WSL2/macOS (#876).
-- v0.4.30: finale semantische Abnahme (#174).
+- v0.4.30: natives TLS, begründete Proxys und Grenzen des Angriffsschutzes (#904).
+- v0.4.31: finale semantische Abnahme (#174).
 
 ## v0.5
 
@@ -51,3 +52,4 @@ Beobachtungsfähigkeit, Update/Migration, Agent/DX und produktionshärtende Pari
 
 OpenShift, Enterprise und Cloud/Runtime-Erweiterung bauen auf dem eingefrorenen portablen
 die Verträge zu ändern, anstatt sie zu ändern.
+

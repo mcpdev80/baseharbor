@@ -67,12 +67,13 @@ func verifiedReleasedCoreSQLReference(resolved resolvedApplication, plan applica
 			return false // The selected empty module has not released all references.
 		}
 	}
-	released := false
+	// The complete Target union also selects previously unbound logical SQL.
+	// A later HTTP-only app has no new SQL binding to release. Any releases
+	// present must still belong to this selected application and environment.
 	for _, binding := range plan.ReleasedBindings {
-		released = released || logical[binding.ProviderInstanceID] && binding.ApplicationID == resolved.Manifest.ApplicationID && binding.Environment == resolved.Manifest.Environment && binding.Resource.Provider == capability.ProviderPostgreSQL
-	}
-	if !released {
-		return false
+		if logical[binding.ProviderInstanceID] && (binding.ApplicationID != resolved.Manifest.ApplicationID || binding.Environment != resolved.Manifest.Environment || binding.Resource.Kind != capability.SQL || binding.Resource.Provider != capability.ProviderPostgreSQL) {
+			return false
+		}
 	}
 	if change.InstanceID == moduleID {
 		return true
