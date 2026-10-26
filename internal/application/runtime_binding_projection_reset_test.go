@@ -9,7 +9,7 @@ import (
 func TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity(t *testing.T) {
 	for _, selected := range []bool{true, false} {
 		t.Run(map[bool]string{true: "selected", false: "removed"}[selected], func(t *testing.T) {
-			root := t.TempDir()
+			root := protectedTempDir(t)
 			before, err := os.Stat(root)
 			if err != nil {
 				t.Fatal(err)
@@ -108,7 +108,7 @@ func TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation(t
 }
 
 func TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt(t *testing.T) {
-	root := t.TempDir()
+	root := protectedTempDir(t)
 	outside := t.TempDir()
 	marker := filepath.Join(outside, "marker")
 	if err := os.WriteFile(marker, []byte("outside-owner"), 0600); err != nil {

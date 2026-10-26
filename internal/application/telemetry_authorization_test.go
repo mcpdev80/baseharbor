@@ -12,7 +12,7 @@ import (
 )
 
 func TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization(t *testing.T) {
-	dir := t.TempDir()
+	dir := protectedTempDir(t)
 	f := RuntimeFiles{Dir: dir, Env: filepath.Join(dir, "runtime.env"), ApplicationEnv: filepath.Join(dir, "application.env"), Bindings: filepath.Join(dir, "bindings")}
 	for _, p := range []string{f.Env, f.ApplicationEnv} {
 		if err := os.WriteFile(p, nil, 0600); err != nil {

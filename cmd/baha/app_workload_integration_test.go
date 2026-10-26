@@ -13,6 +13,41 @@ import (
 	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
 )
 
+// Native readiness requires authenticated SQL SELECT 1 and TLS Valkey PING.
+// Sleeping alone is running-unverified under the production status contract.
+const repositoryBackendProbeCompose = `services:
+  pg-probe:
+    image: postgres:18-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(psql "$$DATABASE_URL" -tAc 'SELECT 1') &&
+          test "$$result" = 1
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+  valkey-probe:
+    image: valkey/valkey:9.1.2-alpine
+    command: ["sh", "-ec", "sleep infinity"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          result=$$(valkey-cli -u "$$REDIS_URL" --cacert "$$REDIS_CA_FILE" ping) &&
+          test "$$result" = PONG
+      interval: 1s
+      timeout: 5s
+      retries: 30
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+
 func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
@@ -37,7 +72,6 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 11111111-1111-4111-8111-111111111111
   name: workload-ci
   environment: dev
 services:
@@ -55,26 +89,13 @@ workload:
 	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	composeYAML := `services:
-  pg-probe:
-    image: postgres:18-alpine
-    command: ["sh", "-ec", "sleep infinity"]
-    networks:
-      - app-internal
-  valkey-probe:
-    image: valkey/valkey:9.1.2-alpine
-    command: ["sh", "-ec", "sleep infinity"]
-    networks:
-      - app-internal
-networks:
-  app-internal:
-`
+	composeYAML := repositoryBackendProbeCompose
 	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"--verbose", "app", "apply"}, &out); err != nil {
 		t.Fatalf("apply repository workload: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
@@ -83,6 +104,9 @@ networks:
 
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "workload integration verification")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRepositoryFixtureState(resolved, []byte(manifest)); err != nil {
 		t.Fatal(err)
 	}
 	m := resolved.Manifest
@@ -134,7 +158,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("up workload application: %v\n%s", err, out.String())
 	}
 	pg, err = compose.ExecProjectFiles(ctx, workload.Project, root, "pg-probe", composeFiles, "sh", "-ec", `psql ${DATABASE_URL} -tAc 'SELECT 1'`)
@@ -143,9 +167,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-		t.Fatalf("destroy workload application: %v\n%s", err, out.String())
-	}
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest not preserved: %v", err)
 	}
@@ -175,7 +197,6 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 22222222-2222-4222-8222-222222222222
   name: workload-only-ci
   environment: dev
 services:
@@ -208,7 +229,7 @@ networks:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("apply workload-only application: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "workload") {
@@ -267,7 +288,7 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("up workload-only application: %v\n%s", err, out.String())
 	}
 	probe, err = compose.ExecProjectFiles(ctx, workload.Project, root, "app", composeFiles, "sh", "-ec", `test "$APP_OWNED_VALUE" = preserved; echo ok`)
@@ -276,8 +297,21 @@ networks:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
 		t.Fatalf("destroy workload-only application: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest not preserved: %v", err)
@@ -308,7 +342,6 @@ func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 
 	manifest := `version: 1
 app:
-  id: 33333333-3333-4333-8333-333333333333
   name: build-convergence-ci
   environment: dev
 services:
@@ -350,7 +383,7 @@ workload:
 	}
 
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("initial build apply: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {
@@ -388,7 +421,7 @@ workload:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("unchanged app up: %v\n%s", err, out.String())
 	}
 	unchangedIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
@@ -403,7 +436,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("ignored-input app up: %v\n%s", err, out.String())
 	}
 	ignoredIdentity, err := compose.ProjectServiceImageIdentity(ctx, workload.Project, "app")
@@ -418,7 +451,7 @@ workload:
 		t.Fatal(err)
 	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "up"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
 		t.Fatalf("changed-source app up: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "rebuilt app") {
@@ -434,7 +467,20 @@ workload:
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
 		t.Fatalf("destroy build workload: %v\n%s", err, out.String())
+	}
+	result, err := applicationDestroyResult(resolved, false)
+	if err != nil || !result.OwnerPreserved || result.DataDeleted == nil || *result.DataDeleted {
+		t.Fatalf("workload retirement lost retained owner/data receipt: %v", err)
+	}
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect owned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("owned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
 	}
 }

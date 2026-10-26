@@ -18,7 +18,7 @@ def resolve_pins(core, connector, candidate, console_candidate, demo_core, reque
     if (not exact(core) or not exact(connector) or not isinstance(candidate, dict) or
             set(candidate) != {'schema', 'release', 'core', 'console', 'demo'} or
             candidate['schema'] != 'baseharbor.ecosystem-candidate/v1' or
-            release not in {'0.4.24', '0.4.25'} or candidate['release'] != release or candidate['core'] != core or
+            release not in {'0.4.24', '0.4.25', '0.4.26'} or candidate['release'] != release or candidate['core'] != core or
             not all(exact(candidate[key]) for key in ['core', 'console', 'demo']) or
             not isinstance(console_candidate, dict) or
             set(console_candidate) != {'schema', 'release', 'core', 'demo'} or
@@ -37,7 +37,56 @@ def resolve_pins(core, connector, candidate, console_candidate, demo_core, reque
                         'workflow': WORKFLOW, 'origin': origin},
         },
     }}
+    if release == '0.4.26':
+        # Acyclic, source-owned dependency graph. The published candidate is a
+        # resolved immutable snapshot, not a reference to moving branches.
+        pins['ecosystem'] = {
+            'core': {'repository': 'mcpdev80/baseharbor', 'commit': core, 'consumes': {}},
+            'demo': {'repository': 'mcpdev80/baseharbor-demo', 'commit': candidate['demo'],
+                     'consumes': {'core': core}},
+            'console': {'repository': REPOSITORIES['console'], 'commit': candidate['console'],
+                        'consumes': {'core': core, 'demo': candidate['demo']}},
+            'connector': {'repository': REPOSITORIES['connector'], 'commit': connector,
+                          'consumes': {'core': core, 'demo': candidate['demo'],
+                                       'console': candidate['console']}},
+        }
+        validate_ecosystem_graph(pins['ecosystem'])
     return pins
+
+
+def validate_ecosystem_graph(ecosystem):
+    """Require an exact four-repository DAG with immutable matching references."""
+    expected = {'core': set(), 'demo': {'core'},
+                'console': {'core', 'demo'},
+                'connector': {'core', 'demo', 'console'}}
+    repositories = {'core': 'mcpdev80/baseharbor', 'demo': 'mcpdev80/baseharbor-demo',
+                    'console': REPOSITORIES['console'], 'connector': REPOSITORIES['connector']}
+    if not isinstance(ecosystem, dict) or set(ecosystem) != set(expected):
+        raise ValueError('ecosystem consumer graph differs')
+    for role, dependencies in expected.items():
+        node = ecosystem[role]
+        if (not isinstance(node, dict) or set(node) != {'repository', 'commit', 'consumes'} or
+                node['repository'] != repositories[role] or not exact(node['commit']) or
+                not isinstance(node['consumes'], dict) or set(node['consumes']) != dependencies):
+            raise ValueError('ecosystem consumer graph differs')
+        for dependency, commit in node['consumes'].items():
+            if not exact(commit) or commit != ecosystem[dependency]['commit']:
+                raise ValueError('ecosystem consumer pin differs')
+    visiting, visited = set(), set()
+
+    def visit(role):
+        if role in visiting:
+            raise ValueError('cyclic ecosystem consumer dependency')
+        if role in visited:
+            return
+        visiting.add(role)
+        for dependency in ecosystem[role]['consumes']:
+            visit(dependency)
+        visiting.remove(role)
+        visited.add(role)
+
+    for role in expected:
+        visit(role)
 
 
 def api(path):
@@ -58,7 +107,7 @@ def source_file(repository, commit, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--core', required=True)
-    parser.add_argument('--tag', default='v0.4.24', choices=['v0.4.24', 'v0.4.25'])
+    parser.add_argument('--tag', default='v0.4.24', choices=['v0.4.24', 'v0.4.25', 'v0.4.26'])
     parser.add_argument('--connector', default='')
     parser.add_argument('--demo', default='')
     parser.add_argument('--output', required=True, type=pathlib.Path)

@@ -3,10 +3,12 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import pathlib
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 
 spec = importlib.util.spec_from_file_location('resume', pathlib.Path(__file__).with_name('pre-release-resume.py'))
@@ -217,6 +219,53 @@ class EvidenceTests(unittest.TestCase):
                 resume.origin_demo_pin(self.api, FakeInputs(), 'a' * 40, 'v0.4.24',
                                        1, [bad], self.api.jobs[1], expected, {})
 
+    def test_v026_origin_authentication_and_newer_negative_attempt(self):
+        result = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                'v0.4.26', [1], self.root)
+        self.assertEqual([proof['gate'] for proof in result['proofs']], ['atomic/static/mcp'])
+        self.assertEqual(len(result['pending']), 64)
+        self.assertEqual(result['proofs'][0]['origin']['archive_digest'],
+                         self.api.artifacts[1][0]['digest'])
+        self.api.jobs[2][0]['conclusion'] = 'failure'
+        negative = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                  'v0.4.26', [1, 2], self.root)
+        self.assertEqual(negative['proofs'], [])
+        self.assertIn('failure', negative['pending']['atomic/static/mcp'])
+
+    def test_v026_rejects_missing_forged_and_changed_evidence(self):
+        for mutation in ('missing', 'digest', 'schema', 'cleanup', 'attempt', 'source'):
+            api = FakeAPI()
+            if mutation == 'missing':
+                api.artifacts[1] = []
+                with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                    resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                   'v0.4.26', [1], self.root)
+                continue
+            if mutation == 'digest':
+                api.artifacts[1][0]['digest'] = 'sha256:' + '0' * 64
+            else:
+                broken = manifest()
+                if mutation == 'schema':
+                    broken['schema'] = 'forged'
+                elif mutation == 'cleanup':
+                    broken['cleanup_outcome'] = 'failure'
+                elif mutation == 'attempt':
+                    broken['workflow_run_attempt'] = 2
+                elif mutation == 'source':
+                    broken['candidate_sha'] = 'c' * 40
+                api.data[1], api.artifacts[1][0]['digest'] = archive(broken)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                               'v0.4.26', [1], self.root)
+
+    def test_v026_selection_never_authorizes_proof_reuse(self):
+        coverage = resume.collect(self.api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                  'v0.4.26', [1], self.root)
+        selected = resume.selected_schedule(coverage, 'atomic/static/mcp')
+        self.assertEqual(selected['proofs'], coverage['proofs'])
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(selected, 'a' * 40, 'b' * 40, 'v0.4.26')
+
     def test_v024_keeps_the_complete_v023_required_gate_surface(self):
         previous = resume.local_requirements('v0.4.23')
         current = resume.local_requirements('v0.4.24')
@@ -357,6 +406,29 @@ class RequirementTests(unittest.TestCase):
                     'pending': {}, 'proofs': [{'gate': key} for key in baseline]}
         with self.assertRaises(ValueError):
             resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.23')
+
+    def test_v026_full_requirements_and_historical_receipt_semantics(self):
+        previous = resume.local_requirements('v0.4.25')
+        current = resume.local_requirements('v0.4.26')
+        self.assertEqual(len(previous), 65)
+        self.assertEqual(len(current), 65)
+        self.assertEqual([gate['id'] for gate in previous],
+                         [gate['id'] for gate in current])
+        self.assertEqual(len(resume.local_requirements('v0.4.24')), 63)
+        self.assertEqual({g['id'] for g in current if 'console' in g['dependencies']},
+                         {'integration/static/live-console'})
+        self.assertEqual({g['id'] for g in current if 'connector' in g['dependencies']},
+                         {'integration/docker/remote-target',
+                          'integration/podman/remote-target',
+                          'integration/static/live-console'})
+        coverage = {'schema': 'baseharbor.pre-release.coverage/v2',
+                    'candidate_sha': 'a' * 40, 'demo_ref': 'b' * 40,
+                    'tag': 'v0.4.25', 'required': [g['id'] for g in previous],
+                    'proofs': [{'gate': g['id']} for g in previous], 'pending': {},
+                    'requirements_digest': resume.digest(previous)}
+        resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.25')
+        with self.assertRaises(ValueError):
+            resume.verify_coverage(coverage, 'a' * 40, 'b' * 40, 'v0.4.26')
 
     def test_duplicate_missing_and_unknown_requirements_fail_closed(self):
         original = json.loads(pathlib.Path(resume.__file__).with_name('release-requirements.json').read_text())
@@ -843,6 +915,182 @@ class WorkflowIntegrationTests(unittest.TestCase):
             subprocess.run(['bash', '-euo', 'pipefail', '-c', script], env=env, check=True)
             data = json.loads((pathlib.Path(root) / 'reference-journey-evidence/manifest.json').read_text())
             resume.validate_manifest(data, 'journey/docker', 1, 'a' * 40, 'b' * 40, 1)
+
+
+class ApprovalConsumerOriginTests(unittest.TestCase):
+    def test_approval_main_requires_exact_consumer_origin_for_ecosystem_releases(self):
+        candidate = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+        demo = 'b' * 40
+        with tempfile.TemporaryDirectory() as temporary:
+            for tag in ('v0.4.24', 'v0.4.25', 'v0.4.26'):
+                requirements = resume.GitInputs(pathlib.Path.cwd(), temporary).requirements(candidate, tag)
+                coverage = {'schema': 'baseharbor.pre-release.coverage/v2',
+                            'candidate_sha': candidate, 'demo_ref': demo, 'tag': tag,
+                            'required': [gate['id'] for gate in requirements], 'pending': [],
+                            'requirements_digest': resume.digest(requirements),
+                            'proofs': [{'gate': gate['id']} for gate in requirements]}
+                for consumer in ('c' * 40, '', 'main', 'f' * 39, 'g' * 40):
+                    with self.subTest(tag=tag, consumer=consumer):
+                        output = pathlib.Path(temporary) / (tag + '-' + (consumer or 'missing'))
+                        args = ['pre-release-resume.py', 'approve', '--candidate', candidate,
+                                '--demo', demo, '--tag', tag, '--demo-repo', temporary,
+                                '--output', str(output), '--runs', str(output / 'absent-runs')]
+                        environment = {'GITHUB_RUN_ID': '42', 'GITHUB_RUN_ATTEMPT': '1',
+                                       'BASEHARBOR_CONSUMER_REF': consumer,
+                                       'BASEHARBOR_PUBLIC_EVIDENCE_FILE': '',
+                                       'BASEHARBOR_PRIVATE_EVIDENCE_FILE': '',
+                                       'BASEHARBOR_PRIVATE_EVIDENCE_JSON': ''}
+                        # Authentication/collection is tested separately. Exercise the real
+                        # approval entry point and coverage checks after complete collection.
+                        with patch('sys.argv', args), patch.dict(os.environ, environment), \
+                                patch.object(resume, 'collect', return_value=coverage), \
+                                patch.object(resume, 'discover_runs', return_value=[]), \
+                                patch('sys.stdout', new_callable=io.StringIO):
+                            if consumer == 'c' * 40:
+                                resume.main()
+                                approved = json.loads((output / 'release-approved.json').read_text())
+                                self.assertEqual(approved['consumer_ref'], consumer)
+                                self.assertEqual(approved['gate_count'], len(requirements))
+                                self.assertEqual(approved['requirements_digest'], resume.digest(requirements))
+                            else:
+                                with self.assertRaisesRegex(ValueError, 'immutable complete consumer origin'):
+                                    resume.main()
+                                self.assertFalse((output / 'release-approved.json').exists())
+
+
+class EvidenceReuseTests(unittest.TestCase):
+    commit = GitFingerprintTests.commit
+
+    def setUp(self):
+        GitFingerprintTests.setUp(self)
+        target = self.product / resume.REQUIREMENTS_PATH
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(pathlib.Path(resume.REQUIREMENTS_PATH).read_bytes())
+        self.p = self.commit(self.product)
+
+    def v026(self, product=None, demo=None, gate='atomic/docker/lifecycle'):
+        return self.inputs.fingerprint(product or self.p, demo or self.d, 'v0.4.26', gate)
+
+    def test_v026_pr_policy_and_prose_preserve_runtime_evidence(self):
+        original = self.v026()
+        for path in sorted(resume.REVIEW_ONLY | {'README.md', 'docs/de/index.md'}):
+            target = self.product / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('changed review policy or published prose\n')
+        changed = self.commit(self.product)
+        self.assertEqual(original, self.v026(changed))
+        (self.product / 'main.go').write_text('package main\n// changed runtime\n')
+        self.assertNotEqual(original, self.v026(self.commit(self.product)))
+
+    def test_v026_other_job_does_not_invalidate_but_build_and_own_job_do(self):
+        original = self.v026()
+        path = self.product / '.github/workflows/pre-release.yml'
+        before = path.read_text()
+        path.write_text(before.replace('bash scripts/acceptance.sh', 'bash scripts/other-journey.sh'))
+        self.assertEqual(original, self.v026(self.commit(self.product)))
+        path.write_text(before.replace('docker build .', 'docker build --build-arg CHANGED=1 .'))
+        self.assertNotEqual(original, self.v026(self.commit(self.product)))
+
+    def test_v026_demo_pin_is_identity_not_runtime_but_workload_changes_invalidate(self):
+        path = self.demo / 'baseharbor-core.ref'
+        path.write_text('a' * 40 + '\n')
+        before = self.commit(self.demo)
+        path.write_text('b' * 40 + '\n')
+        after = self.commit(self.demo)
+        for gate in ['atomic/docker/lifecycle', 'atomic/static/mcp', 'adoption/conformance']:
+            self.assertEqual(self.v026(demo=before, gate=gate), self.v026(demo=after, gate=gate))
+        (self.demo / 'compose.yaml').write_text('services: {changed: {}}\n')
+        self.assertNotEqual(self.v026(demo=before), self.v026(demo=self.commit(self.demo)))
+
+    def test_v026_required_inventory_and_unknown_inputs_still_invalidate(self):
+        original = self.v026()
+        for path in ['scripts/unknown-runtime-helper.py', 'internal/new-runtime.go']:
+            target = self.product / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text('unknown execution input\n')
+            self.assertNotEqual(original, self.v026(self.commit(self.product)))
+
+    def test_v026_embedded_readme_is_not_ignored(self):
+        (self.product / 'main.go').write_text('package main\n//go:embed README.md\n')
+        (self.product / 'README.md').write_text('embedded before\n')
+        before = self.commit(self.product)
+        (self.product / 'README.md').write_text('embedded after\n')
+        self.assertNotEqual(self.v026(before), self.v026(self.commit(self.product)))
+
+    def test_v026_fixture_change_only_invalidates_its_gate_and_journeys(self):
+        path = self.demo / 'tests/identity/run.sh'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('changed identity fixture\n')
+        changed = self.commit(self.demo)
+        for gate, same in [('atomic/docker/lifecycle', True), ('atomic/docker/identity', False),
+                           ('journey/docker', False)]:
+            with self.subTest(gate=gate):
+                self.assertEqual(self.v026(gate=gate) == self.v026(demo=changed, gate=gate), same)
+        for name in ['drive.py', 'new_edit.py']:
+            common = self.demo / 'tests/guided' / name
+            common.parent.mkdir(parents=True, exist_ok=True)
+            common.write_text('changed shared bootstrap or imported helper\n')
+            self.assertNotEqual(self.v026(demo=changed), self.v026(demo=self.commit(self.demo)))
+
+
+class OriginDiscoveryTests(unittest.TestCase):
+    def test_changed_consumer_keeps_other_proofs_and_schedules_only_affected_gate(self):
+        api = FakeAPI()
+        key = 'integration/docker/remote-target'
+        receipt = manifest(run=1)
+        receipt.update(schema=resume.SCHEMAS['integration'], id='docker/remote-target',
+                       runtime='docker', gate='remote-target', cleanup_outcome='success',
+                       requirements_digest=resume.digest(resume.local_requirements('v0.4.26')),
+                       consumer_commitments={'connector': 'sha256:old-source'})
+        data, checksum = archive(receipt)
+        api.data[3] = data
+        api.artifacts[1].append({'id': 3, 'name': resume.artifact_name(key, 1, 1),
+                                'expired': False, 'digest': checksum,
+                                'workflow_run': {'id': 1, 'head_sha': 'a' * 40}})
+        api.jobs[1].append(dict(api.job(1), id=103, name='Integration · ' + key))
+        class Verifier:
+            pins = {key: {'connector': {'commit': 'c' * 40}}}
+            def verify(self, *args):
+                raise AssertionError('changed consumer cannot be reused')
+        with tempfile.TemporaryDirectory() as root:
+            result = resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40, 'v0.4.26',
+                                    [1], pathlib.Path(root), private_verifier=Verifier())
+            self.assertEqual([proof['gate'] for proof in result['proofs']], ['atomic/static/mcp'])
+            self.assertIn('consumer source inputs changed', result['pending'][key])
+
+    def test_discovery_retains_newer_negative_and_skips_current_foreign_and_incompatible(self):
+        repository = 'mcpdev80/baseharbor'
+        def run(number, source='a' * 40, event='push', owner=repository):
+            return {'id': number, 'head_sha': source, 'event': event,
+                    'path': '.github/workflows/pre-release.yml',
+                    'repository': {'full_name': owner}, 'head_repository': {'full_name': owner},
+                    'status': 'completed', 'conclusion': 'failure' if number == 2 else 'success'}
+        class Inputs(FakeInputs):
+            def fingerprint(self, candidate, demo, tag, key):
+                return candidate + key
+        class API:
+            def pages(self, path, field):
+                assert field == 'workflow_runs'
+                if path == 'actions/workflows/targeted-demo-acceptance.yml/runs?per_page=100':
+                    return []
+                assert path == 'actions/workflows/pre-release.yml/runs?per_page=100'
+                return [run(1, event='workflow_dispatch'), run(2), run(3, owner='foreign/fork'),
+                        run(4, source='c' * 40), run(5)]
+        API.repository = repository
+        self.assertEqual(resume.discover_runs(API(), Inputs(), 'a' * 40, 'b' * 40,
+                                             'v0.4.26', 5), [1, 2])
+
+    def test_manual_origin_still_requires_exact_manifest_source_and_digest(self):
+        api = FakeAPI(); api.event = 'workflow_dispatch'
+        with tempfile.TemporaryDirectory() as root:
+            result = resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                                    'v0.4.26', [1], pathlib.Path(root))
+            self.assertEqual(len(result['proofs']), 1)
+            changed = manifest(run=1); changed['candidate_sha'] = 'c' * 40
+            api.data[1], api.artifacts[1][0]['digest'] = archive(changed)
+            with self.assertRaisesRegex(ValueError, 'binding differs'):
+                resume.collect(api, FakeInputs(), 'a' * 40, 'b' * 40,
+                               'v0.4.26', [1], pathlib.Path(root))
 
 
 if __name__ == '__main__':

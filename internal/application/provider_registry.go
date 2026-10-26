@@ -294,6 +294,16 @@ func registerReferenceProviders(registry *capability.Registry, m Manifest) error
 }
 
 func registerReferenceProvidersAt(dataDir string, registry *capability.Registry, m Manifest) error {
+	if dataDir != "" {
+		prefs, err := DesiredProviderPreferencesAt(dataDir, m)
+		if err != nil {
+			return err
+		}
+		if err := ValidateProviderPreferencesAt(dataDir, m, prefs); err != nil {
+			return err
+		}
+		m = WithProviderPreferences(m, prefs)
+	}
 	contract, err := PortableContractFromManifest(m)
 	if err != nil {
 		return err
@@ -344,6 +354,12 @@ func registerReferenceProvidersAt(dataDir string, registry *capability.Registry,
 			}
 		}
 
+		if handled, err := preferredProviderResource(registry, m, resource); handled || err != nil {
+			if err != nil {
+				return err
+			}
+			continue
+		}
 		placement, err := ResolveProviderPlacement(m, resource.Provider)
 		if err != nil {
 			return err

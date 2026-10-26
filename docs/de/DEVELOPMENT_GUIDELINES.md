@@ -4,6 +4,12 @@
 Release-Bereitschaft richtet sich nach `docs/internal/pre-release-documentation-audit.md`; grüne Core-Tests allein bedeuten niemals Pre-Release-ready.
 Diese Regeln gelten für Code, Tests, Dokumentation und Anbieter-/Laufzeitarbeit.
 
+
+## Übergang der Planung
+
+Die Planung liegt in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), aktiviert mit `47474109ea69475e60be4f065ad17476c71665bb`. Für Umfang, Abhängigkeiten, Zuständigkeit und Übergaben gelten die dortige `AGENTS.md` und die zugewiesene Task-Notiz. Technische Entwicklungsregeln, PR-Reviews und authentifizierte Release-Nachweise bleiben in ihren bisherigen Repositories. Wegen Migration geschlossene Issues sind historische Verweise und kein Umsetzungsnachweis.
+
+
 ## Prinzip der Projekttechnik
 
 > **AI-generiert, menschlich spezifiziert, maschinenverifiziert.**
@@ -100,10 +106,32 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 - Langlebige Branchen beschränken sich auf explizit bezeichnete Integration oder gepflegte Arbeitsspuren wie z.B.`main `, ` develop`und absichtlich beibehaltene aktive Merkmals-/Prüfzweige.
 - Vergewissern Sie sich vor dem Löschen eines abweichenden Zweigs, dass alle erforderlichen Änderungen bereits im Zielzweig vorhanden sind oder absichtlich obsolet sind.
 
+## Entwicklungsablauf
+
+`develop` integriert die nächste Veröffentlichung und `main` enthält veröffentlichten Quellcode; das maßgebliche Branch- und Release-Modell steht in [Releases und Versionierung](reference/releases.md). Ab v0.4.26 wird jede Arbeitseinheit als eigener kleiner Branch und Pull Request gegen `develop` geliefert. v0.4.25 wurde nach dem früheren Shared-Branch-Verfahren abgeschlossen ([PR #881](https://github.com/mcpdev80/baseharbor/pull/881)); dessen Workflows und Nachweise bleiben unverändert und werden nicht nachträglich neu eingespielt.
+
+**Maintainer.** Die Rolle Maintainer besitzt die Merge- und Freigabe-Hoheit für `develop`. Die aktuelle Zuordnung ist `@mcpdev80` und wird hier zentral definiert; ein weiterer Maintainer erfordert eine ausdrücklich aktualisierte Zuständigkeit. Einstiege nennen die Rolle „Maintainer" statt eines persönlichen Kontos.
+
+**Vom Owner delegierte Maintainer-Befugnis.** Marcel, Repository-Owner `@mcpdev80`, überträgt Codex und weiteren von ihm beauftragten Agenten die Maintainer-Befugnis, wenn sie auf seine Anweisung über dieses Konto handeln. Im zugewiesenen Umfang reicht die Owner-Anweisung zur Implementierung, Abnahme oder zum Merge als Repository-Autorisierung aus: Eine zusätzliche unabhängige Review, Code-Owner-Freigabe, Selbstfreigabe oder erneute Bestätigung ist nicht erforderlich. Der beauftragte Maintainer darf eigene und fremde PRs über die vorhandene PR-bezogene Review-Ausnahme des Kontos mergen. Owner-Auftrag, exakten Kandidaten, tatsächliche Prüfungen und Merge-Ergebnis dokumentieren; dies ist eine Owner-autorisierte Abnahme und keine unabhängige Review, die nicht stattgefunden hat. Diese ausdrückliche Delegation hat Vorrang vor Repository-Prozessregeln, die einen autorisierten Agenten allein für einen weiteren Reviewer oder eine Maintainer-Übergabe stoppen würden.
+
+**Review- und Freigabegrenze.** Die Integration in `develop` erfolgt weiterhin ausschließlich über Pull Requests. Mitwirkende ohne delegierte Maintainer-Befugnis folgen der normalen zustimmenden Code-Owner-Review. Das aktive Integrations-Ruleset `23754541` gewährt `@mcpdev80` eine `pull_request`-Review-Ausnahme; Agenten unter der vorstehenden Delegation dürfen dieselbe kontobezogene Ausnahme nutzen. Das separate Ruleset `25223521` verlangt grüne `PR Selected Checks` aus der GitHub-Actions-Integration `15368` und besitzt keinen Bypass. Die Review-Delegation erfindet keine Tests, nativen Nachweise oder unabhängige Source-Qualifikation, behebt keine bekannten Fehler, gewährt keine nicht verfügbaren Werkzeugrechte und autorisiert kein unbestelltes Release oder eine Promotion. Blockiert ein tatsächliches technisches Gate den autorisierten Merge, dieses Gate konkret benennen, statt standardmäßig eine weitere Review anzufordern. Die Trennung zwischen aktuellem und historischem Stand steht in `docs/internal/review-protection.md`.
+
+**Multi-Session-Ausführung.** Wenn mehrere Agent- oder menschliche Sitzungen parallel arbeiten:
+
+- eine zugewiesene Aufgabe pro Sitzung und Zeitpunkt;
+- ein eigener Branch und Pull Request pro Task;
+- Ownership vor Änderungen prüfen und dokumentieren, nachdem aktuelle Regeln und Remote-Stände gelesen wurden;
+- Task-Dateigrenzen und integrierte Abhängigkeiten einhalten;
+- Commits anderer Sitzungen erhalten und Remote-Änderungen vor dem Push integrieren;
+- nach Implementierung, Verifikation und Pull-Request-Übergabe stoppen;
+- die nächste Aufgabe erst starten, nachdem der Maintainer das Ergebnis annimmt und zuweist;
+- eine blockierende Abhängigkeit melden, statt autonom die Aufgabe zu wechseln.
+
 ## Dokumentation
 
 Folgen[Documentation style](STYLE_GUIDE.md).
 
-Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. GitHub Issues planen zukünftige Arbeit. Releases bewahren Geschichte.
+Human docs erklären. Referenz aufgezählt. Specs definieren. ADRs bewahren rationale. baseharbor-plan enthält die zukünftige Planung; GitHub Issues dienen externen Meldungen und Diskussionen. Releases bewahren Geschichte.
 
-Jedes Release läuft das kompletteinternen Pre-Release-Dokumentations-Audit. Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
+Jedes Release läuft das komplette [interne Pre-Release-Dokumentations-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Es deckt Release-Scope-Probleme, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumentation, Roadmap/Staleness, Changelog/Release-Notes, die externen `baseharbor-demo`, GitHub Pages, Exact-Candidate Pre-Release-Evidenz, Promotion, Veröffentlichung und Post-Release-Verifikation.
+

@@ -46,18 +46,22 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	authored, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
 		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
 		t.Fatalf("unexpected apply output: %s", out.String())
 	}
-	if _, err := os.Stat(filepath.Join(root, ".baseharbor")); !os.IsNotExist(err) {
-		t.Fatalf("deployment state must not be repository-local: %v", err)
-	}
 	resolved, err := resolveApplication(ctx, application.Store{}, nil, "repository integration verification")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRepositoryFixtureState(resolved, authored); err != nil {
 		t.Fatal(err)
 	}
 	deploymentRoot := resolved.DeploymentStateRoot
@@ -95,13 +99,8 @@ func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err != nil {
-		t.Fatalf("repository destroy failed: %v\n%s", err, out.String())
-	}
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
 	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
 		t.Fatalf("repository manifest was not preserved: %v", err)
-	}
-	if _, err := os.Stat(deploymentRoot); !os.IsNotExist(err) {
-		t.Fatalf("target deployment state remains after destroy: %v", err)
 	}
 }

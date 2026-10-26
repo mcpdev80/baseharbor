@@ -26,10 +26,15 @@ type RuntimeServiceStopResult struct {
 // also contain other providers: neither project down nor project-wide stop is
 // authority over those siblings. Persistent resources and process identities
 // are inspected again even when the native command reports failure.
-func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopProvider, project, workdir string, environment map[string]string, expected []ProjectResource, services []string, compose string) (RuntimeServiceStopResult, error) {
+func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopProvider, project, workdir string, environment map[string]string, expected []ProjectResource, services []string, composeFiles ...string) (RuntimeServiceStopResult, error) {
 	r := RuntimeServiceStopResult{Stopped: []ProjectResource{}, Retained: []ProjectResource{}, Removed: []ProjectResource{}}
-	if provider == nil || project == "" || workdir == "" || compose == "" || len(expected) == 0 || len(services) == 0 {
+	if provider == nil || project == "" || workdir == "" || len(composeFiles) == 0 || len(expected) == 0 || len(services) == 0 {
 		return r, errors.New("selected stop requires canonical module ownership")
+	}
+	for _, compose := range composeFiles {
+		if compose == "" {
+			return r, errors.New("selected stop requires canonical module ownership")
+		}
 	}
 	planned := map[ProjectResource]bool{}
 	for _, resource := range expected {
@@ -85,7 +90,7 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 	sort.Strings(actualServices)
 	var mutationErr error
 	if len(actualServices) > 0 {
-		mutationErr = provider.StopProjectFilesSelected(ctx, project, workdir, environment, actualServices, compose)
+		mutationErr = provider.StopProjectFilesSelected(ctx, project, workdir, environment, actualServices, composeFiles...)
 	}
 	if mutationErr != nil {
 		r.VerificationFailures = append(r.VerificationFailures, "native-selected-stop-failed")

@@ -233,14 +233,12 @@ remove_containers
 remove_networks
 remove_volumes
 
-log "state: removing BaseHarbor XDG/tmp state"
 if [ -n "$scope" ]; then
-  rm -rf \
-    "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
-    "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \
-    "${XDG_CACHE_HOME:-$HOME/.cache}/baseharbor" \
-    2>/dev/null || true
+  # A runtime resource name/label does not prove exclusive ownership of any
+  # XDG state tree. A scoped reset must retain shared and unknown state.
+  log "state: retaining XDG/tmp state (scoped ownership unverified)"
 else
+  log "state: full dedicated-runner cleanup"
   rm -rf \
     "${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor" \
     "${XDG_CONFIG_HOME:-$HOME/.config}/baseharbor" \

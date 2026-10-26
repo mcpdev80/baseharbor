@@ -312,5 +312,15 @@ func classifyMachineCLIError(err error) error {
 			Cause:     err,
 		}
 	}
+	// The edit/machine adapters classify internally (conflict/cancel/denied/
+	// unsupported/partial) as private appMachineError values. Route every origin
+	// through the shared typed machine error owner so the public CLI/JSON/MCP
+	// boundary surfaces a concrete Code, CauseCode and remediation instead of
+	// the internal_error fallthrough. No guard is weakened: each origin keeps its
+	// fail-closed semantics.
+	var machineErr *appMachineError
+	if errors.As(err, &machineErr) {
+		return classifyAppMachineError(machineErr)
+	}
 	return machine.Classify(err)
 }
