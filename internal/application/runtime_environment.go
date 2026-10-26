@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -26,6 +27,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 		return err
 	}
 	if err := validateRetainedRuntimeCredentials(path, values, m); err != nil {
+		return err
+	}
+	if err := resetPlacementStalePostgresCredentials(path, values, m); err != nil {
 		return err
 	}
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
@@ -478,4 +482,62 @@ func randomApplicationSecret(size int) (string, error) {
 		return "", fmt.Errorf("generate application runtime secret: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// resetPlacementStalePostgresCredentials replaces shared-era credential values
+// retained in runtime.env when the placement switched from shared back to
+// dedicated.  On dedicated switch-back the bindings/ directory already carries
+// the correct dedicated role/database/credentials; shared-era values from the
+// previous shared provisioning (e.g. `baha_*_dev_*` role names) are stale and
+// must yield to the bindings source.  When placement is unchanged dedicated,
+// the existing retention guarantees apply — values are never overwritten.
+func resetPlacementStalePostgresCredentials(path string, values map[string]string, m Manifest) error {
+	if len(SQLInstanceNames(m)) == 0 {
+		return nil
+	}
+	if UsesSharedPostgreSQL(m) {
+		return nil
+	}
+	bindingsDir := filepath.Join(filepath.Dir(path), "bindings")
+	for _, instance := range SQLInstanceNames(m) {
+		bindingDB, err := readBindingValue(bindingsDir, "postgres", instance, "database")
+		if err != nil {
+			continue
+		}
+		bindingUser, err := readBindingValue(bindingsDir, "postgres", instance, "username")
+		if err != nil {
+			continue
+		}
+		if bindingDB == "" && bindingUser == "" {
+			continue
+		}
+		dbKey := postgresRuntimeKey(instance, "DB")
+		userKey := postgresRuntimeKey(instance, "USER")
+		staleDB := values[dbKey] != "" && values[dbKey] != bindingDB && bindingDB != ""
+		staleUser := values[userKey] != "" && values[userKey] != bindingUser && bindingUser != ""
+		if staleDB {
+			values[dbKey] = bindingDB
+		}
+		if staleUser {
+			values[userKey] = bindingUser
+		}
+	}
+	return nil
+}
+
+// readBindingValue reads a credential value from the bindings/<kind>/<instance>/
+// directory, or returns the empty string when the file is absent (no error).
+func readBindingValue(bindingsDir, kind, instance, field string) (string, error) {
+	dir := filepath.Join(bindingsDir, kind)
+	if instance != defaultServiceInstance {
+		dir = filepath.Join(dir, instance)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, field))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
 }
