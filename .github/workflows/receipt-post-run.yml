@@ -1,8 +1,9 @@
 name: "Receipt · Post-Run Writer"
 
 # DORMANT: PR2 content. Does NOT activate PR1 (work/r27-minimal-receipt).
-# Manual activation requires a separate PR that removes this guard.
-if: false
+# Dormancy lives on the job-level never-true guard below (a workflow-level
+# "if" is not valid syntax). Manual activation requires a separate PR that
+# replaces that guard.
 
 on:
   workflow_run:
@@ -20,7 +21,7 @@ permissions:
 jobs:
   post_run_writer:
     name: "Receipt · Writer (dormant)"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.repository == 'mcpdev80/receipt-post-run-dormant' && github.event.workflow_run.conclusion == 'success' # DORMANT: never true on this repository; activate by replacing this guard in the accepted PR 2 step, keeping the success condition.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
