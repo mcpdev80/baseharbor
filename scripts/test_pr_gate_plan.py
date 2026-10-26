@@ -3465,13 +3465,16 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 assert_rejected(actual(dirty))
 
 
-# Receipt pilot discovery (W1 exact path mapping): the receipt chain suite
+# Receipt pilot discovery (W1 exact path mapping, completed by L6): the
+# receipt chain/writer/verifier suites, the workflow-policy receipt regressions
 # and the mapping regressions execute inside this already-routed planner
 # lane, so the plan can qualify receipt sources without touching the runner
 # whitelist or any ci.yml validation route. Absent files are skipped because
 # the planner itself keeps removals of those paths unresolved.
 def load_tests(loader, tests, pattern):
-    for name in ('test_receipt_chain', 'test_pr_gate_plan_receipt_paths'):
+    for name in ('test_receipt_chain', 'test_receipt_writer',
+                 'test_receipt_verifier', 'test_ci_workflow_policy_receipts',
+                 'test_pr_gate_plan_receipt_paths'):
         if not (ROOT / (name + '.py')).is_file():
             continue
         sys.path.insert(0, str(ROOT))
