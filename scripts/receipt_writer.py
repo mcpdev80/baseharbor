@@ -15,6 +15,17 @@ def commit_file(root, path, raw, *, expected=None):
     require(not target.is_symlink(), "receipt must be a regular file")
     require(target.parent.resolve().is_relative_to(root.resolve()), "path escapes Planning")
     if expected is None:
+        # Safe fast-forward: verify planned commit is safe before writing.
+        # If the path exists in HEAD, its committed content must match raw (no divergence).
+        head_raw = None
+        try:
+            tree_entry = git(root, "ls-tree", "HEAD", "--", path)
+            if tree_entry.strip():
+                head_raw = git(root, "show", "HEAD:" + path)
+        except Exception:
+            pass
+        if head_raw is not None:
+            require(head_raw == raw, "planned commit diverges from HEAD")
         if target.exists():
             require(target.read_bytes() == raw, "conflicting existing receipt")
             history = git(root, "log", "--full-history", "--format=%H", "HEAD",
