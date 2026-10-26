@@ -628,18 +628,21 @@ PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 # Minimal-receipts pilot (PR 1): the two receipt scripts and their focused
-# Python test suite are one exact path set, mapped to that suite as the
-# selected check. The paired EN/DE documents already resolve through the
-# existing documentation branch and its audit. No new workflow file, no new
-# matrix, no infrastructure: existing mechanisms qualify these sources only.
+# Python test suite are one exact path set, qualified through the existing
+# planner Python test lane: pr-check-runner.py routes that already-whitelisted
+# id and scripts/test_pr_gate_plan.py additionally discovers the receipt
+# suites. The paired EN/DE documents resolve through the existing
+# documentation branch and its audit. No new workflow file, no new matrix,
+# no infrastructure and no runner whitelist change: existing mechanisms
+# qualify these sources only.
 RECEIPT_PILOT_SCRIPTS = {
     'scripts/receipt_writer.py',
     'scripts/receipt_verifier.py',
     'scripts/test_receipt_chain.py',
 }
 RECEIPT_PILOT_CHECKS = [
-    {'id': 'receipt-chain-tests', 'owner': 'scripts/test_receipt_chain.py',
-     'command': 'python3 scripts/test_receipt_chain.py'},
+    {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
+     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
 ]
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',

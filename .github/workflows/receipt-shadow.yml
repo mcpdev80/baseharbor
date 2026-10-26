@@ -1,0 +1,81 @@
+# DORMANT minimal-receipts shadow consumer (W1, PR 2 preparation).
+# Reads one pilot receipt from protected Planning through the frozen
+# scripts/receipt_verifier.py CLI (FREEZE-PR1: modes retained/live; flags
+# --planning --revision --receipt --candidate --plan; receipt path
+# evidence/receipts/public-contracts/<run>-<attempt>.json). It only shadows
+# the existing final check: activate by replacing the job-level never-true
+# guard after PR 1 is accepted and PR 2's Owner approves the shadow chain.
+# Until then nothing here runs, no existing trigger or required check is
+# touched and the result never gates any merge.
+name: "Receipt · Shadow Final Check"
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  receipt_shadow:
+    name: PR · Receipt Shadow Consumption
+    if: github.repository == 'mcpdev80/receipt-shadow-dormant' # DORMANT: never true on this repository; activate by replacing this guard in the accepted PR 2 step.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the verifier from the trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Fetch protected Planning history read-only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          ref: main
+          path: planning
+          persist-credentials: false
+      - name: Verify this candidate's receipt with the frozen interface
+        env:
+          CANDIDATE: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision="$(git -C planning rev-parse HEAD)"
+          found="$(python3 - <<'PY'
+          import glob
+          import importlib.util
+          import os
+          import pathlib
+
+          spec = importlib.util.spec_from_file_location('receipt_verifier',
+                                                        'scripts/receipt_verifier.py')
+          verifier = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(verifier)
+          candidate = os.environ['CANDIDATE']
+          matches = []
+          for path in sorted(glob.glob('planning/evidence/receipts/' + verifier.GATE
+                                       + '/*.json')):
+              value = verifier.receipt(pathlib.Path(path).read_bytes())
+              if value['sha'] == candidate:
+                  matches.append((pathlib.Path(path).relative_to('planning').as_posix(),
+                                  'retained' if value['approved'] is not None else 'live',
+                                  value['plan']))
+          if len(matches) != 1:
+              raise SystemExit('receipt shadow: expected exactly one receipt for the '
+                               'candidate, found ' + str(len(matches)))
+          print(' '.join(matches[0]))
+          PY
+          )"
+          read -r receipt mode plan <<< "$found"
+          python3 scripts/receipt_verifier.py "$mode" \
+            --planning planning --revision "$revision" \
+            --receipt "$receipt" --candidate "$CANDIDATE" --plan "$plan"
+          {
+            echo "## Receipt shadow consumption (informational, never required)"
+            echo "- mode: \`$mode\`"
+            echo "- receipt: \`$receipt\`"
+            echo "- planning revision: \`$revision\`"
+          } >> "$GITHUB_STEP_SUMMARY"

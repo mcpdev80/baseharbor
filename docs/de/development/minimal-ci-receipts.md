@@ -49,7 +49,7 @@ Nach Genehmigung ruft der Retained-Verifier GitHub nie auf. Der Aufrufer muss `-
 
 ## Bootstrap und Abnahme
 
-PR 1 enthält nur diese Skripte, gezielte Tests und EN/DE-Dokumentation. Er qualifiziert sich über den bestehenden Legacy-Pfad. Eine zielseitige Voraussetzung für exakte Pfadzuordnung und Test-Erkennung kann weiterhin nötig sein; ungelöste Coverage nicht durch eine Ausnahme ersetzen.
+PR 1 enthält nur diese Skripte, gezielte Tests und EN/DE-Dokumentation. Er qualifiziert sich über den bestehenden Legacy-Pfad. Die zielseitige exakte Pfadzuordnung und Test-Erkennung liegt jetzt in `scripts/pr-gate-plan.py`: Die drei Skriptpfade oben wählen den bestehenden Python-Testlauf des Planers aus, weil `scripts/test_pr_gate_plan.py` zusätzlich die Receipt-Kettensuite und `scripts/test_pr_gate_plan_receipt_paths.py` erkennt; beide Dokumentpfade wählen den bestehenden Docs-Audit aus. Kein neues Gate, keine neue Matrix und kein ausführbarer Pfad verlässt diese Laufzeiten; Löschungen und Umbenennungen dieser Pfade bleiben ungeklärt, und ungelöste Coverage wird nicht durch eine Ausnahme ersetzt.
 
 PR 2 beweist einen normalen Contributor-PR vollständig: Producer, Writer, veröffentlichte Receipt, Live-Verifier, Owner-Genehmigung, automatischer Task-Link und konsumierende Schattenprüfung des Final-Checks. Der Producer-Workflow kann nicht auf den Post-Run-Abschluss warten, den erst sein Ende auslöst. PR 3 schaltet ausschließlich den akzeptierten Konsumpfad um; danach dürfen weitere Gates folgen.
 
