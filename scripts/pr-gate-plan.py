@@ -627,45 +627,34 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
-# Minimal-receipts pilot (PR 1) with its complete L6 path mapping: every final
-# receipt writer/verifier source and its focused Python suites form one exact
-# path set, qualified through the existing planner Python test lane:
-# pr-check-runner.py routes that already-whitelisted id and
-# scripts/test_pr_gate_plan.py additionally discovers the receipt suites.
-# The paired EN/DE documents resolve through the existing documentation branch
-# and its audit. No new workflow file, no new matrix, no infrastructure and no
-# runner whitelist change: existing mechanisms qualify these sources only.
-RECEIPT_PILOT_SCRIPTS = {
-    'scripts/receipt_writer.py',
-    'scripts/receipt_verifier.py',
-    'scripts/test_receipt_chain.py',
-    'scripts/test_receipt_writer.py',
-    'scripts/test_receipt_verifier.py',
-    'scripts/test_ci_workflow_policy_receipts.py',
-}
-# Exact CI-policy owners: the shell policy script is executed verbatim by the
-# existing hosted ci-policy check and the receipt-path regressions run inside
-# the existing pr-planner-tests lane its load_tests hook discovers. Same CI
-# class as the neighboring planner entries; no new gate.
-CI_POLICY_SOURCES = {
-    'scripts/ci-workflow-policy.sh',
+# Receipt control-plane (v0.4.27 PR1/PR2): the three canonical scripts, their
+# focused regressions and the three receipt-*.yml control-plane workflows carry a
+# bounded, reviewed scope (canonical fields, attempt-1-only live pilot, dormant
+# job-level never-true guards, fail-closed base-SHA task link). These are exact
+# path-prefixes bound to existing CI/WIZARD/PYTEST classes, not a directory-level
+# exemption: a receipt production source change stays bound to pr-planner-tests
+# + focused script suite (PR1 core) and a receipt workflow change stays bound to
+# ci-policy + ci-actionlint + pr-planner-tests (PR2 control plane). Any path that
+# is not one of these exact prefixes keeps the fail-closed fallthrough below and
+# stays unresolved; an added, deleted, renamed or unreviewed receipt file is not
+# covered. This durable mapping covers every later PR1/PR2 receipt PR without a
+# per-candidate bootstrap and precedes the runtime-workflow / ci-executor
+# fallthroughs so it is not masked by them.
+RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
+    'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
+    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+})
+RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
+    'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
+    'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
+    'scripts/test_receipt_tasklink.py',
     'scripts/test_pr_gate_plan_receipt_paths.py',
-}
-# Dormant receipt control-plane workflow definitions. Each file keeps a
-# job-level never-true guard and is registered in the ci-workflow-policy.sh
-# allowlist, so a change exercises only workflow syntax and policy - exactly
-# the existing class the PLANNING_WORKFLOWS branch applies to pages.yml.
-# They select no native runtime gate; executable workflow changes stay on the
-# conservative unresolved branch.
-RECEIPT_DORMANT_WORKFLOWS = {
+})
+RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-approval.yml',
     '.github/workflows/receipt-post-run.yml',
     '.github/workflows/receipt-shadow.yml',
-}
-RECEIPT_PILOT_CHECKS = [
-    {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
-     'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
-]
+})
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -1379,6 +1368,16 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'docker-deployment-unresolved'
             require(CODE_CHECKS)
             unresolved.append('deployment/security/backup script impact needs specific native qualification: ' + path)
+        elif path in RECEIPT_CONTROL_PLANE_WORKFLOWS:
+            area = 'receipt-control-plane-workflow'
+            require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
+        elif path in RECEIPT_CONTROL_PLANE_TEST_SCRIPTS:
+            area = 'receipt-control-plane-test'
+            require(CI_CHECKS)
+        elif path in RECEIPT_CONTROL_PLANE_SCRIPTS:
+            area = 'receipt-control-plane-script'
+            require(CI_CHECKS)
         elif path in PLANNING_WORKFLOWS:
             area = 'documentation-workflow'
             require(DOC_CHECKS)
@@ -1387,16 +1386,6 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in PLANNING_SCRIPTS:
             area = 'ci-planner'
             require(CI_CHECKS)
-        elif path in RECEIPT_PILOT_SCRIPTS:
-            area = 'receipt-pilot-script'
-            require(RECEIPT_PILOT_CHECKS)
-        elif path in CI_POLICY_SOURCES:
-            area = 'ci-policy-source'
-            require(CI_CHECKS)
-        elif path in RECEIPT_DORMANT_WORKFLOWS:
-            area = 'receipt-dormant-workflow'
-            require(CI_CHECKS)
-            require(WORKFLOW_SYNTAX_CHECKS)
         elif path.startswith('.github/workflows/'):
             area = 'runtime-workflow-unresolved'
             require(CI_CHECKS)
