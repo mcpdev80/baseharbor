@@ -1,0 +1,277 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-identity-end-user-oauth-lifecycle",
+  "test": "TestSelectiveIdentityRuntimeAddRemoveReAdd",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "1649513fdda070e959949c9c441f7b8923367f37",
+      "candidate_tree": "e0db3aa21003f1ebebcfdb9a32a711da46de9979",
+      "workflow_run_id": 38152214720,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "The isolated host had zero containers. Authored public callback exposure omitted required workload.components, so manifest validation rejected app init before materialization or login. No changed callback or OAuth native behavior was reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114507974054,
+          "test_seconds": 0.16,
+          "artifact_id": 11707760478,
+          "artifact_name": "coreless-docker-38152214720-1",
+          "artifact_digest": "sha256:5bba1a9a75d72805fa58031f594267f85f58132e2140e2db060a6fdb87f1079c"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114507973802,
+          "test_seconds": 0.05,
+          "artifact_id": 11707046279,
+          "artifact_name": "coreless-podman-38152214720-1",
+          "artifact_digest": "sha256:4e3c2e30bff49513f89bcc46e0248405d21bd167b1deadc3078dd2d7ab79f7dc"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "2e335a3c5c334cf76d94537f9a265492ec94a34e",
+      "candidate_tree": "12225a7673b21569b27d1b388dda035850906f64",
+      "workflow_run_id": 38152580994,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Authored callback manifest now validates, but quick source-only initialization supplies no deployment hostname/TLS inputs. Managed exposure preflight rejects apply before runtime materialization. Destroy preflight also rejects this incomplete preparation; final native inventory remained empty. No OAuth login or callback acceptance reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114508896073,
+          "test_seconds": 0.63,
+          "artifact_id": 11707401832,
+          "artifact_name": "coreless-docker-38152580994-1",
+          "artifact_digest": "sha256:7f48ae4bde26f8f3c1b85f7e1a1aa9144f5418047443e8ac37e29f5afbbf5201"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114508895989,
+          "test_seconds": 0.5,
+          "artifact_id": 11707765454,
+          "artifact_name": "coreless-podman-38152580994-1",
+          "artifact_digest": "sha256:48e4fbea511566d8079489c0cb78f5bc30974d87cbf956b0d89ede072bce3c87"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "327174f82611d4c9b81c848d90e68420d75c868f",
+      "candidate_tree": "f28b3ae2878c6909d74fcfe47a1cd7f57559bc8e",
+      "workflow_run_id": 38153108787,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Actual Keycloak, its SQL and workload materialized; read-only discovery/binding/provider checks pass. Adding the public callback route fails managed gateway certificate reconciliation because the common PKI constructor omits the existing public leaf passed to LocalIssuer.Renew. The issuer correctly rejects the empty renewal identity. Canonical callback TLS remains failed. Cleanup cannot reconcile the failed gateway definition and leaves two test containers. End-user OAuth was not reached.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114510457349,
+          "test_seconds": 64.57,
+          "actual_test_containers_after_failed_cleanup": 2,
+          "artifact_id": 11707646387,
+          "artifact_name": "coreless-docker-38153108787-1",
+          "artifact_digest": "sha256:e03a4718034c822cfaa8cae4cfb8df95599f665b8f81a9c91afb548295f4d929"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114510457190,
+          "test_seconds": 70.54,
+          "actual_test_containers_after_failed_cleanup": 2,
+          "artifact_id": 11706953806,
+          "artifact_name": "coreless-podman-38153108787-1",
+          "artifact_digest": "sha256:029b242b503035542dcc78e1b8cf558958090817625a1a48b7c0ac901b157451"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "0dc768e71838e7f301d5f4911c674691aed3ff9c",
+      "candidate_tree": "b74fd4e276124c693b3d45804244264d12605bc0",
+      "workflow_run_id": 38153696041,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Initial actual apply and status, including the public callback TLS route, complete successfully on both engines after the existing public leaf is supplied to issuer renewal. OAuth helper then uses retirement inventory rather than complete existing access files and cannot build its admin-trust client; no end-user login is reached. Actual owned cleanup completes without reported failure and verifies zero remaining test containers.",
+      "qualified": [],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114512184743,
+          "test_seconds": 76.05,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11707488886,
+          "artifact_name": "coreless-docker-38153696041-1",
+          "artifact_digest": "sha256:e4ec742eb6fd47356fc7ac3ef56fe19686458f3066bc757941134554488591ae"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114512184905,
+          "test_seconds": 114.46,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11708035346,
+          "artifact_name": "coreless-podman-38153696041-1",
+          "artifact_digest": "sha256:ec6283bb5d255ebe10338d2663d6c2b3253edf7bc53b48560bd1b7b83da0cab5"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "3028e8b371f044395c9a33f2b7b99aa5b8909b4e",
+      "candidate_tree": "389ddea6b191585d0b3fa834e320c0e6751360d8",
+      "workflow_run_id": 38154917957,
+      "attempt": 1,
+      "result": "FAIL",
+      "observed": "Both engines completed actual canonical callback TLS, mismatched S256 PKCE rejection, real end-user form authorization-code login, signed JWKS ID-token and matching userinfo, refresh before/after provider restart, disabled refresh rejection, and fresh login with the retained subject after re-enable. First of two consumer removal preserves actual sibling OIDC/provider readiness. Last sibling removal fails common provider retirement because the aggregate native owner inventory is incomplete; retained app-owned Caddy from the first consumer is not observed in sibling context. Main app destroy preflight also rejects retained unbound app-owned provider ownership. Cleanup leaves one test workload container on each engine. Overall native test and workflow are FAIL.",
+      "qualified": [],
+      "observed_passing_assertions": [
+        "canonical callback TLS",
+        "actual mismatched S256 verifier rejected",
+        "actual end-user authorization-code login and signed JWKS ID token",
+        "actual matching bearer userinfo",
+        "actual refresh and subject continuity across disable/re-enable",
+        "disabled actual refresh refused",
+        "two-consumer first removal preserves live sibling"
+      ],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114515805256,
+          "test_seconds": 208.49,
+          "actual_identity_counts": [
+            5,
+            0,
+            5
+          ],
+          "actual_total_counts": [
+            8,
+            1,
+            8
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_failed_cleanup": 1,
+          "artifact_id": 11707903121,
+          "artifact_name": "coreless-docker-38154917957-1",
+          "artifact_digest": "sha256:78e72d6e42dc065dbbee9f3f2d61c94ddf5514a460b7d64b0270a6ef5f0e95a0"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114515804991,
+          "test_seconds": 235.02,
+          "actual_identity_counts": [
+            3,
+            0,
+            3
+          ],
+          "actual_total_counts": [
+            6,
+            1,
+            6
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_failed_cleanup": 1,
+          "artifact_id": 11707439212,
+          "artifact_name": "coreless-podman-38154917957-1",
+          "artifact_digest": "sha256:5e24bd1c428d5ae90e28bf1796debbfdd52cab2ff9cdea25767109122d29cef0"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "99ce5649558e875552064bbd62107d2ff307bdc0",
+      "candidate_tree": "f25b8395f92068dbb0455284a4ea940a97d966fb",
+      "workflow_run_id": 38166868000,
+      "attempt": 1,
+      "result": "PASS",
+      "cleanup_outcome": "success",
+      "observed": "Both engines complete actual selected Identity add/remove/re-add: real user authorization-code/S256 PKCE, wrong-verifier rejection, signed JWKS ID-token, matching userinfo, refresh before/after provider restart, disabled refresh rejection and fresh login preserving user subject. Actual two-app first removal preserves sibling OIDC/provider readiness; last-consumer removal verifies selected Identity container absence. Two owned data volumes and protected provider ENV retained, canonical identity and verified deployment remain stable. Actual callback exposures converge 1/0/1 and unrelated container realization is rejected. Both cleanup assertions require zero remaining actual native containers and pass.",
+      "qualified": [
+        "Exact-source selected Identity native add/remove/re-add",
+        "Actual end-user OAuth/PKCE/JWKS/ID-token/userinfo and retained refresh/session/subject behavior",
+        "Two-app sibling OIDC/provider readiness and last-consumer selected runtime withdrawal",
+        "Retained owned data volumes and protected configuration; canonical identity/verified deployment",
+        "Successful actual zero-container cleanup"
+      ],
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114551130944,
+          "test_seconds": 247.51,
+          "actual_identity_counts": [
+            5,
+            0,
+            5
+          ],
+          "actual_total_counts": [
+            8,
+            1,
+            8
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11712652563,
+          "artifact_name": "coreless-docker-38166868000-1",
+          "artifact_digest": "sha256:cb22c493439b0103c322ca48209a3a9d89e9dab6538aca890118538a4b280411"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114551130762,
+          "test_seconds": 239.18,
+          "actual_identity_counts": [
+            3,
+            0,
+            3
+          ],
+          "actual_total_counts": [
+            6,
+            1,
+            6
+          ],
+          "actual_callback_exposure_counts": [
+            1,
+            0,
+            1
+          ],
+          "retained_owned_data_volumes": 2,
+          "actual_test_containers_after_cleanup": 0,
+          "artifact_id": 11712388157,
+          "artifact_name": "coreless-podman-38166868000-1",
+          "artifact_digest": "sha256:a3bc38a1c56e700deba296dd2e71c9d7d3535e5cf1cecd313d56c1f66d9c672a"
+        }
+      ]
+    }
+  ],
+  "not_qualified": [
+    "Controlled interrupted native Identity handoff/retry and independent management behavior",
+    "Actual Console browser and current Connector mTLS/remote lifecycle",
+    "All provider and mutation consequences on one final immutable ecosystem matrix"
+  ],
+  "production_callback_evidence": "v0.4.25-production-identity-ordering-evidence.json"
+}

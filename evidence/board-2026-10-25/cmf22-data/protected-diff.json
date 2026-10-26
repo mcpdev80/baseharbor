@@ -1,0 +1,86 @@
+{
+  "cmd/baha/app_client_consent.go": {
+    "identical": true,
+    "sha256": "f012e7ab7318539a33cb7403741f89edcc80e7b55a30787e2d3ef30bd4007180"
+  },
+  "cmd/baha/app_client_consent_test.go": {
+    "identical": true,
+    "sha256": "5071807aea77b69e39c05c019903bebbb22490dc436cd744c03d63ec99625c85"
+  },
+  "cmd/baha/app_doctor_repair_consent_test.go": {
+    "identical": true,
+    "sha256": "da5ae4c505171509c03d1e60a3ebf0821a9760237fde2156272c72aff2a4b24b"
+  },
+  "cmd/baha/app_footprint_presenter.go": {
+    "identical": true,
+    "sha256": "13a4130381a64e15d1e31585bdd37ff9f412220c7b63bf8363ccab5c35a7938c"
+  },
+  "cmd/baha/app_footprint_presenter_test.go": {
+    "identical": true,
+    "sha256": "cd15ed467a2550be462190ba1a53e54a58043f5c1ce1573fb9c00df9b9f183e8"
+  },
+  "cmd/baha/app_footprint_show.go": {
+    "identical": true,
+    "sha256": "bd35ce238fcf5ec046ef0e9143f24d685c736019862ab82008616094a7cf3a05"
+  },
+  "cmd/baha/app_footprint_show_test.go": {
+    "identical": true,
+    "sha256": "e8e070fa47aa3c0a2e9bc1cb7c7d0c1f20ee2172729b80c23a82bae478ac99bb"
+  },
+  "cmd/baha/application_provider_container_observation.go": {
+    "identical": true,
+    "sha256": "5ae96916e864c8f14bd19deaa90184499a2880c09e23940b8fab57eec252eecc"
+  },
+  "cmd/baha/application_provider_container_observation_test.go": {
+    "identical": true,
+    "sha256": "7f934f3a13d88ea265e8826f9596192fa2f0f72dea886b4c2f7aed31911b6d39"
+  },
+  "cmd/baha/doctor_fix_consent_test.go": {
+    "identical": true,
+    "sha256": "d1402bd11267c2cdda802cd7e53a7fe669226cdac7a44399981fdf3197581480"
+  },
+  "cmd/baha/quick_init_consent_test.go": {
+    "identical": true,
+    "sha256": "3fc946b6a771e524ad50aacb563a27cc3117805293b7c7549d473ca2f2de8ebd"
+  },
+  "contracts/footprint/v1/footprint.schema.json": {
+    "identical": true,
+    "sha256": "c21f2ea64da8dbbdbac6615294b9c831709f28b921ec3891eb0e4464fd11dd05"
+  },
+  "contracts/provider-impact/v1/consent.schema.json": {
+    "identical": true,
+    "sha256": "7d9a489d49237ffe438911a71ffaddfa15b6f300a59feb6f81799283b5d4efce"
+  },
+  "docs/internal/v0.4.25-destruction-consent-source-evidence.json": {
+    "identical": true,
+    "sha256": "dcc39eeda3b3f2bb539d87f1a9f1287cde43423486381cffd965c0c66211e168"
+  },
+  "internal/application/footprint.go": {
+    "identical": true,
+    "sha256": "5b7b99c905a7428d9b32d74d9a501b97102a4381bfaccfbefc13ca1115f364a5"
+  },
+  "internal/application/provider_change_consent.go": {
+    "identical": true,
+    "sha256": "e7936b004ea19f32807514eebb80e8c1ebf654f12d23a710bad8921f1828c56a"
+  },
+  "internal/application/provider_change_consent_test.go": {
+    "identical": true,
+    "sha256": "2d7aed338ab79e35e3f30329bc02d6de78aba70032054cfd7945e2757b22c110"
+  },
+  "internal/application/provider_change_digest.go": {
+    "identical": true,
+    "sha256": "6c828dd6974337b291de2b5d7325952f521c192eca076dbdcb22ebffe0f062e3"
+  },
+  "internal/application/testdata/v0425-provider-impact-consent.json": {
+    "identical": true,
+    "sha256": "cdde79c1554f60580abc1e1f475a3064b5b2a0df6b5c0180ae419cb0baa7812e"
+  },
+  "scripts/ci-podman-typed-consent.py": {
+    "identical": true,
+    "sha256": "d7cf57e09bf90e6de3b8dd3e08618c62fe87b900db0643173af44efc4c82cd90"
+  },
+  "scripts/test_ci_podman_typed_consent.py": {
+    "identical": true,
+    "sha256": "00f1c227f915695c4af77fe234dd121bc9d0a3b0e4daad5804aa67d27ced8e6c"
+  }
+}

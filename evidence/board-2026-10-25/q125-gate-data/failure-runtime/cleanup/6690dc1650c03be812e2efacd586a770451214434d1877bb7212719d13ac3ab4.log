@@ -1,0 +1,62 @@
+
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+
+chmod: /var/run/postgresql: Operation not permitted
+2026-10-26 03:07:59.054 UTC [1] LOG:  starting PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit
+2026-10-26 03:07:59.054 UTC [1] LOG:  listening on IPv4 address "0.0.0.0", port 5432
+2026-10-26 03:07:59.054 UTC [1] LOG:  listening on IPv6 address "::", port 5432
+2026-10-26 03:07:59.155 UTC [1] LOG:  listening on Unix socket "/var/run/postgresql/.s.PGSQL.5432"
+2026-10-26 03:07:59.235 UTC [21] LOG:  database system was shut down at 2026-10-26 03:07:52 UTC
+2026-10-26 03:07:59.274 UTC [1] LOG:  database system is ready to accept connections
+2026-10-26 03:08:06.950 UTC [40] FATAL:  password authentication failed for user "root"
+2026-10-26 03:08:06.950 UTC [40] DETAIL:  Role "root" does not exist.
+	Connection matched file "/run/baseharbor/tls-source/pg_hba.conf" line 2: "hostssl all all 0.0.0.0/0 scram-sha-256"
+2026-10-26 03:08:06.952 UTC [41] FATAL:  pg_hba.conf rejects connection for host "172.18.0.5", user "root", database "root", no encryption
+2026-10-26 03:08:07.557 UTC [42] FATAL:  password authentication failed for user "root"
+2026-10-26 03:08:07.557 UTC [42] DETAIL:  Role "root" does not exist.
+	Connection matched file "/run/baseharbor/tls-source/pg_hba.conf" line 2: "hostssl all all 0.0.0.0/0 scram-sha-256"
+2026-10-26 03:08:07.559 UTC [43] FATAL:  pg_hba.conf rejects connection for host "172.18.0.5", user "root", database "root", no encryption
+2026-10-26 03:08:33.212 UTC [28] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:08:33.212 UTC [28] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:08:46.526 UTC [32] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:08:46.526 UTC [32] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:08:47.130 UTC [49] LOG:  PID 32 in cancel request did not match any process
+2026-10-26 03:08:47.130 UTC [50] LOG:  PID 28 in cancel request did not match any process
+2026-10-26 03:09:33.192 UTC [51] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:09:33.192 UTC [51] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:09:33.197 UTC [55] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:09:33.197 UTC [55] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:09:43.574 UTC [59] ERROR:  relation "migration_model" does not exist at character 25
+2026-10-26 03:09:43.574 UTC [59] STATEMENT:  SELECT ID, VERSION FROM MIGRATION_MODEL ORDER BY UPDATE_TIME DESC
+2026-10-26 03:09:44.429 UTC [61] ERROR:  relation "public.databasechangeloglock" does not exist at character 22
+2026-10-26 03:09:44.429 UTC [61] STATEMENT:  SELECT COUNT(*) FROM public.databasechangeloglock
+2026-10-26 03:10:00.977 UTC [65] LOG:  PID 51 in cancel request did not match any process
+2026-10-26 03:10:00.977 UTC [66] LOG:  PID 55 in cancel request did not match any process
+2026-10-26 03:10:26.818 UTC [61] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:10:26.818 UTC [61] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:10:28.055 UTC [63] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:10:28.055 UTC [63] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:10:38.922 UTC [59] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:10:38.922 UTC [59] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:10:49.127 UTC [67] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:10:49.127 UTC [67] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:11:03.172 UTC [74] LOG:  PID 67 in cancel request did not match any process
+2026-10-26 03:11:33.209 UTC [75] LOG:  SSL error: unexpected eof while reading
+2026-10-26 03:11:33.209 UTC [75] LOG:  could not receive data from client: Connection reset by peer
+2026-10-26 03:11:42.839 UTC [82] FATAL:  permission denied for database "postgres"
+2026-10-26 03:11:42.839 UTC [82] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:11:42.925 UTC [83] FATAL:  permission denied for database "template1"
+2026-10-26 03:11:42.925 UTC [83] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:11:43.012 UTC [84] FATAL:  permission denied for database "openbao"
+2026-10-26 03:11:43.012 UTC [84] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:11:43.103 UTC [85] FATAL:  permission denied for database "baseharbor_identity"
+2026-10-26 03:11:43.103 UTC [85] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:11:43.854 UTC [86] LOG:  PID 75 in cancel request did not match any process
+2026-10-26 03:12:20.138 UTC [95] FATAL:  permission denied for database "postgres"
+2026-10-26 03:12:20.138 UTC [95] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:12:20.237 UTC [96] FATAL:  permission denied for database "template1"
+2026-10-26 03:12:20.237 UTC [96] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:12:20.337 UTC [97] FATAL:  permission denied for database "openbao"
+2026-10-26 03:12:20.337 UTC [97] DETAIL:  User does not have CONNECT privilege.
+2026-10-26 03:12:20.428 UTC [98] FATAL:  permission denied for database "baseharbor_identity"
+2026-10-26 03:12:20.428 UTC [98] DETAIL:  User does not have CONNECT privilege.

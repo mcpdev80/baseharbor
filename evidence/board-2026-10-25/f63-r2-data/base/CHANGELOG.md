@@ -1,0 +1,1182 @@
+# Changelog
+
+All notable changes to BaseHarbor are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Normal releases follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html); during the v0.4 line, emergency hotfixes use the documented four-part `MAJOR.MINOR.PATCH.HOTFIX` extension.
+
+## [Unreleased]
+
+## [0.4.26]
+
+Candidate release section; promoted date recorded when v0.4.26 is published
+rather than a mid-development commit date.
+
+### Added
+
+- Interactive application needs wizard with optional Target-specific provider selection, dependency/footprint preview and explicit create-only or run choice.
+- Registered application Edit and read-only Footprint commands across CLI and MCP, including a two-phase MCP Edit proposal/apply boundary and matching generated references.
+- English/German New/Edit/provider-selection guidance for the candidate surface.
+
+### Changed
+
+- New/Edit share the existing provider resolver and confirmed lifecycle. Repeated No retains choices; cancellation and EOF before consent write nothing; stale plans require a fresh preview.
+- Development uses task-scoped pull requests, trusted selected-check planning, isolated runners and authenticated execution/evidence verification; unknown or unqualified changes remain blocked.
+
+### Fixed
+
+- The workload-stop phase of application backup stops only selected repository services, without stopping SQL as part of the workload stop. Partial writer-stop failures receive bounded lifecycle recovery without losing the original or recovery error.
+- PostgreSQL backup/restore uses retained database identity and protected TLS credentials instead of a fixed role assumption.
+- Runtime withdrawal resolves without provider preferences while preserving the deployment’s persisted preferences for recovery, its retained runtime owner and other Targets.
+- MCP Edit retains typed refusals and actual partial-result details after failed apply.
+
+### Security
+
+- Edit retains Target-bound authorization, fresh provider-consequence consent and actual post-apply verification. Generic confirmation does not replace required impact acknowledgements or separate data-deletion consent.
+- Explicit provider preferences stay in protected Target/deployment state; portable application intent remains provider-neutral and application identity remains system-generated.
+
+### Compatibility
+
+- Existing runtime and Console/Connector support boundaries remain unchanged. Interactive New/Edit require a terminal; deterministic creation arguments remain available.
+- Candidate notes do not claim completed native or ecosystem acceptance. Final qualification, immutable consumer pins and publication remain separate release steps.
+
+## [0.4.25] - 2026-10-15
+
+### Added
+
+- Core-less supported local application lifecycle on Docker and rootless Podman, without management login or implicit service installation.
+- Minimal Manifest v1 authoring with stable system-generated application identity and optional services; developer-authored `app.id` is rejected before mutation.
+- Shared capability/provider resolution and truthful versioned footprint across CLI, JSON, MCP and HTTP.
+- EN/DE capability-first contracts, connection-profile transport schema and permanent complete ecosystem pre-release-readiness policy.
+
+### Changed
+
+- Owned PostgreSQL/Valkey placement changes between shared and application scope use the existing acknowledged apply/verify authority, preserve both data owners and disclose independent destination data without automatic content migration. Pending deployment placement metadata protects original and destination realizations across retry and sibling convergence.
+- Services are requested explicitly; selected provider realization follows resolved requirements and genuine dependencies rather than a mandatory application Core bundle.
+- Selective SQL, cache and Identity lifecycle releases removed capability bindings and retires unneeded owned runtime while preserving active shared consumers and persistent data/recovery material.
+- Provider-change contracts describe consumer functions, dependencies, actual material locations and verified continuation; unknown or alternative-less effects require two concrete-plan acknowledgements, with independent destructive consent for data deletion.
+- Selected Core destroy permits deliberately acknowledged outages with active consumers, removes only canonical Core containers/startup units and retains volumes, protected credentials, bindings and workloads by default. Explicit `--delete-data` selects owned Core volumes with fresh plan acknowledgements and separate deletion consent; interrupted cleanup retains existing owners for retry.
+- Default application runtime retirement preserves its canonical owner, archived live intent, protected credentials and data for same-owner reactivation; selective Secrets re-add restores actual original secret access.
+- Managed production OIDC callbacks reconcile only after the actual public HTTPS exposure is realized; reapply/start preserve the verified client and user session.
+- Node disconnect shares a concrete impact plan, independent acknowledgements, current authority revalidation and truthful final/partial results across CLI, MCP and Core HTTP.
+- Dependency Action/image pins, Pages actions and Alpine recovery helper are updated; Renovate batches updates without automerge.
+- Release builds select the patched Go 1.26.9 toolchain while retaining the Go 1.25 language floor.
+
+### Fixed
+
+- PostgreSQL/Valkey placement replacement retains the original application runtime owner after convergence and later shared-consumer withdrawal, so preserved resources remain verifiable.
+- Backend binding reconciliation preserves independently managed Identity trust, credentials and discovery files, together with the directory mounted by running workloads.
+- Remote provider changes present concrete current consequences and require applicable acknowledgements before technical execution admission; unsupported execution still fails before staging.
+- Restore consent tracks current registered OTLP credentials, trust and client identity even without retained delivery, so changed material invalidates earlier confirmations without exposing secrets in public plans.
+- Native Podman Quadlet volume deletion no longer forces removal of containers using the volume; foreign/shared consumers remain protected and in-use failures retain retry owners.
+- Full installation destruction binds application resets to their displayed current child scopes; failed or stale child cleanup preserves affected Target resources and retry owners instead of bypassing consent through fallback adapters.
+- Application restore binds the validated archive and current protected owner to the existing consequence scope before resetting state. Two current acknowledgements and separate data consent are required in CLI/JSON, MCP and HTTP; lower reset adapters cannot bypass the verified authority.
+- Provider replacements and selected consumer actions verify every node of their actual Target dependency graph before claiming continuation. A running endpoint, missing realization evidence or merely planned restart cannot conceal stopped, unknown, foreign or cyclic prerequisites; deliberate acknowledged loss remains possible.
+
+### Compatibility
+
+- Explicit management Core installation and TLS/OIDC/HA/recovery invariants remain unchanged.
+- Unsupported native BYO realization fails before provisioning; there is no authored-ID migration or obsolete-syntax compatibility promise.
+- Capability/provider wizard, future UI/onboarding and host features remain deferred. Selective lifecycle and provider-removal acceptance belong to this release.
+- Candidate qualification remains incomplete until the full selective lifecycle, provider mutation coverage and exact-candidate Demo/Console/Connector acceptance pass; scoped native successes do not establish pre-release readiness.
+
+## [0.4.24] - 2026-10-11
+
+### Added
+
+- Task-first human CLI entry point `baha new`, repository-aware application lifecycle and Core/Target selection with `baha use`.
+- Target-aware machine, JSON and MCP integrations; guided Node enrollment and operator workflows.
+- Native provider-update admission, bounded SQL restore receipts and HA recovery orchestration.
+- Physical PostgreSQL basebackup/WAL recovery, safe restore into new owned volumes, authenticated etcd mTLS snapshot/restore, three-member quorum boot, live DCS cutover and SQL-marker rollback to the selected backup state.
+- Ownership-aware host-trust uninstallation with preservation of foreign certificates.
+- EN/DE CLI, recovery, Node and Console release-candidate documentation.
+
+### Changed
+
+- SQL and cache operations use `baha app sql` and `baha app cache`, not legacy provider-specific aliases.
+- Root-level `baha down` and `baha destroy` distinguish application repository context from installation-wide lifecycle.
+- `baha update --check` reports availability of admissible installed-Core provider reconciliation.
+- Console and Node Connector support the version-matched Core workflows for setup, remote application lifecycle, logs, terminal, authorization and credential/CA rotation.
+
+### Fixed
+
+- Configuration prompts reject EOF/non-terminal input before writes; isolated state roots, native workload bindings, live readiness after reconciliation, recovery-safe rebootstrap, consented port fallback and explicit unsupported Compose includes improve everyday developer workflows (#864–#871).
+
+- Identity bootstrap uses the existing immutable release-catalog Keycloak pin rather than following upstream tag drift. HA recovery capture waits at most 90 seconds for verified healthy standbys to reach zero replay lag; unknown state, split brain and leader changes remain immediate failures.
+
+- Quick init accepts explicit noninteractive Core bootstrap consent and recognizes real terminals; stopped development routes retain truthful diagnostics, fresh managed certificates do not warn before their renewal window, and MCP stdio flushes decoded replies before EOF (#827–#831).
+
+- Shared Core Identity receives PostgreSQL CA overlap and final trust before old SQL trust is retired; rotation verifies real Identity authentication, and Core Doctor checks live Identity rather than SQL/Secrets alone.
+
+- Local Docker is verified rootless by default, all runtime commands use the selected endpoint, and protected daemon bindings prevent implicit engine changes across CLI/MCP or legacy Core cleanup (#863). Target/status/Doctor expose the actual socket and mode.
+
+- App `down` rejects unsupported options with typed errors.
+- Uncertain SQL commits are not replayed; reconciliation receipts distinguish started, restored and recovered transitions.
+- Native etcd leader identification, isolated restore cluster identity and rootless Docker/Podman recovery transport errors corrected.
+- PostgreSQL rootless recovery mount and Podman namespace/hostname identity handling corrected.
+- Implicit HA removed from default provider topology; native HA requires explicit intent, component overrides remain authoritative and existing installations cannot silently change membership.
+- Shared providers are owned once per Core/Target: Keycloak and Shared SQL consumers reuse Core PostgreSQL with separate databases/users; Shared Valkey uses isolated ACL users and key namespaces. Empty SQL-only consumer modules do not masquerade as physical providers (#857).
+- Configured-only application destruction verifies absent Core/gateway resources and preserves foreign/shared data. `app init --agents` updates only bounded guidance, including JSON/non-TTY use; precise error hints and Doctor distinguish uninstalled Core from broken retained state (#858–#860).
+- Atomic owned-database schema recovery preserves original ownership/ACLs and recreates the standard public schema when the archive relies on initdb.
+- Issues #852–#855: correct help line breaks, distinct Core TUI views, precise repository Compose volume preservation and useful post-destroy trust status; ordered fixes from PR #856 are integrated.
+
+### Support boundaries
+
+- Provider updates require compatible release-pinned images, verified ownership and backups. PostgreSQL major upgrades and unsupported provider upgrade paths remain blocked.
+- Shared native PostgreSQL HA and physical backup-state recovery are supported; application-scoped PostgreSQL HA, cross-host failover and automatic plaintext-to-mTLS DCS migration remain unsupported.
+- Existing installations do not silently change topology. SQL transactions with unknown commit outcomes are not automatically replayed.
+
+## [0.4.23] - 2026-10-08
+
+### Added
+
+- Public Console and Node Connector repositories are documented as optional Core-contract consumers, with support claims bound to pinned cross-repository evidence rather than repository-local checks alone.
+- Repository-independent Core bootstrap for mandatory SQL, Secrets and Identity, using PostgreSQL, OpenBao and Keycloak with protected credentials and TLS.
+- Authoritative installation identity, observable bootstrap stages and ownership-safe retry/reconciliation through shared CLI/MCP/protected HTTP semantics.
+- First application setup offers Core bootstrap when needed and continues after verified readiness; non-interactive requests expose an explicit bootstrap requirement.
+- Development/deployment machine-role defaults and an optional Console bound to one selected Core in the same installation/security boundary.
+
+- Protected HTTP managed-trust rotation reuses Core credential/CA semantics, requires explicit installation approval and keeps recovery material out of browser input/results.
+
+### Changed
+
+- Core capability requirements are independent of shared or application-isolated provider placement. Resource reporting distinguishes planning estimates from unavailable Core measurements and explains additional isolation cost.
+- Remote application memory preflight requests fresh evidence from the authenticated execution node; Core-host RAM and runtime-info total RAM cannot replace available node capacity. Exhausted RAM is rejected even when a workload estimate is unavailable.
+
+### Fixed
+
+- Loki HA rotates storage credentials one ready member at a time with stable ring identities. Access PKI reconciliation restarts only the gateway and collector, preserving healthy Loki capacity.
+
+- Core realm reconciliation reads back state and rechecks ownership before resuming after transient server failures.
+
+- OIDC discovery retries transient server failures within a bounded identity convergence window; access denials remain blocking.
+
+- Keycloak bootstrap uses the active administrator after credential rotation. MongoDB treats credentials beginning with a dash as values in health checks, HA probes and rotation.
+- Core Identity read-only reconciliation tolerates the bounded native Keycloak JDBC reconnection window after HA database convergence; mutations and authentication failures remain fail-closed.
+- Remote application status and overview use the protected Node project binding and live owned inventory instead of inferring absence from local files. Provider observations remain insufficient for complete application readiness.
+- Core Identity readiness retries the specific native Keycloak server-exception response after database convergence; invalid credentials and other client denials still fail closed.
+
+- Keycloak starts one authenticated bootstrap member before additional members join, preventing concurrent initial database migrations.
+
+- Application execution revalidates the selected Core installation and keeps Core-managed secret, PKI and broker operations independent of workload placement; remote bindings never fall back implicitly to local authority.
+- Remote Quadlet project realization publishes every unit before container activation, starts dependencies first and rejects cycles before mutation.
+- Core-managed init dependencies require verified successful native completion before application activation and retain completion evidence without enabling automatic node startup.
+- Remote provider publication requires durable Core receipt persistence before activation; persistence failures block execution and automatic publication replay.
+- Managed Podman network teardown removes only the exact owned network without force and preserves live consumers. Explicit owned data reset verifies volume absence and supports reconciliation after ordinary teardown.
+- Ordinary Podman destroy/reapply reuses the exact owned provider data volume. Managed unit removal rechecks native ownership and preserves resources replaced with foreign project labels.
+- Remote generated provider bundles preserve native TLS bind-file readability beneath protected directories; runtime environments remain owner-only and altered file permissions fail immutable publication validation.
+- Interactive terminals preserve early input and terminal protocol replies; log streams deliver admission headers and small output chunks without waiting for the producer to finish.
+- Browser execution streams keep idle HTTPS connections active during provider setup without inventing progress or extending authentication deadlines.
+- Application repair preserves the explicitly selected environment through CLI, MCP and protected HTTP.
+- Repeated authenticated requests resolve tenant membership correctly after a scoped database transaction resets its connection context; row-level isolation and denied unscoped writes remain enforced.
+- Application overview uses the canonical managed-provider readiness model instead of requiring provider containers in the application Compose project (#811).
+- Backup loads Core runtime context for runtime-permission brokers and attempts bounded runtime recovery even when archive capture is cancelled (#812).
+- Missing required secrets without a terminal return an actionable typed error; `--yes` does not bypass secret availability (#813).
+- Generated Compose delivers the same runtime environment bindings required by generated source (#814).
+- Fresh Go image builds retain tidied module state; Next.js validates runtime bindings at request time; Quarkus packaging executes through the Maven lifecycle. Generated Compose workloads are recognized independently of YAML indentation (#815).
+- Fresh Core bootstrap allocates a new default recovery output when old recovery material remains, preserving previous files and explicit/persisted path protection (#526).
+
+## [0.4.22] - 2026-10-06
+
+### Added
+
+- Complete generated CLI/JSON/Core/MCP coverage inventory with typed supported product operations and explicit host/presentation exclusions.
+- Shared semantic operations for repository/workspace adoption, targets, stacks, secrets/TLS, trust, identity, connectivity and control-plane lifecycle; MCP discovery is checked against the registry and documentation.
+- Versioned extension artifact descriptors and separate verification/trust-policy results across six extension families, with digest-bound JWS/in-toto/SBOM/provenance verification through operator-configured keys.
+- Public `conformance/provider/v1` package and discovery profile extending the existing provider harness with drift, faults, recovery, ownership and idempotent destroy checks; an independent external module proves execution without internal imports.
+
+### Changed
+
+- CLI, JSON and MCP use the existing transport-neutral operator authorization boundary and stable application identity; destructive tools require explicit approval.
+- Structured secret/environment/connection results mask unknown secret fields and omit private material; protected file input is authorized before reading.
+- Public automation documentation includes concrete CLI and generic MCP client examples.
+
+### Fixed
+
+- Quick repository adoption writes detected HTTP/HTTPS exposures using the same validation as guided adoption and rejects ambiguous ports before writing.
+- Standalone application preflight includes the shared repository workload contract gate; repository up validates that contract before control-plane startup.
+- Deployment configuration is distinct from applying state, rejected applies record failure, and target teardown reconciles inactive observations without deleting application source, inputs or data.
+- Repeated quick init returns a clear unchanged existing-contract result, including JSON/non-interactive use.
+- Application help registers `new` once.
+- Generated Go projects include native messaging/document/durable-key-value client imports and shared TLS helpers; creation distinguishes repository validation from compiler verification.
+- Target teardown includes unreferenced shared SQL/cache/identity/gateway resources. Full destruction previews concrete owned resources, reports removal/residue by name, preserves external recovery files explicitly, and returns the same structured inventory through JSON and MCP.
+- Docker/Podman container inventory decodes native JSON state, including absent healthchecks. Destructive container cleanup removes associated anonymous volumes without removing declared external volumes.
+- Prerelease evidence selects the latest journey attempt alongside atomic gates, retaining older attempts and accepting a successful earlier journey during an evidence-only rerun.
+- Fresh standard control planes use a native single PostgreSQL server and one OpenBao server; explicit HA retains the three-member topology. Persistent topology rejects incompatible requests without migration or legacy support.
+- Control-plane memory planning includes every service in the selected startup topology, including admin/bootstrap services, and reports unmeasured budgets as estimates.
+- Full Docker and Podman journeys start alongside bounded atomic lanes. A strict resume plan compares gate inputs and schedules only missing or invalidated proofs; final approval retains all 55 requirements and authenticates each original job, artifact digest, candidate, demo pin, attempt and cleanup. Earlier failures cannot be hidden by older successes. Targeted proof runs are retained; bounded assertions, job/queue timing and recurring failures remain available.
+
+## [0.4.21] - 2026-10-03
+
+### Added
+
+- Versioned credential/access ownership semantics separating human management identity, application-service credentials and BaseHarbor-internal machine identity.
+- Standards-first management-surface authentication classes and provider-neutral infrastructure-role mapping with explicit limited/unsupported semantics.
+- Logical Application/Component consumption intent whose identity remains independent from runtime addressing, placement, replica count and instance topology.
+- Portable global HA intent with sparse per-component/capability overrides, fixed-cardinality input, provider/runtime negotiation and 0..N instance observation.
+- Typed availability results shared by lifecycle preflight, status, doctor and evidence.
+- Provider-native HA realizations and stable logical endpoints for Valkey/Sentinel, MongoDB replica sets, RabbitMQ clusters/quorum messaging, SeaweedFS, managed Keycloak and the shipped observability stack.
+- Managed Keycloak HA with stable issuer/discovery/JWKS/Admin surfaces, HA PostgreSQL backing and client-secret, signing-key and administrative-credential rotation continuity.
+- HA observability realization and runtime continuity for OpenTelemetry Collector, Prometheus, Loki and Tempo.
+- Stable local exposure/management routing through backend replacement and supported configuration/TLS hot reload without claiming redundant single-host ingress.
+
+### Changed
+
+- Managed secret semantics now distinguish one authoritative durable secret source from runtime projections; canonical secret-bearing files remain protected while separate read-only runtime projections are used where necessary.
+- Interactive application-secret replacement requires two matching hidden entries before mutation; deterministic stdin/file automation remains single-input.
+- Docker, Podman and every bundled capability-provider realization carry an explicit HA classification; unsupported requested guarantees fail before mutation instead of silently downgrading.
+- Availability is part of the existing Application, Runtime Provider and Capability Provider contracts rather than a second HA lifecycle.
+- Logical consumption relationships remain stable across scaling, failover, rescheduling and rolling replacement; runtime-native member identities never become portable application identity.
+- Single-host Docker/Podman availability evidence now reports member/process continuity separately from runtime-host failure tolerance.
+- Credential, certificate, trust and configuration changes use explicit prepare/reconcile/verify/retire semantics where continuity-preserving rotation is supported.
+- Availability, credential and management-surface semantics are documented as additive-friendly pre-freeze contracts for the v0.5 compatibility review.
+
+### Fixed
+
+- Bootstrap PostgreSQL private-key material is owner-only instead of inheriting generic public certificate permissions.
+- Application file-secret projection no longer weakens the authoritative host-side secret file to world-readable mode.
+- Keycloak HA client-secret verification and retirement now converge across active members, and master-admin credential rotation uses the correct master-realm administration model.
+- Loki HA ingestion now preserves the internal gateway alias and sends acceptance probes over the configured syslog transport.
+- Tempo HA startup now waits for the replicated ingestion topic, preserves Compose shell variables and supplies writable runtime state for Tempo roles.
+- SeaweedFS platform bucket administration tolerates transient HA convergence instead of failing on an early member race.
+
+## [0.4.20] - 2026-10-02
+
+### Added
+
+- Source-neutral Workload Source Adapter and normalized Workload Evidence contracts for Compose, repository-authored Podman Quadlet and raw Kubernetes YAML, including deterministic fingerprints, provenance and logical workload-component identity.
+- Safe-to-commit `baseharbor.repository.yaml` selection metadata for genuinely ambiguous repositories.
+- Developer workspace Git status and fast-forward-only synchronization across mapped repositories, with CLI/JSON/MCP parity and preview-only checks.
+- Pinned 30-example real-world repository corpus with 10 Compose, 10 repository-authored Podman Quadlet and 10 raw Kubernetes YAML cases, plus mixed-source ambiguity evidence.
+
+### Changed
+
+- Portable workload identity now uses logical components instead of treating Compose service names as the canonical application model.
+- Repository understanding is separated from Runtime Provider realization; Kubernetes/Quadlet sources can be inspected and adopted while unsupported runtime realization fails later with a typed actionable preflight result.
+- Mixed workload-source families fail closed instead of silently preferring a product/source format.
+- Helm and Kustomize are deferred to later Workload Source Adapters and are not claimed as v0.4.20 support.
+
+
+## [0.4.19] - 2026-10-01
+
+### Added
+
+- Provider-neutral durable key-value, document-database and messaging contracts with Valkey, MongoDB and RabbitMQ reference providers.
+- First-class External/BYO provider onboarding and verification with ownership-safe removal and provider-neutral TLS/trust/certificate references.
+- Organization/platform configuration distributed through local/system, Git or OCI sources with immutable resolution and provenance.
+- Optional management surfaces for RabbitMQ, durable Valkey and MongoDB using the existing secure developer-access model.
+- Versioned Runtime and Delivery provider contracts that keep future Kubernetes/OpenShift and GitOps realizations outside portable Application Intent.
+
+### Changed
+
+- Provider descriptors, SDK/scaffolding, service schemas, Development Adapters, repository inspection, CLI, JSON and MCP now cover the complete v0.4.19 capability set.
+- Durable `database.key-value` semantics are explicitly separated from reconstructable `cache.key-value` semantics.
+- Source/build resolution ends before the portable Runtime boundary; Runtime providers consume resolved OCI workload artifacts.
+- Pre-release validation now uses independently rerunnable, SHA-bound atomic gates with explicit resource profiles on GitHub-hosted runners; static checks avoid provider containers, Docker and Podman gates remain isolated, and the release run assembles one complete candidate-bound evidence manifest.
+
+### Fixed
+
+- First-run repository deployment initialization now records ownership evidence before persisting deployment-local inputs, preventing a valid first `baha up` from being misclassified as incomplete deployment state.
+- Atomic `shell-ux` acceptance now runs as a zero-container static gate instead of bootstrapping a runtime stack.
+
+- Guided and deterministic application initialization now expose the full v0.4.19 capability catalog, including durable key-value, document database and queue/pub-sub/stream messaging, with matching optional management-UI intent.
+- Recovery discovery now makes durable key-value, document-database and messaging state classes explicitly addressable; unsupported scoped recovery fails closed instead of silently omitting those durable contributors.
+- Capability/provider conformance tests now derive coverage from the shipped specification catalog and include Keycloak, external OIDC, RabbitMQ and MongoDB reference integrations.
+
+- Non-interactive lifecycle flags and host-memory approvals now propagate consistently across top-level CLI, application lifecycle and MCP; TIGHT memory remains an explicit approval decision while unsafe memory conditions still fail closed.
+- Required-secret prompting preserves buffered PTY input across confirmation and hidden entry, preventing remotely driven terminals from losing secret values between prompts.
+- Workload startup failures retain bounded, secret-redacted runtime diagnostics for verbose troubleshooting, and failed rebuilt candidates invalidate their verified source fingerprint so later retries cannot reuse a failed mutable image as `source unchanged`.
+- Repository adoption fails fast when an HTTPS workload is missing the required `exposure.http` contract, and nested `app init --quick` is rooted in the current directory instead of inheriting an ancestor application's manifest.
+- The generated Go greenfield scaffold materializes and verifies its pinned module graph during container build, so a fresh `app new --stack go` no longer requires a manual `go mod tidy`.
+- Application destroy removes deployment roots without empty residue and shared-backend consumer state cannot resurrect removed Valkey resources during a later surviving-app reconcile.
+- Workspace commands report an actionable not-initialized error instead of leaking a raw missing `sources.yaml` filesystem error.
+- Generated Python workloads provide a positive health signal, keeping `up`, `status` and `doctor` readiness semantics aligned.
+- Restore reconstructs missing development exposure initialization after destroy before verifying the restored application.
+- Development management access is discoverable as one Target/environment-scoped credential, with `developer` as a configurable default rather than a fixed username.
+
+## [0.4.18] - 2026-09-30
+
+### Added
+
+- First-class greenfield `baha app new` creation with guided and deterministic paths, ecosystem-native Go, Next.js, Python and Quarkus Development Adapters, reusable/composable Stack Profiles, deterministic Development Plans and JSON/MCP parity.
+- Versioned common extension, provider-descriptor and development-extension contracts using JSON Schema 2020-12, with provider/development conformance foundations and standards-first OCI distribution metadata.
+- First-class multi-repository applications: one canonical version-controlled Application Contract can resolve components across monorepos, multiple existing local worktrees and OCI images while keeping developer-local paths in XDG workspace state.
+- Guided `baha app workspace` plus deterministic `workspace init|map|show|resolve`; component/application identity no longer depends on one current working directory or local checkout path.
+- Optional Backstage `catalog-info.yaml` emission from the greenfield flow with explicit owner/lifecycle input and no Backstage SDK, Catalog API client or template interpreter in Core.
+- Local Docker/Podman host-resource preflight using MemAvailable, swap and memory PSI with delta-aware SAFE/TIGHT/UNSAFE decisions before mutation.
+
+### Changed
+
+- Release acceptance now keeps small gates individually runnable while the full pre-release reuses long-lived environments across four symmetric runtime lanes: Docker/Podman × Core Journey/Operations.
+- Capability-subset demo acceptance validates workload-only and mixed capability contracts without starting unrelated providers; the full demo remains the full-stack integration proof.
+- YAML v3 usage moved to the maintained `go.yaml.in/yaml/v3` module.
+- Targeted runtime workflow names describe the tested behavior, for example `Docker · Capability Matrix`, instead of internal branch/gate terminology.
+- Go 1.25 remains the v0.4.18 support floor; the x/crypto v0.56/v0.57 / Go 1.26 toolchain transition is explicitly deferred.
+
+### Fixed
+
+- Application stop/destroy tears down observed owned workload containers/networks even from partially converged state instead of depending on successful apply-time materialization.
+- Repository workload startup fails fast on terminal runtime failures and persisted host-port fallback is applied consistently across lifecycle paths.
+- Canonical identity/developer-gateway URLs preserve the effective persisted gateway port.
+- Management UI readiness validates browser redirect chains.
+- Reduced capability-matrix cases avoid requiring unrelated managed HTTPS/TLS infrastructure.
+
+## [0.4.17] - 2026-09-29
+
+### Added
+
+- Provider-neutral managed application identity with managed Keycloak and external OIDC realizations, standard discovery/JWKS, exposure-derived redirect/logout URIs, Service Binding output, managed/private issuer trust projection through `OIDC_CA_FILE`, scopes/claims and portable MFA/WebAuthn/passkey/passwordless policy.
+- Target/Environment-scoped operator OIDC authentication for test/prod with Authorization Code + PKCE, short-lived owner-only sessions and explicit `login`, `logout` and `whoami` commands; trusted local development remains login-free.
+- Optional provider management surfaces for PostgreSQL, cache, object storage, OpenBao, managed identity and Prometheus observability, with semantic interface classification and secure local TLS access.
+- Development repository convergence now distinguishes application working-tree changes from BaseHarbor contract/deployment-control changes, enabling `baha up` to rebuild/recreate only affected workload services without requiring commit/push or a Git update operation.
+- Target-scoped development access with one configurable domain (default `baha.localhost`), deterministic canonical HTTPS hosts, a single local development management login and explicit `baha dev domain` / `baha dev credentials` commands.
+- First-class resource-efficient `shared` placement for the bundled PostgreSQL and Valkey providers while retaining explicit `application` placement; shared provider lifecycle is Target-owned while databases, cache resources, credentials and Service Bindings remain application-isolated.
+- Versioned `baseharbor.runtime/v1` Runtime Provider descriptors and an extensible registry with provider identity, provider version, adopted standards, workload-source compatibility, realization metadata and fail-closed capability negotiation; reusable conformance tests and an AST architecture guard protect the provider-neutral Core boundary.
+
+### Changed
+
+- Status, Doctor, JSON/MCP evidence and application lifecycle now observe and verify managed identity state, operator-authentication context and selected management surfaces.
+- Identity recovery explicitly separates portable application identity intent from provider-held users, MFA and passkey state instead of claiming unsupported provider-global snapshots.
+- Provider-registry bindings are scoped by application and environment deployment identity; existing environmentless v1 entries remain readable and migrate during reconciliation.
+- Read-only repository policy/evidence analysis can use fail-closed static Compose security inspection when container-runtime orchestration is unavailable.
+- `baha app update` remains the strict clean-tree fast-forward path for advancing Git source from upstream; local development changes are intentionally converged from the current working tree by `baha up`.
+- Browser-facing development application endpoints and selected provider UIs now use canonical Target-derived URLs instead of exposing random `127.0.0.1:<port>` addresses as normal developer UX; route ownership follows application/shared/external provider placement.
+- Repository workloads can explicitly declare `io.baseharbor.workload.protocol=http|https`; HTTPS canonical routes verify the BaseHarbor-projected workload CA and service-name SNI, while invalid declared protocol values fail closed.
+- The v0.4.17 reference demo is HTTPS-only and intentionally has no plaintext HTTP fallback.
+- The v0.4.17 reference demo keeps only the application workload application-scoped and uses shared PostgreSQL, Valkey, object storage, secrets, identity and observability providers with short canonical hosts such as `demo.baha.localhost`, `auth.baha.localhost` and `metrics.baha.localhost`.
+- Canonical development routing uses HTTPS port 443 on Docker and deterministic unprivileged port 8443 on rootless Podman, avoiding host-wide privileged-port sysctl requirements while keeping stable Target-derived hostnames.
+- Runtime selection now uses explicit `docker` / `podman` provider identity. Compose remains repository workload-source compatibility rather than Runtime Provider identity; new local state defaults to Docker. Podman realization is native Quadlet + `systemd --user` and fails closed without that environment instead of falling back to `podman compose`.
+- Target-owned shared PostgreSQL/Valkey provider state now survives destruction of the final application consumer; application destroy removes only application-owned resources and credentials, while provider/Target destroy owns provider teardown.
+- Development gateway HTTPS ports are preflighted and persisted per Target; occupied preferred ports fall back deterministically from 18443 and all canonical URLs reuse that persisted port.
+- Managed service access follows a native-TLS-first topology: OpenBao, PostgreSQL, Keycloak, SeaweedFS S3, Prometheus and OTLP terminate TLS natively; the Target developer gateway owns canonical browser routing, while dedicated adapters remain only where they add protocol/security semantics.
+- Managed OIDC now uses `github.com/coreos/go-oidc/v3` 3.21.0; Renovate also tracks registry-qualified provider image constants embedded in Go source.
+
+### Fixed
+
+- Development OIDC workload bindings now use the same canonical issuer reported to developers and trust the Target development gateway; provider-internal Keycloak endpoints remain lifecycle/admin-only, including rootless Podman on deterministic HTTPS port 8443.
+- Runtime Executor observer mTLS identity is projected independently of OTLP tracing so logs/metrics observability probes remain valid when tracing is not selected.
+- Podman CI/runtime validation isolates Quadlet generator preflight state and removes stale BaseHarbor user units from the effective user configuration, preventing unrelated worker state from poisoning validation.
+- Application destroy now removes only the owned managed-identity scope and preserves shared IdP infrastructure; app-scoped Keycloak is destroyed only after ownership verification and external OIDC remains untouched.
+- Multiple environments of the same application on one Target no longer replace each other's provider-registry bindings or application-scoped provider ownership state.
+- Fresh repository `baha up` now rejects an existing/stale OpenBao recovery output path before creating or mutating control-plane resources and gives an explicit `--recovery-file` remediation.
+- Workload readiness no longer equates a running container with READY: health checks, HTTP/TLS probes or TCP listener probes provide positive readiness evidence, while workers without a readiness signal are reported RUNNING/UNVERIFIED.
+- Rootless Podman Quadlet networking now uses native `NetworkAlias=` semantics for managed and external networks, preserving managed `.network` references and restoring DNS for runtime-executor, metrics and workload routes.
+- Podman shared-network teardown now preserves networks with active consumers instead of forcibly deleting sibling connectivity.
+- Podman candidate-image build/verification and Quadlet execution now share the same rootless storage context.
+- Podman service-state observation reads published port bindings from the running container so workload HTTP/TLS readiness can be positively verified instead of remaining RUNNING/UNVERIFIED.
+
+### Security
+
+- Shared PostgreSQL now separates one BaseHarbor-internal `baseharbor_admin` provider identity from per-application database roles and credentials. Provider-admin credentials never enter workload bindings, environment contracts, status, doctor or evidence.
+- Shared PostgreSQL reconciliation hardens database/schema/public privileges, verifies application-role ownership and denies cross-application database access; destroy fails closed unless protected provider state and live PostgreSQL ownership agree.
+- Shared PostgreSQL application roles are `NOINHERIT`, receive no provider-role memberships, cannot connect to provider administration databases, and restores authenticate with the protected application credential rather than a provider-admin or local-trust shortcut.
+- Shared PostgreSQL backup/restore remains application-scoped and derives the exact database set from protected application registrations; sibling databases, roles and credentials are never part of another application's recovery operation.
+- Shared Valkey uses isolated per-application services and credentials inside the Target-owned provider lifecycle, preserving normal Redis/Valkey client compatibility without cross-application key visibility.
+- Application identities, BaseHarbor operator identities and provider-administrator credentials remain distinct boundaries.
+- Test/prod application operations fail closed when the Target/Environment operator boundary is missing or unauthenticated; dev remains trusted-local.
+- Provider-held user passwords, TOTP seeds, WebAuthn/passkey credentials and provider-admin credentials are never projected into application bindings, audit or normal status output.
+- The shared development management password remains owner-only Target state and is revealed only by the explicit credentials command; CI diagnostics, status, doctor, plan and evidence stay secret-safe.
+- Native certificate rollout is provider-aware: Keycloak polls replacement certificates, Prometheus re-reads web TLS material per request, SeaweedFS uses its reloading certificate provider, OTLP reloads TLS material on a bounded interval, and OpenBao 2.7 uses native `tls_auto_reload`.
+- The v0.4.17 dependency audit adopts OpenBao 2.7 with dedicated PostgreSQL storage, `verify-full`, native TLS reload and hybrid-PQC-first TLS; it keeps the Go 1.25 support floor by deferring x/crypto/x/sys updates that require Go 1.26 and tracks the yaml.v3 replacement separately in #533.
+
+## [0.4.16] - 2026-09-26
+
+### Added
+
+- Selectable typed application recovery units cover application metadata, managed SQL, the application-owned OpenBao secret scope, managed S3 contents, BaseHarbor-owned repository workload volumes and selectable application log history.
+- Guided backup and automation share the same recovery state classes through interactive selection and `--include-state` / `--exclude-state`.
+- Restore validates the typed recovery manifest before mutation, restores selected state and reports success only after the application boundary is verified READY.
+- `baha app evidence [-o json]` and read-only `baseharbor.evidence` expose one secret-safe v1 evidence bundle spanning desired state, enforced policy, observed state, verified results, recovery evidence, explicit exceptions and unsupported controls.
+- Meaningful completed lifecycle operations persist bounded Target-local audit events with actor interface, target/application/environment, operation, outcome and verification metadata.
+- Evidence bundles are deterministically ordered and include SHA-256 tamper evidence over the exported bundle.
+
+### Changed
+
+- Managed S3 resources no longer force backup/restore to fail closed merely because object storage is present; bucket contents are captured and restored through the existing standards-based S3 provider path.
+- BaseHarbor-owned repository workload named volumes participate in recovery while bind mounts and external named volumes remain explicitly external and outside BaseHarbor ownership.
+- Recovery discovery accepts both normalized Compose volume objects and short-syntax mounts, preserving the same workload-storage semantics on Docker Compose and Podman/Quadlet.
+- Application log history is selectable operational recovery state and is excluded by default unless the operator explicitly includes `observability.logs`.
+- Metrics and trace history remain explicitly unsupported recovery contributors until BaseHarbor has safe application-scoped restore semantics for those histories.
+- Successful backup/restore metadata records typed recovery contributors and per-contributor verification without storing secret values.
+- CLI and MCP evidence use the same collector and machine contract instead of maintaining separate reporting semantics.
+
+### Fixed
+
+- Deterministic repository initialization now fails closed when repository workload evidence exists but no workload was explicitly selected, preventing a partial contract that silently drops an existing workload.
+- Workload convergence fingerprints the effective rendered Compose service configuration, so interpolation changes such as repository `.env` updates recreate only affected services and cannot leave stale containers reported READY.
+- Managed SQL/cache workloads receive a portable Service Binding 1.1 projection with workload-native endpoints and TLS trust material; status and Doctor verify the consumer-facing binding instead of treating provider health alone as application readiness.
+- Failed application convergence persists an addressable `applying` / `failed` deployment record. Legacy incomplete deployments can be recovered by application name from protected BaseHarbor state instead of crashing `status`, `down` or `destroy` on a missing `deployment.json`.
+- Secondary PostgreSQL/Redis connection aliases that still reference a repository service replaced by a managed capability are rewired to the managed workload endpoint when the mapping is unambiguous. Unsupported or ambiguous references fail closed before mutation.
+- `baha app destroy` selectively reclaims named Compose volumes that belong exclusively to repository PostgreSQL/Redis/Valkey services replaced by managed capabilities, while preserving shared, external and unrecognized workload volumes.
+
+### Security
+
+- Recovery never broadens ownership to external volumes, bind mounts, external data stores or provider-private state; unsupported/external contributors remain explicit in the recovery/evidence model.
+- Application/runtime leaf identities and trust edges are reconstructed from desired state instead of copying Target-wide OpenBao PKI private keys into application archives.
+- Audit persistence is owner-only, bounded and secret-safe; prompts, model reasoning, tokens, access keys, private keys and credential-bearing URLs are excluded.
+- Evidence integrity is explicitly tamper evidence, not a digital signature, remote attestation or compliance certification.
+
+### Compatibility
+
+- Manifest v1 and provider-neutral application contracts remain unchanged.
+- Existing encrypted recovery archives remain supported through the legacy recovery-manifest fallback; v0.4.16 archives carry the typed recovery manifest.
+- Docker Compose and Podman/Quadlet continue to share the same application recovery semantics; physical runtime volume names remain deployment detail and are not portable recovery identity.
+- JSON stdout remains the generic evidence integration boundary; no SIEM- or compliance-vendor-specific backend is introduced.
+
+
+## [0.4.15.1] - 2026-09-26
+
+### Fixed
+
+- Runtime Broker compatibility now uses the versioned runtime contract instead of requiring an exact CLI/runtime Git commit match; deterministic version incompatibility fails immediately instead of waiting through the readiness retry window.
+- Repository workload builds no longer inherit interactive TTY stdin, preventing a Compose/BuildKit rebuild from hanging indefinitely under the human progress UI.
+- `baha app down` persists the observed stopped state so `baha app list` does not continue to report READY after a verified stop.
+- Deployment listings tolerate incomplete/orphaned state directories and warn instead of making the complete application registry unusable.
+- Out-of-repository restore resolves and validates the registered repository source before mutating durable state, preventing destructive partial success followed by deployment-record failure.
+- Deterministic `baha app init NAME ...` requires explicit capability/workload intent instead of silently resolving repository ambiguity into a default SQL contract.
+- Repository Compose inspection now decodes YAML merge keys/anchors. Unsupported `include`/`extends` inheritance fails explicitly rather than silently dropping services.
+- Fixed Compose host-port bindings can use a deployment-local automatic fallback without rewriting the source repository; Docker Compose and Podman/Quadlet share the same override semantics.
+- The implicit `local` Target is visible in `baha target list`; target naming failures explain the lowercase slug rules; creating a Target does not change the effective/default Target unless `--default` is supplied.
+- Global `baha status` renders BaseHarbor Target/control-plane/application semantics instead of exposing the raw Compose `ps` table.
+- Managed SQL adoption fails before mutation when replacing a repository database would discard `docker-entrypoint-initdb.d` bootstrap behavior.
+- Accepted mutating MCP lifecycle operations are no longer truncated by client-request cancellation; client timeout guidance and safe permission defaults are documented.
+- Application/full destroy removes BaseHarbor-owned Runtime Broker volumes while continuing to preserve application-owned workload data volumes.
+- Operator-visible Compose projects now follow provider placement: target-wide shared components use one `bh-<target>-shared` stack, while application runtime/workload and application-scoped providers use `bh-<target>-<application>-<environment>`; external providers remain outside BaseHarbor ownership.
+- Top-level `baha init` no longer writes the legacy global `deployment: single-node` configuration into `baseharbor.yaml`; repository application intent remains owned by `baha app init`, while deployment destination/runtime selection remains Target configuration.
+- OpenBao recovery-file location is now Target-scoped under `target.openbao.recovery-file`. Successful bootstrap persists only the path reference, never recovery material, and later `baha up` can automatically unseal the shared OpenBao provider when that referenced file is present.
+- Docker Runtime Broker observability keeps the stable Compose service identity `broker`, restoring reliable Docker syslog forwarding into Alloy/Loki without changing the application contract or the consolidated application stack boundary.
+
+### Security
+
+- Restore and repository-adoption corrections move destructive or ambiguous failures into preflight/fail-closed paths.
+- MCP mutation approval semantics remain unchanged; lifecycle convergence is detached only after the mutating request has already been accepted.
+- Full destroy still removes only BaseHarbor-owned runtime resources and preserves application-owned data.
+- Target-scoped OpenBao recovery handling stores only an operator-held file path reference; recovery material remains outside normal BaseHarbor state and startup fails closed when an explicitly persisted reference is unavailable or invalid.
+
+### Compatibility
+
+- Manifest v1 and provider-neutral application contracts are unchanged.
+- Manifest/provider ownership semantics remain unchanged. Compose project identity is now separated from physical resource identity so project consolidation does not silently broaden ownership or rename managed backend resources.
+- Git commit identity remains visible as provenance but is no longer treated as the Runtime Broker compatibility boundary.
+- `baha init` remains as a compatibility entrypoint but no longer creates a legacy global `baseharbor.yaml`; use `baha app init` for portable application intent and `baha target create` for deployment Target/runtime configuration.
+- Runtime Broker service identity remains an internal runtime detail; restoring the short `broker` service name does not change Manifest v1, provider contracts, workload bindings or runtime API URLs.
+
+
+## [0.4.15] - 2026-09-25
+
+### Added
+
+- First-class deployment Targets separate deployment destination from Application and Environment; concrete deployment identity is now `target + application + environment`.
+- Target configuration lives in XDG user config while mutable runtime/deployment state is isolated below `$XDG_DATA_HOME/baseharbor/targets/<target>/`.
+- `baha target` inspection and management, shell-local target activation, optional shell prompt integration, and `baseharbor.target` MCP inspection expose the same effective Target identity across human and machine interfaces.
+- Complete agent-native lifecycle operations over the shared machine/MCP core, including apply, update, repair, backup, restore and destroy with typed safety metadata and approval requirements.
+- Generic provider/runtime observability declarations and registration for metrics, logs and traces, including Runtime Broker and Runtime Executor observability.
+- Standards-first service-contract schemas based on JSON Schema 2020-12 for SQL, cache, object storage, secrets, messaging, vector, observability and identity service families.
+- Provider descriptor/catalog metadata separates service contract, provider protocol, provider version, product/engine version, OCI artifact identity, digest and provenance.
+- Repository inspection now classifies supported backend services as replaceable infrastructure, keeps application workloads separate, and carries strong evidence into guided capability adoption.
+- Guided repository adoption now supports interactive capability selection, per-secret accept/skip/rename/required/generate/prompt/later choices and secure `baha app secret set KEY` prompting.
+- Deterministic workload selection and runtime-resource detection cover ambiguous multi-service repositories and Runtime API S3 creation without silently inventing application intent.
+- Explicit `baha destroy --all [--yes]` installation cleanup across all BaseHarbor Targets, preserving application source repositories and refusing to guess ownership of foreign resources.
+
+### Changed
+
+- Portable application service intent is provider-neutral: canonical manifest/CLI service families are `sql` and `cache` instead of product-named PostgreSQL/Redis intent; provider-specific implementation names remain implementation detail.
+- Service connection outputs align with Service Binding Specification 1.1 well-known names while `secure-binding/v1` remains a separate BaseHarbor security/lifecycle extension.
+- Runtime Broker readiness now verifies build compatibility and Runtime Docs HTTPS readiness; runtime status exposes runtime artifact identity.
+- Repository `build:` workloads persist verified build fingerprints and rebuild only affected services after relevant source changes; stale source/build state is not reported READY.
+- Repository detection normalizes product evidence into generic service families, keeps suggested capabilities opt-in and makes `--quick` fail closed on ambiguous Compose roles, metrics targets, OTLP signals and runtime-permission workload scope.
+- Guided init now renders a human-readable adoption summary by default, keeps generated YAML behind `--verbose`, uses `baha up` as the normal next step and preflights fixed workload host ports before first start.
+- Missing required application secrets can be resolved interactively during apply without restarting the lifecycle; non-interactive paths remain deterministic and return actionable remediation.
+- Runtime failures use stable typed error/cause/resource/remediation metadata shared by human and machine output while normal output suppresses raw Docker/Podman/provider noise unless `--verbose` is requested.
+- Docker/Podman control-plane, application, provider, network, volume, broker and runtime-executor state is namespaced by Target so multiple local destinations can coexist without sharing ownership state.
+- `baha app list` reads the deployment registry independently of the current working directory and `--all-targets` provides the installation-wide view.
+- Managed service access now follows the provider-neutral TLS/PKI and environment-aware access baseline, including external/BYOC PKI and protected trust/auth material.
+- Observability collection uses the shared source/ownership/placement model instead of product-specific registration branches; runtime component metrics/logs/traces participate in the same semantic registry.
+- Podman runtime execution uses native rootless Quadlets managed through `systemd --user` instead of the external `podman-compose` provider; Docker continues to use Docker Compose.
+- Podman lifecycle/container-state inspection and runner cleanup use batched runtime operations instead of N+1 inspection paths where ownership/readiness semantics allow it.
+- Managed Podman network/volume resources are reconciled against physical runtime state before container start so stale active Quadlet units cannot hide missing resources.
+- Podman release acceptance explicitly blocks `podman compose` so successful Pre-Release evidence proves the tested Podman path is Quadlet-only.
+- Full destroy continues best-effort across partial state and reports per-resource `REMOVED`, `SKIPPED`, `NOT FOUND` and `FAILED` outcomes.
+- Pre-Release validation pins one exact external demo revision, proves the complete guided/deterministic acceptance suite on both Docker and Podman and hands immutable candidate/demo evidence into publish instead of rerunning the same expensive acceptance matrix.
+
+### Security
+
+- TLS remains mandatory for managed network service access, with environment-aware developer/test/production access semantics and fail-closed ownership/authentication behavior.
+- Standards-first repository adoption treats weak or ambiguous evidence as non-authoritative; infrastructure-shaped unknown Compose services and unresolved workload scope fail closed instead of being silently adopted.
+- Generated/application secrets remain distinct from provider/runtime credentials; secure terminal prompting hides secret input and optional application secrets do not accidentally become startup requirements.
+- MCP mutation paths reuse the same policy, ownership, preflight, reconciliation and verification semantics as CLI/JSON; no generic shell, Docker, Compose or Podman execution primitive is exposed.
+- Observability registration preserves application/environment/sharing-boundary isolation and secret-safe metadata.
+- Full installation cleanup never broadens ownership assumptions to foreign resources and preserves application source repositories and external application-owned data.
+
+### Compatibility
+
+- Manifest v1 remains the compatibility contract, but product-named portable service intent has converged on canonical provider-neutral `sql` and `cache` service families; legacy product-named manifest/CLI aliases removed during the v0.4.15 development line are no longer the canonical interface.
+- Existing v0.4 capability IDs remain valid compatibility surfaces while repository detection and provider metadata map them to broader standards-first service families.
+- Docker remains Docker Compose based; supported Podman execution is now native Quadlet/systemd-user based.
+- Kubernetes/OpenShift Target definitions remain contract-only and fail closed at execution until those runtime providers are implemented.
+
+## [0.4.14]
+
+### Added
+
+- Shared runtime-neutral reconciliation domain with typed desired, observed, diff and ownership state.
+- Typed reconciliation states for `missing`, `in_sync`, `drift`, `conflict`, `foreign_ownership`, `unsupported` and `degraded`.
+- Typed reconciliation actions for `create`, `noop`, `repair`, `destroy`, `observe` and `blocked`.
+- Optional provider-native reconciliation observation integrated into the existing capability lifecycle without creating a second lifecycle engine.
+
+### Changed
+
+- Semantic providers are observed after preflight and before mutation; blocked ownership/conflict/unsupported/degraded states fail closed before `Provision`.
+- Stable resources can resolve to a core-level NOOP without calling provider mutation hooks.
+- BaseHarbor-owned drift resolves to minimal repair and is observed again after provider verification.
+- Provider conformance now validates typed reconciliation results and verified convergence in addition to existing lifecycle/fault-injection coverage.
+
+### Security
+
+- Foreign ownership and competing reconciliation ownership block mutation.
+- External ownership remains observe-only.
+- Post-verification observation prevents successful lifecycle completion when BaseHarbor-owned desired state did not actually converge.
+- No Kubernetes/OpenShift implementation, product-specific delivery mechanism or portable-contract expansion is introduced.
+
+## [0.4.13] - 2026-09-21
+
+### Added
+
+- Deterministic repository environment resolution for root `baseharbor.yaml` and complete `envs/<environment>/baseharbor.yaml` contracts without hidden overlay inheritance.
+- Environment-scoped protected deployment state under `.baseharbor/environments/<environment>/` for multi-environment deployments while preserving the existing single-environment state path.
+- Typed policy result contract with `allow`, `warn` and `deny` decisions.
+- `baha policy check` and `baha policy explain` with human and JSON output.
+- Read-only MCP tools `baseharbor.policy.check` and `baseharbor.policy.explain`.
+
+### Changed
+
+- Repository lifecycle resolution now separates repository root, selected manifest path and environment-scoped deployment state.
+- `-e/--environment` selection is handled by the common application resolver for repository-aware lifecycle/read operations.
+- Backup, restore, update and destroy preserve the selected environment identity and state boundary.
+- Existing Compose workload-isolation findings feed the shared policy model instead of forming a separate policy surface.
+- Agent discovery now advertises six read-only semantic operations/tools.
+
+### Security
+
+- Managed environments cannot be downgraded to the development workload-security profile through `BASEHARBOR_WORKLOAD_SECURITY_MODE`.
+- Operator policy exceptions are bounded: the existing development host-device acknowledgement remains explicit, while privileged containers and the other isolation-bypass classes are not overridable.
+- Environment-specific state prevents deployment inputs, TLS material and generated runtime state from colliding across environments.
+- Environment remains separate from runtime, topology, availability and future Kubernetes namespace details.
+
+
+## [0.4.12] - 2026-09-21
+
+### Added
+
+- Versioned BaseHarbor machine contract `v1` for inspect, plan, status and doctor structured results.
+- `baha agent describe` / `baha agent describe -o json` semantic discovery with operation safety metadata and supported capability specifications.
+- Local stdio-only `baha mcp serve` built on the official Model Context Protocol Go SDK v1.8.0, targeting MCP `2026-07-28` with negotiated `2025-11-25` compatibility.
+- Four read-only MCP tools: `baseharbor.inspect`, `baseharbor.plan`, `baseharbor.status` and `baseharbor.doctor`.
+- Stable structured machine error categories and JSON error envelopes.
+- Generic MCP-client acceptance covering discovery, read-only annotations, inspect/plan/status/doctor execution and secret-leak protection.
+- English/German agent-machine-interface documentation.
+
+### Changed
+
+- Status+TLS and Doctor now expose shared typed result paths consumed directly by CLI, TUI and MCP instead of routing machine adapters through rendered CLI JSON.
+- Inspect/plan/status/doctor machine results include additive `contract_version: "v1"` metadata.
+- Bounded `AGENTS.md` guidance now directs coding agents toward structured BaseHarbor/MCP interfaces and away from shell/Docker/Compose bypasses.
+- Repository development now integrates normal feature/fix/chore/dependency work through `develop`; `main` remains the released source line.
+- Pre-release validation defaults to candidates contained in `develop`, while the release workflow continues to require tags contained in `main`.
+
+### Security
+
+- MCP exposes no generic shell, exec, Docker or Compose execution primitive.
+- The initial MCP surface is read-only and local-only over stdio; no remote listener/auth surface is introduced.
+- Machine output and MCP responses remain secret-safe and are covered by marker-secret acceptance.
+- MCP annotations are descriptive hints only; BaseHarbor safety remains enforced by explicit semantic operations and the existing ownership/isolation/verification paths.
+
+## [0.4.11] - 2026-09-21
+
+### Final acceptance and lifecycle hardening
+
+- `baha app destroy` now recovers safely from incomplete generated runtime state instead of refusing managed-secret applications. It derives canonical runtime paths, verifies exact Compose ownership, removes only ownership-verified expected runtime resources when generated Compose files are missing, and verifies OpenBao policy/AppRole ownership directly without depending on the application credential file.
+- Repository workload/log-registration cleanup and full-reset state removal remain available during partial-runtime recovery; ambiguous resource ownership still fails closed.
+
+- Ctrl-C handling is now reliable across long-running lifecycle operations and raw terminal prompts: the first interrupt cancels work immediately, a second interrupt exits immediately, and a single interrupt is force-bounded to two seconds if a child/cleanup path ignores cancellation.
+- Linux path completion and hidden backup-password prompts now handle Ctrl-C locally while restoring terminal settings, and user cancellation exits with code 130 instead of being presented as a normal runtime failure.
+- Best-effort workload cleanup after cancellation is capped at two seconds instead of waiting up to thirty seconds.
+
+- Provider preflight/status visibility now follows explicit application capability intent: undeclared object storage, traces, telemetry, metrics, logs and exposure providers are absent from normal output instead of appearing as meaningless OK checks. Obsolete logs/metrics state can still be discovered internally for cleanup.
+- Fixed the Manifest v1 logs validation insertion regression that broke compilation after the explicit-logs change.
+
+- Capability-intent audit completed: metrics, telemetry, traces, exposure, object storage, secrets and runtime broker already gate provider lifecycle behind explicit application intent. Logs now also participate in the central PortableContract/capability-binding model, and regression tests enforce that deployment/environment policy cannot invent undeclared provider capabilities.
+
+- Application log collection is now explicit Manifest v1 intent via `logs.collect`; `environment: dev` no longer silently provisions Loki/Alloy. Without declared logs intent, BaseHarbor removes stale workload log overrides/registrations and skips log-ingestion verification.
+- `BASEHARBOR_LOGS_ENABLED` may disable declared logging but can no longer create undeclared application capability intent.
+
+- Repeated `baha up` is now a true bounded no-op when both the existing control plane and repository application are already READY and the successfully applied desired-state fingerprint still matches; STOPPED applications use the existing start path, while drift/degraded state falls back to full reconciliation.
+- Repository convergence records a protected desired-state SHA-256 fingerprint only after successful verification. The fingerprint covers repository source inputs plus deployment realization state, so READY alone can never suppress a real source/Compose/manifest/deployment change.
+- Apply output now labels static plan entries as `desired actions` rather than incorrectly calling them detected `changes`.
+
+- Shell-style interactive path prompts now keep the displayed current working directory static while editing; relative/absolute path input and completion only affect the text to the right of `$`.
+
+- Interactive Linux path prompts now use literal shell-style `label:path$` syntax, with `~` under the user's home directory; OpenBao bootstrap/unseal prompts use `OpenBao-recovery-key` / `OpenBao-decrypt-key` labels.
+
+- Interactive Linux path prompts now use a shell-like current-directory prefix (`~/.../` or `/.../`) directly on the input line, replacing the separate path-base/browsing blocks.
+
+- Interactive Linux path prompts now show a live `Browsing` directory that follows the currently typed relative, absolute or `~/...` path while preserving the original process working directory.
+
+- Interactive path prompts now always show their current path base even when the input reader cannot provide a raw terminal file descriptor; tab completion remains optional while path orientation is guaranteed.
+
+- Repository-aware first `baha up` once again resolves configurable Compose host ports before the first workload start, persists BaseHarbor-selected values in protected deployment state and reuses the existing post-start bind-conflict retry only as a race-condition fallback.
+
+- Compose-backed lifecycle activities now stream secret-safe live detail such as image pulls, builds, container creation/start and readiness phases into the current CLI activity instead of hiding runtime progress until completion.
+
+- Long-running CLI lifecycle activities now expose elapsed time while running and include actual duration on completion, so slow fresh-start phases can be identified without verbose/debug mode or guessed ETAs.
+
+- Interactive file and directory prompts now show the current path base and explain where relative paths resolve, so recovery, TLS/certificate and future path selection remain orienting and predictable.
+
+- Interactive `baha up` now reprompts in-place when a fresh OpenBao recovery output path already exists or an unseal recovery path is invalid, instead of aborting the guided setup; explicit/non-interactive paths remain deterministic and fail closed.
+
+- Repository applications that were intentionally destroyed or have never been applied now report `NOT APPLIED` in status/doctor instead of synthetic downstream service failures and `DEGRADED`; the next action is normal `baha up` / `baha app apply`.
+
+- Repository workload stop/down/destroy no longer resolve required secret payloads merely to render and stop existing Compose services; start/apply paths continue to require real secret resolution.
+
+- `baha app destroy` now remains ownership-safe but recovery-capable: managed-runtime template drift no longer blocks deletion, and an uninitialized OpenBao control plane is treated as having no application scope to delete; sealed or ambiguous OpenBao still fails closed.
+
+- `baha app doctor --fix` now fails closed when the existing OpenBao control plane is uninitialized or sealed instead of continuing into application reconciliation.
+
+- Real MailFlow acceptance verified clean repository adoption, fresh startup, no-op `baha up`, STOPPED -> READY recovery, encrypted backup/restore, strict fast-forward application update, TLS readiness, required/generated secrets and ownership-safe destroy behavior.
+- OpenBao required-secret reads are batched per observation instead of repeating full scope/login/list/read work per key, substantially reducing normal `status` and `doctor` latency.
+- Fresh OpenBao recovery prompts now render their question and path input reliably before blocking for input.
+- `baha app update --check` now reports the exact dirty working-tree paths and change classes that block automatic update while preserving the fail-closed no-reset/no-stash policy.
+- Provider-registry helper call regressions found during fresh acceptance were corrected before release.
+
+### Added
+
+- Repository adoption workflow with remote HTTPS/SSH Git inspection through normal Git authentication.
+- Repository-aware root shortcuts for `plan`, `status` and `doctor`.
+- Secret-safe `-o json` / `--output json` result paths for inspect, plan, status and doctor.
+- Optional idempotent bounded BaseHarbor guidance in `AGENTS.md` through `baha app init --agents`.
+- Five-minute onboarding and first-class local Compose Playground documentation.
+- Bash, Zsh and Fish shell completion generated by `baha completion`, including fixed-value environment completion.
+- Shared terminal UX renderer with semantic result states, delayed progress feedback and stable non-TTY output.
+- Read-only `baha tui` dashboard with Overview, Status and Doctor views backed by the same structured health models as the CLI.
+- Global `--plain`, `--no-input`/ `--non-interactive` and root `--version` controls.
+- Read-only configured-application completion and typo suggestions for commands/high-frequency flags.
+- Bash completion now honors the active cursor word through `COMP_CWORD` and correctly splits value/description records on tabs, including completion immediately after a subcommand space.
+
+### Changed
+
+- `baha up -e ENV` / `--environment ENV` selects deployment context without rewriting the portable repository manifest.
+- `baha app init -e ENV` accepts the same short environment alias.
+- Human and JSON application status use the same readiness result model.
+- Doctor JSON is produced directly from shared preflight results rather than terminal rendering.
+- `baha app inspect --json` remains a compatibility alias while `-o json` is the canonical structured-output form.
+- Human status and doctor views are grouped into scan-friendly sections with one final overall state and actionable next commands.
+- Successful mutations use precise result states such as `CREATED`, `UPDATED`, `DELETED`, `REMOVED`, `STARTED`, `STOPPED`, `READY` and `VERIFIED` instead of generic `OK`.
+- `--quiet`/`--silent`, `--verbose` and `--no-color` are handled consistently as global human-output controls.
+- Potentially slow lifecycle operations show delayed contextual progress; fast operations do not flash activity indicators and CI/non-TTY output remains line-oriented.
+- Human result details and help text wrap to terminal width; long help may use `$PAGER` only on a real TTY.
+- `-v` is reserved consistently for `--verbose`; version remains available through `baha version` and `baha --version`.
+- Broken-pipe/EPIPE termination is silent for normal Unix pipelines.
+- Application status is now a bounded fast snapshot rather than a readiness wait loop; broker and subsystem checks no longer make `baha status` appear hung.
+- Normal status hides low-level Compose/curl/OpenBao diagnostics behind `--verbose`, and repository TLS renders inside the same status hierarchy before the final READY/DEGRADED state.
+- Application doctor now follows the same concise human-output policy: raw Compose/OpenBao/curl diagnostics stay behind `--verbose`, duplicate workload problems and empty workload-service sections are suppressed, TLS is integrated before the final health state, and repair guidance is presented through the normal Next actions.
+- TUI Status and Doctor views use the same concise human-detail mapping as the CLI, so raw Compose/OpenBao/curl diagnostics never leak into the interactive dashboard.
+- `baha app doctor --fix` now classifies repairability from structured doctor results instead of rendered terminal text, so human-output changes cannot silently disable safe repair.
+- Safe doctor repair can restore an existing stopped BaseHarbor control plane before application convergence and then uses the normal application apply path. BaseHarbor-declared required secrets no longer block read-only Compose security rendering, and every repository workload start is security-checked again immediately before start.
+
+- Cross-command lifecycle audit aligned workload-security behavior across preflight, apply, up, restore, backup restart and TLS reload paths.
+- Human, JSON and TUI application health now include the same repository TLS observation.
+- Repository manifest discovery now uses a typed not-found sentinel rather than parsing error-message strings.
+### Security
+
+- Remote Git URLs containing embedded userinfo/credentials are rejected; authentication is delegated to normal Git mechanisms.
+- Structured status/doctor output excludes secret values and reports only readiness metadata for required secrets.
+- Structured doctor output is read-only and cannot be combined with `--fix`.
+- BaseHarbor edits only its own bounded `AGENTS.md` section and fails closed on malformed or ambiguous markers.
+- Weak or ambiguous repository evidence remains non-authoritative and never silently grants runtime permissions or replaces infrastructure.
+- `NO_COLOR`, `TERM=dumb` and reduced-motion mode suppress visual effects without changing command semantics.
+- Progress output never invents percentages or ETAs, and quiet mode preserves failure diagnostics.
+- Structured JSON paths remain isolated from ANSI/color/progress rendering.
+- `--no-input` guarantees guided flows never prompt and fail closed with actionable explicit-input instructions.
+- The TUI is read-only and refuses non-interactive, plain, piped and CI execution.
+
+
+## [0.4.10] - 2026-09-20
+
+### Added
+
+- Generic provider observability declarations in Provider Integration Contract v1 for provider-owned metrics/log/trace signals without product-specific collector branches.
+- Protected provider metrics source registry with placement, sharing-boundary and application-authorization filtering.
+- Versioned `traces/v1` platform contract and Tempo 3.0.2 as the first managed shared Compose trace-storage reference provider.
+- Managed OpenTelemetry Collector to Tempo routing with real end-to-end verification: the BaseHarbor verification trace must be queryable from Tempo before trace storage is READY.
+- Provider metrics auto-registration for the managed OpenTelemetry Collector, Loki and Tempo when metrics collection policy allows provider signal classes.
+- Real Prometheus `up=1` verification for registered provider metrics.
+
+### Changed
+
+- Metrics collection defaults include safe metrics advertised by managed application/platform providers when the metrics facility is enabled.
+- Prometheus provider state now reconciles generic provider targets and attaches only the provider networks required by authorized registrations.
+- Loki's internal provider network has a stable BaseHarbor-owned name so an authorized metrics collector can join it without broadening application connectivity.
+- OTLP transport and trace retention remain separate: requesting `telemetry.otlp/v1` alone still does not start Tempo.
+- Tempo is deliberately limited to the default shared Compose placement in v0.4.10; unsupported application/external/named-boundary placement fails before mutation.
+
+### Security
+
+- Shared Prometheus filters application-scoped provider signals by the exact applications registered in that Prometheus sharing boundary.
+- Provider observability reachability is a dedicated BaseHarbor-managed collector path and does not grant applications access to shared provider networks.
+- Tempo runs non-root with a read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, explicit writable storage/tmpfs and a loopback-only host API.
+- Provider observability state contains endpoint identity/labels only and no credentials or secret-bearing URLs.
+
+
+## [0.4.9] - 2026-09-20
+
+### Added
+
+- Versioned `logs/v1` lifecycle semantics and Loki 3.7.8 as the first Compose log platform provider.
+- Grafana Alloy 1.19.2 forwarding from selected repository workload services into Loki without a Docker/Podman socket.
+- Shared/default, named shared-boundary and application-scoped Loki placement through the existing provider-placement model.
+- Real Loki readiness and query-based ingestion verification before the logs path is READY.
+- Repository Compose workload security preflight with machine-readable allow/warn/deny findings.
+- Reusable executable Provider Integration Contract conformance harness and deterministic fake provider.
+- Fault-injection coverage for CREATE/NOOP, drift/repair, provider outages, malformed bindings, verify failure, retry convergence and ownership-safe destroy.
+
+### Changed
+
+- Logical log resources and Loki placement are reconciled through the protected provider registry.
+- The application provider registry now consumes the canonical Provider Integration Contract descriptor mapping instead of maintaining a duplicate provider switch.
+- Development log collection defaults on; test/staging/production remain opt-in platform policy.
+- `app apply`, `app up`, `status`, `doctor`, `down` and `destroy` now reconcile the managed log lifecycle where enabled.
+
+### Security
+
+- Repository workloads that request privileged mode, host network/PID/IPC, runtime sockets, dangerous capabilities or critical host mounts fail closed in managed environments before workload mutation.
+- Development-only exceptions require explicit acknowledgement; host devices are warnings by default in development and denies in managed environments.
+- Loki and Alloy run read-only, drop Linux capabilities, use `no-new-privileges`, receive no container-runtime socket and expose host-facing ports on loopback only.
+- Log registration state and provider files are owner-only and contain no credentials.
+
+
+## [0.4.8] - 2026-09-20
+
+### Added
+
+- Continuous repository-to-contract reconciliation for evolving applications, including typed capability direction and runtime-operation evidence.
+- Repository inspection detection for S3-compatible usage/runtime bucket creation, OpenMetrics `/metrics` endpoints and OTLP export.
+- Real `object-storage.s3/v1` application-time create/get/delete execution through a shared mTLS Runtime Provider Executor.
+- Persistent asynchronous runtime-resource operations with idempotent mutation keys and restart/resume reconciliation.
+- Real runtime S3 bindings with bucket-scoped IAM credentials and authenticated native S3 Put/Get consumption.
+- Versioned `metrics/v1` capability specification for application-provided OpenMetrics-compatible HTTP sources.
+- Provider-neutral Manifest v1 metrics source declarations with logical source name, workload service, target port and path.
+- Prometheus 3.14.0 as the first lazy shared Compose metrics provider with automatic file-based target discovery.
+- Real scrape/ingestion verification and manual-only two-application shared-provider acceptance coverage.
+- Minimal platform-level cross-application connectivity commands: `baha connect SOURCE TARGET`, `baha disconnect SOURCE TARGET` and `baha connections`.
+- Directed Compose connectivity realized through a hardened BaseHarbor Runtime relay instead of a shared source/target bridge network.
+
+### Changed
+
+- Canonical Manifest v1 output is sparse and omits disabled optional capabilities while remaining backward compatible with existing explicit `enabled: false` input.
+- Repeated repository inspection reports satisfied/new/ambiguous/stale state without destructively rewriting explicit application intent.
+- Repository-first `baha up` now reports new/ambiguous capability drift and runtime-operation hints before convergence while leaving the contract unchanged.
+- Added the versioned OpenAPI 3.1 Runtime Resource API v1 contract for provider-neutral application-time resources, including idempotency, asynchronous operation state and secure binding boundaries.
+- Interactive API documentation policy is now explicit: development on by default; test/staging and production off by default unless platform/operator policy enables it.
+- The per-application runtime component is generalized as the **Application Runtime Broker**: managed OpenBao secrets remain a runtime module, canonical application-bound secret routes move under `/runtime/v1/secrets`, and existing app-qualified routes remain compatibility aliases.
+- Development brokers now serve embedded Swagger/OpenAPI documentation on a stable automatically allocated host-loopback port; no public CDN or public bind is required.
+- The canonical broker DNS endpoint is `baseharbor-runtime`; the legacy `baseharbor-secrets` alias remains available for compatibility.
+- `baha app apply` and `baha app up` now lazily start/reuse the shared Runtime Provider Executor whenever an explicit runtime resource permission requires it.
+- Runtime-only applications receive a deterministic broker backend network without requiring artificial PostgreSQL/Valkey services; S3 provider-network access is attached only to workload services explicitly authorized for `object-storage.s3/v1`.
+- Global `baha destroy --yes` removes the BaseHarbor-owned shared Runtime Provider Executor before the shared object-storage provider.
+- Metrics collection is deployment policy rather than application product intent: development defaults on; test/staging/production require explicit opt-in unless overridden with `BASEHARBOR_METRICS_ENABLED`.
+- Each participating application gets an isolated metrics network; only declared/authorized metrics-source services join it, while the selected Prometheus instance is attached only to explicitly registered application networks.
+- Prometheus placement now uses the generic provider-placement model: safe shared default, optional named sharing boundaries and application-scoped placement, with unsupported placement failing before mutation.
+- Provider placement semantics are explicit: `application` means a dedicated provider instance for one application/environment; `shared` means lazy BaseHarbor Platform/Core Runtime infrastructure; `external` remains externally lifecycle-owned.
+- Cross-application connectivity is independent from provider sharing; `app down` suspends relay runtime while preserving policy and `app up`/`apply` reconcile it.
+- Application destroy removes only its metrics target/trust-edge state or dedicated provider according to placement; global destroy removes every BaseHarbor-owned shared Prometheus default/sharing-boundary instance and data volume.
+
+### Security
+
+- Missing repository evidence never authorizes capability removal.
+- Detected runtime operations such as S3 bucket creation are evidence only and never grant runtime authorization or provision infrastructure.
+- Applications and per-app brokers never receive provider-global S3 administrator credentials; those remain at the Runtime Provider Executor boundary.
+- Broker and executor run without Docker/Podman sockets; the executor has no host-published port and accepts only BaseHarbor SPIFFE/mTLS workload identities.
+- Runtime resource ownership is application/environment scoped; resource IDs cannot be used to read, bind or delete another application's resource.
+- Runtime S3 credentials are excluded from asynchronous operation state, normal resource metadata, logs and manifests and are returned only by the authenticated binding endpoint.
+- Prometheus target state contains endpoint identity and attribution labels only; it does not contain application credentials, provider-global credentials or portable product configuration.
+- Metrics collection does not implicitly provision Grafana, Loki or Tempo.
+- Cross-application connectivity is deny-by-default and directional; target services never join source link networks, and connectivity relays have no host-published port or Docker/Podman socket and run hardened non-root/read-only.
+
+## [0.4.7] - 2026-09-19
+
+### Added
+
+- Versioned `telemetry.otlp/v1` capability specification for explicit OTLP export semantics independent of any observability backend product.
+- Typed provider-neutral OTLP workload binding in the shared capability lifecycle and Provider Protocol v1.
+- OpenTelemetry Collector 0.161.0 as the first lazy shared Compose reference provider.
+- External OTLP endpoint binding through deployment-owned state without BaseHarbor taking provider lifecycle ownership.
+- Standard OpenTelemetry workload configuration through `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_SERVICE_NAME` and `OTEL_RESOURCE_ATTRIBUTES`.
+- Real OTLP HTTP/protobuf verification using an exported trace accepted by the selected OTLP endpoint.
+- Manual-only Docker/Compose acceptance coverage for the managed Collector path.
+
+### Changed
+
+- Canonical telemetry terminology is now `telemetry.otlp/v1`; OpenTelemetry is treated as the ecosystem/instrumentation model and the Collector as one replaceable provider implementation.
+- Shared provider registry records managed Collector placement as BaseHarbor-owned/shared and external OTLP destinations as externally owned.
+- Repository workloads using managed OTLP attach to a dedicated BaseHarbor telemetry integration network; external OTLP bindings do not create that network.
+- Global `baha destroy --yes` removes the shared BaseHarbor-owned Collector after application bindings are released.
+- Common telemetry resource identity uses OpenTelemetry service/environment semantic attributes plus BaseHarbor application/resource/provider attribution.
+- Shared provider lifecycle operations expose secret-safe metadata-only instrumentation hooks for preflight/apply/bind/verify so later observability providers can instrument the same core lifecycle.
+
+### Security
+
+- OTLP endpoints and provider topology remain deployment/provider state rather than portable application identity.
+- Optional external OTLP authorization headers are accepted only from deployment/runtime state and injected at the trusted workload/provider boundary.
+- Authorization headers and other credential material are not written to `baseharbor.yaml`, provider-registry state or normal diagnostics.
+- Invalid, missing or ambiguous OTLP bindings fail before provider mutation.
+
+### Compatibility
+
+- Manifest version remains `1`; `telemetry.otlp` is additive and opt-in.
+- Existing PostgreSQL, Valkey, OpenBao, secure-binding, managed exposure and S3 behavior remains compatible.
+- Requesting OTLP transport does not provision Prometheus, Loki, Tempo or Grafana.
+- Kubernetes/OpenShift collector realization, metrics/logs/traces storage providers and broader observability policy remain later roadmap work.
+
+
+## [0.4.6] - 2026-09-19
+
+### Added
+
+- Versioned `object-storage.s3/v1` capability specification with logical bucket identity, S3-compatible application semantics and provider-neutral secure bindings.
+- SeaweedFS 4.47 as the first lazy shared Compose reference provider for S3-compatible object storage.
+- Manifest v1 `services.object_storage` bucket declarations plus deterministic `--s3` and `--s3-bucket` CLI paths.
+- Standard host/workload S3 bindings and AWS-compatible environment variables without requiring a BaseHarbor SDK.
+- Authenticated SigV4 Put/Get readiness verification in apply, up, status and doctor.
+- Real Docker/Compose acceptance coverage for S3 provisioning, binding, restart, masking, isolation and destroy behavior.
+
+### Changed
+
+- Shared provider registry now records SeaweedFS as a BaseHarbor-owned shared provider while logical buckets remain application-owned resources.
+- Repository workloads requesting S3 attach to a dedicated BaseHarbor object-storage integration network while provider-native topology remains deployment state.
+- Global `baha destroy --yes` removes the shared BaseHarbor-owned SeaweedFS provider only after application bindings have been released.
+
+### Security
+
+- Every managed logical bucket receives separate access credentials and bucket-scoped SeaweedFS IAM authorization.
+- SeaweedFS is explicitly started with IAM enabled; BaseHarbor does not persist a global S3 superuser credential.
+- S3 access-key and secret-key values are owner-only and masked by default in `baha app env`.
+- SeaweedFS IAM administration receives per-bucket credential commands through stdin rather than process arguments, keeping credentials out of runtime command lines and command-error rendering.
+- Capability metadata and provider-registry state contain references/identity only, never plaintext S3 credentials.
+
+### Recovery
+
+- Application backup and restore fail closed for manifests containing managed object storage until object contents are part of the BaseHarbor recovery unit. BaseHarbor does not claim an incomplete S3 recovery as successful backup/restore.
+
+### Compatibility
+
+- Manifest version remains `1`; `services.object_storage` is an additive optional capability.
+- Existing PostgreSQL, Valkey, OpenBao, secure-binding and managed-exposure behavior remains compatible.
+- SeaweedFS is a reference provider, not application identity. Ceph RGW, AWS S3 and other conforming S3 providers can implement the same `object-storage.s3/v1` contract; dynamic external-provider loading/provider-selection UI remains future work.
+
+
+## [0.4.5] - 2026-09-19
+
+### Added
+
+- Shared `secure-binding/v1` model for provider-neutral workload identity, credential references, trust material, authorization metadata, secret references, security lifecycle declarations and machine-readable diagnostics.
+- Secure binding support in the shared capability lifecycle and `baseharbor.provider/v1` workload binding protocol.
+- SPIFFE-based identity mapping for the existing managed-secrets/runtime-broker path.
+
+### Changed
+
+- Managed `secrets/v1` bindings now expose existing security semantics through provider-neutral references while preserving OpenBao as the current reference provider.
+- Secure binding metadata is validated during plan construction before provider preflight or mutation.
+- Secure binding references are restricted to opaque `baseharbor://` references.
+
+### Security
+
+- Plaintext credentials, credential-bearing URLs, tokens, private keys and secret values are rejected from the shared secure-binding reference boundary.
+- Application/environment identity and credential references remain isolated across bindings.
+- Provider-specific OpenBao AppRole, policy, KV and PKI internals remain protected provider state.
+
+### Compatibility
+
+- Manifest v1 and existing Compose/OpenBao/runtime-broker behavior remain compatible.
+- No new application-facing security configuration is required.
+- Human OIDC/RBAC/MFA/JIT/breakglass, full cross-provider rotation completion and managed public certificate issuance remain intentionally deferred.
+
+## [0.4.4] - 2026-09-19
+
+### Added
+
+- Shared machine-readable endpoint/exposure core with stable logical workload-service identity and HTTP/HTTPS readiness semantics reusable outside the CLI.
+- Versioned `exposure.http/v1` Capability Specification with provider-neutral logical route, target service/port, transport and `public|internal` visibility intent.
+- Caddy as the first application-scoped Compose reference provider for explicit managed HTTP/HTTPS exposure behind the existing Provider Integration Contract and provider registry.
+- Stable BaseHarbor exposure network attached only to explicitly exposed workload services through generated Compose override state, without rewriting application Compose source.
+- End-to-end managed exposure lifecycle across apply/up, status/doctor, down/destroy, backup/restore and existing/BYOC TLS update.
+
+### Changed
+
+- Existing application-owned HTTP/HTTPS publishers now use the shared endpoint probing core while remaining application-owned observation/readiness state rather than managed exposure.
+- The shared capability lifecycle supports staged prepare/preflight, provision/bind and verify phases so traffic providers can be coordinated around workload convergence without introducing a second lifecycle engine.
+- Managed public exposure binds through the host-facing provider port; managed internal exposure is loopback-only in the Compose reference implementation.
+- Managed HTTPS reuses existing/BYOC deployment TLS state and restarts/reconciles the Caddy provider when protected certificate material changes.
+
+### Security
+
+- Managed exposure preflight completes before traffic-provider mutation and fails closed on invalid provider/TLS prerequisites.
+- Caddy provider convergence snapshots and rolls back BaseHarbor-owned state on failed new/changed realization.
+- Destroy removes only BaseHarbor-owned routing/provider state; application Compose source and application-owned volumes remain untouched.
+- FQDNs, host-published ports, certificate source paths, generated network names and Caddy configuration remain deployment/provider state rather than portable application intent.
+
+### Compatibility
+
+- Manifest version remains `1`; `exposure.http` is an additive optional contract extension. Existing manifests and app-owned publishers continue to work unchanged.
+- Compose remains the complete current runtime provider.
+- Managed ACME, OpenBao PKI issuance, automatic certificate renewal, Traefik, Kubernetes Gateway API/OpenShift Routes, cloud load balancers, service mesh and air-gap/private-registry work remain intentionally deferred.
+
+### Fixed
+
+- Repository inspection now treats an existing `baseharbor.yaml` as authoritative for application identity, declared capabilities, required secrets and workload selection while keeping heuristic evidence visible as supplemental signals.
+- `app init --quick` no longer promotes heuristic credential-like names from env examples into mandatory managed secrets.
+- Global and application status now distinguish an intentionally stopped runtime from a running-but-unready failure state.
+- Provider-registry validation now happens during preflight before workload/runtime mutation.
+- Failed repository workload starts/readiness attempts clean up resources created by that failed attempt without deleting application-owned persistent data or pre-existing workload state.
+- Repeated reconciliation reuses valid runtime mTLS identities; actual identity rotation recreates the broker so bind mounts cannot retain stale certificate/key inodes.
+- `app destroy` now shows preserved repository deployment/TLS state and supports explicit `--full-reset` for BaseHarbor-owned repository deployment state without touching external certificate sources.
+- Added ownership-aware `baha destroy --yes` for explicit global control-plane/runtime-state removal after application bindings have been released.
+- Fresh OpenBao bootstrap clearly asks for a new recovery output file, reuses filesystem completion, refuses an existing target and preserves the non-interactive `--recovery-file` path.
+
+
+## [0.4.3] - 2026-09-18
+
+### Added
+
+- Read-only repository inspection core with extensible detectors and structured Detected/Suggested/Possible evidence.
+- `baha app inspect [PATH]` with human-readable and `--json` machine-readable output.
+- Detection evidence for Compose/Dockerfile, dependency manifests, env variable names, source imports, configuration endpoint patterns, ports and health checks.
+- Secret-safe repository snapshots that discard env values and skip symlinked/generated/vendor trees.
+
+- Provider Integration Contract v1 with versioned capability specifications and a shared semantic boundary for built-in and future external providers.
+- Initial capability specifications for `database.sql/v1`, `cache.key-value/v1` and `secrets/v1`.
+- Versioned Protocol Buffers schema for the future language-neutral external provider API.
+- Static provider contract conformance foundation and reference integration descriptors for PostgreSQL, Valkey and OpenBao.
+
+### Changed
+
+- Guided `app init` now consumes the shared repository inspection engine instead of owning a separate CLI-only detector.
+- Workload-only repositories no longer receive an invented PostgreSQL default when the workload itself is sufficient application intent.
+- Compose capability detection is service/image scoped to reduce false positives from application environment configuration.
+- `app init --quick` now fails closed when only Suggested/Possible evidence exists and no explicit workload is detected, instead of inventing a backend requirement.
+
+### Architecture
+
+- Provider protocol hardening now defines asynchronous operations, explicit unbind, idempotent mutations, deadline/cancellation rules, gRPC health/security expectations and safe protobuf evolution.
+- Provider configuration uses JSON Schema 2020-12; GraphQL is explicitly reserved for possible future control-plane/query use rather than provider lifecycle.
+- Future external provider transport is based on gRPC/Protocol Buffers and future package distribution on OCI standards, without introducing a dynamic plugin loader yet.
+- Future provider distribution is digest-first, multi-platform through OCI Image Index, and uses OCI subject/referrers plus standard signature/SBOM/provenance mechanisms instead of proprietary BaseHarbor formats.
+- All subsequent capability/provider integrations must use the shared lifecycle/registry contract and add capability-specific conformance rather than product-specific lifecycle paths.
+
+## [0.4.2] - 2026-09-18
+
+### Added
+
+- Persistent provider registry for shared, application-scoped and external/BYO provider instances.
+- Explicit provider ownership and lifecycle semantics for update, backup and destroy planning.
+- Deterministic shared-provider reuse and fail-closed duplicate shared-provider detection.
+- External provider bindings without BaseHarbor taking ownership of provider lifecycle.
+
+### Changed
+
+- PostgreSQL and Valkey are registered as BaseHarbor-owned application-scoped providers.
+- Control-plane OpenBao is registered once as a BaseHarbor-owned shared provider reusable by multiple applications.
+- Successful `app apply` and `app up` reconcile provider registry state; successful `app destroy` releases application bindings and application-owned provider records.
+
+### Security
+
+- Application-scoped providers cannot be bound across application ownership boundaries.
+- Corrupt, duplicate or ambiguous provider registry state fails closed.
+- Registry updates are serialized and persisted atomically with owner-only permissions.
+- External provider records contain non-secret references only.
+
+### Compatibility
+
+- Manifest v1 is unchanged; provider placement remains deployment/operator state.
+- Existing v0.4.1 applications are adopted on their next successful `baha app apply` or `baha app up`.
+
+## [0.4.1] - 2026-09-18
+
+### Added
+
+- A reusable capability-provider domain core with typed capability requirements, provider descriptors, logical resources and workload bindings.
+- Machine-readable capability lifecycle results for `plan -> preflight -> apply -> bind -> verify`, including structured diagnostics suitable for CLI, future Web UI/API and future Operator consumers.
+- Reference capability descriptors for PostgreSQL (`database.sql`), Valkey (`cache.key-value`) and OpenBao (`secrets`).
+- Protected runtime binding metadata now records resolved logical capability/provider/workload bindings alongside the existing standard connection bindings.
+
+### Changed
+
+- Existing Manifest v1 capability types now reuse the shared capability domain while remaining source-compatible inside the application package.
+- Application planning resolves current PostgreSQL, Valkey and OpenBao requirements through fail-closed capability/provider negotiation before runtime mutation begins.
+- Capability preflight completes for all planned resources before the reusable lifecycle permits provisioning mutation.
+
+### Security
+
+- Unsupported capability/provider combinations fail before mutation.
+- Capability diagnostics and runtime metadata contain logical identities and provider names only; secret values and credential-bearing provider configuration remain outside the shared domain model.
+
+### Compatibility
+
+- Manifest v1, the current Compose developer workflow and existing v0.4 runtime behavior remain compatible.
+- Provider registry/ownership policy, additional capability providers and Kubernetes/OpenShift/cloud implementations remain intentionally deferred to later v0.4.x issues.
+
+## [0.4.0] - 2026-09-18
+
+### Added
+
+- A provider-neutral `PortableContract` seam that translates supported Manifest v1 application intent into logical capabilities without exposing Compose project names, host ports, deployment FQDN/TLS source paths or other provider implementation details.
+- Runtime provider identity and capability negotiation with Compose as the current implementation and explicit extension points for future Kubernetes and OpenShift providers.
+- Protected deployment-owned runtime-provider state through `BASEHARBOR_RUNTIME_PROVIDER`; legacy v0.3 state without the key safely resolves to Compose.
+- A central fail-closed runtime-provider guard for remaining application runtime commands, including preflight, backup/restore, workload logs/shell/exec, update, TLS reload, status/doctor, down and destroy.
+- A reusable declarative application input resolver supporting safe defaults, generated values, external/operator values and conditional `required-if` dependencies.
+- Automation-safe `baha app init --input NAME=VALUE` injection for declared non-secret deployment inputs while preserving the existing dedicated flags.
+- Resolver-driven repository deployment initialization for `hostname`, `tls_mode` and conditionally required `cert_dir`, shared by `baha app init` and the repository-aware `baha up` path.
+- Architecture decisions documenting portable contract/provider boundaries, runtime-provider selection and contract evolution/versioning rules.
+
+### Changed
+
+- Manifest v1 is now explicitly treated as the supported compatibility surface and translated one-way into portable application intent rather than being treated as the permanent provider-neutral schema itself.
+- Application requirements, runtime-provider selection and capability-provider/product selection are formally separate concerns; an application requests logical capabilities while deployment/platform policy chooses how they are realized.
+- Contract evolution is fail-closed for unknown required versions or semantics; additive evolution remains preferred and provider-specific escape hatches, when eventually required, must remain optional and namespaced.
+- Repository runtime operations now resolve the deployment-selected runtime provider and required runtime capabilities before entering the current Compose-backed implementation, preventing future providers from silently falling through into Docker/Compose code.
+- `baha app init` and `baha up` ask only for unresolved deployment values when interactive. Complete protected state causes no additional questions; non-interactive operation uses only safe defaults/derivations and never invents an external certificate path.
+- Compose remains the complete and first-class runtime implementation for v0.4. Kubernetes and OpenShift are intentionally not implemented in this release; the new seams are the compatibility boundary they will consume later.
+
+### Security
+
+- Unsupported or unavailable runtime providers fail explicitly instead of silently degrading to Compose or weakening requested runtime guarantees.
+- Secret input values are represented explicitly, render redacted, and are excluded from generic persistable non-secret resolver output by construction.
+- Runtime-provider capability negotiation fails closed when an operation requires behavior the selected provider cannot satisfy.
+- Existing protected deployment state, certificate validation, secret storage and provider-specific security controls remain separate from the portable application contract and are not copied into committed manifests.
+
+### Deprecated
+
+- No public `baha` command or Manifest v1 field is deprecated in v0.4.0. Compose-specific Manifest v1 fields remain supported compatibility inputs, but they are no longer treated as the long-term provider-neutral application model.
+
+### Removed
+
+- Nothing from the supported v0.3 CLI or Manifest v1 workflow is removed in v0.4.0.
+
+## [0.3.0] - 2026-09-17
+
+### Added
+
+- Trusted-local developer access workflows: `baha app psql`, `redis`/`valkey`, masked/reveal-on-demand credentials, workload logs, shell and exec using logical application/resource identities.
+- Health-aware, service-level Compose workload truth shared by `baha app status`, `doctor` and `show`, including HTTP/HTTPS exposure readiness for conventional app-owned web publishers.
+- `baha app show` as a read-only application overview with backend, workload, secret, backup and recovery readiness metadata without exposing secret values or credential-bearing URLs.
+- Guided application backup and restore with secure no-echo password entry, explicit impact previews, verified recovery metadata and `Status: READY` only after successful post-restore verification.
+- Safe Git-backed `baha app update --check` and strict fast-forward application updates, with dirty/diverged history protection, optional encrypted pre-update recovery points and protected update metadata.
+- Guarded BaseHarbor self-update through `baha update --check` and explicit mutation, including release-asset/checksum verification, atomic replacement, retained recovery binary and rollback on failed post-update verification.
+- Workload-only repository applications for explicit Compose workloads that do not require artificial PostgreSQL or Valkey dependencies.
+- Automatic published-port fallback for configurable Compose bindings when host ports are already allocated, including IPv4 and IPv6 loopback/wildcard Docker error forms.
+- Repository deployment runtime initialization for public FQDN and TLS mode while keeping deployment/runtime details outside the portable `baseharbor.yaml` application contract.
+- Existing/BYOC TLS certificate lifecycle with `baha app tls update --check` and `baha app tls update`, including certificate/key/FQDN validation, downgrade protection, protected installation, restart and readiness verification.
+- Linux terminal directory completion for interactive existing-certificate source selection without adding a new readline dependency.
+
+### Changed
+
+- Compose readiness now distinguishes running, starting, unhealthy, exited and missing services instead of treating every running container as READY.
+- HTTP/TLS exposure failures now make the associated workload and whole application NOT READY; redirects are accepted as reachable exposure while 5xx/unreachable endpoints fail readiness.
+- HTTPS readiness continues to probe the local published socket while using the configured public FQDN for HTTP Host and TLS ServerName, allowing hostname-bound application-owned TLS endpoints to be verified locally.
+- Backup/restore interactive UX now retries short or mismatched passwords and shows reliable indeterminate progress without inventing percentage estimates.
+- Restore workload verification now allows a bounded readiness window for real applications to reach service and HTTP/TLS readiness while remaining fail-closed.
+- Application updates reuse the existing plan/preflight/apply/verify lifecycle after source fast-forward; durable applications require either an encrypted recovery point or explicit `--no-backup` acknowledgement before mutation.
+- Self-update keeps stable as the default release channel, refuses downgrades, never invokes `sudo` automatically and reconciles the current repository application through the normal lifecycle when applicable.
+- Repository workload port fallback preserves explicit operator environment overrides and persists BaseHarbor-selected fallback values in protected runtime state for later lifecycle commands.
+
+### Security
+
+- Guided backup/restore passwords are never accepted as command-line values and are passed to the existing hardened recovery path through owner-only in-memory file descriptors on Linux.
+- Update metadata records non-secret state only; raw runtime errors, credentials and secret values are not persisted.
+- TLS updates fail closed on invalid key pairs, FQDN mismatch, downgrade attempts or failed workload recovery and restore the previous protected certificate state on failure.
+- Workload-only applications do not receive invented backend credentials, backend networks or services that they did not request.
+
+## [0.2.0] - 2026-09-10
+
+### Added
+
+- End-to-end developer-journey acceptance that validates a clean MailFlow checkout against the exact BaseHarbor CLI/runtime under test.
+- Release-facing CI coverage for occupied default control-plane ports, fail-closed missing application secrets, workload startup, health checks and restart behavior.
+- Developer-journey documentation defining the product-level acceptance promise for future reference applications.
+- Project-aware guided `baha app init` that detects common Compose files, PostgreSQL, Redis/Valkey, workload services and likely required secret names before asking setup questions.
+- `baha app init --quick` for non-interactive manifest generation from unambiguous detections and safe defaults.
+- Guided PostgreSQL and Redis/Valkey instance selection, including automatic proposals when multiple backend services are visible in the repository.
+- Actionable required-secret readiness output with exact safe `baha app secret set <NAME> --stdin` remediation commands.
+- Explicit generated application secrets in `secrets.required`, with bounded cryptographically secure `random` and `hex` generators persisted directly to managed OpenBao storage.
+- Repository-aware `baha up` happy path that can start/reuse the control plane, prepare OpenBao, converge declared application backends, start the repository workload and verify readiness from one command.
+- Explicit `baha up --control-plane-only` advanced mode for operators and CI flows that intentionally want to skip repository application convergence.
+
+### Changed
+
+- Interactive application initialization now follows the rule "detect first, ask only what is unclear" while the existing explicit flags remain the deterministic CI/automation path.
+- Application initialization previews the generated manifest and never copies detected secret values into `baseharbor.yaml`.
+- `baha app init --quick` now preserves multiple detected logical PostgreSQL and Redis/Valkey instances instead of collapsing them into one default service.
+- Required-secret checks now distinguish configured, missing and unusable values and explicitly report when no application secrets have been configured yet.
+- `baha app apply` now generates only explicitly declared missing generated secrets before the normal required-secret gate; existing values are never automatically overwritten or rotated, and external secrets remain fail-closed user input.
+- A fresh managed-secret repository startup through `baha up` now asks for an operator-held recovery path interactively or requires `--recovery-file PATH` in non-interactive mode instead of requiring a separate OpenBao bootstrap command.
+- `baha up` now routes detected application projects without `baseharbor.yaml` into the existing guided app-init flow; `--yes` uses only unambiguous detections and safe `app init --quick` defaults, while ambiguous projects remain fail-closed.
+- `app.environment` is explicitly defined as deployment context rather than intrinsic application identity, preserving a path for the same logical application to run in multiple future environments/providers.
+- Compose remains the complete v0.x runtime target while provider-specific details stay outside portable application requirements.
+- MailFlow acceptance now validates the real MailFlow `main` branch instead of the temporary v0.2 compatibility branch used during pre-release integration.
+
+### Removed
+
+- Temporary MailFlow v0.2 validation-sync marker accidentally merged with the validation-only compatibility PR.
+
+## [0.1.0-rc.1] - 2026-09-09
+
+### Added
+
+- Formal Semantic Versioning and GitHub Release process for the `baha` CLI.
+- Reproducible release archives for Linux amd64 and arm64.
+- SHA-256 checksums and GitHub build-provenance attestations for release artifacts.
+- Versioned runtime container tags aligned with CLI releases.
+- Verified release installer for released `baha` binaries.
+- Bilingual GitHub Pages documentation with English as the default and German under `/de/`.
+
+### Changed
+
+- The moving development container tag is `edge`; `latest` is reserved for stable releases.
+- Control-plane runtime state is user-global by default instead of repository-relative.
+- Renovate automation is restricted to low-risk updates; platform, major and security-sensitive changes require review.
+- Application runtime startup now retries transient loopback host-port bind races without changing credentials, database names, or persisted volumes.
+
+### Release candidate scope
+
+- This release candidate validates the real GitHub publishing path before `v0.1.0`.
+- It is intentionally not marked as the latest stable release.
+
+[Unreleased]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
+[0.4.26]: https://github.com/mcpdev80/baseharbor/compare/v0.4.25...develop
+[0.4.24]: https://github.com/mcpdev80/baseharbor/compare/v0.4.23...v0.4.24
+[0.4.23]: https://github.com/mcpdev80/baseharbor/compare/v0.4.22...v0.4.23
+[0.4.22]: https://github.com/mcpdev80/baseharbor/compare/v0.4.21...v0.4.22
+[0.4.21]: https://github.com/mcpdev80/baseharbor/compare/v0.4.20...v0.4.21
+[0.4.20]: https://github.com/mcpdev80/baseharbor/compare/v0.4.19...v0.4.20
+[0.4.19]: https://github.com/mcpdev80/baseharbor/compare/v0.4.18...v0.4.19
+[0.4.18]: https://github.com/mcpdev80/baseharbor/compare/v0.4.17...v0.4.18
+[0.4.17]: https://github.com/mcpdev80/baseharbor/compare/v0.4.16...v0.4.17
+[0.4.16]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15.1...v0.4.16
+[0.4.15.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.15...v0.4.15.1
+[0.4.15]: https://github.com/mcpdev80/baseharbor/compare/v0.4.14...v0.4.15
+[0.4.14]: https://github.com/mcpdev80/baseharbor/compare/v0.4.13...v0.4.14
+[0.4.13]: https://github.com/mcpdev80/baseharbor/compare/v0.4.12...v0.4.13
+[0.4.12]: https://github.com/mcpdev80/baseharbor/compare/v0.4.11...v0.4.12
+[0.4.11]: https://github.com/mcpdev80/baseharbor/compare/v0.4.10...v0.4.11
+[0.4.10]: https://github.com/mcpdev80/baseharbor/compare/v0.4.9...v0.4.10
+[0.4.9]: https://github.com/mcpdev80/baseharbor/compare/v0.4.8...v0.4.9
+[0.4.8]: https://github.com/mcpdev80/baseharbor/compare/v0.4.7...v0.4.8
+[0.4.7]: https://github.com/mcpdev80/baseharbor/compare/v0.4.6...v0.4.7
+[0.4.6]: https://github.com/mcpdev80/baseharbor/compare/v0.4.5...v0.4.6
+[0.4.5]: https://github.com/mcpdev80/baseharbor/compare/v0.4.4...v0.4.5
+[0.4.4]: https://github.com/mcpdev80/baseharbor/compare/v0.4.3...v0.4.4
+[0.4.3]: https://github.com/mcpdev80/baseharbor/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/mcpdev80/baseharbor/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/mcpdev80/baseharbor/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/mcpdev80/baseharbor/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/mcpdev80/baseharbor/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/mcpdev80/baseharbor/compare/v0.1.0-rc.1...v0.2.0
+[0.1.0-rc.1]: https://github.com/mcpdev80/baseharbor/releases/tag/v0.1.0-rc.1

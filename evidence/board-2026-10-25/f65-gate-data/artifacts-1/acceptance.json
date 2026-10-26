@@ -1,0 +1,61 @@
+{
+  "baseharbor_version": "unknown",
+  "result": "PASS",
+  "checks": [
+    {
+      "name": "Guided Adoption Happy Path",
+      "status": "PASS",
+      "detail": "pristine repository -> source-neutral components + full capability selection -> canonical HTTPS routes -> READY"
+    },
+    {
+      "name": "New/Edit Zero Needs",
+      "status": "PASS",
+      "detail": "actual New run + No/Cancel unchanged + native CLI/JSON/MCP Footprint parity"
+    },
+    {
+      "name": "Plan / Preflight / Status / Doctor",
+      "status": "PASS",
+      "detail": "advanced read-only diagnostics remain available after the normal happy path"
+    },
+    {
+      "name": "Down / Up",
+      "status": "PASS",
+      "detail": "recommended repository command resumes persistent runtime"
+    },
+    {
+      "name": "Idempotency",
+      "status": "PASS",
+      "detail": "second baha up converged without manual repair"
+    },
+    {
+      "name": "SQL Data Path",
+      "status": "PASS",
+      "detail": "write + read"
+    },
+    {
+      "name": "Cache",
+      "status": "PASS",
+      "detail": "set + get + ttl"
+    },
+    {
+      "name": "Object Storage",
+      "status": "PASS",
+      "detail": "S3 put"
+    },
+    {
+      "name": "Secrets",
+      "status": "PASS",
+      "detail": "dedicated binding verification without value exposure"
+    },
+    {
+      "name": "Runtime Resources",
+      "status": "PASS",
+      "detail": "application-time resource request accepted through mTLS broker"
+    },
+    {
+      "name": "New/Edit SQL Lifecycle",
+      "status": "PASS",
+      "detail": "actual SQL New, add/remove, compatible provider switch; own/shared data and foreign paused resources preserved"
+    }
+  ]
+}

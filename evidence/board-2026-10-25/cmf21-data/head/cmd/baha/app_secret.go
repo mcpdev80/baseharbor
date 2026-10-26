@@ -1,0 +1,303 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+)
+
+var appSecretInput io.Reader = os.Stdin
+var appSecretReadHidden = readApplicationSecretFromTerminal
+var appSecretIsTerminal = appInitReaderIsTerminal
+
+func appSecretCommand(store application.Store) *cli.Command {
+	command := &cli.Command{
+		Name:    "secret",
+		Summary: "Manage application secret values without printing them",
+		Usage:   "baha app secret <command> [options]",
+		Long:    "Stores application secret values in the application's isolated managed secret namespace. Inside a repository containing baseharbor.yaml the application NAME may be omitted.",
+	}
+	command.Children = []*cli.Command{
+		{
+			Name:    "set",
+			Summary: "Create or replace one secret value from stdin or a file",
+			Usage:   "baha app secret set [NAME] KEY [--stdin | --file PATH]",
+			Long:    "In an interactive terminal, omitting an input option securely prompts with terminal echo disabled. --stdin and --file remain deterministic automation paths. Secret values are never accepted as command-line arguments or printed.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
+				name, key, err := parseSecretSetArgs(args)
+				if err != nil {
+					return err
+				}
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret set")
+				if err != nil {
+					return err
+				}
+				result, err := setApplicationSecret(ctx, resolved, key, func() ([]byte, error) { return readSecretSetValueInteractive(ctx, args, appSecretInput, out, key) })
+				if err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, result)
+				}
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
+				term.Section("Secrets")
+				term.Result("UPDATED", "secret", key)
+				return nil
+			},
+		},
+		{
+			Name:    "list",
+			Summary: "List secret key names without values",
+			Usage:   "baha app secret list [NAME]",
+			Long:    "Lists only managed secret key names. Secret values are never returned.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
+				if len(args) > 1 {
+					return usageError("baha app secret list accepts at most one NAME", "Inside an application repository omit NAME.")
+				}
+				name := ""
+				if len(args) == 1 {
+					name = args[0]
+				}
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret list")
+				if err != nil {
+					return err
+				}
+				configured, err := listApplicationSecrets(ctx, resolved)
+				if err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, map[string]any{"application": resolved.Manifest.Name, "secrets": configured})
+				}
+				if len(configured) == 0 {
+					fmt.Fprintln(out, "No application secrets configured.")
+					return nil
+				}
+				fmt.Fprintln(out, "KEY")
+				for _, item := range configured {
+					fmt.Fprintln(out, item.Name)
+				}
+				return nil
+			},
+		},
+		{
+			Name:    "delete",
+			Summary: "Permanently delete one secret and all of its KV versions",
+			Usage:   "baha app secret delete [NAME] KEY [--yes]",
+			Long:    "Without --yes, validates the application secret scope and prints a read-only deletion preview. Inside a repository omit NAME.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				filtered, format, err := parseReadOutputArgs(args, "secret")
+				if err != nil {
+					return err
+				}
+				args = filtered
+				name, key, yes, err := parseSecretDeleteArgs(args)
+				if err != nil {
+					return err
+				}
+				resolved, err := resolveSecretApplication(ctx, store, name, "secret delete")
+				if err != nil {
+					return err
+				}
+				result, err := deleteApplicationSecret(ctx, resolved, key, yes)
+				if err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, result)
+				}
+				appName := resolved.Manifest.Name
+				if !yes {
+					fmt.Fprintf(out, "Would permanently delete secret %s from application %s (%s), including all managed versions.\n", key, appName, resolved.Manifest.Environment)
+					fmt.Fprintln(out, "No changes were made. Re-run with --yes to confirm.")
+					return nil
+				}
+				term := cli.NewTerminal(ctx, out, errOut)
+				term.Header(resolved.Manifest.Name, resolved.Manifest.Environment)
+				term.Section("Secrets")
+				term.Result("DELETED", "secret", key+" permanently deleted")
+				return nil
+			},
+		},
+	}
+	command.Children = append(command.Children, appSecretTLSSetCommand(store))
+	return command
+}
+
+func resolveSecretApplication(ctx context.Context, store application.Store, name, command string) (resolvedApplication, error) {
+	if name == "" {
+		return resolveApplication(ctx, store, nil, command)
+	}
+	return resolveApplication(ctx, store, []string{name}, command)
+}
+
+func parseSecretSetArgs(args []string) (string, string, error) {
+	var positional []string
+	stdin := false
+	filePath := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--stdin":
+			stdin = true
+		case arg == "--file":
+			if i+1 >= len(args) {
+				return "", "", usageError("--file requires a path", "Usage: baha app secret set [NAME] KEY (--stdin | --file PATH)")
+			}
+			i++
+			filePath = args[i]
+		case strings.HasPrefix(arg, "--file="):
+			filePath = strings.TrimPrefix(arg, "--file=")
+		case strings.HasPrefix(arg, "-"):
+			return "", "", usageError("unknown option "+arg, "Usage: baha app secret set [NAME] KEY (--stdin | --file PATH)")
+		default:
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) < 1 || len(positional) > 2 {
+		return "", "", usageError("baha app secret set requires KEY and accepts optional NAME", "Inside a repository: baha app secret set API_TOKEN --stdin")
+	}
+	if stdin && filePath != "" {
+		return "", "", usageError("baha app secret set accepts only one explicit input source", "Use either --stdin or --file PATH.")
+	}
+	if filePath != "" && strings.TrimSpace(filePath) == "" {
+		return "", "", usageError("--file path is empty", "Provide a readable file path.")
+	}
+	if len(positional) == 1 {
+		return "", positional[0], nil
+	}
+	return positional[0], positional[1], nil
+}
+
+func secretSetFilePath(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--file" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(args[i], "--file=") {
+			return strings.TrimPrefix(args[i], "--file=")
+		}
+	}
+	return ""
+}
+
+func readSecretSetValueInteractive(ctx context.Context, args []string, stdin io.Reader, out io.Writer, key string) ([]byte, error) {
+	if path := secretSetFilePath(args); path != "" {
+		return readSecretSetValue(args, stdin)
+	}
+	if hasOption(args, "--stdin") {
+		return readSecretSetValue(args, stdin)
+	}
+	if noInput(ctx) {
+		return nil, usageError("secret value input is required in --no-input mode", "Use 'baha app secret set "+key+" --stdin' or --file PATH.")
+	}
+	if !appSecretIsTerminal(stdin) {
+		return nil, usageError("interactive secret entry requires a terminal", "Use 'baha app secret set "+key+" --stdin' for scripts/CI.")
+	}
+	return appSecretReadHidden(stdin, out, key)
+}
+
+func readApplicationSecretFromTerminal(input io.Reader, out io.Writer, key string) ([]byte, error) {
+	return readApplicationSecretFromTerminalBuffered(input, nil, out, key)
+}
+
+func readApplicationSecretFromTerminalBuffered(input io.Reader, reader *bufio.Reader, out io.Writer, key string) ([]byte, error) {
+	file, ok := input.(*os.File)
+	if !ok {
+		return nil, errors.New("secure application secret entry requires a terminal")
+	}
+	if reader == nil {
+		reader = bufio.NewReader(file)
+	}
+	value, err := readHiddenTerminalLineBuffered(file, reader, out, key+" value: ")
+	if err != nil {
+		return nil, err
+	}
+	if len(value) == 0 {
+		return nil, errors.New("application secret value is empty")
+	}
+	if len(value) > 1<<20 {
+		zeroBytes(value)
+		zeroBytes(value)
+		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	confirmation, err := readHiddenTerminalLineBuffered(file, reader, out, key+" value again: ")
+	if err != nil {
+		zeroBytes(value)
+		return nil, err
+	}
+	defer zeroBytes(confirmation)
+	if !bytes.Equal(value, confirmation) {
+		zeroBytes(value)
+		return nil, errors.New("application secret confirmation does not match; no changes were made")
+	}
+	return value, nil
+}
+
+func readSecretSetValue(args []string, stdin io.Reader) ([]byte, error) {
+	if path := secretSetFilePath(args); path != "" {
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("open application secret file: %w", err)
+		}
+		defer file.Close()
+		return readSecretValue(file)
+	}
+	return readSecretValue(stdin)
+}
+
+func parseSecretDeleteArgs(args []string) (string, string, bool, error) {
+	var positional []string
+	yes := false
+	for _, arg := range args {
+		switch {
+		case arg == "--yes":
+			yes = true
+		case strings.HasPrefix(arg, "-"):
+			return "", "", false, usageError("unknown option "+arg, "Usage: baha app secret delete [NAME] KEY [--yes]")
+		default:
+			positional = append(positional, arg)
+		}
+	}
+	if len(positional) < 1 || len(positional) > 2 {
+		return "", "", false, usageError("baha app secret delete requires KEY and accepts optional NAME", "Inside a repository: baha app secret delete API_TOKEN --yes")
+	}
+	if len(positional) == 1 {
+		return "", positional[0], yes, nil
+	}
+	return positional[0], positional[1], yes, nil
+}
+
+func readSecretValue(reader io.Reader) ([]byte, error) {
+	value, err := io.ReadAll(io.LimitReader(reader, (1<<20)+1))
+	if err != nil {
+		zeroBytes(value)
+		return nil, errors.New("read application secret failed")
+	}
+	if len(value) > 1<<20 {
+		return nil, errors.New("application secret value exceeds the 1048576-byte limit")
+	}
+	if len(value) == 0 {
+		return nil, errors.New("application secret value is empty")
+	}
+	return value, nil
+}

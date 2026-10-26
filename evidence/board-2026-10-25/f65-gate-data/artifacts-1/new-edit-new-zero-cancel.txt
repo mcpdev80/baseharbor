@@ -1,0 +1,15 @@
+What does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [ ] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+cancel
+Error: wizard cancelled without changes

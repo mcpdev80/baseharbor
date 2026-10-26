@@ -1,0 +1,18 @@
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/stop
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/remove-runtime
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/add
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/resume
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/start
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/replace
+=== RUN   TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/update
+--- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact (0.07s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/stop (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/remove-runtime (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/add (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/resume (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/start (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/replace (0.00s)
+    --- PASS: TestCMF22ProjectionCannotBecomeVerifiedReceiptOrImpact/update (0.00s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.078s

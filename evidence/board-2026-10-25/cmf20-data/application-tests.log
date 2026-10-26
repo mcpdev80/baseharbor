@@ -1,0 +1,1771 @@
+=== RUN   TestResolveServiceBindingDefaultPostgres
+--- PASS: TestResolveServiceBindingDefaultPostgres (0.00s)
+=== RUN   TestResolveServiceBindingNamedValkey
+--- PASS: TestResolveServiceBindingNamedValkey (0.00s)
+=== RUN   TestResolveServiceBindingMissingFailsClosed
+--- PASS: TestResolveServiceBindingMissingFailsClosed (0.00s)
+=== RUN   TestAuthoredIdentityRejectedBeforeStateMutation
+--- PASS: TestAuthoredIdentityRejectedBeforeStateMutation (0.00s)
+=== RUN   TestCanonicalIdentityAndAuthoredSerializationBoundary
+--- PASS: TestCanonicalIdentityAndAuthoredSerializationBoundary (0.00s)
+=== RUN   TestCanonicalRecordMissingIdentityFailsWithoutAllocation
+--- PASS: TestCanonicalRecordMissingIdentityFailsWithoutAllocation (0.00s)
+=== RUN   TestResolveAvailabilityFailsBeforeMutationForUnsupportedRuntimeHA
+--- PASS: TestResolveAvailabilityFailsBeforeMutationForUnsupportedRuntimeHA (0.00s)
+=== RUN   TestResolveAvailabilityAllowsExplicitNonHAException
+--- PASS: TestResolveAvailabilityAllowsExplicitNonHAException (0.00s)
+=== RUN   TestProviderIntentMatchesNativeHAAndRejectsUnsupportedMemberOverrides
+--- PASS: TestProviderIntentMatchesNativeHAAndRejectsUnsupportedMemberOverrides (0.00s)
+=== RUN   TestAvailabilityIntentRoundTrip
+--- PASS: TestAvailabilityIntentRoundTrip (0.00s)
+=== RUN   TestAvailabilityRejectsSingleInstanceHA
+--- PASS: TestAvailabilityRejectsSingleInstanceHA (0.00s)
+=== RUN   TestVerifyPostgresProviderUsesRuntimeNeutralSemanticProbe
+--- PASS: TestVerifyPostgresProviderUsesRuntimeNeutralSemanticProbe (0.00s)
+=== RUN   TestVerifyValkeyProviderUsesRuntimeNeutralSemanticProbe
+--- PASS: TestVerifyValkeyProviderUsesRuntimeNeutralSemanticProbe (0.00s)
+=== RUN   TestVerifyBackendProviderPropagatesSemanticProbeFailure
+--- PASS: TestVerifyBackendProviderPropagatesSemanticProbeFailure (0.00s)
+=== RUN   TestObserveSQLConsumerInventoryRequiresActualCredentialBoundCatalog
+--- PASS: TestObserveSQLConsumerInventoryRequiresActualCredentialBoundCatalog (0.00s)
+=== RUN   TestBackupMetadataRoundTrip
+--- PASS: TestBackupMetadataRoundTrip (0.00s)
+=== RUN   TestLastBackupMissingIsExplicit
+--- PASS: TestLastBackupMissingIsExplicit (0.00s)
+=== RUN   TestBackupMetadataRejectsInvalidIdentity
+--- PASS: TestBackupMetadataRejectsInvalidIdentity (0.00s)
+=== RUN   TestResolveCapabilityResourcesUsesReferenceProviders
+--- PASS: TestResolveCapabilityResourcesUsesReferenceProviders (0.00s)
+=== RUN   TestCapabilityBindingsUseStableApplicationWorkloadIdentity
+--- PASS: TestCapabilityBindingsUseStableApplicationWorkloadIdentity (0.00s)
+=== RUN   TestCapabilityBindingsUseLogicalServiceForHTTPExposure
+--- PASS: TestCapabilityBindingsUseLogicalServiceForHTTPExposure (0.00s)
+=== RUN   TestExposureCapabilityUsesCaddyAndServiceBinding
+--- PASS: TestExposureCapabilityUsesCaddyAndServiceBinding (0.00s)
+=== RUN   TestCapabilityBindingsAttachSecureMetadataToManagedSecrets
+--- PASS: TestCapabilityBindingsAttachSecureMetadataToManagedSecrets (0.00s)
+=== RUN   TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled
+--- PASS: TestCapabilityBindingsDoNotClaimPrometheusWhenCollectionDisabled (0.00s)
+=== RUN   TestConnectivityPolicyPersistsOneDirectionalRule
+--- PASS: TestConnectivityPolicyPersistsOneDirectionalRule (0.08s)
+=== RUN   TestConnectivityRuleRequiresResolvedTargetPort
+--- PASS: TestConnectivityRuleRequiresResolvedTargetPort (0.00s)
+=== RUN   TestConnectivityRuleRejectsSourcePort
+--- PASS: TestConnectivityRuleRejectsSourcePort (0.00s)
+=== RUN   TestConnectivityRuleIDIncludesTargetPort
+--- PASS: TestConnectivityRuleIDIncludesTargetPort (0.00s)
+=== RUN   TestApplicationDestroyRequiresConnectivityRelease
+--- PASS: TestApplicationDestroyRequiresConnectivityRelease (0.00s)
+=== RUN   TestConnectivityTargetAliasIsStableUniqueAndDNSBounded
+--- PASS: TestConnectivityTargetAliasIsStableUniqueAndDNSBounded (0.00s)
+=== RUN   TestConsumptionIdentityIsLogicalAndStableAcrossRuntimeTopology
+--- PASS: TestConsumptionIdentityIsLogicalAndStableAcrossRuntimeTopology (0.00s)
+=== RUN   TestSameAndCrossApplicationConsumptionUseSameContract
+--- PASS: TestSameAndCrossApplicationConsumptionUseSameContract (0.00s)
+=== RUN   TestConsumptionIntentRejectsAddressLeakage
+--- PASS: TestConsumptionIntentRejectsAddressLeakage (0.00s)
+=== RUN   TestConsumptionIntentRoundTrip
+--- PASS: TestConsumptionIntentRoundTrip (0.00s)
+=== RUN   TestPortableContractFromManifestMapsLogicalCapabilities
+--- PASS: TestPortableContractFromManifestMapsLogicalCapabilities (0.00s)
+=== RUN   TestPortableContractExcludesDeploymentContext
+--- PASS: TestPortableContractExcludesDeploymentContext (0.00s)
+=== RUN   TestPortableContractUsesLogicalWorkloadComponents
+--- PASS: TestPortableContractUsesLogicalWorkloadComponents (0.00s)
+=== RUN   TestPortableContractCopiesSecretGeneration
+--- PASS: TestPortableContractCopiesSecretGeneration (0.00s)
+=== RUN   TestPortableContractRejectsInvalidManifest
+--- PASS: TestPortableContractRejectsInvalidManifest (0.00s)
+=== RUN   TestPortableContractIncludesProviderNeutralExposureIntent
+--- PASS: TestPortableContractIncludesProviderNeutralExposureIntent (0.00s)
+=== RUN   TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct
+--- PASS: TestPortableContractIncludesMetricsSignalSourceWithoutProviderProduct (0.00s)
+=== RUN   TestPortableContractCarriesExplicitLogsIntent
+--- PASS: TestPortableContractCarriesExplicitLogsIntent (0.00s)
+=== RUN   TestPortableContractDoesNotInventProviderCapabilities
+--- PASS: TestPortableContractDoesNotInventProviderCapabilities (0.00s)
+=== RUN   TestCapabilityBindingsIncludeLogsOnlyWhenDeclared
+--- PASS: TestCapabilityBindingsIncludeLogsOnlyWhenDeclared (0.00s)
+=== RUN   TestControlPlaneLastPermissionConsumerRetirementKeepsDataAndRecovery
+--- PASS: TestControlPlaneLastPermissionConsumerRetirementKeepsDataAndRecovery (0.09s)
+=== RUN   TestDocumentDatabaseManifestContractAndPlan
+--- PASS: TestDocumentDatabaseManifestContractAndPlan (0.00s)
+=== RUN   TestDurableKeyValueContractIsDistinctFromCache
+--- PASS: TestDurableKeyValueContractIsDistinctFromCache (0.00s)
+=== RUN   TestDurableKeyValueManifestRoundTripAndPortableContract
+--- PASS: TestDurableKeyValueManifestRoundTripAndPortableContract (0.00s)
+=== RUN   TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification
+--- PASS: TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification (0.00s)
+=== RUN   TestCacheAndDurableKeyValueCannotShareLogicalInstanceName
+--- PASS: TestCacheAndDurableKeyValueCannotShareLogicalInstanceName (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentPrefersCompleteEnvironmentManifest
+--- PASS: TestResolveRepositoryEnvironmentPrefersCompleteEnvironmentManifest (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentKeepsLegacyRootState
+--- PASS: TestResolveRepositoryEnvironmentKeepsLegacyRootState (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentScopesRootOverride
+--- PASS: TestResolveRepositoryEnvironmentScopesRootOverride (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentRequiresSelectionForMultipleEnvironmentManifests
+--- PASS: TestResolveRepositoryEnvironmentRequiresSelectionForMultipleEnvironmentManifests (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentRejectsDirectoryEnvironmentMismatch
+--- PASS: TestResolveRepositoryEnvironmentRejectsDirectoryEnvironmentMismatch (0.00s)
+=== RUN   TestResolveRepositoryEnvironmentSwitchesFromInsideDifferentEnvironment
+--- PASS: TestResolveRepositoryEnvironmentSwitchesFromInsideDifferentEnvironment (0.00s)
+=== RUN   TestHasRepositoryApplicationFindsEnvironmentOnlyRepository
+--- PASS: TestHasRepositoryApplicationFindsEnvironmentOnlyRepository (0.00s)
+=== RUN   TestExternalProviderRegistrationAndRemoval
+--- PASS: TestExternalProviderRegistrationAndRemoval (0.19s)
+=== RUN   TestExternalProviderBindingAndReleasePreserveForeignInstance
+--- PASS: TestExternalProviderBindingAndReleasePreserveForeignInstance (0.21s)
+=== RUN   TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry
+--- PASS: TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry (0.29s)
+=== RUN   TestGlobalExternalOfferResolutionIsReadOnlyAndSeparatesReferenceFromIssuer
+--- PASS: TestGlobalExternalOfferResolutionIsReadOnlyAndSeparatesReferenceFromIssuer (0.09s)
+=== RUN   TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner
+=== RUN   TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/unrelated-root
+=== RUN   TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/redirected-target
+=== RUN   TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/descriptor-conflict
+--- PASS: TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner (1.30s)
+    --- PASS: TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/unrelated-root (0.29s)
+    --- PASS: TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/redirected-target (0.49s)
+    --- PASS: TestExternalOfferResolutionRejectsBorrowedRedirectedOrConflictingOwner/descriptor-conflict (0.52s)
+=== RUN   TestExternalRemovalRejectsWritableParentOwnership
+=== RUN   TestExternalRemovalRejectsWritableParentOwnership/targets
+=== RUN   TestExternalRemovalRejectsWritableParentOwnership/targets/dev
+--- PASS: TestExternalRemovalRejectsWritableParentOwnership (0.66s)
+    --- PASS: TestExternalRemovalRejectsWritableParentOwnership/targets (0.36s)
+    --- PASS: TestExternalRemovalRejectsWritableParentOwnership/targets/dev (0.30s)
+=== RUN   TestExternalRemovalScopeRequiresAllTargetsAndTwoStages
+--- PASS: TestExternalRemovalScopeRequiresAllTargetsAndTwoStages (0.42s)
+=== RUN   TestExternalRemovalConsentInvalidatedByNewTarget
+--- PASS: TestExternalRemovalConsentInvalidatedByNewTarget (0.11s)
+=== RUN   TestExternalRemovalRejectsUnattributedAndRedirectedOwners
+--- PASS: TestExternalRemovalRejectsUnattributedAndRedirectedOwners (0.20s)
+=== RUN   TestExternalRemovalPlanningIsReadOnlyAndRejectsUnprotectedRegistry
+--- PASS: TestExternalRemovalPlanningIsReadOnlyAndRejectsUnprotectedRegistry (0.09s)
+=== RUN   TestGeneratedSecretManifestRoundTrip
+--- PASS: TestGeneratedSecretManifestRoundTrip (0.00s)
+=== RUN   TestGeneratedSecretValidationRejectsUnsafeShapes
+--- PASS: TestGeneratedSecretValidationRejectsUnsafeShapes (0.00s)
+=== RUN   TestGenerateSecretValueRandom
+--- PASS: TestGenerateSecretValueRandom (0.00s)
+=== RUN   TestGenerateSecretValueHex
+--- PASS: TestGenerateSecretValueHex (0.00s)
+=== RUN   TestOptionalSecretManifestRoundTrip
+--- PASS: TestOptionalSecretManifestRoundTrip (0.00s)
+=== RUN   TestSecretValidationRejectsRequiredOptionalDuplicate
+--- PASS: TestSecretValidationRejectsRequiredOptionalDuplicate (0.00s)
+=== RUN   TestBackendProjectionRetainsExistingIdentityMaterial
+--- PASS: TestBackendProjectionRetainsExistingIdentityMaterial (1.45s)
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/workload-secret
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-secret
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/application-secret-ref
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/workload-trust
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-trust
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/client-id
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/missing-secret
+--- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery (6.94s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/workload-secret (1.27s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-secret (0.79s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/application-secret-ref (0.80s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/workload-trust (0.87s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-trust (1.17s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/client-id (1.18s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/missing-secret (0.85s)
+=== RUN   TestIdentityBindingCannotDropExistingCredentialOrTrustByOmission
+--- PASS: TestIdentityBindingCannotDropExistingCredentialOrTrustByOmission (1.04s)
+=== RUN   TestIdentityWorkloadBindingReprojectionReplacesReadOnlyFiles
+--- PASS: TestIdentityWorkloadBindingReprojectionReplacesReadOnlyFiles (2.38s)
+=== RUN   TestReadOnlyProjectionFileIsIdempotent
+--- PASS: TestReadOnlyProjectionFileIsIdempotent (0.17s)
+=== RUN   TestIdentityPolicyEnvironmentCannotWeakenApplicationMFA
+--- PASS: TestIdentityPolicyEnvironmentCannotWeakenApplicationMFA (0.00s)
+=== RUN   TestIdentityPolicyEnvironmentMayStrengthenAndNarrowMethods
+--- PASS: TestIdentityPolicyEnvironmentMayStrengthenAndNarrowMethods (0.00s)
+=== RUN   TestIdentityPolicyRejectsPasswordlessWithoutWebAuthnMethod
+--- PASS: TestIdentityPolicyRejectsPasswordlessWithoutWebAuthnMethod (0.00s)
+=== RUN   TestLogsCollectionPolicyDefaultsDisabledWithoutManifestIntent
+--- PASS: TestLogsCollectionPolicyDefaultsDisabledWithoutManifestIntent (0.00s)
+=== RUN   TestLogsCollectionEnabledByManifestIntent
+--- PASS: TestLogsCollectionEnabledByManifestIntent (0.00s)
+=== RUN   TestLogsEnabledEnvCannotCreateUndeclaredIntent
+--- PASS: TestLogsEnabledEnvCannotCreateUndeclaredIntent (0.00s)
+=== RUN   TestLogsEnabledEnvCanDisableDeclaredIntent
+--- PASS: TestLogsEnabledEnvCanDisableDeclaredIntent (0.00s)
+=== RUN   TestLogsPolicyExplicitSourceClasses
+--- PASS: TestLogsPolicyExplicitSourceClasses (0.00s)
+=== RUN   TestLogsPolicyRejectsUnknownSourceClass
+--- PASS: TestLogsPolicyRejectsUnknownSourceClass (0.00s)
+=== RUN   TestManagementAuthenticationClasses
+--- PASS: TestManagementAuthenticationClasses (0.00s)
+=== RUN   TestNativeCredentialRoleMappingDoesNotPretendFineGrainedAuthorization
+--- PASS: TestNativeCredentialRoleMappingDoesNotPretendFineGrainedAuthorization (0.00s)
+=== RUN   TestDevelopmentPostgresUIEmailUsesGloballyValidAlias
+--- PASS: TestDevelopmentPostgresUIEmailUsesGloballyValidAlias (0.00s)
+=== RUN   TestNewProviderManagementUIIntentRoundTrip
+--- PASS: TestNewProviderManagementUIIntentRoundTrip (0.00s)
+=== RUN   TestNewProviderManagementUIIntentFailsClosed
+--- PASS: TestNewProviderManagementUIIntentFailsClosed (0.00s)
+=== RUN   TestMessagingManagementUIRendersOnce
+--- PASS: TestMessagingManagementUIRendersOnce (0.00s)
+=== RUN   TestManifestRoundTrip
+--- PASS: TestManifestRoundTrip (0.00s)
+=== RUN   TestManifestNamedServiceInstancesRoundTrip
+--- PASS: TestManifestNamedServiceInstancesRoundTrip (0.00s)
+=== RUN   TestManifestSingleServiceKeepsCompactCompatibility
+--- PASS: TestManifestSingleServiceKeepsCompactCompatibility (0.00s)
+=== RUN   TestManifestObservabilityManagementUIRoundTripWithMetricsOnly
+--- PASS: TestManifestObservabilityManagementUIRoundTripWithMetricsOnly (0.00s)
+=== RUN   TestManifestParsesScalarRequiredSecrets
+--- PASS: TestManifestParsesScalarRequiredSecrets (0.00s)
+=== RUN   TestManifestDoesNotDefaultToSQL
+--- PASS: TestManifestDoesNotDefaultToSQL (0.00s)
+=== RUN   TestRequiredSecretsEnableManagedSecrets
+--- PASS: TestRequiredSecretsEnableManagedSecrets (0.00s)
+=== RUN   TestDeveloperManifestWithoutAppIDParses
+--- PASS: TestDeveloperManifestWithoutAppIDParses (0.00s)
+=== RUN   TestDeveloperManifestWithAppIDIsRejected
+--- PASS: TestDeveloperManifestWithAppIDIsRejected (0.00s)
+=== RUN   TestManifestValidationFailsClosed
+--- PASS: TestManifestValidationFailsClosed (0.00s)
+=== RUN   TestStoreCreateLoadList
+--- PASS: TestStoreCreateLoadList (0.00s)
+=== RUN   TestParserRejectsProviderSpecificServiceNames
+--- PASS: TestParserRejectsProviderSpecificServiceNames (0.00s)
+=== RUN   TestParserRejectsUnknownFields
+--- PASS: TestParserRejectsUnknownFields (0.00s)
+=== RUN   TestManifestHTTPExposureRoundTrip
+--- PASS: TestManifestHTTPExposureRoundTrip (0.00s)
+=== RUN   TestManifestHTTPExposureRequiresExplicitSelectedComponent
+--- PASS: TestManifestHTTPExposureRequiresExplicitSelectedComponent (0.00s)
+=== RUN   TestManifestHTTPExposureVisibilityFailsClosed
+--- PASS: TestManifestHTTPExposureVisibilityFailsClosed (0.00s)
+=== RUN   TestManifestYAMLOmitsDisabledServices
+--- PASS: TestManifestYAMLOmitsDisabledServices (0.00s)
+=== RUN   TestManifestRuntimePermissionsRoundTrip
+--- PASS: TestManifestRuntimePermissionsRoundTrip (0.00s)
+=== RUN   TestManifestRuntimePermissionsFailClosed
+--- PASS: TestManifestRuntimePermissionsFailClosed (0.00s)
+=== RUN   TestManifestMetricsSourceRoundTrip
+--- PASS: TestManifestMetricsSourceRoundTrip (0.00s)
+=== RUN   TestManifestMetricsSourceValidationFailsClosed
+--- PASS: TestManifestMetricsSourceValidationFailsClosed (0.00s)
+=== RUN   TestManifestLogsRoundTrip
+--- PASS: TestManifestLogsRoundTrip (0.00s)
+=== RUN   TestManifestLogsRequireExplicitWorkloadComponents
+--- PASS: TestManifestLogsRequireExplicitWorkloadComponents (0.00s)
+=== RUN   TestManifestLogsRejectUnknownSource
+--- PASS: TestManifestLogsRejectUnknownSource (0.00s)
+=== RUN   TestApplicationIDRoundTripAndValidation
+--- PASS: TestApplicationIDRoundTripAndValidation (0.00s)
+=== RUN   TestApplicationIDRejectsNonV4Identity
+--- PASS: TestApplicationIDRejectsNonV4Identity (0.00s)
+=== RUN   TestMessagingManifestRoundTripPortableContractAndPlan
+--- PASS: TestMessagingManifestRoundTripPortableContractAndPlan (0.00s)
+=== RUN   TestMongoDBServiceBindingUsesApplicationCredentialsOnly
+    mongodb_binding_test.go:28: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestMongoDBServiceBindingUsesApplicationCredentialsOnly (0.24s)
+=== RUN   TestMongoDBHARuntimeFailoverAcceptanceInCI
+    mongodb_ha_runtime_integration_test.go:17: MongoDB HA acceptance requires BASEHARBOR_MONGODB_HA_ACCEPTANCE=1
+--- SKIP: TestMongoDBHARuntimeFailoverAcceptanceInCI (0.00s)
+=== RUN   TestMongoDBManagementUIRuntimeAcceptanceInCI
+    mongodb_management_ui_integration_test.go:20: MongoDB management UI acceptance requires BASEHARBOR_MONGODB_UI_ACCEPTANCE=1
+--- SKIP: TestMongoDBManagementUIRuntimeAcceptanceInCI (0.00s)
+=== RUN   TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated
+--- PASS: TestMongoDBRuntimeFoundationIsApplicationScopedPersistentAndTLSGated (0.03s)
+=== RUN   TestMongoDBReplicaKeyUsesStandardBase64Alphabet
+--- PASS: TestMongoDBReplicaKeyUsesStandardBase64Alphabet (0.00s)
+=== RUN   TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary
+--- PASS: TestMongoDBHAComposeUsesExplicitYAMLKeyfileAndKeyfileTLSBoundary (0.00s)
+=== RUN   TestMongoDBRuntimeSemanticAcceptanceInCI
+    mongodb_runtime_integration_test.go:17: MongoDB runtime acceptance requires BASEHARBOR_MONGODB_ACCEPTANCE=1
+--- SKIP: TestMongoDBRuntimeSemanticAcceptanceInCI (0.00s)
+=== RUN   TestNativeBackendInventoryUsesExactNamedInstancesAndRetainsHAResources
+--- PASS: TestNativeBackendInventoryUsesExactNamedInstancesAndRetainsHAResources (0.00s)
+=== RUN   TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition
+--- PASS: TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition (0.04s)
+=== RUN   TestNativeBackendInventoryIncludesApplicationScopedDurableKeyValue
+--- PASS: TestNativeBackendInventoryIncludesApplicationScopedDurableKeyValue (0.00s)
+=== RUN   TestNativeBackendWithdrawalRequiresExistingExecutableCanonicalOwner
+--- PASS: TestNativeBackendWithdrawalRequiresExistingExecutableCanonicalOwner (0.01s)
+=== RUN   TestReferenceProviderRegistryReusesSharedSeaweedFS
+--- PASS: TestReferenceProviderRegistryReusesSharedSeaweedFS (0.00s)
+=== RUN   TestObjectStorageManifestRoundTrip
+--- PASS: TestObjectStorageManifestRoundTrip (0.00s)
+=== RUN   TestObjectStorageCapabilityBindingUsesSecureReferences
+--- PASS: TestObjectStorageCapabilityBindingUsesSecureReferences (0.00s)
+=== RUN   TestObjectStorageSecureBindingsAreBucketScoped
+--- PASS: TestObjectStorageSecureBindingsAreBucketScoped (0.00s)
+=== RUN   TestBuildPlanIncludesManagedHTTPExposure
+--- PASS: TestBuildPlanIncludesManagedHTTPExposure (0.00s)
+=== RUN   TestBuildPlanIncludesManagedIdentity
+--- PASS: TestBuildPlanIncludesManagedIdentity (0.00s)
+=== RUN   TestBuildPlanSupportsCurrentObservabilityCapabilities
+--- PASS: TestBuildPlanSupportsCurrentObservabilityCapabilities (0.00s)
+=== RUN   TestBuildPlanContainsNoRuntimeNativeTopology
+--- PASS: TestBuildPlanContainsNoRuntimeNativeTopology (0.00s)
+=== RUN   TestPostgresBackupDisasterRecovery
+    postgres_backup_integration_test.go:19: set BASEHARBOR_POSTGRES_BACKUP_INTEGRATION=1 to run PostgreSQL backup integration
+--- SKIP: TestPostgresBackupDisasterRecovery (0.00s)
+=== RUN   TestDumpPostgresInstancesUsesStableMultiInstanceIdentity
+--- PASS: TestDumpPostgresInstancesUsesStableMultiInstanceIdentity (0.00s)
+=== RUN   TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance
+--- PASS: TestRestorePostgresInstancesUsesStdinAndVerifiesEachInstance (0.00s)
+=== RUN   TestValidatePostgresBackupSetFailsClosed
+=== RUN   TestValidatePostgresBackupSetFailsClosed/missing
+=== RUN   TestValidatePostgresBackupSetFailsClosed/unexpected
+=== RUN   TestValidatePostgresBackupSetFailsClosed/duplicate
+=== RUN   TestValidatePostgresBackupSetFailsClosed/empty
+--- PASS: TestValidatePostgresBackupSetFailsClosed (0.00s)
+    --- PASS: TestValidatePostgresBackupSetFailsClosed/missing (0.00s)
+    --- PASS: TestValidatePostgresBackupSetFailsClosed/unexpected (0.00s)
+    --- PASS: TestValidatePostgresBackupSetFailsClosed/duplicate (0.00s)
+    --- PASS: TestValidatePostgresBackupSetFailsClosed/empty (0.00s)
+=== RUN   TestRestorePostgresInstancesStopsOnRestoreFailure
+--- PASS: TestRestorePostgresInstancesStopsOnRestoreFailure (0.00s)
+=== RUN   TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources
+--- PASS: TestDumpSharedPostgresInstancesUsesOnlyRegisteredApplicationResources (0.12s)
+=== RUN   TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources
+--- PASS: TestRestoreSharedPostgresInstancesUsesOnlyApplicationResources (0.09s)
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/simple
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/special-values
+--- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner (0.19s)
+    --- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/simple (0.14s)
+    --- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/special-values (0.05s)
+=== RUN   TestApplicationComposeProjectIsSeparateFromResourceIdentity
+--- PASS: TestApplicationComposeProjectIsSeparateFromResourceIdentity (0.00s)
+=== RUN   TestObservedSharedGatewayUsesSameClosureWithoutCapabilityOffer
+--- PASS: TestObservedSharedGatewayUsesSameClosureWithoutCapabilityOffer (0.00s)
+=== RUN   TestAncillarySidecarOwnershipAndRetirement
+--- PASS: TestAncillarySidecarOwnershipAndRetirement (0.00s)
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/valkey/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/openbao/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/caddy/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/loki/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/tempo/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/replace
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/add
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/resume
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/update
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/stop
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/destroy
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/remove-runtime
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/disable
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/unbind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/rebind
+=== RUN   TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/replace
+--- PASS: TestProviderChangeWholeCatalogLifecycleConsequences (0.02s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/postgresql/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/valkey/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/openbao/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/caddy/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/seaweedfs/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/opentelemetry-collector/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-otlp/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/prometheus/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/loki/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/tempo/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/keycloak/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/external-oidc/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/rabbitmq/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/mongodb/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-broker/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-executor/replace (0.00s)
+    --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/add (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/resume (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/update (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/stop (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/destroy (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/remove-runtime (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/disable (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/unbind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/rebind (0.00s)
+        --- PASS: TestProviderChangeWholeCatalogLifecycleConsequences/runtime-workload/replace (0.00s)
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/cache
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/session
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/job
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/queue
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/message
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/in-flight
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/telemetry-buffer
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/lease
+=== RUN   TestProviderChangeMeaningfulTransientMaterialSurvival/token
+--- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/cache (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/session (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/job (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/queue (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/message (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/in-flight (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/telemetry-buffer (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/lease (0.00s)
+    --- PASS: TestProviderChangeMeaningfulTransientMaterialSurvival/token (0.00s)
+=== RUN   TestAlternativeLessDeletionRequiresTwoPlanBoundStages
+--- PASS: TestAlternativeLessDeletionRequiresTwoPlanBoundStages (0.00s)
+=== RUN   TestProviderChangeConsumerActionExplicitAndFinalVerification
+--- PASS: TestProviderChangeConsumerActionExplicitAndFinalVerification (0.00s)
+=== RUN   TestProviderChangeCredentialsAndUnverifiedContinuation
+--- PASS: TestProviderChangeCredentialsAndUnverifiedContinuation (0.00s)
+=== RUN   TestProviderChangeRemainingValidityUsesAuthoritativeObservation
+--- PASS: TestProviderChangeRemainingValidityUsesAuthoritativeObservation (0.00s)
+=== RUN   TestProviderChangePKIMaterialValidityAndActualEffects
+--- PASS: TestProviderChangePKIMaterialValidityAndActualEffects (0.00s)
+=== RUN   TestProviderChangeActualBackingSQLAttributionAndExplicitOutage
+--- PASS: TestProviderChangeActualBackingSQLAttributionAndExplicitOutage (0.00s)
+=== RUN   TestProviderChangeSelectedModeDependencyMustBeObserved
+--- PASS: TestProviderChangeSelectedModeDependencyMustBeObserved (0.00s)
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/available
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/aggregate-stop
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/stopped
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/missing
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/unknown-closure
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/foreign-target
+=== RUN   TestProviderChangeSelectedModeAccountsForTransitiveDependencies/cycle
+--- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/available (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/aggregate-stop (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/stopped (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/missing (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/unknown-closure (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/foreign-target (0.00s)
+    --- PASS: TestProviderChangeSelectedModeAccountsForTransitiveDependencies/cycle (0.00s)
+=== RUN   TestProviderChangeCountdownDoesNotInvalidateConcreteConsent
+--- PASS: TestProviderChangeCountdownDoesNotInvalidateConcreteConsent (0.00s)
+=== RUN   TestProviderChangeMaterialExpiryInvalidatesConsentWithoutValidationFunction
+--- PASS: TestProviderChangeMaterialExpiryInvalidatesConsentWithoutValidationFunction (0.00s)
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/valid
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/absent-receipt
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/legacy-plan
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/stopped
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/unverified
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/unknown-dependencies
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/new-edge
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/duplicate
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/wrong-owner
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/replacement/foreign-target
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/valid
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/absent-receipt
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/legacy-plan
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/stopped
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/unverified
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/unknown-dependencies
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/new-edge
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/duplicate
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/wrong-owner
+=== RUN   TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/foreign-target
+--- PASS: TestProviderResultRequiresFreshEntireContinuationGraph (0.01s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/valid (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/absent-receipt (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/legacy-plan (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/stopped (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/unverified (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/unknown-dependencies (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/new-edge (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/duplicate (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/wrong-owner (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/replacement/foreign-target (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/valid (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/absent-receipt (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/legacy-plan (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/stopped (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/unverified (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/unknown-dependencies (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/new-edge (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/duplicate (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/wrong-owner (0.00s)
+    --- PASS: TestProviderResultRequiresFreshEntireContinuationGraph/consumer-action/foreign-target (0.00s)
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/stopped
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/new
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/unknown-state
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/missing-fact
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/missing-observation
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/unsupported
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/unverified
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/unknown-dependencies
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/foreign-target
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/cycle
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/replacement/unregistered
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/stopped
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/new
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unknown-state
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/missing-fact
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/missing-observation
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unsupported
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unverified
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unknown-dependencies
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/foreign-target
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/cycle
+=== RUN   TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unregistered
+--- PASS: TestContinuationRequiresEntireObservedDependencyGraph (0.01s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/stopped (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/new (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/unknown-state (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/missing-fact (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/missing-observation (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/unsupported (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/unverified (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/unknown-dependencies (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/foreign-target (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/cycle (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/replacement/unregistered (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/stopped (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/new (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unknown-state (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/missing-fact (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/missing-observation (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unsupported (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unverified (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unknown-dependencies (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/foreign-target (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/cycle (0.00s)
+    --- PASS: TestContinuationRequiresEntireObservedDependencyGraph/consumer-action/unregistered (0.00s)
+=== RUN   TestContinuationDoesNotTreatPlannedResumeAsVerifiedAvailability
+--- PASS: TestContinuationDoesNotTreatPlannedResumeAsVerifiedAvailability (0.00s)
+=== RUN   TestContinuationUsesCanonicalAncillaryAndSharedDependencyEvidence
+--- PASS: TestContinuationUsesCanonicalAncillaryAndSharedDependencyEvidence (0.00s)
+=== RUN   TestProviderImpactTransitiveAggregateAndSharedConsumers
+--- PASS: TestProviderImpactTransitiveAggregateAndSharedConsumers (0.00s)
+=== RUN   TestProviderImpactNoContinuationAllowedAfterTwoConfirmations
+--- PASS: TestProviderImpactNoContinuationAllowedAfterTwoConfirmations (0.00s)
+=== RUN   TestProviderImpactMaterialDeletionRetentionAndSecureTransfer
+--- PASS: TestProviderImpactMaterialDeletionRetentionAndSecureTransfer (0.00s)
+=== RUN   TestProviderImpactStaleApprovalAndOwnership
+--- PASS: TestProviderImpactStaleApprovalAndOwnership (0.00s)
+=== RUN   TestProviderImpactTokensCertificatesAndDynamicLeases
+--- PASS: TestProviderImpactTokensCertificatesAndDynamicLeases (0.00s)
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/postgresql
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/valkey
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/openbao
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/caddy
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/seaweedfs
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/opentelemetry-collector
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/external-otlp
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/prometheus
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/loki
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/tempo
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/keycloak
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/external-oidc
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/rabbitmq
+=== RUN   TestProviderImpactEveryRegisteredProviderAndExternalOwnership/mongodb
+--- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/postgresql (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/valkey (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/openbao (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/caddy (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/seaweedfs (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/opentelemetry-collector (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/external-otlp (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/prometheus (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/loki (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/tempo (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/keycloak (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/external-oidc (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/rabbitmq (0.00s)
+    --- PASS: TestProviderImpactEveryRegisteredProviderAndExternalOwnership/mongodb (0.00s)
+=== RUN   TestProviderImpactSecretReferencesNeverLeak
+--- PASS: TestProviderImpactSecretReferencesNeverLeak (0.00s)
+=== RUN   TestProviderImpactReplacementNeedsActualRebindAndAggregateDependencies
+--- PASS: TestProviderImpactReplacementNeedsActualRebindAndAggregateDependencies (0.00s)
+=== RUN   TestProviderImpactScopedUnbindRetainsOtherAppAndRetryScope
+--- PASS: TestProviderImpactScopedUnbindRetainsOtherAppAndRetryScope (0.00s)
+=== RUN   TestProviderImpactUnpersistedJobsSessionsAndMissingMetadataAreUnknown
+--- PASS: TestProviderImpactUnpersistedJobsSessionsAndMissingMetadataAreUnknown (0.00s)
+=== RUN   TestProviderImpactIntentRemovalAndSamplingDoNotInventDemandOrStaleConsent
+--- PASS: TestProviderImpactIntentRemovalAndSamplingDoNotInventDemandOrStaleConsent (0.00s)
+=== RUN   TestProviderImpactSecureTransferNeedsDeliveryReference
+--- PASS: TestProviderImpactSecureTransferNeedsDeliveryReference (0.00s)
+=== RUN   TestProviderChangeExplicitCompleteDeletionIncludesOwnedRecovery
+--- PASS: TestProviderChangeExplicitCompleteDeletionIncludesOwnedRecovery (0.00s)
+=== RUN   TestProviderChangeAggregateBackupTransferUsesFinalRecoveryLocation
+--- PASS: TestProviderChangeAggregateBackupTransferUsesFinalRecoveryLocation (0.00s)
+=== RUN   TestProviderImpactFinalPartialRetryIsActual
+--- PASS: TestProviderImpactFinalPartialRetryIsActual (0.00s)
+=== RUN   TestProviderImpactFinalMustAccountForRecoveryAndActualAccess
+--- PASS: TestProviderImpactFinalMustAccountForRecoveryAndActualAccess (0.00s)
+=== RUN   TestProviderImpactRuntimeStopAloneCannotVerifyConsumerFunctions
+--- PASS: TestProviderImpactRuntimeStopAloneCannotVerifyConsumerFunctions (0.00s)
+=== RUN   TestProviderImpactRetryIncludesIncompleteAccessAndRecovery
+=== RUN   TestProviderImpactRetryIncludesIncompleteAccessAndRecovery/access
+=== RUN   TestProviderImpactRetryIncludesIncompleteAccessAndRecovery/recovery
+--- PASS: TestProviderImpactRetryIncludesIncompleteAccessAndRecovery (0.00s)
+    --- PASS: TestProviderImpactRetryIncludesIncompleteAccessAndRecovery/access (0.00s)
+    --- PASS: TestProviderImpactRetryIncludesIncompleteAccessAndRecovery/recovery (0.00s)
+=== RUN   TestProviderImpactUnknownMaterialCannotCompleteOrLeaveRetry
+--- PASS: TestProviderImpactUnknownMaterialCannotCompleteOrLeaveRetry (0.00s)
+=== RUN   TestProviderImpactRetryRejectsForeignReceiptVersion
+--- PASS: TestProviderImpactRetryRejectsForeignReceiptVersion (0.00s)
+=== RUN   TestProviderImpactUnexpectedMaterialLocationRemainsPending
+--- PASS: TestProviderImpactUnexpectedMaterialLocationRemainsPending (0.00s)
+=== RUN   TestProviderImpactIncompleteInventoryCannotBecomeOverallSuccess
+--- PASS: TestProviderImpactIncompleteInventoryCannotBecomeOverallSuccess (0.00s)
+=== RUN   TestImpactScopeBindsAllTargetsAndRegistrationOwner
+--- PASS: TestImpactScopeBindsAllTargetsAndRegistrationOwner (0.00s)
+=== RUN   TestImpactScopeWithoutRuntimeTargetAndUnknownInventory
+--- PASS: TestImpactScopeWithoutRuntimeTargetAndUnknownInventory (0.00s)
+=== RUN   TestImpactScopeRejectsDuplicatesSecretsAndInvalidTargets
+--- PASS: TestImpactScopeRejectsDuplicatesSecretsAndInvalidTargets (0.00s)
+=== RUN   TestImpactScopeRequiresActualAllTargetReceipts
+--- PASS: TestImpactScopeRequiresActualAllTargetReceipts (0.00s)
+=== RUN   TestImpactScopeConsentTracksConsequencesButNotCountdownSamples
+--- PASS: TestImpactScopeConsentTracksConsequencesButNotCountdownSamples (0.00s)
+=== RUN   TestScopeOwnerDestructionRequiresSeparateConsentWithoutLeaves
+--- PASS: TestScopeOwnerDestructionRequiresSeparateConsentWithoutLeaves (0.00s)
+=== RUN   TestMaterialValidityWindowBindsTransitionsWithoutCountdownChurn
+--- PASS: TestMaterialValidityWindowBindsTransitionsWithoutCountdownChurn (0.00s)
+=== RUN   TestMaterialValidityRejectsInvalidBounds
+--- PASS: TestMaterialValidityRejectsInvalidBounds (0.00s)
+=== RUN   TestResolveProviderPlacementUsesSimpleSafeDefault
+--- PASS: TestResolveProviderPlacementUsesSimpleSafeDefault (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsExplicitSupportedOverride
+--- PASS: TestResolveProviderPlacementAllowsExplicitSupportedOverride (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsSharedBoundary
+--- PASS: TestResolveProviderPlacementAllowsSharedBoundary (0.00s)
+=== RUN   TestResolveProviderPlacementDefaultsPostgresAndValkeyToShared
+--- PASS: TestResolveProviderPlacementDefaultsPostgresAndValkeyToShared (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsDedicatedPostgresOverride
+--- PASS: TestResolveProviderPlacementAllowsDedicatedPostgresOverride (0.00s)
+=== RUN   TestResolveProviderPlacementRejectsBoundaryOutsideShared
+--- PASS: TestResolveProviderPlacementRejectsBoundaryOutsideShared (0.00s)
+=== RUN   TestPrometheusExternalPlacementFailsClosedUntilAdapterExists
+--- PASS: TestPrometheusExternalPlacementFailsClosedUntilAdapterExists (0.00s)
+=== RUN   TestProviderPlacementNameTokenIsStableAndSafe
+--- PASS: TestProviderPlacementNameTokenIsStableAndSafe (0.00s)
+=== RUN   TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt
+--- PASS: TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt (0.00s)
+=== RUN   TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent
+--- PASS: TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent (0.00s)
+=== RUN   TestExplicitProviderPlacementOverridesOrganizationDefault
+--- PASS: TestExplicitProviderPlacementOverridesOrganizationDefault (0.00s)
+=== RUN   TestDesiredProviderPreferencesSurviveReconciliationAndReload
+--- PASS: TestDesiredProviderPreferencesSurviveReconciliationAndReload (0.07s)
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/foreign
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/missing
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/incompatible
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/unknown-name
+=== RUN   TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/duplicate
+--- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection (0.03s)
+    --- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/foreign (0.00s)
+    --- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/missing (0.00s)
+    --- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/incompatible (0.00s)
+    --- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/unknown-name (0.00s)
+    --- PASS: TestDesiredProviderPreferencesValidateIdentityIsolationAndStaleSelection/duplicate (0.00s)
+=== RUN   TestReferenceProviderRegistryAcceptsManagedIdentity
+--- PASS: TestReferenceProviderRegistryAcceptsManagedIdentity (0.00s)
+=== RUN   TestPendingProviderOwnersPreserveAppliedConsumersUntilVerifiedRelease
+--- PASS: TestPendingProviderOwnersPreserveAppliedConsumersUntilVerifiedRelease (0.03s)
+=== RUN   TestPendingProviderOwnersDoNotReplaceAppliedPlacement
+--- PASS: TestPendingProviderOwnersDoNotReplaceAppliedPlacement (0.01s)
+=== RUN   TestPendingProviderOwnersRejectInvalidResourcesWithoutPartialWrite
+--- PASS: TestPendingProviderOwnersRejectInvalidResourcesWithoutPartialWrite (0.00s)
+=== RUN   TestRuntimeRetirementReleasesOnlySelectedReferencesPreservingEveryOwner
+--- PASS: TestRuntimeRetirementReleasesOnlySelectedReferencesPreservingEveryOwner (0.02s)
+=== RUN   TestRegisterReferenceProvidersMapsCurrentOwnership
+--- PASS: TestRegisterReferenceProvidersMapsCurrentOwnership (0.00s)
+=== RUN   TestCheckReferenceProviderRegistryRejectsCorruptStateBeforeReconcile
+--- PASS: TestCheckReferenceProviderRegistryRejectsCorruptStateBeforeReconcile (0.00s)
+=== RUN   TestCheckControlPlaneDestroySafeRejectsApplicationBindings
+--- PASS: TestCheckControlPlaneDestroySafeRejectsApplicationBindings (0.01s)
+=== RUN   TestRegisterReferenceProvidersTracksApplicationScopedCaddy
+--- PASS: TestRegisterReferenceProvidersTracksApplicationScopedCaddy (0.00s)
+=== RUN   TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy
+--- PASS: TestRegisterReferenceProvidersMetricsRespectsDeploymentPolicy (0.00s)
+=== RUN   TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement
+--- PASS: TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement (0.00s)
+=== RUN   TestRegisteredProviderPlacementSurvivesDesiredOverrideChange
+--- PASS: TestRegisteredProviderPlacementSurvivesDesiredOverrideChange (0.00s)
+=== RUN   TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent
+--- PASS: TestRegisterReferenceProvidersIgnoresMetricsPolicyWithoutMetricsIntent (0.00s)
+=== RUN   TestReferenceProviderInstancePreservesExternalReference
+--- PASS: TestReferenceProviderInstancePreservesExternalReference (0.00s)
+=== RUN   TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance
+--- PASS: TestAdditionalApplicationScopedLogResourcesShareOneLokiInstance (0.00s)
+=== RUN   TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated
+--- PASS: TestProviderRegistryKeepsSameApplicationEnvironmentsIsolated (0.02s)
+=== RUN   TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile
+--- PASS: TestProviderRegistryMigratesLegacyEnvironmentlessBindingOnReconcile (0.02s)
+=== RUN   TestRetainedCanonicalIntentPreservesOneConsumerBindingsAndDependencies
+--- PASS: TestRetainedCanonicalIntentPreservesOneConsumerBindingsAndDependencies (0.00s)
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-app
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-environment
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/missing-owner
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/inactive
+--- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-app (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-environment (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/missing-owner (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/inactive (0.00s)
+=== RUN   TestRetainedIntentDeduplicatesRootsAndPreservesExplicitPreferences
+--- PASS: TestRetainedIntentDeduplicatesRootsAndPreservesExplicitPreferences (0.00s)
+=== RUN   TestUnknownRetainedCapabilityKeepsOverallUnionIncomplete
+--- PASS: TestUnknownRetainedCapabilityKeepsOverallUnionIncomplete (0.00s)
+=== RUN   TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership
+=== RUN   TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/external-dependencies
+=== RUN   TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/missing-external-fact
+=== RUN   TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/owned-state
+=== RUN   TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/consumer-inventory
+--- PASS: TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership (0.00s)
+    --- PASS: TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/external-dependencies (0.00s)
+    --- PASS: TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/missing-external-fact (0.00s)
+    --- PASS: TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/owned-state (0.00s)
+    --- PASS: TestProviderUnionRegisteredExternalReferenceDoesNotInventNativeOwnership/consumer-inventory (0.00s)
+=== RUN   TestProviderUnionAddRemoveReaddAndManagement
+--- PASS: TestProviderUnionAddRemoveReaddAndManagement (0.00s)
+=== RUN   TestProviderUnionUnknownInventoryCannotRemove
+--- PASS: TestProviderUnionUnknownInventoryCannotRemove (0.00s)
+=== RUN   TestProviderUnionDependencyClosurePreservesSharedSQL
+--- PASS: TestProviderUnionDependencyClosurePreservesSharedSQL (0.00s)
+=== RUN   TestExplicitProviderTypeNegotiationUsesExistingRegistry
+--- PASS: TestExplicitProviderTypeNegotiationUsesExistingRegistry (0.00s)
+=== RUN   TestVerifiedConsumptionRootsUseSameDependencyResolver
+--- PASS: TestVerifiedConsumptionRootsUseSameDependencyResolver (0.00s)
+=== RUN   TestProviderUnionInvalidUnusedStateBlocksAllRetirement
+--- PASS: TestProviderUnionInvalidUnusedStateBlocksAllRetirement (0.00s)
+=== RUN   TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses
+--- PASS: TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses (1.00s)
+=== RUN   TestRabbitMQRuntimeEnvKeepsCredentialClassesDistinct
+--- PASS: TestRabbitMQRuntimeEnvKeepsCredentialClassesDistinct (0.00s)
+=== RUN   TestRabbitMQHARuntimeFailoverAcceptanceInCI
+    rabbitmq_ha_runtime_integration_test.go:17: RabbitMQ HA acceptance requires BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1
+--- SKIP: TestRabbitMQHARuntimeFailoverAcceptanceInCI (0.00s)
+=== RUN   TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig
+--- PASS: TestRabbitMQHARendersThreeMembersStableGatewayAndQuorumConfig (0.00s)
+=== RUN   TestRabbitMQHAManagementUIRoutesAcrossAllMembers
+--- PASS: TestRabbitMQHAManagementUIRoutesAcrossAllMembers (0.00s)
+=== RUN   TestRabbitMQHAExplicitCardinalityIsRespected
+--- PASS: TestRabbitMQHAExplicitCardinalityIsRespected (0.00s)
+=== RUN   TestRabbitMQManagementUIRuntimeAcceptanceInCI
+    rabbitmq_management_ui_integration_test.go:18: RabbitMQ management UI acceptance requires BASEHARBOR_RABBITMQ_UI_ACCEPTANCE=1
+--- SKIP: TestRabbitMQManagementUIRuntimeAcceptanceInCI (0.00s)
+=== RUN   TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent
+--- PASS: TestRabbitMQRuntimeFoundationIsApplicationScopedAndPersistent (0.00s)
+=== RUN   TestRabbitMQRuntimeSemanticAcceptanceInCI
+    rabbitmq_runtime_integration_test.go:18: RabbitMQ runtime acceptance requires BASEHARBOR_RABBITMQ_ACCEPTANCE=1
+--- SKIP: TestRabbitMQRuntimeSemanticAcceptanceInCI (0.00s)
+=== RUN   TestRabbitMQTLSGatewayAndServiceBinding
+--- PASS: TestRabbitMQTLSGatewayAndServiceBinding (0.35s)
+=== RUN   TestRecoveryMetadataRoundTripAndPermissions
+--- PASS: TestRecoveryMetadataRoundTripAndPermissions (0.00s)
+=== RUN   TestLastRecoveryMissing
+--- PASS: TestLastRecoveryMissing (0.00s)
+=== RUN   TestLastRecoveryRejectsInvalidApplicationName
+--- PASS: TestLastRecoveryRejectsInvalidApplicationName (0.00s)
+=== RUN   TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown
+=== RUN   TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/docker
+    remote_application_lifecycle_test.go:133: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/podman
+    remote_application_lifecycle_test.go:133: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown (0.24s)
+    --- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/docker (0.09s)
+    --- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/podman (0.15s)
+=== RUN   TestRemoteApplicationFailedProviderBlocksWorkloadAndChangedIntent
+    remote_application_lifecycle_test.go:185: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationFailedProviderBlocksWorkloadAndChangedIntent (0.09s)
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/build:_.
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/user:_'0'
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/user:_'65001'
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/privileged:_true
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/network_mode:_host
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/volumes:_['/etc/passwd:/data:ro']
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/labels:_{com.docker.compose.project:_foreign}
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/labels:_[com.docker.compose.project=foreign]
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/container_name:_foreign
+    remote_application_lifecycle_test.go:212: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging (0.96s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/build:_. (0.08s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/user:_'0' (0.09s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/user:_'65001' (0.08s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/privileged:_true (0.16s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/network_mode:_host (0.09s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/volumes:_['/etc/passwd:/data:ro'] (0.13s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/labels:_{com.docker.compose.project:_foreign} (0.12s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/labels:_[com.docker.compose.project=foreign] (0.09s)
+    --- FAIL: TestRemoteApplicationProjectionRejectsBuildRootAndForeignResourcesBeforeStaging/container_name:_foreign (0.12s)
+=== RUN   TestRemoteApplicationDirectoryBindingsAreConfinedFileMounts
+--- PASS: TestRemoteApplicationDirectoryBindingsAreConfinedFileMounts (0.00s)
+=== RUN   TestRemoteApplicationBackendNetworkUsesManagedDefaultIdentity
+    remote_application_lifecycle_test.go:258: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationBackendNetworkUsesManagedDefaultIdentity (0.09s)
+=== RUN   TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes
+=== RUN   TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes/docker
+    remote_application_lifecycle_test.go:281: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes/podman
+    remote_application_lifecycle_test.go:281: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes (0.19s)
+    --- FAIL: TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes/docker (0.10s)
+    --- FAIL: TestRemoteApplicationGeneratedWorkloadBindingsCompileForBothRuntimes/podman (0.09s)
+=== RUN   TestRemoteApplicationWorkloadCannotCopyUnreferencedCoreMaterial
+--- PASS: TestRemoteApplicationWorkloadCannotCopyUnreferencedCoreMaterial (0.00s)
+=== RUN   TestRemoteApplicationRunningWorkloadWithoutHealthCannotQualifyReady
+    remote_application_lifecycle_test.go:321: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationRunningWorkloadWithoutHealthCannotQualifyReady (0.12s)
+=== RUN   TestRemoteApplicationResourceDefinitionsCannotBypassHostConfinement
+--- PASS: TestRemoteApplicationResourceDefinitionsCannotBypassHostConfinement (0.00s)
+=== RUN   TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication
+=== RUN   TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication/docker
+    remote_managed_runtime_test.go:70: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication/podman
+    remote_managed_runtime_test.go:70: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication (0.17s)
+    --- FAIL: TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication/docker (0.08s)
+    --- FAIL: TestRemoteManagedRuntimeSnapshotsProtectedFilesAndRestoresWithoutPublication/podman (0.09s)
+=== RUN   TestRemoteManagedRuntimeRejectsChangedDefinitionBeforeDispatch
+    remote_managed_runtime_test.go:145: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteManagedRuntimeRejectsChangedDefinitionBeforeDispatch (0.11s)
+=== RUN   TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation
+=== RUN   TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation/docker
+    remote_managed_runtime_test.go:159: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation/podman
+    remote_managed_runtime_test.go:159: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation (0.26s)
+    --- FAIL: TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation/docker (0.17s)
+    --- FAIL: TestRemoteManagedRuntimeRequiresDurableCommitBeforeActivation/podman (0.09s)
+=== RUN   TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges
+=== RUN   TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges/docker
+    remote_managed_snapshot_test.go:18: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges/podman
+    remote_managed_snapshot_test.go:18: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges (0.23s)
+    --- FAIL: TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges/docker (0.12s)
+    --- FAIL: TestRemoteManagedSnapshotRestoresAfterCoreSourceChanges/podman (0.10s)
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/directory-mode
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/file-mode
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/symlink
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/bytes
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/node
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/receipt
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/trailing
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/units
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/init
+    remote_managed_snapshot_test.go:76: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState (0.99s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/directory-mode (0.10s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/file-mode (0.08s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/symlink (0.14s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/bytes (0.21s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/node (0.08s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/receipt (0.09s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/trailing (0.09s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/units (0.07s)
+    --- FAIL: TestRemoteManagedSnapshotRejectsUnprotectedOrSubstitutedState/init (0.14s)
+=== RUN   TestManagedRuntimeProjectionPreservesSQLTLSAndAuthoritativeName
+    remote_runtime_projection_test.go:26: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestManagedRuntimeProjectionPreservesSQLTLSAndAuthoritativeName (0.12s)
+=== RUN   TestManagedRuntimeProjectionIncludesCacheTLSGateway
+    remote_runtime_projection_test.go:69: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestManagedRuntimeProjectionIncludesCacheTLSGateway (0.11s)
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/definition
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/leaf-symlink
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/parent-symlink
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/selection
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/directory-permissions
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/environment-permissions
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/writable-bind
+    remote_runtime_projection_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks (0.66s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/definition (0.12s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/leaf-symlink (0.08s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/parent-symlink (0.10s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/selection (0.08s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/directory-permissions (0.08s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/environment-permissions (0.10s)
+    --- FAIL: TestManagedRuntimeProjectionRejectsModifiedDefinitionAndSymlinks/writable-bind (0.11s)
+=== RUN   TestFindRepositoryManifestWalksParents
+--- PASS: TestFindRepositoryManifestWalksParents (0.00s)
+=== RUN   TestStoreSyncPreservesRuntimeState
+--- PASS: TestStoreSyncPreservesRuntimeState (0.02s)
+=== RUN   TestFindRepositoryManifestReturnsSentinelWhenMissing
+--- PASS: TestFindRepositoryManifestReturnsSentinelWhenMissing (0.00s)
+=== RUN   TestPhysicalExecutorSharedConsumerUnionAndConsequences
+--- PASS: TestPhysicalExecutorSharedConsumerUnionAndConsequences (0.00s)
+=== RUN   TestZeroCapabilityWorkloadHasDistinctAncillaryConsequences
+--- PASS: TestZeroCapabilityWorkloadHasDistinctAncillaryConsequences (0.00s)
+=== RUN   TestAncillaryNativeScopesRejectFalseOwners
+--- PASS: TestAncillaryNativeScopesRejectFalseOwners (0.00s)
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/selected
+=== RUN   TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/removed
+--- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity (0.00s)
+    --- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/selected (0.00s)
+    --- PASS: TestBindingProjectionResetKeepsMountedRootAndOnlySelectedIdentity/removed (0.00s)
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-link
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-link
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-file
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-writable
+=== RUN   TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-writable
+--- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-link (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-link (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-file (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/root-writable (0.00s)
+    --- PASS: TestBindingProjectionResetRejectsRedirectedOrWritableOwnersBeforeMutation/identity-writable (0.00s)
+=== RUN   TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt
+--- PASS: TestBindingProjectionResetRemovesBackendAliasWithoutFollowingIt (0.00s)
+=== RUN   TestRuntimePermissionDependencyDoesNotManufactureSecretsIntent
+--- PASS: TestRuntimePermissionDependencyDoesNotManufactureSecretsIntent (0.00s)
+=== RUN   TestRuntimeDependencyRootsDistinguishesNoneFromUnknown
+--- PASS: TestRuntimeDependencyRootsDistinguishesNoneFromUnknown (0.00s)
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/messaging
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/document
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/sql
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/cache
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/object
+--- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner (0.60s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/messaging (0.14s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/document (0.11s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/sql (0.14s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/cache (0.10s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/object (0.10s)
+=== RUN   TestInvalidRetainedEnvironmentCannotBeRewrittenOrDisclosed
+--- PASS: TestInvalidRetainedEnvironmentCannotBeRewrittenOrDisclosed (0.00s)
+=== RUN   TestRuntimeEnvContentPreservesManagedIdentityValues
+--- PASS: TestRuntimeEnvContentPreservesManagedIdentityValues (0.00s)
+=== RUN   TestEnsureRuntimeIdentityIsStableAndOwnerOnly
+--- PASS: TestEnsureRuntimeIdentityIsStableAndOwnerOnly (0.09s)
+=== RUN   TestRuntimeIdentityRotateAndRevoke
+--- PASS: TestRuntimeIdentityRotateAndRevoke (0.07s)
+=== RUN   TestEnsureRuntimeIdentityDisabledWithoutRuntimeBroker
+--- PASS: TestEnsureRuntimeIdentityDisabledWithoutRuntimeBroker (0.00s)
+=== RUN   TestEnsureRuntimeIdentityForRuntimeOnlyPermission
+--- PASS: TestEnsureRuntimeIdentityForRuntimeOnlyPermission (0.03s)
+=== RUN   TestRuntimeIdentityWorkloadOverrideIsOptionalWithoutConsumers
+--- PASS: TestRuntimeIdentityWorkloadOverrideIsOptionalWithoutConsumers (0.00s)
+=== RUN   TestRuntimeIdentityWorkloadOverrideDefaultsSecureAPIURLForConsumer
+--- PASS: TestRuntimeIdentityWorkloadOverrideDefaultsSecureAPIURLForConsumer (0.05s)
+=== RUN   TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets
+--- PASS: TestRuntimeIdentityWorkloadOverrideScopesTokenAndFileSecrets (0.07s)
+=== RUN   TestRuntimeIdentityWorkloadOverrideUsesServiceScopedTokenForExplicitPermission
+--- PASS: TestRuntimeIdentityWorkloadOverrideUsesServiceScopedTokenForExplicitPermission (0.11s)
+=== RUN   TestExistingRuntimeFilesRequiresAppliedState
+--- PASS: TestExistingRuntimeFilesRequiresAppliedState (0.00s)
+=== RUN   TestCheckRuntimePermissionsRejectsBroadAccess
+    runtime_inspect_test.go:32: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestCheckRuntimePermissionsRejectsBroadAccess (0.06s)
+=== RUN   TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials
+    runtime_inspect_test.go:50: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials (0.08s)
+=== RUN   TestExpectedRuntimeResourcesAreProjectScoped
+--- PASS: TestExpectedRuntimeResourcesAreProjectScoped (0.00s)
+=== RUN   TestApplicationBackendNetworkNameIsStableAndIsolated
+--- PASS: TestApplicationBackendNetworkNameIsStableAndIsolated (0.00s)
+=== RUN   TestExpectedRuntimeResourcesIncludeNamedInstances
+--- PASS: TestExpectedRuntimeResourcesIncludeNamedInstances (0.00s)
+=== RUN   TestCheckManagedRuntimeDefinitionRejectsModifiedCompose
+--- PASS: TestCheckManagedRuntimeDefinitionRejectsModifiedCompose (0.01s)
+=== RUN   TestStoreDeleteOnlyRemovesRequestedApplication
+--- PASS: TestStoreDeleteOnlyRemovesRequestedApplication (0.00s)
+=== RUN   TestExpectedRuntimeResourcesExcludeSharedOnlyBackends
+--- PASS: TestExpectedRuntimeResourcesExcludeSharedOnlyBackends (0.00s)
+=== RUN   TestMultiInstanceComposeLifecycleInCI
+    runtime_multi_integration_test.go:21: real multi-instance runtime verification requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1 or BASEHARBOR_RUNTIME_SECURITY_ACCEPTANCE=1
+--- SKIP: TestMultiInstanceComposeLifecycleInCI (0.00s)
+=== RUN   TestNativeCacheProjectionPreservesSharedCredentialOwnerAndUsesActualPrincipal
+--- PASS: TestNativeCacheProjectionPreservesSharedCredentialOwnerAndUsesActualPrincipal (0.00s)
+=== RUN   TestNativeEndpointOwnerSurvivesSharedBindingAndAvoidsHandoffPortCollision
+--- PASS: TestNativeEndpointOwnerSurvivesSharedBindingAndAvoidsHandoffPortCollision (0.00s)
+=== RUN   TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities
+--- PASS: TestManagedRuntimeObservabilityUsesCanonicalServiceIdentities (0.02s)
+=== RUN   TestManagedRuntimeObservabilityExcludesSharedBackendServices
+--- PASS: TestManagedRuntimeObservabilityExcludesSharedBackendServices (0.01s)
+=== RUN   TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles
+=== RUN   TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles/existing-temporary
+=== RUN   TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles/foreign-link
+--- PASS: TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles (0.09s)
+    --- PASS: TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles/existing-temporary (0.05s)
+    --- PASS: TestPrivateRuntimeWriteDoesNotAdoptPredictableTemporaryFiles/foreign-link (0.04s)
+=== RUN   TestPrivateRuntimeWriteRejectsRedirectedFinalOwner
+--- PASS: TestPrivateRuntimeWriteRejectsRedirectedFinalOwner (0.00s)
+=== RUN   TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner
+=== RUN   TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner/parent
+=== RUN   TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner/hardlink
+--- PASS: TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner (0.00s)
+    --- PASS: TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner/parent (0.00s)
+    --- PASS: TestPrivateRuntimeWriteRejectsRedirectedParentAndMultiplyLinkedOwner/hardlink (0.00s)
+=== RUN   TestReallocateRuntimePortsPreservesCredentials
+    runtime_ports_test.go:17: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestReallocateRuntimePortsPreservesCredentials (0.17s)
+=== RUN   TestEnsureRuntimePostgresIsolatedAndIdempotent
+    runtime_postgres_test.go:23: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimePostgresIsolatedAndIdempotent (0.14s)
+=== RUN   TestEnsureRuntimePostgresAndValkey
+    runtime_postgres_test.go:89: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimePostgresAndValkey (0.13s)
+=== RUN   TestRuntimeComposeIncludesRequestedManagementUIs
+--- PASS: TestRuntimeComposeIncludesRequestedManagementUIs (0.00s)
+=== RUN   TestEnsureRuntimeUsesValidPgAdminBootstrapEmail
+    runtime_postgres_test.go:162: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeUsesValidPgAdminBootstrapEmail (0.10s)
+=== RUN   TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials
+    runtime_postgres_test.go:187: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials (0.17s)
+=== RUN   TestEnsureRuntimeCreatesNativeApplicationContract
+    runtime_postgres_test.go:207: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeCreatesNativeApplicationContract (0.19s)
+=== RUN   TestEnsureRuntimeCreatesWorkloadServiceBindingProjection
+    runtime_postgres_test.go:274: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeCreatesWorkloadServiceBindingProjection (0.16s)
+=== RUN   TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust
+    runtime_postgres_test.go:324: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestVerifyWorkloadServiceBindingsFailsClosedOnBrokenCacheTrust (0.14s)
+=== RUN   TestEnsureRuntimeCreatesMultipleNamedServiceInstances
+    runtime_postgres_test.go:350: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeCreatesMultipleNamedServiceInstances (0.23s)
+=== RUN   TestAddingNamedInstanceDoesNotRotateExistingInstance
+    runtime_postgres_test.go:442: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestAddingNamedInstanceDoesNotRotateExistingInstance (0.08s)
+=== RUN   TestEnsureRuntimeValkeyOnly
+    runtime_postgres_test.go:473: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeValkeyOnly (0.10s)
+=== RUN   TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService
+    runtime_postgres_test.go:493: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeAllowsSecretsAlongsideMaterializedService (0.10s)
+=== RUN   TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists
+--- PASS: TestEnsureRuntimeRejectsSecretsOnlyUntilStandaloneLifecycleExists (0.00s)
+=== RUN   TestRuntimeProjectNameIncludesApplicationAndEnvironment
+--- PASS: TestRuntimeProjectNameIncludesApplicationAndEnvironment (0.00s)
+=== RUN   TestManagedDatabaseAndCacheComposeAreUnprivileged
+--- PASS: TestManagedDatabaseAndCacheComposeAreUnprivileged (0.00s)
+=== RUN   TestRemoteBackendProbeKeepsTLSAndContainerCredentialReference
+--- PASS: TestRemoteBackendProbeKeepsTLSAndContainerCredentialReference (0.00s)
+=== RUN   TestReapplyDoesNotRegenerateMissingRetainedPassword
+--- PASS: TestReapplyDoesNotRegenerateMissingRetainedPassword (0.05s)
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ha
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ha
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/object
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-sql
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-cache
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-messaging
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-document
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-object
+--- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies (2.00s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql (0.08s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache (0.05s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging (0.10s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ui (0.18s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ha (0.19s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document (0.21s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ui (0.15s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ha (0.17s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/object (0.08s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql-ui (0.23s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache-ui (0.13s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-sql (0.08s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-cache (0.06s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-messaging (0.09s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-document (0.14s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-object (0.07s)
+=== RUN   TestEnsureRuntimeRejectsLostCredentialsBeforeIssuanceOrProjection
+--- PASS: TestEnsureRuntimeRejectsLostCredentialsBeforeIssuanceOrProjection (0.00s)
+=== RUN   TestAddingIndependentCredentialsPreservesExistingMaterial
+--- PASS: TestAddingIndependentCredentialsPreservesExistingMaterial (0.15s)
+=== RUN   TestRetiringDamagedCredentialsDoesNotPreventIntentionalRemoval
+--- PASS: TestRetiringDamagedCredentialsDoesNotPreventIntentionalRemoval (0.14s)
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-file
+--- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing (0.01s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-file (0.00s)
+=== RUN   TestNewDefaultBindingDoesNotAdoptExistingNamedCredentialGroup
+--- PASS: TestNewDefaultBindingDoesNotAdoptExistingNamedCredentialGroup (0.08s)
+=== RUN   TestRequiredSecretFileBindingConvention
+--- PASS: TestRequiredSecretFileBindingConvention (0.00s)
+=== RUN   TestBrokerStorageIsDependencyWithoutAutomaticSQLOffer
+--- PASS: TestBrokerStorageIsDependencyWithoutAutomaticSQLOffer (0.00s)
+=== RUN   TestManagedSecretsSecureBindingUsesProviderNeutralReferences
+--- PASS: TestManagedSecretsSecureBindingUsesProviderNeutralReferences (0.00s)
+=== RUN   TestManagedSecretsSecureBindingContainsNoSecretValues
+--- PASS: TestManagedSecretsSecureBindingContainsNoSecretValues (0.00s)
+=== RUN   TestManagedSecretsSecureBindingsAreApplicationAndEnvironmentScoped
+--- PASS: TestManagedSecretsSecureBindingsAreApplicationAndEnvironmentScoped (0.00s)
+=== RUN   TestSharedBackendAliasesCountOnePhysicalModuleAndProtectRemainingConsumer
+--- PASS: TestSharedBackendAliasesCountOnePhysicalModuleAndProtectRemainingConsumer (0.00s)
+=== RUN   TestSharedBackendSelectiveDependencyWithoutManagementBundle
+--- PASS: TestSharedBackendSelectiveDependencyWithoutManagementBundle (0.04s)
+=== RUN   TestSharedBackendSelectiveDependencyPreservesExistingBinding
+--- PASS: TestSharedBackendSelectiveDependencyPreservesExistingBinding (0.03s)
+=== RUN   TestRetainedCacheDoesNotInventStandaloneSQLMigration
+--- PASS: TestRetainedCacheDoesNotInventStandaloneSQLMigration (0.04s)
+=== RUN   TestTargetSharedBackendDestroyRequiresReleasedConsumersAndCanonicalOwnership
+--- PASS: TestTargetSharedBackendDestroyRequiresReleasedConsumersAndCanonicalOwnership (0.27s)
+=== RUN   TestSharedBackendDestroyRefusesUnprotectedOrReplacedOwnershipState
+--- PASS: TestSharedBackendDestroyRefusesUnprotectedOrReplacedOwnershipState (0.13s)
+=== RUN   TestSharedBackendJoinsVerifiedCoreNetworkWithoutSQLMigration
+--- PASS: TestSharedBackendJoinsVerifiedCoreNetworkWithoutSQLMigration (0.08s)
+=== RUN   TestSharedBackendStandaloneNetworkKeepsExistingOwner
+--- PASS: TestSharedBackendStandaloneNetworkKeepsExistingOwner (0.14s)
+=== RUN   TestSharedBackendNetworkRejectsPartialCoreOwner
+--- PASS: TestSharedBackendNetworkRejectsPartialCoreOwner (0.00s)
+=== RUN   TestSharedBackendTLSLifecycleUsesPhysicalOwners
+--- PASS: TestSharedBackendTLSLifecycleUsesPhysicalOwners (0.12s)
+=== RUN   TestSharedBackendResolvedConsumerConvergencePreservesDataAndCredentials
+--- PASS: TestSharedBackendResolvedConsumerConvergencePreservesDataAndCredentials (0.06s)
+=== RUN   TestSharedBackendInventoryIsCanonicalAndReadOnly
+--- PASS: TestSharedBackendInventoryIsCanonicalAndReadOnly (0.12s)
+=== RUN   TestSharedPostgresIdentityIsDeterministicAndCollisionSafe
+--- PASS: TestSharedPostgresIdentityIsDeterministicAndCollisionSafe (0.00s)
+=== RUN   TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity
+--- PASS: TestVerifySharedPostgresStateOwnershipFailsClosedOnAmbiguity (0.00s)
+=== RUN   TestVerifySharedPostgresStateOwnershipRejectsProviderAdminLeakage
+--- PASS: TestVerifySharedPostgresStateOwnershipRejectsProviderAdminLeakage (0.00s)
+=== RUN   TestVerifySharedPostgresStateOwnershipRejectsProviderDatabases
+--- PASS: TestVerifySharedPostgresStateOwnershipRejectsProviderDatabases (0.00s)
+=== RUN   TestVerifySharedPostgresStateOwnershipRequiresProviderAdminCredential
+--- PASS: TestVerifySharedPostgresStateOwnershipRequiresProviderAdminCredential (0.00s)
+=== RUN   TestSharedPostgresStateContainsCredentialReferencesNotSecrets
+--- PASS: TestSharedPostgresStateContainsCredentialReferencesNotSecrets (0.12s)
+=== RUN   TestSharedValkeyComposeUsesNumericNonRootIdentity
+--- PASS: TestSharedValkeyComposeUsesNumericNonRootIdentity (0.00s)
+=== RUN   TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers
+--- PASS: TestSharedPostgresComposeDoesNotEnableLegacySpiloAdminUsers (0.00s)
+=== RUN   TestSharedPostgresComposeUsesPreparedTLSRuntime
+--- PASS: TestSharedPostgresComposeUsesPreparedTLSRuntime (0.00s)
+=== RUN   TestSharedValkeyComposePreservesPasswordForContainerShell
+--- PASS: TestSharedValkeyComposePreservesPasswordForContainerShell (0.00s)
+=== RUN   TestTwoSharedSQLApplicationsAcrossEnvironmentsReuseCore
+    shared_core_sql_test.go:74: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestTwoSharedSQLApplicationsAcrossEnvironmentsReuseCore (0.19s)
+=== RUN   TestSharedPostgresWorkloadAddressMatchesPhysicalOwner
+=== RUN   TestSharedPostgresWorkloadAddressMatchesPhysicalOwner/standalone
+    shared_postgres_address_test.go:40: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestSharedPostgresWorkloadAddressMatchesPhysicalOwner/management
+    shared_postgres_address_test.go:40: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestSharedPostgresWorkloadAddressMatchesPhysicalOwner (0.33s)
+    --- FAIL: TestSharedPostgresWorkloadAddressMatchesPhysicalOwner/standalone (0.09s)
+    --- FAIL: TestSharedPostgresWorkloadAddressMatchesPhysicalOwner/management (0.24s)
+=== RUN   TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy
+    shared_postgres_integration_test.go:20: set BASEHARBOR_SHARED_POSTGRES_INTEGRATION=1 to run shared PostgreSQL integration
+--- SKIP: TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy (0.00s)
+=== RUN   TestStandaloneSharedPostgresUsesPhysicalOwnerAcrossAppAndRecoveryLifecycle
+--- PASS: TestStandaloneSharedPostgresUsesPhysicalOwnerAcrossAppAndRecoveryLifecycle (0.18s)
+=== RUN   TestSharedPostgresDefaultAndExplicitHARealizations
+--- PASS: TestSharedPostgresDefaultAndExplicitHARealizations (0.00s)
+=== RUN   TestSharedPostgresTopologyConflictIsReadOnlyAndDoesNotDowngrade
+--- PASS: TestSharedPostgresTopologyConflictIsReadOnlyAndDoesNotDowngrade (0.13s)
+=== RUN   TestSharedPostgresDoesNotMigratePreFreezeState
+--- PASS: TestSharedPostgresDoesNotMigratePreFreezeState (0.00s)
+=== RUN   TestSharedValkeyTwoApplicationIsolationDestroy
+    shared_valkey_integration_test.go:19: set BASEHARBOR_SHARED_VALKEY_INTEGRATION=1 to run shared Valkey integration
+--- SKIP: TestSharedValkeyTwoApplicationIsolationDestroy (0.00s)
+=== RUN   TestSharedValkeyTwoApplicationsAcrossEnvironmentsKeepOneProvider
+    shared_valkey_registration_test.go:70: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestSharedValkeyTwoApplicationsAcrossEnvironmentsKeepOneProvider (0.19s)
+=== RUN   TestSharedValkeyRegistersCacheAndDurableInstances
+=== RUN   TestSharedValkeyRegistersCacheAndDurableInstances/cache
+    shared_valkey_registration_test.go:148: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestSharedValkeyRegistersCacheAndDurableInstances/durable
+    shared_valkey_registration_test.go:148: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+=== RUN   TestSharedValkeyRegistersCacheAndDurableInstances/combined
+    shared_valkey_registration_test.go:148: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestSharedValkeyRegistersCacheAndDurableInstances (0.69s)
+    --- FAIL: TestSharedValkeyRegistersCacheAndDurableInstances/cache (0.27s)
+    --- FAIL: TestSharedValkeyRegistersCacheAndDurableInstances/durable (0.21s)
+    --- FAIL: TestSharedValkeyRegistersCacheAndDurableInstances/combined (0.21s)
+=== RUN   TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization
+--- PASS: TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization (0.75s)
+=== RUN   TestOTLPTelemetryManifestRoundTrip
+--- PASS: TestOTLPTelemetryManifestRoundTrip (0.00s)
+=== RUN   TestOTLPTelemetryRequiresExplicitWorkloadIdentity
+--- PASS: TestOTLPTelemetryRequiresExplicitWorkloadIdentity (0.00s)
+=== RUN   TestMaterializeOTLPBindingUsesStandardOpenTelemetryEnvironment
+--- PASS: TestMaterializeOTLPBindingUsesStandardOpenTelemetryEnvironment (0.21s)
+=== RUN   TestTelemetryProviderExternalIsDeploymentState
+--- PASS: TestTelemetryProviderExternalIsDeploymentState (0.00s)
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/postgres
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/valkey
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/rabbitmq
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/mongodb
+--- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/postgres (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/valkey (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/rabbitmq (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/mongodb (0.00s)
+=== RUN   TestSharedValkeyRejectsExistingMemberCountChanges
+--- PASS: TestSharedValkeyRejectsExistingMemberCountChanges (0.00s)
+=== RUN   TestRetainedIndependentNumericInstanceIsNotAReplica
+--- PASS: TestRetainedIndependentNumericInstanceIsNotAReplica (0.00s)
+=== RUN   TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI
+    topology_runtime_integration_test.go:20: isolated native topology acceptance is not enabled
+--- SKIP: TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI (0.00s)
+=== RUN   TestHasTraceSignalWithoutOTLPConfigIsFalse
+--- PASS: TestHasTraceSignalWithoutOTLPConfigIsFalse (0.00s)
+=== RUN   TestHasTraceSignalDetectsTraces
+--- PASS: TestHasTraceSignalDetectsTraces (0.00s)
+=== RUN   TestRecordAndLoadLastUpdateMetadata
+--- PASS: TestRecordAndLoadLastUpdateMetadata (0.00s)
+=== RUN   TestUpdateMetadataRejectsUnsafeShapes
+--- PASS: TestUpdateMetadataRejectsUnsafeShapes (0.00s)
+=== RUN   TestV0425BaselineExplicitServices
+--- PASS: TestV0425BaselineExplicitServices (0.00s)
+=== RUN   TestV0425BaselineReadPreservesIdentityAndAuthoring
+--- PASS: TestV0425BaselineReadPreservesIdentityAndAuthoring (0.00s)
+=== RUN   TestV0425BaselineZeroCapabilityProjection
+--- PASS: TestV0425BaselineZeroCapabilityProjection (0.00s)
+=== RUN   TestV0425PublishedResolutionFixtures
+=== RUN   TestV0425PublishedResolutionFixtures/automatic
+=== RUN   TestV0425PublishedResolutionFixtures/explicit
+=== RUN   TestV0425PublishedResolutionFixtures/missing
+=== RUN   TestV0425PublishedResolutionFixtures/incompatible
+=== RUN   TestV0425PublishedResolutionFixtures/ambiguous
+=== RUN   TestV0425PublishedResolutionFixtures/shared-reused
+=== RUN   TestV0425PublishedResolutionFixtures/foreign
+=== RUN   TestV0425PublishedResolutionFixtures/external-byo
+=== RUN   TestV0425PublishedResolutionFixtures/stopped-owned
+=== RUN   TestV0425PublishedResolutionFixtures/unverifiable
+=== RUN   TestV0425PublishedResolutionFixtures/newly-required
+=== RUN   TestV0425PublishedResolutionFixtures/https-only
+=== RUN   TestV0425PublishedResolutionFixtures/coreless
+--- PASS: TestV0425PublishedResolutionFixtures (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/automatic (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/explicit (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/missing (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/incompatible (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/ambiguous (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/shared-reused (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/foreign (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/external-byo (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/stopped-owned (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/unverifiable (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/newly-required (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/https-only (0.00s)
+    --- PASS: TestV0425PublishedResolutionFixtures/coreless (0.00s)
+=== RUN   TestMinimalAuthoringUsesExistingGrammarWithoutAllocatingID
+--- PASS: TestMinimalAuthoringUsesExistingGrammarWithoutAllocatingID (0.00s)
+=== RUN   TestIdentityConvergenceUsesExistingStoreAndPreservesRepository
+--- PASS: TestIdentityConvergenceUsesExistingStoreAndPreservesRepository (0.00s)
+=== RUN   TestIdentityReadFailsClosedOnAmbiguousOrMissingOwner
+--- PASS: TestIdentityReadFailsClosedOnAmbiguousOrMissingOwner (0.00s)
+=== RUN   TestIdentityConcurrentInitializationConverges
+--- PASS: TestIdentityConcurrentInitializationConverges (0.00s)
+=== RUN   TestFootprintBindingFixtures
+=== RUN   TestFootprintBindingFixtures/automatic
+=== RUN   TestFootprintBindingFixtures/explicit
+=== RUN   TestFootprintBindingFixtures/missing
+=== RUN   TestFootprintBindingFixtures/incompatible
+=== RUN   TestFootprintBindingFixtures/ambiguous
+=== RUN   TestFootprintBindingFixtures/foreign
+=== RUN   TestFootprintBindingFixtures/observed-foreign
+=== RUN   TestFootprintBindingFixtures/stopped-owned
+=== RUN   TestFootprintBindingFixtures/unverifiable
+=== RUN   TestFootprintBindingFixtures/newly-required
+=== RUN   TestFootprintBindingFixtures/foreign-target
+=== RUN   TestFootprintBindingFixtures/external-byo
+--- PASS: TestFootprintBindingFixtures (0.00s)
+    --- PASS: TestFootprintBindingFixtures/automatic (0.00s)
+    --- PASS: TestFootprintBindingFixtures/explicit (0.00s)
+    --- PASS: TestFootprintBindingFixtures/missing (0.00s)
+    --- PASS: TestFootprintBindingFixtures/incompatible (0.00s)
+    --- PASS: TestFootprintBindingFixtures/ambiguous (0.00s)
+    --- PASS: TestFootprintBindingFixtures/foreign (0.00s)
+    --- PASS: TestFootprintBindingFixtures/observed-foreign (0.00s)
+    --- PASS: TestFootprintBindingFixtures/stopped-owned (0.00s)
+    --- PASS: TestFootprintBindingFixtures/unverifiable (0.00s)
+    --- PASS: TestFootprintBindingFixtures/newly-required (0.00s)
+    --- PASS: TestFootprintBindingFixtures/foreign-target (0.00s)
+    --- PASS: TestFootprintBindingFixtures/external-byo (0.00s)
+=== RUN   TestFootprintCorelessAndUnboundAreDifferent
+--- PASS: TestFootprintCorelessAndUnboundAreDifferent (0.00s)
+=== RUN   TestFootprintReusesBindingAndDependencyUnion
+--- PASS: TestFootprintReusesBindingAndDependencyUnion (0.00s)
+=== RUN   TestFootprintEvidenceValidation
+--- PASS: TestFootprintEvidenceValidation (0.00s)
+=== RUN   TestFootprintUnusedRespectsTargetWideConsumers
+--- PASS: TestFootprintUnusedRespectsTargetWideConsumers (0.00s)
+=== RUN   TestFootprintUnprojectedDependenciesNeverClaimCoreless
+--- PASS: TestFootprintUnprojectedDependenciesNeverClaimCoreless (0.00s)
+=== RUN   TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork
+--- PASS: TestValkeyHAComposeEnablesSentinelQuorumOnRuntimeNetwork (0.00s)
+=== RUN   TestSharedValkeyHAReplicasBootstrapWithNumericPrimary
+--- PASS: TestSharedValkeyHAReplicasBootstrapWithNumericPrimary (0.00s)
+=== RUN   TestValkeyHARuntimeFailoverAcceptanceInCI
+    valkey_ha_runtime_integration_test.go:19: Valkey HA acceptance requires BASEHARBOR_VALKEY_HA_ACCEPTANCE=1
+--- SKIP: TestValkeyHARuntimeFailoverAcceptanceInCI (0.00s)
+=== RUN   TestDurableValkeyManagementUIRuntimeAcceptanceInCI
+    valkey_management_ui_integration_test.go:17: durable Valkey management UI acceptance requires BASEHARBOR_VALKEY_UI_ACCEPTANCE=1
+--- SKIP: TestDurableValkeyManagementUIRuntimeAcceptanceInCI (0.00s)
+=== RUN   TestWorkloadOnlyManifestIsValid
+--- PASS: TestWorkloadOnlyManifestIsValid (0.00s)
+=== RUN   TestManifestWithoutBackendOrExplicitWorkloadStillFails
+--- PASS: TestManifestWithoutBackendOrExplicitWorkloadStillFails (0.00s)
+=== RUN   TestSecretsOnlyApplicationRequiresRealWorkload
+--- PASS: TestSecretsOnlyApplicationRequiresRealWorkload (0.00s)
+=== RUN   TestWorkloadOnlyRuntimeMaterializationDoesNotInventBackend
+    workload_only_test.go:77: EnsureRuntime() error = reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestWorkloadOnlyRuntimeMaterializationDoesNotInventBackend (0.13s)
+=== RUN   TestWorkloadOnlyOverridePreservesApplicationNetworksWithoutFakeBackend
+--- PASS: TestWorkloadOnlyOverridePreservesApplicationNetworksWithoutFakeBackend (0.00s)
+=== RUN   TestWorkloadOnlyPlanContainsOnlyRepositoryWorkload
+--- PASS: TestWorkloadOnlyPlanContainsOnlyRepositoryWorkload (0.00s)
+=== RUN   TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes
+--- PASS: TestWorkloadOverrideDoesNotDuplicateOTELResourceAttributes (0.00s)
+=== RUN   TestWorkloadOnlyOverrideUsesExplicitEmptyService
+--- PASS: TestWorkloadOnlyOverrideUsesExplicitEmptyService (0.00s)
+=== RUN   TestWorkloadOverrideKeepsBackendAliasFreeWhenDevAliasIsRequired
+--- PASS: TestWorkloadOverrideKeepsBackendAliasFreeWhenDevAliasIsRequired (0.00s)
+=== RUN   TestComposeSecurityManagedDeniesIsolationBypass
+--- PASS: TestComposeSecurityManagedDeniesIsolationBypass (0.00s)
+=== RUN   TestComposeSecurityDevelopmentAllowsOnlyBoundedDeviceException
+--- PASS: TestComposeSecurityDevelopmentAllowsOnlyBoundedDeviceException (0.00s)
+=== RUN   TestComposeSecurityRejectsNonOverridableDevelopmentException
+--- PASS: TestComposeSecurityRejectsNonOverridableDevelopmentException (0.00s)
+=== RUN   TestComposeSecurityCannotDowngradeManagedEnvironmentToDevelopment
+--- PASS: TestComposeSecurityCannotDowngradeManagedEnvironmentToDevelopment (0.00s)
+=== RUN   TestComposeSecurityDevelopmentWarnsUnacknowledgedDevice
+--- PASS: TestComposeSecurityDevelopmentWarnsUnacknowledgedDevice (0.00s)
+=== RUN   TestComposeSecurityRejectsDevelopmentAllowInManagedMode
+--- PASS: TestComposeSecurityRejectsDevelopmentAllowInManagedMode (0.00s)
+=== RUN   TestComposeSecurityReportIsMachineReadable
+--- PASS: TestComposeSecurityReportIsMachineReadable (0.00s)
+=== RUN   TestComposeSecurityAllowsOrdinaryWorkload
+--- PASS: TestComposeSecurityAllowsOrdinaryWorkload (0.00s)
+=== RUN   TestComposeSecurityAcceptsShortSyntaxMounts
+--- PASS: TestComposeSecurityAcceptsShortSyntaxMounts (0.00s)
+=== RUN   TestWorkloadManifestRoundTrip
+--- PASS: TestWorkloadManifestRoundTrip (0.00s)
+=== RUN   TestResolveWorkloadComposeSourceCannotEscapeRepository
+--- PASS: TestResolveWorkloadComposeSourceCannotEscapeRepository (0.00s)
+=== RUN   TestResolveWorkloadComposeDetectsUnambiguousConvention
+--- PASS: TestResolveWorkloadComposeDetectsUnambiguousConvention (0.00s)
+=== RUN   TestResolveWorkloadComposeFailsClosedWhenAmbiguous
+--- PASS: TestResolveWorkloadComposeFailsClosedWhenAmbiguous (0.00s)
+=== RUN   TestManagedBackendsShadowConventionalComposeServices
+--- PASS: TestManagedBackendsShadowConventionalComposeServices (0.00s)
+=== RUN   TestExplicitWorkloadServicesOverrideAutomaticShadowing
+--- PASS: TestExplicitWorkloadServicesOverrideAutomaticShadowing (0.00s)
+=== RUN   TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract
+    workload_test.go:100: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract (0.43s)
+=== RUN   TestIdentityOnlyWorkloadProjectsOIDCEnvironment
+--- PASS: TestIdentityOnlyWorkloadProjectsOIDCEnvironment (0.00s)
+=== RUN   TestWorkloadOverrideProjectsStandardServiceBindingRoot
+--- PASS: TestWorkloadOverrideProjectsStandardServiceBindingRoot (0.00s)
+=== RUN   TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork
+--- PASS: TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork (0.00s)
+=== RUN   TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks
+--- PASS: TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks (0.00s)
+=== RUN   TestMetricsNetworkAttachesOnlyDeclaredSourceServices
+--- PASS: TestMetricsNetworkAttachesOnlyDeclaredSourceServices (0.00s)
+=== RUN   TestMetricsCollectionPolicyDefaultsToDevOnly
+--- PASS: TestMetricsCollectionPolicyDefaultsToDevOnly (0.00s)
+=== RUN   TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload
+--- PASS: TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload (0.00s)
+=== RUN   TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent
+--- PASS: TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent (0.00s)
+=== RUN   TestSelectWorkloadServicesRejectsReservedInternalNamespace
+--- PASS: TestSelectWorkloadServicesRejectsReservedInternalNamespace (0.00s)
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/internal/application	32.291s
+FAIL

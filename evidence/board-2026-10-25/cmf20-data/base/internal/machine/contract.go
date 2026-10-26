@@ -1,0 +1,295 @@
+package machine
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+
+	"github.com/mcpdev80/baseharbor/internal/apierror"
+	"github.com/mcpdev80/baseharbor/internal/extension"
+)
+
+const ContractVersion = "v1"
+
+type SafetyClass string
+
+const (
+	SafetyReadOnly    SafetyClass = "read_only"
+	SafetyMutating    SafetyClass = "mutating"
+	SafetyDestructive SafetyClass = "destructive"
+)
+
+type Operation struct {
+	ID                   string      `json:"id"`
+	Description          string      `json:"description"`
+	Safety               SafetyClass `json:"safety"`
+	ConfirmationRequired bool        `json:"confirmation_required"`
+	PolicyRequired       bool        `json:"policy_required"`
+	ContractVersion      string      `json:"contract_version"`
+	MCPTool              string      `json:"mcp_tool,omitempty"`
+}
+
+type ErrorCode string
+
+const (
+	ErrorValidationFailed         ErrorCode = "validation_failed"
+	ErrorNotFound                 ErrorCode = "not_found"
+	ErrorPortConflict             ErrorCode = "port_conflict"
+	ErrorRequiredSecretMissing    ErrorCode = "required_secret_missing"
+	ErrorSourceMissing            ErrorCode = "source_missing"
+	ErrorApprovalRequired         ErrorCode = "approval_required"
+	ErrorWorkloadStartFailed      ErrorCode = "workload_start_failed"
+	ErrorImagePullFailed          ErrorCode = "image_pull_failed"
+	ErrorAuthenticationFailed     ErrorCode = "authentication_failed"
+	ErrorInvalidWorkload          ErrorCode = "invalid_workload"
+	ErrorCapabilityMissing        ErrorCode = "capability_missing"
+	ErrorPolicyDenied             ErrorCode = "policy_denied"
+	ErrorConflict                 ErrorCode = "conflict"
+	ErrorOwnershipAmbiguous       ErrorCode = "ownership_ambiguous"
+	ErrorProviderUnavailable      ErrorCode = "provider_unavailable"
+	ErrorRuntimeUnavailable       ErrorCode = "runtime_unavailable"
+	ErrorHostResourceInsufficient ErrorCode = "host_resource_insufficient"
+	ErrorTimeout                  ErrorCode = "timeout"
+	ErrorVerificationFailed       ErrorCode = "verification_failed"
+	ErrorUnsupported              ErrorCode = "unsupported_operation"
+	ErrorInternal                 ErrorCode = "internal_error"
+)
+
+type Error struct {
+	Code        ErrorCode `json:"code"`
+	Message     string    `json:"message"`
+	CauseCode   string    `json:"cause,omitempty"`
+	Retryable   bool      `json:"retryable,omitempty"`
+	Next        string    `json:"next,omitempty"`
+	Resource    string    `json:"resource,omitempty"`
+	Remediation string    `json:"remediation_class,omitempty"`
+	Details     any       `json:"details,omitempty"`
+	Cause       error     `json:"-"`
+}
+
+func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+func NewError(code ErrorCode, message, next string, retryable bool) *Error {
+	if message == "" {
+		message = string(code)
+	}
+	return &Error{Code: code, Message: message, Next: next, Retryable: retryable}
+}
+
+func Wrap(code ErrorCode, err error, next string, retryable bool) *Error {
+	if err == nil {
+		return nil
+	}
+	return &Error{Code: code, Message: err.Error(), Next: next, Retryable: retryable, Cause: err}
+}
+
+func Classify(err error) *Error {
+	if err == nil {
+		return nil
+	}
+	var typed *Error
+	if errors.As(err, &typed) {
+		return typed
+	}
+	var apiErr *apierror.Error
+	var trustErr *extension.TrustError
+	if errors.As(err, &trustErr) {
+		code := ErrorVerificationFailed
+		if trustErr.Code == "publisher_denied" {
+			code = ErrorPolicyDenied
+		}
+		if trustErr.Code == "invalid_metadata" || trustErr.Code == "trust_metadata_required" {
+			code = ErrorValidationFailed
+		}
+		return &Error{Code: code, Message: trustErr.Error(), CauseCode: trustErr.Code, Next: trustErr.Next, Cause: err}
+	}
+	if errors.As(err, &apiErr) {
+		switch apiErr.Code {
+		case apierror.CodeBadRequest:
+			return Wrap(ErrorValidationFailed, err, "Correct the request and retry.", false)
+		case apierror.CodeNotFound:
+			return Wrap(ErrorNotFound, err, "Verify the referenced resource exists and retry.", false)
+		case apierror.CodeConflict:
+			return Wrap(ErrorConflict, err, "Resolve the conflicting state and retry.", false)
+		case apierror.CodeUnauthorized:
+			return Wrap(ErrorAuthenticationFailed, err, "Authenticate and retry.", false)
+		case apierror.CodeForbidden:
+			return Wrap(ErrorPolicyDenied, err, "Review permissions or policy and retry.", false)
+		}
+	}
+	var actionable interface{ NextAction() string }
+	if errors.As(err, &actionable) {
+		return Wrap(ErrorInternal, err, actionable.NextAction(), false)
+	}
+
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return Wrap(ErrorTimeout, err, "Retry after confirming the local runtime and providers are responsive.", true)
+	case errors.Is(err, context.Canceled):
+		return Wrap(ErrorInternal, err, "Retry the operation if it was cancelled unintentionally.", true)
+	case errors.Is(err, os.ErrNotExist):
+		return Wrap(ErrorNotFound, err, "Verify the referenced file or resource exists and retry.", false)
+	default:
+		return Wrap(ErrorInternal, fmt.Errorf("%w", err), "", false)
+	}
+}
+
+type ErrorResult struct {
+	ContractVersion string `json:"contract_version"`
+	Error           *Error `json:"error"`
+}
+
+func ResultError(err error) ErrorResult {
+	return ErrorResult{ContractVersion: ContractVersion, Error: Classify(err)}
+}
+
+func Operations() []Operation {
+	return []Operation{
+		{ID: "installation.destroy", MCPTool: "baseharbor.installation.destroy", Description: "Destroy all owned installation state after approval and authorization of every deployment.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "release.check", MCPTool: "baseharbor.release.check", Description: "Inspect published release without host binary replacement.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "control-plane.status", MCPTool: "baseharbor.control-plane.status", Description: "Inspect selected target readiness and HA satisfaction.", Safety: SafetyReadOnly, ConfirmationRequired: false, ContractVersion: ContractVersion},
+		{ID: "control-plane.doctor", MCPTool: "baseharbor.control-plane.doctor", Description: "Inspect control-plane prerequisites.", Safety: SafetyReadOnly, ConfirmationRequired: false, ContractVersion: ContractVersion},
+		{ID: "control-plane.up", MCPTool: "baseharbor.control-plane.up", Description: "Initialize or converge selected owned control plane.", Safety: SafetyMutating, ConfirmationRequired: false, ContractVersion: ContractVersion},
+		{ID: "control-plane.stop", MCPTool: "baseharbor.control-plane.stop", Description: "Stop owned control plane and preserve data.", Safety: SafetyMutating, ConfirmationRequired: false, ContractVersion: ContractVersion},
+		{ID: "control-plane.repair", MCPTool: "baseharbor.control-plane.repair", Description: "Reconverge existing owned control-plane configuration.", Safety: SafetyMutating, ConfirmationRequired: false, ContractVersion: ContractVersion},
+		{ID: "control-plane.destroy", MCPTool: "baseharbor.control-plane.destroy", Description: "Destroy owned control plane after approval and ownership preflight.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "openbao.status", MCPTool: "baseharbor.openbao.status", Description: "Inspect secret-safe managed trust-plane state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "openbao.bootstrap", MCPTool: "baseharbor.openbao.bootstrap", Description: "Initialize managed trust plane with protected recovery material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "openbao.unseal", MCPTool: "baseharbor.openbao.unseal", Description: "Unseal managed trust plane with protected recovery material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "openbao.rotate", MCPTool: "baseharbor.openbao.rotate", Description: "Rotate and verify managed trust-plane credentials and certificates.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "dev.domain", MCPTool: "baseharbor.dev.domain", Description: "Ensure or configure target development domain.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "dev.credentials", MCPTool: "baseharbor.dev.credentials", Description: "Ensure or rotate development access without returning credentials.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "app.environment", MCPTool: "baseharbor.app.environment", Description: "Inspect masked application environment contract.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.connection", MCPTool: "baseharbor.app.connection", Description: "Inspect service connection metadata without credentials.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "connectivity.list", MCPTool: "baseharbor.connectivity.list", Description: "List directional connectivity exceptions.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "connectivity.connect", MCPTool: "baseharbor.connectivity.connect", Description: "Converge one verified directional connectivity exception.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "connectivity.disconnect", MCPTool: "baseharbor.connectivity.disconnect", Description: "Remove one exact directional connectivity exception.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "operator.identity", MCPTool: "baseharbor.operator.identity", Description: "Inspect verified operator identity without session credentials.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.init", MCPTool: "baseharbor.provider.init", Description: "Create a provider authoring scaffold.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "provider.test", MCPTool: "baseharbor.provider.test", Description: "Check provider descriptor conformance without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.show", MCPTool: "baseharbor.workspace.show", Description: "Inspect canonical source identities and application-local checkout mappings.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.show", MCPTool: "baseharbor.app.show", Description: "Inspect secret-safe application overview and recorded recovery metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.create", MCPTool: "baseharbor.app.create", Description: "Persist target-managed Application Intent without starting runtime resources.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "app.adopt", MCPTool: "baseharbor.app.adopt", Description: "Adopt an existing repository from explicit portable Application Intent and source selection.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "app.configure", MCPTool: "baseharbor.app.configure", Description: "Configure deployment inputs through shared application initialization.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "runtime-identity.rotate", MCPTool: "baseharbor.runtime-identity.rotate", Description: "Rotate app-scoped runtime credentials without exposing secret material.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime-identity.revoke", MCPTool: "baseharbor.runtime-identity.revoke", Description: "Revoke app-scoped runtime credentials without exposing secret material.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "tls.update", MCPTool: "baseharbor.tls.update", Description: "Check or install newer existing TLS certificate material through the shared lifecycle.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "trust.status", MCPTool: "baseharbor.trust.status", Description: "Inspect public CA trust on the execution host.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "trust.export", MCPTool: "baseharbor.trust.export", Description: "Export public managed CA material without private keys.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "trust.install", MCPTool: "baseharbor.trust.install", Description: "Install public managed CA on the execution host after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "trust.uninstall", MCPTool: "baseharbor.trust.uninstall", Description: "Remove only matching BaseHarbor-owned host trust anchors after explicit approval.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.stop", MCPTool: "baseharbor.app.stop", Description: "Stop owned application runtime while preserving persistent data.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.preflight", MCPTool: "baseharbor.app.preflight", Description: "Validate application preflight without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "secret.list", MCPTool: "baseharbor.secret.list", Description: "List configured secret names without values.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "secret.set", MCPTool: "baseharbor.secret.set", Description: "Set one application secret from protected input.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "secret.delete", MCPTool: "baseharbor.secret.delete", Description: "Permanently delete one application secret and all managed versions.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "secret.tls-set", MCPTool: "baseharbor.secret.tls-set", Description: "Validate and store application TLS secret material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "node.add", MCPTool: "baseharbor.node.add", Description: "Create a remote node Target and write a protected one-use enrollment bundle without returning credential material.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "node.connect", MCPTool: "baseharbor.node.connect", Description: "Consume a protected local enrollment bundle and install the rootless Node Connector service.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "node.list", MCPTool: "baseharbor.node.list", Description: "List configured remote connector nodes without credential material.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "node.status", MCPTool: "baseharbor.node.status", Description: "Inspect persisted Core enrollment status for one remote node.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "node.disconnect", MCPTool: "baseharbor.node.disconnect", Description: "Revoke remote node access after concrete impact acknowledgement and preserve registration/recovery owners.", Safety: SafetyDestructive, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "target.create", MCPTool: "baseharbor.target.create", Description: "Create explicit runtime/access Target configuration, or restore protected original references with current impact acknowledgement.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "target.delete", MCPTool: "baseharbor.target.delete", Description: "Detach Target configuration with two current-plan acknowledgements, preserving original-definition recovery and runtime/data owners.", Safety: SafetyMutating, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "stack.list", MCPTool: "baseharbor.stack.list", Description: "List reusable development Stack Profiles.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "stack.show", MCPTool: "baseharbor.stack.show", Description: "Resolve one reusable development Stack Profile.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "stack.create", MCPTool: "baseharbor.stack.create", Description: "Validate and persist a reusable development Stack Profile.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "workspace.init", MCPTool: "baseharbor.workspace.init", Description: "Configure canonical application component/source identities.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "workspace.map", MCPTool: "baseharbor.workspace.map", Description: "Map canonical repository identity to a developer-local checkout.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "target", MCPTool: "baseharbor.target", Description: "Inspect the effective BaseHarbor deployment target and repository-resolved identity.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "target.list", MCPTool: "baseharbor.target.list", Description: "List configured BaseHarbor deployment targets using secret-safe target metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "runtime.capabilities", MCPTool: "baseharbor.runtime.capabilities", Description: "Inspect Runtime Explorer capabilities for the effective Target runtime provider.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.list", MCPTool: "baseharbor.runtime.list", Description: "List provider-neutral runtime resources with authoritative ownership and BaseHarbor relationships.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.inspect", MCPTool: "baseharbor.runtime.inspect", Description: "Inspect one stable runtime resource reference without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.metrics", MCPTool: "baseharbor.runtime.metrics", Description: "Resolve the provider-neutral metrics handle for one stable runtime resource.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.start", MCPTool: "baseharbor.runtime.start", Description: "Start one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.stop", MCPTool: "baseharbor.runtime.stop", Description: "Stop one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "runtime.restart", MCPTool: "baseharbor.runtime.restart", Description: "Restart one authorized concrete runtime resource through Runtime Explorer.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.list", MCPTool: "baseharbor.app.list", Description: "List registered application deployments using stable identity and secret-safe observed state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "inspect", MCPTool: "baseharbor.inspect", Description: "Inspect repository evidence without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.list", MCPTool: "baseharbor.workspace.list", Description: "List developer-local workspace mappings without mutating source or runtime state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.resolve", MCPTool: "baseharbor.workspace.resolve", Description: "Resolve canonical component/source identity to developer-local worktrees without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.status", MCPTool: "baseharbor.workspace.status", Description: "Inspect Git state for mapped repository sources without changing checked-out revisions.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "workspace.update", MCPTool: "baseharbor.workspace.update", Description: "Safely fetch and fast-forward mapped repository sources when Git state is unambiguous.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "app.edit", MCPTool: "baseharbor.app.edit", Description: "Preview/apply reviewed application needs with exact explicit consent.", Safety: SafetyMutating, PolicyRequired: true, ConfirmationRequired: true, ContractVersion: ContractVersion},
+		{ID: "app.footprint.show", MCPTool: "baseharbor.app.footprint.show", Description: "Read the Target-bound authoritative footprint.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.new", MCPTool: "baseharbor.app.new", Description: "Create and validate a new ecosystem-native application from portable capability intent.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "plan", MCPTool: "baseharbor.plan", Description: "Build the deterministic desired-state plan without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "apply", MCPTool: "baseharbor.apply", Description: "Converge and verify the selected application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "status", MCPTool: "baseharbor.status", Description: "Observe application runtime and readiness state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "doctor", MCPTool: "baseharbor.doctor", Description: "Run diagnostic verification without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "observe", MCPTool: "baseharbor.observe", Description: "Return secret-safe application diagnostics and observability state.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "evidence", MCPTool: "baseharbor.evidence", Description: "Export deterministic secret-safe lifecycle, policy, verification and recovery evidence.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "update", MCPTool: "baseharbor.update", Description: "Safely update repository source and reconverge the application.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "repair", MCPTool: "baseharbor.repair", Description: "Repair safely reconcilable BaseHarbor-owned application drift and verify the result.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "backup", MCPTool: "baseharbor.backup", Description: "Create and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, ContractVersion: ContractVersion},
+		{ID: "restore", MCPTool: "baseharbor.restore", Description: "Restore and verify the currently supported encrypted application recovery unit.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "destroy", MCPTool: "baseharbor.destroy", Description: "Permanently remove BaseHarbor-owned application runtime resources and state.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "policy.check", MCPTool: "baseharbor.policy.check", Description: "Evaluate effective environment policy without mutation.", Safety: SafetyReadOnly, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "provider.list", MCPTool: "baseharbor.provider.list", Description: "List registered externally owned capability providers.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.inspect", MCPTool: "baseharbor.provider.inspect", Description: "Inspect one registered external capability provider.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.verify", MCPTool: "baseharbor.provider.verify", Description: "Verify external provider reachability and configured trust without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "provider.add", MCPTool: "baseharbor.provider.add", Description: "Register externally owned provider deployment state and references.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "provider.remove", MCPTool: "baseharbor.provider.remove", Description: "Remove BaseHarbor external-provider registration without mutating foreign infrastructure.", Safety: SafetyDestructive, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "organization.inspect", MCPTool: "baseharbor.organization.inspect", Description: "Inspect active organization/platform configuration and effective defaults.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "organization.check", MCPTool: "baseharbor.organization.check", Description: "Resolve the configured organization source without changing active configuration.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "organization.set", MCPTool: "baseharbor.organization.set", Description: "Resolve and activate an organization/platform configuration source.", Safety: SafetyMutating, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "organization.update", MCPTool: "baseharbor.organization.update", Description: "Explicitly activate the configured organization source at its newly resolved immutable version.", Safety: SafetyMutating, ConfirmationRequired: true, PolicyRequired: true, ContractVersion: ContractVersion},
+		{ID: "policy.explain", MCPTool: "baseharbor.policy.explain", Description: "Explain effective policy defaults and bounded overrides.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+	}
+}
+
+func MCPTools() []string {
+	operations := Operations()
+	tools := make([]string, 0, len(operations))
+	for _, operation := range operations {
+		if operation.MCPTool != "" {
+			tools = append(tools, operation.MCPTool)
+		}
+	}
+	return tools
+}
+
+func OperationByID(id string) (Operation, bool) {
+	for _, operation := range Operations() {
+		if operation.ID == id {
+			return operation, true
+		}
+	}
+	return Operation{}, false
+}
+
+func CapabilitySpecifications() []string {
+	return []string{
+		"cache.key-value/v1",
+		"database.document/v1",
+		"database.key-value/v1",
+		"database.sql/v1",
+		"exposure.http/v1",
+		"identity.oidc/v1",
+		"logs/v1",
+		"messaging.pubsub/v1",
+		"messaging.queue/v1",
+		"messaging.stream/v1",
+		"metrics/v1",
+		"object-storage.s3/v1",
+		"secrets/v1",
+		"secure-binding/v1",
+		"telemetry.otlp/v1",
+		"traces/v1",
+	}
+}

@@ -1,0 +1,5 @@
+=== RUN   TestCMF21ProjectionCannotAuthorizeProviderRetirement
+    app_core_requirement_test.go:288: fail-closed retirement authorization: The last consumer cannot be released without verified runtime and complete consumer inventory.
+--- PASS: TestCMF21ProjectionCannotAuthorizeProviderRetirement (0.03s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.041s

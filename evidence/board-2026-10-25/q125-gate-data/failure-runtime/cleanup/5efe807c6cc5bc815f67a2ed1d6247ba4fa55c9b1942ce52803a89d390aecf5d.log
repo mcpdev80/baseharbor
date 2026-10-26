@@ -1,0 +1,16 @@
+Health check for server upstream/rabbitmq failed, reason: Layer4 connection problem, info: "Connection refused", check duration: 0ms, status: 0/2 DOWN.
+Server upstream/rabbitmq is DOWN. 0 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+backend upstream has no server available!
+Health check for server upstream/rabbitmq succeeded, reason: Layer4 check passed, check duration: 0ms, status: 1/2 DOWN.
+Health check for server upstream/rabbitmq succeeded, reason: Layer4 check passed, check duration: 0ms, status: 3/3 UP.
+Server upstream/rabbitmq is UP. 1 active and 0 backup servers online. 0 sessions requeued, 0 total in queue.
+Connect from 172.24.0.1:47656 to 172.24.0.5:5672 (service/TCP)
+Connect from 172.24.0.1:48072 to 172.24.0.5:5672 (service/TCP)
+[NOTICE]   (1) : Initializing new worker (8)
+[NOTICE]   (1) : Loading success.
+[WARNING]  (8) : Health check for server upstream/rabbitmq failed, reason: Layer4 connection problem, info: "Connection refused", check duration: 0ms, status: 0/2 DOWN.
+[WARNING]  (8) : Server upstream/rabbitmq is DOWN. 0 active and 0 backup servers left. 0 sessions active, 0 requeued, 0 remaining in queue.
+[ALERT]    (8) : backend 'upstream' has no server available!
+[WARNING]  (8) : Health check for server upstream/rabbitmq succeeded, reason: Layer4 check passed, check duration: 0ms, status: 1/2 DOWN.
+[WARNING]  (8) : Health check for server upstream/rabbitmq succeeded, reason: Layer4 check passed, check duration: 0ms, status: 3/3 UP.
+[WARNING]  (8) : Server upstream/rabbitmq is UP. 1 active and 0 backup servers online. 0 sessions requeued, 0 total in queue.

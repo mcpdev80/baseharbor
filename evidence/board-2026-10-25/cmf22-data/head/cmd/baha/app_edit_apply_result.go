@@ -1,0 +1,379 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+)
+
+// appEditLifecycleRunner is the concrete Apply lifecycle connection used by the
+// production Edit executor. The mutate callback runs inside the existing Target
+// lifecycle lock, immediately before the first deployment state write.
+type appEditLifecycleRunner func(context.Context, application.Store, []string, application.ProviderImpactPlan, func(context.Context, resolvedApplication) error, io.Writer, io.Writer) ([]application.ProviderExecutionOutcome, error)
+
+// appEditSourceWriter persists confirmed Edit intent through the existing
+// source-of-truth owner inside the Target lifecycle lock. Repository
+// applications keep their own manifest behind a byte compare-and-swap;
+// store-managed applications recompare the internal copy before synchronization.
+type appEditSourceWriter func(context.Context, resolvedApplication, application.Manifest) error
+
+// errAppEditPlanDrifted aborts a confirmed Edit when the live Target state no
+// longer produces the exact approved plan, before any source or state write.
+var errAppEditPlanDrifted = errors.New("provider impact plan changed after confirmation")
+
+// defaultAppEditLifecycleRunner is the real lifecycle connection.
+func defaultAppEditLifecycleRunner(ctx context.Context, store application.Store, args []string, plan application.ProviderImpactPlan, mutate func(context.Context, resolvedApplication) error, out, errOut io.Writer) ([]application.ProviderExecutionOutcome, error) {
+	return executeApplicationApplyLifecycleResults(ctx, store, args, plan, mutate, out, errOut)
+}
+
+// defaultAppEditSourceWriter writes confirmed intent to the authoritative source
+// without clobbering a concurrent edit: repository writes are guarded by a
+// byte compare-and-swap against the hydrated original, rechecked immediately
+// before the atomic replace. It must run while the Target lifecycle lock is held.
+func defaultAppEditSourceWriter(originalSource []byte) appEditSourceWriter {
+	return func(_ context.Context, resolved resolvedApplication, manifest application.Manifest) error {
+		if resolved.FromRepository && resolved.ManifestPath != "" {
+			current, err := os.ReadFile(resolved.ManifestPath)
+			if err != nil {
+				return fmt.Errorf("read application source for edit: %w", err)
+			}
+			if !bytes.Equal(current, originalSource) {
+				return errAppEditSourceForeignEdit
+			}
+			return atomicWriteApplicationManifest(resolved.ManifestPath, originalSource, []byte(manifest.AuthoredYAML()))
+		}
+		path := filepath.Join(resolved.Store.Root, manifest.Name, application.RepositoryManifestName)
+		current, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("read stored application source for edit: %w", err)
+		}
+		if err == nil && !bytes.Equal(current, originalSource) {
+			return errAppEditSourceForeignEdit
+		}
+		if _, err := resolved.Store.Sync(manifest); err != nil {
+			return fmt.Errorf("synchronize edited application manifest: %w", err)
+		}
+		return nil
+	}
+}
+
+// appEditRuntimeExecuteAuthority builds the production Edit executor. The
+// confirmed source is persisted exactly once, only after a fresh Target read,
+// replan and consent revalidation succeed inside the lifecycle lock. A
+// revalidation or source-write failure prevents convergence; a lifecycle failure
+// still returns every effect genuinely observed before it.
+func appEditRuntimeExecuteAuthority(store application.Store, args []string, resolved resolvedApplication, originalSource []byte, authorities appEditAuthorities, out, errOut io.Writer, writeSource appEditSourceWriter, runLifecycle appEditLifecycleRunner) appEditExecuteAuthority {
+	if writeSource == nil {
+		// The hydrated source owns repository persistence. A named Apply may
+		// resolve its protected deployment copy under the lock; do not let
+		// that change the confirmed repository source of truth.
+		authoredOwner := resolved
+		writer := defaultAppEditSourceWriter(originalSource)
+		writeSource = func(ctx context.Context, locked resolvedApplication, manifest application.Manifest) error {
+			if authoredOwner.FromRepository && authoredOwner.ManifestPath != "" {
+				if locked.Target.Name != authoredOwner.Target.Name ||
+					locked.Manifest.ApplicationID != authoredOwner.Manifest.ApplicationID {
+					return errAppApplyResultTargetMismatch
+				}
+				locked.FromRepository = true
+				locked.ManifestPath = authoredOwner.ManifestPath
+				locked.RepositoryRoot = authoredOwner.RepositoryRoot
+			}
+			return writer(ctx, locked, manifest)
+		}
+	}
+	if runLifecycle == nil {
+		runLifecycle = defaultAppEditLifecycleRunner
+	}
+	if authorities.Read == nil || authorities.Choices == nil || authorities.Plan == nil {
+		return func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+			return nil, errors.New("app edit mutation authorities are incomplete")
+		}
+	}
+	return func(ctx context.Context, desired appEditDesired, plan application.ProviderImpactPlan, consent application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if desired.Target != plan.Target || desired.Target != resolved.Target.Name {
+			return nil, errAppApplyResultTargetMismatch
+		}
+		// Nothing here may write source or state; plan, consent and source
+		// checks run inside the lifecycle lock below, before the first write.
+		mutate := func(ctx context.Context, locked resolvedApplication) error {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if locked.Target.Name != desired.Target {
+				return errAppApplyResultTargetMismatch
+			}
+			view, err := authorities.Read(ctx, desired.Target)
+			if err != nil {
+				return err
+			}
+			if view.Target != desired.Target || view.ApplicationID == "" || view.ApplicationID != desired.ApplicationID {
+				return errAppApplyResultTargetMismatch
+			}
+			request := appMachineDesiredRequest{
+				Target:           desired.Target,
+				SnapshotRevision: view.SnapshotRevision,
+				Requirements:     append([]capability.Requirement(nil), desired.Requirements...),
+			}
+			for _, preference := range desired.Preferences {
+				request.Choices = append(request.Choices, appMachineDesiredChoice{
+					Requirement: preference.Requirement,
+					InstanceID:  preference.InstanceID,
+				})
+			}
+			proposal, err := appEditPropose(ctx, request, view, authorities)
+			if err != nil {
+				return err
+			}
+			if proposal.ApplicationID != desired.ApplicationID || !reflect.DeepEqual(stableAppProviderImpact(proposal.Plan), stableAppProviderImpact(plan)) {
+				return errAppEditPlanDrifted
+			}
+			if err := application.ValidateProviderChangeConsent(plan, consent); err != nil {
+				return classifyProviderChangeConsent(err)
+			}
+			// Validate persisted Target selection intent before either write.
+			previous, err := application.DesiredProviderPreferencesAt(locked.TargetStateRoot, locked.Manifest)
+			if err != nil {
+				return fmt.Errorf("read current Target preferences: %w", err)
+			}
+			changedPreferences := !reflect.DeepEqual(appEditSortedPreferences(previous), appEditSortedPreferences(desired.Preferences))
+			if changedPreferences {
+				if err := application.ValidateProviderPreferencesAt(locked.TargetStateRoot, desired.Manifest, desired.Preferences); err != nil {
+					return fmt.Errorf("validate confirmed Target preferences: %w", err)
+				}
+			}
+			sourceChanged := true
+			if len(desired.Source) != 0 {
+				original, err := application.ParseYAML(string(desired.Source))
+				if err != nil {
+					original, err = application.ParseCanonicalYAML(string(desired.Source))
+					if err != nil {
+						return fmt.Errorf("parse original application source: %w", err)
+					}
+				}
+				original.ApplicationID = desired.ApplicationID
+				sourceChanged = !reflect.DeepEqual(original, desired.Manifest)
+			}
+			if sourceChanged {
+				if err := writeSource(ctx, locked, desired.Manifest); err != nil {
+					return fmt.Errorf("persist confirmed application edit: %w", err)
+				}
+			}
+			if changedPreferences {
+				if err := application.SaveDesiredProviderPreferencesAt(locked.TargetStateRoot, desired.Target, desired.Manifest, desired.Preferences); err != nil {
+					return fmt.Errorf("persist confirmed Target preferences: %w", err)
+				}
+			}
+			return nil
+		}
+		// Carry the freshly validated Edit consent only for this lifecycle
+		// invocation; the lifecycle rebinds it only to an unchanged authorization
+		// surface after the source mutation.
+		lifecycleCtx := withProviderChangeConsent(ctx, &consent)
+		outcomes, runErr := runLifecycle(lifecycleCtx, store, args, plan, mutate, out, errOut)
+		if runErr != nil {
+			return outcomes, runErr
+		}
+		return outcomes, nil
+	}
+}
+
+// atomicWriteApplicationManifest replaces a repository manifest while preserving
+// file permissions and leaving no partial document. The original bytes are
+// rechecked immediately before the rename; BaseHarbor's Target lifecycle lock
+// serializes concurrent writers of this source.
+func atomicWriteApplicationManifest(path string, original, data []byte) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat application manifest before edit: %w", err)
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".baseharbor-edit-*.tmp")
+	if err != nil {
+		return fmt.Errorf("stage edited application manifest: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write edited application manifest: %w", err)
+	}
+	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("preserve application manifest permissions: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("flush edited application manifest: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close edited application manifest: %w", err)
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("recheck application source before replace: %w", err)
+	}
+	if !bytes.Equal(current, original) {
+		return errAppEditSourceForeignEdit
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace application manifest: %w", err)
+	}
+	return nil
+}
+
+// defaultAppEditAuthorities assembles the production Edit authorities from the
+// accepted read, footprint, choice and impact planning owners. Only the Execute
+// connection mutates state, once, through the existing Apply lifecycle.
+func defaultAppEditAuthorities(store application.Store, args []string) appEditAuthorities {
+	reresolve := func(ctx context.Context, target string) (resolvedApplication, error) {
+		resolved, err := resolveApplicationFunc(ctx, store, args, "edit")
+		if err != nil {
+			return resolvedApplication{}, err
+		}
+		if resolved.Target.Name != target {
+			return resolvedApplication{}, &appMachineError{Code: "conflict"}
+		}
+		return resolved, nil
+	}
+	read := func(ctx context.Context, target string) (GuidedReadContext, error) {
+		resolved, err := reresolve(ctx, target)
+		if err != nil {
+			return GuidedReadContext{}, err
+		}
+		return readGuidedApplicationContext(ctx, resolved)
+	}
+	choices := func(ctx context.Context, target string, requirements []capability.Requirement) ([]appProviderChoice, error) {
+		resolved, err := reresolve(ctx, target)
+		if err != nil {
+			return nil, err
+		}
+		snapshot, current := currentAppEditSourceSnapshot(ctx, resolved)
+		if !current {
+			snapshot, _, err = applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+			if err != nil {
+				return nil, err
+			}
+		}
+		selection := appEditSelectionSnapshot(snapshot, resolved.Manifest.ApplicationID, resolved.Manifest.Environment)
+		return appProviderChoices(resolved.Manifest, selection, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}))
+	}
+	planner := func(ctx context.Context, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+		resolved, err := reresolve(ctx, target)
+		if err != nil {
+			return application.ProviderImpactPlan{}, err
+		}
+		desired, err := appEditProjectRequirements(resolved.Manifest, requirements)
+		if err != nil {
+			return application.ProviderImpactPlan{}, err
+		}
+		if err := desired.Validate(); err != nil {
+			return application.ProviderImpactPlan{}, err
+		}
+		desiredResolved := resolved
+		desiredResolved.Manifest = application.WithProviderPreferences(desired, preferences)
+		snapshot, _, err := applicationLifecycleSnapshot(desiredResolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		if err != nil {
+			return application.ProviderImpactPlan{}, err
+		}
+		if projection, ok := ctx.Value(appEditPreviewProjectionKey{}).(*appEditPreviewProjection); ok {
+			projection.source = resolved
+		}
+		return planApplicationProviderImpactForDesired(ctx, desiredResolved, snapshot, preferences)
+	}
+	return appEditAuthorities{
+		Read:    read,
+		Choices: choices,
+		Plan:    planner,
+		Preview: func(ctx context.Context, desired appEditDesired) (GuidedReadContext, error) {
+			resolved, err := reresolve(ctx, desired.Target)
+			if err != nil {
+				return GuidedReadContext{}, err
+			}
+			desiredResolved := resolved
+			desiredResolved.Manifest = application.WithProviderPreferences(desired.Manifest, desired.Preferences)
+			if preview, ok := currentAppEditPreviewProjection(ctx, resolved, desiredResolved.Manifest, desired.Preferences); ok {
+				return preview, nil
+			}
+			return readGuidedApplicationContext(ctx, desiredResolved)
+		},
+		Authorize: func(ctx context.Context, target, applicationID string) error {
+			view, err := read(ctx, target)
+			if err != nil {
+				return err
+			}
+			if view.Target != target || view.ApplicationID != applicationID {
+				return &appMachineError{Code: "conflict"}
+			}
+			return nil
+		},
+	}
+}
+
+// planApplicationProviderImpactForDesired routes the desired manifest through
+// the existing request and impact owners without a second executor. An empty
+// pending-change set still yields the authoritative zero-impact envelope from
+// the impact owner; a bare zero-value plan is not a valid proposal.
+func planApplicationProviderImpactForDesired(ctx context.Context, resolved resolvedApplication, snapshot application.ResolutionSnapshot, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
+	union, err := resolveApplicationProviderPlanFromSnapshot(resolved, snapshot, preferences)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	requests := applicationProviderChangeRequests(union)
+	requests, err = nativeBackendChangeRequests(resolved, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	requests, err = standaloneProviderVersionChangeRequests(ctx, resolved, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	requests, err = backendBindingChangeRequests(resolved, union, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	requests, err = externalReceiverChangeRequests(resolved, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	requests, err = externalIdentityChangeRequests(resolved, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	impact, err := resolveApplicationProviderImpact(ctx, resolved, snapshot, union, requests)
+	if err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	if err := recordAppEditPreviewProjection(ctx, resolved, snapshot, preferences, union, impact); err != nil {
+		return application.ProviderImpactPlan{}, err
+	}
+	return impact, nil
+}
+
+// appEditSourceBytes returns the exact authoritative source bytes for a
+// resolved application without reformatting them.
+func appEditSourceBytes(resolved resolvedApplication) ([]byte, error) {
+	if resolved.FromRepository && resolved.ManifestPath != "" {
+		data, err := os.ReadFile(resolved.ManifestPath)
+		if err != nil {
+			return nil, fmt.Errorf("read application source: %w", err)
+		}
+		return data, nil
+	}
+	data, err := os.ReadFile(filepath.Join(resolved.Store.Root, resolved.Manifest.Name, application.RepositoryManifestName))
+	if err != nil {
+		return nil, fmt.Errorf("read stored application source: %w", err)
+	}
+	return data, nil
+}

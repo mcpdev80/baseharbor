@@ -1,0 +1,28 @@
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-env
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir
+--- PASS: TestCMF20OwnerFileFailuresStayFailClosed (0.29s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-compose (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-env (0.06s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir (0.03s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose (0.03s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir (0.03s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose (0.03s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir (0.03s)
+=== RUN   TestCMF21StructuredCLIJSONRetainsMaterializationContext
+=== RUN   TestCMF21StructuredCLIJSONRetainsMaterializationContext/retirement
+    cmf20_r1_test.go:260: serialized CLI machine result: {"contract_version":"v1","error":{"code":"ownership_ambiguous","message":"Selected runtime retirement could not be verified.","cause":"runtime_retirement_unverified","next":"Inspect the retained deployment owner and retry; data and previous intent remain available.","resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1","details":{"materialization_diagnostics":[{"cause":"runtime-inventory-not-yet-materialized","code":"runtime_unavailable","details":{"application_id":"300f31a1-da19-4a98-9e42-6761d7dda1e0","capability":"database.sql","environment":"dev","instance":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1","logical_resource":"default","provider":"postgresql","target":"docker-dev"},"resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1"},{"cause":"runtime-inventory-not-yet-materialized","code":"runtime_unavailable","details":{"application_id":"300f31a1-da19-4a98-9e42-6761d7dda1e0","capability":"database.sql","environment":"dev","instance":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1","logical_resource":"default","provider":"postgresql","target":"docker-dev"},"resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1"}]}}}
+=== RUN   TestCMF21StructuredCLIJSONRetainsMaterializationContext/ownership
+    cmf20_r1_test.go:260: serialized CLI machine result: {"contract_version":"v1","error":{"code":"ownership_ambiguous","message":"Retained provider ownership could not be verified through its canonical deployment and native renderer.","cause":"retained_provider_ownership_unverified","next":"Inspect the existing owner and retry; runtime and data ownership remain available.","resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/retained-ca67bd59","details":{"materialization_diagnostics":[{"cause":"runtime-inventory-not-yet-materialized","code":"runtime_unavailable","details":{"application_id":"300f31a1-da19-4a98-9e42-6761d7dda1e0","capability":"database.sql","environment":"dev","instance":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1","logical_resource":"default","provider":"postgresql","target":"docker-dev"},"resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1"},{"cause":"runtime-inventory-not-yet-materialized","code":"runtime_unavailable","details":{"application_id":"300f31a1-da19-4a98-9e42-6761d7dda1e0","capability":"database.sql","environment":"dev","instance":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1","logical_resource":"default","provider":"postgresql","target":"docker-dev"},"resource":"postgresql/application/300f31a1-da19-4a98-9e42-6761d7dda1e0/dev-ef260e9a/default-37a8eec1"}]}}}
+--- PASS: TestCMF21StructuredCLIJSONRetainsMaterializationContext (0.04s)
+    --- PASS: TestCMF21StructuredCLIJSONRetainsMaterializationContext/retirement (0.00s)
+    --- PASS: TestCMF21StructuredCLIJSONRetainsMaterializationContext/ownership (0.00s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.343s

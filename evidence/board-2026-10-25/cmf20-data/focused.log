@@ -1,0 +1,82 @@
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/missing
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/stopped
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/starting
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/unhealthy
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-project
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-service
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-name
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/duplicate
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/missing
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/stopped
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/starting
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/unhealthy
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-project
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-service
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-name
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/duplicate
+--- PASS: TestProviderContinuationRequiresEveryCanonicalMember (0.00s)
+    --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/missing (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/stopped (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/starting (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/unhealthy (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-project (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-service (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-name (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/duplicate (0.00s)
+    --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/missing (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/stopped (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/starting (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/unhealthy (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-project (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-service (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-name (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/duplicate (0.00s)
+=== RUN   TestProviderContinuationRequiresSuccessfulOwnedInitCompletion
+--- PASS: TestProviderContinuationRequiresSuccessfulOwnedInitCompletion (0.00s)
+=== RUN   TestZeroContainerListingIsConfirmedByFreshListing
+--- PASS: TestZeroContainerListingIsConfirmedByFreshListing (0.00s)
+=== RUN   TestCMF19RuntimeDetectionFailureMustRemainUnverifiable
+--- PASS: TestCMF19RuntimeDetectionFailureMustRemainUnverifiable (1.23s)
+=== RUN   TestCMF19InspectorFailureMustRemainUnverifiable
+--- PASS: TestCMF19InspectorFailureMustRemainUnverifiable (0.50s)
+=== RUN   TestCMF19UnboundInstanceMustRemainUnverifiable
+--- PASS: TestCMF19UnboundInstanceMustRemainUnverifiable (0.19s)
+=== RUN   TestCMF19ForeignBindingsMustRemainUnverifiable
+--- PASS: TestCMF19ForeignBindingsMustRemainUnverifiable (0.05s)
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_instance
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_intent
+--- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable (0.09s)
+    --- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_instance (0.05s)
+    --- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_intent (0.05s)
+=== RUN   TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence
+--- PASS: TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence (0.03s)
+=== RUN   TestCMF19WizardPreviewObservationIsCWDIndependent
+--- PASS: TestCMF19WizardPreviewObservationIsCWDIndependent (0.03s)
+=== RUN   TestCMF19TwoInstancesMustBothReceiveFacts
+--- PASS: TestCMF19TwoInstancesMustBothReceiveFacts (0.04s)
+=== RUN   TestCMF19SQLAndValkeyInstancesMustBothReceiveFacts
+--- PASS: TestCMF19SQLAndValkeyInstancesMustBothReceiveFacts (0.03s)
+=== RUN   TestCMF19MixedEligibilityMustNotTransferProof
+--- PASS: TestCMF19MixedEligibilityMustNotTransferProof (0.04s)
+=== RUN   TestCMF19MaterializationDiagnosticIsTypedMachineError
+--- PASS: TestCMF19MaterializationDiagnosticIsTypedMachineError (0.06s)
+=== RUN   TestCMF19RetainedOwnershipCannotBeAuthorizedByDiagnosticAlone
+--- PASS: TestCMF19RetainedOwnershipCannotBeAuthorizedByDiagnosticAlone (0.05s)
+=== RUN   TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable
+--- PASS: TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable (0.03s)
+=== RUN   TestWizardNamedInstanceProjectsResourcesWithoutDisk
+--- PASS: TestWizardNamedInstanceProjectsResourcesWithoutDisk (0.03s)
+=== RUN   TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk
+--- PASS: TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk (0.07s)
+=== RUN   TestWizardUnverifiableWithoutIntentOrBoundInstance
+--- PASS: TestWizardUnverifiableWithoutIntentOrBoundInstance (0.27s)
+=== RUN   TestWizardRegistryBoundUnionProvableWithoutAnyDisk
+--- PASS: TestWizardRegistryBoundUnionProvableWithoutAnyDisk (0.03s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	2.814s

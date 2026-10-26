@@ -1,0 +1,11 @@
+Guided Adoption Happy Path	PASS	pristine repository -> source-neutral components + full capability selection -> canonical HTTPS routes -> READY
+New/Edit Zero Needs	PASS	actual New run + No/Cancel unchanged + native CLI/JSON/MCP Footprint parity
+Plan / Preflight / Status / Doctor	PASS	advanced read-only diagnostics remain available after the normal happy path
+Down / Up	PASS	recommended repository command resumes persistent runtime
+Idempotency	PASS	second baha up converged without manual repair
+SQL Data Path	PASS	write + read
+Cache	PASS	set + get + ttl
+Object Storage	PASS	S3 put
+Secrets	PASS	dedicated binding verification without value exposure
+Runtime Resources	PASS	application-time resource request accepted through mTLS broker
+New/Edit SQL Lifecycle	PASS	actual SQL New, add/remove, compatible provider switch; own/shared data and foreign paused resources preserved

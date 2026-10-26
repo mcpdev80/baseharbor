@@ -1,0 +1,7 @@
+{
+  "target": "demo-docker",
+  "runtime": "docker",
+  "mode": "diagnostics",
+  "accounted": [],
+  "errors": []
+}

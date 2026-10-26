@@ -1,0 +1,11 @@
+{
+  "version": "baseharbor.provider-impact/v1",
+  "target": "local",
+  "revision": "existing-owner-revision",
+  "plan_id": "fixture-plan",
+  "complete": false,
+  "attention": "Achtung",
+  "confirmations_required": 2,
+  "destructive": true,
+  "impacts": []
+}

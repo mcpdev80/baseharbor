@@ -1,0 +1,452 @@
+package application
+
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
+
+func TestManifestRoundTrip(t *testing.T) {
+	want := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "SMTP_PASSWORD", "OPENAI_API_KEY")
+	got, err := ParseCanonicalYAML(want.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := WithRequiredSecrets(New("mailflow", "prod", true, true, true), "OPENAI_API_KEY", "SMTP_PASSWORD")
+	expected.ApplicationID = want.ApplicationID
+	if !reflect.DeepEqual(got, expected) {
+		t.Fatalf("round trip mismatch: got %#v want %#v", got, expected)
+	}
+	if !strings.Contains(want.YAML(), "    - name: OPENAI_API_KEY\n") {
+		t.Fatalf("canonical YAML does not use explicit required secret objects:\n%s", want.YAML())
+	}
+}
+
+func TestManifestNamedServiceInstancesRoundTrip(t *testing.T) {
+	want := New("mailflow", "prod", false, false, false)
+	want.Services.SQL = false
+	want = WithSQLInstances(want, "primary", "analytics")
+	want = WithCacheInstances(want, "cache", "sessions")
+	got, err := ParseCanonicalYAML(want.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(SQLInstanceNames(got), []string{"analytics", "primary"}) {
+		t.Fatalf("unexpected SQL instances: %#v", SQLInstanceNames(got))
+	}
+	if !reflect.DeepEqual(CacheInstanceNames(got), []string{"cache", "sessions"}) {
+		t.Fatalf("unexpected cache instances: %#v", CacheInstanceNames(got))
+	}
+	for _, expected := range []string{"    instances:\n", "      primary: {}\n", "      analytics: {}\n", "      cache: {}\n", "      sessions: {}\n"} {
+		if !strings.Contains(got.YAML(), expected) {
+			t.Fatalf("named service YAML missing %q:\n%s", expected, got.YAML())
+		}
+	}
+}
+
+func TestManifestSingleServiceKeepsCompactCompatibility(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	if got := SQLInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default SQL instances: %#v", got)
+	}
+	if got := CacheInstanceNames(m); !reflect.DeepEqual(got, []string{"default"}) {
+		t.Fatalf("unexpected default cache instances: %#v", got)
+	}
+	if strings.Contains(m.YAML(), "instances:") {
+		t.Fatalf("simple manifest should stay compact:\n%s", m.YAML())
+	}
+}
+
+func TestManifestObservabilityManagementUIRoundTripWithMetricsOnly(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Services.ObservabilityManagementUI = true
+	m.Workload = WorkloadConfig{Components: []string{"demo-app"}}
+	m.Metrics.Sources = []MetricsSourceRequirement{{Name: "application", Service: "demo-app", Port: 8080, Path: "/metrics"}}
+
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "services:\n  observability:\n    management_ui: true\n") {
+		t.Fatalf("observability management UI missing from metrics-only manifest:\n%s", rendered)
+	}
+
+	got, err := ParseCanonicalYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Services.ObservabilityManagementUI {
+		t.Fatal("observability management UI did not survive manifest round trip")
+	}
+	if len(got.Metrics.Sources) != 1 || got.Metrics.Sources[0].Service != "demo-app" {
+		t.Fatalf("metrics source did not survive round trip: %#v", got.Metrics.Sources)
+	}
+}
+
+func TestManifestParsesScalarRequiredSecrets(t *testing.T) {
+	input := `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  sql:
+    enabled: true
+  cache:
+    enabled: false
+  secrets:
+    enabled: true
+secrets:
+  required:
+    - API_TOKEN
+`
+	m, err := ParseYAML(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RequiredSecretNames(m); !reflect.DeepEqual(got, []string{"API_TOKEN"}) {
+		t.Fatalf("unexpected required secrets %#v", got)
+	}
+}
+
+func TestManifestDoesNotDefaultToSQL(t *testing.T) {
+	m := New("demo", "", false, false, false)
+	if m.Environment != "dev" || m.Services.SQL || m.Services.Cache || m.Services.Secrets {
+		t.Fatalf("unexpected defaults: %#v", m)
+	}
+}
+
+func TestRequiredSecretsEnableManagedSecrets(t *testing.T) {
+	m := WithRequiredSecrets(New("demo", "dev", true, false, false), "API_TOKEN")
+	if !m.Services.Secrets {
+		t.Fatal("required secret declaration must enable managed secrets")
+	}
+}
+
+func TestDeveloperManifestWithoutAppIDParses(t *testing.T) {
+	man := `version: 1
+app:
+  name: workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: true
+`
+	m, err := ParseYAML(man)
+	if err != nil {
+		t.Fatalf("developer manifest without app.id must parse: %v", err)
+	}
+	if m.ApplicationID != "" {
+		t.Fatalf("developer manifest must not carry an application id, got %q", m.ApplicationID)
+	}
+}
+
+func TestDeveloperManifestWithAppIDIsRejected(t *testing.T) {
+	man := `version: 1
+app:
+  id: 11111111-1111-4111-8111-111111111111
+  name: workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: true
+`
+	if _, err := ParseYAML(man); err == nil {
+		t.Fatalf("authored app.id in a developer manifest must be rejected")
+	}
+}
+
+func TestManifestValidationFailsClosed(t *testing.T) {
+	cases := []Manifest{
+		New("UPPER", "dev", true, false, false),
+		{Version: 99, Name: "demo", Environment: "dev", Services: Services{SQL: true}},
+		{Version: 1, Name: "demo", Environment: "dev"},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "bad/key"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{Secrets: true}, Secrets: SecretRequirements{Required: []SecretRequirement{{Name: "API_TOKEN"}, {Name: "API_TOKEN"}}}},
+		{Version: 1, Name: "demo", Environment: "dev", Services: Services{SQL: true, SQLInstances: map[string]ServiceInstance{"Bad_Name": {}}}},
+	}
+	for _, tc := range cases {
+		if err := tc.Validate(); err == nil {
+			t.Fatalf("expected validation failure for %#v", tc)
+		}
+	}
+}
+
+func TestStoreCreateLoadList(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "apps")
+	store := Store{Root: root}
+	for _, name := range []string{"zeta", "alpha"} {
+		path, err := store.Create(New(name, "dev", true, false, false))
+		if err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("manifest permissions = %o", info.Mode().Perm())
+		}
+	}
+	m, _, err := store.Load("alpha")
+	if err != nil || m.Name != "alpha" {
+		t.Fatalf("load failed: %#v %v", m, err)
+	}
+	items, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].Name != "alpha" || items[1].Name != "zeta" {
+		t.Fatalf("unexpected list: %#v", items)
+	}
+	_, err = store.Create(New("alpha", "dev", true, false, false))
+	if !errors.Is(err, ErrExists) {
+		t.Fatalf("expected ErrExists, got %v", err)
+	}
+}
+
+func TestParserRejectsProviderSpecificServiceNames(t *testing.T) {
+	for _, service := range []string{"postgres", "redis"} {
+		input := "version: 1\napp:\n  name: demo\n  environment: dev\nservices:\n  " + service + ":\n    enabled: true\n"
+		if _, err := ParseYAML(input); err == nil {
+			t.Fatalf("expected provider-specific service %q to be rejected", service)
+		}
+	}
+}
+
+func TestParserRejectsUnknownFields(t *testing.T) {
+	_, err := ParseCanonicalYAML(strings.Replace(New("demo", "dev", true, false, false).YAML(), "app:\n", "app:\n  surprise: yes\n", 1))
+	if err == nil {
+		t.Fatal("expected unknown field to fail")
+	}
+}
+
+func TestManifestHTTPExposureRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "web")
+	m = WithHTTPExposure(m, "public", "web", 8080, "http")
+
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Exposures, []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "public"}}) {
+		t.Fatalf("unexpected exposures: %#v", got.Exposures)
+	}
+	for _, want := range []string{"exposure:\n", "  http:\n", "    - name: public\n", "      service: web\n", "      port: 8080\n", "      protocol: http\n", "      visibility: public\n"} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("exposure YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestHTTPExposureRequiresExplicitSelectedComponent(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = true
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "explicit workload.components") {
+		t.Fatalf("expected deterministic workload component validation, got %v", err)
+	}
+
+	m.Workload.Components = []string{"api"}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "not selected") {
+		t.Fatalf("expected target selection validation, got %v", err)
+	}
+}
+
+func TestManifestHTTPExposureVisibilityFailsClosed(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Workload = WorkloadConfig{Components: []string{"web"}}
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http", Visibility: "private-ish"}}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "visibility must be public or internal") {
+		t.Fatalf("expected invalid visibility rejection, got %v", err)
+	}
+}
+
+func TestManifestYAMLOmitsDisabledServices(t *testing.T) {
+	m := New("demo", "dev", true, false, false)
+	yaml := m.YAML()
+	if !strings.Contains(yaml, "  sql:\n    enabled: true\n") {
+		t.Fatalf("enabled SQL capability missing from sparse YAML:\n%s", yaml)
+	}
+	for _, unwanted := range []string{"cache:", "secrets:", "object_storage:", "enabled: false", "postgres:", "redis:"} {
+		if strings.Contains(yaml, unwanted) {
+			t.Fatalf("sparse YAML contains disabled capability %q:\n%s", unwanted, yaml)
+		}
+	}
+}
+
+func TestManifestRuntimePermissionsRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api")
+	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.create") ||
+		!RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.get") ||
+		!RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.delete") {
+		t.Fatalf("runtime permissions lost in round trip: %#v", got.Runtime.Permissions)
+	}
+	if RuntimePermissionFor(got, "object-storage.s3/v1", "runtime.rotate") {
+		t.Fatal("undeclared runtime.rotate was granted")
+	}
+	for _, want := range []string{
+		"runtime:\n",
+		"  permissions:\n",
+		"    - capability: object-storage.s3/v1\n",
+		"      services:\n",
+		"        - api\n",
+		"      operations:\n",
+		"        - runtime.create\n",
+	} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("runtime YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestRuntimePermissionsFailClosed(t *testing.T) {
+	base := New("demo", "dev", true, false, false)
+	cases := []RuntimePermission{
+		{Capability: "object-storage.s3/v9", Services: []string{"api"}, Operations: []string{"runtime.create"}},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: nil},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: []string{"create"}},
+		{Capability: "object-storage.s3/v1", Services: []string{"api"}, Operations: []string{"runtime.create", "runtime.create"}},
+	}
+	for _, permission := range cases {
+		m := base
+		m.Runtime.Permissions = []RuntimePermission{permission}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected invalid runtime permission to fail: %#v", permission)
+		}
+	}
+}
+
+func TestManifestMetricsSourceRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api", "worker")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []MetricsSourceRequirement{{Name: "application", Service: "api", Port: 8080, Path: "/metrics"}}
+	if !reflect.DeepEqual(got.Metrics.Sources, want) {
+		t.Fatalf("metrics sources = %#v, want %#v\nyaml:\n%s", got.Metrics.Sources, want, m.YAML())
+	}
+	for _, expected := range []string{
+		"metrics:\n",
+		"  sources:\n",
+		"    - name: application\n",
+		"      service: api\n",
+		"      port: 8080\n",
+		"      path: /metrics\n",
+	} {
+		if !strings.Contains(m.YAML(), expected) {
+			t.Fatalf("metrics YAML missing %q:\n%s", expected, m.YAML())
+		}
+	}
+}
+
+func TestManifestMetricsSourceValidationFailsClosed(t *testing.T) {
+	base := New("demo", "dev", false, false, false)
+	base.Services.SQL = false
+	base = WithWorkloadComponents(base, "api")
+
+	cases := []MetricsSourceRequirement{
+		{Name: "application", Service: "worker", Port: 8080, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 0, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 8080, Path: "metrics"},
+		{Name: "application", Service: "api", Port: 8080, Path: "/metrics?token=secret"},
+	}
+	for _, source := range cases {
+		m := base
+		m.Metrics.Sources = []MetricsSourceRequirement{source}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected metrics source validation failure for %#v", source)
+		}
+	}
+
+	m := base
+	m.Metrics.Sources = []MetricsSourceRequirement{
+		{Name: "application", Service: "api", Port: 8080, Path: "/metrics"},
+		{Name: "application", Service: "api", Port: 9090, Path: "/metrics"},
+	}
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate metrics source") {
+		t.Fatalf("expected duplicate metrics source rejection, got %v", err)
+	}
+}
+
+func TestManifestLogsRoundTrip(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api")
+	m = WithLogsCollection(m, "application")
+
+	got, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Logs.Collect, []string{"application"}) {
+		t.Fatalf("logs collect = %#v", got.Logs.Collect)
+	}
+	for _, want := range []string{"logs:\n", "  collect:\n", "    - application\n"} {
+		if !strings.Contains(got.YAML(), want) {
+			t.Fatalf("logs YAML missing %q:\n%s", want, got.YAML())
+		}
+	}
+}
+
+func TestManifestLogsRequireExplicitWorkloadComponents(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithLogsCollection(m, "application")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "logs collection requires explicit workload.components") {
+		t.Fatalf("expected logs/workload validation failure, got %v", err)
+	}
+}
+
+func TestManifestLogsRejectUnknownSource(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api")
+	m = WithLogsCollection(m, "everything")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "unsupported logs collect source") {
+		t.Fatalf("expected unsupported logs source failure, got %v", err)
+	}
+}
+
+func TestApplicationIDRoundTripAndValidation(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	if err := ValidateApplicationID(m.ApplicationID); err != nil {
+		t.Fatalf("generated application ID: %v", err)
+	}
+	rendered := m.YAML()
+	if !strings.Contains(rendered, "  id: "+m.ApplicationID+"\n") {
+		t.Fatalf("manifest does not render application ID:\n%s", rendered)
+	}
+	got, err := ParseCanonicalYAML(rendered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ApplicationID != m.ApplicationID {
+		t.Fatalf("application ID changed on round trip: got %q want %q", got.ApplicationID, m.ApplicationID)
+	}
+}
+
+func TestApplicationIDRejectsNonV4Identity(t *testing.T) {
+	m := New("identity-proof", "dev", true, false, false)
+	m.ApplicationID = "00000000-0000-0000-0000-000000000000"
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected invalid application ID to fail")
+	}
+}

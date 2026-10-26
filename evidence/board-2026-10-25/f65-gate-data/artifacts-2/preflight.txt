@@ -1,0 +1,24 @@
+Host resources
+  Available RAM       17.10 GiB
+  Planned minimum     1.72 GiB
+  Planned estimate    3.69 GiB
+  Confidence          ESTIMATED
+  Planned components  20: SQL provider/resource, cache provider/resource, object storage provider, application secrets path, identity database, identity provider, metrics provider, logs provider, log collector, telemetry collector, trace provider, SQL management UI, cache management UI, object storage management UI, secrets management UI, identity management UI, observability management UI, application workload, developer/exposure gateway, application runtime broker
+  Safety headroom     SAFE
+  Swap                none
+  Memory pressure     some avg300=0.00, full avg300=0.00
+[OK] manifest
+[OK] host memory
+[OK] supported desired services
+[OK] manifest permissions
+[OK] application workload
+[OK] shared backend topology
+[OK] runtime orchestration
+[OK] desired-state plan
+[OK] workload security
+[OK] OpenBao control-plane runtime
+[OK] OpenBao application provisioning
+[OK] required application secrets
+  REQUIRED SECRET          STATUS                                 ACTION
+  APP_SECRET               present                                -
+Preflight passed. No changes were made.

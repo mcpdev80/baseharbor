@@ -1,0 +1,434 @@
+name: "Atomic Acceptance Gate"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Exact BaseHarbor branch/tag, refs/... path or full commit SHA (validated before checkout)
+        required: true
+        type: string
+      demo_ref:
+        description: Exact baseharbor-demo commit SHA to test
+        required: true
+        type: string
+      runtime:
+        description: static, docker or podman
+        required: true
+        type: string
+      gate:
+        description: Atomic gate from baseharbor-demo/tests/gate-resources.json
+        required: true
+        type: string
+      candidate_artifact:
+        description: Optional prebuilt candidate artifact from the caller run
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: ${{ inputs.runtime }} · ${{ inputs.gate }}
+    runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
+      ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
+
+    steps:
+      - name: Validate candidate ref before checkout
+        shell: bash
+        env:
+          CANDIDATE_REF: ${{ inputs.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ref="$CANDIDATE_REF"
+          fail_fast() {
+            echo "::error::candidate ref '$ref' is not a branch/tag; resolve to a ref or a full commit SHA before the gate checkout. actions/checkout fetches non-SHA values as +refs/heads/<value>* and cannot resolve a bare short SHA." >&2
+            exit 2
+          }
+          if [ -z "$ref" ]; then
+            echo "::error::candidate ref is empty; pass a branch/tag, refs/... path, or full commit SHA" >&2
+            exit 2
+          elif [[ "$ref" == refs/* ]]; then
+            :
+          elif [[ "$ref" =~ ^[0-9a-fA-F]{40}$ ]] || [[ "$ref" =~ ^[0-9a-fA-F]{64}$ ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/git/commits/$ref" --jq .sha >/dev/null || fail_fast
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$ref" >/dev/null 2>&1; then
+            :
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$ref" >/dev/null 2>&1; then
+            :
+          else
+            fail_fast
+          fi
+
+      - name: Checkout BaseHarbor candidate
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Prepare verified rootless runtime
+        if: inputs.runtime != 'static'
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Resolve candidate SHA
+        id: candidate
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        if: inputs.candidate_artifact == '' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Reset runtime state
+        id: reset
+        if: inputs.runtime != 'static'
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+
+      - name: Verify Podman Quadlet runtime
+        id: quadlet
+        if: inputs.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/atomic-podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          verify_units="$RUNNER_TEMP/atomic-quadlet-verify"
+          rm -rf "$verify_units"
+          mkdir -p "$verify_units"
+          QUADLET_UNIT_DIRS="$verify_units" "$generator" --user --dryrun >/tmp/atomic-podman-quadlet.txt
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in BaseHarbor Podman acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Download prebuilt candidate
+        id: candidate_artifact
+        if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ inputs.candidate_artifact }}
+          path: ${{ runner.temp }}/pre-release-candidate
+
+      - name: Load prebuilt runtime image
+        id: load_image
+        if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+          archive="$RUNNER_TEMP/pre-release-candidate/baseharbor-runtime-pre-release.tar"
+          test -s "$archive"
+          if [ "${{ inputs.runtime }}" = "podman" ]; then
+            env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman load -i "$archive"
+            env -u XDG_CONFIG_HOME -u XDG_DATA_HOME podman image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          else
+            docker load -i "$archive"
+            docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          fi
+
+      - name: Checkout exact demo revision
+        id: demo
+        shell: bash
+        env:
+          DEMO_REF: ${{ inputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          workdir="$RUNNER_TEMP/baseharbor-demo-atomic"
+          rm -rf "$workdir" "$ARTIFACT_DIR"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
+          echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+
+      - name: Validate gate resource declaration
+        id: resource_profile
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+          RUNTIME: ${{ inputs.runtime }}
+        run: |
+          set -euo pipefail
+          registry="${{ steps.demo.outputs.workdir }}/tests/gate-resources.json"
+          test -s "$registry"
+          jq -e --arg gate "$GATE" 'has($gate)' "$registry" >/dev/null
+          declared_class="$(jq -r --arg gate "$GATE" '.[$gate].class' "$registry")"
+          if [ "$RUNTIME" = "static" ]; then
+            test "$declared_class" = "static"
+          else
+            case "$declared_class" in
+              runtime|integration) ;;
+              *) echo "Gate $GATE has class $declared_class, incompatible with runtime $RUNTIME" >&2; exit 2 ;;
+            esac
+          fi
+          echo "class=$declared_class" >> "$GITHUB_OUTPUT"
+          echo "profile=$(jq -r --arg gate "$GATE" '.[$gate].profile' "$registry")" >> "$GITHUB_OUTPUT"
+          echo "capabilities=$(jq -c --arg gate "$GATE" '.[$gate].capabilities' "$registry")" >> "$GITHUB_OUTPUT"
+
+      - name: Run static gate
+        id: static_gate
+        if: inputs.runtime == 'static'
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          workdir="${{ steps.demo.outputs.workdir }}"
+          export DEMO_ROOT="$workdir"
+          export ARTIFACT_DIR
+          mkdir -p "$ARTIFACT_DIR"
+          if [ -n "${{ inputs.candidate_artifact }}" ]; then
+            chmod 0755 "$RUNNER_TEMP/pre-release-candidate/baha"
+            export BAHA="$RUNNER_TEMP/pre-release-candidate/baha"
+          else
+            mkdir -p "$RUNNER_TEMP/atomic-bin"
+            go build -trimpath -o "$RUNNER_TEMP/atomic-bin/baha" ./cmd/baha
+            export BAHA="$RUNNER_TEMP/atomic-bin/baha"
+          fi
+          case "$GATE" in
+            config-matrix) DEMO_SUITE=static bash "$workdir/tests/config-matrix/run.sh" ;;
+            init) bash "$workdir/tests/init/run.sh" ;;
+            mcp) bash "$workdir/tests/mcp/run.sh" ;;
+            agent) bash "$workdir/tests/agent/run.sh" ;;
+            shell-ux) bash "$workdir/tests/shell-ux/run.sh" ;;
+            *) echo "Unsupported static gate: $GATE" >&2; exit 2 ;;
+          esac
+
+      - name: Run runtime gate
+        id: runtime_gate
+        if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
+        # Security starts the complete provider set; budget cold builds and
+        # teardown after acceptance without changing service readiness limits.
+        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          workdir="${{ steps.demo.outputs.workdir }}"
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          export BASEHARBOR_TARGET="atomic-${{ inputs.runtime }}-${{ inputs.gate }}"
+          prebuilt=()
+          if [ -n "${{ inputs.candidate_artifact }}" ]; then
+            prebuilt=(BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha")
+          fi
+          cd "$workdir"
+          env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+
+      - name: Preserve demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static'
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/demo-runtime-diagnostics"
+          rm -rf "$out"
+          mkdir -p "$out"
+          printf 'runtime=%s\ngate=%s\ncheckout=%s\n' "${{ inputs.runtime }}" "${{ inputs.gate }}" "${{ steps.checkout.outcome }}" > "$out/preserve-summary.txt"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
+          cp -a "$ARTIFACT_DIR/runtime-diagnostics/." "$out/" 2>/dev/null || true
+          if [ -d "$ARTIFACT_DIR/failure-runtime" ]; then
+            cp -a "$ARTIFACT_DIR/failure-runtime" "$out/"
+          fi
+          echo "::group::Demo runtime diagnostics"
+          find "$out" -maxdepth 1 -type f -printf '%f\n' | sort || true
+          for file in "$out"/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+
+      - name: Upload demo runtime diagnostics
+        if: failure() && inputs.runtime != 'static' && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: demo-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/demo-runtime-diagnostics
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Run provider integration gate
+        id: integration_gate
+        if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration'
+        shell: bash
+        env:
+          BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          case "$GATE" in
+            rabbitmq-runtime)
+              BASEHARBOR_RABBITMQ_ACCEPTANCE=1 \
+              BASEHARBOR_RABBITMQ_UI_ACCEPTANCE=1 \
+              BASEHARBOR_RABBITMQ_HA_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestRabbitMQRuntimeSemanticAcceptanceInCI|TestRabbitMQManagementUIRuntimeAcceptanceInCI|TestRabbitMQHARuntimeFailoverAcceptanceInCI)' -v
+              ;;
+            mongodb-runtime)
+              BASEHARBOR_MONGODB_ACCEPTANCE=1 \
+              BASEHARBOR_MONGODB_UI_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestMongoDBRuntimeSemanticAcceptanceInCI|TestMongoDBManagementUIRuntimeAcceptanceInCI)$' -v
+              ;;
+            durable-key-value)
+              BASEHARBOR_VALKEY_UI_ACCEPTANCE=1 \
+              BASEHARBOR_VALKEY_HA_ACCEPTANCE=1 \
+                go test -p 1 ./internal/application -count=1 -run '^(TestDurableKeyValueRuntimeUsesPersistentValkeyAndWriteReadVerification|TestDurableValkeyManagementUIRuntimeAcceptanceInCI|TestValkeyHARuntimeFailoverAcceptanceInCI)' -v
+              ;;
+            control-plane-recovery)
+              BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
+                go test -p 1 ./cmd/baha -count=1 -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -v
+              ;;
+            loki-runtime)
+              BASEHARBOR_LOGS_INTEGRATION=1 \
+                go test -p 1 ./internal/logs -count=1 -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -v
+              ;;
+            tempo-runtime)
+              BASEHARBOR_TRACES_INTEGRATION=1 \
+                go test -p 1 ./internal/traces -count=1 -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -v
+              ;;
+            *)
+              echo "Unsupported provider integration gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Collect failure diagnostics
+        if: failure() && inputs.runtime != 'static'
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/cache"
+          diag="$RUNNER_TEMP/atomic-runtime-diagnostics"
+          rm -rf "$diag"
+          bash scripts/ci-failure-diagnostics.sh             "${{ inputs.runtime }}"             "$diag"             "${{ steps.demo.outputs.workdir }}"             "${{ inputs.candidate_artifact != '' && format('{0}/pre-release-candidate/baha', runner.temp) || '' }}" || true
+          echo "::group::Atomic runtime failure diagnostics"
+          cat "$diag/summary.md" 2>/dev/null || true
+          for file in "$diag"/containers/*.inspect.txt "$diag"/containers/*.log; do
+            [ -f "$file" ] || continue
+            echo "===== $file ====="
+            tail -n 160 "$file" || true
+          done
+          echo "::endgroup::"
+          mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
+          cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
+
+      - name: Upload atomic failure diagnostics
+        if: failure() && inputs.runtime != 'static' && steps.checkout.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: atomic-failure-${{ inputs.runtime }}-${{ inputs.gate }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/atomic-runtime-diagnostics
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup runtime state
+        id: cleanup
+        if: always() && inputs.runtime != 'static'
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
+
+      - name: Generate atomic gate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/atomic-gate-evidence"
+          rows="$RUNNER_TEMP/atomic-gate-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	exact requested BaseHarbor candidate
+          Candidate artifact	${{ steps.candidate_artifact.outcome }}	shared prebuilt candidate when supplied by pre-release
+          Runtime reset	${{ steps.reset.outcome }}	isolated runtime state; skipped for static gates
+          Podman Quadlet	${{ steps.quadlet.outcome }}	native Quadlet proof; skipped otherwise
+          Resource profile	${{ steps.resource_profile.outcome }}	profile=${{ steps.resource_profile.outputs.profile }} capabilities=${{ steps.resource_profile.outputs.capabilities }}
+          Static gate	${{ steps.static_gate.outcome }}	${{ inputs.gate }}
+          Runtime gate	${{ steps.runtime_gate.outcome }}	${{ inputs.gate }}
+          Integration gate	${{ steps.integration_gate.outcome }}	${{ inputs.gate }}
+          Cleanup	${{ steps.cleanup.outcome }}	per-gate runtime cleanup
+          EOF
+          mkdir -p "$out/demo"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
+          cp -a "$ARTIFACT_DIR/." "$out/demo/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh             "$out"             "BaseHarbor Atomic Gate Evidence"             "pre-release/gate/${{ inputs.runtime }}/${{ inputs.gate }}"             "${{ inputs.ref }}"             "${{ steps.candidate.outputs.sha || github.sha }}"             "$rows"
+
+          capabilities='${{ steps.resource_profile.outputs.capabilities }}'
+          [ -n "$capabilities" ] || capabilities='[]'
+          if [ "${{ inputs.runtime }}" = "static" ]; then
+            gate_outcome="${{ steps.static_gate.outcome }}"
+          elif [ "${{ steps.resource_profile.outputs.class }}" = "integration" ]; then
+            gate_outcome="${{ steps.integration_gate.outcome }}"
+          else
+            gate_outcome="${{ steps.runtime_gate.outcome }}"
+          fi
+          jq -n \
+            --arg id "${{ inputs.runtime }}/${{ inputs.gate }}" \
+            --arg runtime "${{ inputs.runtime }}" \
+            --arg gate "${{ inputs.gate }}" \
+            --arg class "${{ steps.resource_profile.outputs.class }}" \
+            --arg profile "${{ steps.resource_profile.outputs.profile }}" \
+            --arg candidate_sha "${{ steps.candidate.outputs.sha || github.sha }}" \
+            --arg demo_ref "${{ inputs.demo_ref }}" \
+            --arg outcome "$gate_outcome" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg workflow_run_id "$GITHUB_RUN_ID" \
+            --argjson workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --argjson capabilities "$capabilities" \
+            '{
+              schema: "baseharbor.pre-release.gate-evidence/v1",
+              id: $id,
+              runtime: $runtime,
+              gate: $gate,
+              class: $class,
+              profile: $profile,
+              capabilities: $capabilities,
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              outcome: $outcome,
+              cleanup_outcome: $cleanup_outcome,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
+            }' > "$out/manifest.json"
+
+      - name: Upload atomic gate evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-gate-${{ inputs.runtime }}-${{ inputs.gate }}-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/atomic-gate-evidence
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS connector_certificate_overlap;
+ALTER TABLE connector_enrollment_grants DROP COLUMN previous_certificate_serial;

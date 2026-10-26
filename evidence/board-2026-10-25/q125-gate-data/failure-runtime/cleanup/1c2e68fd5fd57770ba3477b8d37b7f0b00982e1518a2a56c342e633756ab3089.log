@@ -1,0 +1,12 @@
+Health check for server upstream/provider succeeded, reason: Layer4 check passed, check duration: 0ms, status: 3/3 UP.
+Connect from 172.18.0.9:60628 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:46076 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:46136 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:51282 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:51274 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:52182 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:39020 to 172.18.0.10:6379 (service/TCP)
+Connect from 172.18.0.9:40428 to 172.18.0.10:6379 (service/TCP)
+[NOTICE]   (1) : Initializing new worker (8)
+[NOTICE]   (1) : Loading success.
+[WARNING]  (8) : Health check for server upstream/provider succeeded, reason: Layer4 check passed, check duration: 0ms, status: 3/3 UP.

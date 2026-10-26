@@ -1,0 +1,906 @@
+Application deployment inputs are incomplete; resolving only the missing values...
+Application runtime initialization saved for demo (dev).
+Runtime provider: docker
+Development domain: baha.localhost
+Canonical API URL: https://demo.baha.localhost
+TLS: local
+Ports remain managed automatically by BaseHarbor.
+next: run 'baha up'
+[OK] workload-port      DEMO_HTTPS_PORT=8080 available for this deployment
+Converging selected application capabilities and their genuine dependencies...
+BaseHarbor · demo · dev
+  [36mINFO      [0m target                   atomic-docker-data-capabilities
+
+Plan
+  [36mINFO      [0m desired actions          25 action(s) resolved
+Manifest: /home/marcel/tmp-ops/demo-run/baseharbor.yaml (repository source of truth)
+Provider placement: tempo -> shared
+Provider placement: prometheus -> shared
+Provider placement: loki -> shared
+Achtung: review the concrete consequences and required acknowledgements below.
+{
+  "version": "baseharbor.provider-impact/v1",
+  "target": "atomic-docker-data-capabilities",
+  "revision": "161bf9f5fbaabd029b65d435917601913a7ce837f10d359ad069975a28510622",
+  "plan_id": "4922980a8969a815d28957200a0c89ad97466845a1d3806993bacad853f52c11",
+  "complete": false,
+  "attention": "Achtung",
+  "confirmations_required": 2,
+  "destructive": false,
+  "impacts": [
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "caddy/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "caddy/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "caddy",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "caddy/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "caddy",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "exposure.http",
+          "via": [
+            "caddy/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "keycloak/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "keycloak/shared",
+        "kind": "keycloak",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "keycloak/shared",
+        "kind": "keycloak",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "identity.oidc",
+          "via": [
+            "keycloak/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "loki/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "loki/shared",
+        "kind": "loki",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "loki/shared",
+        "kind": "loki",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "logs",
+          "via": [
+            "loki/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "mongodb/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "mongodb/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "mongodb",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "mongodb/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "mongodb",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "database.document",
+          "via": [
+            "mongodb/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "openbao/control-plane",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "openbao/control-plane",
+        "kind": "openbao",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "openbao/control-plane",
+        "kind": "openbao",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "secrets",
+          "via": [
+            "openbao/control-plane"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "opentelemetry-collector/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "opentelemetry-collector/shared",
+        "kind": "opentelemetry-collector",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "opentelemetry-collector/shared",
+        "kind": "opentelemetry-collector",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "telemetry.otlp",
+          "via": [
+            "opentelemetry-collector/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "postgresql/shared/environment-dev-91df0423",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "postgresql/shared/environment-dev-91df0423",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "postgresql/shared/environment-dev-91df0423",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "database.sql",
+          "via": [
+            "postgresql/shared/environment-dev-91df0423"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "prometheus/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "prometheus/shared",
+        "kind": "prometheus",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "prometheus/shared",
+        "kind": "prometheus",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "metrics",
+          "via": [
+            "prometheus/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "rabbitmq/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "rabbitmq/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "rabbitmq",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "rabbitmq/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a",
+        "kind": "rabbitmq",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "e5f5a494-5681-4499-ae58-747d2b19cf30",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "messaging.queue",
+          "via": [
+            "rabbitmq/application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "keycloak/shared",
+        "openbao/control-plane"
+      ],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "identity.oidc",
+          "via": [
+            "keycloak/shared",
+            "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        },
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "secrets",
+          "via": [
+            "openbao/control-plane",
+            "runtime/bh-atomic-docker-data-capabilities-shared/control-plane/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/postgresql",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/postgresql",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/postgresql",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "postgresql/shared/environment-dev-91df0423"
+      ],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "database.sql",
+          "via": [
+            "postgresql/shared/environment-dev-91df0423",
+            "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/valkey",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/valkey",
+        "kind": "valkey",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/valkey",
+        "kind": "valkey",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-atomic-docker-data-capabilities-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "valkey/shared/environment-dev-91df0423"
+      ],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "cache.key-value",
+          "via": [
+            "valkey/shared/environment-dev-91df0423",
+            "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/valkey"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "seaweedfs/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "seaweedfs/shared",
+        "kind": "seaweedfs",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "seaweedfs/shared",
+        "kind": "seaweedfs",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "object-storage.s3",
+          "via": [
+            "seaweedfs/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "valkey/shared/environment-dev-91df0423",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "valkey/shared/environment-dev-91df0423",
+        "kind": "valkey",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "valkey/shared/environment-dev-91df0423",
+        "kind": "valkey",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/atomic-docker-data-capabilities",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-atomic-docker-data-capabilities-shared/shared-backends/valkey"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/e5f5a494-5681-4499-ae58-747d2b19cf30/dev",
+          "function": "cache.key-value",
+          "via": [
+            "valkey/shared/environment-dev-91df0423"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    }
+  ]
+}
+Achtung: confirm the displayed outcome without a working alternative (1/2, plan 4922980a8969a815d28957200a0c89ad97466845a1d3806993bacad853f52c11)? [y/N]: yes
+Achtung: confirm the displayed outcome without a working alternative (2/2, plan 4922980a8969a815d28957200a0c89ad97466845a1d3806993bacad853f52c11)? [y/N]: yes
+BaseHarbor control-plane ports:
+  PostgreSQL  127.0.0.1:5432
+  OpenBao     127.0.0.1:8200
+BaseHarbor control-plane runtime started
+next: run 'baha status' and 'baha doctor'
+OpenBao is not initialized; bootstrapping the managed trust plane...
+[OK] OpenBao initialized and unsealed
+[OK] baseharbor KV v2 mount configured
+[OK] restricted manager AppRole configured and verified
+[OK] initial root token revoked
+Recovery file: /tmp/baseharbor-demo-fixture.hebqUt/data/baseharbor-recovery/atomic-docker-data-capabilities/openbao-recovery.json
+Store the recovery file securely and separately from BaseHarbor application state.
+Host resources
+  Available RAM       19.61 GiB
+  Planned minimum     1.72 GiB
+  Planned estimate    3.69 GiB
+  Confidence          ESTIMATED
+  Planned components  20: SQL provider/resource, cache provider/resource, object storage provider, application secrets path, identity database, identity provider, metrics provider, logs provider, log collector, telemetry collector, trace provider, SQL management UI, cache management UI, object storage management UI, secrets management UI, identity management UI, observability management UI, application workload, developer/exposure gateway, application runtime broker
+  Safety headroom     SAFE
+  Swap                none
+  Memory pressure     some avg300=0.00, full avg300=0.00
+◐ Checking application prerequisites (<1s)◓ Checking application prerequisites (1.2s)◑ Checking application prerequisites (2.0s)[2K[OK] Checking application prerequisites - done (2.1s)
+
+Preflight
+  [32mOK        [0m manifest                
+  [32mOK        [0m host memory             
+  [32mOK        [0m supported services      
+  [32mOK        [0m manifest permissions    
+  [32mOK        [0m application workload    
+  [32mOK        [0m shared backend topology 
+  [32mOK        [0m runtime provider capabilities
+  [32mOK        [0m workload security       
+  [32mOK        [0m connectivity policy     
+  [32mOK        [0m provider registry       
+  [32mOK        [0m BaseHarbor control-plane runtime
+  [32mOK        [0m managed service PKI     
+  [32mOK        [0m runtime PKI prerequisites
+  [32mOK        [0m managed object storage provider
+  [32mOK        [0m managed traces provider 
+  [32mOK        [0m managed telemetry provider
+  [32mOK        [0m managed metrics provider
+  [32mOK        [0m managed logs provider   
+  [32mOK        [0m managed exposure provider
+  [32mOK        [0m managed identity provider
+◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (<1s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (1.2s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (2.0s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (2.8s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (3.6s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (4.4s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (5.2s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (6.0s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (6.8s)[2K[OK] Reconciling shared data providers - done (7.5s)
+◐ Reconciling object storage (<1s)◓ Reconciling object storage (1.2s)◑ Reconciling object storage (2.0s)◒ Reconciling object storage (2.8s)◐ Reconciling object storage (3.6s)◓ Reconciling object storage (4.4s)◑ Reconciling object storage (5.2s)◒ Reconciling object storage (6.0s)◐ Reconciling object storage (6.8s)◓ Reconciling object storage (7.6s)◑ Reconciling object storage (8.4s)◒ Reconciling object storage (9.2s)◐ Reconciling object storage (10.0s)◓ Reconciling object storage (10.8s)◑ Reconciling object storage (11.6s)◒ Reconciling object storage (12.4s)◐ Reconciling object storage (13.2s)◓ Reconciling object storage (14.0s)◑ Reconciling object storage (14.8s)◒ Reconciling object storage (15.6s)◐ Reconciling object storage (16.4s)◓ Reconciling object storage (17.2s)◑ Reconciling object storage (18.0s)◒ Reconciling object storage (18.8s)◐ Reconciling object storage (19.6s)◓ Reconciling object storage (20.4s)◑ Reconciling object storage (21.2s)◒ Reconciling object storage (22.0s)◐ Reconciling object storage (22.8s)◓ Reconciling object storage (23.6s)◑ Reconciling object storage (24.4s)◒ Reconciling object storage (25.2s)◐ Reconciling object storage (26.0s)◓ Reconciling object storage (26.8s)◑ Reconciling object storage (27.6s)◒ Reconciling object storage (28.4s)◐ Reconciling object storage (29.2s)◓ Reconciling object storage (30.0s)◑ Reconciling object storage (30.8s)◒ Reconciling object storage (31.6s)◐ Reconciling object storage (32.4s)◓ Reconciling object storage (33.2s)◑ Reconciling object storage (34.0s)◒ Reconciling object storage (34.8s)◐ Reconciling object storage (35.6s)◓ Reconciling object storage (36.4s)◑ Reconciling object storage (37.2s)◒ Reconciling object storage (38.0s)◐ Reconciling object storage (38.8s)◓ Reconciling object storage (39.6s)◑ Reconciling object storage (40.4s)[2K[OK] Reconciling object storage - done (40.7s)
+[READY] object-storage    provider and IAM ready
+[VERIFIED] object-storage uploads authenticated S3 Put/Get
+◐ Reconciling application identity (<1s)◓ Reconciling application identity (1.2s)◑ Reconciling application identity (2.0s)◒ Reconciling application identity (2.8s)◐ Reconciling application identity (3.6s)◓ Reconciling application identity (4.4s)◑ Reconciling application identity (5.2s)◒ Reconciling application identity (6.0s)◐ Reconciling application identity (6.8s)◓ Reconciling application identity (7.6s)◑ Reconciling application identity (8.4s)◒ Reconciling application identity (9.2s)◐ Reconciling application identity (10.0s)◓ Reconciling application identity (10.8s)◑ Reconciling application identity (11.6s)◒ Reconciling application identity (12.4s)◐ Reconciling application identity (13.2s)◓ Reconciling application identity (14.0s)◑ Reconciling application identity (14.8s)◒ Reconciling application identity (15.6s)◐ Reconciling application identity (16.4s)◓ Reconciling application identity (17.2s)◑ Reconciling application identity (18.0s)◒ Reconciling application identity (18.8s)◐ Reconciling application identity (19.6s)◓ Reconciling application identity (20.4s)◑ Reconciling application identity (21.2s)◒ Reconciling application identity (22.0s)◐ Reconciling application identity (22.8s)◓ Reconciling application identity (23.6s)◑ Reconciling application identity (24.4s)◒ Reconciling application identity (25.2s)◐ Reconciling application identity (26.0s)◓ Reconciling application identity (26.8s)◑ Reconciling application identity (27.6s)◒ Reconciling application identity (28.4s)◐ Reconciling application identity (29.2s)◓ Reconciling application identity (30.0s)◑ Reconciling application identity (30.8s)◒ Reconciling application identity (31.6s)◐ Reconciling application identity (32.4s)◓ Reconciling application identity (33.2s)◑ Reconciling application identity (34.0s)◒ Reconciling application identity (34.8s)◐ Reconciling application identity (35.6s)◓ Reconciling application identity (36.4s)◑ Reconciling application identity (37.2s)◒ Reconciling application identity (38.0s)◐ Reconciling application identity (38.8s)◓ Reconciling application identity (39.6s)◑ Reconciling application identity (40.4s)◒ Reconciling application identity (41.2s)◐ Reconciling application identity (42.0s)◓ Reconciling application identity (42.8s)◑ Reconciling application identity (43.6s)◒ Reconciling application identity (44.4s)◐ Reconciling application identity (45.2s)◓ Reconciling application identity (46.0s)◑ Reconciling application identity (46.8s)◒ Reconciling application identity (47.6s)[2K[OK] Reconciling application identity - done (48.3s)
+[READY] identity provider=keycloak standard=OIDC/OAuth2
+◐ Reconciling developer OIDC access (<1s)◓ Reconciling developer OIDC access (1.2s)◑ Reconciling developer OIDC access (2.0s)[2K[OK] Reconciling developer OIDC access - done (2.0s)
+◐ Preparing application secret scope (<1s)◓ Preparing application secret scope (1.2s)◑ Preparing application secret scope (2.0s)◒ Preparing application secret scope (2.8s)[2K[OK] Preparing application secret scope - done (3.4s)
+
+Missing required application secrets
+  APP_SECRET
+Configure now? [Y/n] 
+APP_SECRET value: 
+APP_SECRET value again: 
+[OK] secret APP_SECRET stored securely
+◐ Starting managed application services · creating container bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (<1s)◓ Starting managed application services · creating container bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (1.2s)◑ Starting managed application services · creating container bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (2.0s)[2K◒ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-mongodb-1 (2.0s)[2K◐ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (2.1s)[2K◓ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (2.2s)[2K◑ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-access-1 (2.2s)[2K◒ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-access-1 (2.3s)[2K◐ Starting managed application services · container created bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-1 (2.3s)[2K◓ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-access-1 (2.3s)[2K◑ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-access-1 (2.3s)[2K◒ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-1 (2.3s)[2K◐ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-mongodb-1 (2.3s)[2K◓ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (2.3s)[2K◑ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (2.3s)◒ Starting managed application services · starting container bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (2.8s)[2K◐ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-access-1 (2.9s)[2K◓ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-access-1 (3.5s)◑ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-access-1 (3.6s)[2K◒ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-1 (4.0s)◐ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-1 (4.4s)[2K◓ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-mongodb-1 (4.6s)◑ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-mongodb-1 (5.2s)[2K◒ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (5.3s)◐ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-mongodb-ui-1 (6.0s)[2K◓ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (6.0s)◑ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (6.8s)◒ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (7.6s)◐ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (8.4s)◓ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (9.2s)◑ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (10.0s)◒ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (10.8s)◐ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (11.6s)◓ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (12.4s)◑ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (13.2s)◒ Starting managed application services · container started bh-atomic-docker-data-capabilities-demo-dev-rabbitmq-ui-1 (14.0s)[2K[OK] Starting managed application services - done (14.0s)
+◐ Waiting for backend readiness · checking managed service readiness (<1s)◓ Waiting for backend readiness · checking managed service readiness (1.2s)◑ Waiting for backend readiness · checking managed service readiness (2.0s)◒ Waiting for backend readiness · checking managed service readiness (2.8s)◐ Waiting for backend readiness · checking managed service readiness (3.6s)[2K◓ Waiting for backend readiness · managed services ready (4.3s)[2K[OK] Waiting for backend readiness - done (4.3s)
+
+Services
+  [32mREADY     [0m PostgreSQL               authenticated SELECT 1
+  [32mREADY     [0m Valkey                   semantic verification passed
+  [32mREADY     [0m RabbitMQ                 AMQPS queue/pubsub/stream semantics verified
+  [32mREADY     [0m MongoDB                  TLS document write/read/delete verified
+  [32mVERIFIED  [0m secrets                  isolated OpenBao application scope
+  [32mREADY     [0m runtime-broker           mTLS identity verified
+  [32mVERIFIED  [0m required-secrets         1 declared secret(s) present
+◐ Reconciling trace storage (<1s)◓ Reconciling trace storage (1.2s)◑ Reconciling trace storage (2.0s)◒ Reconciling trace storage (2.8s)[2K[OK] Reconciling trace storage - done (2.8s)
+[READY] traces-provider  Tempo state converged for demo (0 provider source(s) authorized)
+◐ Reconciling telemetry transport (<1s)◓ Reconciling telemetry transport (1.2s)◑ Reconciling telemetry transport (2.0s)◒ Reconciling telemetry transport (2.8s)◐ Reconciling telemetry transport (3.6s)◓ Reconciling telemetry transport (4.4s)[2K[OK] Reconciling telemetry transport - done (4.9s)
+[VERIFIED] telemetry       OTLP export verified for demo
+◐ Starting secure runtime broker (<1s)◓ Starting secure runtime broker (1.2s)[2K◑ Starting secure runtime broker · creating workload network (1.6s)[2K◒ Starting secure runtime broker · creating workload volume (1.6s)[2K◐ Starting secure runtime broker · creating workload network (1.6s)[2K◓ Starting secure runtime broker · creating workload volume (1.6s)[2K◑ Starting secure runtime broker · creating container bh-atomic-docker-data-capabilities-shared-executor-1 (1.8s)◒ Starting secure runtime broker · creating container bh-atomic-docker-data-capabilities-shared-executor-1 (2.0s)[2K◐ Starting secure runtime broker · container created bh-atomic-docker-data-capabilities-shared-executor-1 (2.4s)[2K◓ Starting secure runtime broker · starting container bh-atomic-docker-data-capabilities-shared-executor-1 (2.5s)◑ Starting secure runtime broker · starting container bh-atomic-docker-data-capabilities-shared-executor-1 (2.8s)[2K◒ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-shared-executor-1 (3.4s)◐ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-shared-executor-1 (3.6s)◓ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-shared-executor-1 (4.4s)◑ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-shared-executor-1 (5.2s)◒ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-shared-executor-1 (6.0s)[2K◐ Starting secure runtime broker · creating workload network (6.7s)[2K◓ Starting secure runtime broker · creating workload volume (6.7s)[2K◑ Starting secure runtime broker · creating workload network (6.7s)[2K◒ Starting secure runtime broker · creating workload volume (6.7s)◐ Starting secure runtime broker · creating workload volume (6.8s)[2K◓ Starting secure runtime broker · creating container bh-atomic-docker-data-capabilities-demo-dev-broker-1 (6.8s)[2K◑ Starting secure runtime broker · container created bh-atomic-docker-data-capabilities-demo-dev-broker-1 (7.3s)[2K◒ Starting secure runtime broker · starting container bh-atomic-docker-data-capabilities-demo-dev-broker-1 (7.3s)◐ Starting secure runtime broker · starting container bh-atomic-docker-data-capabilities-demo-dev-broker-1 (7.6s)◓ Starting secure runtime broker · starting container bh-atomic-docker-data-capabilities-demo-dev-broker-1 (8.4s)[2K◑ Starting secure runtime broker · container started bh-atomic-docker-data-capabilities-demo-dev-broker-1 (8.7s)[2K◒ Starting secure runtime broker · waiting for runtime broker readiness (8.7s)◐ Starting secure runtime broker · waiting for runtime broker readiness (9.2s)◓ Starting secure runtime broker · waiting for runtime broker readiness (10.0s)[2K◑ Starting secure runtime broker · runtime broker ready (10.0s)[2K[OK] Starting secure runtime broker - done (10.0s)
+[INFO] runtime-broker    Swagger/OpenAPI: https://demo.baha.localhost:18443/swagger/
+[VERIFIED] traces         application verification trace + 2 provider trace(s) queryable for demo
+◐ Reconciling log collection (<1s)◓ Reconciling log collection (1.2s)◑ Reconciling log collection (2.0s)◒ Reconciling log collection (2.8s)◐ Reconciling log collection (3.6s)◓ Reconciling log collection (4.4s)◑ Reconciling log collection (5.2s)◒ Reconciling log collection (6.0s)◐ Reconciling log collection (6.8s)◓ Reconciling log collection (7.6s)◑ Reconciling log collection (8.4s)◒ Reconciling log collection (9.2s)◐ Reconciling log collection (10.0s)◓ Reconciling log collection (10.8s)◑ Reconciling log collection (11.6s)◒ Reconciling log collection (12.4s)◐ Reconciling log collection (13.2s)◓ Reconciling log collection (14.0s)◑ Reconciling log collection (14.8s)◒ Reconciling log collection (15.6s)◐ Reconciling log collection (16.4s)◓ Reconciling log collection (17.2s)◑ Reconciling log collection (18.0s)◒ Reconciling log collection (18.8s)◐ Reconciling log collection (19.6s)◓ Reconciling log collection (20.4s)◑ Reconciling log collection (21.2s)◒ Reconciling log collection (22.0s)◐ Reconciling log collection (22.8s)◓ Reconciling log collection (23.6s)◑ Reconciling log collection (24.4s)◒ Reconciling log collection (25.2s)◐ Reconciling log collection (26.0s)◓ Reconciling log collection (26.8s)◑ Reconciling log collection (27.6s)◒ Reconciling log collection (28.4s)◐ Reconciling log collection (29.2s)◓ Reconciling log collection (30.0s)◑ Reconciling log collection (30.8s)◒ Reconciling log collection (31.6s)◐ Reconciling log collection (32.4s)[2K[OK] Reconciling log collection - done (32.9s)
+[READY] logs-provider   Loki/Alloy collector state converged for demo (2 provider source(s) authorized)
+◐ Reconciling metrics collection (<1s)◓ Reconciling metrics collection (1.2s)◑ Reconciling metrics collection (2.0s)◒ Reconciling metrics collection (2.8s)◐ Reconciling metrics collection (3.6s)◓ Reconciling metrics collection (4.4s)◑ Reconciling metrics collection (5.2s)◒ Reconciling metrics collection (6.0s)[2K[OK] Reconciling metrics collection - done (6.7s)
+[UPDATED] metrics-provider Prometheus target state for demo
+◐ Starting repository workload (<1s)◓ Starting repository workload (1.2s)◑ Starting repository workload (2.0s)◒ Starting repository workload (2.8s)[2K◐ Starting repository workload · source changes detected: demo-app (3.1s)◓ Starting repository workload · source changes detected: demo-app (3.6s)◑ Starting repository workload · source changes detected: demo-app (4.4s)◒ Starting repository workload · source changes detected: demo-app (5.2s)◐ Starting repository workload · source changes detected: demo-app (6.0s)[2K◓ Starting repository workload · rebuilt demo-app (6.6s)[2K◑ Starting repository workload · creating workload network (6.7s)[2K◒ Starting repository workload · creating workload volume (6.7s)[2K◐ Starting repository workload · creating workload network (6.7s)◓ Starting repository workload · creating workload network (6.8s)[2K◑ Starting repository workload · creating container bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (6.9s)[2K◒ Starting repository workload · container created bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (7.5s)[2K◐ Starting repository workload · starting container bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (7.5s)◓ Starting repository workload · starting container bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (7.6s)◑ Starting repository workload · starting container bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (8.4s)◒ Starting repository workload · starting container bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (9.2s)[2K◐ Starting repository workload · container started bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (9.9s)◓ Starting repository workload · container started bh-atomic-docker-data-capabilities-demo-dev-demo-app-1 (10.0s)[2K◑ Starting repository workload · waiting for workload service and HTTP/TLS readiness (10.0s)[2K◒ Starting repository workload · workload ready (10.4s)[2K[OK] Starting repository workload - done (10.4s)
+[WAIT] workload          waiting up to 2m0s for service and HTTP/TLS readiness
+[READY] workload         1 Compose service(s) ready
+[READY] exposure         1/1 published HTTP/TLS endpoint(s) ready
+Workload Compose: /home/marcel/tmp-ops/demo-run/compose.yaml
+◐ Verifying metrics ingestion (<1s)◓ Verifying metrics ingestion (1.2s)◑ Verifying metrics ingestion (2.0s)◒ Verifying metrics ingestion (2.8s)[2K[OK] Verifying metrics ingestion - done (3.0s)
+[VERIFIED] metrics       1 source(s) scraped and ingested for demo
+◐ Verifying log ingestion (<1s)◓ Verifying log ingestion (1.2s)◑ Verifying log ingestion (2.0s)[2K[OK] Verifying log ingestion - done (2.2s)
+[VERIFIED] logs          1 workload stream(s), 2 provider stream(s) ingested for demo
+◐ Verifying application exposure (<1s)◓ Verifying application exposure (1.2s)[2K[OK] Verifying application exposure - done (1.7s)
+[READY] managed-exposure demo-app https://demo.baha.localhost:46425 -> demo-app:8080
+◐ Reconciling canonical development routes (<1s)◓ Reconciling canonical development routes (1.2s)◑ Reconciling canonical development routes (2.0s)◒ Reconciling canonical development routes (2.8s)◐ Reconciling canonical development routes (3.6s)
+Development URLs
+  [32mREADY     [0m shared/keycloak/admin    https://auth-admin.baha.localhost:18443
+  [32mREADY     [0m shared/keycloak/login    https://auth.baha.localhost:18443
+  [32mREADY     [0m shared/valkey            https://cache.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/mongodb     https://demo-mongodb.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/rabbitmq    https://demo-rabbitmq.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/runtime-docs https://demo.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/exposure/demo-app https://demo.baha.localhost:18443
+  [32mREADY     [0m shared/prometheus        https://metrics.baha.localhost:18443
+  [32mREADY     [0m shared/postgresql        https://pgadmin.baha.localhost:18443
+  [32mREADY     [0m shared/openbao           https://secrets.baha.localhost:18443
+  [32mREADY     [0m shared/object-storage    https://storage.baha.localhost:18443
+[2K[OK] Reconciling canonical development routes - done (4.3s)
+
+Development URLs
+  [32mREADY     [0m shared/keycloak/admin    https://auth-admin.baha.localhost:18443
+  [32mREADY     [0m shared/keycloak/login    https://auth.baha.localhost:18443
+  [32mREADY     [0m shared/valkey            https://cache.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/mongodb     https://demo-mongodb.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/rabbitmq    https://demo-rabbitmq.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/runtime-docs https://demo.baha.localhost:18443
+  [32mREADY     [0m app/demo/dev/exposure/demo-app https://demo.baha.localhost:18443
+  [32mREADY     [0m shared/prometheus        https://metrics.baha.localhost:18443
+  [32mREADY     [0m shared/postgresql        https://pgadmin.baha.localhost:18443
+  [32mREADY     [0m shared/openbao           https://secrets.baha.localhost:18443
+  [32mREADY     [0m shared/object-storage    https://storage.baha.localhost:18443
+
+Application
+  Environment contract: baha app env --path
+  [32mOK        [0m READY                    application and requested infrastructure verified

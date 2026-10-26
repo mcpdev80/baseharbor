@@ -1,0 +1,291 @@
+package application
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+// AuthoredYAML serializes portable developer intent without system-owned identity.
+func (m Manifest) AuthoredYAML() string {
+	m.ApplicationID = ""
+	return m.YAML()
+}
+
+// YAML serializes a canonical BaseHarbor-owned record including internal identity.
+func (m Manifest) YAML() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "version: %d\napp:\n", m.Version)
+	if m.ApplicationID != "" {
+		fmt.Fprintf(&b, "  id: %s\n", m.ApplicationID)
+	}
+	fmt.Fprintf(&b, "  name: %s\n  environment: %s\n", m.Name, m.Environment)
+	if m.HA {
+		b.WriteString("ha: true\n")
+	}
+	if len(m.Availability) > 0 {
+		b.WriteString("availability:\n")
+		for _, component := range AvailabilityIntent(m).Components() {
+			override := m.Availability[component]
+			fmt.Fprintf(&b, "  %s:\n", component)
+			if override.HA != nil {
+				fmt.Fprintf(&b, "    ha: %t\n", *override.HA)
+			}
+			if override.Instances > 0 {
+				fmt.Fprintf(&b, "    instances: %d\n", override.Instances)
+			}
+		}
+	}
+	if len(m.Consumes) > 0 {
+		consumes := append([]ConsumptionRequirement(nil), m.Consumes...)
+		sort.Slice(consumes, func(i, j int) bool { return consumes[i].Name < consumes[j].Name })
+		b.WriteString("consumes:\n")
+		for _, consumption := range consumes {
+			fmt.Fprintf(&b, "  - name: %s\n", consumption.Name)
+			if consumption.ApplicationID != "" {
+				fmt.Fprintf(&b, "    application_id: %s\n", consumption.ApplicationID)
+			}
+			fmt.Fprintf(&b, "    component: %s\n", consumption.Component)
+			fmt.Fprintf(&b, "    interface: %s\n", consumption.Interface)
+			if consumption.Protocol != "" {
+				fmt.Fprintf(&b, "    protocol: %s\n", consumption.Protocol)
+			}
+		}
+	}
+	if hasManifestServices(m.Services) {
+		b.WriteString("services:\n")
+		if m.Services.SQL || len(m.Services.SQLInstances) > 0 {
+			writeServiceYAML(&b, "sql", m.Services.SQL, m.Services.SQLInstances)
+			writeManagementUIYAML(&b, m.Services.SQLManagementUI)
+		}
+		if m.Services.Cache || len(m.Services.CacheInstances) > 0 {
+			writeServiceYAML(&b, "cache", m.Services.Cache, m.Services.CacheInstances)
+			writeManagementUIYAML(&b, m.Services.CacheManagementUI)
+		}
+		if m.Services.KeyValue || len(m.Services.KeyValueInstances) > 0 {
+			writeServiceYAML(&b, "key_value", m.Services.KeyValue, m.Services.KeyValueInstances)
+			writeManagementUIYAML(&b, m.Services.KeyValueManagementUI)
+		}
+		if m.Services.DocumentDatabase || len(m.Services.DocumentDatabaseInstances) > 0 {
+			writeServiceYAML(&b, "document_database", m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+			writeManagementUIYAML(&b, m.Services.DocumentDatabaseManagementUI)
+		}
+		messagingUIRendered := false
+		if m.Services.MessagingQueue || len(m.Services.MessagingQueueInstances) > 0 {
+			writeServiceYAML(&b, "messaging_queue", m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+			if m.Services.MessagingManagementUI {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
+		}
+		if m.Services.MessagingPubSub || len(m.Services.MessagingPubSubInstances) > 0 {
+			writeServiceYAML(&b, "messaging_pubsub", m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+				messagingUIRendered = true
+			}
+		}
+		if m.Services.MessagingStream || len(m.Services.MessagingStreamInstances) > 0 {
+			writeServiceYAML(&b, "messaging_stream", m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+			if m.Services.MessagingManagementUI && !messagingUIRendered {
+				writeManagementUIYAML(&b, true)
+			}
+		}
+		if m.Services.ObjectStorage || len(m.Services.ObjectStorageBuckets) > 0 {
+			writeObjectStorageYAML(&b, m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
+			writeManagementUIYAML(&b, m.Services.ObjectStorageManagementUI)
+		}
+		if m.Services.Secrets {
+			b.WriteString("  secrets:\n    enabled: true\n")
+			writeManagementUIYAML(&b, m.Services.SecretsManagementUI)
+		}
+		if m.Services.Identity {
+			b.WriteString("  identity:\n    enabled: true\n")
+			writeManagementUIYAML(&b, m.Services.IdentityManagementUI)
+		}
+		if m.Services.ObservabilityManagementUI {
+			b.WriteString("  observability:\n")
+			writeManagementUIYAML(&b, true)
+		}
+	}
+	if m.Services.Identity {
+		b.WriteString("identity:\n")
+		writeStringListYAML(&b, "callback_paths", m.Identity.CallbackPaths, 2)
+		writeStringListYAML(&b, "logout_paths", m.Identity.LogoutPaths, 2)
+		writeStringListYAML(&b, "scopes", m.Identity.Scopes, 2)
+		writeStringListYAML(&b, "claims", m.Identity.Claims, 2)
+		if m.Identity.Authentication.MFA != "" || len(m.Identity.Authentication.Methods) > 0 || m.Identity.Authentication.Passwordless {
+			b.WriteString("  authentication:\n")
+			if m.Identity.Authentication.MFA != "" {
+				fmt.Fprintf(&b, "    mfa: %s\n", m.Identity.Authentication.MFA)
+			}
+			fmt.Fprintf(&b, "    passwordless: %t\n", m.Identity.Authentication.Passwordless)
+			writeStringListYAML(&b, "methods", m.Identity.Authentication.Methods, 4)
+		}
+	}
+	if len(m.Secrets.Required) > 0 || len(m.Secrets.Optional) > 0 {
+		b.WriteString("secrets:\n")
+		writeSecretRequirementsYAML(&b, "required", m.Secrets.Required)
+		writeSecretRequirementsYAML(&b, "optional", m.Secrets.Optional)
+	}
+	if len(m.Runtime.Permissions) > 0 {
+		permissions := append([]RuntimePermission(nil), m.Runtime.Permissions...)
+		sort.Slice(permissions, func(i, j int) bool { return permissions[i].Capability < permissions[j].Capability })
+		b.WriteString("runtime:\n  permissions:\n")
+		for _, permission := range permissions {
+			fmt.Fprintf(&b, "    - capability: %s\n", permission.Capability)
+			services := append([]string(nil), permission.Services...)
+			sort.Strings(services)
+			b.WriteString("      services:\n")
+			for _, service := range services {
+				fmt.Fprintf(&b, "        - %s\n", service)
+			}
+			operations := append([]string(nil), permission.Operations...)
+			sort.Strings(operations)
+			b.WriteString("      operations:\n")
+			for _, operation := range operations {
+				fmt.Fprintf(&b, "        - %s\n", operation)
+			}
+		}
+	}
+	if len(m.Workload.Components) > 0 {
+		b.WriteString("workload:\n")
+		components := append([]string(nil), m.Workload.Components...)
+		sort.Strings(components)
+		b.WriteString("  components:\n")
+		for _, component := range components {
+			fmt.Fprintf(&b, "    - %s\n", component)
+		}
+	}
+	if len(m.Metrics.Sources) > 0 {
+		sources := append([]MetricsSourceRequirement(nil), m.Metrics.Sources...)
+		sort.Slice(sources, func(i, j int) bool { return sources[i].Name < sources[j].Name })
+		b.WriteString("metrics:\n  sources:\n")
+		for _, source := range sources {
+			fmt.Fprintf(&b, "    - name: %s\n", source.Name)
+			fmt.Fprintf(&b, "      service: %s\n", source.Service)
+			fmt.Fprintf(&b, "      port: %d\n", source.Port)
+			fmt.Fprintf(&b, "      path: %s\n", source.Path)
+		}
+	}
+	if len(m.Logs.Collect) > 0 {
+		sources := append([]string(nil), m.Logs.Collect...)
+		sort.Strings(sources)
+		b.WriteString("logs:\n  collect:\n")
+		for _, source := range sources {
+			fmt.Fprintf(&b, "    - %s\n", source)
+		}
+	}
+	if m.Telemetry.OTLP != nil {
+		b.WriteString("telemetry:\n  otlp:\n    signals:\n")
+		signals := append([]string(nil), m.Telemetry.OTLP.Signals...)
+		sort.Strings(signals)
+		for _, signal := range signals {
+			fmt.Fprintf(&b, "      - %s\n", signal)
+		}
+	}
+	if len(m.Exposures) > 0 {
+		exposures := append([]HTTPExposureRequirement(nil), m.Exposures...)
+		sort.Slice(exposures, func(i, j int) bool { return exposures[i].Name < exposures[j].Name })
+		b.WriteString("exposure:\n  http:\n")
+		for _, exposure := range exposures {
+			fmt.Fprintf(&b, "    - name: %s\n", exposure.Name)
+			fmt.Fprintf(&b, "      service: %s\n", exposure.Service)
+			fmt.Fprintf(&b, "      port: %d\n", exposure.Port)
+			fmt.Fprintf(&b, "      protocol: %s\n", exposure.Protocol)
+			fmt.Fprintf(&b, "      visibility: %s\n", normalizedExposureVisibility(exposure.Visibility))
+		}
+	}
+	return b.String()
+}
+
+func writeSecretRequirementsYAML(b *strings.Builder, field string, source []SecretRequirement) {
+	if len(source) == 0 {
+		return
+	}
+	requirements := append([]SecretRequirement(nil), source...)
+	sort.Slice(requirements, func(i, j int) bool { return requirements[i].Name < requirements[j].Name })
+	fmt.Fprintf(b, "  %s:\n", field)
+	for _, requirement := range requirements {
+		fmt.Fprintf(b, "    - name: %s\n", requirement.Name)
+		if requirement.Generate != nil {
+			fmt.Fprintf(b, "      generate:\n        type: %s\n", requirement.Generate.Type)
+			switch requirement.Generate.Type {
+			case "random":
+				fmt.Fprintf(b, "        length: %d\n", requirement.Generate.Length)
+			case "hex":
+				fmt.Fprintf(b, "        bytes: %d\n", requirement.Generate.Bytes)
+			}
+		}
+	}
+}
+
+func hasManifestServices(services Services) bool {
+	return services.SQL || services.Cache || services.KeyValue || services.DocumentDatabase || services.MessagingQueue || services.MessagingPubSub || services.MessagingStream || services.Secrets || services.ObjectStorage || services.Identity || services.ObservabilityManagementUI ||
+		len(services.SQLInstances) > 0 || len(services.CacheInstances) > 0 || len(services.KeyValueInstances) > 0 || len(services.DocumentDatabaseInstances) > 0 || len(services.MessagingQueueInstances) > 0 || len(services.MessagingPubSubInstances) > 0 || len(services.MessagingStreamInstances) > 0 || len(services.ObjectStorageBuckets) > 0
+}
+
+func writeManagementUIYAML(b *strings.Builder, enabled bool) {
+	if enabled {
+		b.WriteString("    management_ui: true\n")
+	}
+}
+
+func writeStringListYAML(b *strings.Builder, field string, values []string, indent int) {
+	if len(values) == 0 {
+		return
+	}
+	items := append([]string(nil), values...)
+	sort.Strings(items)
+	prefix := strings.Repeat(" ", indent)
+	fmt.Fprintf(b, "%s%s:\n", prefix, field)
+	for _, value := range items {
+		fmt.Fprintf(b, "%s  - %s\n", prefix, value)
+	}
+}
+
+func writeObjectStorageYAML(b *strings.Builder, enabled bool, buckets map[string]ServiceInstance) {
+	b.WriteString("  object_storage:\n")
+	if len(buckets) == 0 {
+		fmt.Fprintf(b, "    enabled: %t\n", enabled)
+		return
+	}
+	b.WriteString("    buckets:\n")
+	for _, name := range serviceInstanceNames(true, buckets) {
+		fmt.Fprintf(b, "      %s: {}\n", name)
+	}
+}
+
+func writeServiceYAML(b *strings.Builder, service string, enabled bool, instances map[string]ServiceInstance) {
+	fmt.Fprintf(b, "  %s:\n", service)
+	if len(instances) == 0 {
+		fmt.Fprintf(b, "    enabled: %t\n", enabled)
+		return
+	}
+	b.WriteString("    instances:\n")
+	for _, name := range serviceInstanceNames(true, instances) {
+		fmt.Fprintf(b, "      %s: {}\n", name)
+	}
+}
+
+func secretRequirementPointer(m *Manifest, field string, index int) *SecretRequirement {
+	if index < 0 {
+		return nil
+	}
+	switch field {
+	case "required":
+		if index >= len(m.Secrets.Required) {
+			return nil
+		}
+		return &m.Secrets.Required[index]
+	case "optional":
+		if index >= len(m.Secrets.Optional) {
+			return nil
+		}
+		return &m.Secrets.Optional[index]
+	default:
+		return nil
+	}
+}
+
+// ParseYAML parses the intentionally small v1 manifest grammar without adding a runtime dependency.

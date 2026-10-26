@@ -1,0 +1,1506 @@
+name: "Targeted · Integration"
+
+run-name: "Targeted · Integration · ${{ inputs.gate || github.ref_name }} · ${{ inputs.ref || github.sha }}"
+
+on:
+  push:
+    branches:
+      - 'runtime-validation/ha/**'
+      - 'runtime-validation/recovery-podman/**'
+      - 'work/v0.4.24-core-ha-updates'
+      - 'work/v0.4.25-contract-minimal-core'
+  workflow_dispatch:
+    inputs:
+      gate:
+        description: Focused integration gate
+        required: true
+        default: app-backup-restore
+        type: choice
+        options:
+          - coreless-runtime
+          - app-backup-restore
+          - app-backup-restore-podman
+          - metrics
+          - openbao-backup
+          - otlp
+          - postgres-backup
+          - shared-postgres
+          - shared-valkey
+          - adoption-conformance
+          - adoption-realworld-compose
+          - adoption-realworld-quadlet
+          - adoption-realworld-kubernetes
+      ref:
+        description: Git ref or commit SHA to test
+        required: true
+        default: develop
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Independent exact-source proofs must not evict another candidate pending
+  # in GitHub's one-slot concurrency queue. Identical source refs still deduplicate.
+  group: targeted-integration-${{ github.ref }}-${{ inputs.ref || github.sha }}
+  cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
+
+jobs:
+  registered_otlp_handoff:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[otlp-handoff-runtime]') || contains(github.event.head_commit.message, '[otlp-handoff-podman]')) }}
+    name: Native OTLP handoff · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ contains(github.event.head_commit.message, '[otlp-handoff-podman]') && fromJSON('["podman"]') || fromJSON('["docker", "podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_OTLP_HANDOFF_ACCEPTANCE: "1"
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.9'
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify actual workload handoff and independent receiver preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/otlp-handoff-evidence"
+          mkdir -p "$out"
+          git rev-parse HEAD > "$out/source.txt"
+          git rev-parse 'HEAD^{tree}' > "$out/tree.txt"
+          go version > "$out/go-version.txt"
+          test "$(go env GOVERSION)" = "go1.26.9"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$out/runtime-version.txt"
+          go test -race -count=1 -json ./cmd/baha -run '^TestManagedRegisteredOTLPNativeConsumerHandoff$' -timeout 15m | tee "$out/handoff.jsonl"
+          python3 - "$out/handoff.jsonl" <<'PY'
+          import json,pathlib,sys
+          events=[json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.startswith('{')]
+          assert not any(event.get('Action') in {'fail','skip'} for event in events)
+          assert any(event.get('Test')=='TestManagedRegisteredOTLPNativeConsumerHandoff' and event.get('Action')=='pass' for event in events)
+          PY
+      - name: Retain exact source proof and original failures
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: otlp-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/otlp-handoff-evidence
+          if-no-files-found: warn
+          retention-days: 30
+  up_dispatch_source:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[up-dispatch-source]') }}
+    name: Repository up source qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify formatting, all source tests, vet and actual CLI build
+        run: |
+          test -z "$(gofmt -l cmd/baha/runtime.go cmd/baha/runtime_repository_up.go cmd/baha/runtime_repository_up_test.go cmd/baha/app_coreless_runtime_test.go)"
+          go test ./...
+          go vet ./...
+          go build -o "$RUNNER_TEMP/baha-source-qualified" ./cmd/baha
+      - name: Verify affected application CLI races
+        run: go test -race ./cmd/baha
+  application_full_reset:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[app-full-reset-runtime]') }}
+    name: Application full reset · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_APP_FULL_RESET_ACCEPTANCE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify native selected application data reset
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/application-reset-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/application-reset-evidence/source.txt"
+          go test ./cmd/baha -run '^TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData$' -count=1 -v -timeout 12m 2>&1 | tee "$RUNNER_TEMP/application-reset-evidence/reset.log"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: application-reset-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/application-reset-evidence
+          if-no-files-found: error
+  core_stop:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[core-stop-runtime]') || contains(github.event.head_commit.message, '[core-destroy-ha]')) }}
+    name: Selected Core stop · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[core-stop-docker-only]') && '["docker"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CORE_STOP_ACCEPTANCE: "1"
+      BASEHARBOR_CORE_STOP_HA_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[core-destroy-ha]') && '1' || '0' }}
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify selected stop and original retained data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          mkdir -p "$RUNNER_TEMP/core-stop-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/core-stop-evidence/source.txt"
+          go version > "$RUNNER_TEMP/core-stop-evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/core-stop-evidence/runtime-version.txt"
+          go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 18m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-evidence/core-stop.log"
+      - name: Upload bounded receipt including failed attempts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: core-stop-${{ matrix.runtime }}-${{ github.sha }}
+          path: ${{ runner.temp }}/core-stop-evidence
+          if-no-files-found: error
+  standalone_retirement:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[standalone-retirement-runtime]') }}
+    name: Retained standalone data · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[standalone-docker-only]') && '["docker"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_STANDALONE_RETIREMENT_ACCEPTANCE: "1"
+      BASEHARBOR_TEMPO_LEGACY_UPGRADE_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[tempo-legacy-upgrade]') && '1' || '0' }}
+      BASEHARBOR_TRACES_INTEGRATION: "1"
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify exact source and original authenticated retained data
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          mkdir -p "$RUNNER_TEMP/standalone-retirement-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/standalone-retirement-evidence/source.txt"
+          go version > "$RUNNER_TEMP/standalone-retirement-evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-evidence/runtime-version.txt"
+          status=0
+          if [[ "${{ contains(github.event.head_commit.message, '[standalone-trace-only]') }}" != true ]]; then
+            go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/objectstorage.log" || status=1
+          fi
+          if [[ "$BASEHARBOR_TEST_RUNTIME" == docker || "${{ contains(github.event.head_commit.message, '[standalone-failed-only]') }}" != true ]]; then
+            go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/traces.log" || status=1
+          fi
+          exit "$status"
+      - name: Upload bounded receipt including failed attempts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: standalone-retirement-${{ matrix.runtime }}-${{ github.sha }}
+          path: ${{ runner.temp }}/standalone-retirement-evidence
+          if-no-files-found: error
+  observability_consumers:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[observability-consumers-runtime]') }}
+    name: Observability consumers · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[observability-podman-only]') && '["podman"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_METRICS_INTEGRATION: "1"
+      BASEHARBOR_LOGS_INTEGRATION: "1"
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify actual metrics logs and registered OTLP consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          evidence="$RUNNER_TEMP/observability-consumer-evidence"
+          mkdir -p "$evidence"
+          git rev-parse HEAD > "$evidence/source.txt"
+          git rev-parse 'HEAD^{tree}' > "$evidence/tree.txt"
+          go version > "$evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$evidence/runtime-version.txt"
+          status=0
+          if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
+            go test ./internal/telemetry -run '^TestRegisteredOTLP' -count=1 -v 2>&1 | tee "$evidence/registered-otlp-local-tls.log" || status=1
+          fi
+          go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/metrics.log" || status=1
+          if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
+            go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/logs.log" || status=1
+          fi
+          exit "$status"
+      - name: Retain exact source consumer results including failed attempts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: observability-consumers-${{ matrix.runtime }}-${{ github.sha }}
+          path: ${{ runner.temp }}/observability-consumer-evidence
+          if-no-files-found: error
+  installation_destroy:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[installation-destroy-runtime]') || contains(github.event.head_commit.message, '[installation-destroy-podman]')) }}
+    name: Installation partial destruction · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[installation-destroy-podman]') && '["podman"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_INSTALLATION_DESTROY_ACCEPTANCE: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify exact application reset, interrupted native deletion and current-plan retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/installation-destroy-evidence"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          git rev-parse HEAD > "$RUNNER_TEMP/installation-destroy-evidence/source.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/installation-destroy-evidence/runtime-version.txt"
+          go test ./cmd/baha -run '^TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/installation-destroy-evidence/destroy.log"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: installation-destroy-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/installation-destroy-evidence
+          if-no-files-found: error
+          retention-days: 90
+  shared_network:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[shared-network-runtime]') }}
+    name: Retained shared network · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CORE_SHARED_NETWORK_ACCEPTANCE: "1"
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:shared-network-acceptance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Build exact runtime and record source
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shared-network-build"
+          mkdir -p "$out" "$RUNNER_TEMP/shared-network-evidence"
+          candidate_sha="$(git rev-parse HEAD)"
+          test "$candidate_sha" = "${{ github.sha }}"
+          echo "$candidate_sha" > "$RUNNER_TEMP/shared-network-evidence/source.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/shared-network-evidence/runtime-version.txt"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$candidate_sha" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify original network authority and actual TLS data through management recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/shared-network-evidence/network.log"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        if: always()
+        with:
+          name: retained-network-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/shared-network-evidence
+          if-no-files-found: error
+          retention-days: 90
+  coreless_runtime:
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
+    name: Core-less application · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CORELESS_ACCEPTANCE: "1"
+      BASEHARBOR_BACKEND_PLACEMENT_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[backend-placement-runtime]') && '1' || '0' }}
+      BASEHARBOR_APP_STOP_ACCEPTANCE: ${{ (contains(github.event.head_commit.message, '[app-stop-runtime]') || contains(github.event.head_commit.message, '[app-stop-foundations-only]')) && '1' || '0' }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:coreless-acceptance
+    steps:
+      - name: Checkout integrated exact SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - name: Verify exact SHA input
+        env:
+          CANDIDATE_SHA: ${{ inputs.ref || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        id: runtime_setup
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Record exact-SHA runtime environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/coreless-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/coreless-evidence/candidate-sha.txt"
+          go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
+      - name: Verify fresh workload with zero Core containers
+        if: ${{ contains(github.event.head_commit.message, '[app-stop-runtime]') || !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
+      - name: Verify selected Identity add remove re-add without management Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
+        env:
+          BASEHARBOR_IDENTITY_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          selection='^TestSelectiveIdentityRuntimeAddRemoveReAdd$'
+          if [ '${{ contains(github.event.head_commit.message, '[identity-placement-runtime]') }}' = true ]; then
+            selection='^TestManagedIdentityNativePlacementHandoff$'
+          fi
+          if [ '${{ contains(github.event.head_commit.message, '[coreless-production-identity]') }}' = true ]; then
+            selection='^TestProductionIdentityRuntimeRealizedCallbackAndReapply$'
+          fi
+          go test ./cmd/baha -run "$selection" -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/identity-lifecycle.log"
+      - name: Verify selected SQL and cache add remove re-add without Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
+        env:
+          BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestSelectiveBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/backend-lifecycle.log"
+      - name: Verify selected messaging and document database lifecycle without Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-foundations]') }}
+        env:
+          BASEHARBOR_BACKEND_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/application-backend-lifecycle.log"
+      - name: Verify selected HTTPS add remove re-add without Core
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        env:
+          BASEHARBOR_HTTPS_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/https-lifecycle.log"
+      - name: Verify actual local prod workload CLI and stdio without OIDC
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-local-auth]') }}
+        env:
+          BASEHARBOR_CORELESS_ENVIRONMENT: "prod"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/local-prod-authority.log"
+      - name: Qualify changed volume recovery helper
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        env:
+          BASEHARBOR_RENOVATE_RECOVERY_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
+      - name: Build integrated exact-SHA management runtime image
+        id: runtime_image
+        if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/coreless-runtime-build"
+          mkdir -p "$out"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=dev -X main.commit=$candidate_sha -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify selected Secrets add remove re-add with retained actual secret
+        if: ${{ !cancelled() && steps.runtime_image.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-secrets]') }}
+        env:
+          BASEHARBOR_SECRETS_LIFECYCLE_ACCEPTANCE: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '${{ contains(github.event.head_commit.message, '[coreless-shared-secrets]') && '^TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer$' || '^TestSelectiveSecretsRuntimeAddRemoveReAdd$' }}' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/secrets-lifecycle.log"
+      - name: Verify explicit management Core and individual capability reuse
+        if: ${{ !cancelled() && steps.runtime_image.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-selected-secrets]') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./cmd/baha -run '^TestApplicationCapabilityLifecycleExistingCore$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/managed-capabilities.log"
+      - name: Retain exact-SHA runtime evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: coreless-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/coreless-evidence
+          if-no-files-found: warn
+          retention-days: 30
+
+  shared_provider_contracts:
+    if: ${{ github.event_name == 'push' && (github.ref_name == 'work/v0.4.24-core-ha-updates' || github.ref_name == 'work/v0.4.25-contract-minimal-core') && contains(github.event.head_commit.message, '[provider-contracts]') }}
+    name: Shared provider unit and contract verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify all Go contracts and static analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./...
+          go vet ./...
+
+  focused:
+    if: ${{ github.event_name == 'workflow_dispatch' && !startsWith(inputs.gate, 'adoption-') && inputs.gate != 'coreless-runtime' && inputs.gate != 'app-backup-restore-podman' }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:targeted-integration
+
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prepare isolated rootless Docker
+        timeout-minutes: 5
+        env:
+          BASEHARBOR_TEST_RUNTIME: docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Build BaseHarbor control-plane image
+        if: inputs.gate == 'app-backup-restore'
+        run: docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
+      - name: Application backup and restore
+        if: inputs.gate == 'app-backup-restore'
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' -count=1 -v
+
+      - name: Metrics ingestion
+        if: inputs.gate == 'metrics'
+        env:
+          BASEHARBOR_METRICS_INTEGRATION: "1"
+        run: go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -v
+
+      - name: OpenBao backup and restore
+        if: inputs.gate == 'openbao-backup'
+        env:
+          BASEHARBOR_OPENBAO_BACKUP_ACCEPTANCE: "true"
+        run: go test ./internal/openbao -run '^TestApplicationSecretBackupRestoreRealOpenBao$' -count=1 -v
+
+      - name: OTLP export
+        if: inputs.gate == 'otlp'
+        env:
+          BASEHARBOR_OTLP_INTEGRATION: "1"
+        run: go test ./internal/telemetry -run '^TestManagedCollectorRealOTLPExport$' -count=1 -v
+
+      - name: PostgreSQL backup and restore
+        if: inputs.gate == 'postgres-backup'
+        env:
+          BASEHARBOR_POSTGRES_BACKUP_INTEGRATION: "1"
+        run: go test ./internal/application -run '^TestPostgresBackupDisasterRecovery$' -count=1 -v
+
+      - name: Shared PostgreSQL formatting
+        if: inputs.gate == 'shared-postgres'
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            internal/application/shared_backends.go
+            internal/application/shared_backends_test.go
+            internal/application/shared_postgres_integration_test.go
+            internal/application/postgres_backup.go
+            internal/application/backend_tls.go
+            internal/application/runtime_postgres.go
+            internal/application/runtime_lifecycle.go
+            internal/application/runtime_contract.go
+            internal/application/workload.go
+            internal/application/provider_placement.go
+            internal/application/provider_placement_test.go
+            internal/application/provider_registry_test.go
+            internal/capability/reference.go
+            cmd/baha/app_apply.go
+            cmd/baha/app_apply_lifecycle.go
+            cmd/baha/app_doctor_collect.go
+            cmd/baha/app_status_collect.go
+          )
+          bad="$(gofmt -l "${files[@]}")"
+          test -z "$bad" || { echo "gofmt required:" >&2; echo "$bad" >&2; exit 1; }
+
+      - name: Shared Valkey formatting
+        if: inputs.gate == 'shared-valkey'
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            internal/application/shared_backends.go
+            internal/application/shared_backends_test.go
+            internal/application/shared_valkey_integration_test.go
+            internal/application/runtime_postgres.go
+            internal/application/runtime_lifecycle.go
+            internal/application/runtime_contract.go
+            internal/application/workload.go
+            internal/application/provider_placement.go
+            internal/application/provider_placement_test.go
+            internal/application/provider_registry_test.go
+            internal/capability/reference.go
+            cmd/baha/app_apply.go
+            cmd/baha/app_apply_lifecycle.go
+            cmd/baha/app_doctor_collect.go
+            cmd/baha/app_status_collect.go
+          )
+          bad="$(gofmt -l "${files[@]}")"
+          test -z "$bad" || { echo "gofmt required:" >&2; echo "$bad" >&2; exit 1; }
+
+      - name: Shared PostgreSQL focused checks
+        if: inputs.gate == 'shared-postgres'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -count=1 -run '^(TestSharedPostgres|TestVerifySharedPostgres|TestResolveProviderPlacement|TestReferenceProviderRegistry|TestRegisterReferenceProviders|TestProviderRegistry|TestPostgresBackup|TestPostgresRestore|TestDumpPostgres|TestRestorePostgres)'
+          go test ./cmd/baha ./internal/capability -run '^$'
+          BASEHARBOR_SHARED_POSTGRES_INTEGRATION=1 go test -p 1 ./internal/application -count=1 -run '^TestSharedPostgresTwoApplicationIsolationBackupRestoreDestroy$' -v
+
+      - name: Shared Valkey focused checks
+        if: inputs.gate == 'shared-valkey'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./internal/application -count=1 -run '^(TestSharedValkey|TestVerifySharedValkey|TestResolveProviderPlacement|TestReferenceProviderRegistry|TestRegisterReferenceProviders|TestProviderRegistry)'
+          go test ./internal/capability -count=1 -run '^(TestReference|TestProvider|TestRegistry)'
+          go test ./cmd/baha ./internal/capability -run '^$'
+          BASEHARBOR_SHARED_VALKEY_INTEGRATION=1 go test -p 1 ./internal/application -count=1 -run '^TestSharedValkeyTwoApplicationIsolationDestroy$' -v
+
+      - name: Runtime diagnostics
+        if: failure()
+        shell: bash
+        run: bash scripts/ci-failure-diagnostics.sh docker "$RUNNER_TEMP/targeted-integration-diagnostics" "$GITHUB_WORKSPACE" || true
+
+      - name: Cleanup Docker runner state
+        if: always()
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  app_backup_restore_podman:
+    # Focused Podman opt-in: native backup/restore acceptance on Podman/Quadlet.
+    # Proves disaster-recovery on Podman (SQL data, secrets, consumer access,
+    # token/certificate regeneration and automatic owned cleanup) without
+    # Docker/Compose assumptions. Evidence is repeatable via GitHub Actions.
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'app-backup-restore-podman') || (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/recovery-podman/')) }}
+    name: Application backup · podman
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      GOTOOLCHAIN: local
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26.9'
+          cache: false
+
+      - name: Record exact source and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          mkdir -p "$out"
+          git rev-parse HEAD | tee "$out/source-sha.txt"
+          git rev-parse 'HEAD^{tree}' | tee "$out/source-tree.txt"
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          fi
+          go version | tee "$out/go-version.txt"
+          expected_go="$(awk '$1 == "toolchain" {toolchain=$2} $1 == "go" {minimum="go" $2} END {print toolchain != "" ? toolchain : minimum}' go.mod)"
+          test -n "$expected_go"
+          printf '%s\n' "$expected_go" > "$out/expected-go-version.txt"
+          test "$(go env GOVERSION)" = "$expected_go"
+
+      - name: Prepare verified rootless Podman
+        timeout-minutes: 5
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Build and verify exact source runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          build="$RUNNER_TEMP/podman-backup-runtime-build"
+          mkdir -p "$build"
+          source_sha="$(git rev-parse HEAD)"
+          test "$source_sha" = "$(cat "$out/source-sha.txt")"
+          test "$(go env GOVERSION)" = "$(cat "$out/expected-go-version.txt")"
+          image="localhost/baseharbor-runtime:podman-backup-$source_sha"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=dev -X main.commit=$source_sha -X main.date=unknown" \
+            -o "$build/baha" ./cmd/baha
+          go version -m "$build/baha" | tee "$out/binary-build.txt"
+          grep -Eq '^[[:space:]]*build[[:space:]]+CGO_ENABLED=0$' "$out/binary-build.txt"
+          sha256sum "$build/baha" | tee "$out/host-binary.sha256"
+          "$build/baha" version --json > "$out/host-version.json"
+          cp deploy/control-plane/Dockerfile.binary "$build/Dockerfile"
+          sha256sum "$build/Dockerfile" > "$out/runtime-dockerfile.sha256"
+          podman build --pull --label "org.opencontainers.image.revision=$source_sha" \
+            --iidfile "$out/runtime-image-build-id.txt" --tag "$image" \
+            -f "$build/Dockerfile" "$build" 2>&1 | tee "$out/image-build.log"
+          printf '%s\n' "$image" > "$out/runtime-image-ref.txt"
+          podman image inspect --format '{{.Id}}' "$image" | tee "$out/runtime-image-id.txt"
+          podman image inspect --format '{{index .Labels "org.opencontainers.image.revision"}}' "$image" \
+            | tee "$out/runtime-image-revision.txt"
+          podman run --rm --network none --entrypoint sha256sum "$image" /usr/local/bin/baha \
+            | tee "$out/image-binary.sha256"
+          podman run --rm --network none "$image" version --json > "$out/image-version.json"
+          python3 - <<'PYTHON'
+          import json, os, re
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery'
+          source = (out / 'source-sha.txt').read_text().strip()
+          def image_id(path):
+              value = (out / path).read_text().strip().removeprefix('sha256:')
+              if re.fullmatch(r'[0-9a-f]{64}', value) is None:
+                  raise SystemExit('Exact runtime image requires a complete image ID.')
+              return value
+          def binary_hash(path):
+              fields = (out / path).read_text().split()
+              if not fields or re.fullmatch(r'[0-9a-f]{64}', fields[0]) is None:
+                  raise SystemExit('Exact runtime image requires a complete binary SHA-256.')
+              return fields[0]
+          build_id = image_id('runtime-image-build-id.txt')
+          actual_id = image_id('runtime-image-id.txt')
+          host_hash = binary_hash('host-binary.sha256')
+          image_hash = binary_hash('image-binary.sha256')
+          versions = [json.loads((out / name).read_text()) for name in
+                      ('host-version.json', 'image-version.json')]
+          if (re.fullmatch(r'[0-9a-f]{40}', source) is None or build_id != actual_id
+                  or (out / 'runtime-image-revision.txt').read_text().strip() != source
+                  or host_hash != image_hash
+                  or any(not isinstance(value, dict) or value.get('commit') != source
+                         or value.get('version') != 'dev'
+                         for value in versions)):
+              raise SystemExit('Runtime source mismatch: require exact image ID/revision, identical binary bytes and actual host/image version commits.')
+          (out / 'runtime-source-binding.json').write_text(json.dumps({
+              'source': source, 'image_id': actual_id, 'binary_sha256': host_hash,
+              'image': (out / 'runtime-image-ref.txt').read_text().strip(),
+          }, indent=2) + '\n')
+          PYTHON
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+
+      - name: Application backup and restore on Podman
+        env:
+          BASEHARBOR_APP_BACKUP_ACCEPTANCE: "true"
+        run: |
+          set -euo pipefail
+          umask 0022
+          out="$RUNNER_TEMP/podman-backup-recovery"
+          test "$(id -u)" -gt 0
+          test "$(id -u)" -le 65000
+          podman version | tee "$out/runtime-version.txt"
+          podman info --format '{{.Host.Security.Rootless}}' | tee "$out/rootless.txt"
+          test "$(cat "$out/rootless.txt")" = true
+          "$RUNNER_TEMP/podman-backup-runtime-build/baha" target create podman-backup-restore \
+            --provider podman --access podman-backup-restore \
+            --reference local --default
+          go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
+            -count=1 -json -timeout 30m 2>&1 | tee "$out/tests.jsonl"
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'podman-backup-recovery/tests.jsonl'
+          events = [json.loads(line) for line in path.read_text().splitlines() if line.startswith('{')]
+          package = 'github.com/mcpdev80/baseharbor/cmd/baha'
+          test = 'TestAppBackupRestoreCLIRealDisasterRecovery'
+          if (any(event.get('Action') in {'fail', 'skip'} for event in events)
+                  or not any(event.get('Package') == package and event.get('Test') == test
+                             and event.get('Action') == 'pass' for event in events)
+                  or not any(event.get('Package') == package and 'Test' not in event
+                             and event.get('Action') == 'pass' for event in events)):
+              raise SystemExit('Native Podman backup/recovery requires an executed test PASS and package PASS; skip/fail/missing receipts block.')
+          PYTHON
+
+      - name: Retain exact Podman backup recovery evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: podman-backup-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-backup-recovery
+          if-no-files-found: error
+          retention-days: 30
+
+  core_bootstrap:
+    if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
+    name: Core bootstrap · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || fromJSON('["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:core-bootstrap
+      BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
+      BASEHARBOR_BUG_HUNT_LIFECYCLE_ACCEPTANCE: ${{ contains(github.event.head_commit.message, '[management-union-runtime]') && '0' || '1' }}
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify Core-only installation and retry
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/core-bootstrap"
+          pattern='^TestCoreOnlyBootstrapRuntimeAcceptance$'
+          if [[ '${{ contains(github.event.head_commit.message, '[management-union-runtime]') }}' == 'true' ]]; then
+            pattern='^TestCoreOnlyBootstrapRuntimeAcceptance$/development$'
+          fi
+          go test -race -json ./cmd/baha -run "$pattern" -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
+      - name: Retain runtime qualification logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: core-bootstrap-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-bootstrap
+          if-no-files-found: warn
+          retention-days: 90
+
+  core_ha_recovery:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[ha-cutover]') }}
+    name: HA cutover and SQL rollback · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:ha-recovery
+      BASEHARBOR_CORE_HA_CUTOVER_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify native HA roll, failure, DCS cutover and physical SQL rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ha-recovery"
+          go test -race -json ./cmd/baha -run '^TestCoreHACutoverRollbackRuntimeAcceptance$' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/ha-recovery/tests.jsonl"
+      - name: Retain runtime qualification logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ha-recovery-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ha-recovery
+          if-no-files-found: warn
+          retention-days: 90
+
+  provider_topology:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[topology-runtime]') }}
+    name: Explicit provider topology · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:provider-topology
+      BASEHARBOR_PROVIDER_TOPOLOGY_ACCEPTANCE: '1'
+      BASEHARBOR_SEAWEEDFS_HA_ACCEPTANCE: '1'
+      BASEHARBOR_PROMETHEUS_HA_ACCEPTANCE: '1'
+      BASEHARBOR_OTEL_HA_ACCEPTANCE: '1'
+      BASEHARBOR_LOKI_HA_ACCEPTANCE: '1'
+      BASEHARBOR_TEMPO_HA_ACCEPTANCE: '1'
+      BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Prepare native Keycloak database image before bounded readiness checks
+        if: matrix.runtime == 'podman'
+        timeout-minutes: 10
+        run: podman pull ghcr.io/zalando/spilo-18:4.1-p2
+      - name: Verify explicit topology, native inventory, reconciliation and affected HA paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/provider-topology"
+          go test -p 1 -race -json ./internal/objectstorage ./internal/metrics ./internal/telemetry ./internal/logs ./internal/traces ./internal/identityprovider -run '(DefaultTopologyRuntimeAcceptanceInCI|HARuntime.*AcceptanceInCI)$' -count=1 -timeout 40m 2>&1 | tee "$RUNNER_TEMP/provider-topology/tests.jsonl"
+      - name: Retain native topology qualification logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: provider-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/provider-topology
+          if-no-files-found: error
+          retention-days: 90
+
+  application_provider_topology:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[application-topology-runtime]') }}
+    name: Application providers and HA overrides · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:application-topology
+      BASEHARBOR_PROVIDER_TOPOLOGY_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify actual data members, safe retained topology and component-specific storage intent
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/application-topology"
+          go test -p 1 -race -json ./internal/application ./internal/logs ./internal/traces -run '^(TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI|TestLokiComponentOverrideRuntimeAcceptanceInCI|TestTempoComponentOverrideRuntimeAcceptanceInCI)$' -count=1 -timeout 50m 2>&1 | tee "$RUNNER_TEMP/application-topology/tests.jsonl"
+      - name: Retain native role and override qualifications
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: application-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/application-topology
+          if-no-files-found: error
+          retention-days: 90
+
+  core_provider_versions:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[provider-runtime]') || contains(github.event.head_commit.message, '[provider-docker-runtime]')) }}
+    name: Provider versions and SQL recovery · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[provider-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:provider-versions
+      BASEHARBOR_PROVIDER_UPGRADE_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify real PostgreSQL, OpenBao and Keycloak upgrades and failure recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/provider-versions"
+          go test -race -json ./cmd/baha -run '^TestCoreProviderVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/provider-versions/tests.jsonl"
+      - name: Retain runtime qualification logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: provider-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/provider-versions
+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
+          if-no-files-found: warn
+          retention-days: 90
+
+  core_ha_openbao_versions:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]')) }}
+    name: HA OpenBao versions and SQL recovery · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[bao-ha-docker-runtime]') && '["docker"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:ha-openbao-versions
+      BASEHARBOR_HA_OPENBAO_UPGRADE_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify real three-member OpenBao rolling upgrade and SQL failure recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ha-openbao-versions"
+          go test -race -json ./cmd/baha -run '^TestCoreHAOpenBaoVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/ha-openbao-versions/tests.jsonl"
+      - name: Retain runtime qualification logs
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ha-openbao-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ha-openbao-versions
+            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
+          if-no-files-found: warn
+          retention-days: 90
+
+  v0421_ha:
+    if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/tempo/') || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
+    name: Targeted runtime · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || fromJSON('["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+    steps:
+      - name: Resolve targeted runtime gate
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          prefix="runtime-validation/ha/"
+          payload="${GITHUB_REF_NAME#"$prefix"}"
+          gate="${payload%%/*}"
+          case "$gate" in
+            control-plane|control-plane-single|keycloak|loki|tempo|otel|gateway|shared-postgres|owned-volumes) ;;
+            *) echo "unsupported targeted runtime gate: $gate" >&2; exit 2 ;;
+          esac
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare hosted Podman runtime
+        if: matrix.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y podman
+          podman version
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Reset runtime state
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+      - name: Run targeted runtime gate
+        shell: bash
+        env:
+          GATE: ${{ steps.resolve.outputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            owned-volumes)
+              BASEHARBOR_OWNED_VOLUMES_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestOwnedVolumeDestroyPreservesExternalAndSharedData$' -count=1 -timeout 10m -v
+              ;;
+            shared-postgres)
+              BASEHARBOR_SHARED_POSTGRES_INTEGRATION=1 go test -p 1 ./internal/application -run '^TestSharedPostgres' -count=1 -timeout 12m -v
+              ;;
+            control-plane-single)
+              BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestSingleControlPlaneRestartRotationAndCleanup$' -count=1 -timeout 20m -v
+              ;;
+            control-plane)
+              BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -timeout 20m -v
+              ;;
+            keycloak)
+              BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1 go test -p 1 ./internal/identityprovider -run '^TestKeycloakHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 18m -v
+              ;;
+            loki)
+              BASEHARBOR_LOKI_HA_ACCEPTANCE=1 go test -p 1 ./internal/logs -run '^TestLokiHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v
+              ;;
+            tempo)
+              BASEHARBOR_TEMPO_HA_ACCEPTANCE=1 go test -p 1 ./internal/traces -run '^TestTempoHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 18m -v
+              ;;
+            otel)
+              BASEHARBOR_OTEL_HA_ACCEPTANCE=1 go test -p 1 ./internal/telemetry -run '^TestOTelHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v
+              ;;
+            gateway)
+              BASEHARBOR_GATEWAY_ACCEPTANCE=1 go test -p 1 ./internal/devgateway -run '^TestGatewayRuntimeContinuityAcceptanceInCI$' -count=1 -timeout 10m -v
+              ;;
+          esac
+
+      - name: Runtime diagnostics
+        if: failure()
+        shell: bash
+        run: bash scripts/ci-failure-diagnostics.sh "${{ matrix.runtime }}" "$RUNNER_TEMP/targeted-ha-diagnostics" "$GITHUB_WORKSPACE" || true
+
+      - name: Cleanup runtime state
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
+  adoption:
+    if: ${{ github.event_name == 'workflow_dispatch' && startsWith(inputs.gate, 'adoption-') }}
+    name: ${{ inputs.gate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run focused adoption gate
+        shell: bash
+        env:
+          GATE: ${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          case "$GATE" in
+            adoption-conformance)
+              go test ./internal/repositoryinspect -count=1 -run 'TestAdoptionConformanceCorpus|TestInspectionBudget|TestCollectSnapshotSkips|TestKubernetesDocumentLimit|TestWorkloadSourceCrossSourceSemanticParity|TestWorkloadSourceResolution'
+              ;;
+            adoption-realworld-compose|adoption-realworld-quadlet|adoption-realworld-kubernetes)
+              category="${GATE#adoption-realworld-}"
+              go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+              BAHA="$RUNNER_TEMP/baha" CORPUS_CATEGORY="$category" bash scripts/realworld-workload-source-corpus.sh
+              ;;
+            *)
+              echo "unsupported adoption gate: $GATE" >&2
+              exit 2
+              ;;
+          esac
+
+  bug_hunt_templates:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/bug-hunt/') }}
+    name: Bug hunt templates · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ endsWith(github.ref_name, '/docker') && fromJSON('["docker"]') || endsWith(github.ref_name, '/podman') && fromJSON('["podman"]') || fromJSON('["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_TEMPLATE_BUILD_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify source regressions and fresh generated images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bug-hunt"
+          go test -race -json ./cmd/baha -run 'Test(PreflightNewTargetRecoveryFile|TargetRecoveryFile|RequiredSecret(NullInput|RealPTY)|OverviewUsesCanonical|PromptAndStoreMissingRequiredSecrets)' -count=1 | tee "$RUNNER_TEMP/bug-hunt/source.jsonl"
+          go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
+      - name: Retain focused bug hunt evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: bug-hunt-templates-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/bug-hunt
+          if-no-files-found: warn
+          retention-days: 90
+
+  rootless_engine_isolation:
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
+    name: Engine isolation · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:engine-isolation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare isolated rootless engine alongside System Docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify independent active Docker context
+        if: matrix.runtime == 'docker'
+        run: |
+          docker context use rootless
+          env -u DOCKER_HOST -u DOCKER_CONTEXT docker info --format '{{json .SecurityOptions}}'
+          env -u DOCKER_HOST -u DOCKER_CONTEXT docker --host unix:///var/run/docker.sock info --format '{{json .SecurityOptions}}'
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/engine-isolation-build"
+          mkdir -p "$out"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v0.4.24-candidate -X main.commit=$candidate_sha -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify native engine isolation and owned lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/engine-isolation"
+          if [ "$BASEHARBOR_TEST_RUNTIME" = docker ]; then
+            export BASEHARBOR_DUAL_DOCKER_ACCEPTANCE=1
+            selection='^TestDualDockerEngineRootlessCoreAcceptance$'
+          else
+            export BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE=1
+            selection='^TestCoreOnlyBootstrapRuntimeAcceptance$/^development$'
+          fi
+          go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 24m 2>&1 | tee "$RUNNER_TEMP/engine-isolation/tests.jsonl"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: engine-isolation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/engine-isolation
+          retention-days: 90
+
+  identity_trust:
+    if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
+    name: Shared Identity SQL trust · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:identity-trust
+      BASEHARBOR_CORE_IDENTITY_SQL_CA_ACCEPTANCE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare isolated rootless engine alongside System Docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Build exact Core runtime image
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/identity-trust-build"
+          mkdir -p "$out"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=v0.4.24-candidate -X main.commit=$candidate_sha -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+      - name: Verify native engine isolation and owned lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/identity-trust"
+          selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$'
+          if [ '${{ contains(github.event.head_commit.message, '[identity-ha-runtime]') }}' = true ]; then
+            selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$/^ha$'
+          fi
+          go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 32m 2>&1 | tee "$RUNNER_TEMP/identity-trust/tests.jsonl"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: identity-trust-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/identity-trust
+          retention-days: 90
+
+  final_bug_acceptance:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[final-bug-runtime]') }}
+    name: Final product bug acceptance · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_BUGFIX_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:final-bugs
+      BASEHARBOR_CORE_BOOTSTRAP_ACCEPTANCE: '1'
+      BASEHARBOR_FINAL_BUG_ACCEPTANCE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Prepare verified rootless engine
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Build exact Core image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify final bug regressions and real lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/final-bugs"
+          go test -p 2 -json ./cmd/baha ./internal/deployment ./internal/repositoryinspect ./internal/cli -run 'Test(Bug|CoreOnlyBootstrapRuntimeAcceptance|InspectFailsClosedOnComposeInclude|PreflightRepositoryWorkloadPublishedPorts|TargetRecovery|PreflightNewTargetRecovery)' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/final-bugs/tests.jsonl"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: final-product-bugs-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/final-bugs
+          retention-days: 90
+
+  provider_observation:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[provider-observation-runtime]') }}
+    name: Provider observation · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:provider-observation
+      BASEHARBOR_PROVIDER_OBSERVATION_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build exact Core runtime image
+        run: ${{ matrix.runtime }} build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+      - name: Verify actual selected partial module and restoration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/provider-observation"
+          git rev-parse HEAD > "$RUNNER_TEMP/provider-observation/source-sha.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/provider-observation/source-tree.txt"
+          go version > "$RUNNER_TEMP/provider-observation/go-version.txt"
+          go test -race -json ./cmd/baha -run '^TestProviderObservationNativePartialModule$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/provider-observation/tests.jsonl"
+      - name: Retain bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: provider-observation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/provider-observation
+          if-no-files-found: warn
+          retention-days: 90
+
+
+  external_provider_handoff:
+    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[external-provider-handoff-runtime]') || contains(github.event.head_commit.message, '[external-provider-handoff-podman]')) }}
+    name: External provider consumer handoff · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        runtime: ${{ fromJSON(contains(github.event.head_commit.message, '[external-provider-handoff-podman]') && '["podman"]' || '["docker","podman"]') }}
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_EXTERNAL_PROVIDER_HANDOFF_ACCEPTANCE: '1'
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify native registered OIDC consumer handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/external-provider-handoff"
+          git rev-parse HEAD > "$RUNNER_TEMP/external-provider-handoff/source-sha.txt"
+          git rev-parse HEAD^{tree} > "$RUNNER_TEMP/external-provider-handoff/source-tree.txt"
+          go version > "$RUNNER_TEMP/external-provider-handoff/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/external-provider-handoff/runtime-version.txt"
+          go test -race -json ./internal/identityprovider -run '^TestRegisteredExternalOIDCNativeConsumerHandoff$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/external-provider-handoff/tests.jsonl"
+      - name: Retain bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: external-provider-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/external-provider-handoff
+          if-no-files-found: warn
+          retention-days: 90

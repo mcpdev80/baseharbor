@@ -1,0 +1,29 @@
+Plan for demo (dev)
+Operator access: trusted-local · READY · trusted-local
+1. ensure identity:default - ensure isolated OIDC application identity
+2. verify identity:default - verify OIDC discovery, client binding and authentication policy
+3. ensure database.sql:default - ensure SQL capability resource default
+4. verify database.sql:default - verify application-facing SQL access for default
+5. ensure cache.key-value:default - ensure key-value cache capability resource default
+6. verify cache.key-value:default - verify application-facing key-value cache access for default
+7. ensure database.key-value:store - ensure durable key-value database capability resource store
+8. verify database.key-value:store - verify durable application-facing key-value write/read access for store
+9. ensure database.document:default - ensure document database capability resource default
+10. verify database.document:default - verify application-facing document write/read access for default
+11. ensure messaging.queue:default - ensure messaging queue capability resource default
+12. verify messaging.queue:default - verify publish/consume/ack semantics for default
+13. ensure messaging.pubsub:default - ensure messaging pubsub capability resource default
+14. verify messaging.pubsub:default - verify subscribe/publish/receive semantics for default
+15. ensure messaging.stream:default - ensure messaging stream capability resource default
+16. verify messaging.stream:default - verify supported stream semantics for default
+17. ensure s3-bucket:uploads - ensure isolated S3 bucket uploads
+18. verify s3-bucket:uploads - verify authenticated S3 Put/Get flow
+19. ensure exposure:demo-app - ensure managed HTTP exposure demo-app
+20. ensure telemetry.otlp:default - ensure OTLP export binding
+21. ensure metrics:application - ensure metrics source application
+22. ensure logs:demo-app - ensure workload log collection for demo-app
+23. ensure secrets-scope - ensure isolated application secret scope
+24. verify secret:APP_SECRET - require application secret before readiness
+25. ensure workload - start and verify repository workload
+Core: required; additional providers: 0; unused providers retained: 0
+No changes were made.

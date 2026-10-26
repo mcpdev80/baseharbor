@@ -1,0 +1,193 @@
+package database
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
+	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	if err := resetTestDatabase(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyMembershipContextRollback(ctx, pool); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate renewal migration: %v", err)
+	}
+	var retainedAdmission, overlapExists, renewalColumn bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&retainedAdmission); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_enrollment_grants' AND column_name='previous_certificate_serial')").Scan(&renewalColumn); err != nil {
+		t.Fatal(err)
+	}
+	if !retainedAdmission || overlapExists || renewalColumn {
+		t.Fatal("renewal rollback changed earlier admission or retained renewal state")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing renewal migration was accepted as schema ready")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback certificate admission migration: %v", err)
+	}
+	var revocationColumn, retainedEnrollment bool
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&retainedEnrollment); err != nil {
+		t.Fatal(err)
+	}
+	if revocationColumn || !retainedEnrollment {
+		t.Fatal("certificate admission rollback changed earlier enrollment ownership")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing certificate admission migration was accepted as ready")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback Connector enrollment migration: %v", err)
+	}
+	var enrollmentExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_enrollment_grants') IS NOT NULL").Scan(&enrollmentExists); err != nil {
+		t.Fatal(err)
+	}
+	if enrollmentExists {
+		t.Fatal("enrollment schema still exists after rolling back its owning migration")
+	}
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatal("missing enrollment migration was accepted as schema ready")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback identity resolution migration: %v", err)
+	}
+	var identityPolicyExists bool
+	if err := pool.QueryRow(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'memberships'
+      AND policyname = 'memberships_identity_resolution'
+)
+`).Scan(&identityPolicyExists); err != nil {
+		t.Fatal(err)
+	}
+	if identityPolicyExists {
+		t.Fatal("identity resolution policy still exists after rolling back its owning migration")
+	}
+
+	var ownershipExists, tenantsExists, membershipsExists bool
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.application_ownerships') IS NOT NULL").Scan(&ownershipExists); err != nil {
+		t.Fatal(err)
+	}
+	if !ownershipExists {
+		t.Fatal("rolling back identity resolution removed application ownership schema")
+	}
+
+	var rlsEnabled bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if !rlsEnabled {
+		t.Fatal("rolling back identity resolution unexpectedly disabled membership RLS")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback application ownership migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.application_ownerships') IS NOT NULL").Scan(&ownershipExists); err != nil {
+		t.Fatal(err)
+	}
+	if ownershipExists {
+		t.Fatal("application ownership schema still exists after rolling back its owning migration")
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.tenants') IS NOT NULL").Scan(&tenantsExists); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.memberships') IS NOT NULL").Scan(&membershipsExists); err != nil {
+		t.Fatal(err)
+	}
+	if !tenantsExists || !membershipsExists {
+		t.Fatal("rolling back application ownership removed earlier identity schema")
+	}
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if !rlsEnabled {
+		t.Fatal("rolling back application ownership unexpectedly disabled membership RLS")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback RLS migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity FROM pg_class WHERE oid = 'memberships'::regclass").Scan(&rlsEnabled); err != nil {
+		t.Fatal(err)
+	}
+	if rlsEnabled {
+		t.Fatal("RLS should be disabled after rolling back the RLS migration")
+	}
+
+	if err := RollbackLast(ctx, pool); err != nil {
+		t.Fatalf("rollback core migration: %v", err)
+	}
+	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.tenants') IS NOT NULL").Scan(&tenantsExists); err != nil {
+		t.Fatal(err)
+	}
+	if tenantsExists {
+		t.Fatal("core identity schema still exists after rolling back its owning migration")
+	}
+}
+
+func verifyMembershipContextRollback(ctx context.Context, pool *pgxpool.Pool) error {
+	var safeContext bool
+	query := `SELECT position('NULLIF' in qual)>0 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_tenant_isolation'`
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	if !safeContext {
+		return fmt.Errorf("empty tenant context policy correction missing")
+	}
+	if err := RollbackLast(ctx, pool); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, query).Scan(&safeContext); err != nil {
+		return err
+	}
+	var forcedRLS, identityResolution bool
+	if err := pool.QueryRow(ctx, "SELECT relrowsecurity AND relforcerowsecurity FROM pg_class WHERE oid='memberships'::regclass").Scan(&forcedRLS); err != nil {
+		return err
+	}
+	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_policies WHERE schemaname='public' AND tablename='memberships' AND policyname='memberships_identity_resolution')").Scan(&identityResolution); err != nil {
+		return err
+	}
+	if safeContext || !forcedRLS || !identityResolution {
+		return fmt.Errorf("membership context rollback changed earlier security ownership")
+	}
+	if VerifySchemaReady(ctx, pool) == nil {
+		return fmt.Errorf("missing membership context correction accepted as schema ready")
+	}
+	return nil
+}

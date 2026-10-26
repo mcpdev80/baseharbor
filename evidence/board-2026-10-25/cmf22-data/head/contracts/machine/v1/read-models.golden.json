@@ -1,0 +1,187 @@
+{
+  "schema": "baseharbor.machine-read-model-fixtures/v1",
+  "synthetic": true,
+  "records": [
+    {
+      "operation": "app.list",
+      "value": {
+        "contract_version": "v1",
+        "deployments": [
+          {
+            "contract_version": "v1",
+            "deployment_id": "synthetic-deployment",
+            "application_id": "synthetic-application",
+            "target": "synthetic-target",
+            "application": "synthetic-demo",
+            "environment": "prod",
+            "runtime_provider": "podman",
+            "state": "running",
+            "ready": true,
+            "source_kind": "repository",
+            "source_available": true
+          }
+        ]
+      }
+    },
+    {
+      "operation": "app.list",
+      "value": {
+        "contract_version": "v1",
+        "deployments": [],
+        "warnings": [
+          "Synthetic partial source observation"
+        ]
+      }
+    },
+    {
+      "operation": "target.list",
+      "value": {
+        "contract_version": "v1",
+        "targets": [
+          {
+            "contract_version": "v1",
+            "name": "synthetic-target",
+            "runtime_provider": "podman",
+            "access_reference": "synthetic-node",
+            "scope": "synthetic-scope",
+            "default": true,
+            "effective": true
+          }
+        ]
+      }
+    },
+    {
+      "operation": "workspace.list",
+      "value": {
+        "contract_version": "v1",
+        "workspaces": [
+          {
+            "contract_version": "v1",
+            "application": "synthetic-demo",
+            "manifest": "/synthetic/baseharbor.yaml",
+            "source_count": 1,
+            "sources": {
+              "app": "/synthetic/app"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "operation": "runtime.list",
+      "value": [
+        {
+          "contract_version": "baseharbor.runtime-explorer/v1",
+          "ref": {
+            "provider": "podman",
+            "target": "synthetic-target",
+            "kind": "container",
+            "resource_id": "synthetic-container"
+          },
+          "display_name": "synthetic-api",
+          "ownership": "managed",
+          "relationship": {
+            "application_id": "synthetic-application",
+            "deployment_id": "synthetic-deployment",
+            "environment": "prod"
+          },
+          "state": {
+            "observed": "running"
+          },
+          "reconciliation": {}
+        }
+      ]
+    },
+    {
+      "operation": "runtime.list",
+      "value": null
+    },
+    {
+      "operation": "runtime.capabilities",
+      "value": {
+        "contract_version": "baseharbor.runtime-explorer/v1",
+        "provider": "podman",
+        "target": "synthetic-target",
+        "capabilities": [
+          "resources.inspect",
+          "container.terminal"
+        ],
+        "resource_kinds": [
+          "container"
+        ]
+      }
+    },
+    {
+      "operation": "stream.descriptor",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "kind": "exec",
+        "actor": {
+          "mode": "authenticated",
+          "issuer": "https://identity.example",
+          "subject": "synthetic-operator"
+        },
+        "context": {
+          "environment": "prod",
+          "target": "synthetic-target",
+          "resource": "synthetic-container"
+        },
+        "resource_kind": "container",
+        "resource_id": "synthetic-container",
+        "created_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 1,
+        "kind": "terminal.ready",
+        "occurred_at": "2026-10-06T00:00:00Z"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 2,
+        "kind": "terminal.output",
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "data": "c3ludGhldGljIG91dHB1dA0K"
+      }
+    },
+    {
+      "operation": "terminal.event",
+      "value": {
+        "contract_version": "v1",
+        "stream_id": "stream_0123456789abcdef0123456789abcdef",
+        "sequence": 3,
+        "kind": "terminal.exit",
+        "occurred_at": "2026-10-06T00:00:00Z",
+        "exit_code": 0
+      }
+    },
+    {
+      "operation": "terminal.input",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 1,
+        "kind": "input",
+        "data": "c3ludGhldGljIGlucHV0DQ=="
+      }
+    },
+    {
+      "operation": "terminal.input",
+      "value": {
+        "contract_version": "v1",
+        "sequence": 2,
+        "kind": "resize",
+        "rows": 24,
+        "columns": 80
+      }
+    }
+  ]
+}

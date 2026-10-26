@@ -1,0 +1,121 @@
+{
+  "version": "baseharbor.source-qualification/v1",
+  "product_source": "395b3e15f437bd9b2f7daf6e34ec2c2a3941e965",
+  "product_tree": "eae04b7484094efbc7f074e8ef1358dbf9e143c9",
+  "pre_release_ready": false,
+  "native_runtime_qualified": false,
+  "scope": "Aggregate destruction consent and protected consumer authority only. Active Core destruction, all provider consequence execution, interrupted handoff and final ecosystem acceptance remain required.",
+  "snapshot_checks": {
+    "source": {
+      "commit": "d3e26e5e76609b78b2e852d665ad5a7fcdf70dfe",
+      "tree": "46ce4d7dbe96461903335f13d952f631f51e425d",
+      "working_tree_changes": true
+    },
+    "jobs": 4,
+    "seconds": 192.188,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/application"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 57.628,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 1.305,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.423,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 13.388,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 154.147,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 191.269,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 62.844,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 25.483,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 24.578,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "followup_checks": [
+    {
+      "name": "affected_full_package_tests",
+      "outcome": "pass",
+      "log_sha256": "d24be7d2f2ac1c9aaf69625c0e31c56279e599cee823f65d88397183dbf594cc",
+      "summary": "ok  \tgithub.com/mcpdev80/baseharbor/cmd/baha\t8.586s\nok  \tgithub.com/mcpdev80/baseharbor/internal/application\t4.760s"
+    },
+    {
+      "name": "affected_final_races",
+      "outcome": "pass",
+      "log_sha256": "5a7030b48bd79569ddaa90054dc03761b4c8e8786cda2436326bf4092d0c29ae",
+      "summary": "ok  \tgithub.com/mcpdev80/baseharbor/cmd/baha\t(cached)\nok  \tgithub.com/mcpdev80/baseharbor/internal/application\t(cached)"
+    },
+    {
+      "name": "affected_vet",
+      "outcome": "pass"
+    },
+    {
+      "name": "cli_build_explicit_no_vcs_stamp",
+      "outcome": "pass"
+    },
+    {
+      "name": "readability_and_git_diff_check",
+      "outcome": "pass"
+    }
+  ],
+  "history": [
+    "Initial adapter tests failed because an orphan Target was resolved as configured. Direct registered-operation authorization now uses the retained Target selector; consumers retain their actual environment authority.",
+    "Added transport parity test exposed missing consent being classified as stale consent. Initialize the empty acknowledgement with the current plan ID; missing stages now return approval_required.",
+    "Direct worktree build failed obtaining VCS status; explicit go build -buildvcs=false succeeds. The snapshot CLI build passed."
+  ],
+  "local_equivalent_commit": "8e16605311a6e75d4c68783ba48e7b3d7ccb204f",
+  "publication_method": "Authenticated GitHub Git Objects API; every blob and product tree match the local qualified source. Commit metadata differs; no product tree changes."
+}

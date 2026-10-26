@@ -1,0 +1,854 @@
+Application deployment inputs are incomplete; resolving only the missing values...
+Application runtime initialization saved for demo (dev).
+Runtime provider: docker
+Development domain: baha.localhost
+Canonical API URL: https://demo.baha.localhost
+TLS: local
+Ports remain managed automatically by BaseHarbor.
+next: run 'baha up'
+[OK] workload-port      DEMO_HTTPS_PORT=8080 available for this deployment
+Converging selected application capabilities and their genuine dependencies...
+BaseHarbor · demo · dev
+  [36mINFO      [0m target                   demo-docker
+
+Plan
+  [36mINFO      [0m desired actions          25 action(s) resolved
+Manifest: /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo/baseharbor.yaml (repository source of truth)
+Provider placement: tempo -> shared
+Provider placement: prometheus -> shared
+Provider placement: loki -> shared
+Achtung: review the concrete consequences and required acknowledgements below.
+{
+  "version": "baseharbor.provider-impact/v1",
+  "target": "demo-docker",
+  "revision": "4d36824f043712f6787112c1da4991697c2e127f1110ff8f8025dcddd17f14e6",
+  "plan_id": "dc765a7dd80ef3e80bcb4b19b5b4efe89a0463f8ed4ed0b3b2148f378db860a4",
+  "complete": false,
+  "attention": "Achtung",
+  "confirmations_required": 2,
+  "destructive": false,
+  "impacts": [
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "caddy/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "caddy/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "caddy",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "caddy/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "caddy",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "exposure.http",
+          "via": [
+            "caddy/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "keycloak/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "keycloak/shared",
+        "kind": "keycloak",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "keycloak/shared",
+        "kind": "keycloak",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-demo-docker-shared/control-plane/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "identity.oidc",
+          "via": [
+            "keycloak/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "loki/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "loki/shared",
+        "kind": "loki",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "loki/shared",
+        "kind": "loki",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "logs",
+          "via": [
+            "loki/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "mongodb/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "mongodb/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "mongodb",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "mongodb/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "mongodb",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "database.document",
+          "via": [
+            "mongodb/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "openbao/control-plane",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "openbao/control-plane",
+        "kind": "openbao",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "openbao/control-plane",
+        "kind": "openbao",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-demo-docker-shared/control-plane/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "secrets",
+          "via": [
+            "openbao/control-plane"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "opentelemetry-collector/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "opentelemetry-collector/shared",
+        "kind": "opentelemetry-collector",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "opentelemetry-collector/shared",
+        "kind": "opentelemetry-collector",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "telemetry.otlp",
+          "via": [
+            "opentelemetry-collector/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "postgresql/shared/environment-dev-91df0423",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "postgresql/shared/environment-dev-91df0423",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "postgresql/shared/environment-dev-91df0423",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-demo-docker-shared/shared-backends/postgresql"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "database.sql",
+          "via": [
+            "postgresql/shared/environment-dev-91df0423"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "prometheus/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "prometheus/shared",
+        "kind": "prometheus",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "prometheus/shared",
+        "kind": "prometheus",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "metrics",
+          "via": [
+            "prometheus/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "rabbitmq/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "rabbitmq/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "rabbitmq",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "rabbitmq/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a",
+        "kind": "rabbitmq",
+        "target": "demo-docker",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "84b17931-37be-4518-80e0-3efbcf67c3e4",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "messaging.queue",
+          "via": [
+            "rabbitmq/application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev-ef260e9a"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-demo-docker-shared/control-plane/postgresql",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/control-plane/postgresql",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/control-plane/postgresql",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "keycloak/shared",
+        "openbao/control-plane"
+      ],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "identity.oidc",
+          "via": [
+            "keycloak/shared",
+            "runtime/bh-demo-docker-shared/control-plane/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        },
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "secrets",
+          "via": [
+            "openbao/control-plane",
+            "runtime/bh-demo-docker-shared/control-plane/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-demo-docker-shared/shared-backends/postgresql",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/shared-backends/postgresql",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/shared-backends/postgresql",
+        "kind": "postgresql",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "postgresql/shared/environment-dev-91df0423"
+      ],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "database.sql",
+          "via": [
+            "postgresql/shared/environment-dev-91df0423",
+            "runtime/bh-demo-docker-shared/shared-backends/postgresql"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "runtime/bh-demo-docker-shared/shared-backends/valkey",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/shared-backends/valkey",
+        "kind": "valkey",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "ancillary": true,
+        "instance_id": "runtime/bh-demo-docker-shared/shared-backends/valkey",
+        "kind": "valkey",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "runtime/bh-demo-docker-shared",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [
+        "valkey/shared/environment-dev-91df0423"
+      ],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "cache.key-value",
+          "via": [
+            "valkey/shared/environment-dev-91df0423",
+            "runtime/bh-demo-docker-shared/shared-backends/valkey"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "seaweedfs/shared",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "seaweedfs/shared",
+        "kind": "seaweedfs",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "seaweedfs/shared",
+        "kind": "seaweedfs",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "object-storage.s3",
+          "via": [
+            "seaweedfs/shared"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    },
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "valkey/shared/environment-dev-91df0423",
+      "operation": "add",
+      "scenario": "provider-changed",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "valkey/shared/environment-dev-91df0423",
+        "kind": "valkey",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "newly-required",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "after": {
+        "instance_id": "valkey/shared/environment-dev-91df0423",
+        "kind": "valkey",
+        "target": "demo-docker",
+        "scope": "shared",
+        "ownership": "baseharbor",
+        "owner": "target/demo-docker",
+        "state": "running",
+        "locations": [],
+        "supported": false,
+        "verified": false
+      },
+      "dependencies": [
+        "runtime/bh-demo-docker-shared/shared-backends/valkey"
+      ],
+      "dependents": [],
+      "functions": [
+        {
+          "consumer": "application/84b17931-37be-4518-80e0-3efbcf67c3e4/dev",
+          "function": "cache.key-value",
+          "via": [
+            "valkey/shared/environment-dev-91df0423"
+          ],
+          "required": true,
+          "outcome": "changed",
+          "evidence": "resolved consumer requirement"
+        }
+      ],
+      "materials": [],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted"
+      ]
+    }
+  ]
+}
+Achtung: confirm the displayed outcome without a working alternative (1/2, plan dc765a7dd80ef3e80bcb4b19b5b4efe89a0463f8ed4ed0b3b2148f378db860a4)? [y/N]: yes
+Achtung: confirm the displayed outcome without a working alternative (2/2, plan dc765a7dd80ef3e80bcb4b19b5b4efe89a0463f8ed4ed0b3b2148f378db860a4)? [y/N]: yes
+BaseHarbor control-plane ports:
+  PostgreSQL  127.0.0.1:5432
+  OpenBao     127.0.0.1:8200
+BaseHarbor control-plane runtime started
+next: run 'baha status' and 'baha doctor'
+OpenBao is not initialized; bootstrapping the managed trust plane...
+[OK] OpenBao initialized and unsealed
+[OK] baseharbor KV v2 mount configured
+[OK] restricted manager AppRole configured and verified
+[OK] initial root token revoked
+Recovery file: /tmp/baseharbor-demo-fixture.hOeGHi/data/baseharbor-recovery/demo-docker/openbao-recovery.json
+Store the recovery file securely and separately from BaseHarbor application state.
+Host resources
+  Available RAM       19.75 GiB
+  Planned minimum     1.72 GiB
+  Planned estimate    3.69 GiB
+  Confidence          ESTIMATED
+  Planned components  20: SQL provider/resource, cache provider/resource, object storage provider, application secrets path, identity database, identity provider, metrics provider, logs provider, log collector, telemetry collector, trace provider, SQL management UI, cache management UI, object storage management UI, secrets management UI, identity management UI, observability management UI, application workload, developer/exposure gateway, application runtime broker
+  Safety headroom     SAFE
+  Swap                none
+  Memory pressure     some avg300=0.00, full avg300=0.00
+◐ Checking application prerequisites (<1s)◓ Checking application prerequisites (1.2s)◑ Checking application prerequisites (2.0s)[2K[OK] Checking application prerequisites - done (2.1s)
+
+Preflight
+  [32mOK        [0m manifest                
+  [32mOK        [0m host memory             
+  [32mOK        [0m supported services      
+  [32mOK        [0m manifest permissions    
+  [32mOK        [0m application workload    
+  [32mOK        [0m shared backend topology 
+  [32mOK        [0m runtime provider capabilities
+  [32mOK        [0m workload security       
+  [32mOK        [0m connectivity policy     
+  [32mOK        [0m provider registry       
+  [32mOK        [0m BaseHarbor control-plane runtime
+  [32mOK        [0m managed service PKI     
+  [32mOK        [0m runtime PKI prerequisites
+  [32mOK        [0m managed object storage provider
+  [32mOK        [0m managed traces provider 
+  [32mOK        [0m managed telemetry provider
+  [32mOK        [0m managed metrics provider
+  [32mOK        [0m managed logs provider   
+  [32mOK        [0m managed exposure provider
+  [32mOK        [0m managed identity provider
+◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (<1s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (1.2s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (2.0s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (2.8s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (3.6s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (4.4s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (5.2s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (6.0s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (6.8s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (7.6s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (8.4s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (9.2s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (10.0s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (10.8s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (11.6s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (12.4s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (13.2s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (14.0s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (14.8s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (15.6s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (16.4s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (17.2s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (18.0s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (18.8s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (19.6s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (20.4s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (21.2s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (22.0s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (22.8s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (23.6s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (24.4s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (25.2s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (26.0s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (26.8s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (27.6s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (28.4s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (29.2s)◓ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (30.0s)◑ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (30.8s)◒ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (31.6s)◐ Reconciling shared data providers · reconciling Target-owned PostgreSQL/Valkey provider runtime (32.4s)[2K[OK] Reconciling shared data providers - done (33.0s)
+◐ Reconciling object storage (<1s)◓ Reconciling object storage (1.2s)◑ Reconciling object storage (2.0s)◒ Reconciling object storage (2.8s)◐ Reconciling object storage (3.6s)◓ Reconciling object storage (4.4s)◑ Reconciling object storage (5.2s)◒ Reconciling object storage (6.0s)◐ Reconciling object storage (6.8s)◓ Reconciling object storage (7.6s)◑ Reconciling object storage (8.4s)◒ Reconciling object storage (9.2s)◐ Reconciling object storage (10.0s)◓ Reconciling object storage (10.8s)◑ Reconciling object storage (11.6s)[2K[OK] Reconciling object storage - done (12.3s)
+[READY] object-storage    provider and IAM ready
+[VERIFIED] object-storage uploads authenticated S3 Put/Get
+◐ Reconciling application identity (<1s)◓ Reconciling application identity (1.2s)◑ Reconciling application identity (2.0s)◒ Reconciling application identity (2.8s)◐ Reconciling application identity (3.6s)◓ Reconciling application identity (4.4s)◑ Reconciling application identity (5.2s)◒ Reconciling application identity (6.0s)◐ Reconciling application identity (6.8s)◓ Reconciling application identity (7.6s)◑ Reconciling application identity (8.4s)◒ Reconciling application identity (9.2s)◐ Reconciling application identity (10.0s)◓ Reconciling application identity (10.8s)◑ Reconciling application identity (11.6s)◒ Reconciling application identity (12.4s)◐ Reconciling application identity (13.2s)◓ Reconciling application identity (14.0s)◑ Reconciling application identity (14.8s)◒ Reconciling application identity (15.6s)◐ Reconciling application identity (16.4s)◓ Reconciling application identity (17.2s)◑ Reconciling application identity (18.0s)◒ Reconciling application identity (18.8s)◐ Reconciling application identity (19.6s)◓ Reconciling application identity (20.4s)◑ Reconciling application identity (21.2s)◒ Reconciling application identity (22.0s)◐ Reconciling application identity (22.8s)◓ Reconciling application identity (23.6s)◑ Reconciling application identity (24.4s)◒ Reconciling application identity (25.2s)◐ Reconciling application identity (26.0s)◓ Reconciling application identity (26.8s)◑ Reconciling application identity (27.6s)◒ Reconciling application identity (28.4s)◐ Reconciling application identity (29.2s)◓ Reconciling application identity (30.0s)◑ Reconciling application identity (30.8s)◒ Reconciling application identity (31.6s)◐ Reconciling application identity (32.4s)◓ Reconciling application identity (33.2s)◑ Reconciling application identity (34.0s)◒ Reconciling application identity (34.8s)◐ Reconciling application identity (35.6s)◓ Reconciling application identity (36.4s)◑ Reconciling application identity (37.2s)◒ Reconciling application identity (38.0s)◐ Reconciling application identity (38.8s)◓ Reconciling application identity (39.6s)◑ Reconciling application identity (40.4s)◒ Reconciling application identity (41.2s)◐ Reconciling application identity (42.0s)◓ Reconciling application identity (42.8s)◑ Reconciling application identity (43.6s)◒ Reconciling application identity (44.4s)◐ Reconciling application identity (45.2s)◓ Reconciling application identity (46.0s)◑ Reconciling application identity (46.8s)◒ Reconciling application identity (47.6s)◐ Reconciling application identity (48.4s)◓ Reconciling application identity (49.2s)◑ Reconciling application identity (50.0s)◒ Reconciling application identity (50.8s)◐ Reconciling application identity (51.6s)◓ Reconciling application identity (52.4s)◑ Reconciling application identity (53.2s)◒ Reconciling application identity (54.0s)◐ Reconciling application identity (54.8s)◓ Reconciling application identity (55.6s)◑ Reconciling application identity (56.4s)◒ Reconciling application identity (57.2s)◐ Reconciling application identity (58.0s)◓ Reconciling application identity (58.8s)◑ Reconciling application identity (59.6s)◒ Reconciling application identity (1m00s)◐ Reconciling application identity (1m01s)◓ Reconciling application identity (1m01s)◑ Reconciling application identity (1m02s)◒ Reconciling application identity (1m03s)◐ Reconciling application identity (1m04s)◓ Reconciling application identity (1m05s)◑ Reconciling application identity (1m05s)[2K[OK] Reconciling application identity - done (1m06s)
+[READY] identity provider=keycloak standard=OIDC/OAuth2
+◐ Reconciling developer OIDC access (<1s)◓ Reconciling developer OIDC access (1.2s)◑ Reconciling developer OIDC access (2.0s)[2K[OK] Reconciling developer OIDC access - done (2.4s)
+◐ Preparing application secret scope (<1s)◓ Preparing application secret scope (1.2s)◑ Preparing application secret scope (2.0s)◒ Preparing application secret scope (2.8s)◐ Preparing application secret scope (3.6s)[2K[OK] Preparing application secret scope - done (3.7s)
+
+Missing required application secrets
+  APP_SECRET
+Configure now? [Y/n] 
+APP_SECRET value: 
+APP_SECRET value again: 
+[OK] secret APP_SECRET stored securely
+◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (<1s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (1.2s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (2.0s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (2.8s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (3.6s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (4.4s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (5.2s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (6.0s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (6.8s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (7.6s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (8.4s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (9.2s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (10.0s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (10.8s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (11.6s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (12.4s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (13.2s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (14.0s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (14.8s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (15.6s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (16.4s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (17.2s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (18.0s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (18.8s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (19.6s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (20.4s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (21.2s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (22.0s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (22.8s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (23.6s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (24.4s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (25.2s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (26.0s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (26.8s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (27.6s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (28.4s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (29.2s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (30.0s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (30.8s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (31.6s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (32.4s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (33.2s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (34.0s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (34.8s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (35.6s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (36.4s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (37.2s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (38.0s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (38.8s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (39.6s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (40.4s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (41.2s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (42.0s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (42.8s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (43.6s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (44.4s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (45.2s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (46.0s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (46.8s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (47.6s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (48.4s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (49.2s)◑ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (50.0s)◒ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (50.8s)◐ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (51.6s)◓ Starting managed application services · pulling image docker.io/library/mongo:7.0.43 (52.4s)[2K◑ Starting managed application services · image ready docker.io/library/mongo:7.0.43 (52.8s)[2K◒ Starting managed application services · image ready docker.io/huggingface/mongoku:2.11.3 (52.8s)◐ Starting managed application services · image ready docker.io/huggingface/mongoku:2.11.3 (53.2s)[2K◓ Starting managed application services · image ready docker.io/library/rabbitmq:4.3.6-management-alpine (53.7s)[2K◑ Starting managed application services · creating workload network (53.8s)[2K◒ Starting managed application services · creating workload volume (53.8s)◐ Starting managed application services · creating workload volume (54.0s)[2K◓ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-ui-1 (54.0s)[2K◑ Starting managed application services · creating container bh-demo-docker-demo-dev-mongodb-ui-access-1 (54.0s)[2K◒ Starting managed application services · creating container bh-demo-docker-demo-dev-mongodb-1 (54.0s)[2K◐ Starting managed application services · creating container bh-demo-docker-demo-dev-mongodb-ui-1 (54.0s)[2K◓ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-1 (54.0s)[2K◑ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (54.0s)◒ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (54.8s)◐ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (55.6s)◓ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (56.4s)◑ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (57.2s)◒ Starting managed application services · creating container bh-demo-docker-demo-dev-rabbitmq-access-1 (58.0s)[2K◐ Starting managed application services · container created bh-demo-docker-demo-dev-rabbitmq-access-1 (58.2s)[2K◓ Starting managed application services · container created bh-demo-docker-demo-dev-mongodb-ui-1 (58.3s)[2K◑ Starting managed application services · container created bh-demo-docker-demo-dev-rabbitmq-ui-1 (58.5s)[2K◒ Starting managed application services · container created bh-demo-docker-demo-dev-mongodb-1 (58.6s)◐ Starting managed application services · container created bh-demo-docker-demo-dev-mongodb-1 (58.8s)[2K◓ Starting managed application services · container created bh-demo-docker-demo-dev-mongodb-ui-access-1 (58.9s)[2K◑ Starting managed application services · container created bh-demo-docker-demo-dev-rabbitmq-1 (59.0s)[2K◒ Starting managed application services · starting container bh-demo-docker-demo-dev-mongodb-ui-1 (59.0s)[2K◐ Starting managed application services · starting container bh-demo-docker-demo-dev-rabbitmq-1 (59.0s)[2K◓ Starting managed application services · starting container bh-demo-docker-demo-dev-mongodb-ui-access-1 (59.0s)[2K◑ Starting managed application services · starting container bh-demo-docker-demo-dev-rabbitmq-access-1 (59.0s)[2K◒ Starting managed application services · starting container bh-demo-docker-demo-dev-rabbitmq-ui-1 (59.0s)[2K◐ Starting managed application services · starting container bh-demo-docker-demo-dev-mongodb-1 (59.0s)◓ Starting managed application services · starting container bh-demo-docker-demo-dev-mongodb-1 (59.6s)◑ Starting managed application services · starting container bh-demo-docker-demo-dev-mongodb-1 (1m00s)[2K◒ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-1 (1m01s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-1 (1m01s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-1 (1m01s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-1 (1m02s)[2K◒ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-1 (1m02s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-1 (1m03s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-1 (1m04s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-1 (1m05s)[2K◒ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-access-1 (1m05s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-access-1 (1m05s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-ui-access-1 (1m06s)[2K◑ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-access-1 (1m07s)◒ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-access-1 (1m07s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-access-1 (1m08s)[2K◓ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-ui-1 (1m09s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-ui-1 (1m09s)◒ Starting managed application services · container started bh-demo-docker-demo-dev-rabbitmq-ui-1 (1m09s)[2K◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m10s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m10s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m11s)◒ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m12s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m13s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m13s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m14s)◒ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m15s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m16s)◓ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m17s)◑ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m17s)◒ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m18s)◐ Starting managed application services · container started bh-demo-docker-demo-dev-mongodb-1 (1m19s)[2K[OK] Starting managed application services - done (1m19s)
+◐ Waiting for backend readiness · checking managed service readiness (<1s)◓ Waiting for backend readiness · checking managed service readiness (1.2s)◑ Waiting for backend readiness · checking managed service readiness (2.0s)◒ Waiting for backend readiness · checking managed service readiness (2.8s)◐ Waiting for backend readiness · checking managed service readiness (3.6s)◓ Waiting for backend readiness · checking managed service readiness (4.4s)◑ Waiting for backend readiness · checking managed service readiness (5.2s)◒ Waiting for backend readiness · checking managed service readiness (6.0s)◐ Waiting for backend readiness · checking managed service readiness (6.8s)[2K◓ Waiting for backend readiness · managed services ready (7.0s)[2K[OK] Waiting for backend readiness - done (7.0s)
+
+Services
+  [32mREADY     [0m PostgreSQL               authenticated SELECT 1
+  [32mREADY     [0m Valkey                   semantic verification passed
+  [32mREADY     [0m RabbitMQ                 AMQPS queue/pubsub/stream semantics verified
+  [32mREADY     [0m MongoDB                  TLS document write/read/delete verified
+  [32mVERIFIED  [0m secrets                  isolated OpenBao application scope
+  [32mREADY     [0m runtime-broker           mTLS identity verified
+  [32mVERIFIED  [0m required-secrets         1 declared secret(s) present
+◐ Reconciling trace storage (<1s)◓ Reconciling trace storage (1.2s)◑ Reconciling trace storage (2.0s)◒ Reconciling trace storage (2.8s)◐ Reconciling trace storage (3.6s)◓ Reconciling trace storage (4.4s)◑ Reconciling trace storage (5.2s)◒ Reconciling trace storage (6.0s)◐ Reconciling trace storage (6.8s)◓ Reconciling trace storage (7.6s)◑ Reconciling trace storage (8.4s)◒ Reconciling trace storage (9.2s)◐ Reconciling trace storage (10.0s)◓ Reconciling trace storage (10.8s)◑ Reconciling trace storage (11.6s)◒ Reconciling trace storage (12.4s)◐ Reconciling trace storage (13.2s)◓ Reconciling trace storage (14.0s)◑ Reconciling trace storage (14.8s)◒ Reconciling trace storage (15.6s)◐ Reconciling trace storage (16.4s)◓ Reconciling trace storage (17.2s)

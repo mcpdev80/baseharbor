@@ -1,0 +1,106 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	testruntime "github.com/mcpdev80/baseharbor/internal/testsupport/runtimeprovider"
+)
+
+func TestRepositoryWorkflowRealLifecycle(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	timeout := 2 * time.Minute
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_TEST_RUNTIME")), "podman") {
+		timeout = 3 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if _, err := testruntime.Resolve(ctx); err != nil {
+		t.Skipf("compose runtime unavailable: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, ctx)
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runWithIO(ctx, []string{"app", "init", "repo-e2e", "--sql", "--cache"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	authored, err := os.ReadFile(filepath.Join(root, "baseharbor.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+		t.Fatalf("repository apply failed: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
+		t.Fatalf("unexpected apply output: %s", out.String())
+	}
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "repository integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyRepositoryFixtureState(resolved, authored); err != nil {
+		t.Fatal(err)
+	}
+	deploymentRoot := resolved.DeploymentStateRoot
+	if deploymentRoot == "" {
+		t.Fatal("resolved deployment state root is empty")
+	}
+
+	nested := filepath.Join(root, "frontend", "src")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, command := range [][]string{{"app", "status"}, {"app", "doctor"}} {
+		out.Reset()
+		if err := runWithIO(ctx, command, &out, &out); err != nil {
+			t.Fatalf("%v failed: %v\n%s", command, err, out.String())
+		}
+	}
+	out.Reset()
+	if err := runWithIO(ctx, []string{"app", "env", "--path"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	envPath := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(envPath, deploymentRoot) {
+		t.Fatalf("environment path is not anchored to target deployment state: %s", envPath)
+	}
+	if strings.HasPrefix(envPath, root) {
+		t.Fatalf("environment path leaked into repository-local state: %s", envPath)
+	}
+	if _, err := os.Stat(filepath.Join(nested, ".baseharbor")); !os.IsNotExist(err) {
+		t.Fatalf("nested command created nested BaseHarbor state: %v", err)
+	}
+
+	out.Reset()
+	verifyRepositoryFixtureRetirement(t, ctx, resolved)
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest was not preserved: %v", err)
+	}
+}

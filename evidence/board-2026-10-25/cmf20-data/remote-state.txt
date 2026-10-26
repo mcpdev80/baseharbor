@@ -1,0 +1,6 @@
+Observed via gh (SSH ls-remote blocked by host SSH config permissions):
+account mcpdev80
+PR1077 OPEN head 2f9afafdc443ba4b15569fca838511877c1fd3ba branch fix/v0.4.26-edit-preview-error base develop
+develop 433a5702c9735ffbf1e9fffe7a7ae513b1c5c396
+Planning main f8157ecf9c349aec021c36537a9db9cebca9aec5
+Local Planning task t-20261019-v0426-complete-defect-audit state active; no claim/task mutation by reviewer.

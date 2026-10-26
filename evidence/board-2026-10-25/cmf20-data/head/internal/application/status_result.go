@@ -1,0 +1,66 @@
+package application
+
+import bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+
+// StatusCheck is a secret-safe readiness observation shared by CLI and future
+// machine-oriented control surfaces.
+type StatusCheck struct {
+	Name   string `json:"name"`
+	OK     bool   `json:"ok"`
+	State  string `json:"state,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+// StatusResult is the shared application readiness model. It intentionally
+// contains operational state only and never credential or secret values.
+type StatusResult struct {
+	DockerEngine    *bhruntime.DockerEngineObservation `json:"docker_engine,omitempty"`
+	ContractVersion string                             `json:"contract_version"`
+	Target          string                             `json:"target"`
+	Application     string                             `json:"application"`
+	Environment     string                             `json:"environment"`
+	Manifest        string                             `json:"manifest,omitempty"`
+	Project         string                             `json:"project"`
+	State           string                             `json:"state"`
+	Ready           bool                               `json:"ready"`
+	Checks          []StatusCheck                      `json:"checks"`
+}
+
+// AddCheck appends one readiness observation and folds failures into Ready.
+func (r *StatusResult) AddCheck(name string, ok bool, detail string) {
+	state := "failed"
+	if ok {
+		state = "ready"
+	}
+	r.AddObservation(name, state, detail)
+}
+
+func (r StatusResult) HasUnverified() bool {
+	for _, check := range r.Checks {
+		if check.State == "unverified" {
+			return true
+		}
+	}
+	return false
+}
+
+func (r StatusResult) HasFailures() bool {
+	for _, check := range r.Checks {
+		if check.OK {
+			continue
+		}
+		if check.State == "unverified" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func (r *StatusResult) AddObservation(name, state, detail string) {
+	ok := state == "ready" || state == "verified"
+	r.Checks = append(r.Checks, StatusCheck{Name: name, OK: ok, State: state, Detail: detail})
+	if !ok {
+		r.Ready = false
+	}
+}

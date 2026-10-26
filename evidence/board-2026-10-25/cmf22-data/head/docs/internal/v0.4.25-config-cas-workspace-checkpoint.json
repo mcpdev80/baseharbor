@@ -1,0 +1,55 @@
+{
+  "version": "baseharbor.workspace-recovery/v1",
+  "pre_release_ready": false,
+  "remote_head": "c31636075476af8dffe62aa3f41023955355774b",
+  "qualified_core_stop_source": "cc1551fda4b1ca40f2c0b5c2cb8f7a8a99d9fa02",
+  "qualified_core_stop_run": 38270044907,
+  "scope": "Preparation for exact-owner, serialized Target configuration mutation. This is not Target detach/restore implementation or acceptance.",
+  "status": "UNQUALIFIED_WORKSPACE_UNRESPONSIVE",
+  "confirmed_local_edit_paths": [
+    "internal/coreinstallation/lifecycle_lock.go",
+    "internal/deployment/target.go",
+    "internal/deployment/config_mutation.go",
+    "internal/deployment/config_owner_unix.go",
+    "internal/deployment/config_owner_windows.go"
+  ],
+  "confirmed_edit_intent": [
+    "Reuse existing kernel lifecycle file lock for configuration serialization; no additional persisted registry or revision.",
+    "Add Config.SaveExpected(expectedBytes), compare exact owner bytes including absent versus existing empty owner; reject stale state.",
+    "Read only protected unlinked, same-user, single-link owner files and parent paths with bounded reads and post-read identity validation.",
+    "Use unique protected temporary file, synchronize it, then atomically rename instead of fixed .tmp alias.",
+    "Unix owner checks use UID, mode and link count; Windows owner proposal uses current user SID, DACL, hardlink and reparse inspection. Windows behavior is unqualified."
+  ],
+  "unconfirmed_final_patch": {
+    "status": "The apply_patch/tool response did not return. Actual local application and tests are unknown; inspect before changing.",
+    "paths": [
+      "internal/deployment/config_mutation.go",
+      "internal/deployment/target.go",
+      "internal/deployment/config_mutation_test.go"
+    ],
+    "intent": [
+      "Revalidate exact owner bytes again immediately before rename via saveAt(path,revalidate).",
+      "Bound desired serialized configuration at 8 MiB.",
+      "Tests for stale concurrent definitions, same-size/restored-mtime changes, preservation of Access definitions, hardlinks/symlinks, foreign .tmp alias preservation, lock contention/retry and absent-versus-empty distinction."
+    ]
+  },
+  "checks": {
+    "initial_local_target_and_core_stop_subset": "Passed on an earlier intermediate local edit only; does not qualify the final pending code.",
+    "subsequent_subset_and_windows_cross_compile": "No confirmed completion.",
+    "workspace_probe": "pwd also did not return; orchestration cells were terminated. No success inferred."
+  },
+  "recovery_instructions": [
+    "Inventory git status, staged/unstaged diff, untracked files and stashes before any mutation.",
+    "Preserve all local work. Do not reset or overwrite files using this checkpoint as an exact content snapshot.",
+    "Recheck remote HEAD before integrating or pushing; preserve published history and Session 1/Renovate changes.",
+    "Finish and qualify the configuration primitive before wiring real Target detach/recovery; all #872 mandatory remaining acceptance still applies.",
+    "This checkpoint records intent and known paths; it does not contain an exact backup of unreadable local source bytes."
+  ],
+  "resolution": {
+    "source": "178023cdf227f30282cfba2cbd747a2581c0e56e",
+    "status": "WORKSPACE_RECOVERED_CONFIGURATION_PREREQUISITE_QUALIFIED",
+    "evidence": "docs/internal/v0.4.25-configuration-cas-evidence.json",
+    "historical_record_preserved": true,
+    "target_detach_complete": false
+  }
+}

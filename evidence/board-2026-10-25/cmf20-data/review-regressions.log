@@ -1,0 +1,28 @@
+=== RUN   TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement
+    cmf19_recipes_test.go:556: registry-only projection passed actual runtime-retirement verification after wrapper discarded diagnostic: fact={Ancillary:false OwnerReference: Target:docker-dev State:stopped-but-owned Core:not-required Dependencies:[] MemoryBytes:{Value:<nil> Classification:unknown Source:} Containers:{Value:0x22f725895010 Classification:measured Source:registry-bound owned application-scoped native backend database.sql/default without a materialized canonical runtime inventory}} diagnostic=Native backend postgresql/application/9d536a52-6660-4138-9788-9eb932e14d8f/dev-ef260e9a/default-37a8eec1 runtime inventory is not yet materialized: the registry-bound owned instance is proven without a canonical runtime directory.
+        Native backend postgresql/application/9d536a52-6660-4138-9788-9eb932e14d8f/dev-ef260e9a/default-37a8eec1 runtime inventory is not yet materialized: the registry-bound owned instance is proven without a canonical runtime directory.
+--- FAIL: TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement (1.66s)
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-env
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir
+--- PASS: TestCMF20OwnerFileFailuresStayFailClosed (5.78s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-compose (0.79s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-env (0.83s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir (0.82s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose (1.63s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir (0.47s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose (0.43s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose (0.38s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir (0.41s)
+=== RUN   TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic
+    cmf19_recipes_test.go:627: machine result lost nested materialization diagnostic: {"contract_version":"v1","error":{"code":"ownership_ambiguous","message":"Retained provider ownership could not be verified through its canonical deployment and native renderer.","cause":"retained_provider_ownership_unverified","next":"Inspect the existing owner and retry; runtime and data ownership remain available.","resource":"postgresql/application/2ee7e7f8-2e32-460f-a1dc-0c3d8da338f4/dev-ef260e9a/retained-ca67bd59"}}
+--- FAIL: TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic (0.25s)
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/cmd/baha	7.696s
+FAIL

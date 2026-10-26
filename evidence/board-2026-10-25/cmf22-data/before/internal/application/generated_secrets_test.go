@@ -1,0 +1,143 @@
+package application
+
+import (
+	"encoding/hex"
+	"strings"
+	"testing"
+)
+
+func TestGeneratedSecretManifestRoundTrip(t *testing.T) {
+	input := `version: 1
+app:
+  name: demo
+  environment: dev
+services:
+  sql:
+    enabled: true
+  cache:
+    enabled: false
+  secrets:
+    enabled: true
+secrets:
+  required:
+    - name: SECRET_KEY
+      generate:
+        type: random
+        length: 64
+    - name: ENCRYPTION_KEY
+      generate:
+        type: hex
+        bytes: 32
+    - name: OPENAI_API_KEY
+`
+	m, err := ParseYAML(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(GeneratedSecretRequirements(m)) != 2 {
+		t.Fatalf("generated requirements = %d", len(GeneratedSecretRequirements(m)))
+	}
+	normalized := m.AuthoredYAML()
+	roundTripped, err := ParseYAML(normalized)
+	if err != nil {
+		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
+	}
+	if got := roundTripped.YAML(); got != normalized {
+		t.Fatalf("normalized manifest is not stable:\n--- first ---\n%s\n--- second ---\n%s", normalized, got)
+	}
+}
+
+func TestGeneratedSecretValidationRejectsUnsafeShapes(t *testing.T) {
+	cases := []SecretGeneration{
+		{Type: "random", Length: 8},
+		{Type: "random", Length: 64, Bytes: 32},
+		{Type: "hex", Bytes: 8},
+		{Type: "hex", Bytes: 32, Length: 64},
+		{Type: "uuid", Length: 64},
+	}
+	for _, generation := range cases {
+		m := WithGeneratedSecret(New("demo", "dev", true, false, true), "SECRET_KEY", generation.Type, 64)
+		m.Secrets.Required[0].Generate = &generation
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected validation failure for %#v", generation)
+		}
+	}
+}
+
+func TestGenerateSecretValueRandom(t *testing.T) {
+	first, err := GenerateSecretValue(SecretGeneration{Type: "random", Length: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := GenerateSecretValue(SecretGeneration{Type: "random", Length: 64})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 64 {
+		t.Fatalf("length = %d", len(first))
+	}
+	if string(first) == string(second) {
+		t.Fatal("two generated values unexpectedly match")
+	}
+	for _, r := range string(first) {
+		if !strings.ContainsRune(generatedSecretAlphabet, r) {
+			t.Fatalf("unexpected generated character %q", r)
+		}
+	}
+}
+
+func TestGenerateSecretValueHex(t *testing.T) {
+	value, err := GenerateSecretValue(SecretGeneration{Type: "hex", Bytes: 32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(value) != 64 {
+		t.Fatalf("encoded length = %d", len(value))
+	}
+	decoded, err := hex.DecodeString(string(value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 32 {
+		t.Fatalf("decoded length = %d", len(decoded))
+	}
+}
+
+func TestOptionalSecretManifestRoundTrip(t *testing.T) {
+	m := New("demo", "dev", true, false, true)
+	m = WithRequiredSecrets(m, "REQUIRED_TOKEN")
+	m = WithOptionalSecrets(m, "OPTIONAL_TOKEN")
+	m = WithOptionalGeneratedSecret(m, "OPTIONAL_GENERATED", "random", 32)
+
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	normalized := m.YAML()
+	for _, want := range []string{
+		"  required:\n",
+		"    - name: REQUIRED_TOKEN\n",
+		"  optional:\n",
+		"    - name: OPTIONAL_GENERATED\n",
+		"    - name: OPTIONAL_TOKEN\n",
+	} {
+		if !strings.Contains(normalized, want) {
+			t.Fatalf("manifest missing %q:\n%s", want, normalized)
+		}
+	}
+	roundTripped, err := ParseCanonicalYAML(normalized)
+	if err != nil {
+		t.Fatalf("parse normalized manifest: %v\n%s", err, normalized)
+	}
+	if got := roundTripped.YAML(); got != normalized {
+		t.Fatalf("optional secret manifest is not stable:\n--- first ---\n%s\n--- second ---\n%s", normalized, got)
+	}
+}
+
+func TestSecretValidationRejectsRequiredOptionalDuplicate(t *testing.T) {
+	m := New("demo", "dev", true, false, true)
+	m = WithRequiredSecrets(m, "TOKEN")
+	m = WithOptionalSecrets(m, "TOKEN")
+	if err := m.Validate(); err == nil || !strings.Contains(err.Error(), "duplicate application secret") {
+		t.Fatalf("expected duplicate application secret error, got %v", err)
+	}
+}

@@ -1,0 +1,6 @@
+=== RUN   TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement
+    app_core_requirement_test.go:284: unmeasured registry-only projection authorized actual retirement verification: {Ancillary:false OwnerReference: Target:docker-dev State:stopped-but-owned Core:not-required Dependencies:[] MemoryBytes:{Value:<nil> Classification:unknown Source:} Containers:{Value:0x1b4da311e040 Classification:measured Source:registry-bound owned application-scoped native backend database.sql/default without a materialized canonical runtime inventory}}
+--- FAIL: TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement (0.03s)
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/cmd/baha	0.043s
+FAIL

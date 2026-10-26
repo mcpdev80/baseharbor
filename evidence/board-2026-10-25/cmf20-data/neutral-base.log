@@ -1,0 +1,4 @@
+=== RUN   TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement
+--- PASS: TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement (0.03s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.037s

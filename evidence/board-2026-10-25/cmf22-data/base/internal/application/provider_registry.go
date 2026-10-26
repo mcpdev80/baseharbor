@@ -1,0 +1,463 @@
+package application
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/provider/builtin"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+const providerRegistryFile = "provider-registry.json"
+const runtimeMetricsRegistryResource = "@runtime-sources"
+
+func referenceProviderRegistryStore() (capability.RegistryStore, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return capability.RegistryStore{}, err
+	}
+	return referenceProviderRegistryStoreAt(dataDir)
+}
+
+func referenceProviderRegistryStoreAt(dataDir string) (capability.RegistryStore, error) {
+	dataDir = filepath.Clean(dataDir)
+	if dataDir == "." || dataDir == "" {
+		return capability.RegistryStore{}, fmt.Errorf("provider registry data root is required")
+	}
+	return capability.RegistryStore{Path: filepath.Join(dataDir, providerRegistryFile)}, nil
+}
+
+// CheckReferenceProviderRegistry validates the protected provider registry and
+// simulates the desired application reconciliation without writing it. Lifecycle
+// callers use this during preflight so invalid provider metadata fails before
+// any runtime or workload mutation.
+func CheckReferenceProviderRegistry(m Manifest) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckReferenceProviderRegistryAt(dataDir, m)
+}
+
+func CheckReferenceProviderRegistryAt(dataDir string, m Manifest) error {
+	_, err := PreviewReferenceProviderRegistryAt(dataDir, m)
+	return err
+}
+
+// PreviewReferenceProviderRegistryAt uses the existing provider registration
+// plan without writing Target state. Removed capability instances retain their
+// ownership; releasing a binding does not reclaim a provider.
+func PreviewReferenceProviderRegistryAt(dataDir string, m Manifest) (capability.Registry, error) {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return capability.Registry{}, err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return capability.Registry{}, err
+	}
+	releaseManagedBindingsPreservingInstances(&registry, m)
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
+		return capability.Registry{}, err
+	}
+	return registry, registry.Validate()
+}
+
+func releaseManagedBindingsPreservingInstances(registry *capability.Registry, m Manifest) {
+	instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+	// Applications own their references to external offers, not the foreign
+	// infrastructure. Project the complete desired deployment binding set;
+	// normal reconciliation publishes it only after acknowledged verification.
+	registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+	registry.Instances = instances
+}
+
+func ReconcileReferenceProviderRegistry(m Manifest, additional ...capability.Resource) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return ReconcileReferenceProviderRegistryAt(dataDir, m, additional...)
+}
+
+func ReconcileReferenceProviderRegistryAt(dataDir string, m Manifest, additional ...capability.Resource) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	return store.Update(func(registry *capability.Registry) error {
+		releaseManagedBindingsPreservingInstances(registry, m)
+		if err := registerReferenceProvidersAt(dataDir, registry, m); err != nil {
+			return err
+		}
+		return registerAdditionalProviderResources(registry, m, additional)
+	})
+}
+
+func CheckAdditionalProviderResources(m Manifest, additional []capability.Resource) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckAdditionalProviderResourcesAt(dataDir, m, additional)
+}
+
+func CheckAdditionalProviderResourcesAt(dataDir string, m Manifest, additional []capability.Resource) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	releaseManagedBindingsPreservingInstances(&registry, m)
+	if err := registerReferenceProvidersAt(dataDir, &registry, m); err != nil {
+		return err
+	}
+	if err := registerAdditionalProviderResources(&registry, m, additional); err != nil {
+		return err
+	}
+	return registry.Validate()
+}
+
+func registerAdditionalProviderResources(registry *capability.Registry, m Manifest, resources []capability.Resource) error {
+	for _, resource := range resources {
+		if resource.Application != m.Name {
+			return fmt.Errorf("additional provider resource belongs to application %q, expected %q", resource.Application, m.Name)
+		}
+		if err := bindProviderResource(registry, m, resource); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func bindProviderResource(registry *capability.Registry, m Manifest, resource capability.Resource) error {
+	placement, err := ResolveProviderPlacement(m, resource.Provider)
+	if err != nil {
+		return err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		instance, err := registry.ResolvePlacement(resource.Provider, placement, m.ApplicationID)
+		if err != nil {
+			return fmt.Errorf("resolve registered external provider %q for %s: %w; register it first with 'baha provider add'", placement.ExternalReference, resource.Provider, err)
+		}
+		return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
+	}
+	instance, err := referenceProviderInstance(m, resource)
+	if err != nil {
+		return err
+	}
+	if err := registry.Register(instance); err != nil {
+		return err
+	}
+	return registry.BindDeployment(resource, m.ApplicationID, m.Environment, instance.ID)
+}
+
+func CheckControlPlaneDestroySafe() error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return CheckControlPlaneDestroySafeAt(dataDir)
+}
+
+func CheckControlPlaneDestroySafeAt(dataDir string) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return err
+	}
+	if len(registry.Bindings) != 0 {
+		return fmt.Errorf("provider registry still contains %d application binding(s); destroy managed applications before the control plane", len(registry.Bindings))
+	}
+	for _, instance := range registry.Instances {
+		if instance.Scope == capability.ScopeApplication {
+			return fmt.Errorf("provider registry still contains application-scoped provider %q; destroy managed applications before the control plane", instance.ID)
+		}
+	}
+	return nil
+}
+
+func RegisteredProviderPlacement(m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+	return RegisteredProviderPlacementAt(dataDir, m, provider)
+}
+
+func RegisteredProviderPlacementAt(dataDir string, m Manifest, provider capability.ProviderKind) (capability.ProviderPlacement, bool, error) {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+	registry, err := store.Load()
+	if err != nil {
+		return capability.ProviderPlacement{}, false, err
+	}
+
+	var matched *capability.ProviderInstance
+	for _, binding := range registry.Bindings {
+		if binding.ApplicationID != m.ApplicationID || binding.Resource.Provider != provider {
+			continue
+		}
+		bindingEnvironment := strings.TrimSpace(binding.Environment)
+		if bindingEnvironment != "" && bindingEnvironment != strings.TrimSpace(m.Environment) {
+			continue
+		}
+		var instance *capability.ProviderInstance
+		for i := range registry.Instances {
+			if registry.Instances[i].ID == binding.ProviderInstanceID {
+				instance = &registry.Instances[i]
+				break
+			}
+		}
+		if instance == nil {
+			return capability.ProviderPlacement{}, false, fmt.Errorf("provider registry binding references missing provider instance %q", binding.ProviderInstanceID)
+		}
+		if matched != nil && matched.ID != instance.ID {
+			return capability.ProviderPlacement{}, false, fmt.Errorf("application %q has ambiguous provider placement for %q", m.Name, provider)
+		}
+		copy := *instance
+		matched = &copy
+	}
+	if matched == nil {
+		return capability.ProviderPlacement{}, false, nil
+	}
+
+	placement := capability.ProviderPlacement{
+		Scope:             matched.Scope,
+		SharingBoundary:   matched.SharingBoundary,
+		Ownership:         matched.Ownership,
+		ExternalReference: matched.Reference,
+	}
+	if err := placement.Validate(); err != nil {
+		return capability.ProviderPlacement{}, false, fmt.Errorf("registered provider placement for %s: %w", provider, err)
+	}
+	return placement, true, nil
+}
+
+func ReleaseApplicationProviderRegistry(m Manifest) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return ReleaseApplicationProviderRegistryAt(dataDir, m)
+}
+
+// Release runtime consumer references while preserving every existing owner.
+// External resources are never deletion targets of reference release.
+func ReleaseApplicationProviderReferencesAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	return store.Update(func(registry *capability.Registry) error {
+		instances := append([]capability.ProviderInstance(nil), registry.Instances...)
+		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		registry.Instances = instances
+		return nil
+	})
+}
+
+func ReleaseApplicationProviderRegistryAt(dataDir string, m Manifest) error {
+	store, err := referenceProviderRegistryStoreAt(dataDir)
+	if err != nil {
+		return err
+	}
+	return store.Update(func(registry *capability.Registry) error {
+		var retained []capability.ProviderInstance
+		for _, instance := range registry.Instances {
+			if instance.Scope == capability.ScopeShared {
+				retained = append(retained, instance)
+			}
+		}
+		registry.ReleaseApplicationDeployment(m.ApplicationID, m.Environment)
+		for _, instance := range retained {
+			if err := registry.Register(instance); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func registerReferenceProviders(registry *capability.Registry, m Manifest) error {
+	return registerReferenceProvidersAt("", registry, m)
+}
+
+func registerReferenceProvidersAt(dataDir string, registry *capability.Registry, m Manifest) error {
+	if dataDir != "" {
+		prefs, err := DesiredProviderPreferencesAt(dataDir, m)
+		if err != nil {
+			return err
+		}
+		if err := ValidateProviderPreferencesAt(dataDir, m, prefs); err != nil {
+			return err
+		}
+		m = WithProviderPreferences(m, prefs)
+	}
+	contract, err := PortableContractFromManifest(m)
+	if err != nil {
+		return err
+	}
+	resources, err := ResolveCapabilityResources(contract)
+	if err != nil {
+		return err
+	}
+	// Runtime permission delivery uses the existing OpenBao realization even
+	// when the application does not request managed secrets. Register that
+	// dependency without manufacturing a portable capability or binding.
+	if RequiresRuntimeBroker(m) && !m.Services.Secrets {
+		resource := capability.Resource{Application: m.Name, Kind: capability.Secrets, Name: "default", Provider: capability.ProviderOpenBao}
+		instance, err := referenceProviderInstance(m, resource)
+		if err != nil {
+			return err
+		}
+		if instance.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("runtime broker requires its supported managed OpenBao realization")
+		}
+		if err := registry.Register(instance); err != nil {
+			return err
+		}
+	}
+
+	var metricsPolicy MetricsDeploymentPolicy
+	metricsPolicyResolved := false
+	resolveMetricsPolicy := func() (MetricsDeploymentPolicy, error) {
+		if metricsPolicyResolved {
+			return metricsPolicy, nil
+		}
+		metricsPolicy, err = MetricsPolicy(m)
+		if err != nil {
+			return MetricsDeploymentPolicy{}, err
+		}
+		metricsPolicyResolved = true
+		return metricsPolicy, nil
+	}
+
+	for _, resource := range resources {
+		if resource.Kind == capability.Metrics {
+			policy, err := resolveMetricsPolicy()
+			if err != nil {
+				return err
+			}
+			if !policy.Enabled || !policy.Collect[MetricsSourceApplication] {
+				continue
+			}
+		}
+
+		if handled, err := preferredProviderResource(registry, m, resource); handled || err != nil {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		placement, err := ResolveProviderPlacement(m, resource.Provider)
+		if err != nil {
+			return err
+		}
+		if dataDir != "" && placement.Scope == capability.ScopeExternal {
+			if err := projectExternalProviderOfferAt(dataDir, registry, resource.Provider, placement, m.ApplicationID); err != nil {
+				return err
+			}
+		}
+		if err := bindProviderResource(registry, m, resource); err != nil {
+			return err
+		}
+	}
+
+	if HasRuntimeMetricsPermissions(m) {
+		policy, err := resolveMetricsPolicy()
+		if err != nil {
+			return err
+		}
+		if policy.Enabled && policy.Collect[MetricsSourceApplication] {
+			resource := capability.Resource{
+				Application: m.Name,
+				Kind:        capability.Metrics,
+				Name:        runtimeMetricsRegistryResource,
+				Provider:    capability.ProviderPrometheus,
+			}
+			if err := bindProviderResource(registry, m, resource); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func referenceProviderInstance(m Manifest, resource capability.Resource) (capability.ProviderInstance, error) {
+	placement, err := ResolveProviderPlacement(m, resource.Provider)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+
+	bundled, err := builtin.Lookup(resource.Provider)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+	instance := capability.ProviderInstance{
+		ProviderID:       bundled.ID,
+		ProviderVersion:  bundled.Version,
+		ProviderProtocol: bundled.Integration.Protocol,
+		Provider:         bundled.Integration.Provider,
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		Ownership:        placement.Ownership,
+		Reference:        placement.ExternalReference,
+	}
+	if instance.Provider.Kind == "" {
+		return capability.ProviderInstance{}, fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
+	}
+
+	switch placement.Scope {
+	case capability.ScopeShared:
+		instance.ID = sharedProviderInstanceID(resource.Provider, placement.SharingBoundary)
+	case capability.ScopeApplication:
+		instance.ID = applicationProviderInstanceID(resource.Provider, m, resource.Name)
+		instance.OwnerApplicationID = m.ApplicationID
+		instance.OwnerApplication = m.Name
+		instance.OwnerEnvironment = m.Environment
+	case capability.ScopeExternal:
+		instance.ID = externalProviderInstanceID(resource.Provider, placement.ExternalReference)
+	default:
+		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
+	}
+	return instance, nil
+}
+
+func sharedProviderInstanceID(provider capability.ProviderKind, boundary string) string {
+	if boundary == "" {
+		switch provider {
+		case capability.ProviderOpenBao:
+			return "openbao/control-plane"
+		default:
+			return string(provider) + "/shared"
+		}
+	}
+	return fmt.Sprintf("%s/shared/%s", provider, ProviderPlacementNameToken(boundary))
+}
+
+func applicationProviderInstanceID(provider capability.ProviderKind, m Manifest, resourceName string) string {
+	switch provider {
+	case capability.ProviderPostgreSQL, capability.ProviderValkey:
+		return fmt.Sprintf("%s/application/%s/%s/%s", provider, m.ApplicationID, ProviderPlacementNameToken(m.Environment), ProviderPlacementNameToken(resourceName))
+	default:
+		return fmt.Sprintf("%s/application/%s/%s", provider, m.ApplicationID, ProviderPlacementNameToken(m.Environment))
+	}
+}
+
+func externalProviderInstanceID(provider capability.ProviderKind, reference string) string {
+	if provider == capability.ProviderExternalOTLP && reference == "default" {
+		return "external-otlp/default"
+	}
+	return fmt.Sprintf("%s/external/%s", provider, ProviderPlacementNameToken(reference))
+}

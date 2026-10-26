@@ -1,0 +1,71 @@
+Changes detected in configuration. Updating the server image.
+Updating the configuration and installing your custom providers, if any. Please wait.
+2026-10-26 03:09:17,882 WARN  [org.keycloak.common.Profile] (build-9) Deprecated features identity-brokering-api:v1, twitter-broker:v1 enabled by default. Check the upgrading guide for steps to use later versions if available.
+2026-10-26 03:09:39,966 INFO  [io.quarkus.deployment.QuarkusAugmentor] (main) Quarkus augmentation completed in 24072ms
+Server configuration updated and persisted. Run the following command to review the configuration:
+
+	kc.sh show-config
+
+Next time you run the server, just add --optimized to the command to ensure this build is used.
+2026-10-26 03:09:41,115 WARN  [org.keycloak.models.sessions.infinispan.InfinispanStickySessionEncoderProviderFactory] (main) The option `shouldAttachRoute` is deprecated and will be removed in a future release. Disable it by setting `spi-sticky-session-encoder--infinispan--should-attach-route` to `false`
+2026-10-26 03:09:42,462 INFO  [org.infinispan.CONTAINER] (main) ISPN000974: Virtual threads support: enabled
+2026-10-26 03:09:43,474 INFO  [org.hibernate.orm.jdbc.batch] (JPA Startup Thread) HHH100501: Automatic JDBC statement batching enabled (maximum batch size 32)
+2026-10-26 03:09:43,511 WARNING [io.opentelemetry.usage] (main) OpenTelemetry API usage issue detected. To see more details, enable FINEST logging for io.opentelemetry.usage. Stacktraces are includes to identify the offending call site.
+2026-10-26 03:09:43,562 WARN  [org.keycloak.common.Profile] (executor-thread-1) Deprecated features identity-brokering-api:v1, twitter-broker:v1 enabled by default. Check the upgrading guide for steps to use later versions if available.
+2026-10-26 03:09:43,646 INFO  [io.quarkus] (main) Keycloak 26.8.0 on JVM (powered by Quarkus 3.40.1) started in 3.551s. Listening on: https://0.0.0.0:8443. Management interface listening on https://0.0.0.0:9000.
+2026-10-26 03:09:43,646 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-10-26 03:09:43,646 INFO  [io.quarkus] (main) Installed features: [agroal, cdi, hibernate-orm, jdbc-postgresql, keycloak, micrometer, narayana-jta, opentelemetry, rest, rest-jackson, smallrye-context-propagation, smallrye-health, vertx]
+2026-10-26 03:09:44,506 INFO  [org.keycloak.quarkus.runtime.storage.database.liquibase.QuarkusJpaUpdaterProvider] (executor-thread-1) Initializing database schema. Using changelog META-INF/jpa-changelog-master.xml
+2026-10-26 03:09:45,437 WARN  [org.keycloak.quarkus.runtime.services.BootstrapFilter] (vert.x-eventloop-thread-4) Request received during bootstrapping, returning a 503 error. Use the readiness health endpoint to ensure the service is ready before forwarding requests to the service.
+2026-10-26 03:09:55,560 INFO  [org.keycloak.spi.infinispan.impl.embedded.JGroupsConfigurator] (executor-thread-1) JGroups JDBC_PING discovery enabled.
+2026-10-26 03:09:55,788 INFO  [org.keycloak.spi.infinispan.impl.embedded.JGroupsConfigurator] (executor-thread-1) JGroups Encryption enabled (mTLS).
+2026-10-26 03:09:55,930 INFO  [org.keycloak.jgroups.certificates.CertificateReloadManager] (executor-thread-1) Starting JGroups certificate reload manager
+2026-10-26 03:09:56,195 INFO  [org.infinispan.CONTAINER] (executor-thread-1) ISPN000556: Starting user marshaller 'org.infinispan.commons.marshall.ImmutableProtoStreamMarshaller'
+2026-10-26 03:09:56,259 INFO  [org.infinispan.CLUSTER] (executor-thread-1) ISPN000078: Starting JGroups channel `ISPN` with stack `jdbc-ping`
+2026-10-26 03:09:56,260 INFO  [org.jgroups.JChannel] (executor-thread-1) local_addr: 00000000-0000-0000-0000-000000000001(v=16.0.15), name: keycloak-1
+2026-10-26 03:09:56,265 INFO  [org.jgroups.protocols.FD_SOCK2] (executor-thread-1) server listening on *:57800
+2026-10-26 03:09:56,333 INFO  [org.infinispan.CLUSTER] (executor-thread-1) ISPN000094: Received new cluster view for channel ISPN: [keycloak-1(v=16.0.15)|0] (1) [keycloak-1(v=16.0.15)]
+2026-10-26 03:09:56,335 INFO  [org.keycloak.jgroups.certificates.CertificateReloadManager] (executor-thread-1) Reloading JGroups Certificate
+2026-10-26 03:09:56,371 INFO  [org.infinispan.CLUSTER] (executor-thread-1) ISPN000079: Channel `ISPN` local address is `keycloak-1`, physical addresses are `[172.22.0.2:7800]`
+2026-10-26 03:09:56,651 INFO  [org.keycloak.connections.infinispan.DefaultInfinispanConnectionProviderFactory] (executor-thread-1) Node name: keycloak-1, Site name: null, Cluster name: ISPN
+2026-10-26 03:09:56,848 INFO  [org.keycloak.models.workflow.WorkflowsEventListenerFactory] (executor-thread-1) Workflow runner task scheduled: next execution at 15:09:56, then every PT12H
+2026-10-26 03:09:56,896 INFO  [org.keycloak.services] (executor-thread-1) KC-SERVICES0050: Initializing master realm
+2026-10-26 03:09:58,001 INFO  [org.keycloak.services] (executor-thread-1) KC-SERVICES0077: Created temporary admin user with username baseharbor-admin
+2026-10-26 03:09:58,147 INFO  [org.keycloak.services.resources.KeycloakApplication] (executor-thread-1) Bootstrap completed in 14.584000 seconds
+2026-10-26 03:10:17,689 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (executor-thread-1) The TLS configuration `keycloak-management-server` used by the HTTP server `management interface` has been updated
+2026-10-26 03:10:17,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (executor-thread-2) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:17,700 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,689 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-management-server` used by the HTTP server `management interface` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:10:52,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,692 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-management-server` used by the HTTP server `management interface` has been updated
+2026-10-26 03:11:27,698 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,698 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,698 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:27,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:11:42,749 WARN  [io.agroal.pool] (agroal-11) Datasource '<default>': Closing connection in incorrect state VALIDATION
+2026-10-26 03:12:02,693 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-management-server` used by the HTTP server `management interface` has been updated
+2026-10-26 03:12:02,698 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated
+2026-10-26 03:12:02,699 INFO  [io.quarkus.vertx.http.runtime.HttpCertificateUpdateEventListener] (vert.x-eventloop-thread-0) The TLS configuration `keycloak-https-server` used by the HTTP server `http server` has been updated

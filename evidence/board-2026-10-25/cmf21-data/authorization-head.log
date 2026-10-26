@@ -1,0 +1,6 @@
+=== RUN   TestCMF21ProjectionCannotAuthorizeProviderRetirement
+    app_core_requirement_test.go:287: registry-only projection passed retirement authorization with unavailable runtime: complete=true changes=[{InstanceID:postgresql/application/98aeccea-ad13-4596-a173-8709ef00f704/dev-ef260e9a/default-37a8eec1 Action:remove-runtime Reason:unneeded owned stopped runtime; preserve persistent data Ownership:baseharbor Consumers:[] PreserveData:true}]
+--- FAIL: TestCMF21ProjectionCannotAuthorizeProviderRetirement (0.04s)
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/cmd/baha	0.048s
+FAIL

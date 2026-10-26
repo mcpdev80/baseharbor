@@ -1,9 +1,9 @@
 {
- "at": 1792941852,
+ "at": 1792968356,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1792941854,
+   "observed_at": 1792968358,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1792941855,
+   "observed_at": 1792968359,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1792941854,
+   "observed_at": 1792968359,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1792941855,
+   "observed_at": 1792968360,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 20587,
-  "tmp_free_mb": 11990,
+  "mem_available_mb": 16720,
+  "tmp_free_mb": 8481,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -80,17 +80,17 @@
  },
  "lanes": [
   {
-   "id": "583dd853-672b-4a88-9c44-bf535c8a13b8",
+   "id": "7c28246b-8660-492e-bdb7-eb262b775a69",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "o141",
+   "name": "o143",
    "self": false,
    "status": "busy"
   },
   {
    "id": "41e61806-074a-4472-91cf-b32fdab3b766",
-   "idle_s": 132,
+   "idle_s": 423,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
@@ -149,9 +149,29 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf18.txt",
    "state": "dispatched"
   },
+  "cmf19": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf19.txt",
+   "state": "dispatched"
+  },
   "cmf2": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf2.txt",
+   "state": "dispatched"
+  },
+  "cmf20": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf20.txt",
+   "state": "dispatched"
+  },
+  "cmf21": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf21.txt",
+   "state": "dispatched"
+  },
+  "cmf22": {
+   "evidence": null,
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/cmf22.txt",
    "state": "dispatched"
   },
   "cmf3": {
@@ -509,6 +529,21 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f60.txt",
    "state": "dispatched"
   },
+  "f61": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/f61-c1056fix.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f61.txt",
+   "state": "DONE"
+  },
+  "f62": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/f62-r1.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f62.txt",
+   "state": "DONE"
+  },
+  "f63": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/f63-r2.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f63.txt",
+   "state": "DONE"
+  },
   "f7": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f7-native-dispatch.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f7-native-dispatch.txt",
@@ -780,9 +815,19 @@
    "state": "DONE"
   },
   "o141": {
-   "evidence": null,
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/o141-wizard-factgap.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o141.txt",
    "state": "dispatched"
+  },
+  "o142": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/o142-consentfix.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o142.txt",
+   "state": "dispatched"
+  },
+  "o143": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/o143-drift-still.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o143.txt",
+   "state": "DONE"
   },
   "o30": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o30-notes-fix.md",

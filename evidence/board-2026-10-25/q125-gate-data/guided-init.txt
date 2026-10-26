@@ -1,0 +1,411 @@
+Analyzing repository...
+✓ Application name: baseharbor-demo
+✓ Workload source: compose (compose.yaml; repository-owned, read-only)
+✓ Application workload: demo-app
+✓ Replaceable repository infrastructure: object-storage, postgres, valkey
+✓ SQL Database detected (PostgreSQL-compatible evidence: compose.yaml compose service postgres matches database.sql)
+✓ Cache detected (Redis/Valkey-compatible evidence: compose.yaml compose service valkey matches cache.key-value)
+✓ Object Storage detected (S3-compatible evidence: compose.yaml compose service object-storage provides S3-compatible object storage)
+✓ Metrics detected at /metrics (demo-app/main.go repository exposes or references the conventional /metrics endpoint)
+? Observability via OTLP suggested
+? Application log collection available for the selected workload
+✓ BaseHarbor Runtime API usage detected
+✓ Runtime operations for object-storage.s3/v1: runtime.create
+✓ Potential required secret names:
+    APP_SECRET (.env.example)
+
+Application name [baseharbor-demo]: demo
+Environment [dev]: 
+
+Select application capabilities
+Use ↑/↓ to move, Space to toggle, Enter to confirm.
+[?25l> [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [ ] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [ ] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+> [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [ ] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [ ] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+> [ ] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [ ] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+> [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [ ] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+> [ ] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+> [x] 4. Document Database (MongoDB-compatible evidence)
+  [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+> [ ] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+> [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+> [ ] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+> [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+> [ ] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+> [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+> [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+> [x] 9. Managed Secrets
+  [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+> [ ] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+> [x] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [x] 10. Identity / OIDC
+> [x] 11. Metrics (/metrics)
+  [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [x] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+> [ ] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [x] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+> [x] 12. OTLP telemetry
+  [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [x] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [x] 12. OTLP telemetry
+> [ ] 13. Application logs
+[13A[J  [x] 1. SQL Database (PostgreSQL-compatible evidence)
+  [x] 2. Cache (Redis/Valkey-compatible evidence)
+  [x] 3. Durable Key-Value Database (Valkey-compatible evidence)
+  [x] 4. Document Database (MongoDB-compatible evidence)
+  [x] 5. Messaging Queue (AMQP/RabbitMQ-compatible evidence)
+  [x] 6. Messaging Pub/Sub (AMQP/RabbitMQ-compatible evidence)
+  [x] 7. Messaging Stream (AMQP/RabbitMQ-compatible evidence)
+  [x] 8. Object Storage (S3-compatible)
+  [x] 9. Managed Secrets
+  [x] 10. Identity / OIDC
+  [x] 11. Metrics (/metrics)
+  [x] 12. OTLP telemetry
+> [x] 13. Application logs
+
+[?25hPostgreSQL instances (comma-separated) [default]: 
+Valkey / Redis cache instances (comma-separated) [default]: 
+Durable Valkey / Redis instances (comma-separated) [store]: 
+MongoDB-compatible document database instances (comma-separated) [default]: 
+Messaging queue instances (comma-separated) [default]: 
+Messaging pub/sub instances (comma-separated) [default]: 
+Messaging stream instances (comma-separated) [default]: 
+S3 buckets instances (comma-separated) [default]: uploads
+
+Managed automatically by BaseHarbor
+  - SQL service credentials
+  - Cache service credentials
+  - Durable key-value service credentials
+  - Document-database service credentials
+  - Messaging service credentials
+  - Object-storage access credentials
+  - Runtime identity / mTLS credentials
+You do not need to create or enter these managed credentials.
+
+Application secrets
+Detected names are evidence only. Repository values are never displayed or imported.
+
+Potential secret detected
+  Source: .env.example
+  Detected variable: APP_SECRET
+Manage this application secret with BaseHarbor? [Y/n] 
+BaseHarbor secret name [APP_SECRET]: 
+Required for application startup? [Y/n] 
+How should it be provided?
+  1. Ask for value during first apply
+  2. Generate automatically
+  3. Configure later
+Selection [1]: 
+Additional application secret names (comma-separated, Enter for none): 
+PostgreSQL management UI? [y/N] y
+Cache management UI? [y/N] y
+Durable key-value management UI? [y/N] y
+Document database management UI? [y/N] y
+Messaging management UI? [y/N] y
+Object storage management UI? [y/N] y
+Secrets management UI? [y/N] y
+Identity management UI? [y/N] y
+Observability management UI (Prometheus)? [y/N] y
+OTLP signals (comma-separated) [traces]: 
+Development domain [baha.localhost]: 
+
+Developer admin access
+Username [developer]: 
+Use a securely generated password? [Y/n] 
+
+Adoption summary
+
+Application
+  Name          demo
+  Environment   dev
+
+Workload
+  Source        compose.yaml (repository-owned, read-only)
+  Source kind   compose
+  Components    demo-app
+
+Managed services
+  SQL Database        detected and confirmed; default provider PostgreSQL
+  Cache               detected and confirmed; default provider Valkey/Redis-compatible
+  Durable Key-Value   user confirmed; default provider Valkey-compatible
+  Document Database   user confirmed; default provider MongoDB-compatible
+  Messaging Queue     user confirmed; default provider RabbitMQ-compatible
+  Messaging Pub/Sub   user confirmed; default provider RabbitMQ-compatible
+  Messaging Stream    user confirmed; default provider RabbitMQ-compatible
+  Object Storage      detected and confirmed; S3-compatible
+
+Developer management access
+  Scope         target / dev
+  Username      target-scoped; configurable (default developer)
+  Credentials   configured once and reused by compatible management surfaces
+  Reveal/change baha dev credentials [--username USER] [--reset|--password-file FILE]
+
+Management UIs
+  PostgreSQL    pgAdmin
+  Cache         Redis Commander
+  Durable KV    Redis Commander
+  Document DB   Mongo Express
+  Messaging     RabbitMQ Management
+  Object Storage provider administration UI
+  Secrets       OpenBao UI
+  Identity      provider administration UI
+  Observability Prometheus UI
+
+Observability
+  Metrics       expose OpenMetrics HTTP (recommended /metrics)
+                BaseHarbor collects workload + supported managed-provider metrics
+  Logs          write application logs to stdout/stderr
+                BaseHarbor collects workload + supported managed-provider logs
+  Traces/OTLP   traces
+                BaseHarbor injects the OTLP endpoint/trust binding and collects supported managed-provider traces
+  Backends      no Prometheus, Loki/Alloy, Tempo or Collector configuration in application code
+
+Secret policy
+  APP_SECRET: required for startup; ask securely during first apply
+
+Runtime permissions
+  object-storage.s3/v1
+    services: demo-app
+    operations: runtime.create
+
+Local development
+  Target        demo-docker
+  Domain        baha.localhost
+  Username      developer
+  Password      securely generated
+  Reveal later  baha dev credentials
+Write baseharbor.yaml? [Y/n] 
+created repository manifest for demo (dev)
+manifest: /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo/baseharbor.yaml
+required application secrets: APP_SECRET
+next: run 'baha up'

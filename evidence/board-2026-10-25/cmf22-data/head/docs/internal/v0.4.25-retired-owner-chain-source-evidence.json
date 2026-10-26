@@ -1,0 +1,201 @@
+{
+  "schema_version": "v0.4.25-retired-owner-chain-source-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "qualified_source": {
+    "commit": "7c692078d6a7483676ed5202b6f69e4533f27d66",
+    "tree": "31a021eff696dd244230ba9cd25c013abb8bb211",
+    "parent": "97484f308280972c4046033b2bc17ec414caabe0",
+    "run_id": 38163419907,
+    "run_attempt": 1,
+    "source_job_id": 114540910703,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38163419907"
+  },
+  "scope": [
+    "Broker and retained backend read projections validate portable retired intents with existing canonical ownership checks",
+    "Pending repeat retirement validates portable owner and retains archived live intent across interrupted attempts",
+    "Native helper records safe stage evidence after actual canonical/volume/ENV/result assertions",
+    "Changed normalized Keycloak origins invalidate completed provisioning so the existing capability lifecycle actually reconciles the client"
+  ],
+  "regressions": [
+    "Retired canonical owner preserves actual archived broker owner in its original Store",
+    "Inactive backend canonical intent remains inactive while archived resource observation remains available",
+    "Three repeated interrupted pending retirements preserve exact archived live owner and final canonical ID",
+    "Read-only projection leaves deployment owner bytes unchanged",
+    "First realized, changed-port and withdrawn Keycloak origins invoke provider reconciliation rather than premature no-op",
+    "Equivalent normalized or invalid origins do not repeat existing provisioning"
+  ],
+  "keycloak_prerequisite_source": {
+    "commit": "97484f308280972c4046033b2bc17ec414caabe0",
+    "tree": "28bc660a9f22b3e7c0a1ef5eb7f877f4fa7c39a0",
+    "run_id": 38163002714,
+    "run_attempt": 1,
+    "source_job_id": 114539669814,
+    "workflow_policy_job_id": 114539669594,
+    "conclusion": "success",
+    "note": "Functional source fixture observes Apply invocation/error only; real redirect/client secret/realm/user preservation and production end-user OAuth not qualified."
+  },
+  "checks": [
+    "Formatting/source readability and all contract/internal/spec/command units/vet with existing database fixture",
+    "Existing enrollment/operator/Node authority race checks; new owner-chain/Keycloak tests ran as unit tests",
+    "Both strict documentation builds, EN/DE parity/audit, workflow policy/actionlint and Linux snapshot build"
+  ],
+  "failed_native_attempt": "v0.4.25-empty-withdrawal-source-evidence.json",
+  "integration": {
+    "parent": "187cc459b1926784ed1931c12f13e2dc255e7eca",
+    "tree": "4eb4a5d7635572bf3ae0236286c2136c00af6c10",
+    "note": "Touched canonical source paths compared unchanged before narrow lease integration; peer commits, evidence and local unpublished work preserved."
+  },
+  "remaining": [
+    "Actual interrupted native retry/recovery proof and final immutable candidate requalification",
+    "Production nondev Identity ordering helper must preserve existing callbacks during reapply and verify actual realized origins before READY; driver prerequisite alone does not fix orchestration",
+    "All remaining provider mutations and final Core/Demo/Console/NodeConnector source/native/browser matrix",
+    "Release docs/audit/issue acceptance on final immutable candidate"
+  ],
+  "qualified_native_attempts": [
+    {
+      "commit": "b51778a51b004d566955ecc8112b32808b020ecf",
+      "tree": "ddc53f4b68c14be23175c499636ff9a1d1902fd7",
+      "run_id": 38163907788,
+      "run_attempt": 1,
+      "conclusion": "success",
+      "scope": "Isolated selected Secrets add/remove/re-add plus default data-preserving destroy/re-add, actual original application secret read and successful cleanup; shared two-app fixture not executed.",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38163907788",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114542359506,
+          "test_seconds": 258.75,
+          "selected_provider_counts": [
+            7,
+            0,
+            7
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            9,
+            1,
+            9
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711412527,
+          "artifact_digest": "sha256:2101f7afa82630ae2b633018dd2103998b663dbd9d3b4446d58c50632a16d7f8"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114542359685,
+          "test_seconds": 266.07,
+          "selected_provider_counts": [
+            6,
+            0,
+            6
+          ],
+          "broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "total_container_counts": [
+            8,
+            1,
+            8
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711153478,
+          "artifact_digest": "sha256:17aea1cd161e9e3e51956bf3836cb1860c465142bbbc34945784fdbcaeb3488d"
+        }
+      ],
+      "verified_assertions": [
+        "Fresh Core/total containers 0/0",
+        "Selected Secrets provider/broker absent when disabled and restored when re-enabled",
+        "Protected provider ENV and one actual owned persistent volume retained",
+        "Default destroy records same canonical runtime-retired deployment owner and archived live intent",
+        "Actual default-retired selected provider containers absent; protected ENV and data volume retained",
+        "Structured result preserves owner and reports no data deletion",
+        "Same application/deployment identity reactivated and original secret readable through actual application secret API",
+        "Both tests including cleanup completed successfully; cleanup's native container inventory requires zero remaining containers"
+      ],
+      "limitations": [
+        "No shared two-app, production OAuth, all-family handoff, actual interrupted native retry or final ecosystem qualification claimed.",
+        "Canonical retirement receipt intentionally retains partial status for unverified broader function/recovery knowledge; this scoped actual secret-read proof does not make all consequences complete."
+      ]
+    },
+    {
+      "commit": "fb73233136eb9aba40be7cef56830d6346f982ea",
+      "tree": "05e33c0b171c8cc9c5de8cea2c49cce18002b29d",
+      "run_id": 38164567322,
+      "run_attempt": 1,
+      "conclusion": "success",
+      "scope": "Actual shared two-app selected Secrets lifecycle, sibling secret continuity, last-consumer withdrawal, retained default destroy/re-add and cleanup.",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38164567322",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114544329242,
+          "test_seconds": 356.5,
+          "observed_provider_counts_before_last_consumer_withdrawal": [
+            7,
+            7,
+            7
+          ],
+          "main_broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "observed_total_counts_before_last_consumer_withdrawal": [
+            9,
+            10,
+            10
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11712005742,
+          "artifact_digest": "sha256:ab541d112bf5d38bdc80a170fe9f6c8404d4cd6b254aaa4a8e69cb4007cce55c"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114544329506,
+          "test_seconds": 309.58,
+          "observed_provider_counts_before_last_consumer_withdrawal": [
+            6,
+            6,
+            6
+          ],
+          "main_broker_counts": [
+            1,
+            0,
+            1
+          ],
+          "observed_total_counts_before_last_consumer_withdrawal": [
+            8,
+            9,
+            9
+          ],
+          "retained_owned_volumes": 1,
+          "artifact_id": 11711563343,
+          "artifact_digest": "sha256:e45ef6a3516e0c22de11a8512a7d80e4164df647a4d4b2f10c792f008814cb49"
+        }
+      ],
+      "verified_assertions": [
+        "Fresh Core/total native container inventory 0/0",
+        "Main Secrets removal preserves actual sibling workload/broker and original secret access",
+        "Last sibling consumer removal verifies provider and broker absence with two actual workloads remaining",
+        "Owned volume and protected provider ENV retained across removals and re-add",
+        "Actual rootless Podman container boot definitions follow current provider/broker need",
+        "Default retirement preserves canonical owner, archived live intent, volume and ENV",
+        "Same application/deployment identity reactivated and original secret read through application secret API",
+        "Both tests and cleanup passed; cleanup requires zero remaining native containers"
+      ],
+      "limitations": [
+        "Phase count log is captured before last sibling withdrawal; its retained-provider count is not an absence assertion. Actual last-consumer absence is asserted separately.",
+        "No production OAuth, all-family mutation/handoff, interrupted native retry or final ecosystem qualification claimed."
+      ]
+    }
+  ]
+}

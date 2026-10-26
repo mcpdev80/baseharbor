@@ -1,0 +1,9 @@
+{
+  "target": "atomic-docker-data-capabilities",
+  "runtime": "docker",
+  "mode": "diagnostics",
+  "accounted": [],
+  "errors": [
+    "owned runtime evidence unavailable: TimeoutExpired (phase=application-diagnostics)"
+  ]
+}

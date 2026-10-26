@@ -1,0 +1,12 @@
+--- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown (0.13s)
+    --- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/docker (0.07s)
+        remote_application_lifecycle_test.go:133: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+    --- FAIL: TestRemoteApplicationProviderFirstRepairAndSnapshotTeardown/podman (0.06s)
+        remote_application_lifecycle_test.go:133: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestRemoteApplicationFailedProviderBlocksWorkloadAndChangedIntent (0.07s)
+    remote_application_lifecycle_test.go:185: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestSharedValkeyTwoApplicationsAcrossEnvironmentsKeepOneProvider (0.11s)
+    shared_valkey_registration_test.go:70: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/internal/application	1.917s
+FAIL

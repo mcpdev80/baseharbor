@@ -1,0 +1,452 @@
+What does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [x] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+database.sql/default on Target atomic-docker-data-capabilities — Explicit
+Selected: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1
+Reason: Explicit: requested compatible instance for this Target
+[x] postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1 (postgresql): postgresql supports database.sql (scope: application)
+[ ] postgresql/shared/environment-dev-91df0423 (postgresql): postgresql supports database.sql (scope: shared)
+
+space
+What does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [ ] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+enter
+Read-only decision preview (not execution)
+Footprint · Target: atomic-docker-data-capabilities
+Realizations: 0 new, 0 reused/running, 0 stopped/owned, 0 unverified
+Core: not required
+Resolution: complete
+No provider realizations selected.
+Provider change preview | Target: atomic-docker-data-capabilities | complete: false | destructive: false
+Existing consent authority requires 2 confirmation(s)
+
+postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1: stop | scenario: unused-provider | selection: automatic
+Before: running | verified: true | after: Before access: unknown/not reported
+stopped-but-owned (proposed, not verified)
+Proposed access (unverified): unknown/not reported
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf | kind: unknown | disposition: retained | verified: false
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem | kind: unknown | disposition: retained | verified: false
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem | kind: unknown | disposition: retained | verified: false
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem | kind: unknown | disposition: retained | verified: false
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem | kind: unknown | disposition: retained | verified: false
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem | kind: key | disposition: retained | verified: true
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json | kind: configuration | disposition: retained | verified: true
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | path | /tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json
+Material: postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/volume/baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data | kind: persistent-provider-data | disposition: retained | verified: true
+Authoritative material meaning: remains at the existing location; runtime retention does not prove continued application delivery
+Before material access: unknown/not reported
+Proposed material access (unverified): unknown/not reported
+Before location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | volume | baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data
+Proposed destination: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | volume | baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data
+Observed location: 0b6da570-a104-41bc-8940-b1139c61e368 | atomic-docker-data-capabilities | volume | baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data
+Plan notice: material inventory is incomplete; unlisted material is not claimed preserved or deleted
+Plan notice: temporary stop; retained storage is recovery, not a running delivery endpoint
+
+Impact information is incomplete; no unobserved outcome is asserted.
+
+yes
+Achtung: confirm the displayed outcome without a working alternative (1/2, plan eed2578ef08467cbfeb046ec00748e3ce9db1ba461f763931442b09d24eb2f50)? [y/N]: yes
+Achtung: confirm the displayed outcome without a working alternative (2/2, plan eed2578ef08467cbfeb046ec00748e3ce9db1ba461f763931442b09d24eb2f50)? [y/N]: yes
+BaseHarbor · new-sql · dev
+  [36mINFO      [0m target                   atomic-docker-data-capabilities
+
+Plan
+  [36mINFO      [0m desired actions          3 action(s) resolved
+Manifest: /home/marcel/tmp-ops/demo-run/.new-edit-fixtures/new-sql/baseharbor.yaml (repository source of truth)
+Achtung: review the concrete consequences and required acknowledgements below.
+{
+  "version": "baseharbor.provider-impact/v1",
+  "target": "atomic-docker-data-capabilities",
+  "revision": "d57ced4a362c45044696c92c40ac918d9385b149bbe6a5b630e6721f2dfb68c3",
+  "plan_id": "1405077ad6fa0f281cd78c6276cb3a4b5c2e507482f95e6733e21359a9ccacb7",
+  "complete": false,
+  "attention": "Achtung",
+  "confirmations_required": 2,
+  "destructive": false,
+  "impacts": [
+    {
+      "prerequisites": [],
+      "requested_consumers": [],
+      "instance_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1",
+      "operation": "stop",
+      "scenario": "unused-provider",
+      "selection": "automatic",
+      "before": {
+        "instance_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+        "state": "running",
+        "locations": [
+          {
+            "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+            "target": "atomic-docker-data-capabilities",
+            "kind": "volume",
+            "reference": "baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data"
+          }
+        ],
+        "supported": true,
+        "verified": true,
+        "evidence": "existing canonical native backend renderer and exact owned runtime inspection; protected file inventory incomplete"
+      },
+      "after": {
+        "instance_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1",
+        "kind": "postgresql",
+        "target": "atomic-docker-data-capabilities",
+        "scope": "application",
+        "ownership": "baseharbor",
+        "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+        "state": "stopped-but-owned",
+        "locations": [
+          {
+            "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+            "target": "atomic-docker-data-capabilities",
+            "kind": "volume",
+            "reference": "baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data"
+          }
+        ],
+        "supported": true,
+        "verified": false
+      },
+      "dependencies": [],
+      "dependents": [],
+      "functions": [],
+      "materials": [
+        {
+          "before": {
+            "ownership": "",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf",
+            "kind": "unknown",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf"
+            },
+            "recovery": [],
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/pg_hba.conf"
+            },
+            "supported": true,
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem",
+            "kind": "unknown",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem"
+            },
+            "recovery": [],
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-cert.pem"
+            },
+            "supported": true,
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem",
+            "kind": "unknown",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem"
+            },
+            "recovery": [],
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/runtime/server-key.pem"
+            },
+            "supported": true,
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem",
+            "kind": "unknown",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem"
+            },
+            "recovery": [],
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/ca.pem"
+            },
+            "supported": true,
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem",
+            "kind": "unknown",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem"
+            },
+            "recovery": [],
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-cert.pem"
+            },
+            "supported": true,
+            "verified": false,
+            "evidence": "linked, foreign or unprotected entry remains at this path; ownership and contents are unverified; no removal authorized"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "baseharbor",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem",
+            "kind": "key",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem"
+            },
+            "recovery": [],
+            "verified": true,
+            "evidence": "protected key material; contents not exposed; usable delivery and renewal unverified"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/server-key.pem"
+            },
+            "supported": true,
+            "verified": true,
+            "evidence": "protected key material; contents not exposed; usable delivery and renewal unverified"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "baseharbor",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json",
+            "kind": "configuration",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json"
+            },
+            "recovery": [],
+            "verified": true,
+            "evidence": "protected retained file; size=366; contents not exposed; authoritative content revision bound privately"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/path//tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "path",
+              "reference": "/tmp/baseharbor-demo-fixture.KmSuWx/data/baseharbor/targets/atomic-docker-data-capabilities/deployments/fc30ed21-e6e4-419a-8487-05a021cc2d26/state/new-sql/runtime/providers/postgresql/default/service-access/pki/state.json"
+            },
+            "supported": true,
+            "verified": true,
+            "evidence": "protected retained file; size=366; contents not exposed; authoritative content revision bound privately"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        },
+        {
+          "before": {
+            "ownership": "baseharbor",
+            "id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/volume/baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data",
+            "kind": "persistent-provider-data",
+            "location": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "volume",
+              "reference": "baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data"
+            },
+            "recovery": [],
+            "verified": true,
+            "evidence": "observed exact owned persistent volume; contents, backups and application access not verified"
+          },
+          "after": {
+            "material_id": "postgresql/application/0b6da570-a104-41bc-8940-b1139c61e368/dev-ef260e9a/default-37a8eec1/volume/baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data",
+            "disposition": "retained",
+            "destination": {
+              "owner": "0b6da570-a104-41bc-8940-b1139c61e368",
+              "target": "atomic-docker-data-capabilities",
+              "kind": "volume",
+              "reference": "baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data"
+            },
+            "supported": true,
+            "verified": true,
+            "evidence": "observed exact owned persistent volume; contents, backups and application access not verified"
+          },
+          "meaning": "remains at the existing location; runtime retention does not prove continued application delivery"
+        }
+      ],
+      "effects": [],
+      "notices": [
+        "material inventory is incomplete; unlisted material is not claimed preserved or deleted",
+        "temporary stop; retained storage is recovery, not a running delivery endpoint"
+      ]
+    }
+  ]
+}
+Host resources
+  Available RAM       16.75 GiB
+  Planned minimum     0 MiB
+  Planned estimate    256 MiB
+  Confidence          ESTIMATED
+  Planned components  1: application workload
+  Estimate basis      planning budget; no measured reliable minimum
+  Safety headroom     SAFE
+  Swap                none
+  Memory pressure     some avg300=0.00, full avg300=0.00
+
+Preflight
+  [32mOK        [0m manifest                
+  [32mOK        [0m host memory             
+  [32mOK        [0m supported services      
+  [32mOK        [0m manifest permissions    
+  [32mOK        [0m application workload    
+  [32mOK        [0m shared backend topology 
+  [32mOK        [0m runtime provider capabilities
+  [32mOK        [0m workload security       
+  [32mOK        [0m connectivity policy     
+  [32mOK        [0m provider registry       
+
+Services
+◐ Starting repository workload (<1s)[2K◓ Starting repository workload · source changes detected: app (<1s)◑ Starting repository workload · source changes detected: app (1.2s)◒ Starting repository workload · source changes detected: app (2.0s)◐ Starting repository workload · source changes detected: app (2.8s)◓ Starting repository workload · source changes detected: app (3.6s)◑ Starting repository workload · source changes detected: app (4.4s)◒ Starting repository workload · source changes detected: app (5.2s)◐ Starting repository workload · source changes detected: app (6.0s)◓ Starting repository workload · source changes detected: app (6.8s)◑ Starting repository workload · source changes detected: app (7.6s)[2K◒ Starting repository workload · rebuilt app (7.7s)[2K◐ Starting repository workload · creating container bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (7.7s)◓ Starting repository workload · creating container bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (8.4s)[2K◑ Starting repository workload · container created bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (8.8s)[2K◒ Starting repository workload · starting container bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (8.8s)◐ Starting repository workload · starting container bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (9.2s)[2K◓ Starting repository workload · container started bh-atomic-docker-data-capabilities-new-sql-dev-app-1 (9.7s)[2K◑ Starting repository workload · waiting for workload service and HTTP/TLS readiness (9.7s)◒ Starting repository workload · waiting for workload service and HTTP/TLS readiness (10.0s)◐ Starting repository workload · waiting for workload service and HTTP/TLS readiness (10.8s)◓ Starting repository workload · waiting for workload service and HTTP/TLS readiness (11.6s)◑ Starting repository workload · waiting for workload service and HTTP/TLS readiness (12.4s)◒ Starting repository workload · waiting for workload service and HTTP/TLS readiness (13.2s)◐ Starting repository workload · waiting for workload service and HTTP/TLS readiness (14.0s)◓ Starting repository workload · waiting for workload service and HTTP/TLS readiness (14.8s)[2K◑ Starting repository workload · workload ready (14.9s)[2K[OK] Starting repository workload - done (14.9s)
+Removed container bh-atomic-docker-data-capabilities-new-sql-dev-postgres-1 after owned runtime inspection
+Retained network baseharbor-atomic-docker-data-capabilities-new-sql-dev_default: owned network remains as existing module/retry state; selected container retirement does not verify attachment release or authorize network reclamation
+Retained volume baseharbor-atomic-docker-data-capabilities-new-sql-dev_postgres-data: persistent volume remains at its existing location; data deletion requires separate explicit consent and ownership proof
+
+Application
+  Environment contract: baha app env --path
+  [32mOK        [0m READY                    application and requested infrastructure verified

@@ -1,0 +1,2 @@
+isolated-demo-fixture: explicit current-plan stages and separate owned-data consent
+{"contract_version":"v1","error":{"code":"internal_error","message":"full destroy did not complete; 3 cleanup result(s) require attention and BaseHarbor state was preserved"}}

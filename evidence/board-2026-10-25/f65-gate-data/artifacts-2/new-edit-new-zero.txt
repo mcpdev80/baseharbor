@@ -1,0 +1,104 @@
+Create a new application
+
+Application name: new-zero
+Project location:~$ [2KProject location:~$ /[2KProject location:~$ /h[2KProject location:~$ /ho[2KProject location:~$ /hom[2KProject location:~$ /home[2KProject location:~$ /home/[2KProject location:~$ /home/m[2KProject location:~$ /home/ma[2KProject location:~$ /home/mar[2KProject location:~$ /home/marc[2KProject location:~$ /home/marce[2KProject location:~$ /home/marcel[2KProject location:~$ /home/marcel/[2KProject location:~$ /home/marcel/t[2KProject location:~$ /home/marcel/tm[2KProject location:~$ /home/marcel/tmp[2KProject location:~$ /home/marcel/tmp-[2KProject location:~$ /home/marcel/tmp-o[2KProject location:~$ /home/marcel/tmp-op[2KProject location:~$ /home/marcel/tmp-ops[2KProject location:~$ /home/marcel/tmp-ops/[2KProject location:~$ /home/marcel/tmp-ops/d[2KProject location:~$ /home/marcel/tmp-ops/de[2KProject location:~$ /home/marcel/tmp-ops/dem[2KProject location:~$ /home/marcel/tmp-ops/demo[2KProject location:~$ /home/marcel/tmp-ops/demo-[2KProject location:~$ /home/marcel/tmp-ops/demo-r[2KProject location:~$ /home/marcel/tmp-ops/demo-ru[2KProject location:~$ /home/marcel/tmp-ops/demo-run[2KProject location:~$ /home/marcel/tmp-ops/demo-run/[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.n[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.ne[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-e[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-ed[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edi[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-f[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fi[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fix[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixt[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtu[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtur[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixture[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtures
+Project root: ~/tmp-ops/demo-run/.new-edit-fixtures/new-zero
+
+Choose a stack
+  1. go (built-in)
+  2. nextjs (built-in)
+  3. python (built-in)
+  4. quarkus (built-in)
+  5. Create a new stack...
+Selection [1]: 1
+After creation (create-only or run) [create-only]: run
+[?2026$p[?2027$p[?25l[?5W[?2004h[>4;2m[>1u[?u[JWhat does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [ ] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [x] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+exposure.http/web on Target atomic-docker-data-capabilities — Automatic
+Selected: caddy/application/faf8f8ef-c758-45a5-86a2-0f730834fc66/dev-ef260e9a
+Reason: Automatic: resolved by existing application authority
+[x] caddy/application/faf8f8ef-c758-45a5-86a2-0f730834fc66/dev-ef260e9a (caddy): caddy supports exposure.http (scope: application)
+
+P: optional provider preference · Esc/Ctrl+C: cancel[15A  
+>   
+>   
+>   
+> [7A[JWhat does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+  [ ] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+> [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+P: optional provider preference · Esc/Ctrl+C: cancel
+[>4m[<1u[J[?25h[?2004l
+Read-only decision preview (not execution)
+Footprint · Target: atomic-docker-data-capabilities
+Realizations: 0 new, 0 reused/running, 0 stopped/owned, 0 unverified
+Core: not required
+Resolution: complete
+No provider realizations selected.
+Provider change preview | Target: atomic-docker-data-capabilities | complete: false | destructive: false
+Existing consent authority requires 0 confirmation(s)
+
+Impact information is incomplete; no unobserved outcome is asserted.
+
+Create project files and continue into the separately authorized lifecycle? [Y/n] y
+Created new-zero
+Location: ~/tmp-ops/demo-run/.new-edit-fixtures/new-zero
+Stack: go
+Validation: SATISFIED
+BaseHarbor · new-zero · dev
+  [36mINFO      [0m target                   atomic-docker-data-capabilities
+
+Plan
+  [36mINFO      [0m desired actions          1 action(s) resolved
+Manifest: /home/marcel/tmp-ops/demo-run/.new-edit-fixtures/new-zero/baseharbor.yaml (repository source of truth)
+Host resources
+  Available RAM       17.14 GiB
+  Planned minimum     0 MiB
+  Planned estimate    256 MiB
+  Confidence          ESTIMATED
+  Planned components  1: application workload
+  Estimate basis      planning budget; no measured reliable minimum
+  Safety headroom     SAFE
+  Swap                none
+  Memory pressure     some avg300=0.00, full avg300=0.00
+
+Preflight
+  [32mOK        [0m manifest                
+  [32mOK        [0m host memory             
+  [32mOK        [0m supported services      
+  [32mOK        [0m manifest permissions    
+  [32mOK        [0m application workload    
+  [32mOK        [0m shared backend topology 
+  [32mOK        [0m runtime provider capabilities
+  [32mOK        [0m workload security       
+  [32mOK        [0m connectivity policy     
+  [32mOK        [0m provider registry       
+
+Services
+◐ Reconciling log collection (<1s)◓ Reconciling log collection (1.2s)◑ Reconciling log collection (2.0s)◒ Reconciling log collection (2.8s)◐ Reconciling log collection (3.6s)◓ Reconciling log collection (4.4s)[2K[OK] Reconciling log collection - done (4.8s)
+◐ Starting repository workload (<1s)[2K◓ Starting repository workload · source changes detected: app (<1s)◑ Starting repository workload · source changes detected: app (1.2s)◒ Starting repository workload · source changes detected: app (2.0s)◐ Starting repository workload · source changes detected: app (2.8s)◓ Starting repository workload · source changes detected: app (3.6s)◑ Starting repository workload · source changes detected: app (4.4s)[2K◒ Starting repository workload · rebuilt app (4.9s)[2K◐ Starting repository workload · creating workload network (5.0s)◓ Starting repository workload · creating workload network (5.2s)[2K◑ Starting repository workload · creating container bh-atomic-docker-data-capabilities-new-zero-dev-app-1 (5.2s)◒ Starting repository workload · creating container bh-atomic-docker-data-capabilities-new-zero-dev-app-1 (6.0s)[2K◐ Starting repository workload · container created bh-atomic-docker-data-capabilities-new-zero-dev-app-1 (6.0s)[2K◓ Starting repository workload · starting container bh-atomic-docker-data-capabilities-new-zero-dev-app-1 (6.0s)[2K◑ Starting repository workload · container started bh-atomic-docker-data-capabilities-new-zero-dev-app-1 (6.6s)[2K◒ Starting repository workload · waiting for workload service and HTTP/TLS readiness (6.6s)◐ Starting repository workload · waiting for workload service and HTTP/TLS readiness (6.8s)◓ Starting repository workload · waiting for workload service and HTTP/TLS readiness (7.6s)◑ Starting repository workload · waiting for workload service and HTTP/TLS readiness (8.4s)◒ Starting repository workload · waiting for workload service and HTTP/TLS readiness (9.2s)◐ Starting repository workload · waiting for workload service and HTTP/TLS readiness (10.0s)◓ Starting repository workload · waiting for workload service and HTTP/TLS readiness (10.8s)[2K◑ Starting repository workload · workload ready (11.5s)[2K[OK] Starting repository workload - done (11.5s)
+
+Application
+  Environment contract: baha app env --path
+  [32mOK        [0m READY                    application and requested infrastructure verified
+Lifecycle: VERIFIED

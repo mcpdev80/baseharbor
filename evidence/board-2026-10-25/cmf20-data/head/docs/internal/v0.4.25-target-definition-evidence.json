@@ -1,0 +1,185 @@
+{
+  "version": "baseharbor.v0425.target-definition-evidence/v1",
+  "pre_release_ready": false,
+  "source_qualification": {
+    "source": {
+      "commit": "bd1583161bf017f7bce9da3335839f00c1dfbeff",
+      "tree": "f0009a2edda124584d75c1ca48cb9be2e3599f43",
+      "working_tree_changes": false
+    },
+    "go_version": "go1.26.0",
+    "jobs": 4,
+    "race_packages": [
+      "./internal/deployment",
+      "./cmd/baha",
+      "./internal/machine",
+      "./contracts"
+    ],
+    "checks": [
+      {
+        "name": "go-vet",
+        "seconds": 18.183,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "cli-build",
+        "seconds": 18.509,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "docs-en",
+        "seconds": 2.111,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "docs-audit",
+        "seconds": 0.401,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "docs-de",
+        "seconds": 2.208,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "readability",
+        "seconds": 3.513,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "script-tests",
+        "seconds": 3.525,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "go-race",
+        "seconds": 49.315,
+        "status": "pass",
+        "exit_code": 0
+      },
+      {
+        "name": "go-tests",
+        "seconds": 66.298,
+        "status": "pass",
+        "exit_code": 0
+      }
+    ],
+    "evidence_capture": "Complete local runner output and source/tree binding were inspected before the exec-server became disconnected. Original /tmp result/log access subsequently unavailable; no final-candidate qualification inferred.",
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "native_attempts": [
+    {
+      "commit": "bd1583161bf017f7bce9da3335839f00c1dfbeff",
+      "tree": "f0009a2edda124584d75c1ca48cb9be2e3599f43",
+      "run_id": 38316315925,
+      "attempt": 1,
+      "outcome": "success",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 115033673763,
+          "seconds": 66.1,
+          "artifact_id": 11777120752,
+          "artifact_sha256": "2fdba76c1a9df2086de76a145e36dcd09fdae351cad4cf2d56e20cc3370e211c",
+          "outcome": "success",
+          "logs_inspected": true
+        },
+        {
+          "runtime": "podman",
+          "job_id": 115033674097,
+          "seconds": 85.69,
+          "artifact_id": 11777150676,
+          "artifact_sha256": "da598ea12eeb51e591616d68cd654d02bda7a4143e2a310e82cca06b89434012",
+          "outcome": "success",
+          "logs_inspected": true
+        }
+      ],
+      "scope": "Actual CLI refusal, acknowledged in-memory MCP Target definition detach and CLI protected original-definition restoration, unchanged live native process IDs, volumes/networks and sibling, original credential environment/OpenBao manager, explicit selection blocking and reactivation. All-consumer receipt remains partial.",
+      "sql_probe_review": "The existing post-Core-resume assertion checks count=1 and proves the original row. Review found the new Target-phase scalar comparison could miss an absent/null row. This historical PASS is retained, but the new Target-phase SQL assertion is being strengthened and requalified; do not treat it as complete Target data qualification."
+    },
+    {
+      "commit": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+      "tree": "d2454a403814f83f55b7b151870112a997213f3e",
+      "run_id": 38318239310,
+      "attempt": 1,
+      "outcome": "success",
+      "jobs": [
+        {
+          "runtime": "docker",
+          "job_id": 115039913086,
+          "seconds": 63.76,
+          "artifact_id": 11777798176,
+          "artifact_sha256": "b5046ab1f741e39e5f30c10a5145c52f21df0616e1d1aa956dc674560fe683d0",
+          "outcome": "success",
+          "logs_inspected": true
+        },
+        {
+          "runtime": "podman",
+          "job_id": 115039912672,
+          "seconds": 99.15,
+          "artifact_id": 11777203291,
+          "artifact_sha256": "aedf1f5d38c069de236a6c456e36aad44f4ca8a294ecdfcc40d4b7e44433441d",
+          "outcome": "success",
+          "logs_inspected": true
+        }
+      ],
+      "scope": "Actual isolated Core stop/resume plus CLI refusal, acknowledged in-memory MCP Target detach and CLI original-definition restore. Original row count=1 verified after Core resume and after each Target change over verify-full TLS. Unchanged native process IDs/volumes/networks/running sibling, original OpenBao manager and credential environment; selection stays blocked until explicit reactivation. Per-consumer consequence receipt remains partial.",
+      "sql_probe_review": "Corrected original-row count assertions pass on both native engines; absent, null or duplicated original values no longer pass the Target-phase verification."
+    }
+  ],
+  "hf_attempt": {
+    "source": "bd1583161bf017f7bce9da3335839f00c1dfbeff",
+    "account": "ThunderHawk1080",
+    "operation": "run",
+    "flavor": "cpu-upgrade",
+    "timeout": "15m",
+    "outcome": "not_submitted",
+    "error_code": "UNAVAILABLE",
+    "error": "MCP tool hf_jobs was not returned by tools/list",
+    "job_id": null,
+    "alternative": "Exact-source local nine-check runner and targeted GitHub native gates."
+  },
+  "workspace": {
+    "status": "OFFLINE_AFTER_QUALIFIED_PUBLICATION",
+    "error": "409 Conflict, environment_offline: Environment is not connected.",
+    "published_product_source": "bd1583161bf017f7bce9da3335839f00c1dfbeff",
+    "known_unpublished_changes": [
+      "docs/brand/BaseHarbor-CI-Guide-v1.0.pdf"
+    ],
+    "asset_disposition": "Unexplained pre-existing local change was inventoried and left intact; never staged, reset or published. Its content remains unqualified. No other unpublished code at the last successful git status."
+  },
+  "limitations": [
+    "Native fixture is one Core plus a running sibling; no Core HTTP/OIDC/browser or full provider/consumer continuity proof.",
+    "Per-consumer dependencies, validity, handoffs and actual function results remain mandatory and incomplete.",
+    "Current readiness audit, final immutable ecosystem pins and all remaining #872 requirements stay open.",
+    "Product code is unchanged from bd158316; corrected native verifier and targeted source workflow are qualified on 413d47e7. This is not a final immutable ecosystem matrix or final readiness."
+  ],
+  "source_qualifications": [
+    {
+      "commit": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+      "tree": "d2454a403814f83f55b7b151870112a997213f3e",
+      "run_id": 38318239310,
+      "job_id": 115039912945,
+      "go_version": "go1.25.0 linux/amd64",
+      "checks": [
+        "go test ./...",
+        "go vet ./..."
+      ],
+      "outcome": "success",
+      "logs_inspected": true,
+      "artifact": "Durable GitHub job logs; this existing source job does not upload a separate artifact.",
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  ],
+  "qualified_native_source": "413d47e7ee136d7d4d6c83aea538a48e546ca6d0",
+  "resolved_sql_verifier": "Fresh robust original-row count native proof recorded; historical scalar-comparison PASS remains limited as originally reviewed."
+}

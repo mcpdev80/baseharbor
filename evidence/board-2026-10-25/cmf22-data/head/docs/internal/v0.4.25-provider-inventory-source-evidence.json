@@ -1,0 +1,89 @@
+{
+  "source": {
+    "commit": "7ee6b383ebdc97fb3d37f700cf7dd0d71395e331",
+    "tree": "4d838a87e8220667f613bbef79416a9cdc974b9c",
+    "working_tree_changes": true
+  },
+  "jobs": 4,
+  "seconds": 71.207,
+  "race_packages": [
+    "./internal/runtime",
+    "./internal/objectstorage",
+    "./internal/telemetry",
+    "./internal/traces"
+  ],
+  "checks": [
+    {
+      "name": "cli-build",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 16.288,
+      "log": "cli-build.log"
+    },
+    {
+      "name": "docs-audit",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 0.301,
+      "log": "docs-audit.log"
+    },
+    {
+      "name": "docs-de",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 2.307,
+      "log": "docs-de.log"
+    },
+    {
+      "name": "docs-en",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 2.104,
+      "log": "docs-en.log"
+    },
+    {
+      "name": "go-race",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 17.622,
+      "log": "go-race.log"
+    },
+    {
+      "name": "go-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 70.835,
+      "log": "go-tests.log"
+    },
+    {
+      "name": "go-vet",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 15.377,
+      "log": "go-vet.log"
+    },
+    {
+      "name": "readability",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 2.705,
+      "log": "readability.log"
+    },
+    {
+      "name": "script-tests",
+      "status": "pass",
+      "exit_code": 0,
+      "seconds": 3.112,
+      "log": "script-tests.log"
+    }
+  ],
+  "native_runtime_qualified": false,
+  "pre_release_ready": false,
+  "qualification_id": "5qxlpoq6",
+  "scope": "Read-only canonical owner inventory plus existing SeaweedFS, Collector and Tempo selected-container retirement leaf APIs. No resolver/state owner or automatic consumer-release authority is added. Source-only tests cover exact renderer, retained material, modified/linked/foreign owners and external dependencies. Remaining application/Core integration and native all-family qualification are open.",
+  "hugging_face": {
+    "status": "unavailable",
+    "error_code": "UNAVAILABLE",
+    "detail": "hf_jobs endpoint was not returned by tools/list; no job was created and no HF proof is claimed."
+  }
+}

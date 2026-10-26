@@ -1,0 +1,53 @@
+What does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [x] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+database.sql/default on Target atomic-docker-data-capabilities — Explicit
+Selected: postgresql/application/c360a39b-ca17-4a18-83be-cf8c1a0d2c06/dev-ef260e9a/default-37a8eec1
+Reason: Explicit: requested compatible instance for this Target
+[x] postgresql/application/c360a39b-ca17-4a18-83be-cf8c1a0d2c06/dev-ef260e9a/default-37a8eec1 (postgresql): postgresql supports database.sql (scope: application)
+[ ] postgresql/shared/environment-dev-91df0423 (postgresql): postgresql supports database.sql (scope: shared)
+
+enter
+Read-only decision preview (not execution)
+Footprint · Target: atomic-docker-data-capabilities
+Realizations: 0 new, 1 reused/running, 0 stopped/owned, 0 unverified
+Core: not required
+Resolution: complete
+RAM and containers: see details (individual evidence only; no assumed totals)
+Provider change preview | Target: atomic-docker-data-capabilities | complete: false | destructive: false
+Existing consent authority requires 2 confirmation(s)
+
+Impact information is incomplete; no unobserved outcome is asserted.
+
+no
+What does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [x] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [ ] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+database.sql/default on Target atomic-docker-data-capabilities — Explicit
+Selected: postgresql/application/c360a39b-ca17-4a18-83be-cf8c1a0d2c06/dev-ef260e9a/default-37a8eec1
+Reason: Explicit: requested compatible instance for this Target
+[x] postgresql/application/c360a39b-ca17-4a18-83be-cf8c1a0d2c06/dev-ef260e9a/default-37a8eec1 (postgresql): postgresql supports database.sql (scope: application)
+[ ] postgresql/shared/environment-dev-91df0423 (postgresql): postgresql supports database.sql (scope: shared)
+
+cancel
+Error: wizard cancelled without changes

@@ -1,0 +1,4 @@
+=== RUN   TestCMF21NeutralProjectionCannotVerifyRuntimeRetirement
+--- PASS: TestCMF21NeutralProjectionCannotVerifyRuntimeRetirement (0.07s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.074s

@@ -1,0 +1,65 @@
+{
+  "base": {
+    "package_result": "fail",
+    "failures": [
+      "TestAppEditCommandCompleteProviderEditRunsRealLifecycle",
+      "TestBug866WorkloadAccessEnvironmentIncludesNativeBindings",
+      "TestCorelessRuntimeFilesHaveNoBackendResources",
+      "TestExternalProviderRemovalCannotInferGlobalOwnershipFromTenantRole",
+      "TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/cli",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/http",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/mcp",
+      "TestNonTTYBackupDefaultUsesProtectedExternalArchive",
+      "TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive",
+      "TestWritePathPromptContextShowsCurrentDirectory"
+    ],
+    "top_level_failures": [
+      "TestAppEditCommandCompleteProviderEditRunsRealLifecycle",
+      "TestBug866WorkloadAccessEnvironmentIncludesNativeBindings",
+      "TestCorelessRuntimeFilesHaveNoBackendResources",
+      "TestExternalProviderRemovalCannotInferGlobalOwnershipFromTenantRole",
+      "TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages",
+      "TestNonTTYBackupDefaultUsesProtectedExternalArchive",
+      "TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive",
+      "TestWritePathPromptContextShowsCurrentDirectory"
+    ],
+    "passed": 1633,
+    "skipped": 44
+  },
+  "head": {
+    "package_result": "fail",
+    "failures": [
+      "TestAppEditCommandCompleteProviderEditRunsRealLifecycle",
+      "TestBug866WorkloadAccessEnvironmentIncludesNativeBindings",
+      "TestCorelessRuntimeFilesHaveNoBackendResources",
+      "TestExternalProviderRemovalCannotInferGlobalOwnershipFromTenantRole",
+      "TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/cli",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/http",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/mcp",
+      "TestNonTTYBackupDefaultUsesProtectedExternalArchive",
+      "TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive",
+      "TestWritePathPromptContextShowsCurrentDirectory"
+    ],
+    "top_level_failures": [
+      "TestAppEditCommandCompleteProviderEditRunsRealLifecycle",
+      "TestBug866WorkloadAccessEnvironmentIncludesNativeBindings",
+      "TestCorelessRuntimeFilesHaveNoBackendResources",
+      "TestExternalProviderRemovalCannotInferGlobalOwnershipFromTenantRole",
+      "TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation",
+      "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages",
+      "TestNonTTYBackupDefaultUsesProtectedExternalArchive",
+      "TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive",
+      "TestWritePathPromptContextShowsCurrentDirectory"
+    ],
+    "passed": 1652,
+    "skipped": 44
+  },
+  "new": [],
+  "removed": [],
+  "identical_failure_sets": true
+}

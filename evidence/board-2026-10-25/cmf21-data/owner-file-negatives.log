@@ -1,0 +1,20 @@
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/missing-compose
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/missing-env
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/symlink-dir
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/symlink-compose
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/unprotected-dir
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/unprotected-compose
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/noncanonical-compose
+=== RUN   TestCMF21OwnerFileFailuresStayFailClosed/unreadable-dir
+--- PASS: TestCMF21OwnerFileFailuresStayFailClosed (0.37s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/missing-compose (0.05s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/missing-env (0.04s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/symlink-dir (0.04s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/symlink-compose (0.04s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/unprotected-dir (0.04s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/unprotected-compose (0.06s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/noncanonical-compose (0.05s)
+    --- PASS: TestCMF21OwnerFileFailuresStayFailClosed/unreadable-dir (0.04s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.382s

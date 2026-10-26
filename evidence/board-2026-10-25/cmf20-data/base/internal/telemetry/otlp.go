@@ -1,0 +1,787 @@
+package telemetry
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/availability"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/observability"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+const (
+	ProviderProject    = "baseharbor-telemetry"
+	ProviderService    = "otel-collector"
+	ProviderNetwork    = "baseharbor-telemetry"
+	ProviderImage      = "docker.io/otel/opentelemetry-collector-contrib:0.161.0"
+	ExternalHeadersEnv = "BASEHARBOR_OTLP_HEADERS"
+	ProbeTraceIDHex    = "42617365486172626f72303430370001"
+)
+
+type Runtime interface {
+	ConfigProject(context.Context, string, string, string) error
+	UpProject(context.Context, string, string, string) error
+	DestroyProject(context.Context, string, string, string) error
+}
+
+type Driver struct {
+	runtime            Runtime
+	realization        OTLPRealization
+	app                application.Manifest
+	files              application.RuntimeFiles
+	issuer             serviceaccess.Issuer
+	registeredExternal *registeredOTLPSource
+	externalEndpoint   string
+	externalHeaders    string
+	externalInput      string
+	externalExplicit   bool
+	externalAuthErr    error
+	traceEndpoint      string
+	traceNetwork       string
+	client             *http.Client
+	dataDir            string
+	namespace          string
+}
+
+type ProviderFiles struct {
+	Dir     string
+	Compose string
+	Env     string
+	Config  string
+	Project string
+	Network string
+}
+
+func NewDriver(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer) *Driver {
+	d := &Driver{
+		runtime:          runtime,
+		realization:      newRuntimeOTLPRealization(runtime, app, issuer, "", ""),
+		app:              app,
+		files:            files,
+		issuer:           issuer,
+		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
+	}
+	d.prepareExternalAuthorization()
+	return d
+}
+
+func NewDriverAt(runtime Runtime, app application.Manifest, files application.RuntimeFiles, issuer serviceaccess.Issuer, dataDir, namespace string) *Driver {
+	d := &Driver{
+		runtime:          runtime,
+		realization:      newRuntimeOTLPRealization(runtime, app, issuer, dataDir, namespace),
+		app:              app,
+		files:            files,
+		issuer:           issuer,
+		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
+		dataDir:          filepath.Clean(dataDir),
+		namespace:        strings.TrimSpace(namespace),
+	}
+	if application.TelemetryProviderForDeployment().Kind == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
+	} else {
+		d.prepareExternalAuthorization()
+	}
+	return d
+}
+
+func NewDriverWithRealization(realization OTLPRealization, app application.Manifest, files application.RuntimeFiles) *Driver {
+	d := &Driver{
+		realization:      realization,
+		app:              app,
+		files:            files,
+		externalEndpoint: application.ExternalOTLPEndpoint(),
+		externalHeaders:  strings.TrimSpace(os.Getenv(ExternalHeadersEnv)),
+	}
+	d.prepareExternalAuthorization()
+	return d
+}
+
+func (d *Driver) ensureProviderFiles(ctx context.Context) (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, d.dataDir, d.namespace, application.AvailabilityIntent(d.app).Resolve("telemetry"))
+	}
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, d.issuer, d.traceEndpoint, d.traceNetwork, d.app.Environment, application.AvailabilityIntent(d.app).Resolve("telemetry"))
+}
+
+func (d *Driver) existingProviderFiles() (ProviderFiles, error) {
+	if d.dataDir != "" && d.dataDir != "." {
+		return ExistingProviderFilesAt(d.dataDir, d.namespace)
+	}
+	return ExistingProviderFiles()
+}
+
+func (d *Driver) Descriptor() capability.Provider {
+	return application.TelemetryProviderForDeployment()
+}
+
+func (d *Driver) SetTraceBackend(endpoint, network string) {
+	d.traceEndpoint = strings.TrimSpace(endpoint)
+	d.traceNetwork = strings.TrimSpace(network)
+	if realization, ok := d.realization.(*runtimeOTLPRealization); ok {
+		realization.SetTraceBackend(endpoint, network)
+	}
+}
+
+func (d *Driver) Preflight(_ context.Context, resource capability.Resource, binding capability.Binding) error {
+	if resource.Kind != capability.TelemetryOTLP {
+		return fmt.Errorf("OTLP provider cannot satisfy %s", resource.Kind)
+	}
+	if binding.TelemetryOTLP == nil {
+		return errors.New("OTLP telemetry binding is required")
+	}
+	if binding.TelemetryOTLP.Direction != "export" || binding.TelemetryOTLP.Protocol != "http/protobuf" {
+		return errors.New("OTLP provider requires export over http/protobuf")
+	}
+	if len(binding.TelemetryOTLP.Signals) == 0 {
+		return errors.New("OTLP provider requires at least one telemetry signal")
+	}
+	if resource.Provider == capability.ProviderExternalOTLP {
+		if d.externalAuthErr != nil {
+			return d.externalAuthErr
+		}
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
+		}
+		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
+			return err
+		}
+		if strings.TrimSpace(d.externalEndpoint) == "" {
+			return errors.New("external OTLP provider requires BASEHARBOR_OTLP_ENDPOINT")
+		}
+		u, err := url.Parse(d.externalEndpoint)
+		if err != nil || u.Host == "" || u.Scheme != "https" {
+			return errors.New("external OTLP endpoint must be an absolute https URL")
+		}
+		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return errors.New("external OTLP endpoint must not contain credentials, query parameters or fragments; use BASEHARBOR_OTLP_HEADERS for authorization")
+		}
+	}
+	return nil
+}
+
+type legacyServiceCleaner interface {
+	RemoveProjectServices(context.Context, string, ...string) error
+}
+
+func (d *Driver) Provision(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
+	if resource.Provider == capability.ProviderExternalOTLP {
+		return nil
+	}
+	if d.realization == nil {
+		return errors.New("managed OTLP realization is required")
+	}
+	instance, err := d.realization.Apply(ctx)
+	if err != nil {
+		return err
+	}
+	d.client = instance.HTTPClient
+	if resource.Provider == capability.ProviderOTelCollector {
+		if err := registerOTLPObservation(d.app, instance); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (d *Driver) Bind(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
+	if resource.Provider == capability.ProviderExternalOTLP {
+		if err := d.revalidateExternalAuthorization(); err != nil {
+			return err
+		}
+		if _, err := parseExternalHeaders(d.externalHeaders); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			if err := application.ValidateOTLPTLSProjection(d.files); err != nil {
+				return err
+			}
+		}
+		if err := application.MaterializeExternalOTLPBinding(d.app, d.files, d.externalEndpoint, d.externalHeaders); err != nil {
+			return err
+		}
+		if source := d.registeredExternal; source != nil && (len(source.trust) > 0 || len(source.certificate) > 0) {
+			return application.MaterializeOTLPTLSBindingMaterial(d.app, d.files, source.trust, source.certificate, source.key)
+		}
+		return nil
+	}
+	if d.realization == nil {
+		return errors.New("managed OTLP realization is required")
+	}
+	instance, err := d.realization.Existing(ctx)
+	if err != nil {
+		return err
+	}
+	if err := application.MaterializeOTLPTLSBindingMaterial(
+		d.app,
+		d.files,
+		instance.TrustBundle,
+		instance.ClientCertificate,
+		instance.ClientKey,
+	); err != nil {
+		return err
+	}
+	return application.MaterializeOTLPBinding(d.app, d.files, resource.Provider, instance.HostEndpoint, instance.WorkloadEndpoint)
+}
+
+func VerifyApplication(ctx context.Context, m application.Manifest, files application.RuntimeFiles) error {
+	return VerifyApplicationAt(ctx, m, files, "", "")
+}
+
+func VerifyApplicationAt(ctx context.Context, m application.Manifest, files application.RuntimeFiles, dataDir, namespace string) error {
+	bound, ok, err := application.ExistingRuntimeOTLPBinding(m, files)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("materialized OTLP provider binding is missing")
+	}
+	provider := bound.Provider
+	switch provider {
+	case capability.ProviderOTelCollector, capability.ProviderExternalOTLP:
+	default:
+		return errors.New("materialized OTLP provider identity is missing or unsupported")
+	}
+	d := &Driver{
+		app:              m,
+		files:            files,
+		externalEndpoint: bound.ContainerEndpoint,
+		externalHeaders:  bound.Headers,
+		dataDir:          filepath.Clean(dataDir),
+		namespace:        strings.TrimSpace(namespace),
+	}
+	if provider == capability.ProviderExternalOTLP && d.dataDir != "" && d.dataDir != "." {
+		d.externalAuthErr = d.prepareRegisteredExternalSource()
+	}
+	if provider == capability.ProviderOTelCollector {
+		d.realization = newRuntimeOTLPRealization(nil, m, nil, dataDir, namespace)
+	}
+	resource := capability.Resource{
+		Application: m.Name,
+		Kind:        capability.TelemetryOTLP,
+		Name:        "default",
+		Provider:    provider,
+	}
+	return d.Verify(ctx, resource, capability.Binding{})
+}
+
+func (d *Driver) Verify(ctx context.Context, resource capability.Resource, _ capability.Binding) error {
+	if resource.Provider == capability.ProviderExternalOTLP && d.externalAuthErr != nil {
+		return d.externalAuthErr
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		if err := d.verifyRegisteredExternalDelivery(); err != nil {
+			return err
+		}
+	}
+	endpoint := d.externalEndpoint
+	if resource.Provider != capability.ProviderExternalOTLP {
+		if d.realization == nil {
+			return errors.New("managed OTLP realization is required")
+		}
+		instance, err := d.realization.Existing(ctx)
+		if err != nil {
+			return err
+		}
+		endpoint = instance.HostEndpoint
+		d.client = instance.HTTPClient
+		if d.client == nil {
+			return errors.New("managed OTLP realization did not provide an HTTP client")
+		}
+	} else if d.client == nil {
+		d.client = &http.Client{Timeout: 10 * time.Second}
+	}
+	payload := probeTracePayload(d.app)
+	target := strings.TrimRight(endpoint, "/") + "/v1/traces"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	if resource.Provider == capability.ProviderExternalOTLP {
+		headers, err := parseExternalHeaders(d.externalHeaders)
+		if err != nil {
+			return err
+		}
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+	}
+	client := *d.client
+	if resource.Provider == capability.ProviderExternalOTLP {
+		// Authorization selected for this receiver cannot follow a redirect
+		// to another endpoint, including non-standard sensitive headers.
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("export OTLP verification trace: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("export OTLP verification trace: endpoint returned HTTP %d", resp.StatusCode)
+	}
+	if resource.Provider == capability.ProviderExternalOTLP && d.registeredExternal != nil {
+		if err := d.revalidateRegisteredExternalSource(); err != nil {
+			return err
+		}
+		return d.verifyRegisteredExternalDelivery()
+	}
+	return nil
+}
+
+func EnsureProviderFiles(ctx context.Context, issuer serviceaccess.Issuer) (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, issuer, "", "", "dev")
+}
+
+func EnsureProviderFilesWithTraceBackend(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork string) (ProviderFiles, error) {
+	return EnsureProviderFilesWithTraceBackendForEnvironment(ctx, issuer, traceEndpoint, traceNetwork, "dev")
+}
+
+func EnsureProviderFilesWithTraceBackendForEnvironment(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment string, intent ...availability.Requirement) (ProviderFiles, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx, issuer, traceEndpoint, traceNetwork, environment, dataDir, "", intent...)
+}
+
+func EnsureProviderFilesWithTraceBackendForEnvironmentAt(ctx context.Context, issuer serviceaccess.Issuer, traceEndpoint, traceNetwork, environment, dataDir, namespace string, intent ...availability.Requirement) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
+	members, err := providertopology.ResolveMembers(filepath.Join(dir, "compose.yaml"), "otel-collector", 2, intent...)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return ProviderFiles{}, fmt.Errorf("create OpenTelemetry Collector provider state: %w", err)
+	}
+	files := ProviderFiles{
+		Dir:     dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Config:  filepath.Join(dir, "collector.yaml"),
+		Project: bhruntime.SharedProjectName(namespace),
+		Network: scopedTelemetryName(ProviderNetwork, namespace),
+	}
+	port := ""
+	if data, err := os.ReadFile(files.Env); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if key, value, ok := strings.Cut(strings.TrimSpace(line), "="); ok && key == "BASEHARBOR_OTLP_PORT" {
+				port = strings.TrimSpace(value)
+			}
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return ProviderFiles{}, err
+	}
+	if port == "" {
+		value, err := allocatePort()
+		if err != nil {
+			return ProviderFiles{}, err
+		}
+		port = strconv.Itoa(value)
+	}
+	if err := os.WriteFile(files.Env, []byte("BASEHARBOR_OTLP_PORT="+port+"\n"), 0o600); err != nil {
+		return ProviderFiles{}, err
+	}
+	accessPolicy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	requireClientCertificate := accessPolicy.AuthenticationRequired && accessPolicy.Authentication == serviceaccess.AuthenticationMTLS
+	if err := os.WriteFile(files.Config, []byte(collectorConfigWithTraceBackendAccess(traceEndpoint, requireClientCertificate)), 0o644); err != nil {
+		return ProviderFiles{}, err
+	}
+	// The Collector image runs as a non-root user. This generated configuration
+	// contains no credentials and must be readable through the read-only bind
+	// mount, while the provider directory and runtime.env remain owner-only.
+	if err := os.Chmod(files.Config, 0o644); err != nil {
+		return ProviderFiles{}, err
+	}
+	// Keep the public/workload service identity stable at "otel-collector".
+	// HA members use the same server identity behind the authenticated frontend;
+	// the frontend terminates the client-authenticated mTLS contract and verifies
+	// each member with the provider CA.
+	accessPolicy.ServerName = "otel-collector"
+	memberPolicy := accessPolicy
+	memberPolicy.AuthenticationRequired = true
+	memberPolicy.Authentication = serviceaccess.AuthenticationMTLS
+	memberTLS, err := serviceaccess.EnsureNativeTLS(ctx, issuer, memberPolicy, filepath.Join(files.Dir, "members"), append([]string{"otel-collector"}, providertopology.Names("otel-collector", members)...)...)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	accessSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:               "otel-collector-access",
+		Upstreams:                 collectorUpstreams(members),
+		UpstreamTrustFile:         memberTLS.Material.CA,
+		UpstreamServerName:        "otel-collector",
+		UpstreamClientCertificate: memberTLS.Material.ClientCertificate,
+		UpstreamClientKey:         memberTLS.Material.ClientKey,
+		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
+		ContainerPort:             4318,
+		Networks:                  []string{"telemetry"},
+		NetworkAliases:            []string{"otel-collector"},
+		RequireClient:             requireClientCertificate,
+	}
+	accessFiles, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, accessPolicy, files.Dir, accessSpec)
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, accessFiles, files.Network, members)), 0o600); err != nil {
+		return ProviderFiles{}, err
+	}
+	return files, nil
+}
+
+func ExistingProviderFiles() (ProviderFiles, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return ProviderFiles{}, err
+	}
+	return ExistingProviderFilesAt(dataDir, "")
+}
+
+func ExistingProviderFilesAt(dataDir, namespace string) (ProviderFiles, error) {
+	dir := filepath.Join(filepath.Clean(dataDir), "providers", "opentelemetry-collector")
+	files := ProviderFiles{
+		Dir:     dir,
+		Compose: filepath.Join(dir, "compose.yaml"),
+		Env:     filepath.Join(dir, "runtime.env"),
+		Config:  filepath.Join(dir, "collector.yaml"),
+		Project: bhruntime.SharedProjectName(namespace),
+		Network: scopedTelemetryName(ProviderNetwork, namespace),
+	}
+	for _, path := range []string{files.Compose, files.Env, files.Config} {
+		if _, err := os.Stat(path); err != nil {
+			return ProviderFiles{}, err
+		}
+	}
+	return files, nil
+}
+
+func DestroySharedProvider(ctx context.Context, runtime Runtime) error {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return err
+	}
+	return DestroySharedProviderAt(ctx, runtime, dataDir, "")
+}
+
+func DestroySharedProviderAt(ctx context.Context, runtime Runtime, dataDir, namespace string) error {
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	_ = observability.Remove("opentelemetry-collector:" + files.Project)
+	return os.RemoveAll(files.Dir)
+}
+
+func scopedTelemetryName(base, namespace string) string {
+	namespace = strings.TrimSpace(strings.ReplaceAll(namespace, ".", "-"))
+	if namespace == "" {
+		return base
+	}
+	return base + "-" + namespace
+}
+
+func providerComposeYAML() string {
+	return providerComposeYAMLWithTraceNetwork("")
+}
+
+func providerComposeYAMLWithTraceNetwork(traceNetwork string) string {
+	access := serviceaccess.HTTPGatewayFiles{Caddyfile: "./service-access/Caddyfile", Material: serviceaccess.TLSMaterial{CA: "./service-access/runtime/ca.pem", ServerCertificate: "./service-access/runtime/server.pem", ServerKey: "./service-access/runtime/server-key.pem"}}
+	return providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork, access)
+}
+
+func providerComposeYAMLWithTraceNetworkAndAccess(traceNetwork string, access serviceaccess.HTTPGatewayFiles) string {
+	return providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork, access, ProviderNetwork)
+}
+
+func providerComposeYAMLWithTraceNetworkAndAccessForNetwork(traceNetwork string, access serviceaccess.HTTPGatewayFiles, telemetryNetwork string, requested ...int) string {
+	members := 1
+	if len(requested) > 0 {
+		members = requested[0]
+	}
+	var memberNetworks = "      telemetry:\n        aliases:\n          - otel-collector-metrics\n"
+	var gatewayNetworks = []string{"telemetry"}
+	var networkDecl string
+	if strings.TrimSpace(traceNetwork) != "" {
+		memberNetworks += "      traces: {}\n"
+		gatewayNetworks = append(gatewayNetworks, "traces")
+		networkDecl = fmt.Sprintf("  traces:\n    external: true\n    name: %q\n", strings.TrimSpace(traceNetwork))
+	}
+	member := func(name string) string {
+		return fmt.Sprintf(`  %s:
+    image: %s
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./members/service-access/runtime:/run/baseharbor/tls:ro
+    networks:
+%s`, name, ProviderImage, memberNetworks)
+	}
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, name := range providertopology.Names("otel-collector", members) {
+		b.WriteString(member(name))
+	}
+	spec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:               "otel-collector-access",
+		PublishedPortEnv:          "BASEHARBOR_OTLP_PORT",
+		ContainerPort:             4318,
+		Networks:                  gatewayNetworks,
+		NetworkAliases:            []string{"otel-collector"},
+		RequireClient:             true,
+		UpstreamTrustFile:         "./members/service-access/runtime/ca.pem",
+		UpstreamClientCertificate: "./members/service-access/runtime/client-cert.pem",
+		UpstreamClientKey:         "./members/service-access/runtime/client-key.pem",
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(access, spec))
+	b.WriteString("networks:\n")
+	fmt.Fprintf(&b, "  telemetry:\n    name: %q\n", telemetryNetwork)
+	b.WriteString(networkDecl)
+	return b.String()
+}
+
+func collectorConfig() string {
+	return collectorConfigWithTraceBackend("")
+}
+
+func collectorConfigWithTraceBackend(traceEndpoint string) string {
+	return collectorConfigWithTraceBackendAccess(traceEndpoint, true)
+}
+
+func collectorConfigWithTraceBackendAccess(traceEndpoint string, requireClientCertificate bool) string {
+	traceEndpoint = strings.TrimSpace(traceEndpoint)
+	var b strings.Builder
+	b.WriteString("receivers:\n")
+	b.WriteString("  otlp:\n")
+	b.WriteString("    protocols:\n")
+	b.WriteString("      http:\n")
+	b.WriteString("        endpoint: 0.0.0.0:4318\n")
+	b.WriteString("        tls:\n")
+	b.WriteString("          cert_file: /run/baseharbor/tls/server.pem\n")
+	b.WriteString("          key_file: /run/baseharbor/tls/server-key.pem\n")
+	if requireClientCertificate {
+		b.WriteString("          client_ca_file: /run/baseharbor/tls/ca.pem\n")
+		b.WriteString("          client_ca_file_reload: true\n")
+	}
+	b.WriteString("          min_version: \"1.2\"\n")
+	b.WriteString("          reload_interval: 30s\n")
+	b.WriteString("exporters:\n")
+	b.WriteString("  debug:\n")
+	b.WriteString("    verbosity: basic\n")
+	traceExporters := "[debug]"
+	if traceEndpoint != "" {
+		b.WriteString("  otlp_http/tempo:\n")
+		fmt.Fprintf(&b, "    endpoint: %q\n", strings.TrimRight(traceEndpoint, "/"))
+		traceExporters = "[debug, otlp_http/tempo]"
+	}
+	b.WriteString("service:\n")
+	b.WriteString("  telemetry:\n")
+	b.WriteString("    metrics:\n")
+	b.WriteString("      readers:\n")
+	b.WriteString("        - pull:\n")
+	b.WriteString("            exporter:\n")
+	b.WriteString("              prometheus:\n")
+	b.WriteString("                host: 0.0.0.0\n")
+	b.WriteString("                port: 8888\n")
+	b.WriteString("  pipelines:\n")
+	b.WriteString("    traces:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	fmt.Fprintf(&b, "      exporters: %s\n", traceExporters)
+	b.WriteString("    metrics:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	b.WriteString("    logs:\n")
+	b.WriteString("      receivers: [otlp]\n")
+	b.WriteString("      exporters: [debug]\n")
+	return b.String()
+}
+
+func ProviderEndpoint(files ProviderFiles) (string, error) {
+	return providerEndpoint(files)
+}
+
+func providerEndpoint(files ProviderFiles) (string, error) {
+	data, err := os.ReadFile(files.Env)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && key == "BASEHARBOR_OTLP_PORT" {
+			port, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil || port < 1 || port > 65535 {
+				return "", errors.New("invalid OpenTelemetry Collector port")
+			}
+			return "https://127.0.0.1:" + strconv.Itoa(port), nil
+		}
+	}
+	return "", errors.New("OpenTelemetry Collector port is not materialized")
+}
+
+func managedOTLPHTTPClient(environment string, files ProviderFiles) (*http.Client, error) {
+	policy, err := serviceaccess.Resolve(environment, "opentelemetry-collector", serviceaccess.AuthenticationMTLS)
+	if err != nil {
+		return nil, err
+	}
+	policy.ServerName = "otel-collector"
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(files.Dir, "service-access", "pki"))
+	if err != nil {
+		return nil, fmt.Errorf("load OpenTelemetry Collector service access identity: %w", err)
+	}
+	client, err := serviceaccess.NewHTTPClientForPolicy(material, policy)
+	if err != nil {
+		return nil, err
+	}
+	return withOTelHostHeader(client, policy.ServerName), nil
+}
+
+type otelHostHeaderTransport struct {
+	base http.RoundTripper
+	host string
+}
+
+func (t otelHostHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	clone.Host = t.host
+	return t.base.RoundTrip(clone)
+}
+
+func withOTelHostHeader(client *http.Client, host string) *http.Client {
+	if client == nil || strings.TrimSpace(host) == "" {
+		return client
+	}
+	base := client.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	copyClient := *client
+	copyClient.Transport = otelHostHeaderTransport{base: base, host: host}
+	return &copyClient
+}
+
+func waitOTLP(ctx context.Context, client *http.Client, endpoint string) error {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+	var last error
+	for {
+		attemptCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(probeTracePayload(application.Manifest{Name: "probe", Environment: "probe"})))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/x-protobuf")
+			var resp *http.Response
+			resp, err = client.Do(req)
+			if err == nil {
+				_ = resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					cancel()
+					return nil
+				}
+				last = fmt.Errorf("HTTP %d", resp.StatusCode)
+			} else {
+				last = err
+			}
+		} else {
+			last = err
+		}
+		cancel()
+		select {
+		case <-ctx.Done():
+			if last == nil {
+				last = ctx.Err()
+			}
+			return last
+		case <-ticker.C:
+		}
+	}
+}
+
+func allocatePort() (int, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+func ExportProviderInteractionTrace(ctx context.Context, m application.Manifest, source observability.SignalSource) (string, error) {
+	dataDir, err := bhruntime.DataDir("")
+	if err != nil {
+		return "", err
+	}
+	return ExportProviderInteractionTraceAt(ctx, m, source, dataDir, "")
+}
+
+func ExportProviderInteractionTraceAt(ctx context.Context, m application.Manifest, source observability.SignalSource, dataDir, namespace string) (string, error) {
+	if source.Kind != observability.SignalTraces || source.Protocol != "interaction" {
+		return "", fmt.Errorf("provider interaction trace source %q is not an interaction trace", source.ID)
+	}
+	files, err := ExistingProviderFilesAt(dataDir, namespace)
+	if err != nil {
+		return "", err
+	}
+	endpoint, err := providerEndpoint(files)
+	if err != nil {
+		return "", err
+	}
+	client, err := managedOTLPHTTPClient(m.Environment, files)
+	if err != nil {
+		return "", err
+	}
+	payload, traceID := providerInteractionTracePayload(m, source)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(endpoint, "/")+"/v1/traces", bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/x-protobuf")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("export provider interaction trace %s: %w", source.ID, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("export provider interaction trace %s: endpoint returned HTTP %d", source.ID, resp.StatusCode)
+	}
+	return traceID, nil
+}

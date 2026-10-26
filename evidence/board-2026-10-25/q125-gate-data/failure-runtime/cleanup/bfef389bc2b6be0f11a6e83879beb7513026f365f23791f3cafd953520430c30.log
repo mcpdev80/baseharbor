@@ -1,0 +1,18 @@
+Starting SeaweedFS Admin Interface on 0.0.0.0:23646
+Worker gRPC server will run on port 33646
+Masters: seaweedfs-node-1:9333
+Filers will be discovered automatically from masters
+Data Directory: /data
+Authentication: Enabled (admin user: developer)
+Plugin: Enabled
+I1026 03:08:59.319770 admin.go:408 Data directory created/verified: /data
+I1026 03:08:59.319939 admin.go:708 Loaded persisted session key from /data/.session_key
+I1026 03:08:59.320121 config_loader.go:73 Using explicit credential store: grpc
+I1026 03:08:59.320390 admin_server.go:225 Credential manager initialized with store type: grpc
+I1026 03:08:59.320400 admin_server.go:238 Credential store configured with dynamic filer address function
+I1026 03:08:59.320627 maintenance_queue.go:96 Task queue initialized: re-queued 0 in-flight task(s) from persistence; scanner will re-detect the rest
+I1026 03:08:59.320780 admin_server.go:319 Plugin enabled
+I1026 03:08:59.337840 admin.go:458 Discovered filers: seaweedfs-node-1:8888.18888
+I1026 03:08:59.338154 worker_grpc_server.go:107 Plugin gRPC service registered on worker gRPC server
+I1026 03:08:59.339364 admin.go:549 Starting SeaweedFS Admin Server on 0.0.0.0:23646
+I1026 03:09:01.321546 maintenance_manager.go:131 Maintenance manager started with scan interval 1800s

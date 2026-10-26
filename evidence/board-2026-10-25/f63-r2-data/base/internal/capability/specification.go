@@ -1,0 +1,118 @@
+package capability
+
+import (
+	"fmt"
+	"strings"
+)
+
+type SpecificationVersion string
+
+const SpecificationV1 SpecificationVersion = "v1"
+
+type SpecificationID string
+
+type CapabilitySpecification struct {
+	ID      SpecificationID      `json:"id"`
+	Kind    Kind                 `json:"kind"`
+	Version SpecificationVersion `json:"version"`
+}
+
+var (
+	SQLV1              = CapabilitySpecification{ID: "database.sql/v1", Kind: SQL, Version: SpecificationV1}
+	KeyValueV1         = CapabilitySpecification{ID: "cache.key-value/v1", Kind: KeyValue, Version: SpecificationV1}
+	DurableKeyValueV1  = CapabilitySpecification{ID: "database.key-value/v1", Kind: DurableKeyValue, Version: SpecificationV1}
+	DocumentDatabaseV1 = CapabilitySpecification{ID: "database.document/v1", Kind: DocumentDatabase, Version: SpecificationV1}
+	SecretsV1          = CapabilitySpecification{ID: "secrets/v1", Kind: Secrets, Version: SpecificationV1}
+	ExposureHTTPV1     = CapabilitySpecification{ID: "exposure.http/v1", Kind: ExposureHTTP, Version: SpecificationV1}
+	ObjectStorageS3V1  = CapabilitySpecification{ID: "object-storage.s3/v1", Kind: ObjectStorageS3, Version: SpecificationV1}
+	TelemetryOTLPV1    = CapabilitySpecification{ID: "telemetry.otlp/v1", Kind: TelemetryOTLP, Version: SpecificationV1}
+	MetricsV1          = CapabilitySpecification{ID: "metrics/v1", Kind: Metrics, Version: SpecificationV1}
+	LogsV1             = CapabilitySpecification{ID: "logs/v1", Kind: Logs, Version: SpecificationV1}
+	TracesV1           = CapabilitySpecification{ID: "traces/v1", Kind: Traces, Version: SpecificationV1}
+	IdentityOIDCV1     = CapabilitySpecification{ID: "identity.oidc/v1", Kind: Identity, Version: SpecificationV1}
+	MessagingQueueV1   = CapabilitySpecification{ID: "messaging.queue/v1", Kind: MessagingQueue, Version: SpecificationV1}
+	MessagingPubSubV1  = CapabilitySpecification{ID: "messaging.pubsub/v1", Kind: MessagingPubSub, Version: SpecificationV1}
+	MessagingStreamV1  = CapabilitySpecification{ID: "messaging.stream/v1", Kind: MessagingStream, Version: SpecificationV1}
+)
+
+// Specifications returns the deterministic shipped portable capability catalog.
+// Consumers should derive coverage from this catalog instead of maintaining partial lists.
+func Specifications() []CapabilitySpecification {
+	return []CapabilitySpecification{
+		SQLV1,
+		KeyValueV1,
+		DurableKeyValueV1,
+		DocumentDatabaseV1,
+		SecretsV1,
+		ExposureHTTPV1,
+		ObjectStorageS3V1,
+		TelemetryOTLPV1,
+		MetricsV1,
+		LogsV1,
+		TracesV1,
+		IdentityOIDCV1,
+		MessagingQueueV1,
+		MessagingPubSubV1,
+		MessagingStreamV1,
+	}
+}
+
+func SpecificationForKind(kind Kind) (CapabilitySpecification, error) {
+	switch kind {
+	case SQL:
+		return SQLV1, nil
+	case KeyValue:
+		return KeyValueV1, nil
+	case DurableKeyValue:
+		return DurableKeyValueV1, nil
+	case DocumentDatabase:
+		return DocumentDatabaseV1, nil
+	case Secrets:
+		return SecretsV1, nil
+	case ExposureHTTP:
+		return ExposureHTTPV1, nil
+	case ObjectStorageS3:
+		return ObjectStorageS3V1, nil
+	case TelemetryOTLP:
+		return TelemetryOTLPV1, nil
+	case Metrics:
+		return MetricsV1, nil
+	case Logs:
+		return LogsV1, nil
+	case Traces:
+		return TracesV1, nil
+	case Identity:
+		return IdentityOIDCV1, nil
+	case MessagingQueue:
+		return MessagingQueueV1, nil
+	case MessagingPubSub:
+		return MessagingPubSubV1, nil
+	case MessagingStream:
+		return MessagingStreamV1, nil
+	default:
+		return CapabilitySpecification{}, fmt.Errorf("capability specification for %q is not defined", kind)
+	}
+}
+
+func ParseSpecificationID(id SpecificationID) (CapabilitySpecification, error) {
+	value := strings.TrimSpace(string(id))
+	if value == "" {
+		return CapabilitySpecification{}, fmt.Errorf("capability specification id is required")
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 {
+		return CapabilitySpecification{}, fmt.Errorf("invalid capability specification id %q", value)
+	}
+	version := SpecificationVersion(parts[1])
+	if version != SpecificationV1 {
+		return CapabilitySpecification{}, fmt.Errorf("unsupported capability specification version %q", version)
+	}
+	spec, err := SpecificationForKind(Kind(parts[0]))
+	if err != nil {
+		return CapabilitySpecification{}, err
+	}
+	if spec.ID != id {
+		return CapabilitySpecification{}, fmt.Errorf("capability specification id %q is not canonical", value)
+	}
+	return spec, nil
+}

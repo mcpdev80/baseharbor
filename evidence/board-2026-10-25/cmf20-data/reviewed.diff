@@ -1,0 +1,1257 @@
+diff --git a/cmd/baha/app_core_requirement.go b/cmd/baha/app_core_requirement.go
+index d5b08455..b3aa1765 100644
+--- a/cmd/baha/app_core_requirement.go
++++ b/cmd/baha/app_core_requirement.go
+@@ -300,7 +300,7 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
+ 	if err != nil {
+ 		return err
+ 	}
+-	facts := observeApplicationProviderFacts(ctx, resolved)
++	facts, diagnostics := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
+ 	for _, instance := range registry.Instances {
+ 		if instance.Scope != capability.ScopeApplication || instance.OwnerApplicationID != resolved.Manifest.ApplicationID || (instance.OwnerEnvironment != "" && instance.OwnerEnvironment != resolved.Manifest.Environment) {
+ 			continue
+@@ -308,7 +308,10 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
+ 		if len(registry.BindingsForProviderInstance(instance.ID)) == 0 {
+ 			fact, verified := facts[instance.ID]
+ 			if !verified || (fact.State != application.ProviderRunning && fact.State != application.ProviderStoppedOwned) || fact.Containers.Value == nil {
+-				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available."}
++				// A preview materialization diagnostic never authorizes retained
++				// ownership; it is chained so callers can distinguish the
++				// unmaterialized-inventory condition from a verified runtime.
++				return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "retained_provider_ownership_unverified", Resource: instance.ID, Message: "Retained provider ownership could not be verified through its canonical deployment and native renderer.", Next: "Inspect the existing owner and retry; runtime and data ownership remain available.", Cause: diagnostics}
+ 			}
+ 		}
+ 	}
+@@ -318,17 +321,31 @@ func checkRetainedApplicationProviderOwnership(ctx context.Context, resolved res
+ // Observe existing native owners even after their capability leaves desired
+ // intent. The common resolver remains the sole dependency/removal authority.
+ func observeApplicationProviderFacts(ctx context.Context, resolved resolvedApplication) map[string]application.ProviderFact {
++	facts, _ := observeApplicationProviderFactsWithDiagnostics(ctx, resolved)
++	return facts
++}
++
++// observeApplicationProviderFactsWithDiagnostics is the structured observation
++// entry point for callers that must distinguish a preview-only registry
++// projection from verified runtime success. The returned error carries the
++// typed machine diagnostics of narrowly qualified materialization conditions;
++// genuine runtime failures stay fail-closed and produce neither facts nor
++// diagnostics.
++func observeApplicationProviderFactsWithDiagnostics(ctx context.Context, resolved resolvedApplication) (map[string]application.ProviderFact, error) {
+ 	facts := observeIdentityProviderFacts(ctx, resolved)
+ 	observeBrokerProviderFacts(ctx, resolved, facts)
+ 	observeSharedBackendProviderFacts(ctx, resolved, facts)
+ 	observeApplicationBrokerFacts(ctx, resolved, facts)
++	var diagnostics []error
+ 	owners, err := applicationRuntimeOwners(resolved)
+ 	if err == nil {
+ 		for _, owner := range owners {
+ 			observeStandaloneProviderFacts(ctx, owner, facts)
+-			observeNativeBackendProviderFacts(ctx, owner, facts)
++			if diagnostic := observeNativeBackendProviderFacts(ctx, owner, facts); diagnostic != nil {
++				diagnostics = append(diagnostics, diagnostic)
++			}
+ 			observeApplicationExposureFacts(ctx, owner, facts)
+ 		}
+ 	}
+-	return facts
++	return facts, errors.Join(diagnostics...)
+ }
+diff --git a/cmd/baha/application_native_backend_observation.go b/cmd/baha/application_native_backend_observation.go
+index b2aecd7d..5694bbab 100644
+--- a/cmd/baha/application_native_backend_observation.go
++++ b/cmd/baha/application_native_backend_observation.go
+@@ -8,11 +8,14 @@ import (
+ 	"io/fs"
+ 	"os"
+ 	"path/filepath"
++	"strings"
++	"syscall"
+ 	"time"
+ 
+ 	"github.com/mcpdev80/baseharbor/internal/application"
+ 	"github.com/mcpdev80/baseharbor/internal/capability"
+ 	"github.com/mcpdev80/baseharbor/internal/deployment"
++	"github.com/mcpdev80/baseharbor/internal/machine"
+ 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+ )
+ 
+@@ -64,9 +67,25 @@ func nativeBackendInventory(resolved resolvedApplication) (application.RuntimeFi
+ 	return files, prior, resources, err
+ }
+ 
+-func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) {
++// detectRuntimeForTargetFunc is the observer's runtime-detection seam. It
++// defaults to detectRuntimeForTarget and lets failure regressions inject a
++// deterministic detector/inspector outage without a live runtime gate.
++var detectRuntimeForTargetFunc = detectRuntimeForTarget
++
++// observeNativeBackendProviderFacts records one fact per provable native
++// backend instance. Genuine detection, inspection, listing or ownership
++// failures stay fail-closed and unverifiable: a registry entry can never
++// substitute an inferred zero for a failed measurement. The only registry-only
++// exception is the narrowly qualified missing-canonical-inventory preview
++// condition (F1-F3): an exact registry binding for the instance plus a missing
++// canonical runtime directory (or an absent canonical Store identity in the
++// wizard preview, which performs no CWD-relative lookup at all). Every
++// independently proven instance receives its own fact and a typed machine
++// diagnostic so callers never consume the preview state as verified runtime
++// success.
++func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApplication, facts map[string]application.ProviderFact) error {
+ 	if isRemoteApplication(resolved) {
+-		return
++		return nil
+ 	}
+ 	dbg := func(tag string, err error) {
+ 		if dir := os.Getenv("BAHA_DEBUG_PLAN_DIR"); dir != "" {
+@@ -76,42 +95,64 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
+ 			}
+ 		}
+ 	}
+-	files, _, expected, err := nativeBackendInventory(resolved)
+-	if err != nil {
+-		// An unmaterialized runtime owner directory must not abandon provider
+-		// facts while the protected registry still proves the module owner:
+-		// keep the derivable files and fall through to the per-instance
+-		// intent/binding proof below. Every other inventory failure, including
+-		// unprotected or noncanonical owner files, stays fail-closed.
+-		dbg("inventory", err)
+-		if !errors.Is(err, fs.ErrNotExist) || files.Project == "" {
+-			return
++	var files application.RuntimeFiles
++	var expected []bhruntime.ProjectResource
++	if strings.TrimSpace(resolved.Store.Root) == "" {
++		// Wizard preview: no trusted canonical Store identity. Prove the
++		// condition from registry and binding alone; never touch the CWD.
++		files = application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
++		proven, err := recordCanonicalMissingRuntimeInventory(resolved, facts)
++		if proven {
++			return err
++		}
++	} else {
++		inventoryFiles, _, inventoryExpected, err := nativeBackendInventory(resolved)
++		files = inventoryFiles
++		switch {
++		case err == nil:
++			expected = inventoryExpected
++		case errors.Is(err, fs.ErrNotExist) && canonicalRuntimeDirectoryMissing(inventoryFiles):
++			// The verified canonical runtime directory itself is absent.
++			dbg("inventory", err)
++			proven, derr := recordCanonicalMissingRuntimeInventory(resolved, facts)
++			if proven {
++				return derr
++			}
++		case errors.Is(err, fs.ErrNotExist):
++			// The canonical directory exists; the ENOENT came from a missing
++			// compose/env or later owner file. That is not absence proof. Fall
++			// through with no expectation so the actual runtime must observe
++			// or fail closed.
++			dbg("inventory", err)
++			expected = nil
++		default:
++			dbg("inventory", err)
++			return nil
+ 		}
+-		expected = nil
+ 	}
+-	provider, err := detectRuntimeForTarget(ctx, resolved.Target)
++	provider, err := detectRuntimeForTargetFunc(ctx, resolved.Target)
+ 	if err != nil {
+ 		dbg("detect", err)
+-		return
++		return nil
+ 	}
+ 	if _, err := provider.InspectProjectResources(ctx, files.Project, expected); err != nil {
+ 		dbg("inspect-expected", err)
+-		return
++		return nil
+ 	}
+ 	containers, err := provider.ListRuntimeContainers(ctx)
+ 	if err != nil {
+ 		dbg("list", err)
+-		return
++		return nil
+ 	}
+ 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
+ 	if err != nil {
+ 		dbg("registry", err)
+-		return
++		return nil
+ 	}
+ 	intents, err := nativeBackendOwnerIntents(resolved)
+ 	if err != nil {
+ 		dbg("intents", err)
+-		return
++		return nil
+ 	}
+ 	for _, instance := range registry.Instances {
+ 		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
+@@ -159,4 +200,149 @@ func observeNativeBackendProviderFacts(ctx context.Context, resolved resolvedApp
+ 		}
+ 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, State: state, Core: application.CoreNotRequired, Dependencies: []string{}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "protected canonical applied backend intent and native ownership inventory"}, MemoryBytes: application.Quantity{Classification: "unknown"}}
+ 	}
++	return nil
++}
++
++// canonicalRuntimeDirectoryMissing reports whether the canonical runtime
++// directory itself is absent. An ENOENT raised while the directory exists came
++// from a missing compose/env or later owner file and never proves runtime
++// absence.
++func canonicalRuntimeDirectoryMissing(files application.RuntimeFiles) bool {
++	_, err := os.Lstat(files.Dir)
++	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+ }
++
++// recordCanonicalMissingRuntimeInventory is the narrowly qualified missing-
++// canonical-inventory exception. It evaluates every registry instance
++// independently: an owned, application-scoped PostgreSQL/Valkey instance needs
++// an exact binding (provider instance, application UUID, environment, offered
++// capability and logical resource name derived from the manifest) plus a
++// derivable canonical resource union before it receives its own
++// stopped-but-owned fact. One instance's proof is never transferred to a peer,
++// and no proven instance short-circuits the others. Every recorded fact is
++// paired with the typed materialization diagnostic so callers cannot consume
++// the registry projection as verified runtime success.
++func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts map[string]application.ProviderFact) (bool, error) {
++	intents, err := nativeBackendOwnerIntents(resolved)
++	if err != nil || len(intents) == 0 {
++		return false, nil
++	}
++	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
++	if err != nil {
++		return false, nil
++	}
++	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
++	proven := 0
++	var diagnostics []error
++	for _, instance := range registry.Instances {
++		if instance.Provider.Kind != capability.ProviderPostgreSQL && instance.Provider.Kind != capability.ProviderValkey {
++			continue
++		}
++		if !applicationNativeBackendInstance(instance, resolved.Manifest) {
++			continue
++		}
++		binding, ok := nativeBackendBindingProof(registry, instance, resolved.Manifest)
++		if !ok {
++			continue
++		}
++		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
++		if err != nil || len(resources) == 0 {
++			continue
++		}
++		facts[instance.ID] = application.ProviderFact{
++			Target:       resolved.Target.Name,
++			State:        application.ProviderStoppedOwned,
++			Core:         application.CoreNotRequired,
++			Dependencies: []string{},
++			Containers:   application.Quantity{Value: ptr(int64(0)), Classification: "measured", Source: "registry-bound owned application-scoped native backend " + string(binding.Resource.Kind) + "/" + binding.Resource.Name + " without a materialized canonical runtime inventory"},
++			MemoryBytes:  application.Quantity{Classification: "unknown"},
++		}
++		diagnostics = append(diagnostics, runtimeInventoryNotYetMaterialized(resolved, instance, binding.Resource))
++		proven++
++	}
++	return proven > 0, errors.Join(diagnostics...)
++}
++
++// nativeBackendBindingProof reports the exact consumer binding of a named,
++// application-scoped native backend instance: same provider instance, same
++// application UUID, same environment, a provider of the instance's own
++// capability kind and the logical resource name the manifest derives to that
++// instance. Missing, foreign-application, foreign-environment or
++// foreign-resource bindings never match.
++func nativeBackendBindingProof(registry capability.Registry, instance capability.ProviderInstance, m application.Manifest) (capability.ProviderBinding, bool) {
++	name, ok := nativeBackendLogicalResourceName(instance, m)
++	if !ok {
++		return capability.ProviderBinding{}, false
++	}
++	for _, binding := range registry.Bindings {
++		if binding.ProviderInstanceID != instance.ID ||
++			binding.ApplicationID != m.ApplicationID ||
++			binding.Environment != m.Environment ||
++			binding.Resource.Provider != instance.Provider.Kind ||
++			binding.Resource.Name != name {
++			continue
++		}
++		var offered bool
++		for _, capabilityKind := range instance.Provider.Capabilities {
++			if binding.Resource.Kind == capabilityKind {
++				offered = true
++				break
++			}
++		}
++		if !offered {
++			continue
++		}
++		return binding, true
++	}
++	return capability.ProviderBinding{}, false
++}
++
++// nativeBackendLogicalResourceName derives the logical resource name whose
++// canonical instance ID equals the registry instance for this manifest.
++func nativeBackendLogicalResourceName(instance capability.ProviderInstance, m application.Manifest) (string, bool) {
++	switch instance.Provider.Kind {
++	case capability.ProviderPostgreSQL:
++		for _, name := range application.SQLInstanceNames(m) {
++			if application.ApplicationProviderInstanceIDForScopedPostgreSQL(m.ApplicationID, m.Environment, name) == instance.ID {
++				return name, true
++			}
++		}
++	case capability.ProviderValkey:
++		for _, name := range application.ValkeyInstanceNames(m) {
++			if application.ApplicationProviderInstanceIDForScopedValkey(m.ApplicationID, m.Environment, name) == instance.ID {
++				return name, true
++			}
++		}
++	}
++	return "", false
++}
++
++// causeRuntimeInventoryNotYetMaterialized is the stable machine cause code of
++// the preview-only materialization condition. It is distinct from verified
++// runtime success and from genuine runtime failure.
++const causeRuntimeInventoryNotYetMaterialized = "runtime-inventory-not-yet-materialized"
++
++// runtimeInventoryNotYetMaterialized represents the condition as a typed
++// machine error with stable cause/code plus instance and target context, so it
++// propagates through the structured result/error path and machine JSON clients
++// instead of being discarded as process-global stderr text.
++func runtimeInventoryNotYetMaterialized(resolved resolvedApplication, instance capability.ProviderInstance, resource capability.Resource) error {
++	return &machine.Error{
++		Code:      machine.ErrorRuntimeUnavailable,
++		CauseCode: causeRuntimeInventoryNotYetMaterialized,
++		Resource:  instance.ID,
++		Message:   "Native backend " + instance.ID + " runtime inventory is not yet materialized: the registry-bound owned instance is proven without a canonical runtime directory.",
++		Next:      "Materialize the canonical runtime inventory through apply and re-observe; do not consume this stopped-but-owned preview fact as verified runtime success.",
++		Details: map[string]any{
++			"instance":         instance.ID,
++			"provider":         string(instance.Provider.Kind),
++			"capability":       string(resource.Kind),
++			"logical_resource": resource.Name,
++			"target":           resolved.Target.Name,
++			"application_id":   resolved.Manifest.ApplicationID,
++			"environment":      resolved.Manifest.Environment,
++		},
++	}
++}
++
++func ptr[T any](v T) *T { return &v }
+diff --git a/cmd/baha/cmf19_recipes_test.go b/cmd/baha/cmf19_recipes_test.go
+new file mode 100644
+index 00000000..9219f3f7
+--- /dev/null
++++ b/cmd/baha/cmf19_recipes_test.go
+@@ -0,0 +1,541 @@
++package main
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"os"
++	"path/filepath"
++	"reflect"
++	"testing"
++
++	"github.com/mcpdev80/baseharbor/internal/application"
++	"github.com/mcpdev80/baseharbor/internal/capability"
++	"github.com/mcpdev80/baseharbor/internal/deployment"
++	"github.com/mcpdev80/baseharbor/internal/machine"
++	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
++)
++
++// Acceptance regressions ported from the CMF19 independent review evidence
++// (evidence/board-2026-10-25/codex-verdict-1077-cee2ef5b.md, findings F1-F5)
++// and executed against the production path instead of an overlay.
++
++func cmf19Fixture(t *testing.T) resolvedApplication {
++	t.Helper()
++	target := configureTestTarget(t)
++	app := application.New("cmf19-neutral", "dev", true, false, false)
++	app, err := application.WithBackendPlacementProjection(app, map[capability.ProviderKind]capability.ProviderPlacement{
++		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	root, err := deployment.TargetStateRoot(target.Name)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}); err != nil {
++		t.Fatal(err)
++	}
++	registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++	return resolvedApplication{Target: target, TargetStateRoot: root, Manifest: app, FromRepository: true, Store: application.Store{Root: filepath.Join(t.TempDir(), "state"), Namespace: target.Name}}
++}
++
++func cmf19WizardFixture(t *testing.T) resolvedApplication {
++	t.Helper()
++	resolved := cmf19Fixture(t)
++	resolved.Store = application.Store{}
++	resolved.DeploymentIdentity = deployment.DeploymentIdentity{}
++	resolved.DeploymentRecord = nil
++	if err := bindApplicationScopedPostgreSQLInstance(t, capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}, resolved.Manifest, application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "default"), "default"); err != nil {
++		t.Fatal(err)
++	}
++	return resolved
++}
++
++func cmf19Registry(t *testing.T, resolved resolvedApplication) (capability.RegistryStore, capability.Registry) {
++	t.Helper()
++	store := capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}
++	registry, err := store.Load()
++	if err != nil {
++		t.Fatal(err)
++	}
++	return store, registry
++}
++
++func cmf19BindAll(t *testing.T, resolved resolvedApplication) {
++	t.Helper()
++	store, registry := cmf19Registry(t, resolved)
++	for _, instance := range registry.Instances {
++		name := "default"
++		if instance.ID == application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "analytics") {
++			name = "analytics"
++		}
++		if err := registry.BindDeployment(capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: name, Provider: capability.ProviderPostgreSQL}, resolved.Manifest.ApplicationID, "dev", instance.ID); err != nil {
++			t.Fatal(err)
++		}
++	}
++	if err := store.Save(registry); err != nil {
++		t.Fatal(err)
++	}
++}
++
++func cmf19MaterializeCanonicalFiles(t *testing.T, resolved resolvedApplication) application.RuntimeFiles {
++	t.Helper()
++	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
++	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	compose, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	return files
++}
++
++// F1: a genuine runtime-detection failure with a valid canonical inventory and
++// a real binding must stay unverifiable; it may never be converted into a
++// measured stopped-owned fact.
++func TestCMF19RuntimeDetectionFailureMustRemainUnverifiable(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	cmf19BindAll(t, resolved)
++	cmf19MaterializeCanonicalFiles(t, resolved)
++	if _, _, _, err := nativeBackendInventory(resolved); err != nil {
++		t.Fatalf("fixture inventory must be valid: %v", err)
++	}
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	if _, err := detectRuntimeForTarget(context.Background(), resolved.Target); err == nil {
++		t.Fatal("fixture must fail detection")
++	}
++	facts := map[string]application.ProviderFact{}
++	if diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts); diagnostic != nil {
++		t.Fatalf("genuine detection failure must produce no materialization diagnostic: %v", diagnostic)
++	}
++	if len(facts) != 0 {
++		t.Fatalf("runtime detection failure converted into measured absence: %+v", facts)
++	}
++}
++
++// F1: an inspector failure after a successful detection also stays
++// unverifiable; the registry may not substitute the failed measurement.
++func TestCMF19InspectorFailureMustRemainUnverifiable(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	cmf19BindAll(t, resolved)
++	cmf19MaterializeCanonicalFiles(t, resolved)
++	if _, _, _, err := nativeBackendInventory(resolved); err != nil {
++		t.Fatalf("fixture inventory must be valid: %v", err)
++	}
++	original := detectRuntimeForTargetFunc
++	t.Cleanup(func() { detectRuntimeForTargetFunc = original })
++	detectRuntimeForTargetFunc = func(context.Context, deployment.ResolvedTarget) (bhruntime.RuntimeProvider, error) {
++		return cmf19FailingInspector{}, nil
++	}
++	facts := map[string]application.ProviderFact{}
++	if diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts); diagnostic != nil {
++		t.Fatalf("genuine inspection failure must produce no materialization diagnostic: %v", diagnostic)
++	}
++	if len(facts) != 0 {
++		t.Fatalf("runtime inspection failure converted into measured absence: %+v", facts)
++	}
++}
++
++type cmf19FailingInspector struct {
++	bhruntime.RuntimeProvider
++}
++
++func (cmf19FailingInspector) Kind() bhruntime.ProviderKind { return "cmf19-failing" }
++
++func (cmf19FailingInspector) InspectProjectResources(context.Context, string, []bhruntime.ProjectResource) ([]bhruntime.ProjectResource, error) {
++	return nil, errors.New("cmf19 injected inspector outage")
++}
++
++// F2: an instance without an exact registry binding stays unverifiable even
++// when the registry owner tuple matches and the runtime is unavailable.
++func TestCMF19UnboundInstanceMustRemainUnverifiable(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	_, registry := cmf19Registry(t, resolved)
++	if len(registry.Bindings) != 0 {
++		t.Fatal("fixture must be unbound")
++	}
++	facts := map[string]application.ProviderFact{}
++	observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 0 {
++		t.Errorf("unbound registry instance produced verified facts: %+v", facts)
++	}
++	if err := checkRetainedApplicationProviderOwnership(context.Background(), resolved); err == nil {
++		t.Error("unbound retained ownership admitted without runtime verification")
++	} else if !containsCauseCode(err, "retained_provider_ownership_unverified") {
++		t.Errorf("retained ownership error lost its machine cause: %v", err)
++	}
++}
++
++// F2: foreign bindings (different application UUID, environment or logical
++// resource) never qualify the instance for the missing-inventory fallback.
++func TestCMF19ForeignBindingsMustRemainUnverifiable(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	_, registry := cmf19Registry(t, resolved)
++	instance := registry.Instances[0]
++	own := capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}
++	for name, foreign := range map[string]capability.ProviderBinding{
++		"foreign application": {Resource: own, ApplicationID: "00000000-0000-4000-8000-000000000000", Environment: resolved.Manifest.Environment, ProviderInstanceID: instance.ID},
++		"foreign environment": {Resource: own, ApplicationID: resolved.Manifest.ApplicationID, Environment: "prod", ProviderInstanceID: instance.ID},
++		"foreign resource":    {Resource: capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: "foreign-resource", Provider: capability.ProviderPostgreSQL}, ApplicationID: resolved.Manifest.ApplicationID, Environment: resolved.Manifest.Environment, ProviderInstanceID: instance.ID},
++		"foreign capability":  {Resource: capability.Resource{Application: resolved.Manifest.Name, Kind: capability.KeyValue, Name: "default", Provider: capability.ProviderValkey}, ApplicationID: resolved.Manifest.ApplicationID, Environment: resolved.Manifest.Environment, ProviderInstanceID: instance.ID},
++		"empty binding set":   {},
++	} {
++		if _, ok := nativeBackendBindingProof(capability.Registry{Instances: registry.Instances, Bindings: []capability.ProviderBinding{foreign}}, instance, resolved.Manifest); ok {
++			t.Fatalf("%s binding was accepted as an exact registry binding", name)
++		}
++	}
++	if _, ok := nativeBackendBindingProof(capability.Registry{Instances: registry.Instances, Bindings: []capability.ProviderBinding{{Resource: own, ApplicationID: resolved.Manifest.ApplicationID, Environment: resolved.Manifest.Environment, ProviderInstanceID: instance.ID}}}, instance, resolved.Manifest); !ok {
++		t.Fatal("the exact own binding must be accepted as proof")
++	}
++	empty, emptyRegistry := cmf19Registry(t, resolved)
++	emptyRegistry.Bindings = nil
++	if err := empty.Save(emptyRegistry); err != nil {
++		t.Fatal(err)
++	}
++	facts := map[string]application.ProviderFact{}
++	observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 0 {
++		t.Fatalf("foreign bindings reached recordRegistryBoundStoppedOwned: %+v", facts)
++	}
++}
++
++// F2: neither a missing instance nor a manifest intent without the named
++// logical resource may produce a fallback fact.
++func TestCMF19MissingInstanceOrIntentMustRemainUnverifiable(t *testing.T) {
++	t.Run("missing instance", func(t *testing.T) {
++		resolved := cmf19Fixture(t)
++		resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++		store, registry := cmf19Registry(t, resolved)
++		registry.Instances = nil
++		if err := store.Save(registry); err != nil {
++			t.Fatal(err)
++		}
++		facts := map[string]application.ProviderFact{}
++		observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++		if len(facts) != 0 {
++			t.Fatalf("fact recorded for a removed registry instance: %+v", facts)
++		}
++	})
++	t.Run("missing intent", func(t *testing.T) {
++		resolved := cmf19Fixture(t)
++		resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++		store, registry := cmf19Registry(t, resolved)
++		instance := registry.Instances[0]
++		plain := application.New("cmf19-unintent", "dev", false, false, false)
++		plain.ApplicationID = resolved.Manifest.ApplicationID
++		plain.Name = resolved.Manifest.Name
++		instance.OwnerApplicationID = plain.ApplicationID
++		instance.OwnerApplication = plain.Name
++		registry.Instances = []capability.ProviderInstance{instance}
++		if err := registry.BindDeployment(capability.Resource{Application: plain.Name, Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}, plain.ApplicationID, "dev", instance.ID); err != nil {
++			t.Fatal(err)
++		}
++		if err := store.Save(registry); err != nil {
++			t.Fatal(err)
++		}
++		resolved.Manifest = plain
++		facts := map[string]application.ProviderFact{}
++		observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++		for id, fact := range facts {
++			if fact.State == application.ProviderStoppedOwned {
++				t.Fatalf("manifest without SQL intent received a stopped-owned fallback fact for %q", id)
++			}
++		}
++	})
++}
++
++// F3: with the canonical runtime directory materialized, a missing
++// runtime.env must not be misread as directory absence.
++func TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	cmf19BindAll(t, resolved)
++	files := application.RuntimeFilesFor(resolved.Store, resolved.Manifest)
++	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	compose, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	// runtime.env is missing: the runtime directory already exists.
++	if _, _, _, err := nativeBackendInventory(resolved); !os.IsNotExist(err) {
++		t.Fatalf("expected missing env, got %v", err)
++	}
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	facts := map[string]application.ProviderFact{}
++	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 0 {
++		t.Fatalf("missing env misclassified as missing directory and measured absence: %+v", facts)
++	}
++	if diagnostic != nil {
++		t.Fatalf("missing env must not surface a materialization diagnostic: %v", diagnostic)
++	}
++}
++
++// F3: the wizard preview performs no CWD-relative lookup; observing the same
++// canonical owner from two different working directories, one containing an
++// unrelated matching relative state path, yields identical results.
++func TestCMF19WizardPreviewObservationIsCWDIndependent(t *testing.T) {
++	resolved := cmf19WizardFixture(t)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	clean := t.TempDir()
++	poisoned := t.TempDir()
++	t.Chdir(poisoned)
++	files := application.RuntimeFilesFor(application.Store{}, resolved.Manifest)
++	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	compose, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(files.Env, []byte(""), 0o600); err != nil {
++		t.Fatal(err)
++	}
++	poisonedFacts := map[string]application.ProviderFact{}
++	poisonedDiagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, poisonedFacts)
++	t.Chdir(clean)
++	cleanFacts := map[string]application.ProviderFact{}
++	cleanDiagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, cleanFacts)
++	if !reflect.DeepEqual(poisonedFacts, cleanFacts) {
++		t.Fatalf("CWD changed wizard facts: poisoned=%+v clean=%+v", poisonedFacts, cleanFacts)
++	}
++	if (poisonedDiagnostic == nil) != (cleanDiagnostic == nil) {
++		t.Fatalf("CWD changed wizard diagnostics: poisoned=%v clean=%v", poisonedDiagnostic, cleanDiagnostic)
++	}
++	if len(cleanFacts) == 0 {
++		t.Fatal("wizard preview must still record the bound stopped-owned fact in both CWDs")
++	}
++}
++
++// F4: every independently proven instance receives its own fact; the first
++// match must not short-circuit the loop.
++func TestCMF19TwoInstancesMustBothReceiveFacts(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Manifest = application.WithSQLInstances(resolved.Manifest, "default", "analytics")
++	store, registry := cmf19Registry(t, resolved)
++	second := registry.Instances[0]
++	second.ID = application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "analytics")
++	if err := registry.Register(second); err != nil {
++		t.Fatal(err)
++	}
++	if err := store.Save(registry); err != nil {
++		t.Fatal(err)
++	}
++	cmf19BindAll(t, resolved)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	facts := map[string]application.ProviderFact{}
++	observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 2 {
++		t.Fatalf("only %d/2 projected instances observed: %+v", len(facts), facts)
++	}
++	for _, name := range []string{"default", "analytics"} {
++		id := application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", name)
++		if fact, ok := facts[id]; !ok || fact.State != application.ProviderStoppedOwned {
++			t.Fatalf("instance %q (name %s) missing a stopped-owned fact: %+v ok=%v", id, name, fact, ok)
++		}
++	}
++}
++
++// F4: PostgreSQL and Valkey instances are handled through their own capability
++// bindings and both receive independent facts.
++func TestCMF19SQLAndValkeyInstancesMustBothReceiveFacts(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Manifest.Services.Cache = true
++	store, registry := cmf19Registry(t, resolved)
++	sqlInstance := registry.Instances[0]
++	if err := registry.Register(capability.ProviderInstance{
++		ID:                 application.ApplicationProviderInstanceIDForScopedValkey(resolved.Manifest.ApplicationID, "dev", "default"),
++		Provider:           capability.Provider{Kind: capability.ProviderValkey, Capabilities: []capability.Kind{capability.KeyValue, capability.DurableKeyValue}},
++		Scope:              capability.ScopeApplication,
++		Ownership:          capability.OwnershipBaseHarbor,
++		OwnerApplicationID: resolved.Manifest.ApplicationID,
++		OwnerApplication:   resolved.Manifest.Name,
++		OwnerEnvironment:   "dev",
++	}); err != nil {
++		t.Fatal(err)
++	}
++	if err := registry.BindDeployment(capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}, resolved.Manifest.ApplicationID, "dev", sqlInstance.ID); err != nil {
++		t.Fatal(err)
++	}
++	if err := registry.BindDeployment(capability.Resource{Application: resolved.Manifest.Name, Kind: capability.KeyValue, Name: "default", Provider: capability.ProviderValkey}, resolved.Manifest.ApplicationID, "dev", application.ApplicationProviderInstanceIDForScopedValkey(resolved.Manifest.ApplicationID, "dev", "default")); err != nil {
++		t.Fatal(err)
++	}
++	if err := store.Save(registry); err != nil {
++		t.Fatal(err)
++	}
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	facts := map[string]application.ProviderFact{}
++	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 2 {
++		t.Fatalf("SQL and Valkey instances must both receive facts: %+v", facts)
++	}
++	if facts[sqlInstance.ID].State != application.ProviderStoppedOwned || facts[application.ApplicationProviderInstanceIDForScopedValkey(resolved.Manifest.ApplicationID, "dev", "default")].State != application.ProviderStoppedOwned {
++		t.Fatalf("mixed provider facts lost their stopped-owned state: %+v", facts)
++	}
++	for _, instance := range []string{sqlInstance.ID, application.ApplicationProviderInstanceIDForScopedValkey(resolved.Manifest.ApplicationID, "dev", "default")} {
++		if !containsMachineResource(diagnostic, instance) {
++			t.Fatalf("diagnostic does not cover proven instance %q: %v", instance, diagnostic)
++		}
++	}
++}
++
++// F4: a mix of eligible and ineligible peers yields facts only for the proven
++// instance; proof is never transferred.
++func TestCMF19MixedEligibilityMustNotTransferProof(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Manifest = application.WithSQLInstances(resolved.Manifest, "default", "analytics")
++	store, registry := cmf19Registry(t, resolved)
++	second := registry.Instances[0]
++	second.ID = application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "analytics")
++	if err := registry.Register(second); err != nil {
++		t.Fatal(err)
++	}
++	bound := application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "default")
++	if err := registry.BindDeployment(capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}, resolved.Manifest.ApplicationID, "dev", bound); err != nil {
++		t.Fatal(err)
++	}
++	if err := store.Save(registry); err != nil {
++		t.Fatal(err)
++	}
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	facts := map[string]application.ProviderFact{}
++	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	if len(facts) != 1 || facts[bound].State != application.ProviderStoppedOwned {
++		t.Fatalf("unproven peer received a transferred fact: %+v", facts)
++	}
++	if !containsMachineResource(diagnostic, bound) {
++		t.Fatalf("diagnostic missing for the proven instance: %v", diagnostic)
++	}
++	if containsMachineResource(diagnostic, second.ID) {
++		t.Fatalf("diagnostic recorded for an unproven peer: %v", diagnostic)
++	}
++}
++
++// F5: the materialization condition is a typed machine error with a stable
++// cause/code and instance/target context; it decodes through machine JSON.
++func TestCMF19MaterializationDiagnosticIsTypedMachineError(t *testing.T) {
++	resolved := cmf19WizardFixture(t)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	facts := map[string]application.ProviderFact{}
++	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolved, facts)
++	var machineErr *machine.Error
++	if !errors.As(diagnostic, &machineErr) {
++		t.Fatalf("diagnostic is not a typed machine error: %v (%T)", diagnostic, diagnostic)
++	}
++	if machineErr.CauseCode != causeRuntimeInventoryNotYetMaterialized {
++		t.Fatalf("unstable machine cause: %q", machineErr.CauseCode)
++	}
++	if machineErr.Code != machine.ErrorRuntimeUnavailable {
++		t.Fatalf("unexpected machine code: %q", machineErr.Code)
++	}
++	if machineErr.Resource == "" {
++		t.Fatal("diagnostic lost its instance context")
++	}
++	details, ok := machineErr.Details.(map[string]any)
++	if !ok || details["target"] != resolved.Target.Name || details["instance"] != machineErr.Resource || details["application_id"] != resolved.Manifest.ApplicationID {
++		t.Fatalf("diagnostic lost instance/target context: %+v", machineErr.Details)
++	}
++	raw, err := json.Marshal(machineErr)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var decoded struct {
++		Code     string `json:"code"`
++		Cause    string `json:"cause"`
++		Resource string `json:"resource"`
++	}
++	if err := json.Unmarshal(raw, &decoded); err != nil {
++		t.Fatal(err)
++	}
++	if decoded.Cause != causeRuntimeInventoryNotYetMaterialized || decoded.Code != string(machine.ErrorRuntimeUnavailable) || decoded.Resource != machineErr.Resource {
++		t.Fatalf("machine JSON lost the stable cause/code: %+v", decoded)
++	}
++}
++
++// F5: the observation caller propagates the diagnostic through the structured
++// error path; retained ownership is never authorized from it alone.
++func TestCMF19RetainedOwnershipCannotBeAuthorizedByDiagnosticAlone(t *testing.T) {
++	resolved := cmf19Fixture(t)
++	resolved.Target.RuntimeProvider = "cmf19-unsupported-runtime"
++	store, registry := cmf19Registry(t, resolved)
++	bound := registry.Instances[0]
++	retained := capability.ProviderInstance{
++		ID:                 application.ApplicationProviderInstanceIDForScopedPostgreSQL(resolved.Manifest.ApplicationID, "dev", "retained"),
++		Provider:           capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}},
++		Scope:              capability.ScopeApplication,
++		Ownership:          capability.OwnershipBaseHarbor,
++		OwnerApplicationID: resolved.Manifest.ApplicationID,
++		OwnerApplication:   resolved.Manifest.Name,
++		OwnerEnvironment:   "dev",
++	}
++	if err := registry.Register(retained); err != nil {
++		t.Fatal(err)
++	}
++	if err := registry.BindDeployment(capability.Resource{Application: resolved.Manifest.Name, Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}, resolved.Manifest.ApplicationID, "dev", bound.ID); err != nil {
++		t.Fatal(err)
++	}
++	if err := store.Save(registry); err != nil {
++		t.Fatal(err)
++	}
++	err := checkRetainedApplicationProviderOwnership(context.Background(), resolved)
++	if err == nil {
++		t.Fatal("retained unbound instance authorized although only a preview diagnostic exists")
++	}
++	if !containsCauseCode(err, "retained_provider_ownership_unverified") {
++		t.Fatalf("ownership error lost its machine cause: %v", err)
++	}
++	if !containsCauseCode(err, causeRuntimeInventoryNotYetMaterialized) {
++		t.Fatalf("caller lost the propagated materialization diagnostic: %v", err)
++	}
++}
++
++func containsCauseCode(err error, cause string) bool {
++	if err == nil {
++		return false
++	}
++	var machineErr *machine.Error
++	if errors.As(err, &machineErr) && machineErr != nil && machineErr.CauseCode == cause {
++		return true
++	}
++	if joined, ok := err.(interface{ Unwrap() []error }); ok {
++		for _, element := range joined.Unwrap() {
++			if containsCauseCode(element, cause) {
++				return true
++			}
++		}
++		return false
++	}
++	return containsCauseCode(errors.Unwrap(err), cause)
++}
++
++func containsMachineResource(err error, resource string) bool {
++	joined, ok := err.(interface{ Unwrap() []error })
++	if !ok {
++		var machineErr *machine.Error
++		return errors.As(err, &machineErr) && machineErr.Resource == resource
++	}
++	for _, element := range joined.Unwrap() {
++		if containsMachineResource(element, resource) {
++			return true
++		}
++	}
++	return false
++}
+diff --git a/cmd/baha/o141_wizard_apply_factgap_test.go b/cmd/baha/o141_wizard_apply_factgap_test.go
+new file mode 100644
+index 00000000..23e11683
+--- /dev/null
++++ b/cmd/baha/o141_wizard_apply_factgap_test.go
+@@ -0,0 +1,339 @@
++package main
++
++import (
++	"context"
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/mcpdev80/baseharbor/internal/application"
++	"github.com/mcpdev80/baseharbor/internal/capability"
++	"github.com/mcpdev80/baseharbor/internal/deployment"
++	"github.com/mcpdev80/baseharbor/internal/machine"
++	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
++)
++
++// O141 wizard/apply fact-gap reproduction.
++//
++// The Wizard New/Edit preview observes the application-scoped backend with a
++// resolved Application whose Store.Root is empty (no deployment record exists
++// yet), so its canonical runtime path resolves relative to the CWD
++// ("state/<app>/runtime") and the native backend inventory ENOENTs. The Apply
++// path resolves against the real deployment store root
++// ("deployments/<id>/state"), where the canonical runtime inventory is
++// inspectable once the first-touch Read surfaces it. This test pins that
++// divergence on the disk-inspection boundary, without a runtime gate, by
++// asserting nativeBackendInventory surfaces the ENOENT for the wizard store but
++// not for the apply store of the same registered deployment.
++func TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable(t *testing.T) {
++	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
++	t.Setenv("XDG_DATA_HOME", t.TempDir())
++	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
++	target := configureTestTarget(t)
++
++	app := application.New("o141-factgap", "dev", false, false, true)
++	registryStore := capability.RegistryStore{Path: filepath.Join(t.TempDir(), "provider-registry.json")}
++	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, registryStore); err != nil {
++		t.Fatalf("seed application-scoped postgresql instance: %v", err)
++	}
++
++	record := registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
++	if err != nil {
++		t.Fatalf("deployment root: %v", err)
++	}
++
++	// Wizard preview: resolved with an empty Store.Root, exactly like
++	// appNewWizardAuthorityContext (no deployment record, zero identity).
++	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
++	if err != nil {
++		t.Fatalf("target state root: %v", err)
++	}
++	wizard := resolvedApplication{
++		Target:          target,
++		TargetStateRoot: targetStateRoot,
++		Manifest:        app,
++		FromRepository:  true,
++	}
++	// Apply path: resolved against the real deployment store root.
++	apply := wizard
++	apply.Store = application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
++	apply.DeploymentIdentity = record.Identity
++	apply.DeploymentRecord = &record
++
++	if _, _, _, err := nativeBackendInventory(wizard); err == nil {
++		t.Fatalf("Wizard store native backend inventory did not fail on the missing canonical runtime inventory")
++	} else if !os.IsNotExist(err) {
++		t.Fatalf("Wizard store inventory failure is not the canonical runtime ENOENT: %v", err)
++	}
++
++	// Before the Apply first-touch Read materializes the canonical runtime
++	// directory, the Apply store ENOENTs exactly like the Wizard store -- the
++	// gap is a timing/inventory-race, not a structural Store difference.
++	if _, _, _, err := nativeBackendInventory(apply); !os.IsNotExist(err) {
++		t.Fatalf("Apply store without materialized runtime must ENOENT like the Wizard store (proves the race): %v", err)
++	}
++
++	// The first-touch Read in the Apply path creates the canonical runtime
++	// directory before its protected compose.yaml (state/<app>/runtime/compose
++	// .yaml) is supplied. Distinguish the two absences: once the directory is
++	// materialized, the structural gap is closed and any remaining inventory
++	// ENOENT must originate from the missing owner file, never from the
++	// canonical directory itself.
++	runtimeDir := filepath.Join(deploymentRoot, "state", app.Name, "runtime")
++	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
++		t.Fatalf("materialize canonical runtime dir: %v", err)
++	}
++	if info, err := os.Lstat(filepath.Join(runtimeDir, "compose.yaml")); !os.IsNotExist(err) {
++		t.Fatalf("fixture must leave only the owner compose.yaml missing: info=%v err=%v", info, err)
++	}
++	if _, _, _, err := nativeBackendInventory(apply); err == nil {
++		t.Fatalf("Apply store with a missing owner compose.yaml must not pass the inventory")
++	} else if !os.IsNotExist(err) {
++		t.Fatalf("remaining inventory failure must be the missing owner file ENOENT: %v", err)
++	}
++	if info, err := os.Lstat(runtimeDir); err != nil || !info.IsDir() {
++		t.Fatalf("canonical runtime directory must be materialized; its absence is no longer the failure cause: info=%v err=%v", info, err)
++	}
++}
++
++// The named application-scoped PostgreSQL instance projects canonical
++// container/volume/network resources from the registry owner without touching
++// disk. This proves that, once the owner carries an application-scoped
++// placement (as the wizard preview does via WithDesiredProviderPlacementsAt)
++// and the named SQL instance is present, the only reason the fact stays
++// "unverifiable" is the missing canonical runtime directory inspected by
++// nativeBackendInventory -- not a missing instance projection.
++func TestWizardNamedInstanceProjectsResourcesWithoutDisk(t *testing.T) {
++	target := configureTestTarget(t)
++	app := application.New("o141-factgap", "dev", true, false, false)
++	app, err := application.WithBackendPlacementProjection(app, map[capability.ProviderKind]capability.ProviderPlacement{
++		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
++	})
++	if err != nil {
++		t.Fatalf("app-scoped placement: %v", err)
++	}
++	if !application.HasApplicationScopedRuntimeServices(app) {
++		t.Fatal("seeded app is not application-scoped")
++	}
++	registryStore := capability.RegistryStore{Path: filepath.Join(t.TempDir(), "provider-registry.json")}
++	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, registryStore); err != nil {
++		t.Fatalf("seed application-scoped postgresql instance: %v", err)
++	}
++
++	record := registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
++	if err != nil {
++		t.Fatalf("deployment root: %v", err)
++	}
++	applyTargetStateRoot, err := deployment.TargetStateRoot(target.Name)
++	if err != nil {
++		t.Fatalf("target state root: %v", err)
++	}
++	apply := resolvedApplication{
++		Target:             target,
++		TargetStateRoot:    applyTargetStateRoot,
++		Manifest:           app,
++		FromRepository:     true,
++		Store:              application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
++		DeploymentIdentity: record.Identity,
++		DeploymentRecord:   &record,
++	}
++	owners, err := applicationRuntimeOwners(apply)
++	if err != nil {
++		t.Fatalf("applicationRuntimeOwners: %v", err)
++	}
++	if len(owners) == 0 {
++		t.Fatal("expected at least one owner for the named application-scoped instance")
++	}
++	var scopedOwner *resolvedApplication
++	for i := range owners {
++		if application.HasApplicationScopedRuntimeServices(owners[i].Manifest) {
++			scopedOwner = &owners[i]
++		}
++	}
++	if scopedOwner == nil {
++		t.Fatal("no application-scoped owner projected")
++	}
++	intents, err := nativeBackendOwnerIntents(*scopedOwner)
++	if err != nil {
++		t.Fatalf("nativeBackendOwnerIntents: %v", err)
++	}
++	files := application.RuntimeFilesFor(scopedOwner.Store, scopedOwner.Manifest)
++	union, err := nativeBackendOwnedResourceUnion(intents, files, nil)
++	if err != nil || len(union) == 0 {
++		t.Fatalf("named application-scoped instance projects no canonical resources: union=%v err=%v", union, err)
++	}
++}
++
++// O142 close the wizard/apply inventory race: a wizard `resolved` with an empty
++// Store.Root whose owner intent and a bound application-scoped baseharbor-owned
++// PostgreSQL instance are provable from the registry+binding, but whose canonical
++// runtime directory is missing, must resolve to ProviderStoppedOwned instead of
++// dropping to ProviderUnverifiable. The fact is derived without any disk
++// inspection, exactly as the wizard preview observes it.
++func TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk(t *testing.T) {
++	target := configureTestTarget(t)
++	app := application.New("o142-consentfix", "dev", true, false, false)
++	app, err := application.WithBackendPlacementProjection(app, map[capability.ProviderKind]capability.ProviderPlacement{
++		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
++	})
++	if err != nil {
++		t.Fatalf("app-scoped placement: %v", err)
++	}
++	if !application.HasApplicationScopedRuntimeServices(app) {
++		t.Fatal("seeded app is not application-scoped")
++	}
++	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
++	if err != nil {
++		t.Fatalf("target state root: %v", err)
++	}
++	// The wizard preview loads the registry from TargetStateRoot, so seed it
++	// there (not a scratch TempDir) for the observation to see it.
++	registryStore := capability.RegistryStore{Path: filepath.Join(targetStateRoot, "provider-registry.json")}
++	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, registryStore); err != nil {
++		t.Fatalf("seed application-scoped postgresql instance: %v", err)
++	}
++	instanceID := application.ApplicationProviderInstanceIDForScopedPostgreSQL(app.ApplicationID, "dev", "default")
++	// The advertised condition requires an exact registry binding, so the
++	// positive fixture must carry a real one (CMF19 F2), not only an instance.
++	if err := bindApplicationScopedPostgreSQLInstance(t, registryStore, app, instanceID, "default"); err != nil {
++		t.Fatalf("bind application-scoped postgresql instance: %v", err)
++	}
++	registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++
++	facts := map[string]application.ProviderFact{}
++	diagnostic := observeNativeBackendProviderFacts(context.Background(), resolvedApplication{
++		Target:          target,
++		TargetStateRoot: targetStateRoot,
++		Manifest:        app,
++		FromRepository:  true,
++	}, facts)
++
++	fact, observed := facts[instanceID]
++	if !observed {
++		t.Fatalf("wizard preview recorded no fact for the registry-bound application-scoped instance %q", instanceID)
++	}
++	if fact.State != application.ProviderStoppedOwned {
++		t.Fatalf("wizard fact for registry-bound owned instance is %q, want ProviderStoppedOwned (o142 fix)", fact.State)
++	}
++	if fact.Target != target.Name {
++		t.Fatalf("wizard fact target is %q, want %q", fact.Target, target.Name)
++	}
++	// The preview fact must be accompanied by the typed machine diagnostic so
++	// it can never be consumed as verified runtime success (CMF19 F5).
++	var machineErr *machine.Error
++	if !errors.As(diagnostic, &machineErr) || machineErr.CauseCode != causeRuntimeInventoryNotYetMaterialized || machineErr.Resource != instanceID {
++		t.Fatalf("wizard observation diagnostic is not the typed materialization error for %q: %+v", instanceID, diagnostic)
++	}
++}
++
++// O142 fail-closed: a manifest with no owner intent and no bound application-scoped
++// owned instance keeps the unverifiable default, so genuine inventory failures are
++// never masked as stopped-but-owned.
++func TestWizardUnverifiableWithoutIntentOrBoundInstance(t *testing.T) {
++	target := configureTestTarget(t)
++	app := application.New("o142-unverifiable", "dev", false, false, false)
++	targetStateRoot, err := deployment.TargetStateRoot(target.Name)
++	if err != nil {
++		t.Fatalf("target state root: %v", err)
++	}
++	registryStore := capability.RegistryStore{Path: filepath.Join(targetStateRoot, "provider-registry.json")}
++	if err := registryStore.Save(capability.NewRegistry()); err != nil {
++		t.Fatalf("save empty registry: %v", err)
++	}
++	registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++
++	facts := map[string]application.ProviderFact{}
++	observeNativeBackendProviderFacts(context.Background(), resolvedApplication{
++		Target:          target,
++		TargetStateRoot: targetStateRoot,
++		Manifest:        app,
++		FromRepository:  true,
++	}, facts)
++	for id, fact := range facts {
++		if fact.State == application.ProviderStoppedOwned {
++			t.Fatalf("unexpected stopped-but-owned fact for %q without owner intent or bound instance (fail-closed must hold)", id)
++		}
++	}
++}
++
++// O142 the registry-bound stopped-owned fact must be derived from the
++// registry+binding projection with zero disk inspection. Proving the canonical
++// resource union directly (no runtime directory present) confirms the wizard path
++// has a provable source before the fix records the fact.
++func TestWizardRegistryBoundUnionProvableWithoutAnyDisk(t *testing.T) {
++	target := configureTestTarget(t)
++	app := application.New("o142-union", "dev", true, false, false)
++	app, err := application.WithBackendPlacementProjection(app, map[capability.ProviderKind]capability.ProviderPlacement{
++		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
++	})
++	if err != nil {
++		t.Fatalf("app-scoped placement: %v", err)
++	}
++	registryStore := capability.RegistryStore{Path: filepath.Join(t.TempDir(), "provider-registry.json")}
++	if err := seedApplicationScopedPostgreSQLInstance(t, target, app, registryStore); err != nil {
++		t.Fatalf("seed application-scoped postgresql instance: %v", err)
++	}
++	registerTestDeployment(t, target, app, t.TempDir(), t.TempDir())
++
++	intents, err := nativeBackendOwnerIntents(resolvedApplication{Target: target, Manifest: app, FromRepository: true})
++	if err != nil {
++		t.Fatalf("nativeBackendOwnerIntents: %v", err)
++	}
++	registry, err := (capability.RegistryStore{Path: registryStore.Path}).Load()
++	if err != nil {
++		t.Fatalf("load registry: %v", err)
++	}
++	var bound *capability.ProviderInstance
++	for i := range registry.Instances {
++		if applicationNativeBackendInstance(registry.Instances[i], app) {
++			bound = &registry.Instances[i]
++			break
++		}
++	}
++	if bound == nil {
++		t.Fatal("no bound owned application-scoped instance found")
++	}
++	files := application.RuntimeFilesFor(application.Store{}, app)
++	union, err := nativeBackendOwnedResourceUnion(intents, files, bound)
++	if err != nil || len(union) == 0 {
++		t.Fatalf("registry-bound owned instance projects no canonical resources without disk: union=%v err=%v", union, err)
++	}
++	if bhruntime.ContainerMatchesProjectResource("docker", bhruntime.RuntimeContainer{}, "", bhruntime.ProjectResource{Kind: "container", Name: ""}) {
++		t.Fatalf("expected no container match for an empty runtime resource")
++	}
++}
++
++// bindApplicationScopedPostgreSQLInstance creates the real registry binding for
++// a named, application-scoped PostgreSQL instance of this manifest consumer.
++func bindApplicationScopedPostgreSQLInstance(t *testing.T, store capability.RegistryStore, app application.Manifest, instanceID, resourceName string) error {
++	t.Helper()
++	registry, err := store.Load()
++	if err != nil {
++		return err
++	}
++	if err := registry.BindDeployment(capability.Resource{Application: app.Name, Kind: capability.SQL, Name: resourceName, Provider: capability.ProviderPostgreSQL}, app.ApplicationID, app.Environment, instanceID); err != nil {
++		return err
++	}
++	return store.Save(registry)
++}
++
++func seedApplicationScopedPostgreSQLInstance(t *testing.T, target deployment.ResolvedTarget, app application.Manifest, store capability.RegistryStore) error {
++	t.Helper()
++	instanceID := application.ApplicationProviderInstanceIDForScopedPostgreSQL(app.ApplicationID, "dev", "default")
++	registry := capability.NewRegistry()
++	if err := registry.Register(capability.ProviderInstance{
++		ID:                 instanceID,
++		Provider:           capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}},
++		Scope:              capability.ScopeApplication,
++		Ownership:          capability.OwnershipBaseHarbor,
++		OwnerApplicationID: app.ApplicationID,
++		OwnerApplication:   app.Name,
++		OwnerEnvironment:   "dev",
++	}); err != nil {
++		return err
++	}
++	return store.Save(registry)
++}
+diff --git a/internal/application/provider_registry.go b/internal/application/provider_registry.go
+index a49be1ee..f7d03606 100644
+--- a/internal/application/provider_registry.go
++++ b/internal/application/provider_registry.go
+@@ -455,6 +455,22 @@ func applicationProviderInstanceID(provider capability.ProviderKind, m Manifest,
+ 	}
+ }
+ 
++// ApplicationProviderInstanceIDForScopedPostgreSQL is the exported, test- and
++// adapter-facing mirror of applicationProviderInstanceID for a named,
++// application-scoped baseharbor-owned PostgreSQL instance. It lets consumers
++// match a registry offer without re-deriving the instance ID layout.
++func ApplicationProviderInstanceIDForScopedPostgreSQL(applicationID, environment, resourceName string) string {
++	return applicationProviderInstanceID(capability.ProviderPostgreSQL, Manifest{ApplicationID: applicationID, Environment: environment}, resourceName)
++}
++
++// ApplicationProviderInstanceIDForScopedValkey is the exported, test- and
++// adapter-facing mirror of applicationProviderInstanceID for a named,
++// application-scoped baseharbor-owned Valkey instance. It lets consumers match
++// a registry offer without re-deriving the instance ID layout.
++func ApplicationProviderInstanceIDForScopedValkey(applicationID, environment, resourceName string) string {
++	return applicationProviderInstanceID(capability.ProviderValkey, Manifest{ApplicationID: applicationID, Environment: environment}, resourceName)
++}
++
+ func externalProviderInstanceID(provider capability.ProviderKind, reference string) string {
+ 	if provider == capability.ProviderExternalOTLP && reference == "default" {
+ 		return "external-otlp/default"

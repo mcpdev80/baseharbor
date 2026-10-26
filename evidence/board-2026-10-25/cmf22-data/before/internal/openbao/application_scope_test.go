@@ -1,0 +1,112 @@
+package openbao
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestApplicationPolicyIsScopedToApplicationAndEnvironment(t *testing.T) {
+	alpha := ApplicationIdentity{Name: "alpha", Environment: "dev"}
+	beta := ApplicationIdentity{Name: "beta", Environment: "dev"}
+	policy := applicationPolicy(alpha)
+
+	if !strings.Contains(policy, `path "baseharbor/data/apps/alpha/dev"`) {
+		t.Fatal("policy does not contain the application's exact legacy data path")
+	}
+	if !strings.Contains(policy, `path "baseharbor/data/apps/alpha/dev/*"`) {
+		t.Fatal("policy does not contain the application's isolated secret namespace")
+	}
+	if strings.Contains(policy, applicationSecretPath(beta)) {
+		t.Fatal("policy contains another application's secret path")
+	}
+	if strings.Contains(policy, `path "baseharbor/data/apps/*"`) {
+		t.Fatal("application policy grants a cross-application wildcard")
+	}
+	if strings.Count(policy, `path "baseharbor/metadata/apps/alpha/dev"`) != 1 {
+		t.Fatal("application secret root metadata policy must be defined exactly once")
+	}
+	rootMetadata := `path "baseharbor/metadata/apps/alpha/dev" {
+  capabilities = ["read", "list", "delete"]
+}`
+	if !strings.Contains(policy, rootMetadata) {
+		t.Fatal("application secret root is missing exact metadata list capability")
+	}
+	probeMetadata := `path "baseharbor/metadata/apps/_baseharbor-probes/alpha/dev" {
+  capabilities = ["read", "delete"]
+}`
+	if !strings.Contains(policy, probeMetadata) {
+		t.Fatal("application verification probe gained unexpected metadata capabilities")
+	}
+}
+
+func TestApplicationIdentityNamesAreDeterministicAndSeparated(t *testing.T) {
+	dev := ApplicationIdentity{Name: "mailflow", Environment: "dev"}
+	prod := ApplicationIdentity{Name: "mailflow", Environment: "prod"}
+	if applicationPolicyName(dev) == applicationPolicyName(prod) {
+		t.Fatal("environments must not share an OpenBao policy name")
+	}
+	if applicationRoleName(dev) != "baseharbor-app-mailflow-dev" {
+		t.Fatalf("unexpected role name %q", applicationRoleName(dev))
+	}
+	if applicationSecretPath(prod) != "apps/mailflow/prod" {
+		t.Fatalf("unexpected secret path %q", applicationSecretPath(prod))
+	}
+}
+
+func TestApplicationCredentialsAreOwnerOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runtime", "openbao.env")
+	credentials := ApplicationCredentials{RoleID: "role", SecretID: "secret"}
+	if err := writeApplicationCredentials(path, credentials); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected 0600 credentials, got %o", info.Mode().Perm())
+	}
+	loaded, err := loadApplicationCredentials(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded != credentials {
+		t.Fatalf("unexpected credentials %#v", loaded)
+	}
+}
+
+func TestLoadApplicationCredentialsRejectsBroadPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "openbao.env")
+	if err := os.WriteFile(path, []byte("OPENBAO_ROLE_ID=role\nOPENBAO_SECRET_ID=secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadApplicationCredentials(path); err == nil {
+		t.Fatal("expected broad permissions to be rejected")
+	}
+}
+
+func TestApplicationIdentityRejectsUnsafeNames(t *testing.T) {
+	for _, identity := range []ApplicationIdentity{
+		{Name: "../other", Environment: "dev"},
+		{Name: "alpha", Environment: "DEV"},
+		{Name: "-alpha", Environment: "dev"},
+	} {
+		if err := validateApplicationIdentity(identity); err == nil {
+			t.Fatalf("expected identity %#v to be rejected", identity)
+		}
+	}
+}
+
+func TestApplicationPolicyProvisioningUsesCanonicalACLPath(t *testing.T) {
+	policyName := applicationPolicyName(ApplicationIdentity{Name: "demo", Environment: "dev"})
+	command := fmt.Sprintf(`exec bao write sys/policies/acl/%s policy=- >/dev/null`, policyName)
+	if !strings.Contains(command, "sys/policies/acl/baseharbor-app-demo-dev") {
+		t.Fatalf("policy command does not use canonical ACL path: %s", command)
+	}
+	if strings.Contains(command, "bao policy write") {
+		t.Fatalf("policy command must not use redirect-prone policy wrapper: %s", command)
+	}
+}

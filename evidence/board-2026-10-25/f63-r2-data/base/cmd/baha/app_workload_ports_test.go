@@ -1,0 +1,369 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
+)
+
+func TestWorkloadPublishedPortVariables(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	content := `services:
+  edge:
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+  api:
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+`
+	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := workloadPublishedPortVariables(application.WorkloadFiles{Compose: composePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 published port variables, got %#v", got)
+	}
+	want := map[string]int{"HTTP_PORT": 80, "HTTPS_PORT": 443, "API_PORT": 8000}
+	for _, item := range got {
+		if want[item.Name] != item.DefaultPort {
+			t.Fatalf("unexpected port variable %#v", item)
+		}
+	}
+}
+
+func TestConflictingWorkloadHostPort(t *testing.T) {
+	cases := map[string]int{
+		"Bind for 127.0.0.1:80 failed: port is already allocated":          80,
+		"failed to bind host port for 0.0.0.0:443: address already in use": 443,
+		"Bind for ::1:443 failed: port is already allocated":               443,
+		"Bind for [::1]:8443 failed: port is already allocated":            8443,
+		"Bind for [::]:9443 failed: port is already allocated":             9443,
+		"host port 8080 is busy":                                           8080,
+	}
+	for message, want := range cases {
+		if got := conflictingWorkloadHostPort(errors.New(message)); got != want {
+			t.Fatalf("%q: expected %d, got %d", message, want, got)
+		}
+	}
+}
+
+func TestPersistedWorkloadPortOverrides(t *testing.T) {
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	environment := map[string]string{}
+	if err := persistWorkloadPortOverride(files, environment, "HTTP_PORT", 8080); err != nil {
+		t.Fatal(err)
+	}
+	if environment["HTTP_PORT"] != "8080" {
+		t.Fatalf("expected live environment override, got %#v", environment)
+	}
+
+	reloaded := map[string]string{}
+	if err := mergePersistedWorkloadPortOverrides(reloaded, files); err != nil {
+		t.Fatal(err)
+	}
+	if reloaded["HTTP_PORT"] != "8080" {
+		t.Fatalf("expected persisted override, got %#v", reloaded)
+	}
+
+	t.Setenv("HTTP_PORT", "9090")
+	explicit := map[string]string{}
+	if err := mergePersistedWorkloadPortOverrides(explicit, files); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := explicit["HTTP_PORT"]; ok {
+		t.Fatalf("explicit process environment must take precedence, got %#v", explicit)
+	}
+}
+
+func TestEnsureRepositoryWorkloadPortsForUpPersistsFirstRunFallback(t *testing.T) {
+	repo := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	occupied := listener.Addr().(*net.TCPAddr).Port
+
+	compose := fmt.Sprintf("services:\\n  edge:\\n    image: caddy:2-alpine\\n    ports:\\n      - \"${HTTP_PORT:-%d}:80\"\\n", occupied)
+	if err := os.WriteFile(filepath.Join(repo, "docker-compose.yml"), []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, m, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: docker-compose.yml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{
+		Manifest:            m,
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
+	}
+	var out bytes.Buffer
+	if err := ensureRepositoryWorkloadPortsForUp(withAssumeYes(context.Background(), true), strings.NewReader("\n"), &out, resolved, repo); err != nil {
+		t.Fatal(err)
+	}
+
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := strconv.Atoi(values["HTTP_PORT"])
+	if err != nil {
+		t.Fatalf("persisted HTTP_PORT = %q", values["HTTP_PORT"])
+	}
+	if got == occupied {
+		t.Fatalf("first-run allocation kept occupied port %d", occupied)
+	}
+	if !portAvailable(got) {
+		t.Fatalf("selected fallback port %d is not available", got)
+	}
+	if !strings.Contains(out.String(), "Workload host port") || !strings.Contains(out.String(), "saved for this deployment") {
+		t.Fatalf("first-run fallback output missing allocation detail: %q", out.String())
+	}
+}
+
+func TestEnsureRepositoryWorkloadPortsForUpPersistsAvailableDefault(t *testing.T) {
+	repo := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	_ = listener.Close()
+
+	compose := fmt.Sprintf("services:\\n  edge:\\n    image: caddy:2-alpine\\n    ports:\\n      - \"${HTTP_PORT:-%d}:80\"\\n", port)
+	if err := os.WriteFile(filepath.Join(repo, "compose.yaml"), []byte(compose), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "edge")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{
+		Manifest:            manifest,
+		ManifestPath:        manifestPath,
+		DeploymentStateRoot: stateRoot,
+		Store:               application.Store{Root: filepath.Join(stateRoot, "state")},
+		FromRepository:      true,
+	}
+	var out bytes.Buffer
+	if err := ensureRepositoryWorkloadPortsForUp(context.Background(), strings.NewReader(""), &out, resolved, repo); err != nil {
+		t.Fatal(err)
+	}
+	values, err := readSimpleEnvFile(repositoryInitEnvPathFromStateRoot(stateRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["HTTP_PORT"] != strconv.Itoa(port) {
+		t.Fatalf("HTTP_PORT = %q, want %d", values["HTTP_PORT"], port)
+	}
+}
+
+func TestUpdateRepositoryInitValuesPreservesDeploymentInputs(t *testing.T) {
+	repo := t.TempDir()
+	if err := updateRepositoryInitValues(repo, map[string]string{
+		"BASEHARBOR_HOSTNAME": "demo.example.com",
+		"BASEHARBOR_TLS_MODE": "existing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateRepositoryInitValues(repo, map[string]string{"HTTP_PORT": "8080"}); err != nil {
+		t.Fatal(err)
+	}
+	values, err := readSimpleEnvFile(repositoryInitEnvPath(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values["BASEHARBOR_HOSTNAME"] != "demo.example.com" || values["BASEHARBOR_TLS_MODE"] != "existing" || values["HTTP_PORT"] != "8080" {
+		t.Fatalf("deployment values were not preserved: %#v", values)
+	}
+}
+
+func TestFixedComposeHostPort(t *testing.T) {
+	cases := []struct {
+		value string
+		port  int
+		fixed bool
+	}{
+		{value: "8080:80", port: 8080, fixed: true},
+		{value: "127.0.0.1:8443:443", port: 8443, fixed: true},
+		{value: "[::1]:9443:443", port: 9443, fixed: true},
+		{value: "${HTTP_PORT:-8080}:80", fixed: false},
+		{value: "80", fixed: false},
+	}
+	for _, tc := range cases {
+		got, fixed := fixedComposeHostPort(tc.value)
+		if got != tc.port || fixed != tc.fixed {
+			t.Fatalf("%q => (%d,%v), want (%d,%v)", tc.value, got, fixed, tc.port, tc.fixed)
+		}
+	}
+}
+
+func TestPreflightRepositoryWorkloadPublishedPortsPersistsFallbackForOccupiedFixedPort(t *testing.T) {
+	root := t.TempDir()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := listener.Addr().(*net.TCPAddr).Port
+
+	composePath := filepath.Join(root, "compose.yaml")
+	compose := fmt.Sprintf("services:\n  api:\n    image: example/api\n    ports:\n      - \"127.0.0.1:%d:8080\"\n", port)
+	if err := os.WriteFile(composePath, []byte(compose), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	var out bytes.Buffer
+	err = preflightRepositoryWorkloadPublishedPorts(
+		withAssumeYes(context.Background(), true),
+		strings.NewReader(""),
+		&out,
+		application.WorkloadFiles{
+			RepositoryRoot: root,
+			Compose:        composePath,
+			Services:       []string{"api"},
+		},
+		files,
+		map[string]string{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	overridePath := fixedWorkloadPortOverridePath(files)
+	data, err := os.ReadFile(overridePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	override := string(data)
+	if !strings.Contains(override, "ports: !override") {
+		t.Fatalf("fixed-port override missing replacement tag: %s", override)
+	}
+	if strings.Contains(override, fmt.Sprintf(":%d:8080", port)) {
+		t.Fatalf("fixed-port override kept occupied port %d: %s", port, override)
+	}
+	if !strings.Contains(out.String(), "saved for this deployment") {
+		t.Fatalf("fallback output missing persistence detail: %q", out.String())
+	}
+}
+
+func TestResolvedRepositoryWorkloadPortsPreferDeploymentStateOverLegacyOverride(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT=8081\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8082"}); err != nil {
+		t.Fatal(err)
+	}
+	environment := map[string]string{}
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
+		t.Fatal(err)
+	}
+	if got := environment["HTTP_PORT"]; got != "8082" {
+		t.Fatalf("HTTP_PORT = %q, want deployment-persisted 8082", got)
+	}
+}
+
+func TestResolvedRepositoryWorkloadPortsPreserveExplicitOperatorValue(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
+	files := application.RuntimeFiles{Dir: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(files.Dir, workloadPortOverridesFile), []byte("HTTP_PORT=8081\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8082"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HTTP_PORT", "9090")
+	environment := map[string]string{}
+	if err := mergeResolvedRepositoryWorkloadPorts(environment, resolved, files); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := environment["HTTP_PORT"]; exists {
+		t.Fatalf("persisted value must not shadow explicit process environment: %#v", environment)
+	}
+}
+
+func TestRepositoryWorkloadEnvironmentAppliesDeploymentPersistedPort(t *testing.T) {
+	repo := t.TempDir()
+	composePath := filepath.Join(repo, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("services:\n  app:\n    image: example/app\n    ports:\n      - \"${HTTP_PORT:-8080}:8080\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "app")
+	manifestPath := filepath.Join(repo, "baseharbor.yaml")
+	if err := writeInitializedAuthoredManifest(t, manifestPath, manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, repositoryinspect.RepositoryMetadataName), []byte("version: 1\nworkload-source:\n  kind: compose\n  path: compose.yaml\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stateRoot := t.TempDir()
+	resolved := resolvedApplication{Manifest: manifest, ManifestPath: manifestPath, DeploymentStateRoot: stateRoot, Store: application.Store{Root: filepath.Join(stateRoot, "state")}, FromRepository: true}
+	if err := updateRepositoryInitValuesAtStateRoot(stateRoot, map[string]string{"HTTP_PORT": "8082"}); err != nil {
+		t.Fatal(err)
+	}
+	environment, err := repositoryWorkloadEnvironment(context.Background(), resolved, application.RuntimeFiles{Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := environment["HTTP_PORT"]; got != "8082" {
+		t.Fatalf("start environment HTTP_PORT = %q, want 8082", got)
+	}
+}

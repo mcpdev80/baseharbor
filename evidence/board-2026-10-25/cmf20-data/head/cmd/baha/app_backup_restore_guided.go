@@ -1,0 +1,631 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationbackup"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+var guidedBackupInput io.Reader = os.Stdin
+var guidedBackupReadPassword = readBackupPasswordFromTerminal
+
+func appGuidedBackupCommand(store application.Store) *cli.Command {
+	command := appBackupCommandWithMetadata(store)
+	baseRun := command.Run
+	command.Usage = "baha app backup [NAME] [--output FILE] [--password-file FILE] [--include-state CLASS] [--exclude-state CLASS]"
+	command.Long = "Creates one encrypted application recovery unit. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry and safe output defaults. Automation keeps using an owner-only --password-file; backup passwords are never accepted as command-line values."
+	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		selectionFiltered, requestedSelection, err := extractRecoverySelectionArgs(args)
+		if err != nil {
+			return err
+		}
+		filtered, environment, err := extractApplicationEnvironment(selectionFiltered, "backup")
+		if err != nil {
+			return err
+		}
+		if hasOption(args, "--password-file") {
+			forwarded, err := prepareNonInteractiveBackupOutput(ctx, store, args, errOut)
+			if err != nil {
+				return err
+			}
+			return baseRun(ctx, forwarded, out, errOut)
+		}
+		if noInput(ctx) {
+			return usageError("backup requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
+		}
+		if !appInitReaderIsTerminal(guidedBackupInput) {
+			return usageError("interactive application backup requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
+		}
+
+		name, outputPath, err := parseGuidedBackupArgs(filtered)
+		if err != nil {
+			return err
+		}
+		var appArgs []string
+		if name != "" {
+			appArgs = []string{name}
+		}
+		resolved, err := resolveApplicationEnvironment(ctx, store, appArgs, "backup", environment)
+		if err != nil {
+			return err
+		}
+		m := resolved.Manifest
+		if outputPath == "" {
+			outputPath, err = defaultGuidedBackupPath(m.Name, m.Environment, time.Now())
+			if err != nil {
+				return err
+			}
+		}
+		if backupOutputFlag(filtered) != "" {
+			reportGitBackupRisk(errOut, outputPath)
+		}
+		files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+		if err != nil {
+			return err
+		}
+		compose, err := detectRuntimeForApplication(ctx, resolved, bhruntime.CapabilityWorkloadLifecycle, bhruntime.CapabilityServiceExec, bhruntime.CapabilityResourceOwnership)
+		if err != nil {
+			return err
+		}
+		selection, _, err := discoverApplicationRecoverySelection(ctx, compose, resolved, files)
+		if err != nil {
+			return fmt.Errorf("discover application recovery state: %w", err)
+		}
+		selection, err = selection.Apply(requestedSelection.Include, requestedSelection.Exclude)
+		if err != nil {
+			return err
+		}
+		if len(requestedSelection.Include) == 0 && len(requestedSelection.Exclude) == 0 {
+			selection, err = promptGuidedRecoverySelection(guidedBackupInput, out, selection)
+			if err != nil {
+				return err
+			}
+			requestedSelection = recoverySelectionArgsFromSelection(selection)
+		}
+		if err := selection.ValidateForCapture(); err != nil {
+			return err
+		}
+
+		formatBackupPreviewSelection(out, m, outputPath, selection)
+		confirmed, err := promptGuidedConfirmation(guidedBackupInput, out, "Create backup now?", true)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Fprintln(out, "Backup cancelled; no state was changed.")
+			return nil
+		}
+
+		password, err := guidedBackupReadPassword(out, true)
+		if err != nil {
+			return err
+		}
+		defer zeroBytes(password)
+		backupErr := withInMemoryPasswordFile(password, func(passwordPath string) error {
+			forwarded := append([]string(nil), selectionFiltered...)
+			for _, class := range requestedSelection.Include {
+				forwarded = append(forwarded, "--include-state", string(class))
+			}
+			for _, class := range requestedSelection.Exclude {
+				forwarded = append(forwarded, "--exclude-state", string(class))
+			}
+			if environment != "" {
+				forwarded = append(forwarded, "--environment", environment)
+			}
+			if !hasOption(forwarded, "--output") {
+				forwarded = append(forwarded, "--output", outputPath)
+			}
+			forwarded = append(forwarded, "--password-file", passwordPath)
+			return runGuidedActivity(ctx, out, "Creating encrypted backup", func(buffer io.Writer) error {
+				return baseRun(ctx, forwarded, buffer, errOut)
+			})
+		})
+		if backupErr != nil {
+			return backupErr
+		}
+		fmt.Fprintf(out, "Backup saved: %s\nRestore with: baha app restore %q\n", outputPath, outputPath)
+		return nil
+	}
+	return command
+}
+
+func appGuidedRestoreCommand(store application.Store) *cli.Command {
+	command := appRestoreCommand(store)
+	baseRun := command.Run
+	command.Usage = "baha app restore [BACKUP] [NAME] [--password-file FILE]"
+	command.Long = "Validates and decrypts the complete archive before mutation. In an interactive terminal, omitting --password-file starts a guided flow with hidden password entry, shows the backup identity, included durable resources and mutation impact, and requires confirmation before restore. Automation keeps the deterministic --password-file path."
+	command.Run = func(ctx context.Context, args []string, out, errOut io.Writer) error {
+		if hasOption(args, "--password-file") {
+			return baseRun(ctx, args, out, errOut)
+		}
+		if noInput(ctx) {
+			return usageError("restore requires --password-file in --no-input mode", "Provide an owner-only password file; BaseHarbor will never prompt in --no-input mode.")
+		}
+		if !appInitReaderIsTerminal(guidedBackupInput) {
+			return usageError("interactive application restore requires a terminal when --password-file is omitted", "For CI/scripts use an owner-only --password-file; never pass the password itself through argv.")
+		}
+
+		if len(args) == 0 {
+			selected, selectErr := promptGuidedBackupToRestore(guidedBackupInput, out)
+			if selectErr != nil {
+				return selectErr
+			}
+			args = []string{selected}
+		}
+		backupPath, name, err := parseGuidedRestoreArgs(args)
+		if err != nil {
+			return err
+		}
+		password, err := guidedBackupReadPassword(out, false)
+		if err != nil {
+			return err
+		}
+		defer zeroBytes(password)
+
+		archive, err := os.ReadFile(backupPath)
+		if err != nil {
+			return fmt.Errorf("read application backup: %w", err)
+		}
+		defer zeroBytes(archive)
+		payload, err := applicationbackup.Open(archive, password)
+		if err != nil {
+			return fmt.Errorf("validate application backup before mutation: %w", err)
+		}
+		m, err := applicationbackup.ApplicationManifestFromPayload(payload)
+		if err != nil {
+			return fmt.Errorf("validate application metadata before mutation: %w", err)
+		}
+		if name != "" && name != m.Name {
+			return errors.New("restore target NAME does not match backup application identity")
+		}
+		recoveryManifest, found, manifestErr := applicationbackup.RecoveryManifestFromPayload(payload)
+		if manifestErr != nil {
+			return fmt.Errorf("validate recovery manifest before mutation: %w", manifestErr)
+		}
+		if !found {
+			if _, err := applicationbackup.PostgresBackupsFromPayload(m, payload); err != nil {
+				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
+			}
+		} else if recoveryManifestHasSelected(recoveryManifest, applicationbackup.StateSQL) {
+			if _, err := applicationbackup.PostgresBackupsFromPayload(m, payload); err != nil {
+				return fmt.Errorf("validate PostgreSQL backup before mutation: %w", err)
+			}
+		}
+
+		formatRestorePreview(out, backupPath, m, payload.Manifest.CreatedAt, payload.Manifest.Entries)
+		if found {
+			formatRecoveryManifestPreview(out, recoveryManifest)
+		}
+		confirmed, err := promptGuidedConfirmation(guidedBackupInput, out, "Restore this backup and replace matching managed state?", false)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Fprintln(out, "Restore cancelled; no state was changed.")
+			return nil
+		}
+
+		return withInMemoryPasswordFile(password, func(passwordPath string) error {
+			forwarded := append(append([]string(nil), args...), "--password-file", passwordPath)
+			// Plan acknowledgements must remain visible while the activity
+			// renderer buffers ordinary restore progress.
+			ctx = context.WithValue(ctx, restorePromptOutputKey{}, out)
+			return runGuidedActivity(ctx, out, "Restoring encrypted backup", func(buffer io.Writer) error {
+				return baseRun(ctx, forwarded, buffer, errOut)
+			})
+		})
+	}
+	return command
+}
+
+func parseGuidedBackupArgs(args []string) (name, outputPath string, err error) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--output":
+			i++
+			if i >= len(args) || strings.TrimSpace(args[i]) == "" {
+				return "", "", usageError("--output requires a file path", "Run 'baha app backup --help' for usage.")
+			}
+			outputPath = args[i]
+		case "--password-file":
+			return "", "", usageError("guided backup parser received --password-file", "Use the deterministic password-file path instead.")
+		case "--include-state", "--exclude-state":
+			option := args[i]
+			i++
+			if i >= len(args) || strings.TrimSpace(args[i]) == "" {
+				return "", "", usageError(option+" requires a recovery state class", "Use a typed recovery state class.")
+			}
+			if _, parseErr := applicationbackup.ParseRecoveryStateClass(args[i]); parseErr != nil {
+				return "", "", parseErr
+			}
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				return "", "", usageError("unknown option "+args[i], "Run 'baha app backup --help' for usage.")
+			}
+			if name != "" {
+				return "", "", usageError("baha app backup accepts at most one NAME", "Inside an application repository omit NAME.")
+			}
+			name = args[i]
+		}
+	}
+	return name, outputPath, nil
+}
+
+func parseGuidedRestoreArgs(args []string) (backupPath, name string, err error) {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			return "", "", usageError("unknown option "+arg, "Run 'baha app restore --help' for usage.")
+		}
+		if backupPath == "" {
+			backupPath = arg
+			continue
+		}
+		if name == "" {
+			name = arg
+			continue
+		}
+		return "", "", usageError("baha app restore accepts BACKUP and optional NAME", "Run 'baha app restore --help' for usage.")
+	}
+	if strings.TrimSpace(backupPath) == "" {
+		return "", "", usageError("BACKUP is required", "Run 'baha app restore --help' for usage.")
+	}
+	return backupPath, name, nil
+}
+
+func hasOption(args []string, option string) bool {
+	for _, arg := range args {
+		if arg == option {
+			return true
+		}
+	}
+	return false
+}
+
+func formatBackupPreview(out io.Writer, m application.Manifest, outputPath string) {
+	selection, err := applicationbackup.DiscoverManifestRecovery(m)
+	if err != nil {
+		return
+	}
+	formatBackupPreviewSelection(out, m, outputPath, selection)
+}
+
+func formatBackupPreviewSelection(out io.Writer, m application.Manifest, outputPath string, selection applicationbackup.RecoverySelection) {
+	fmt.Fprintln(out, "Application backup")
+	fmt.Fprintf(out, "  Application: %s\n", m.Name)
+	fmt.Fprintf(out, "  Environment: %s\n", m.Environment)
+	fmt.Fprintf(out, "  Output: %s\n", outputPath)
+	postgres := application.SQLInstanceNames(m)
+	if len(postgres) == 0 {
+		fmt.Fprintln(out, "  PostgreSQL: none")
+	} else {
+		fmt.Fprintf(out, "  PostgreSQL: %s\n", strings.Join(postgres, ", "))
+	}
+	if m.Services.Secrets {
+		fmt.Fprintln(out, "  Managed secrets: included")
+	} else {
+		fmt.Fprintln(out, "  Managed secrets: none")
+	}
+	fmt.Fprintln(out, "  Recovery state:")
+	for _, contributor := range selection.Contributors {
+		state := "not selected"
+		if contributor.Selected {
+			state = "selected"
+		} else if contributor.Support != applicationbackup.RecoverySupported {
+			state = string(contributor.Support)
+		}
+		resource := ""
+		if contributor.LogicalResource != "" {
+			resource = "/" + contributor.LogicalResource
+		}
+		fmt.Fprintf(out, "    %s%s: %s", contributor.StateClass, resource, state)
+		if contributor.Reason != "" {
+			fmt.Fprintf(out, " (%s)", contributor.Reason)
+		}
+		fmt.Fprintln(out)
+	}
+	fmt.Fprintln(out, "  Impact: repository workload and secret broker may be stopped briefly for a consistent snapshot.")
+	fmt.Fprintln(out, "  Encryption: password entered with terminal echo disabled; the password is never placed in argv.")
+	fmt.Fprintln(out, "  Password: minimum 12 bytes (12+ ASCII characters recommended).")
+}
+
+func promptGuidedRecoverySelection(input io.Reader, out io.Writer, selection applicationbackup.RecoverySelection) (applicationbackup.RecoverySelection, error) {
+	file, ok := input.(*os.File)
+	if !ok {
+		return applicationbackup.RecoverySelection{}, errors.New("guided recovery selection requires terminal input")
+	}
+	reader := bufio.NewReader(file)
+	seen := map[applicationbackup.RecoveryStateClass]bool{}
+	var include []applicationbackup.RecoveryStateClass
+	var exclude []applicationbackup.RecoveryStateClass
+	fmt.Fprintln(out, "Recovery selection")
+	for _, contributor := range selection.Contributors {
+		class := contributor.StateClass
+		if seen[class] {
+			continue
+		}
+		seen[class] = true
+		if class == applicationbackup.StateApplicationMetadata || class == applicationbackup.StatePKI {
+			continue
+		}
+		hasSupported := false
+		defaultSelected := false
+		for _, item := range selection.Contributors {
+			if item.StateClass != class || item.Support != applicationbackup.RecoverySupported {
+				continue
+			}
+			hasSupported = true
+			defaultSelected = defaultSelected || item.Selected
+		}
+		if !hasSupported {
+			continue
+		}
+		selected, err := promptYesNo(reader, out, "Include "+string(class)+"?", defaultSelected)
+		if err != nil {
+			return applicationbackup.RecoverySelection{}, err
+		}
+		if selected {
+			include = append(include, class)
+		} else {
+			exclude = append(exclude, class)
+		}
+	}
+	return selection.Apply(include, exclude)
+}
+
+func formatRestorePreview(out io.Writer, backupPath string, m application.Manifest, createdAt time.Time, entries []applicationbackup.Entry) {
+	absolutePath, err := filepath.Abs(backupPath)
+	if err != nil {
+		absolutePath = backupPath
+	}
+	fmt.Fprintln(out, "Restore preview")
+	fmt.Fprintf(out, "  Application: %s\n", m.Name)
+	fmt.Fprintf(out, "  Environment: %s\n", m.Environment)
+	fmt.Fprintf(out, "  Backup: %s\n", absolutePath)
+	fmt.Fprintf(out, "  Created: %s\n", createdAt.UTC().Format(time.RFC3339))
+	postgres := application.SQLInstanceNames(m)
+	sort.Strings(postgres)
+	if len(postgres) == 0 {
+		fmt.Fprintln(out, "  PostgreSQL: none")
+	} else {
+		fmt.Fprintf(out, "  PostgreSQL: %s\n", strings.Join(postgres, ", "))
+	}
+	includesSecrets := false
+	for _, entry := range entries {
+		if entry.Kind == "secrets" {
+			includesSecrets = true
+			break
+		}
+	}
+	if includesSecrets {
+		fmt.Fprintln(out, "  Managed secrets: included")
+	} else {
+		fmt.Fprintln(out, "  Managed secrets: none")
+	}
+	fmt.Fprintln(out, "  Impact: matching managed backends, secret scope and repository workload are stopped/recreated as required by restore.")
+	fmt.Fprintln(out, "  Verification: archive integrity is already validated; runtime identities are regenerated and readiness must pass before success is reported.")
+}
+
+func formatRecoveryManifestPreview(out io.Writer, manifest applicationbackup.RecoveryManifest) {
+	fmt.Fprintln(out, "  Recovery state:")
+	for _, contributor := range manifest.Contributors {
+		state := "not selected"
+		if contributor.Selected {
+			state = "selected"
+		} else if contributor.Support != applicationbackup.RecoverySupported {
+			state = string(contributor.Support)
+		}
+		resource := ""
+		if contributor.LogicalResource != "" {
+			resource = "/" + contributor.LogicalResource
+		}
+		fmt.Fprintf(out, "    %s%s: %s", contributor.StateClass, resource, state)
+		if contributor.Reason != "" {
+			fmt.Fprintf(out, " (%s)", contributor.Reason)
+		}
+		fmt.Fprintln(out)
+	}
+}
+
+func promptGuidedConfirmation(input io.Reader, out io.Writer, label string, defaultYes bool) (bool, error) {
+	file, ok := input.(*os.File)
+	if !ok {
+		return false, errors.New("guided confirmation requires terminal input")
+	}
+	prompt := " [y/N]: "
+	if defaultYes {
+		prompt = " [Y/n]: "
+	}
+	fmt.Fprint(out, label+prompt)
+	reader := bufio.NewReader(file)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	value := strings.ToLower(strings.TrimSpace(line))
+	if value == "" {
+		return defaultYes, nil
+	}
+	switch value {
+	case "y", "yes":
+		return true, nil
+	case "n", "no":
+		return false, nil
+	default:
+		return false, errors.New("confirmation must be yes or no")
+	}
+}
+
+func readBackupPasswordFromTerminal(out io.Writer, confirm bool) ([]byte, error) {
+	file, ok := guidedBackupInput.(*os.File)
+	if !ok {
+		return nil, errors.New("secure backup password entry requires a terminal")
+	}
+	for {
+		first, err := readHiddenTerminalLine(file, out, "Backup password (minimum 12 bytes): ")
+		if err != nil {
+			return nil, err
+		}
+		if len(first) < 12 {
+			zeroBytes(first)
+			fmt.Fprintln(out, "[WARN] Password is too short. Use at least 12 bytes (12+ ASCII characters recommended) and try again.")
+			continue
+		}
+		if !confirm {
+			return first, nil
+		}
+		second, err := readHiddenTerminalLine(file, out, "Confirm backup password: ")
+		if err != nil {
+			zeroBytes(first)
+			return nil, err
+		}
+		if !bytes.Equal(first, second) {
+			zeroBytes(first)
+			zeroBytes(second)
+			fmt.Fprintln(out, "[WARN] Password confirmation does not match. Please enter the password again.")
+			continue
+		}
+		zeroBytes(second)
+		return first, nil
+	}
+}
+
+func runGuidedActivity(ctx context.Context, out io.Writer, label string, fn func(io.Writer) error) error {
+	term := cli.NewTerminal(ctx, out, out)
+	return term.Activity(ctx, label, fn)
+}
+func readHiddenTerminalLine(file *os.File, out io.Writer, prompt string) ([]byte, error) {
+	return readHiddenTerminalLineBuffered(file, bufio.NewReader(file), out, prompt)
+}
+
+func readHiddenTerminalLineBuffered(file *os.File, reader *bufio.Reader, out io.Writer, prompt string) ([]byte, error) {
+	fd := int(file.Fd())
+	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return nil, fmt.Errorf("inspect terminal settings for secure password entry: %w", err)
+	}
+	original := *termios
+	hidden := *termios
+	hidden.Lflag &^= unix.ECHO | unix.ICANON | unix.ISIG
+	hidden.Iflag &^= unix.ICRNL | unix.IXON
+	hidden.Cc[unix.VMIN] = 1
+	hidden.Cc[unix.VTIME] = 0
+	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &hidden); err != nil {
+		return nil, fmt.Errorf("disable terminal echo for secure password entry: %w", err)
+	}
+	defer func() { _ = unix.IoctlSetTermios(fd, unix.TCSETS, &original) }()
+
+	fmt.Fprint(out, prompt)
+	line := make([]byte, 0, 64)
+	for {
+		b, readErr := reader.ReadByte()
+		if readErr != nil {
+			fmt.Fprintln(out)
+			zeroBytes(line)
+			if errors.Is(readErr, io.EOF) {
+				return nil, io.EOF
+			}
+			return nil, readErr
+		}
+		switch b {
+		case 3:
+			fmt.Fprintln(out)
+			zeroBytes(line)
+			return nil, context.Canceled
+		case '\r', '\n':
+			fmt.Fprintln(out)
+			if len(line) > maxBackupPasswordFileBytes {
+				zeroBytes(line)
+				return nil, errors.New("backup password is too large")
+			}
+			return line, nil
+		case 8, 127:
+			if len(line) > 0 {
+				line = line[:len(line)-1]
+			}
+		default:
+			line = append(line, b)
+			if len(line) > maxBackupPasswordFileBytes {
+				fmt.Fprintln(out)
+				zeroBytes(line)
+				return nil, errors.New("backup password is too large")
+			}
+		}
+	}
+}
+
+func withInMemoryPasswordFile(password []byte, fn func(string) error) error {
+	fd, err := unix.MemfdCreate("baseharbor-backup-password", unix.MFD_CLOEXEC)
+	if err != nil {
+		return fmt.Errorf("create in-memory backup password file: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "baseharbor-backup-password")
+	if file == nil {
+		_ = unix.Close(fd)
+		return errors.New("create in-memory backup password file handle")
+	}
+	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return fmt.Errorf("protect in-memory backup password file: %w", err)
+	}
+	if _, err := file.Write(password); err != nil {
+		return fmt.Errorf("write in-memory backup password file: %w", err)
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("rewind in-memory backup password file: %w", err)
+	}
+	path := fmt.Sprintf("/proc/self/fd/%d", fd)
+	return fn(path)
+}
+
+func defaultGuidedBackupPath(app, environment string, now time.Time) (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve user backup directory: %w", err)
+	}
+	dir := filepath.Join(filepath.Dir(base), "baseharbor-backups")
+	if xdg := strings.TrimSpace(os.Getenv("XDG_DATA_HOME")); xdg != "" {
+		if !filepath.IsAbs(xdg) {
+			return "", errors.New("XDG_DATA_HOME must be absolute for safe backup output")
+		}
+		dir = filepath.Join(xdg, "baseharbor", "backups")
+	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
+		dir = filepath.Join(home, ".local", "share", "baseharbor", "backups")
+	}
+	if err := ensureDefaultBackupOutsideGit(dir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("create backup directory: %w", err)
+	}
+	actualDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("resolve backup directory symlinks: %w", err)
+	}
+	if err := ensureDefaultBackupOutsideGit(actualDir); err != nil {
+		return "", err
+	}
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("backup directory must be owner-only (0700)")
+	}
+	filename := fmt.Sprintf("%s-%s-%s.bhbackup", app, environment, now.UTC().Format("20060102T150405Z"))
+	return filepath.Join(dir, filename), nil
+}

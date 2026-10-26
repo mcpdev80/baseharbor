@@ -1,0 +1,159 @@
+=== RUN   TestNativeBackendRetirementRetainsMeasuredCanonicalAbsence
+--- PASS: TestNativeBackendRetirementRetainsMeasuredCanonicalAbsence (0.10s)
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/malformed
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/foreign
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/environment
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/placements
+=== RUN   TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/unbounded
+--- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners (0.19s)
+    --- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/malformed (0.05s)
+    --- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/foreign (0.04s)
+    --- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/environment (0.04s)
+    --- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/placements (0.03s)
+    --- PASS: TestRetiredRuntimeHistoryRejectsForeignAndInvalidOwners/unbounded (0.04s)
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/missing
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/stopped
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/starting
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/unhealthy
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-project
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-service
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-name
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/docker/duplicate
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/missing
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/stopped
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/starting
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/unhealthy
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-project
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-service
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-name
+=== RUN   TestProviderContinuationRequiresEveryCanonicalMember/podman/duplicate
+--- PASS: TestProviderContinuationRequiresEveryCanonicalMember (0.00s)
+    --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/missing (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/stopped (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/starting (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/unhealthy (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-project (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-service (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/foreign-name (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/docker/duplicate (0.00s)
+    --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/missing (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/stopped (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/starting (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/unhealthy (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-project (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-service (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/foreign-name (0.00s)
+        --- PASS: TestProviderContinuationRequiresEveryCanonicalMember/podman/duplicate (0.00s)
+=== RUN   TestProviderContinuationRequiresSuccessfulOwnedInitCompletion
+--- PASS: TestProviderContinuationRequiresSuccessfulOwnedInitCompletion (0.00s)
+=== RUN   TestZeroContainerListingIsConfirmedByFreshListing
+--- PASS: TestZeroContainerListingIsConfirmedByFreshListing (0.00s)
+=== RUN   TestRuntimeRetirementVerifiesReleasedLogicalSQLWithoutStoppingRequiredCore
+--- PASS: TestRuntimeRetirementVerifiesReleasedLogicalSQLWithoutStoppingRequiredCore (0.05s)
+=== RUN   TestRuntimeRetirementVerifiesPreviouslyUnboundCoreSQLForHTTPOnlyApplication
+--- PASS: TestRuntimeRetirementVerifiesPreviouslyUnboundCoreSQLForHTTPOnlyApplication (0.06s)
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_logical_state
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/missing_container_measurement
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/estimated_zero
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/no_active_physical_consumer
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/module_has_containers
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_module_owner
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/physical_retirement_selected
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/wrong_released_capability
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_released_owner
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/remaining_SQL_reference
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_selected_target
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_physical_owner
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/missing_physical_owner
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/physical_owner_not_running
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/damaged_physical_owner
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_module_dependencies
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_physical_consumer
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/incomplete_plan
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/wrong_plan_target
+=== RUN   TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/damaged_shared_owner
+--- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease (1.06s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_logical_state (0.10s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/missing_container_measurement (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/estimated_zero (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/no_active_physical_consumer (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/module_has_containers (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_module_owner (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/physical_retirement_selected (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/wrong_released_capability (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_released_owner (0.06s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/remaining_SQL_reference (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_selected_target (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/foreign_physical_owner (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/missing_physical_owner (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/physical_owner_not_running (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/damaged_physical_owner (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_module_dependencies (0.06s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/unknown_physical_consumer (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/incomplete_plan (0.04s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/wrong_plan_target (0.05s)
+    --- PASS: TestRuntimeRetirementRejectsUnverifiedLogicalSQLRelease/damaged_shared_owner (0.05s)
+=== RUN   TestRuntimeRetirementStillRequiresMeasuredPhysicalAbsence
+--- PASS: TestRuntimeRetirementStillRequiresMeasuredPhysicalAbsence (0.05s)
+=== RUN   TestCMF19RuntimeDetectionFailureMustRemainUnverifiable
+--- PASS: TestCMF19RuntimeDetectionFailureMustRemainUnverifiable (0.04s)
+=== RUN   TestCMF19InspectorFailureMustRemainUnverifiable
+--- PASS: TestCMF19InspectorFailureMustRemainUnverifiable (0.02s)
+=== RUN   TestCMF19UnboundInstanceMustRemainUnverifiable
+--- PASS: TestCMF19UnboundInstanceMustRemainUnverifiable (0.02s)
+=== RUN   TestCMF19ForeignBindingsMustRemainUnverifiable
+--- PASS: TestCMF19ForeignBindingsMustRemainUnverifiable (0.03s)
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_instance
+=== RUN   TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_intent
+--- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable (0.07s)
+    --- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_instance (0.04s)
+    --- PASS: TestCMF19MissingInstanceOrIntentMustRemainUnverifiable/missing_intent (0.03s)
+=== RUN   TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence
+--- PASS: TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence (0.02s)
+=== RUN   TestCMF19WizardPreviewObservationIsCWDIndependent
+--- PASS: TestCMF19WizardPreviewObservationIsCWDIndependent (0.03s)
+=== RUN   TestCMF19TwoInstancesMustBothReceiveFacts
+--- PASS: TestCMF19TwoInstancesMustBothReceiveFacts (0.03s)
+=== RUN   TestCMF19SQLAndValkeyInstancesMustBothReceiveFacts
+--- PASS: TestCMF19SQLAndValkeyInstancesMustBothReceiveFacts (0.06s)
+=== RUN   TestCMF19MixedEligibilityMustNotTransferProof
+--- PASS: TestCMF19MixedEligibilityMustNotTransferProof (0.04s)
+=== RUN   TestCMF19MaterializationDiagnosticIsTypedMachineError
+--- PASS: TestCMF19MaterializationDiagnosticIsTypedMachineError (0.06s)
+=== RUN   TestCMF19RetainedOwnershipCannotBeAuthorizedByDiagnosticAlone
+--- PASS: TestCMF19RetainedOwnershipCannotBeAuthorizedByDiagnosticAlone (0.05s)
+=== RUN   TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement
+--- PASS: TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement (0.04s)
+=== RUN   TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement
+--- PASS: TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement (0.04s)
+=== RUN   TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic
+--- PASS: TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic (0.06s)
+=== RUN   TestCMF20WizardPreviewFootprintKeepsProjectionPreviewOnly
+--- PASS: TestCMF20WizardPreviewFootprintKeepsProjectionPreviewOnly (0.05s)
+=== RUN   TestCMF20RetirementMachineResultMustPreserveDiagnostic
+--- PASS: TestCMF20RetirementMachineResultMustPreserveDiagnostic (0.18s)
+=== RUN   TestCMF21ProjectionCannotAuthorizeProviderRetirement
+    cmf21_r2_test.go:67: fail-closed retirement authorization: The last consumer cannot be released without verified runtime and complete consumer inventory.
+--- PASS: TestCMF21ProjectionCannotAuthorizeProviderRetirement (0.06s)
+=== RUN   TestCMF21MeasuredRuntimeStillAuthorizesProviderRetirement
+--- PASS: TestCMF21MeasuredRuntimeStillAuthorizesProviderRetirement (1.00s)
+=== RUN   TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable
+--- PASS: TestWizardStoreNativeBackendInventoryENOENTWhileApplyStoreInspectable (0.04s)
+=== RUN   TestWizardNamedInstanceProjectsResourcesWithoutDisk
+--- PASS: TestWizardNamedInstanceProjectsResourcesWithoutDisk (0.04s)
+=== RUN   TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk
+--- PASS: TestWizardStoppedOwnedFromRegistryBoundInstanceWithoutDisk (0.03s)
+=== RUN   TestWizardUnverifiableWithoutIntentOrBoundInstance
+--- PASS: TestWizardUnverifiableWithoutIntentOrBoundInstance (0.18s)
+=== RUN   TestWizardRegistryBoundUnionProvableWithoutAnyDisk
+--- PASS: TestWizardRegistryBoundUnionProvableWithoutAnyDisk (0.04s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	3.795s

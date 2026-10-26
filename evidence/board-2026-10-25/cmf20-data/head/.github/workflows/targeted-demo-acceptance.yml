@@ -1,0 +1,354 @@
+name: "Targeted Atomic Gate"
+
+run-name: "targeted · ${{ github.ref_name }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: BaseHarbor branch/tag or full commit SHA; short SHAs are resolved to a ref before checkout
+        required: true
+        default: release/v0.4.21
+        type: string
+      demo_ref:
+        description: Exact baseharbor-demo commit SHA to test
+        required: true
+        type: string
+      runtime:
+        description: Gate execution class/runtime
+        required: true
+        default: docker
+        type: choice
+        options:
+          - static
+          - docker
+          - podman
+      gate:
+        description: Atomic gate from baseharbor-demo/tests/gate-resources.json
+        required: true
+        default: lifecycle
+        type: string
+  push:
+    branches:
+      - "runtime-validation/targeted/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baseharbor-release-qualification
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      demo_ref: ${{ steps.resolve.outputs.demo_ref }}
+      runtime: ${{ steps.resolve.outputs.runtime }}
+      gate: ${{ steps.resolve.outputs.gate }}
+      gates: ${{ steps.resolve.outputs.gates }}
+    steps:
+      - name: Checkout gate tooling for ref resolution and pinned demo ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_REF: ${{ inputs.ref }}
+          DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
+          DISPATCH_RUNTIME: ${{ inputs.runtime }}
+          DISPATCH_GATE: ${{ inputs.gate }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            ref="$(python3 scripts/targeted-gate-ref.py --ref "$DISPATCH_REF")"
+            demo_ref="$DISPATCH_DEMO_REF"
+            runtime="$DISPATCH_RUNTIME"
+            gate="$DISPATCH_GATE"
+          else
+            prefix="runtime-validation/targeted/"
+            case "$GITHUB_REF_NAME" in
+              "$prefix"*) ;;
+              *)
+                echo "Unsupported targeted validation branch: $GITHUB_REF_NAME" >&2
+                exit 2
+                ;;
+            esac
+            payload="${GITHUB_REF_NAME#"$prefix"}"
+            runtime="${payload%%/*}"
+            rest="${payload#*/}"
+            gate="${rest%%/*}"
+            ref="$GITHUB_SHA"
+            version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+            test -n "$version"
+            if [ "$version" = 0.4.24 ]; then
+              demo_ref="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/work/v0.4.24-ecosystem-release --jq '.object.sha')"
+              [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+              demo_core="$(gh api "repos/mcpdev80/baseharbor-demo/contents/baseharbor-core.ref?ref=$demo_ref" --jq '.content' | base64 --decode | tr -d '[:space:]')"
+              test "$demo_core" = "$ref"
+            elif [ "$version" = 0.4.25 ] || [ "$version" = 0.4.26 ]; then
+              python3 scripts/ecosystem_release_pins.py --tag "v$version" --core "$ref" \
+                --output "$RUNNER_TEMP/targeted-consumer-pins.json" > "$RUNNER_TEMP/targeted-consumers.json"
+              demo_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/targeted-consumers.json")"
+            else
+              demo_ref_file="docs/releases/v${version}.demo-ref"
+              test -s "$demo_ref_file"
+              demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
+            fi
+            [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+          fi
+
+          case "$runtime" in
+            static|docker|podman|batch) ;;
+            *)
+              echo "Unsupported targeted runtime: $runtime" >&2
+              exit 2
+              ;;
+          esac
+          test -n "$ref"
+          test -n "$demo_ref"
+          test -n "$gate"
+          if [ "$runtime" = batch ]; then
+            test "$EVENT_NAME" = push
+            test "$gate" = remaining
+            gates="$(python scripts/targeted-atomic-plan.py --tag "v$version")"
+          else
+            gates="$(python -c 'import json,sys; print(json.dumps([{"runtime":sys.argv[1],"gate":sys.argv[2]}]))' "$runtime" "$gate")"
+          fi
+          if [ "$gate" = "reference-journey" ]; then
+            case "$runtime" in docker|podman) ;; *) echo "The complete reference journey requires Docker or Podman." >&2; exit 2 ;; esac
+          fi
+          {
+            echo "ref=$ref"
+            echo "demo_ref=$demo_ref"
+            echo "runtime=$runtime"
+            echo "gate=$gate"
+            echo "gates=$gates"
+          } >> "$GITHUB_OUTPUT"
+
+  selected_gate:
+    if: needs.resolve.outputs.gate != 'reference-journey'
+    needs: resolve
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.resolve.outputs.gates) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    with:
+      ref: ${{ needs.resolve.outputs.ref }}
+      demo_ref: ${{ needs.resolve.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: ""
+
+  reference_journey:
+    name: Reference Journey · ${{ needs.resolve.outputs.runtime }} · Full E2E
+    if: needs.resolve.outputs.gate == 'reference-journey'
+    needs: resolve
+    runs-on: ${{ needs.resolve.outputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 120
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ needs.resolve.outputs.runtime }}
+      BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      - name: Verify Podman Quadlet runtime
+        id: quadlet
+        if: needs.resolve.outputs.runtime == 'podman'
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/atomic-podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          verify_units="$RUNNER_TEMP/atomic-quadlet-verify"
+          rm -rf "$verify_units"
+          mkdir -p "$verify_units"
+          QUADLET_UNIT_DIRS="$verify_units" "$generator" --user --dryrun >/tmp/atomic-podman-quadlet.txt
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in BaseHarbor Podman acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Reset journey runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ needs.resolve.outputs.runtime }}"
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build exact candidate and runtime image
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          version="$(awk '/^## \[[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?\]/{line=$0; sub(/^## \[/, "", line); sub(/\].*$/, "", line); print line; exit}' CHANGELOG.md)"
+          test -n "$version"
+          out="$RUNNER_TEMP/pre-release-candidate"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath \
+            -ldflags="-s -w -X main.version=v$version -X main.commit=$candidate_sha -X main.date=unknown" \
+            -o "$out/baha" ./cmd/baha
+          "$out/baha" version | grep -F "$candidate_sha"
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
+          "$BASEHARBOR_TEST_RUNTIME" image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
+          echo "sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout exact demo revision
+        id: demo
+        shell: bash
+        env:
+          DEMO_REF: ${{ needs.resolve.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          [[ "$DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          workdir="$RUNNER_TEMP/baseharbor-demo-reference"
+          rm -rf "$workdir"
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$workdir"
+          git -C "$workdir" fetch --depth 1 origin "$DEMO_REF"
+          git -C "$workdir" checkout --detach FETCH_HEAD
+          test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
+          echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
+
+      - name: Run complete reference journey
+        id: journey
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          export ARTIFACT_DIR="$RUNNER_TEMP/baseharbor-reference-artifacts"
+          workdir="${{ steps.demo.outputs.workdir }}"
+          cd "$workdir"
+          started=$(date +%s)
+          set +e
+          BASEHARBOR_PREBUILT_BINARY="$RUNNER_TEMP/pre-release-candidate/baha" \
+          BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA" \
+          BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE" \
+          BASEHARBOR_TEST_RUNTIME="${{ needs.resolve.outputs.runtime }}" \
+            bash scripts/acceptance.sh
+          result=$?
+          set -e
+          echo "duration_seconds=$(( $(date +%s) - started ))" >> "$GITHUB_OUTPUT"
+          exit "$result"
+
+      - name: Collect reference journey diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/config"
+          export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/data"
+          export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-reference-xdg/cache"
+          bash scripts/ci-failure-diagnostics.sh \
+            "${{ needs.resolve.outputs.runtime }}" \
+            "$RUNNER_TEMP/reference-journey-diagnostics" \
+            "${{ steps.demo.outputs.workdir }}" \
+            "$RUNNER_TEMP/pre-release-candidate/baha" || true
+
+      - name: Show original assertion before cleanup
+        if: failure()
+        shell: bash
+        run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup journey runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh "${{ needs.resolve.outputs.runtime }}"
+
+      - name: Generate reference journey evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/reference-journey-evidence"
+          mkdir -p "$out"
+          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
+          cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
+          cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
+          jq -n \
+            --arg schema "baseharbor.pre-release.reference-journey/v1" \
+            --arg candidate_sha "${{ steps.candidate.outputs.sha }}" \
+            --arg demo_ref "${{ needs.resolve.outputs.demo_ref }}" \
+            --arg outcome "${{ steps.journey.outcome }}" \
+            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
+            --arg runtime "${{ needs.resolve.outputs.runtime }}" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg duration_seconds "${{ steps.journey.outputs.duration_seconds }}" \
+            '{
+              schema: $schema,
+              candidate_sha: $candidate_sha,
+              demo_ref: $demo_ref,
+              runtime: $runtime,
+              workflow_run_id: $run_id,
+              workflow_run_attempt: $run_attempt,
+              cleanup_outcome: $cleanup_outcome,
+              duration_seconds: (if $duration_seconds == "" then null else ($duration_seconds | tonumber) end),
+              outcome: $outcome
+            }' > "$out/manifest.json"
+
+      - name: Summarize journey groups and duration
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY_SUMMARY'
+          import csv, os, pathlib
+          report = pathlib.Path(os.environ['RUNNER_TEMP']) / 'baseharbor-reference-artifacts/groups.tsv'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('### Full journey · ${{ needs.resolve.outputs.runtime }}\n\n')
+              output.write('Duration: ${{ steps.journey.outputs.duration_seconds }} seconds. Cleanup: ${{ steps.cleanup.outcome }}.\n\n')
+              output.write('| Group | Result |\n| --- | --- |\n')
+              if report.is_file():
+                  for row in csv.reader(report.open(), delimiter='\t'):
+                      if len(row) >= 2 and row[0].startswith('demo-') and row[1] in ('PASS', 'FAIL', 'ERROR', 'BLOCKED', 'SKIP'):
+                          name = ''.join(c for c in row[0] if c.isalnum() or c == '-')[:80]
+                          output.write(f'| {name} | {row[1]} |\n')
+              else:
+                  output.write('| Setup | No group report; inspect the first failed step |\n')
+          PY_SUMMARY
+
+      - name: Upload reference journey evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-reference-journey-evidence-${{ needs.resolve.outputs.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/reference-journey-evidence
+          if-no-files-found: error
+          retention-days: 30

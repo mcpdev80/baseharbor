@@ -1,0 +1,34 @@
+Create a new application
+
+Application name: new-cancel
+Project location:~$ [2KProject location:~$ /[2KProject location:~$ /h[2KProject location:~$ /ho[2KProject location:~$ /hom[2KProject location:~$ /home[2KProject location:~$ /home/[2KProject location:~$ /home/m[2KProject location:~$ /home/ma[2KProject location:~$ /home/mar[2KProject location:~$ /home/marc[2KProject location:~$ /home/marce[2KProject location:~$ /home/marcel[2KProject location:~$ /home/marcel/[2KProject location:~$ /home/marcel/t[2KProject location:~$ /home/marcel/tm[2KProject location:~$ /home/marcel/tmp[2KProject location:~$ /home/marcel/tmp-[2KProject location:~$ /home/marcel/tmp-o[2KProject location:~$ /home/marcel/tmp-op[2KProject location:~$ /home/marcel/tmp-ops[2KProject location:~$ /home/marcel/tmp-ops/[2KProject location:~$ /home/marcel/tmp-ops/d[2KProject location:~$ /home/marcel/tmp-ops/de[2KProject location:~$ /home/marcel/tmp-ops/dem[2KProject location:~$ /home/marcel/tmp-ops/demo[2KProject location:~$ /home/marcel/tmp-ops/demo-[2KProject location:~$ /home/marcel/tmp-ops/demo-r[2KProject location:~$ /home/marcel/tmp-ops/demo-ru[2KProject location:~$ /home/marcel/tmp-ops/demo-run[2KProject location:~$ /home/marcel/tmp-ops/demo-run/[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.n[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.ne[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-e[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-ed[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edi[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-f[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fi[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fix[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixt[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtu[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtur[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixture[2KProject location:~$ /home/marcel/tmp-ops/demo-run/.new-edit-fixtures
+Project root: ~/tmp-ops/demo-run/.new-edit-fixtures/new-cancel
+
+Choose a stack
+  1. go (built-in)
+  2. nextjs (built-in)
+  3. python (built-in)
+  4. quarkus (built-in)
+  5. Create a new stack...
+Selection [1]: 1
+After creation (create-only or run) [create-only]: run
+[?2026$p[?2027$p[?25l[?5W[?2004h[>4;2m[>1u[?u[JWhat does your application need?
+↑/↓ move · Space toggle · Enter confirm · no selection is OK
+
+> [ ] SQL database — Store relational application data
+  [ ] Cache — Cache temporary application data
+  [ ] Protected application secrets — Store application secret values (not service credentials)
+  [ ] Application login — Sign in application end users via OIDC
+  [x] TLS / HTTPS — Expose the application over HTTP with TLS
+  Show more supported needs…
+
+Application login is for end users; operator/team access and service credentials are separate settings.
+No SQL, identity service, secrets service or management stack is mandatory.
+
+exposure.http/web on Target atomic-docker-data-capabilities — Automatic
+Selected: caddy/application/c5d40934-919f-4025-b3cf-c1eb6218bcb0/dev-ef260e9a
+Reason: Automatic: resolved by existing application authority
+[x] caddy/application/c5d40934-919f-4025-b3cf-c1eb6218bcb0/dev-ef260e9a (caddy): caddy supports exposure.http (scope: application)
+
+P: optional provider preference · Esc/Ctrl+C: cancel[>4m[<1u
+[J[?25h[?2004lNo changes were made.

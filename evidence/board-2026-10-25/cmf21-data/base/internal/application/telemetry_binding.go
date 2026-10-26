@@ -1,0 +1,241 @@
+package application
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/externalprovider"
+)
+
+const (
+	OTLPProviderEnv = "BASEHARBOR_OTLP_PROVIDER"
+	OTLPEndpointEnv = "BASEHARBOR_OTLP_ENDPOINT"
+)
+
+func TelemetryProviderForDeployment() capability.Provider {
+	if strings.TrimSpace(os.Getenv(ProviderExternalReferenceEnv(capability.ProviderExternalOTLP))) != "" || strings.TrimSpace(os.Getenv(OTLPEndpointEnv)) != "" || strings.EqualFold(strings.TrimSpace(os.Getenv(OTLPProviderEnv)), "external") {
+		return capability.ExternalOTLP
+	}
+	return capability.OTelCollector
+}
+
+func ExternalOTLPEndpoint() string {
+	return strings.TrimSpace(os.Getenv(OTLPEndpointEnv))
+}
+
+func MaterializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.ProviderKind, hostEndpoint, containerEndpoint string) error {
+	return materializeOTLPBinding(m, files, provider, hostEndpoint, containerEndpoint, "")
+}
+
+// Authorization belongs to the existing protected deployment projections, never
+// the portable manifest or public provider registration.
+func MaterializeExternalOTLPBinding(m Manifest, files RuntimeFiles, endpoint, headers string) error {
+	return materializeOTLPBinding(m, files, capability.ProviderExternalOTLP, endpoint, endpoint, headers)
+}
+
+func materializeOTLPBinding(m Manifest, files RuntimeFiles, provider capability.ProviderKind, hostEndpoint, containerEndpoint, headers string) error {
+	if !HasOTLPTelemetry(m) {
+		return nil
+	}
+	hostEndpoint = strings.TrimSpace(hostEndpoint)
+	containerEndpoint = strings.TrimSpace(containerEndpoint)
+	if hostEndpoint == "" || containerEndpoint == "" {
+		return fmt.Errorf("OTLP binding endpoint is incomplete")
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	values["OTLP_PROVIDER"] = string(provider)
+	values["OTLP_HOST_ENDPOINT"] = hostEndpoint
+	values["OTLP_CONTAINER_ENDPOINT"] = containerEndpoint
+	delete(values, "OTLP_HEADERS")
+	if provider == capability.ProviderExternalOTLP && headers != "" {
+		values["OTLP_HEADERS"] = headers
+	}
+	if provider == capability.ProviderExternalOTLP {
+		// Retain owned files for recovery, but never deliver the managed
+		// collector's private identity to a different external authority.
+		delete(values, OTLPTLSHostCAEnv)
+		delete(values, OTLPTLSHostClientCertEnv)
+		delete(values, OTLPTLSHostClientKeyEnv)
+	}
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		return err
+	}
+	appEnv, err := loadApplicationEnvValues(files.ApplicationEnv)
+	if err != nil {
+		return err
+	}
+	appEnv["OTEL_EXPORTER_OTLP_ENDPOINT"] = hostEndpoint
+	appEnv["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
+	appEnv["OTEL_SERVICE_NAME"] = m.Name
+	appEnv["OTEL_RESOURCE_ATTRIBUTES"] = telemetryResourceAttributes(m, "", string(provider))
+	delete(appEnv, "OTEL_EXPORTER_OTLP_HEADERS")
+	if provider == capability.ProviderExternalOTLP && headers != "" {
+		appEnv["OTEL_EXPORTER_OTLP_HEADERS"] = headers
+	}
+	projectOTLPHostTLS(appEnv, values)
+	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
+}
+
+const (
+	OTLPTLSHostCAEnv         = "OTLP_TLS_CA_FILE"
+	OTLPTLSHostClientCertEnv = "OTLP_TLS_CLIENT_CERT_FILE"
+	OTLPTLSHostClientKeyEnv  = "OTLP_TLS_CLIENT_KEY_FILE"
+
+	OTLPTLSContainerCA         = "/run/baseharbor/bindings/telemetry/ca.pem"
+	OTLPTLSContainerClientCert = "/run/baseharbor/bindings/telemetry/client-cert.pem"
+	OTLPTLSContainerClientKey  = "/run/baseharbor/bindings/telemetry/client-key.pem"
+)
+
+func MaterializeOTLPTLSBinding(m Manifest, files RuntimeFiles, caFile, clientCertFile, clientKeyFile string) error {
+	caData, err := readOTLPTLSMaterialFile(caFile, "ca.pem")
+	if err != nil {
+		return err
+	}
+	certData, err := readOTLPTLSMaterialFile(clientCertFile, "client-cert.pem")
+	if err != nil {
+		return err
+	}
+	keyData, err := readOTLPTLSMaterialFile(clientKeyFile, "client-key.pem")
+	if err != nil {
+		return err
+	}
+	return MaterializeOTLPTLSBindingMaterial(m, files, caData, certData, keyData)
+}
+
+func MaterializeOTLPTLSBindingMaterial(m Manifest, files RuntimeFiles, caData, clientCertData, clientKeyData []byte) error {
+	if !HasOTLPTelemetry(m) {
+		return nil
+	}
+	if len(caData) == 0 && len(clientCertData) == 0 {
+		return fmt.Errorf("OTLP TLS trust or client identity is required")
+	}
+	if len(caData) > 0 {
+		if err := externalprovider.ValidatePublicTrustMaterial(caData); err != nil {
+			return err
+		}
+	}
+	if len(clientCertData) > 0 {
+		if err := externalprovider.ValidatePublicTrustMaterial(clientCertData); err != nil {
+			return err
+		}
+	}
+	if (len(clientCertData) == 0) != (len(clientKeyData) == 0) {
+		return fmt.Errorf("OTLP TLS client certificate and key must be provided together")
+	}
+	if err := ValidateOTLPTLSProjection(files); err != nil {
+		return err
+	}
+	dir := filepath.Join(files.Bindings, "telemetry")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("create OTLP TLS binding directory: %w", err)
+	}
+	if err := ValidateOTLPTLSProjection(files); err != nil {
+		return err
+	}
+	project := func(data []byte, name string) (string, error) {
+		if len(data) == 0 {
+			return "", nil
+		}
+		if len(strings.TrimSpace(string(data))) == 0 {
+			return "", fmt.Errorf("OTLP TLS %s is empty", name)
+		}
+		target := filepath.Join(dir, name)
+		if err := writeOwnerOnlyFile(target, data); err != nil {
+			return "", err
+		}
+		// The enclosing directory remains owner-only while the bind-mounted file
+		// must be readable by an arbitrary non-root workload UID.
+		if err := os.Chmod(target, 0o644); err != nil {
+			return "", err
+		}
+		return target, nil
+	}
+	ca, err := project(caData, "ca.pem")
+	if err != nil {
+		return err
+	}
+	cert, err := project(clientCertData, "client-cert.pem")
+	if err != nil {
+		return err
+	}
+	key, err := project(clientKeyData, "client-key.pem")
+	if err != nil {
+		return err
+	}
+
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	if ca != "" {
+		values[OTLPTLSHostCAEnv] = ca
+	} else {
+		delete(values, OTLPTLSHostCAEnv)
+	}
+	if cert != "" {
+		values[OTLPTLSHostClientCertEnv] = cert
+		values[OTLPTLSHostClientKeyEnv] = key
+	} else {
+		delete(values, OTLPTLSHostClientCertEnv)
+		delete(values, OTLPTLSHostClientKeyEnv)
+	}
+	if err := writeRuntimeEnv(files.Env, m, values); err != nil {
+		return err
+	}
+	appEnv, err := loadApplicationEnvValues(files.ApplicationEnv)
+	if err != nil {
+		return err
+	}
+	projectOTLPHostTLS(appEnv, values)
+	return writeApplicationEnvValues(files.ApplicationEnv, appEnv)
+}
+
+func projectOTLPHostTLS(appEnv, values map[string]string) {
+	for host, otel := range map[string]string{OTLPTLSHostCAEnv: "OTEL_EXPORTER_OTLP_CERTIFICATE", OTLPTLSHostClientCertEnv: "OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE", OTLPTLSHostClientKeyEnv: "OTEL_EXPORTER_OTLP_CLIENT_KEY"} {
+		delete(appEnv, otel)
+		if values[host] != "" {
+			appEnv[otel] = values[host]
+		}
+	}
+}
+
+func readOTLPTLSMaterialFile(path, name string) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, nil
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect OTLP TLS %s: %w", name, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("OTLP TLS %s must be a regular non-symlink file", name)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read OTLP TLS %s: %w", name, err)
+	}
+	return data, nil
+}
+
+func telemetryResourceAttributes(m Manifest, service, provider string) string {
+	attributes := []string{
+		"service.namespace=" + m.Name,
+		"deployment.environment.name=" + m.Environment,
+		"baseharbor.application=" + m.Name,
+		"baseharbor.resource=telemetry.otlp/default",
+	}
+	if strings.TrimSpace(provider) != "" {
+		attributes = append(attributes, "baseharbor.provider="+strings.TrimSpace(provider))
+	}
+	if strings.TrimSpace(service) != "" {
+		attributes = append(attributes, "baseharbor.workload.service="+strings.TrimSpace(service))
+	}
+	return strings.Join(attributes, ",")
+}

@@ -1,0 +1,15 @@
+{
+  "journey": "real-cli-native-sql-new-edit",
+  "target": "atomic-docker-data-capabilities",
+  "application_id": "c360a39b-ca17-4a18-83be-cf8c1a0d2c06",
+  "application_provider": "postgresql/application/c360a39b-ca17-4a18-83be-cf8c1a0d2c06/dev-ef260e9a/default-37a8eec1",
+  "shared_provider": "postgresql/shared/environment-dev-91df0423",
+  "add_remove_switch": true,
+  "no_cancel_unchanged": true,
+  "own_sql_marker_preserved": true,
+  "shared_sql_marker_preserved": true,
+  "sibling_sql_preserved": true,
+  "foreign_paused_container_and_volume_preserved": true,
+  "cli_json_mcp_footprint_parity": true,
+  "native_runtime_qualified": true
+}

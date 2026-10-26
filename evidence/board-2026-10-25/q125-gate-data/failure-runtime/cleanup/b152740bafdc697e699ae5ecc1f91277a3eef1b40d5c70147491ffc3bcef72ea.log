@@ -1,0 +1,10 @@
+setting http auth from file
+node ./bin/redis-commander  
+Starting with NODE_ENV=production and config NODE_APP_INSTANCE=undefined
+Using scan instead of keys
+No Save: true
+listening on 0.0.0.0:8081
+access with browser at http://127.0.0.1:8081
+Redis Connection shared-valkey-core-shared-default-access:6379 with TLS using Redis DB #0
+setUpConnection (R:shared-valkey-core-shared-default-access:6379:0) Redis error Error: connect ECONNREFUSED 172.18.0.10:6379
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1636:16)

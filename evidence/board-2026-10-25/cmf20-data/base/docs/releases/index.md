@@ -1,0 +1,36 @@
+# Release notes
+
+[v0.4.26](v0.4.26.md) — application needs wizard, Edit, Footprint and targeted development checks.
+
+[v0.4.25](v0.4.25.md) — Core-less application path and minimal authoring.
+
+
+Release notes describe versioned behavior. See [GitHub releases](https://github.com/mcpdev80/baseharbor/releases) for published versions and [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan) for future planning.
+
+[v0.4.24](v0.4.24.md) — developer highlights and compatibility notes.
+
+- [v0.4.23](v0.4.23.md)
+- [v0.4.22](v0.4.22.md)
+- [v0.4.21](v0.4.21.md)
+- [v0.4.20](v0.4.20.md)
+- [v0.4.19](v0.4.19.md)
+- [v0.4.18](v0.4.18.md)
+- [v0.4.17](v0.4.17.md)
+- [v0.4.16](v0.4.16.md)
+- [v0.4.15.1](v0.4.15.1.md)
+- [v0.4.15](v0.4.15.md)
+- [v0.4.14](v0.4.14.md)
+- [v0.4.13](v0.4.13.md)
+- [v0.4.12](v0.4.12.md)
+- [v0.4.11](v0.4.11.md)
+- [v0.4.10](v0.4.10.md)
+- [v0.4.9](v0.4.9.md)
+- [v0.4.8](v0.4.8.md)
+- [v0.4.7](v0.4.7.md)
+- [v0.4.6](v0.4.6.md)
+- [v0.4.5](v0.4.5.md)
+- [v0.4.4](v0.4.4.md)
+- [v0.4.3](v0.4.3.md)
+- [v0.4.2](v0.4.2.md)
+- [v0.4.1](v0.4.1.md)
+- [v0.4.0](v0.4.0.md)

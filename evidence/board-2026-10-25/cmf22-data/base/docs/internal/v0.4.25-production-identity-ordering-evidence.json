@@ -1,0 +1,156 @@
+{
+  "schema_version": "v0.4.25-production-identity-ordering-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "scope": [
+    "Nondev managed Keycloak public callbacks defer readiness until actual exposure convergence",
+    "Initial identity binding preserves verified protected existing exposure origins on reapply; missing fresh owner differs from damaged existing owner",
+    "Final identity reconciliation requires matching actual public route identity, target, protocol, host and published port",
+    "Changed actual origins use common Keycloak capability reconciliation before verify/READY",
+    "Separate production BYOC native fixture uses actual protected callback endpoint, strict CA/hostname TLS verification, end-user authorization-code/S256 PKCE, signed ID-token/userinfo and retained reapply/up client/session checks"
+  ],
+  "source_regressions": [
+    "No identity READY or Verify before actual public exposure",
+    "Foreign route, missing port/host, nondev HTTPS backed by HTTP and failed actual identity verification reject READY",
+    "Actual Caddy renderer protected owner read-only origin resolution preserves State/Compose/ENV bytes",
+    "Damaged existing Caddy compose owner cannot be treated as fresh empty callback authority",
+    "Direct identity convergence cannot approve unrealized production callback"
+  ],
+  "failed_or_incomplete_source_attempts": [
+    {
+      "commit": "650c37c34b1128c4886e6fa9d5a5249700f3ebc7",
+      "tree": "6b05d4784442370c60402b0fdbdaa847f4365e58",
+      "run_id": 38165367168,
+      "source_job_id": 114546709312,
+      "conclusion": "cancelled",
+      "passed": [
+        "formatting",
+        "readability",
+        "full source unit/vet checks",
+        "existing authority/Node races",
+        "documentation/policy checks"
+      ],
+      "failure": "Next temporary push cancelled incomplete snapshot build; no full qualification claimed."
+    },
+    {
+      "commit": "16f6be340fb8254e09888b443130799becb1dbce",
+      "run_id": 38165746095,
+      "source_job_id": 114547839183,
+      "workflow_policy_job_id": 114547839375,
+      "conclusion": "failure",
+      "failure": "Production fixture gofmt plus accidental workflow replacement expansion; only isolated branch affected, canonical untouched."
+    },
+    {
+      "commit": "21842bbc914f2fca0bf128085fa111a3f4505e17",
+      "tree": "90046af58580480ded3f284d03c3a3dcd358bb6d",
+      "run_id": 38165926972,
+      "source_job_id": 114548356880,
+      "conclusion": "failure",
+      "failure": "Unused fixture runtime import; full other package units passed but command package build failed. Corrected without production changes."
+    }
+  ],
+  "limitations": [
+    "Fixture callback workload does not implement a product OAuth callback handler; login redirect and code exchange are verified at actual Keycloak, while separate strict TLS probe verifies actual public endpoint transport.",
+    "Production BYOC/OAuth runtime scope is qualified at the exact native source above; source fixtures alone do not supply that proof.",
+    "No native browser/Console/NodeConnector or final ecosystem readiness claimed."
+  ],
+  "integration": {
+    "planned_parent": "cbfa40dbf34fdb92bece8c1cae620d9860c8818e",
+    "planned_parent_tree": "e515f3c8f84c45559b5191419019fdf8009bb840",
+    "method": "Narrow eight-path lease integration after full qualified source run; unchanged canonical source and peer evidence preserved.",
+    "source_blob_shas": [
+      {
+        "path": "cmd/baha/app_identity.go",
+        "sha": "502ad7ecbe0d98c6b20563949ea2a14013aae37f"
+      },
+      {
+        "path": "cmd/baha/app_identity_exposure_order.go",
+        "sha": "647da2d390cf54534843bd038c9d50254beefe96"
+      },
+      {
+        "path": "cmd/baha/app_apply_lifecycle.go",
+        "sha": "43784aab1b13f6de3d69b9bb3d6228caab31d36a"
+      },
+      {
+        "path": "cmd/baha/app_up_lifecycle.go",
+        "sha": "c4aa67bbaa30d32e967cec484fd41d370858e7da"
+      },
+      {
+        "path": "cmd/baha/app_identity_exposure_order_test.go",
+        "sha": "6e3f0f6d307f43540b5934aa3511c2d95b6f434c"
+      },
+      {
+        "path": "cmd/baha/app_identity_oauth_runtime_test.go",
+        "sha": "baf9864d7a734303f8725d0603042e5e5f4e8d7d"
+      },
+      {
+        "path": "cmd/baha/app_identity_production_runtime_test.go",
+        "sha": "e4660011ce6014929414b4cea9bfa340afc0133a"
+      },
+      {
+        "path": ".github/workflows/targeted-integration.yml",
+        "sha": "86060ed2b01df863e1f1e61603f9ba56b5a4d485"
+      }
+    ]
+  },
+  "qualified_source": {
+    "commit": "a1f9679788cf17b8223bbc02f7a2acd79532efb3",
+    "tree": "141a99ae5d8d3c48f2a1b95b7d20a62f1b29d6a2",
+    "run_id": 38166126716,
+    "run_attempt": 1,
+    "source_job_id": 114548955176,
+    "workflow_policy_job_id": 114548955075,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38166126716",
+    "checks": [
+      "Formatting/readability/full contract/internal/spec/command package units and vet with database fixture",
+      "Existing enrollment/operator and Node authority race checks",
+      "Strict EN and DE builds, 155-page parity/technical integrity/documentation audit",
+      "Workflow policy/actionlint and Linux release snapshot/exact candidate binary build"
+    ],
+    "artifact_scope": "Existing source-preflight checks build ephemeral snapshot archives; no uploaded release assets or native evidence."
+  },
+  "qualified_native_attempts": [
+    {
+      "commit": "01d343e9c28d86855ee9e81da9f1343e3abd9a04",
+      "tree": "21a40c98d6b400e597755fb994d2c52ee8fc0f96",
+      "run_id": 38166594982,
+      "run_attempt": 1,
+      "conclusion": "success",
+      "url": "https://github.com/mcpdev80/baseharbor/actions/runs/38166594982",
+      "scope": "Actual production-environment BYOC callback and end-user OAuth across apply/reapply/up, retaining canonical identity, provider ENV, client secret, user subject and refresh session; successful actual container cleanup.",
+      "engines": [
+        {
+          "runtime": "docker",
+          "job_id": 114550320554,
+          "test_seconds": 98.72,
+          "artifact_id": 11712392476,
+          "artifact_digest": "sha256:d9d159c3206b6bca7a6148cfb0a3d1e612aa3658654c024b7bef349116dfa51e"
+        },
+        {
+          "runtime": "podman",
+          "job_id": 114550320387,
+          "test_seconds": 95.51,
+          "artifact_id": 11712841343,
+          "artifact_digest": "sha256:65482f19b6f1ff3a2955c54e67afe49eecfe6e1660a35c18bc42893566bc3aa9"
+        }
+      ],
+      "verified_assertions": [
+        "Fresh host Core/total container inventory 0/0",
+        "Actual protected Caddy owner supplies the registered public callback host/port; BYOC provider protocol is HTTPS",
+        "Separate real public callback request verifies CA/hostname TLS chain and workload transport without InsecureSkipVerify",
+        "Actual Keycloak user login rejects mismatched S256 PKCE then accepts a fresh correct auth-code flow",
+        "Actual signed ID token verifies issuer/client/nonce/subject with JWKS; actual userinfo subject matches",
+        "Reapply and up preserve provider ENV/client-secret hashes, registered callback, canonical app ID and real user subject",
+        "Retained refresh session works after reapply and up; fresh user login still succeeds",
+        "Test and cleanup passed on both engines; native cleanup requires zero remaining containers"
+      ],
+      "limitations": [
+        "The callback workload has no product OAuth handler UX; separate strict TLS probe and actual Keycloak redirect/code exchange are qualified independently.",
+        "Does not qualify controlled interrupted native recovery, shared development Identity last-consumer lifecycle, Console browser or NodeConnector mTLS acceptance.",
+        "No all-family or final ecosystem/pre-release claim."
+      ]
+    }
+  ]
+}

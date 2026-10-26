@@ -1,0 +1,689 @@
+package identityprovider
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/providertopology"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+const (
+	// Match the release catalog's immutable OCI index on both native engines.
+	KeycloakImage      = "quay.io/keycloak/keycloak:26.8.0@sha256:b0f60d489d51c5d113390bdf5461d4c06e6051be026c05549f2e1e10ec352bcc"
+	KeycloakService    = "keycloak"
+	keycloakPublicHost = "identity.localhost"
+	keycloakHTTPSPort  = 8443
+)
+
+// KeycloakRuntime is the legacy local-runtime realization used by the current
+// Docker/Podman reference implementation.
+type KeycloakRuntime interface {
+	ConfigProject(context.Context, string, string, string) error
+	UpProject(context.Context, string, string, string) error
+	DestroyProject(context.Context, string, string, string) error
+}
+
+// KeycloakLifecycle is the provider-realization boundary consumed by identity
+// semantics. It deliberately avoids Compose/project lifecycle vocabulary.
+type KeycloakLifecycle interface {
+	Validate(context.Context, KeycloakFiles) error
+	Apply(context.Context, KeycloakFiles) error
+	Destroy(context.Context, KeycloakFiles) error
+}
+
+type keycloakRuntimeLifecycle struct {
+	runtime KeycloakRuntime
+}
+
+func NewKeycloakLifecycle(runtime KeycloakRuntime) KeycloakLifecycle {
+	return keycloakRuntimeLifecycle{runtime: runtime}
+}
+
+func (l keycloakRuntimeLifecycle) Validate(ctx context.Context, files KeycloakFiles) error {
+	return l.runtime.ConfigProject(ctx, files.Project, files.Compose, files.Env)
+}
+
+func (l keycloakRuntimeLifecycle) Apply(ctx context.Context, files KeycloakFiles) error {
+	if files.SharedSQL != nil {
+		executor, ok := l.runtime.(bhruntime.SQLConsumerExecutor)
+		if !ok {
+			return errors.New("shared Identity requires the selected Core SQL execution capability")
+		}
+		values, err := readProtectedEnv(files.Env)
+		if err != nil {
+			return err
+		}
+		if err := bhruntime.EnsureCoreSQLConsumer(ctx, executor, *files.SharedSQL, values["BASEHARBOR_KEYCLOAK_DB_NAME"], values["BASEHARBOR_KEYCLOAK_DB_USER"], values["BASEHARBOR_KEYCLOAK_DB_PASSWORD"], "baseharbor:shared:identity:v1"); err != nil {
+			return err
+		}
+	}
+	return applyKeycloakBootstrap(ctx, l.runtime, files, func(ctx context.Context, files KeycloakFiles) error {
+		_, err := operatorKeycloakAdmin(ctx, files)
+		return err
+	})
+}
+
+func (l keycloakRuntimeLifecycle) Destroy(ctx context.Context, files KeycloakFiles) error {
+	return l.runtime.DestroyProject(ctx, files.Project, files.Compose, files.Env)
+}
+
+// Keycloak requires a TLS reload interval strictly above 30 seconds.
+const keycloakCertificateReloadPeriod = 35 * time.Second
+
+type KeycloakFiles struct {
+	SharedSQL          *bhruntime.Files
+	Dir                string
+	Compose            string
+	Env                string
+	Project            string
+	ConsumerNetwork    string
+	InternalNetwork    string
+	PublicPort         int
+	AdminPort          int
+	PublicURL          string
+	CanonicalPublicURL string
+	AdminURL           string
+	PublicAccess       serviceaccess.HTTPGatewayFiles
+	AdminAccess        serviceaccess.HTTPGatewayFiles
+}
+
+func EnsureKeycloakFilesAt(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string) (KeycloakFiles, error) {
+	placement, err := application.ResolveProviderPlacement(app, capability.ProviderKeycloak)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if placement.Scope == capability.ScopeExternal {
+		return KeycloakFiles{}, errors.New("external identity must use the external OIDC provider")
+	}
+	return ensureKeycloakFilesForPlacement(ctx, app, issuer, dataDir, namespace, placement)
+}
+
+func ensureKeycloakFilesForPlacement(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, dataDir, namespace string, placement capability.ProviderPlacement) (KeycloakFiles, error) {
+	var coreSQL *bhruntime.Files
+	if placement.Scope == capability.ScopeShared {
+		if dependency, ok := issuer.(bhruntime.CoreDependencyProvider); ok {
+			core, err := dependency.CoreRuntimeFiles()
+			if err != nil {
+				return KeycloakFiles{}, err
+			}
+			if core.Project != bhruntime.SharedProjectName(namespace) || core.ResourceProject != bhruntime.SharedResourceProjectName(namespace) {
+				return KeycloakFiles{}, errors.New("shared Identity dependency does not belong to the selected Target")
+			}
+			coreSQL = &core
+			if err := rejectLegacySharedIdentity(dataDir); err != nil {
+				return KeycloakFiles{}, err
+			}
+		}
+		// Shared boundaries separate consumers logically, never physically.
+		placement.SharingBoundary = "core"
+		app.Name, app.Environment = "core", "prod"
+	}
+	consumer, err := application.IdentityProviderNetworkNameForPlacement(app, namespace, placement)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	dir, project, err := keycloakStateIdentity(app, placement, dataDir, namespace)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return KeycloakFiles{}, fmt.Errorf("create Keycloak provider state: %w", err)
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return KeycloakFiles{}, err
+	}
+	files := KeycloakFiles{
+		SharedSQL:       coreSQL,
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "runtime.env"),
+		Project:         project,
+		ConsumerNetwork: consumer,
+		InternalNetwork: consumer + "-internal",
+	}
+	req := application.AvailabilityIntent(app).Resolve("identity")
+	if req.Instances > 0 && ((req.HA && req.Instances != 3) || (!req.HA && req.Instances != 1)) {
+		return KeycloakFiles{}, errors.New("Keycloak native topology cannot satisfy the requested instance override")
+	}
+	if _, err := providertopology.ResolveMembers(files.Compose, "keycloak", 3, req); err != nil {
+		return KeycloakFiles{}, err
+	}
+	values, err := readProtectedEnv(files.Env)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return KeycloakFiles{}, err
+	}
+	if values == nil {
+		values = map[string]string{}
+	}
+	previousSQL, err := existingKeycloakCoreSQL(values)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if previousSQL != nil && coreSQL == nil {
+		return KeycloakFiles{}, errors.New("existing Identity SQL binding requires its selected provider; refusing implicit migration")
+	}
+	// An existing HA data layer must never be implicitly replaced by a
+	// single-node PostgreSQL topology (or vice versa).
+	desiredTopology := "single"
+	if application.ComponentHA(app, "identity") {
+		desiredTopology = "ha"
+	}
+	if previous := values["BASEHARBOR_KEYCLOAK_TOPOLOGY"]; previous != "" && previous != desiredTopology {
+		return KeycloakFiles{}, fmt.Errorf("Keycloak topology transition %s -> %s requires explicit data migration and recovery", previous, desiredTopology)
+	}
+	if previous := values["BASEHARBOR_KEYCLOAK_TOPOLOGY"]; previous == "" {
+		if existing, readErr := os.ReadFile(files.Compose); readErr == nil {
+			oldTopology := "single"
+			if strings.Contains(string(existing), "keycloak-db-member-1:") {
+				oldTopology = "ha"
+			}
+			if oldTopology != desiredTopology {
+				return KeycloakFiles{}, fmt.Errorf("existing Keycloak %s data cannot be silently converted to %s", oldTopology, desiredTopology)
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return KeycloakFiles{}, readErr
+		}
+	}
+	values["BASEHARBOR_KEYCLOAK_TOPOLOGY"] = desiredTopology
+	if values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"] == "" {
+		port, err := allocateIdentityPort(nil)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"] = strconv.Itoa(port)
+	}
+	publicPort, err := parseIdentityPort(values["BASEHARBOR_KEYCLOAK_PUBLIC_PORT"])
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if application.ComponentHA(app, "identity") && coreSQL == nil {
+		reserved := map[int]struct{}{publicPort: {}}
+		for ordinal := 1; ordinal <= 3; ordinal++ {
+			key := fmt.Sprintf("BASEHARBOR_KEYCLOAK_ETCD_PORT_%d", ordinal)
+			if strings.TrimSpace(values[key]) != "" {
+				port, err := parseIdentityPort(values[key])
+				if err != nil {
+					return KeycloakFiles{}, fmt.Errorf("%s: %w", key, err)
+				}
+				if _, duplicate := reserved[port]; duplicate {
+					return KeycloakFiles{}, fmt.Errorf("%s duplicates an existing Keycloak listener", key)
+				}
+				reserved[port] = struct{}{}
+				continue
+			}
+			port, err := allocateIdentityPort(reserved)
+			if err != nil {
+				return KeycloakFiles{}, err
+			}
+			reserved[port] = struct{}{}
+			values[key] = strconv.Itoa(port)
+		}
+	}
+	// Native Keycloak HTTPS serves both BaseHarbor's OIDC and administrative
+	// control paths on one loopback listener. Keep the legacy environment key
+	// synchronized for state compatibility without allocating a second port.
+	values["BASEHARBOR_KEYCLOAK_ADMIN_PORT"] = strconv.Itoa(publicPort)
+	for _, key := range []string{"BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_SUPERUSER_PASSWORD", "BASEHARBOR_KEYCLOAK_DB_REPLICATION_PASSWORD"} {
+		if strings.TrimSpace(values[key]) == "" {
+			secret, err := randomIdentitySecret(32)
+			if err != nil {
+				return KeycloakFiles{}, err
+			}
+			values[key] = secret
+		}
+	}
+	if strings.TrimSpace(values["BASEHARBOR_KEYCLOAK_ADMIN_USER"]) == "" {
+		values["BASEHARBOR_KEYCLOAK_ADMIN_USER"] = "baseharbor-admin"
+	}
+	values["BASEHARBOR_KEYCLOAK_DB_USER"] = "keycloak"
+	values["BASEHARBOR_KEYCLOAK_DB_NAME"] = "keycloak"
+	if coreSQL != nil {
+		if err := bindKeycloakCoreSQL(&files, values, *coreSQL); err != nil {
+			return KeycloakFiles{}, err
+		}
+	}
+	if err := writeProtectedEnv(files.Env, values); err != nil {
+		return KeycloakFiles{}, err
+	}
+
+	return ensureKeycloakAccessAndCompose(ctx, app, issuer, namespace, placement, files, publicPort)
+}
+
+func ensureKeycloakAccessAndCompose(ctx context.Context, app application.Manifest, issuer serviceaccess.Issuer, namespace string, placement capability.ProviderPlacement, files KeycloakFiles, publicPort int) (KeycloakFiles, error) {
+	dir, coreSQL := files.Dir, files.SharedSQL
+	publicPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-public", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	publicPolicy.ServerName = keycloakPublicHost
+	providerAlias := devaccess.ProviderAlias(files.Project, "identity")
+	providerAdminAlias := devaccess.ProviderAlias(files.Project, "identity-admin")
+	nativeMaterial, err := serviceaccess.EnsureTLSMaterial(
+		ctx,
+		issuer,
+		publicPolicy,
+		filepath.Join(dir, "native-tls", "pki"),
+		keycloakPublicHost,
+		providerAlias,
+		providerAdminAlias,
+		"keycloak",
+		"127.0.0.1",
+	)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	nativeMaterial, err = projectKeycloakTLSMaterial(filepath.Join(dir, "native-tls", "runtime"), nativeMaterial)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	if coreSQL == nil {
+		dbPolicy, err := serviceaccess.Resolve(app.Environment, "keycloak-db", serviceaccess.AuthenticationNative)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		dbPolicy.ServerName = "keycloak-db"
+		dbMaterial, err := serviceaccess.EnsureTLSMaterial(
+			ctx,
+			issuer,
+			dbPolicy,
+			filepath.Join(dir, "db-ha", "pki"),
+			"keycloak-db",
+			"keycloak-db-member-1",
+			"keycloak-db-member-2",
+			"keycloak-db-member-3",
+		)
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		if _, err := projectKeycloakTLSMaterial(filepath.Join(dir, "db-ha", "runtime"), dbMaterial); err != nil {
+			return KeycloakFiles{}, err
+		}
+	} else if err := projectKeycloakCoreSQLCA(files, *coreSQL); err != nil {
+		return KeycloakFiles{}, err
+	}
+	upstreams := []string{"https://keycloak-1:8443"}
+	if application.ComponentHA(app, "identity") {
+		upstreams = append(upstreams, "https://keycloak-2:8443", "https://keycloak-3:8443")
+	}
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          upstreams,
+		UpstreamTrustFile:  nativeMaterial.CA,
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases:     []string{providerAlias, providerAdminAlias, "keycloak"},
+		CertificateNames:   []string{keycloakPublicHost, providerAlias, providerAdminAlias, "keycloak"},
+		RequireClient:      false,
+		HealthURI:          "/realms/master/.well-known/openid-configuration",
+		HealthStatus:       http.StatusOK,
+	}
+	frontendPolicy := publicPolicy
+	frontendPolicy.AuthenticationRequired = false
+	frontendPolicy.Authentication = serviceaccess.AuthenticationNative
+	publicAccess, err := serviceaccess.EnsureHTTPGateway(ctx, issuer, frontendPolicy, dir, frontendSpec)
+	if err != nil {
+		return KeycloakFiles{}, err
+	}
+	adminAccess := publicAccess
+
+	files.PublicPort = publicPort
+	files.AdminPort = publicPort
+	files.PublicURL = fmt.Sprintf("https://%s:%d", keycloakPublicHost, publicPort)
+	files.CanonicalPublicURL = files.PublicURL
+	if devaccess.Enabled(app.Environment) {
+		var host string
+		if placement.Scope == capability.ScopeShared {
+			host, err = devaccess.SharedHost(namespace, "identity")
+		} else {
+			host, err = devaccess.ApplicationHost(namespace, app.Name, "identity")
+		}
+		if err != nil {
+			return KeycloakFiles{}, err
+		}
+		files.CanonicalPublicURL = devaccess.CanonicalURL(host)
+	}
+	files.AdminURL = fmt.Sprintf("https://127.0.0.1:%d", publicPort)
+	files.PublicAccess = publicAccess
+	files.AdminAccess = adminAccess
+	if application.ComponentHA(app, "identity") && coreSQL == nil {
+		if err := ensureKeycloakPostgresHA(files.Dir); err != nil {
+			return KeycloakFiles{}, fmt.Errorf("prepare Keycloak HA database routing: %w", err)
+		}
+	}
+
+	compose := keycloakCompose(app, files)
+	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
+		return KeycloakFiles{}, fmt.Errorf("write Keycloak provider compose: %w", err)
+	}
+	if err := os.Chmod(files.Compose, 0o600); err != nil {
+		return KeycloakFiles{}, err
+	}
+	return files, nil
+}
+
+func DestroyAllSharedKeycloakAt(ctx context.Context, runtime KeycloakRuntime, dataDir, namespace string) error {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak", "shared")
+	entries, err := os.ReadDir(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, entry.Name())
+		project := sharedKeycloakProject(namespace, entry.Name())
+		compose := filepath.Join(dir, "compose.yaml")
+		env := filepath.Join(dir, "runtime.env")
+		if _, err := os.Stat(compose); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := runtime.DestroyProject(ctx, project, compose, env); err != nil {
+			return err
+		}
+	}
+	return os.RemoveAll(root)
+}
+
+func keycloakStateIdentity(app application.Manifest, placement capability.ProviderPlacement, dataDir, namespace string) (string, string, error) {
+	root := filepath.Join(filepath.Clean(dataDir), "providers", "keycloak")
+	switch placement.Scope {
+	case capability.ScopeShared:
+		boundary := "core"
+		dir := filepath.Join(root, "shared", boundary)
+		return dir, sharedKeycloakProject(namespace, boundary), nil
+	case capability.ScopeApplication:
+		dir := filepath.Join(root, "applications", app.Name, app.Environment)
+		return dir, bhruntime.ApplicationProjectName(namespace, app.Name+"-identity", app.Environment), nil
+	default:
+		return "", "", fmt.Errorf("unsupported Keycloak placement scope %q", placement.Scope)
+	}
+}
+
+func sharedKeycloakProject(namespace, boundary string) string {
+	if boundary == "core" {
+		return bhruntime.SharedProjectName(namespace + "-core")
+	}
+	return bhruntime.SharedProjectName(namespace)
+}
+
+func SetKeycloakCanonicalURL(files KeycloakFiles, canonicalURL string) error {
+	canonicalURL = strings.TrimRight(strings.TrimSpace(canonicalURL), "/")
+	if canonicalURL == "" {
+		return errors.New("Keycloak canonical URL is required")
+	}
+	u, err := url.Parse(canonicalURL)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
+		return fmt.Errorf("Keycloak canonical URL %q must be an HTTPS URL without query or fragment", canonicalURL)
+	}
+	values, err := readProtectedEnv(files.Env)
+	if err != nil {
+		return err
+	}
+	values["BASEHARBOR_KEYCLOAK_CANONICAL_URL"] = canonicalURL
+	delete(values, "BASEHARBOR_KEYCLOAK_CANONICAL_ADMIN_URL")
+	return writeProtectedEnv(files.Env, values)
+}
+
+func keycloakCompose(app application.Manifest, files KeycloakFiles) string {
+	hostnameCommand := ""
+	hostnameEnvironment := "      KC_HOSTNAME: ${BASEHARBOR_KEYCLOAK_CANONICAL_URL}\n"
+	if devaccess.Enabled(app.Environment) {
+		hostnameCommand = "      - --hostname-strict=false\n"
+	}
+
+	member := func(name string) string {
+		result := fmt.Sprintf(`  %s:
+    image: %s
+    restart: unless-stopped
+    user: "1000:0"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      keycloak-db-init:
+        condition: service_completed_successfully
+    command:
+      - start
+      - --cache=ispn
+      - --cache-stack=jdbc-ping
+      - --http-enabled=false
+      - --https-port=%d
+      - --https-certificate-file=/run/baseharbor/tls/server.pem
+      - --https-certificate-key-file=/run/baseharbor/tls/server-key.pem
+      - --https-certificates-reload-period=%s
+      - --proxy-headers=xforwarded
+%s      - --health-enabled=true
+      - --metrics-enabled=true
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${BASEHARBOR_KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${BASEHARBOR_KEYCLOAK_ADMIN_PASSWORD}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${BASEHARBOR_KEYCLOAK_DB_NAME}?sslmode=verify-full&sslrootcert=/run/baseharbor/db-ca/ca.pem
+      KC_DB_USERNAME: ${BASEHARBOR_KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${BASEHARBOR_KEYCLOAK_DB_PASSWORD}
+      KC_CACHE: ispn
+      KC_CACHE_STACK: jdbc-ping
+      KC_CACHE_EMBEDDED_NODE_NAME: %s
+%s    volumes:
+      - ./native-tls/runtime:/run/baseharbor/tls:ro
+      - ./db-ha/runtime/ca.pem:/run/baseharbor/db-ca/ca.pem:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8443'"]
+      interval: 2s
+      timeout: 3s
+      retries: 90
+      start_period: 10s
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /opt/keycloak/data/tmp:rw,noexec,nosuid,nodev
+    networks:
+      identity-internal: {}
+`, name, KeycloakImage, keycloakHTTPSPort, keycloakCertificateReloadPeriod.String(), hostnameCommand, name, hostnameEnvironment)
+		if files.SharedSQL != nil {
+			result = strings.Replace(result, "    depends_on:\n      keycloak-db-init:\n        condition: service_completed_successfully\n", "", 1)
+			result = strings.Replace(result, "jdbc:postgresql://keycloak-db:5432/", "jdbc:postgresql://postgres:5432/", 1)
+			result = strings.Replace(result, "      identity-internal: {}\n", "      identity-internal: {}\n      core-sql: {}\n", 1)
+		}
+		return result
+	}
+
+	var b strings.Builder
+	b.WriteString("services:\n")
+	if files.SharedSQL != nil {
+		// The dependency lives in the existing Core project, not this graph.
+	} else if application.ComponentHA(app, "identity") {
+		b.WriteString(keycloakHADataLayerCompose())
+	} else {
+		b.WriteString(keycloakSingleDataLayerCompose())
+	}
+	b.WriteString(member("keycloak-1"))
+	b.WriteString("\n")
+	if application.ComponentHA(app, "identity") {
+		b.WriteString(member("keycloak-2"))
+		b.WriteString("\n")
+		b.WriteString(member("keycloak-3"))
+		b.WriteString("\n")
+	}
+	upstreams := []string{"https://keycloak-1:8443"}
+	if application.ComponentHA(app, "identity") {
+		upstreams = append(upstreams, "https://keycloak-2:8443", "https://keycloak-3:8443")
+	}
+	frontendSpec := serviceaccess.HTTPGatewaySpec{
+		ServiceName:        "keycloak-access",
+		Upstreams:          upstreams,
+		UpstreamTrustFile:  filepath.Join(files.Dir, "native-tls", "runtime", "ca.pem"),
+		UpstreamServerName: keycloakPublicHost,
+		PublishedPortEnv:   "BASEHARBOR_KEYCLOAK_PUBLIC_PORT",
+		ContainerPort:      keycloakHTTPSPort,
+		Networks:           []string{"identity-consumer", "identity-internal"},
+		NetworkAliases: []string{
+			devaccess.ProviderAlias(files.Project, "identity"),
+			devaccess.ProviderAlias(files.Project, "identity-admin"),
+			"keycloak",
+		},
+	}
+	b.WriteString(serviceaccess.HTTPGatewayComposeService(files.PublicAccess, frontendSpec))
+	if files.SharedSQL == nil {
+		b.WriteString("\nvolumes:\n")
+		if application.ComponentHA(app, "identity") {
+			b.WriteString(keycloakHAVolumesCompose())
+		} else {
+			b.WriteString(keycloakSingleVolumesCompose())
+		}
+	}
+	b.WriteString("\nnetworks:\n")
+	fmt.Fprintf(&b, "  identity-consumer:\n    name: %s\n", files.ConsumerNetwork)
+	fmt.Fprintf(&b, "  identity-internal:\n    name: %s\n", files.InternalNetwork)
+	if files.SharedSQL != nil {
+		fmt.Fprintf(&b, "  core-sql:\n    external: true\n    name: %s\n", bhruntime.ControlPlaneNetworkName(files.SharedSQL.ResourceProject))
+	}
+	return b.String()
+}
+
+func projectKeycloakTLSMaterial(dir string, material serviceaccess.TLSMaterial) (serviceaccess.TLSMaterial, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	project := func(source, name string) (string, error) {
+		data, err := os.ReadFile(source)
+		if err != nil {
+			return "", err
+		}
+		if len(data) == 0 {
+			return "", fmt.Errorf("Keycloak TLS material %s is empty", name)
+		}
+		target := filepath.Join(dir, name)
+		if err := os.WriteFile(target, data, 0o644); err != nil {
+			return "", err
+		}
+		return target, nil
+	}
+	var err error
+	material.CA, err = project(material.CA, "ca.pem")
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	material.ServerCertificate, err = project(material.ServerCertificate, "server.pem")
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	material.ServerKey, err = project(material.ServerKey, "server-key.pem")
+	if err != nil {
+		return serviceaccess.TLSMaterial{}, err
+	}
+	return material, nil
+}
+
+func randomIdentitySecret(bytes int) (string, error) {
+	if bytes < 16 {
+		return "", errors.New("identity secret length is too small")
+	}
+	value := make([]byte, bytes)
+	if _, err := rand.Read(value); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(value), nil
+}
+
+func allocateIdentityPort(exclude map[int]struct{}) (int, error) {
+	for attempt := 0; attempt < 16; attempt++ {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return 0, fmt.Errorf("allocate identity port: %w", err)
+		}
+		port := l.Addr().(*net.TCPAddr).Port
+		_ = l.Close()
+		if _, used := exclude[port]; used {
+			continue
+		}
+		return port, nil
+	}
+	return 0, errors.New("allocate unique identity port")
+}
+
+func parseIdentityPort(value string) (int, error) {
+	port, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || port < 1 || port > 65535 {
+		return 0, errors.New("invalid Keycloak provider port")
+	}
+	return port, nil
+}
+
+func readProtectedEnv(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) == "" {
+			return nil, errors.New("invalid protected provider environment")
+		}
+		values[key] = value
+	}
+	return values, nil
+}
+
+func writeProtectedEnv(path string, values map[string]string) error {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sortStrings(keys)
+	var b strings.Builder
+	for _, key := range keys {
+		fmt.Fprintf(&b, "%s=%s\n", key, values[key])
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func sortStrings(values []string) {
+	for i := 1; i < len(values); i++ {
+		for j := i; j > 0 && values[j] < values[j-1]; j-- {
+			values[j], values[j-1] = values[j-1], values[j]
+		}
+	}
+}

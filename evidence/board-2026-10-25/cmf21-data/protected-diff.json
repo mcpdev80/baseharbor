@@ -1,0 +1,72 @@
+{
+  "changed_paths": [
+    "cmd/baha/app_core_requirement.go",
+    "cmd/baha/app_edit.go",
+    "cmd/baha/app_new_wizard.go",
+    "cmd/baha/app_runtime_retirement.go",
+    "cmd/baha/application_native_backend_observation.go",
+    "cmd/baha/application_runtime_retirement_verification.go",
+    "cmd/baha/cmf19_recipes_test.go",
+    "cmd/baha/cmf20_r1_test.go",
+    "cmd/baha/o141_wizard_apply_factgap_test.go",
+    "internal/application/provider_registry.go"
+  ],
+  "protected_files": [
+    {
+      "path": "cmd/baha/app_client_consent.go",
+      "identical": true,
+      "sha256": "f012e7ab7318539a33cb7403741f89edcc80e7b55a30787e2d3ef30bd4007180"
+    },
+    {
+      "path": "cmd/baha/app_client_consent_test.go",
+      "identical": true,
+      "sha256": "5071807aea77b69e39c05c019903bebbb22490dc436cd744c03d63ec99625c85"
+    },
+    {
+      "path": "cmd/baha/app_doctor_repair_consent_test.go",
+      "identical": true,
+      "sha256": "da5ae4c505171509c03d1e60a3ebf0821a9760237fde2156272c72aff2a4b24b"
+    },
+    {
+      "path": "cmd/baha/application_provider_container_observation.go",
+      "identical": true,
+      "sha256": "5ae96916e864c8f14bd19deaa90184499a2880c09e23940b8fab57eec252eecc"
+    },
+    {
+      "path": "cmd/baha/application_provider_container_observation_test.go",
+      "identical": true,
+      "sha256": "7f934f3a13d88ea265e8826f9596192fa2f0f72dea886b4c2f7aed31911b6d39"
+    },
+    {
+      "path": "cmd/baha/doctor_fix_consent_test.go",
+      "identical": true,
+      "sha256": "d1402bd11267c2cdda802cd7e53a7fe669226cdac7a44399981fdf3197581480"
+    },
+    {
+      "path": "cmd/baha/quick_init_consent_test.go",
+      "identical": true,
+      "sha256": "3fc946b6a771e524ad50aacb563a27cc3117805293b7c7549d473ca2f2de8ebd"
+    },
+    {
+      "path": "internal/application/footprint.go",
+      "identical": true,
+      "sha256": "5b7b99c905a7428d9b32d74d9a501b97102a4381bfaccfbefc13ca1115f364a5"
+    },
+    {
+      "path": "internal/application/provider_change_consent.go",
+      "identical": true,
+      "sha256": "e7936b004ea19f32807514eebb80e8c1ebf654f12d23a710bad8921f1828c56a"
+    },
+    {
+      "path": "internal/application/provider_change_consent_test.go",
+      "identical": true,
+      "sha256": "2d7aed338ab79e35e3f30329bc02d6de78aba70032054cfd7945e2757b22c110"
+    },
+    {
+      "path": "internal/application/provider_change_digest.go",
+      "identical": true,
+      "sha256": "6c828dd6974337b291de2b5d7325952f521c192eca076dbdcb22ebffe0f062e3"
+    }
+  ],
+  "q124_call_preserved": true
+}

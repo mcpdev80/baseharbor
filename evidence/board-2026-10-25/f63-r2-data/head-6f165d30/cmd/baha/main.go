@@ -1,0 +1,326 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/development"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
+)
+
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
+func main() {
+	signal.Ignore(syscall.SIGPIPE)
+	ctx, stop := interruptibleProcessContext()
+	defer stop()
+
+	if os.Getenv("BASEHARBOR_RUNTIME_IMAGE") == "" {
+		_ = os.Setenv("BASEHARBOR_RUNTIME_IMAGE", defaultRuntimeImage(version))
+	}
+
+	err := runWithIO(ctx, os.Args[1:], os.Stdout, os.Stderr)
+	if err == nil {
+		return
+	}
+	if errors.Is(err, context.Canceled) {
+		fmt.Fprintln(os.Stderr, "Interrupted.")
+		os.Exit(130)
+	}
+	if requestsJSONOutput(os.Args[1:]) && !cli.IsPresented(err) {
+		_ = writeJSON(os.Stderr, machine.ResultError(classifyMachineCLIError(err)))
+		os.Exit(cli.ExitCode(err))
+	}
+	formatCLIErrorVerbose(os.Stderr, err, hasVerboseArgument(os.Args[1:]))
+	os.Exit(cli.ExitCode(err))
+}
+
+func interruptibleProcessContext() (context.Context, func()) {
+	ctx, cancel := context.WithCancel(context.Background())
+	signals := make(chan os.Signal, 2)
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		seen := false
+		for sig := range signals {
+			exitCode := 130
+			if sig == syscall.SIGTERM {
+				exitCode = 143
+			}
+			if !seen {
+				seen = true
+				cancel()
+				go func(code int) {
+					timer := time.NewTimer(2 * time.Second)
+					defer timer.Stop()
+					select {
+					case <-done:
+						return
+					case <-timer.C:
+						os.Exit(code)
+					}
+				}(exitCode)
+				continue
+			}
+			signal.Stop(signals)
+			os.Exit(exitCode)
+		}
+	}()
+
+	stop := func() {
+		stopOnce.Do(func() {
+			signal.Stop(signals)
+			cancel()
+			close(done)
+		})
+	}
+	return ctx, stop
+}
+
+func defaultRuntimeImage(buildVersion string) string {
+	versionTag := strings.TrimSpace(strings.TrimPrefix(buildVersion, "v"))
+	if versionTag == "" || versionTag == "dev" || strings.HasPrefix(versionTag, "dev-") || strings.Contains(versionTag, "dirty") {
+		versionTag = "edge"
+	}
+	return "ghcr.io/mcpdev80/baseharbor-runtime:" + versionTag
+}
+
+func run(args []string) error {
+	return runWithIO(context.Background(), args, os.Stdout, os.Stderr)
+}
+
+func runWithIO(ctx context.Context, args []string, out, errOut io.Writer) error {
+	filtered, opts, showVersion, target, err := extractGlobalOutputOptions(args)
+	if err != nil {
+		return err
+	}
+	if showVersion {
+		if len(filtered) != 0 {
+			return usageError("--version cannot be combined with a command", "Run 'baha --version' by itself.")
+		}
+		fmt.Fprintf(out, "BaseHarbor %s\ncommit %s\nbuilt %s\n", version, commit, date)
+		return nil
+	}
+	ctx = withTargetOverride(ctx, target)
+	ctx = cli.WithOutputOptions(ctx, opts)
+	ctx = operatorauth.WithEnforcement(ctx)
+	ctx = operatorauth.WithInteractive(ctx, os.Stdin, out, errOut)
+	ctx = localCLIProviderConsentContext(ctx, filtered)
+	ctx = withLocalInvocation(ctx, "cli")
+	if len(filtered) > 1 && filtered[0] == "app" {
+		ctx = localWorkloadScope(ctx, applicationBoundaryOperation(filtered[1]))
+	}
+	return rootCommand().Execute(ctx, filtered, out, errOut)
+}
+
+func extractGlobalOutputOptions(args []string) ([]string, cli.OutputOptions, bool, string, error) {
+	opts := cli.OutputOptions{}
+	filtered := make([]string, 0, len(args))
+	showVersion := false
+	target := ""
+	passthrough := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if passthrough {
+			filtered = append(filtered, arg)
+			continue
+		}
+		if arg == "--" {
+			passthrough = true
+			filtered = append(filtered, arg)
+			continue
+		}
+		switch arg {
+		case "-q", "--quiet", "--silent":
+			opts.Quiet = true
+		case "-v", "--verbose":
+			opts.Verbose = true
+		case "--no-color":
+			opts.NoColor = true
+		case "--plain":
+			opts.Plain = true
+		case "--no-input", "--non-interactive":
+			opts.NonInteractive = true
+		case "--version":
+			showVersion = true
+		case "--target":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target docker-dev status")
+			}
+			i++
+			target = strings.TrimSpace(args[i])
+		default:
+			if strings.HasPrefix(arg, "--target=") {
+				target = strings.TrimSpace(strings.TrimPrefix(arg, "--target="))
+				if target == "" {
+					return nil, opts, showVersion, target, usageError("--target requires NAME", "Example: baha --target=docker-dev status")
+				}
+				continue
+			}
+			filtered = append(filtered, arg)
+		}
+	}
+	if opts.Quiet && opts.Verbose {
+		return nil, opts, showVersion, target, usageError("--quiet and --verbose cannot be used together", "Choose concise output or diagnostic output, not both.")
+	}
+	if value := strings.TrimSpace(os.Getenv("BASEHARBOR_REDUCED_MOTION")); value != "" && value != "0" && !strings.EqualFold(value, "false") {
+		opts.ReducedMotion = true
+	}
+	return filtered, opts, showVersion, target, nil
+}
+
+func formatCLIError(w io.Writer, err error) {
+	formatCLIErrorVerbose(w, err, false)
+}
+
+func formatCLIErrorVerbose(w io.Writer, err error, verbose bool) {
+	if errors.Is(err, syscall.EPIPE) {
+		return
+	}
+	if cli.IsPresented(err) {
+		return
+	}
+	var operational *machine.Error
+	if errors.As(err, &operational) {
+		fmt.Fprintln(w, "Error")
+		fmt.Fprintf(w, "  %s\n", operational.Message)
+		if operational.Resource != "" {
+			fmt.Fprintln(w, "\nAffected")
+			fmt.Fprintf(w, "  %s\n", operational.Resource)
+		}
+		if operational.Remediation != "" {
+			fmt.Fprintln(w, "\nResolution")
+			fmt.Fprintf(w, "  %s\n", operational.Remediation)
+		}
+		if strings.TrimSpace(operational.Next) != "" {
+			fmt.Fprintln(w, "\nWhat to do")
+			fmt.Fprintf(w, "  %s\n", operational.Next)
+		}
+		if verbose && operational.Cause != nil {
+			fmt.Fprintln(w, "\nDetails")
+			fmt.Fprintf(w, "  %v\n", operational.Cause)
+		}
+		return
+	}
+	fmt.Fprintf(w, "Error: %v\n", err)
+	var usage *cli.UsageError
+	if errors.As(err, &usage) {
+		if strings.TrimSpace(usage.Hint) != "" {
+			fmt.Fprintln(w, "\nNext:")
+			fmt.Fprintf(w, "  %s\n", usage.Hint)
+		}
+		return
+	}
+
+	var actionable interface{ NextAction() string }
+	if errors.As(err, &actionable) && actionable.NextAction() != "" {
+		fmt.Fprintln(w, "\nNext:")
+		fmt.Fprintf(w, "  %s\n", actionable.NextAction())
+	}
+
+}
+
+func hasVerboseArgument(args []string) bool {
+	for _, arg := range args {
+		if arg == "-v" || arg == "--verbose" {
+			return true
+		}
+	}
+	return false
+}
+
+func classifyMachineCLIError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var usage *cli.UsageError
+	if errors.As(err, &usage) {
+		return machine.Wrap(machine.ErrorValidationFailed, err, usage.Hint, false)
+	}
+	if errors.Is(err, development.ErrWorkspaceModelMissing) {
+		return &machine.Error{
+			Code:        machine.ErrorSourceMissing,
+			CauseCode:   "workspace_not_initialized",
+			Message:     "No workspace source model is configured for this application.",
+			Remediation: "initialize the application workspace source model",
+			Next:        "Run 'baha app workspace init --source ID=REPOSITORY --component NAME=ID' and retry.",
+			Cause:       err,
+		}
+	}
+	if errors.Is(err, development.ErrWorkspaceSourceMissing) {
+		return &machine.Error{
+			Code:        machine.ErrorSourceMissing,
+			CauseCode:   "workspace_source_missing",
+			Message:     err.Error(),
+			Remediation: "map the existing local repository/worktree for the declared source identity",
+			Next:        "Run 'baha app workspace map SOURCE PATH' and retry. BaseHarbor will not clone or mutate Git state in v0.4.18.",
+			Cause:       err,
+		}
+	}
+	if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+		return &machine.Error{
+			Code:      machine.ErrorSourceMissing,
+			CauseCode: "repository_manifest_not_found",
+			Message:   err.Error(),
+			Next:      "Run the workspace operation inside a repository containing baseharbor.yaml, or pass an explicit manifest path.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrNotConfigured) {
+		return &machine.Error{
+			Code:      machine.ErrorValidationFailed,
+			CauseCode: "organization_not_configured",
+			Message:   err.Error(),
+			Next:      "Run 'baha config organization set' and retry.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrUnsupportedSource) {
+		return &machine.Error{
+			Code:      machine.ErrorUnsupported,
+			CauseCode: "organization_source_unsupported",
+			Message:   err.Error(),
+			Next:      "Use one of the supported organization source kinds: oci, git, local or system.",
+			Cause:     err,
+		}
+	}
+	if errors.Is(err, orgconfig.ErrSourceUnavailable) {
+		return &machine.Error{
+			Code:      machine.ErrorProviderUnavailable,
+			CauseCode: "organization_source_unavailable",
+			Message:   err.Error(),
+			Retryable: true,
+			Next:      "Verify the configured organization source and network/runtime access, then retry.",
+			Cause:     err,
+		}
+	}
+	// The edit/machine adapters classify internally (conflict/cancel/denied/
+	// unsupported/partial) as private appMachineError values. Route every origin
+	// through the shared typed machine error owner so the public CLI/JSON/MCP
+	// boundary surfaces a concrete Code, CauseCode and remediation instead of
+	// the internal_error fallthrough. No guard is weakened: each origin keeps its
+	// fail-closed semantics.
+	var machineErr *appMachineError
+	if errors.As(err, &machineErr) {
+		return classifyAppMachineError(machineErr)
+	}
+	return machine.Classify(err)
+}

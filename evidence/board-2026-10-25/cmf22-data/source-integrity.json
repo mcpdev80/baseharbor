@@ -1,0 +1,20 @@
+{
+  "base": {
+    "commit": "2f9afafdc443ba4b15569fca838511877c1fd3ba",
+    "files": 2551,
+    "mismatches": []
+  },
+  "head": {
+    "commit": "d409f26f4a6261c2dc614320fbfebd050a637cb8",
+    "files": 2555,
+    "mismatches": []
+  },
+  "before": {
+    "commit": "6f165d30df4f3c4b7f08623feff2eee58249e688",
+    "files": 2554,
+    "mismatches": []
+  },
+  "candidate_head": "d409f26f4a6261c2dc614320fbfebd050a637cb8",
+  "candidate_status": "",
+  "diff_sha256": "f060f4a651f8498deea81e85b3bc6cfb26a8120aa08191b7b761dbacc59ef29a"
+}

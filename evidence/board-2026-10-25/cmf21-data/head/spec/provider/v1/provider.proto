@@ -1,0 +1,374 @@
+syntax = "proto3";
+
+package baseharbor.provider.v1;
+
+option go_package = "github.com/mcpdev80/baseharbor/spec/provider/v1;providerv1";
+
+// Provider defines the language-neutral BaseHarbor provider boundary.
+// BaseHarbor owns capability semantics and lifecycle rules. Implementations
+// declare which versioned capability specifications they satisfy.
+service Provider {
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Preflight(PreflightRequest) returns (OperationResponse);
+  rpc Provision(ProvisionRequest) returns (Operation);
+  rpc Bind(BindRequest) returns (Operation);
+  rpc Unbind(UnbindRequest) returns (Operation);
+  rpc Verify(VerifyRequest) returns (OperationResponse);
+  rpc GetStatus(StatusRequest) returns (OperationResponse);
+  rpc Update(UpdateRequest) returns (Operation);
+  rpc Backup(BackupRequest) returns (Operation);
+  rpc Restore(RestoreRequest) returns (Operation);
+  rpc Destroy(DestroyRequest) returns (Operation);
+  rpc GetOperation(GetOperationRequest) returns (Operation);
+  rpc CancelOperation(CancelOperationRequest) returns (Operation);
+}
+
+message DescribeRequest {}
+
+message DescribeResponse {
+  string protocol = 1;
+  string provider = 2;
+  repeated string capability_specifications = 3;
+  LifecycleSupport optional_lifecycle = 4;
+  JsonSchema configuration_schema = 5;
+  ProviderObservability observability = 6;
+  // Stable distribution identity, for example baseharbor/postgresql.
+  string provider_id = 7;
+  // Provider implementation version, independent from BaseHarbor and capability versions.
+  string provider_version = 8;
+  // Provider-neutral service families, for example sql, cache or object-storage.
+  // These are broader than protocol/capability specifications.
+  repeated string service_kinds = 9;
+  // Optional concrete product/engine compatibility metadata.
+  repeated ProductSupport product_support = 10;
+  // Supported artifact platforms where the provider is distributed.
+  repeated Platform platforms = 11;
+  // OCI artifact identity for an externally distributed provider.
+  OCIArtifact artifact = 12;
+  // Standard signature/SBOM/provenance references associated with the artifact.
+  ProviderProvenance provenance = 13;
+}
+
+message ProductSupport {
+  string product = 1;
+  repeated string versions = 2;
+}
+
+message Platform {
+  string os = 1;
+  string arch = 2;
+}
+
+message OCIArtifact {
+  string reference = 1;
+  string digest = 2;
+  string media_type = 3;
+}
+
+message ProviderProvenance {
+  string signature_ref = 1;
+  string sbom_ref = 2;
+  string attestation_ref = 3;
+}
+
+message ProviderObservability {
+  repeated ProviderObservabilitySignal signals = 1;
+}
+
+message ProviderObservabilitySignal {
+  string name = 1;
+  string kind = 2;
+  string protocol = 3;
+  uint32 port = 4;
+  string path = 5;
+  // Audit state: supported, unsupported, not-applicable or requires-adapter.
+  string status = 6;
+  // Standards-based realization: native, runtime, adapter, interaction or combined.
+  string mode = 7;
+  // Optional OpenTelemetry or other standards semantic convention identifier.
+  string semantic_convention = 8;
+  // endpoint, backend-query, span-query or none.
+  string verification = 9;
+}
+
+message LifecycleSupport {
+  bool status = 1;
+  bool update = 2;
+  bool backup = 3;
+  bool restore = 4;
+  bool destroy = 5;
+  bool unbind = 6;
+  bool cancel_operation = 7;
+}
+
+message JsonSchema {
+  // BaseHarbor v1 requires the JSON Schema 2020-12 dialect URI.
+  string dialect = 1;
+  // UTF-8 encoded JSON Schema document. Secrets and credential values are
+  // forbidden in provider configuration schemas.
+  bytes document = 2;
+  // Optional registry-neutral reference to the schema document.
+  string uri = 3;
+}
+
+enum ProviderScope {
+  PROVIDER_SCOPE_UNSPECIFIED = 0;
+  PROVIDER_SCOPE_SHARED = 1;
+  PROVIDER_SCOPE_APPLICATION = 2;
+  PROVIDER_SCOPE_EXTERNAL = 3;
+}
+
+enum ProviderOwnership {
+  PROVIDER_OWNERSHIP_UNSPECIFIED = 0;
+  PROVIDER_OWNERSHIP_BASEHARBOR = 1;
+  PROVIDER_OWNERSHIP_EXTERNAL = 2;
+}
+
+message Resource {
+  string application = 1;
+  string capability = 2;
+  string capability_specification = 3;
+  string name = 4;
+  string provider = 5;
+  // Stable opaque BaseHarbor identity. Provider-specific object names remain
+  // provider state and must not be inferred from this value.
+  string resource_id = 6;
+  ProviderScope scope = 7;
+  ProviderOwnership ownership = 8;
+}
+
+enum HttpExposureProtocol {
+  HTTP_EXPOSURE_PROTOCOL_UNSPECIFIED = 0;
+  HTTP_EXPOSURE_PROTOCOL_HTTP = 1;
+  HTTP_EXPOSURE_PROTOCOL_HTTPS = 2;
+}
+
+enum HttpExposureVisibility {
+  HTTP_EXPOSURE_VISIBILITY_UNSPECIFIED = 0;
+  HTTP_EXPOSURE_VISIBILITY_PUBLIC = 1;
+  HTTP_EXPOSURE_VISIBILITY_INTERNAL = 2;
+}
+
+message HttpExposureBinding {
+  string service = 1;
+  uint32 target_port = 2;
+  HttpExposureProtocol protocol = 3;
+  HttpExposureVisibility visibility = 4;
+}
+
+message WorkloadBinding {
+  Resource resource = 1;
+  string workload = 2;
+  // Capability-owned, provider-neutral binding semantics. Providers must
+  // interpret this only according to the declared versioned capability spec.
+  HttpExposureBinding http_exposure = 3;
+  SecureBinding security = 4;
+  ObjectStorageS3Binding object_storage_s3 = 5;
+  OTLPTelemetryBinding telemetry_otlp = 6;
+}
+
+message OTLPTelemetryBinding {
+  enum Direction {
+    DIRECTION_UNSPECIFIED = 0;
+    DIRECTION_EXPORT = 1;
+    DIRECTION_RECEIVE = 2;
+  }
+  enum Protocol {
+    PROTOCOL_UNSPECIFIED = 0;
+    PROTOCOL_HTTP_PROTOBUF = 1;
+    PROTOCOL_GRPC = 2;
+  }
+  Direction direction = 1;
+  Protocol protocol = 2;
+  repeated string signals = 3;
+}
+
+message ObjectStorageS3Binding {
+  // Logical application-owned bucket identity. Provider-native bucket names
+  // remain provider/deployment state.
+  string bucket = 1;
+}
+
+message WorkloadIdentityBinding {
+  // Standards-based identity subject where available, for example a SPIFFE ID.
+  string subject = 1;
+  // Stable opaque BaseHarbor reference to identity material. Never secret data.
+  string reference = 2;
+}
+
+message CredentialReference {
+  string name = 1;
+  // Opaque reference resolved only at the trusted runtime/provider boundary.
+  string reference = 2;
+}
+
+message TrustMaterialReference {
+  string name = 1;
+  // Opaque reference to trust material such as a CA bundle.
+  string reference = 2;
+  string format = 3;
+}
+
+message AuthorizationMetadata {
+  string audience = 1;
+  repeated string scopes = 2;
+}
+
+message SecretReference {
+  string name = 1;
+  // Opaque reference only. Secret values are forbidden.
+  string reference = 2;
+}
+
+message SecurityLifecycleSupport {
+  bool renewable = 1;
+  bool rotatable = 2;
+  bool revocable = 3;
+}
+
+message SecureBinding {
+  WorkloadIdentityBinding identity = 1;
+  repeated CredentialReference credentials = 2;
+  repeated TrustMaterialReference trust = 3;
+  repeated AuthorizationMetadata authorization = 4;
+  repeated SecretReference secrets = 5;
+  SecurityLifecycleSupport lifecycle = 6;
+  repeated Diagnostic diagnostics = 7;
+}
+
+// Mutating operations require a stable idempotency key. Repeating the same
+// request with the same semantic input and key must not duplicate resources.
+message MutationContext {
+  string idempotency_key = 1;
+}
+
+message PreflightRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+}
+
+message ProvisionRequest {
+  Resource resource = 1;
+  MutationContext mutation = 2;
+  // Provision receives the same capability binding context that was preflighted.
+  // This is required for capabilities whose realization depends on the logical
+  // workload endpoint, such as exposure.http/v1.
+  WorkloadBinding binding = 3;
+}
+
+message BindRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+  MutationContext mutation = 3;
+}
+
+message UnbindRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+  MutationContext mutation = 3;
+}
+
+message VerifyRequest {
+  Resource resource = 1;
+  WorkloadBinding binding = 2;
+}
+
+message StatusRequest {
+  Resource resource = 1;
+}
+
+message UpdateRequest {
+  Resource resource = 1;
+  MutationContext mutation = 2;
+}
+
+message BackupRequest {
+  Resource resource = 1;
+  MutationContext mutation = 2;
+}
+
+message RestoreRequest {
+  Resource resource = 1;
+  string backup_id = 2;
+  MutationContext mutation = 3;
+}
+
+message DestroyRequest {
+  Resource resource = 1;
+  MutationContext mutation = 2;
+}
+
+message GetOperationRequest {
+  string operation_id = 1;
+}
+
+message CancelOperationRequest {
+  string operation_id = 1;
+}
+
+enum OperationStatus {
+  OPERATION_STATUS_UNSPECIFIED = 0;
+  OPERATION_STATUS_READY = 1;
+  OPERATION_STATUS_FAILED = 2;
+  OPERATION_STATUS_UNSUPPORTED = 3;
+  OPERATION_STATUS_DEGRADED = 4;
+}
+
+enum OperationState {
+  OPERATION_STATE_UNSPECIFIED = 0;
+  OPERATION_STATE_PENDING = 1;
+  OPERATION_STATE_RUNNING = 2;
+  OPERATION_STATE_SUCCEEDED = 3;
+  OPERATION_STATE_FAILED = 4;
+  OPERATION_STATE_CANCELED = 5;
+}
+
+message Diagnostic {
+  string code = 1;
+  string severity = 2;
+  string message = 3;
+}
+
+message OperationResponse {
+  OperationStatus status = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+message Operation {
+  string operation_id = 1;
+  OperationState state = 2;
+  repeated Diagnostic diagnostics = 3;
+
+  oneof result {
+    OperationResponse lifecycle_result = 4;
+    BindResponse bind_result = 5;
+  }
+}
+
+message BindResponse {
+  OperationStatus status = 1;
+  repeated BindingValue values = 2;
+  repeated Diagnostic diagnostics = 3;
+  // "servicebinding.io/v1.1" when values represent a Service Binding 1.1
+  // connection output. BaseHarbor extensions remain namespaced separately.
+  string binding_specification = 4;
+}
+
+// Binding values distinguish explicitly between safe public configuration and
+// an opaque secret reference. Plaintext credentials are forbidden.
+//
+// When a value represents a Service Binding Specification 1.1 well-known entry,
+// name MUST use the standard entry name exactly: type, provider, host, port,
+// uri, username, password, certificates or private-key. BaseHarbor-only output
+// names use the explicit baha.* extension namespace.
+message BindingValue {
+  // Use Service Binding Specification 1.1 well-known names where applicable:
+  // type, provider, host, port, uri, username, password, certificates,
+  // private-key. Non-standard values must be explicitly namespaced.
+  string name = 1;
+
+  oneof source {
+    string public_value = 2;
+    string credential_ref = 3;
+  }
+}

@@ -1,0 +1,43 @@
+
+==> OpenBao server configuration:
+
+             Api Address: https://openbao:8200
+                     Cgo: disabled
+         Cluster Address: https://openbao-member-1:8201
+   Environment Variables: BAO_ADDR, BAO_CACERT, BAO_CLUSTER_ADDR, HOME, HOSTNAME, PATH, PWD, SHLVL, SKIP_CHOWN
+              Go Version: go1.27.1
+              Listener 1: tcp (addr: "0.0.0.0:8200", cluster address: "0.0.0.0:8201", max_request_duration: "1m30s", max_request_json_memory: "34078720", max_request_json_strings: "1000", max_request_size: "33554432", tls: "enabled")
+               Log Level: 
+           Recovery Mode: false
+                 Storage: postgresql (HA disabled)
+                 Version: OpenBao v2.7.1, committed 2026-10-01T15:32:54Z
+             Version Sha: a5db72cef75c24b920ade02065b18dd8eb666bac
+
+==> OpenBao server started!
+2026-10-26T03:08:01.583Z [WARN]  unknown or unsupported field disable_mlock found in configuration at /run/baseharbor/openbao/openbao.hcl:2:1
+2026-10-26T03:08:01.583Z [INFO]  proxy environment: http_proxy="" https_proxy="" no_proxy=""
+2026-10-26T03:08:01.595Z [INFO]  core: Initializing version history cache for core
+2026-10-26T03:08:03.146Z [INFO]  core.cluster-listener.tcp: starting listener: listener_address=0.0.0.0:8201
+2026-10-26T03:08:03.146Z [INFO]  core.cluster-listener: serving cluster requests: cluster_listen_address=[::]:8201
+2026-10-26T03:08:03.146Z [INFO]  core: post-unseal setup starting
+2026-10-26T03:08:03.148Z [INFO]  core: loaded wrapping token key
+2026-10-26T03:08:03.148Z [INFO]  core: successfully setup plugin catalog: plugin-directory=""
+2026-10-26T03:08:03.157Z [INFO]  core: reading transactional mount table
+2026-10-26T03:08:03.161Z [INFO]  core: successfully mounted: type=kv version="v2.7.1+builtin.bao" path=baseharbor/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.161Z [INFO]  core: successfully mounted: type=identity version="v2.7.1+builtin.bao" path=identity/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.162Z [INFO]  core: successfully mounted: type=system version="v2.7.1+builtin.bao" path=sys/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.162Z [INFO]  core: successfully mounted: type=pki version="v2.7.1+builtin.bao" path=baseharbor-pki/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.162Z [INFO]  core: successfully mounted: type=cubbyhole version="v2.7.1+builtin.bao" path=cubbyhole/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.164Z [INFO]  core: reading transactional auth mount table
+2026-10-26T03:08:03.166Z [INFO]  core: successfully mounted: type=token version="v2.7.1+builtin.bao" path=token/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.166Z [INFO]  core: successfully mounted: type=approle version="v2.7.1+builtin.bao" path=approle/ namespace="ID: root. Path: "
+2026-10-26T03:08:03.168Z [INFO]  rollback: Starting the rollback manager with 256 workers
+2026-10-26T03:08:03.168Z [INFO]  rollback: starting rollback manager
+2026-10-26T03:08:03.168Z [INFO]  core: restoring leases
+2026-10-26T03:08:03.171Z [INFO]  core: entities restored
+2026-10-26T03:08:03.172Z [INFO]  core: groups restored
+2026-10-26T03:08:03.173Z [INFO]  core: usage gauge collection is disabled
+2026-10-26T03:08:03.185Z [INFO]  core: post-unseal setup complete
+2026-10-26T03:08:03.185Z [INFO]  core: vault is unsealed
+2026-10-26T03:08:03.190Z [INFO]  expiration: lease restore complete
+2026-10-26T03:10:18.896Z [INFO]  core: enabled credential backend: namespace="" path=baseharbor-dev/ type=userpass version=""

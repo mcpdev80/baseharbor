@@ -1,0 +1,36 @@
+{
+  "TestAppEditCommandCompleteProviderEditRunsRealLifecycle": [
+    "    app_edit_apply_test.go:839: baseline workload-only lifecycle failed: application preflight failed: selected Docker endpoint unix:///var/run/docker.sock is unavailable; start its rootless daemon or correct the Target endpoint/context; no fallback to System Docker"
+  ],
+  "TestBug866WorkloadAccessEnvironmentIncludesNativeBindings": [
+    "    bugs_864_871_regression_test.go:224: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  ],
+  "TestCorelessRuntimeFilesHaveNoBackendResources": [
+    "    app_coreless_characterization_test.go:23: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  ],
+  "TestExternalProviderRemovalCannotInferGlobalOwnershipFromTenantRole": [
+    "    provider_external_removal_test.go:151: provider change: provider-registry-ownership-unverifiable"
+  ],
+  "TestExternalProviderRemovalChecksEveryManagedConsumerBeforeMutation": [
+    "    provider_external_removal_test.go:122: provider change: provider-registry-ownership-unverifiable"
+  ],
+  "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages": [],
+  "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/cli": [
+    "    provider_external_removal_test.go:53: provider change: provider-registry-ownership-unverifiable"
+  ],
+  "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/http": [
+    "    provider_external_removal_test.go:53: provider change: provider-registry-ownership-unverifiable"
+  ],
+  "TestExternalProviderRemovalTransportsShareScopeAndExplicitStages/mcp": [
+    "    provider_external_removal_test.go:53: provider change: provider-registry-ownership-unverifiable"
+  ],
+  "TestNonTTYBackupDefaultUsesProtectedExternalArchive": [
+    "    app_backup_non_tty_test.go:26: default backup destination resolves inside the Git worktree; configure XDG_DATA_HOME outside the repository or choose a safe --output"
+  ],
+  "TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive": [
+    "    runtime_ports_test.go:65: path = \"/home/marcel/tmp-ops/TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive3192650729/001/baseharbor-recovery/probe-x/openbao-recovery.json\", want target default \"/home/marcel/tmp-ops/TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive3192650729/001/baseharbor-recovery/local/openbao-recovery.json\""
+  ],
+  "TestWritePathPromptContextShowsCurrentDirectory": [
+    "    path_prompt_context_test.go:30: missing current directory \"/home/marcel/tmp-ops/TestWritePathPromptContextShowsCurrentDirectory4232384341/001\": \"Path base\\n  ~/tmp-ops/TestWritePathPromptContextShowsCurrentDirectory4232384341/001\\n  relative paths are resolved from this directory\\n\\n\""
+  ]
+}

@@ -1,0 +1,25 @@
+email config is {'CHECK_EMAIL_DELIVERABILITY': False, 'ALLOW_SPECIAL_EMAIL_DOMAINS': [], 'GLOBALLY_DELIVERABLE': True}
+NOTE: Configuring authentication for SERVER mode.
+
+pgAdmin 4 - Application Initialisation
+======================================
+
+----------
+Loading servers with:
+User: developer@baseharbor.dev
+SQLite pgAdmin config: /var/lib/pgadmin/pgadmin4.db
+----------
+Added 1 Server Group(s) and 1 Server(s).
+::ffff:172.18.0.1 - - [26/Oct/2026:03:12:24 +0000] "GET /misc/ping HTTP/1.1" 200 4 "-" "Go-http-client/1.1"
+/venv/lib/python3.14/site-packages/sshtunnel.py:1040: SyntaxWarning: 'return' in a 'finally' block
+  return (ssh_host,
+/venv/lib/python3.14/site-packages/alembic/operations/batch.py:298: UserWarning: Unnamed CHECK constraint on reflected table 'sharedserver' is being omitted from the table recreate; pass the constraint explicitly using batch_alter_table.table_args.  Naming CHECK constraints avoids this going forward.
+  util.warn(
+/venv/lib/python3.14/site-packages/sshtunnel.py:1040: SyntaxWarning: 'return' in a 'finally' block
+  return (ssh_host,
+[2026-10-26 03:09:08 +0000] [1] [INFO] Starting gunicorn 23.0.0
+[2026-10-26 03:09:08 +0000] [1] [INFO] Listening at: http://[::]:8443 (1)
+[2026-10-26 03:09:08 +0000] [1] [INFO] Using worker: gthread
+[2026-10-26 03:09:08 +0000] [68] [INFO] Booting worker with pid: 68
+/venv/lib/python3.14/site-packages/sshtunnel.py:1040: SyntaxWarning: 'return' in a 'finally' block
+  return (ssh_host,

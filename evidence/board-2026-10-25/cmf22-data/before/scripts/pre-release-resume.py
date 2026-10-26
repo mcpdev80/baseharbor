@@ -1,0 +1,772 @@
+#!/usr/bin/env python3
+"""Plan and verify exact gate coverage with immutable, input-equivalent origins."""
+import argparse
+import datetime
+import functools
+import hashlib
+import io
+import math
+import json
+import os
+import pathlib
+import re
+import stat
+import subprocess
+import zipfile
+
+from private_consumer_evidence import commitment, private_verifier_from_environment
+
+
+STATIC = ['config-matrix', 'init', 'mcp', 'agent', 'shell-ux']
+LIGHT = ['guided', 'lifecycle', 'policy', 'connectivity', 'reconciliation', 'failure', 'full-destroy']
+HEAVY = ['data-capabilities', 'observability', 'identity', 'security', 'backup-restore',
+         'rabbitmq-runtime', 'mongodb-runtime', 'durable-key-value', 'control-plane-recovery',
+         'loki-runtime', 'tempo-runtime']
+ADOPTION = ['conformance', 'realworld-compose', 'realworld-quadlet', 'realworld-kubernetes']
+HA = ['data', 'identity', 'observability', 'routing']
+REQUIREMENTS_PATH = 'scripts/release-requirements.json'
+
+
+SCHEMAS = {'atomic': 'baseharbor.pre-release.gate-evidence/v1',
+           'adoption': 'baseharbor.pre-release.adoption-evidence/v1',
+           'ha': 'baseharbor.pre-release.v0.4.21-ha-evidence/v1',
+           'journey': 'baseharbor.pre-release.reference-journey/v1',
+           'integration': 'baseharbor.pre-release.integration-evidence/v1'}
+
+
+def load_requirements(raw, tag):
+    inventory = json.loads(raw)
+    if not isinstance(inventory, dict):
+        raise ValueError('release requirements must be an object')
+    releases = inventory.get('releases')
+    if (inventory.get('schema') != 'baseharbor.release-requirements/v1' or
+            not isinstance(releases, list) or not releases or
+            any(not isinstance(value, str) or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?', value)
+                for value in releases) or len(releases) != len(set(releases)) or tag not in releases or
+            not isinstance(inventory.get('gates'), list)):
+        raise ValueError('release requirements schema or release differs')
+    gates, seen = [], set()
+    for gate in inventory.get('gates', []):
+        if not isinstance(gate, dict):
+            raise ValueError('release requirement must be an object')
+        key = gate.get('id', '')
+        if (not isinstance(key, str) or
+                not re.fullmatch(r'(?:atomic/(?:static|docker|podman)/[a-z0-9-]+|adoption/[a-z0-9-]+|ha/(?:docker|podman)/[a-z0-9-]+|journey/(?:docker|podman)|integration/(?:static|docker|podman)/[a-z0-9-]+)', key) or
+                key in seen or gate.get('schema') != SCHEMAS[key.split('/')[0]]):
+            raise ValueError('invalid or duplicate release requirement')
+        for field in ['jobs', 'dependencies', 'required_for']:
+            values = gate.get(field)
+            if (not isinstance(values, list) or not values or
+                    any(not isinstance(value, str) or not value for value in values) or
+                    len(values) != len(set(values))):
+                raise ValueError('requirement needs unique typed ' + field)
+        if (any(not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_-]*', job) for job in gate['jobs']) or
+                not set(gate['dependencies']) <= {'core', 'demo', 'console', 'connector'} or
+                'core' not in gate['dependencies'] or not set(gate['required_for']) <= set(releases)):
+            raise ValueError('unknown requirement job, consumer or release')
+        seen.add(key)
+        if tag in gate['required_for']:
+            gates.append(gate)
+    if not gates:
+        raise ValueError('empty release requirements')
+    return gates
+
+
+def local_requirements(tag):
+    return load_requirements(pathlib.Path(__file__).with_name('release-requirements.json').read_text(), tag)
+
+
+# Compatibility callers use the explicit released baseline; CLI selects the candidate's set.
+EXPECTED = [gate['id'] for gate in local_requirements('v0.4.22')]
+TRUSTED = {'.github/workflows/pre-release.yml', '.github/workflows/targeted-demo-acceptance.yml'}
+# Only published prose and origin lists are metadata. Workflow execution, evidence
+# tooling, schemas, policy/auth and build inputs always invalidate prior evidence.
+METADATA = {'CHANGELOG.md', 'docs/roadmap.md',
+            'docs/development/v0.4.22-evidence-resume.md',
+            'docs/development/v0.4.20-release-runbook.md'}
+
+# These files govern PR selection or evidence collection, not gate execution.
+# Receipts are always re-authenticated by the current collector below.
+REVIEW_ONLY = {'.github/workflows/ci.yml', 'scripts/pr-gate-plan.py',
+               'scripts/pr-check-runner.py', 'scripts/test_pr_gate_plan.py',
+               'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+
+
+def release_metadata(path):
+    return path.endswith('.md') and (path == 'README.md' or path.startswith('docs/'))
+
+
+def demo_gate_input(path, key):
+    # Atomic bootstrap and EXIT cleanup call these helpers across gate scopes.
+    if path in {'tests/guided/drive.py', 'tests/guided/new_edit.py',
+                'tests/data-capabilities/new_edit.py'}:
+        return True
+    parts = pathlib.PurePosixPath(path).parts
+    known = set(STATIC + LIGHT + HEAVY)
+    if key.startswith('atomic/') and len(parts) >= 3 and parts[0] == 'tests' and parts[1] in known:
+        return parts[1] == key.split('/')[2]
+    return True  # Shared helpers, workload, unknown inputs and journeys stay bound.
+
+
+def metadata_path(path):
+    return path in METADATA or (path.startswith('docs/releases/') and
+                                path.endswith(('.md', '.evidence-runs', '.selected-gates.json')))
+
+
+
+
+
+def command(args, cwd=None):
+    return subprocess.check_output(args, cwd=cwd)
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+# This single relocation has no runtime effect: the exact helper is a pure
+# attribute comparison in one package. Hash both files in their original
+# layout only when its bytes, unique definition and unconditional compilation
+# are identical. Every other byte, mode, function or directive remains input.
+OWNERSHIP_HELPER = b"""func keycloakRealmOwnedBy(current keycloakRealm, expected map[string]string) bool {
+\tif len(expected) == 0 || len(current.Attributes) == 0 {
+\t\treturn false
+\t}
+\tfor key, value := range expected {
+\t\tif current.Attributes[key] != value {
+\t\t\treturn false
+\t\t}
+\t}
+\treturn true
+}
+"""
+OWNERSHIP_FILES = ('internal/identityprovider/keycloak_admin.go',
+                   'internal/identityprovider/keycloak_realm_convergence.go')
+
+
+def canonical_ownership_files(admin, convergence):
+    if (not all(data.startswith(b'package identityprovider\n') for data in [admin, convergence]) or
+            any(marker in data for data in [admin, convergence]
+                for marker in [b'//go:', b'//line ', b'/*line ']) or
+            sum(data.count(b'func keycloakRealmOwnedBy(') for data in [admin, convergence]) != 1):
+        return None
+    anchor = b'\nfunc (a *keycloakAdmin) do('
+    if admin.count(anchor) != 1:
+        return None
+    if b'\n' + OWNERSHIP_HELPER + anchor in admin:
+        return admin, convergence
+    if convergence.endswith(b'\n' + OWNERSHIP_HELPER):
+        return (admin.replace(anchor, b'\n' + OWNERSHIP_HELPER + anchor),
+                convergence[:-len(b'\n' + OWNERSHIP_HELPER)])
+    return None
+
+
+class GitInputs:
+    def __init__(self, product, demo, demo_ref=None):
+        self.product, self.demo = pathlib.Path(product), pathlib.Path(demo)
+        self.demo_ref = demo_ref
+
+    @functools.lru_cache(maxsize=None)
+    def objects(self, repo, commit):
+        if not re.fullmatch('[0-9a-f]{40}', commit):
+            raise ValueError('input commit must be an exact SHA')
+        command(['git', 'cat-file', '-e', commit + '^{commit}'], repo)
+        entries = command(['git', 'ls-tree', '-rz', commit], repo).split(b'\0')
+        return [(path.decode(), meta.decode()) for entry in entries if entry
+                for meta, path in [entry.split(b'\t', 1)]]
+
+    @functools.lru_cache(maxsize=None)
+    def workflow(self, commit):
+        import yaml
+        raw = command(['git', 'show', commit + ':.github/workflows/pre-release.yml'], self.product)
+        return yaml.safe_load(raw)['jobs']
+
+    @functools.lru_cache(maxsize=None)
+    def requirements(self, candidate, tag):
+        paths = {path for path, _ in self.objects(self.product, candidate)}
+        if REQUIREMENTS_PATH not in paths:
+            if tag == 'v0.4.22':
+                return local_requirements(tag)
+            raise ValueError('candidate release requirements are missing')
+        raw = command(['git', 'show', candidate + ':' + REQUIREMENTS_PATH], self.product)
+        return load_requirements(raw, tag)
+
+    @functools.lru_cache(maxsize=None)
+    def runtime_product_objects(self, candidate):
+        objects = self.objects(self.product, candidate)
+        if not set(OWNERSHIP_FILES) <= {path for path, _ in objects}:
+            return objects
+        sources = [command(['git', 'show', candidate + ':' + path], self.product)
+                   for path in OWNERSHIP_FILES]
+        normalized = canonical_ownership_files(*sources)
+        if normalized is None:
+            return objects
+        canonical = dict(zip(OWNERSHIP_FILES, normalized))
+        return [(path, meta.split()[0] + ' blob ownership-layout-sha256:' +
+                 hashlib.sha256(canonical[path]).hexdigest()) if path in canonical
+                else (path, meta) for path, meta in objects]
+
+    @functools.lru_cache(maxsize=None)
+    def cli_ignores_bootstrap_test_source(self, candidate):
+        # This fixture is ignored by the CLI's go build. Keep it if the CLI
+        # package embeds any source as data; unknown embed use stays conservative.
+        result = subprocess.run(['git', 'grep', '-q', '//go:embed', candidate,
+                                 '--', 'cmd/baha/*.go'], cwd=self.product)
+        return result.returncode == 1
+
+    @functools.lru_cache(maxsize=None)
+    def embeds_prose(self, repo, candidate):
+        result = subprocess.run(['git', 'grep', '-h', '//go:embed', candidate, '--', '*.go'],
+                                cwd=repo, stdout=subprocess.PIPE, check=False)
+        if result.returncode not in (0, 1):
+            raise ValueError('embedded source inventory could not be read')
+        # Directory or unbounded patterns may contain Markdown. Unknown patterns
+        # retain all prose rather than assuming it is outside the built product.
+        for line in result.stdout.decode().splitlines():
+            for pattern in line.split('//go:embed', 1)[1].split():
+                suffix = pathlib.PurePosixPath(pattern.strip('"`')).suffix
+                if suffix in ('', '.md') or '*' in suffix or '?' in suffix or '[' in suffix:
+                    return True
+        return False
+
+    def fingerprint(self, candidate, demo, tag, key):
+        requirements = self.requirements(candidate, tag)
+        requirement = next((gate for gate in requirements if gate['id'] == key), None)
+        if requirement is None:
+            raise ValueError('gate is outside candidate release requirements')
+        native_runtime = tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'} and key.startswith(('atomic/docker/', 'atomic/podman/', 'journey/', 'ha/'))
+        # Source-plan tools do not execute inside native runtime jobs. The current
+        # verifier still authenticates every immutable origin and ZIP. Static
+        # evidence keeps these tooling bytes as part of its execution inputs.
+        collectors = {'scripts/pre-release-resume.py', 'scripts/test_pre_release_resume.py'}
+        # Core-owned bootstrap/coreless producers consume the explicit Demo SHA
+        # as an evidence identity, never files from the Demo checkout. Their
+        # canonical requirements declare only Core execution dependencies.
+        # They DO import this collector: keep its bytes in their product inputs.
+        core_owned = tag in {'v0.4.25', 'v0.4.26'} and requirement['dependencies'] == ['core'] and key in {
+            'integration/docker/core-bootstrap', 'integration/podman/core-bootstrap',
+            'integration/docker/coreless-lifecycle', 'integration/podman/coreless-lifecycle'}
+        # Every v0.4.26 origin separately authenticates its Demo -> Core pin.
+        # The identity file is not an additional execution input on any gate.
+        pin_independent = native_runtime or core_owned or tag == 'v0.4.26'
+        objects = self.runtime_product_objects(candidate) if native_runtime else self.objects(self.product, candidate)
+        cli_only_fixture = (tag == 'v0.4.25' and key in {
+            'atomic/docker/backup-restore', 'atomic/podman/backup-restore',
+            'atomic/docker/identity', 'atomic/podman/identity',
+            'atomic/docker/security', 'atomic/podman/security',
+            'atomic/docker/guided', 'atomic/podman/guided',
+            'atomic/docker/lifecycle', 'atomic/podman/lifecycle',
+            'atomic/docker/connectivity', 'atomic/podman/connectivity',
+            'atomic/docker/full-destroy', 'atomic/podman/full-destroy'} and
+            self.cli_ignores_bootstrap_test_source(candidate))
+        product = [(path, obj) for path, obj in objects
+                   if not metadata_path(path) and path != '.github/workflows/pre-release.yml'
+                   and not (tag == 'v0.4.26' and (path in REVIEW_ONLY or
+                            (release_metadata(path) and not self.embeds_prose(self.product, candidate))))
+                   and not (native_runtime and path in collectors)
+                   and not (cli_only_fixture and path == 'cmd/baha/core_installation_runtime_test.go')]
+        demo_objects = [(path, obj) for path, obj in self.objects(self.demo, demo)
+                        if not core_owned
+                        and not (tag == 'v0.4.26' and not demo_gate_input(path, key))
+                        and not (tag == 'v0.4.26' and release_metadata(path)
+                                 and not self.embeds_prose(self.demo, demo))
+                        and not (tag == 'v0.4.25' and path == 'tests/config-matrix/run.sh'
+                                 and key != 'atomic/static/config-matrix' and not key.startswith('journey/'))
+                        and not (path == 'tests/mcp/run.sh' and key != 'atomic/static/mcp'
+                                and not key.startswith('journey/'))
+                        # Atomic bootstrap does not source this isolated gate.
+                        and not (tag in {'v0.4.24', 'v0.4.25'} and key.startswith('atomic/')
+                                 and path in {'tests/backup-restore/run.sh',
+                                              'tests/native-default-topology.py',
+                                              'tests/native_default_topology_test.py'}
+                                 and not key.endswith('/backup-restore'))
+                        # pin() separately requires this exact Core binding on
+                        # both candidate and original v0.4.24 Demo revisions.
+                        and not (pin_independent and path == 'baseharbor-core.ref')]
+        jobs = self.workflow(candidate)
+        # Only scheduling edges and fan-out may change without new evidence.
+        # Static/reusable call arguments, all build steps and evidence generation
+        # are execution inputs. v0.4.26 binds only the gate's jobs and the
+        # shared source/toolchain/binary producer; older policies stay intact.
+        execution = {}
+        for name, job in jobs.items():
+            if tag == 'v0.4.26' and name not in set(requirement['jobs']) | {'source'}:
+                continue
+            execution[name] = {field: value for field, value in job.items()
+                               if field not in {'needs', 'if', 'strategy'}}
+            strategy = {field: value for field, value in job.get('strategy', {}).items()
+                        if field not in {'matrix', 'max-parallel'}}
+            if strategy:
+                execution[name]['strategy'] = strategy
+        policy = 'baseharbor.gate-inputs/v5' if tag == 'v0.4.26' else 'baseharbor.gate-inputs/v4'
+        return digest({'policy': policy, 'tag': tag, 'gate': key,
+                       'requirement': requirement, 'product': product, 'demo': demo_objects,
+                       'execution': execution})
+
+    def ensure(self, candidate, demo):
+        for repo, sha in [(self.product, candidate), (self.demo, demo)]:
+            if not re.fullmatch('[0-9a-f]{40}', sha):
+                raise ValueError('invalid source commit')
+            if subprocess.run(['git', 'cat-file', '-e', sha + '^{commit}'], cwd=repo,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+                command(['git', 'fetch', '--no-tags', 'origin', sha], repo)
+
+    def pin(self, candidate, tag, demo_ref=None):
+        if tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
+            # Consumers can pin an existing Core SHA; Core cannot also embed
+            # their future commit without a circular Git object dependency.
+            resolved = self.demo_ref if demo_ref is None else demo_ref
+            if not isinstance(resolved, str) or not re.fullmatch('[0-9a-f]{40}', resolved):
+                raise ValueError('v0.4.24+ requires an exact resolved Demo commit')
+            actual = command(['git', 'show', resolved + ':baseharbor-core.ref'], self.demo).decode().strip()
+            if actual != candidate:
+                raise ValueError('Demo immutable Core pin differs from candidate')
+            return resolved
+        return command(['git', 'show', candidate + ':docs/releases/' + tag + '.demo-ref'],
+                       self.product).decode().strip()
+
+
+def key_from_job(name, expected=None):
+    for key in EXPECTED if expected is None else expected:
+        parts = key.split('/')
+        kind = parts[0]
+        if kind == 'adoption' and name == 'Adoption · ' + parts[1]:
+            return key
+        if kind == 'ha' and name == f'v0.4.21 HA · {parts[2]} · {parts[1]}':
+            return key
+        if kind == 'journey' and name == f'Reference Journey · {parts[1]} · Full E2E':
+            return key
+        if kind == 'integration' and name == 'Integration · ' + '/'.join(parts):
+            return key
+        if kind == 'atomic':
+            runtime, gate = parts[1:]
+            suffix = f'/ {runtime} · {gate}'
+            if name.endswith(suffix) and (name.startswith(('Static · ', 'Light · ', 'Heavy · '))
+                                          or name.startswith('selected_gate ')):
+                return key
+    return None
+
+
+def artifact_name(key, run, attempt):
+    parts = key.split('/')
+    if parts[0] == 'atomic':
+        prefix = f'pre-release-gate-{parts[1]}-{parts[2]}-evidence'
+    elif parts[0] == 'adoption':
+        prefix = f'pre-release-adoption-{parts[1]}-evidence'
+    elif parts[0] == 'ha':
+        prefix = f'pre-release-v0421-ha-{parts[1]}-{parts[2]}-evidence'
+    elif parts[0] == 'integration':
+        prefix = f'pre-release-integration-{parts[1]}-{parts[2]}-evidence'
+    else:
+        prefix = f'pre-release-reference-journey-evidence-{parts[1]}'
+    return f'{prefix}-{run}-{attempt}'
+
+
+def validate_manifest(manifest, key, run, candidate, demo, attempt):
+    kind, *parts = key.split('/')
+    runtime = parts[0] if kind != 'adoption' else 'static'
+    if (manifest.get('schema') != SCHEMAS[kind] or manifest.get('candidate_sha') != candidate or
+            manifest.get('demo_ref') != demo or
+            manifest.get('workflow_run_id') != (run if kind == 'journey' else str(run)) or
+            type(manifest.get('workflow_run_attempt')) is not int or
+            manifest['workflow_run_attempt'] != attempt or manifest.get('outcome') != 'success' or
+            manifest.get('cleanup_outcome') != ('skipped' if runtime == 'static' else 'success')):
+        raise ValueError('manifest outcome, schema, source, attempt or cleanup differs')
+    if kind == 'integration' and (manifest.get('id') != '/'.join(parts) or
+                                  manifest.get('runtime') != runtime or manifest.get('gate') != parts[1]):
+        raise ValueError('integration logical identity differs')
+    if kind == 'atomic' and (manifest.get('id') != '/'.join(parts) or
+                            manifest.get('runtime') != runtime or manifest.get('gate') != parts[1]):
+        raise ValueError('atomic logical identity differs')
+    if kind == 'adoption' and manifest.get('gate') != parts[0]:
+        raise ValueError('adoption logical identity differs')
+    if kind == 'ha' and (manifest.get('runtime') != runtime or manifest.get('group') != parts[1]):
+        raise ValueError('HA logical identity differs')
+    if kind == 'journey' and (manifest.get('runtime') != runtime or
+                             type(manifest.get('duration_seconds')) not in [int, float] or
+                             not math.isfinite(manifest['duration_seconds']) or manifest['duration_seconds'] < 0):
+        raise ValueError('journey runtime or duration differs')
+
+
+class MissingRootManifest(ValueError):
+    """A bounded, digest-authenticated ZIP contains no reusable gate proof."""
+
+
+def read_archive(data, expected_digest):
+    if len(data) > 128 * 1024 * 1024 or 'sha256:' + hashlib.sha256(data).hexdigest() != expected_digest:
+        raise ValueError('artifact archive digest or size differs')
+    archive = zipfile.ZipFile(io.BytesIO(data))
+    infos = archive.infolist()
+    if len(infos) > 8000 or sum(info.file_size for info in infos) > 256 * 1024 * 1024:
+        raise ValueError('artifact archive expansion exceeds limit')
+    names = set()
+    for info in infos:
+        path = pathlib.PurePosixPath(info.filename)
+        if (path.is_absolute() or '..' in path.parts or '\\' in info.filename or
+                stat.S_ISLNK(info.external_attr >> 16) or info.filename in names):
+            raise ValueError('unsafe artifact archive entry')
+        names.add(info.filename)
+    if 'manifest.json' not in names:
+        raise MissingRootManifest('artifact root manifest is missing')
+    raw = archive.read('manifest.json')
+    if len(raw) > 1024 * 1024:
+        raise ValueError('manifest exceeds limit')
+    return json.loads(raw), hashlib.sha256(raw).hexdigest()
+
+
+class GitHub:
+    def __init__(self, repository):
+        if repository != 'mcpdev80/baseharbor':
+            raise ValueError('evidence repository is not trusted')
+        self.repository = repository
+
+    def get(self, path):
+        return json.loads(command(['gh', 'api', f'repos/{self.repository}/{path}']))
+
+    def pages(self, path, field):
+        pages = json.loads(command(['gh', 'api', '--paginate', '--slurp',
+                                    f'repos/{self.repository}/{path}']))
+        return [row for page in pages for row in page[field]]
+
+    def archive(self, artifact):
+        return command(['gh', 'api', f'repos/{self.repository}/actions/artifacts/{artifact["id"]}/zip'])
+
+
+def origin_demo_pin(api, inputs, candidate, tag, run_id, artifacts, jobs, expected, archives):
+    """Recover the immutable origin pin from digest-verified gate archives."""
+    if tag not in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
+        return inputs.pin(candidate, tag)
+    pins = set()
+    for job in jobs:
+        key = key_from_job(job['name'], expected)
+        attempt = job.get('run_attempt')
+        if key is None or type(attempt) is not int or attempt < 1:
+            continue
+        if job.get('head_sha') != candidate:
+            raise ValueError('origin pin job source differs')
+        for artifact in artifacts:
+            if artifact.get('name') != artifact_name(key, run_id, attempt) or artifact.get('expired'):
+                continue
+            if (artifact.get('workflow_run', {}).get('id') != run_id or
+                    artifact.get('workflow_run', {}).get('head_sha') != candidate):
+                raise ValueError('origin pin artifact source differs')
+            data = api.archive(artifact)
+            try:
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            except MissingRootManifest:
+                # Failed producers may upload diagnostic failure.json before a
+                # proof exists. This is not a source pin or successful evidence;
+                # keep the failed observation pending in collect(). All ZIP
+                # digest, size and path checks have already succeeded.
+                if job.get('status') == 'completed' and job.get('conclusion') != 'success':
+                    continue
+                raise
+            pin = manifest.get('demo_ref')
+            if (manifest.get('schema') != SCHEMAS[key.split('/')[0]] or
+                    manifest.get('candidate_sha') != candidate or
+                    str(manifest.get('workflow_run_id')) != str(run_id) or
+                    type(manifest.get('workflow_run_attempt')) is not int or
+                    manifest.get('workflow_run_attempt') != attempt or
+                    not isinstance(pin, str) or not re.fullmatch('[0-9a-f]{40}', pin)):
+                raise ValueError('origin pin manifest binding differs')
+            archives[artifact['id']] = (data, manifest, manifest_digest)
+            pins.add(pin)
+    if len(pins) > 1:
+        raise ValueError('origin run contains inconsistent Demo pins')
+    if not pins:
+        if any(key_from_job(job['name'], expected) is not None and
+               job.get('conclusion') != 'skipped' for job in jobs):
+            raise ValueError('origin Demo pin is unavailable; cannot reuse older proof')
+        return None
+    pin = pins.pop()
+    inputs.ensure(candidate, pin)
+    if inputs.pin(candidate, tag, demo_ref=pin) != pin:
+        raise ValueError('origin Demo immutable Core pin differs')
+    return pin
+
+
+def executed_jobs(jobs, expected):
+    """Ignore only exact successful execution copies created by partial reruns."""
+    def times(job):
+        try:
+            return tuple(datetime.datetime.fromisoformat(job[field].replace('Z', '+00:00'))
+                         for field in ['created_at', 'started_at', 'completed_at'])
+        except (KeyError, AttributeError, TypeError, ValueError):
+            return None
+
+    def execution(job):
+        return digest({field: job.get(field) for field in [
+            'run_id', 'name', 'head_sha', 'status', 'conclusion', 'started_at',
+            'completed_at', 'steps', 'runner_id', 'runner_name', 'labels']})
+
+    originals = []
+    for job in jobs:
+        stamp = times(job)
+        if (stamp and stamp[0] <= stamp[1] <= stamp[2] and job.get('steps') and
+                job.get('status') == 'completed' and job.get('conclusion') == 'success' and
+                type(job.get('run_attempt')) is int and type(job.get('id')) is int):
+            originals.append((job, execution(job)))
+    result = []
+    for job in jobs:
+        stamp = times(job)
+        copied = (key_from_job(job.get('name', ''), expected) is not None and
+                  stamp and stamp[1] <= stamp[2] < stamp[0] and
+                  job.get('status') == 'completed' and job.get('conclusion') == 'success')
+        if copied:
+            if (type(job.get('run_attempt')) is not int or type(job.get('id')) is not int or
+                    not any(original['run_attempt'] < job['run_attempt'] and
+                            original['id'] < job['id'] and signature == execution(job)
+                            for original, signature in originals)):
+                raise ValueError('copied successful job has no matching original execution')
+            continue
+        result.append(job)
+    return result
+
+
+def discover_runs(api, inputs, candidate, demo, tag, current_run):
+    """Find compatible origins; collection still checks every original proof."""
+    requirements = inputs.requirements(candidate, tag)
+    target = {row['id']: inputs.fingerprint(candidate, demo, tag, row['id'])
+              for row in requirements}
+    runs = [run for workflow in sorted(TRUSTED)
+            for run in api.pages('actions/workflows/' + pathlib.PurePosixPath(workflow).name +
+                                 '/runs?per_page=100', 'workflow_runs')]
+    compatible, examined = [], {}
+    for run in sorted(runs, key=lambda row: row['id'], reverse=True):
+        if (run['id'] == current_run or run.get('path') not in TRUSTED or
+                run.get('event') not in {'push', 'workflow_dispatch'} or
+                run.get('repository', {}).get('full_name') != api.repository or
+                run.get('head_repository', {}).get('full_name') != api.repository):
+            continue
+        source = run.get('head_sha', '')
+        if not re.fullmatch('[0-9a-f]{40}', source):
+            raise ValueError('discovered origin has no immutable source')
+        if source not in examined:
+            inputs.ensure(source, demo)
+            try:
+                # Comparing with the same Demo isolates product/execution input
+                # changes. The actual origin Demo is authenticated by collect.
+                examined[source] = any(inputs.fingerprint(source, demo, tag, key) == value
+                                       for key, value in target.items())
+            except ValueError:
+                examined[source] = False  # Source does not support this release.
+        if examined[source]:
+            compatible.append(run['id'])
+        if len(compatible) == 20:
+            break
+    return sorted(compatible)
+
+
+def collect(api, inputs, candidate, demo, tag, run_ids, output, current_run=None,
+            private_verifier=None):
+    inputs.ensure(candidate, demo)
+    if inputs.pin(candidate, tag) != demo:
+        raise ValueError('target demo pin differs')
+    requirements = inputs.requirements(candidate, tag)
+    expected = [gate['id'] for gate in requirements]
+    requirements_digest = digest(requirements)
+    target = {key: inputs.fingerprint(candidate, demo, tag, key) for key in expected}
+    latest, pending = {}, {}
+    for run_id in sorted(set(run_ids)):
+        run = api.get(f'actions/runs/{run_id}')
+        events = {'push', 'workflow_dispatch'} if tag == 'v0.4.26' else {'push'}
+        if (run.get('path') not in TRUSTED or run.get('event') not in events or
+                run.get('head_repository', {}).get('full_name') != api.repository or
+                run.get('repository', {}).get('full_name') != api.repository or
+                (run_id != current_run and run.get('status') != 'completed')):
+            raise ValueError(f'run {run_id} is not an immutable trusted origin')
+        origin_candidate = run['head_sha']
+        inputs.ensure(origin_candidate, demo)
+        artifacts = api.pages(f'actions/runs/{run_id}/artifacts?per_page=100', 'artifacts')
+        jobs = executed_jobs(api.pages(f'actions/runs/{run_id}/jobs?filter=all&per_page=30', 'jobs'), expected)
+        archives = {}
+        origin_demo = origin_demo_pin(api, inputs, origin_candidate, tag, run_id,
+                                     artifacts, jobs, expected, archives)
+        if origin_demo is None:
+            continue
+        inputs.ensure(origin_candidate, origin_demo)
+        for job in jobs:
+            key = key_from_job(job['name'], expected)
+            if key is None or inputs.fingerprint(origin_candidate, origin_demo, tag, key) != target[key]:
+                continue
+            attempt = job.get('run_attempt')
+            if type(attempt) is not int or attempt < 1 or job.get('head_sha') != origin_candidate:
+                raise ValueError('job attempt or source binding differs')
+            order = (run_id, attempt, job['id'])
+            if key in latest and order <= latest[key][0]:
+                continue
+            # Record failed/missing/cancelled observations before considering success.
+            latest[key] = (order, None)
+            pending[key] = f'run {run_id} attempt {attempt}: {job.get("conclusion") or job.get("status")}'
+            if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+                continue
+            matches = [a for a in artifacts if a['name'] == artifact_name(key, run_id, attempt)]
+            if len(matches) != 1 or matches[0].get('expired'):
+                pending[key] = f'run {run_id}: missing, duplicate or expired artifact'
+                continue
+            artifact = matches[0]
+            if (artifact.get('workflow_run', {}).get('id') != run_id or
+                    artifact.get('workflow_run', {}).get('head_sha') != origin_candidate):
+                raise ValueError('artifact source run or commit differs')
+            if artifact['id'] in archives:
+                data, manifest, manifest_digest = archives[artifact['id']]
+            else:
+                data = api.archive(artifact)
+                manifest, manifest_digest = read_archive(data, artifact.get('digest'))
+            validate_manifest(manifest, key, run_id, origin_candidate, origin_demo, attempt)
+            requirement = next(gate for gate in requirements if gate['id'] == key)
+            if key.startswith('integration/'):
+                if manifest.get('requirements_digest') != requirements_digest:
+                    raise ValueError('integration manifest requirement set differs')
+                if set(requirement['dependencies']) & {'console', 'connector'}:
+                    if private_verifier is None:
+                        raise ValueError('authenticated private consumer evidence configuration is required')
+                    pins = private_verifier.pins.get(key)
+                    if (tag == 'v0.4.26' and isinstance(pins, dict) and
+                            manifest.get('consumer_commitments') !=
+                            {role: commitment(pin) for role, pin in pins.items()}):
+                        pending[key] = f'run {run_id}: consumer source inputs changed'
+                        continue
+                    private_verifier.verify(manifest, requirement, origin_candidate, origin_demo)
+            origin = {'repository': api.repository, 'workflow': run['path'], 'run_id': run_id,
+                      'attempt': attempt, 'job_id': job['id'], 'artifact_id': artifact['id'],
+                      'artifact_name': artifact['name'], 'archive_digest': artifact['digest'],
+                      'manifest_digest': manifest_digest, 'candidate_sha': origin_candidate,
+                      'demo_ref': origin_demo}
+            output.mkdir(parents=True, exist_ok=True)
+            # Store original ZIP bytes, never rewrite source manifests as new candidates.
+            (output / f'{artifact["id"]}.zip').write_bytes(data)
+            zipfile.ZipFile(io.BytesIO(data)).extractall(output / str(artifact['id']))
+            latest[key] = (order, {'gate': key, 'input_digest': target[key],
+                                   'origin': origin, 'manifest': manifest})
+            pending.pop(key, None)
+    proofs = [latest[key][1] for key in expected if key in latest and latest[key][1] is not None]
+    missing = [key for key in expected if key not in latest or latest[key][1] is None]
+    return {'schema': 'baseharbor.pre-release.coverage/v2', 'candidate_sha': candidate,
+            'demo_ref': demo, 'tag': tag, 'required': expected, 'requirements_digest': requirements_digest,
+            'proofs': proofs,
+            'pending': {key: pending.get(key, 'no compatible completed proof') for key in missing}}
+
+
+def selected_schedule(coverage, requested):
+    """Limit execution only; never discard pending requirements or create proof."""
+    if not requested:
+        return coverage
+    gates = requested.split(',')
+    if (any(not gate or gate != gate.strip() for gate in gates) or
+            len(gates) != len(set(gates)) or not set(gates) <= set(coverage['required'])):
+        raise ValueError('selected gates must be unique exact required gate IDs')
+    return {**coverage, 'pending': {key: reason for key, reason in coverage['pending'].items()
+                                   if key in gates}}
+
+
+def matrices(coverage):
+    missing = set(coverage['pending'])
+    result = {'adoption': [g for g in ADOPTION if f'adoption/{g}' in missing],
+              'static': [g for g in STATIC if f'atomic/static/{g}' in missing],
+              'journey': [r for r in ['docker', 'podman'] if f'journey/{r}' in missing],
+              'integration': [key for key in coverage['required']
+                              if key.startswith('integration/') and key in missing]}
+    for runtime in ['docker', 'podman']:
+        for name, gates in [('light', LIGHT), ('heavy', HEAVY), ('ha', HA)]:
+            prefix = 'ha' if name == 'ha' else 'atomic'
+            result[name + '_' + runtime] = [g for g in gates if f'{prefix}/{runtime}/{g}' in missing]
+    return result
+
+
+def verify_coverage(coverage, candidate, demo, tag, requirements=None):
+    requirements = local_requirements(tag) if requirements is None else requirements
+    expected = [gate['id'] for gate in requirements]
+    if (coverage.get('schema') != 'baseharbor.pre-release.coverage/v2' or
+            coverage.get('candidate_sha') != candidate or coverage.get('demo_ref') != demo or
+            coverage.get('tag') != tag or coverage.get('required') != expected or coverage.get('pending') or
+            (coverage.get('requirements_digest') != digest(requirements) and
+             not (tag == 'v0.4.22' and 'requirements_digest' not in coverage))):
+        raise ValueError('coverage target or required set differs, or pending gates remain')
+    proofs = coverage.get('proofs', [])
+    if len(proofs) != len(expected) or sorted(p['gate'] for p in proofs) != sorted(expected):
+        raise ValueError('coverage requires every unique requirement proof')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mode', choices=['plan', 'approve', 'check-approval'])
+    parser.add_argument('--candidate', required=True)
+    parser.add_argument('--demo', required=True)
+    parser.add_argument('--tag', required=True)
+    parser.add_argument('--demo-repo', required=True, type=pathlib.Path)
+    parser.add_argument('--output', required=True, type=pathlib.Path)
+    parser.add_argument('--runs')
+    parser.add_argument('--only-gates', default='', help='Comma-separated execution selection; approval still requires every gate')
+    parser.add_argument('--repository', default=os.getenv('GITHUB_REPOSITORY', 'mcpdev80/baseharbor'))
+    args = parser.parse_args()
+    if args.only_gates and args.mode != 'plan':
+        raise ValueError('gate selection is permitted only when planning execution')
+    api = GitHub(args.repository)
+    inputs = GitInputs(pathlib.Path.cwd(), args.demo_repo, args.demo)
+    requirements = inputs.requirements(args.candidate, args.tag)
+    private_verifier = private_verifier_from_environment(read_archive)
+    current = int(os.environ['GITHUB_RUN_ID'])
+    if args.mode == 'check-approval':
+        approved = json.loads((args.output / 'evidence-coverage.json').read_text())
+        verify_coverage(approved, args.candidate, args.demo, args.tag, requirements)
+        runs = sorted({p['origin']['run_id'] for p in approved['proofs']})
+    else:
+        path = pathlib.Path(args.runs or f'docs/releases/{args.tag}.evidence-runs')
+        runs = (json.loads(path.read_text()) if path.exists() else
+                discover_runs(api, inputs, args.candidate, args.demo, args.tag, current)
+                if args.tag == 'v0.4.26' else [])
+        if not isinstance(runs, list) or any(type(r) is not int or r < 1 for r in runs) or len(runs) > 20:
+            raise ValueError('resume origins must be at most 20 positive run ids')
+        if args.mode == 'approve':
+            runs.append(current)
+    coverage = collect(api, inputs, args.candidate, args.demo, args.tag, runs,
+                       args.output / 'origins', current_run=current, private_verifier=private_verifier)
+    if args.mode == 'check-approval':
+        verify_coverage(coverage, args.candidate, args.demo, args.tag, requirements)
+        if coverage != approved:
+            raise ValueError('approved evidence differs from authenticated immutable origins')
+        print(f'All {len(requirements)} approved proofs match immutable authenticated origins and target inputs.')
+        return
+    args.output.mkdir(parents=True, exist_ok=True)
+    (args.output / 'evidence-coverage.json').write_text(json.dumps(coverage, indent=2) + '\n')
+    if args.mode == 'approve':
+        verify_coverage(coverage, args.candidate, args.demo, args.tag, requirements)
+        approval = {'schema': 'baseharbor.pre-release.approval/v2', 'tag': args.tag,
+                    'candidate_sha': args.candidate, 'tested_sha': args.candidate, 'demo_sha': args.demo,
+                    'workflow': 'pre-release.yml', 'workflow_run_id': current,
+                    'workflow_run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
+                    'gate_count': len(requirements), 'requirements_digest': digest(requirements),
+                    'gate_evidence_schema': 'baseharbor.pre-release.coverage/v2', 'result': 'success',
+                    'coverage_digest': digest(coverage)}
+        if args.tag in {'v0.4.24', 'v0.4.25', 'v0.4.26'}:
+            consumer_ref = os.environ.get('BASEHARBOR_CONSUMER_REF', '')
+            if not re.fullmatch('[0-9a-f]{40}', consumer_ref):
+                raise ValueError(f'{args.tag} requires an immutable complete consumer origin')
+            approval['consumer_ref'] = consumer_ref
+        (args.output / 'release-approved.json').write_text(json.dumps(approval, indent=2) + '\n')
+    else:
+        jobs = inputs.workflow(args.candidate)
+        unscheduled = [gate['id'] for gate in requirements
+                       if gate['id'] in coverage['pending'] and gate['id'].startswith('integration/')
+                       and not any(job in jobs and jobs[job].get('name') == 'Integration · ' + gate['id']
+                                   for job in gate['jobs'])]
+        if unscheduled:
+            raise ValueError('required integration gates are not wired for scheduling: ' + ', '.join(unscheduled))
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            scheduled = selected_schedule(coverage, args.only_gates)
+            (args.output / 'scheduling-selection.json').write_text(json.dumps({
+                'requested': args.only_gates.split(',') if args.only_gates else [],
+                'scheduled': list(scheduled['pending']),
+                'deferred': [key for key in coverage['pending'] if key not in scheduled['pending']],
+                'release_approved': False}, indent=2) + '\n')
+            for name, gates in matrices(scheduled).items():
+                stream.write(f'{name}={json.dumps(gates, separators=(",", ":"))}\n{name}_count={len(gates)}\n')
+    print(f'{len(coverage["proofs"])} authenticated proofs; {len(coverage["pending"])} gates pending.')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyError, OSError, subprocess.CalledProcessError, zipfile.BadZipFile) as error:
+        raise SystemExit(f'evidence resume rejected: {error}')

@@ -1,0 +1,8 @@
+=== RUN   TestCMF19UnboundInstanceMustRemainUnverifiable
+--- PASS: TestCMF19UnboundInstanceMustRemainUnverifiable (0.15s)
+=== RUN   TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence
+--- PASS: TestCMF19MaterializedDirectoryMissingEnvMustNotProveAbsence (0.04s)
+=== RUN   TestCMF19RuntimeDetectionFailureMustRemainUnverifiable
+--- PASS: TestCMF19RuntimeDetectionFailureMustRemainUnverifiable (0.04s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.229s

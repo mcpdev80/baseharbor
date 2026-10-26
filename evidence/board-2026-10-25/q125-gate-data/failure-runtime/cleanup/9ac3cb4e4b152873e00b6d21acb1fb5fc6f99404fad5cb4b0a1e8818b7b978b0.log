@@ -1,0 +1,191 @@
+I1026 03:08:52.180705 master.go:396 current: seaweedfs-node-1:9333 peers:seaweedfs-node-1:9333
+I1026 03:08:52.180743 file_util.go:29 Folder /data Permission: -rwxr-xr-x
+I1026 03:08:52.180787 master.go:396 current: seaweedfs-node-1:9333 peers:seaweedfs-node-1:9333
+I1026 03:08:52.180822 file_util.go:29 Folder /data Permission: -rwxr-xr-x
+I1026 03:08:52.180851 master_server.go:157 Volume Size Limit is 1024 MB
+I1026 03:08:52.180949 master.go:205 Start Seaweed Master 30GB 4.47 c50733600 at 0.0.0.0:9333
+I1026 03:08:52.181172 raft_server.go:145 Starting RaftServer with seaweedfs-node-1:9333
+I1026 03:08:52.181382 volume_grpc_client_to_master.go:98 checkWithMaster seaweedfs-node-1:9333: get master seaweedfs-node-1:9333 configuration: rpc error: code = Unavailable desc = connection error: desc = "transport: Error while dialing: dial unix /tmp/seaweedfs-master-grpc-19333.sock: connect: no such file or directory"
+I1026 03:08:52.204141 raft_server.go:231 current cluster leader: 
+I1026 03:08:52.204169 master_server.go:285 [seaweedfs-node-1:9333.19333]  - is the leader.
+I1026 03:08:52.204607 master.go:275 Start Seaweed Master 30GB 4.47 c50733600 grpc server at 0.0.0.0:19333
+I1026 03:08:52.204679 grpc_client_server.go:160 gRPC also listening on Unix socket /tmp/seaweedfs-master-grpc-19333.sock
+I1026 03:08:52.204789 master.go:296 bootstrap check in 1.671242988s (peer index 0 of 1)
+I1026 03:08:52.207939 masterclient.go:262 .master masterClient failed to receive from seaweedfs-node-1:9333: rpc error: code = Unknown desc = raft.Server: Not current leader
+I1026 03:08:53.182123 filer.go:369 Initialized credential manager: filer_etc
+W1026 03:08:53.182451 filer_server.go:222 skipping default store dir in /data/filerldb2
+I1026 03:08:53.182672 filer_server.go:228 max_file_name_length 255
+I1026 03:08:53.188017 leveldb2_store.go:43 filer store leveldb2 dir: /data/filerldb2
+I1026 03:08:53.188044 file_util.go:29 Folder /data/filerldb2 Permission: -rwxr-xr-x
+I1026 03:08:53.188391 masterclient.go:262 .filer masterClient failed to receive from seaweedfs-node-1:9333: rpc error: code = Unknown desc = raft.Server: Not current leader
+I1026 03:08:53.208646 masterclient.go:586 .master masterClient reconnection attempt #1
+I1026 03:08:53.209272 masterclient.go:262 .master masterClient failed to receive from seaweedfs-node-1:9333: rpc error: code = Unknown desc = raft.Server: Not current leader
+I1026 03:08:53.722456 filer.go:213 create filer.store.id to -488134660
+I1026 03:08:53.722473 configuration.go:29 configured filer store to leveldb2
+I1026 03:08:53.722582 filer_server_tus_session.go:637 TUS session cleanup started with interval 1h0m0s
+I1026 03:08:53.877031 masterclient.go:619 No existing leader found!
+I1026 03:08:53.877049 raft_server.go:311 Initializing new cluster
+I1026 03:08:53.877093 master_server.go:250 leader change event:  => seaweedfs-node-1:9333.19333
+I1026 03:08:53.877109 master_server.go:253 [seaweedfs-node-1:9333.19333] seaweedfs-node-1:9333.19333 becomes leader.
+I1026 03:08:53.881986 master_grpc_server.go:598 + client .adminShell@b2f53d03-5fac-49d7-9803-eafdeebd3095
+I1026 03:08:53.882361 master_grpc_server.go:613 - client .adminShell@b2f53d03-5fac-49d7-9803-eafdeebd3095
+I1026 03:08:53.883008 master_grpc_server.go:598 + client .adminShell@1fd99241-d86a-448c-a826-35cc3ecb8e83
+I1026 03:08:53.906255 cluster_commands.go:40 TopologyId generated and applied on leader: d163ee2c-0bc6-426a-bf49-e8aab54946e1
+I1026 03:08:53.906279 raft_common.go:60 TopologyId generated: d163ee2c-0bc6-426a-bf49-e8aab54946e1
+I1026 03:08:53.912858 master_grpc_server.go:613 - client .adminShell@1fd99241-d86a-448c-a826-35cc3ecb8e83
+I1026 03:08:53.940259 master_server.go:353 snapshot taken to persist TopologyId d163ee2c-0bc6-426a-bf49-e8aab54946e1
+I1026 03:08:53.994663 grpc_client_server.go:160 gRPC also listening on Unix socket /tmp/seaweedfs-volume-grpc-18080.sock
+I1026 03:08:53.994681 volume.go:626 Start Seaweed volume server 30GB 4.47 c50733600 at 0.0.0.0:8080
+I1026 03:08:53.994753 volume_grpc_client_to_master.go:107 Volume server start with seed master nodes: [seaweedfs-node-1:9333]
+I1026 03:08:53.995125 volume_grpc_client_to_master.go:181 Heartbeat to: seaweedfs-node-1:9333
+I1026 03:08:53.995621 node.go:522 topo adds child dc1
+I1026 03:08:53.995631 node.go:522 topo:dc1 adds child DefaultRack
+I1026 03:08:53.995638 node.go:522 topo:dc1:DefaultRack adds child seaweedfs-node-1:8080
+I1026 03:08:53.995643 node.go:522 topo:dc1:DefaultRack:seaweedfs-node-1:8080 adds child 
+I1026 03:08:53.995647 master_grpc_server.go:191 added volume server 0: seaweedfs-node-1:8080 (id=seaweedfs-node-1:8080, ip=seaweedfs-node-1:8080) [3aef555b-100a-4dee-ab1f-c7b92c82e88b]
+I1026 03:08:53.995657 master_grpc_server.go:75 found new uuid:seaweedfs-node-1:8080 [3aef555b-100a-4dee-ab1f-c7b92c82e88b] , map[seaweedfs-node-1:8080:[3aef555b-100a-4dee-ab1f-c7b92c82e88b]]
+I1026 03:08:54.062256 master_grpc_server.go:598 + client .adminShell@b64273ed-216d-4d5f-baed-ed3236966b22
+I1026 03:08:54.062559 master_grpc_server.go:613 - client .adminShell@b64273ed-216d-4d5f-baed-ed3236966b22
+I1026 03:08:54.063094 master_grpc_server.go:598 + client .adminShell@b3cc5545-497d-4da6-94da-b42730fb6f11
+I1026 03:08:54.151394 master_grpc_server.go:613 - client .adminShell@b3cc5545-497d-4da6-94da-b42730fb6f11
+I1026 03:08:54.188791 masterclient.go:586 .filer masterClient reconnection attempt #1
+I1026 03:08:54.189281 master_grpc_server.go:598 + client .filer@seaweedfs-node-1:8888.18888
+I1026 03:08:54.209680 masterclient.go:586 .master masterClient reconnection attempt #2
+I1026 03:08:54.210263 master_grpc_server.go:598 + client .master@seaweedfs-node-1:9333.19333
+I1026 03:08:54.210427 masterclient.go:315 + master@seaweedfs-node-1:9333 noticed .filer seaweedfs-node-1:8888.18888
+I1026 03:08:54.210445 masterclient.go:315 + master@seaweedfs-node-1:9333 noticed .master seaweedfs-node-1:9333.19333
+I1026 03:08:54.274927 master_client.go:24 the cluster has 1 filer
+I1026 03:08:54.274952 filer_server.go:299 seaweedfs-node-1:8888 bootstrap from peers [node_type:"filer" address:"seaweedfs-node-1:8888.18888" is_add:true created_at_ns:1792984134189291931]
+I1026 03:08:54.275030 filer.go:152 seaweedfs-node-1:8888 aggregate from peers [seaweedfs-node-1:8888]
+I1026 03:08:54.275231 filer.go:450 Start Seaweed Filer 30GB 4.47 c50733600 at seaweedfs-node-1:8888
+I1026 03:08:54.275268 meta_aggregator.go:335 loopSubscribeToOneFiler read seaweedfs-node-1:8888 start from 2026-10-26 03:07:54.274943084 +0000 UTC 1792984074274943084
+I1026 03:08:54.275401 filer.go:479 Registered IAM gRPC service on filer (unauthenticated; set jwt.filer_signing.key in security.toml to require admin Bearer <redacted>
+I1026 03:08:54.275482 grpc_client_server.go:160 gRPC also listening on Unix socket /tmp/seaweedfs-filer-grpc-18888.sock
+I1026 03:08:54.276060 meta_aggregator.go:462 subscribing remote seaweedfs-node-1:8888 meta change: 2026-10-26 03:07:54.274943084 +0000 UTC, clientId:1469440556
+I1026 03:08:54.276421 filer_grpc_server_sub_meta.go:1534 + local listener filer:seaweedfs-node-1:8888.18888@@ clientId -1469440556 clientEpoch 1
+I1026 03:08:54.276429 filer_grpc_server_sub_meta.go:973  + filer:seaweedfs-node-1:8888.18888@@ local subscribe / from {Time:2026-10-26 03:07:54.274943084 +0000 UTC Offset:-7 IsOffsetBased:false} clientId:-1469440556
+I1026 03:08:54.836079 master_grpc_server.go:598 + client .admin@160e2451-d1b8-4c41-b066-adf595d5da78
+I1026 03:08:54.873160 master_grpc_server.go:598 + client .adminShell@5b1c6ad4-5f4d-4bc1-98e9-b6917eb88985
+I1026 03:08:54.873503 master_grpc_server.go:613 - client .adminShell@5b1c6ad4-5f4d-4bc1-98e9-b6917eb88985
+I1026 03:08:54.881671 master_grpc_server.go:598 + client .adminShell@cb16a969-2e29-4892-9ecc-c9a3b2686192
+I1026 03:08:54.936650 master_grpc_server.go:613 - client .adminShell@cb16a969-2e29-4892-9ecc-c9a3b2686192
+I1026 03:08:55.182882 s3.go:310 S3 read filer buckets dir: /buckets
+I1026 03:08:55.182907 s3.go:311 S3 read filer maxMB: 4
+I1026 03:08:55.182911 s3.go:313 S3 read master addresses for discovery: [seaweedfs-node-1:9333]
+I1026 03:08:55.182919 s3.go:321 connected to filers [seaweedfs-node-1:8888]
+I1026 03:08:55.182928 s3.go:342 Starting S3 API Server with standard IAM
+I1026 03:08:55.184099 filer_client.go:177 FilerClient: started filer discovery for group '' (refresh interval: 5m0s)
+W1026 03:08:55.184122 s3_sse_s3.go:861 SSE-S3 KeyManager: neither s3.sse.kek.passphrase nor WEED_S3_SSE_KEK_PASSPHRASE is set; the KEK will be stored on the filer in plaintext. Set one to enable encrypted-at-rest KEK storage.
+I1026 03:08:55.184234 s3_sse_s3.go:566 SSE-S3 KeyManager: No KEK configured. SSE-S3 encryption is disabled. Set s3.sse.kek or s3.sse.key in security.toml to enable it.
+E1026 03:08:55.184390 s3api_server.go:388 Failed to load IAM configuration: no signing key found for STS service; please provide 'signingKey' in IAM config, configure 'jwt.filer_signing.key' in security.toml, or ensure SSE-S3 is initialized
+I1026 03:08:55.184481 master_grpc_server.go:598 + client .s3@seaweedfs-node-1:18333
+I1026 03:08:55.184542 masterclient.go:315 + filer@seaweedfs-node-1:8888 noticed .s3 seaweedfs-node-1:18333
+I1026 03:08:55.184564 masterclient.go:315 + master@seaweedfs-node-1:9333 noticed .s3 seaweedfs-node-1:18333
+I1026 03:08:55.186280 grpc_client_server.go:160 gRPC also listening on Unix socket /tmp/seaweedfs-s3-grpc-18333.sock
+I1026 03:08:55.186479 filer_grpc_server_sub_meta.go:1534 + local listener s3@@ clientId -622168350 clientEpoch 2
+I1026 03:08:55.187294 filer_grpc_server_sub_meta.go:973  + s3@@ local subscribe /etc/ from {Time:2026-10-26 03:08:55.182942567 +0000 UTC Offset:-7 IsOffsetBased:false} clientId:-622168350
+I1026 03:08:55.186877 s3api_bucket_owner_index.go:277 bucket owner index ready
+I1026 03:08:55.187255 s3.go:530 Start Seaweed S3 API Server 30GB 4.47 c50733600 at http port 8333
+I1026 03:08:55.189696 lock_ring_manager.go:139 LockRing: broadcasting ring update for group "" version 1792984135189658296: [seaweedfs-node-1:8888.18888]
+I1026 03:08:55.189838 masterclient.go:330 LockRing: s3@seaweedfs-node-1:18333 received ring update v1792984135189658296: [seaweedfs-node-1:8888.18888]
+I1026 03:08:55.189891 masterclient.go:330 LockRing: filer@seaweedfs-node-1:8888 received ring update v1792984135189658296: [seaweedfs-node-1:8888.18888]
+I1026 03:08:55.189904 filer.go:174 LockRing: applying master ring update v1792984135189658296: [seaweedfs-node-1:8888]
+I1026 03:08:55.194577 master_client.go:24 the cluster has 1 filer
+I1026 03:08:55.194592 filer_client.go:430 FilerClient: removed 1 filer(s) no longer in group '': [seaweedfs-node-1:8888]
+I1026 03:08:55.194598 filer_client.go:433 FilerClient: discovered 1 new filer(s) in group '': [seaweedfs-node-1:8888]
+I1026 03:08:55.341681 master_grpc_server.go:598 + client .adminShell@60b213a0-1a7e-4698-a242-9b7b580f85aa
+I1026 03:08:55.342078 master_grpc_server.go:613 - client .adminShell@60b213a0-1a7e-4698-a242-9b7b580f85aa
+I1026 03:08:55.342711 master_grpc_server.go:598 + client .adminShell@ce21c9a4-5adb-42ea-a603-ce1c0e817021
+I1026 03:08:55.454673 master_grpc_server.go:613 - client .adminShell@ce21c9a4-5adb-42ea-a603-ce1c0e817021
+I1026 03:08:55.608684 master_grpc_server.go:598 + client .adminShell@54330483-c2f7-4cab-ace1-c1201a66588e
+I1026 03:08:55.608978 master_grpc_server.go:613 - client .adminShell@54330483-c2f7-4cab-ace1-c1201a66588e
+I1026 03:08:55.611124 master_grpc_server.go:598 + client .adminShell@f73bf9f1-93e3-4a52-aa95-cf65b5e7f69a
+I1026 03:08:55.801903 master_grpc_server.go:613 - client .adminShell@f73bf9f1-93e3-4a52-aa95-cf65b5e7f69a
+I1026 03:08:55.954346 master_grpc_server.go:598 + client .adminShell@878e1b47-0c04-4410-aaa5-95735d75a69a
+I1026 03:08:55.954654 master_grpc_server.go:613 - client .adminShell@878e1b47-0c04-4410-aaa5-95735d75a69a
+I1026 03:08:55.955299 master_grpc_server.go:598 + client .adminShell@bed3a40b-8d15-4bf4-8887-4d0b68d6b237
+I1026 03:08:55.983614 master_grpc_server.go:613 - client .adminShell@bed3a40b-8d15-4bf4-8887-4d0b68d6b237
+I1026 03:08:56.141706 master_grpc_server.go:598 + client .adminShell@e20c5c92-f6e1-4044-8f84-e9428e13d015
+I1026 03:08:56.142036 master_grpc_server.go:613 - client .adminShell@e20c5c92-f6e1-4044-8f84-e9428e13d015
+I1026 03:08:56.142703 master_grpc_server.go:598 + client .adminShell@ea6253f2-aca0-41b3-adc8-5ccdebea468b
+I1026 03:08:56.157763 master_grpc_server.go:613 - client .adminShell@ea6253f2-aca0-41b3-adc8-5ccdebea468b
+I1026 03:08:56.167972 master_grpc_server_assign.go:136 assign count:1 replication:"000" collection:"bh-demo-dev-uploads" data_center:"dc1" expected_data_size:32 {"collection":"bh-demo-dev-uploads","replication":{},"ttl":{"Count":0,"Unit":0},"dataCenter":"dc1","version":3}: failed to find writable volumes for collection:bh-demo-dev-uploads replication:000 ttl: error: No writable volumes
+I1026 03:08:56.168020 master_grpc_server_volume.go:143 volume grow &{Option:{"collection":"bh-demo-dev-uploads","replication":{},"ttl":{"Count":0,"Unit":0},"dataCenter":"dc1","version":3} Count:0 Force:false Reason:grpc assign}
+I1026 03:08:56.168744 store.go:338 In dir /data (disk ID 0) adds volume:1 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.214057 store.go:343 add volume 1 on disk ID 0
+I1026 03:08:56.214196 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 1
+I1026 03:08:56.214323 volume_growth.go:384 Created Volume 1 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.214365 volume_growth.go:397 Registered Volume 1 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.214623 store.go:338 In dir /data (disk ID 0) adds volume:2 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.255427 store.go:343 add volume 2 on disk ID 0
+I1026 03:08:56.255537 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 2
+I1026 03:08:56.255696 volume_growth.go:384 Created Volume 2 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.255721 volume_growth.go:397 Registered Volume 2 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.255943 store.go:338 In dir /data (disk ID 0) adds volume:3 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.288375 store.go:343 add volume 3 on disk ID 0
+I1026 03:08:56.288465 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 3
+I1026 03:08:56.288567 volume_growth.go:384 Created Volume 3 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.288591 volume_growth.go:397 Registered Volume 3 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.288876 store.go:338 In dir /data (disk ID 0) adds volume:4 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.326079 store.go:343 add volume 4 on disk ID 0
+I1026 03:08:56.326166 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 4
+I1026 03:08:56.326316 volume_growth.go:384 Created Volume 4 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.326355 volume_growth.go:397 Registered Volume 4 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.326571 store.go:338 In dir /data (disk ID 0) adds volume:5 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.370872 store.go:343 add volume 5 on disk ID 0
+I1026 03:08:56.370949 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 5
+I1026 03:08:56.371074 volume_growth.go:384 Created Volume 5 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.371108 volume_growth.go:397 Registered Volume 5 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.371447 store.go:338 In dir /data (disk ID 0) adds volume:6 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.404890 store.go:343 add volume 6 on disk ID 0
+I1026 03:08:56.404967 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 6
+I1026 03:08:56.405074 volume_growth.go:384 Created Volume 6 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.405093 volume_growth.go:397 Registered Volume 6 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.405326 store.go:338 In dir /data (disk ID 0) adds volume:7 collection:bh-demo-dev-uploads replicaPlacement:000 ttl:
+I1026 03:08:56.440932 store.go:343 add volume 7 on disk ID 0
+I1026 03:08:56.441010 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 7
+I1026 03:08:56.441153 volume_growth.go:384 Created Volume 7 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:56.441173 volume_growth.go:397 Registered Volume 7 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:08:57.173226 s3api_object_handlers_delete.go:209 DeleteObjectHandler bh-demo-dev-uploads .baseharbor/identity-ready-1792984136164910011
+I1026 03:08:57.183889 s3api_object_handlers_delete.go:209 DeleteObjectHandler bh-demo-dev-uploads .baseharbor/verify-486616ff4e88
+I1026 03:08:58.176451 master_grpc_server.go:613 - client .admin@160e2451-d1b8-4c41-b066-adf595d5da78
+I1026 03:08:59.322236 master_grpc_server.go:598 + client .admin@06d64397-ce5c-4485-add9-d82786cf0ee6
+I1026 03:09:35.187804 lock_client.go:238 Lock owner changed from  to seaweedfs-node-1:8888-s3-metrics
+I1026 03:09:53.187681 master_grpc_server_volume.go:143 volume grow &{Option:{"replication":{},"ttl":{"Count":0,"Unit":0},"version":3} Count:0 Force:false Reason:grpc assign}
+I1026 03:09:53.187907 store.go:338 In dir /data (disk ID 0) adds volume:8 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.260191 store.go:343 add volume 8 on disk ID 0
+I1026 03:09:53.260279 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 8
+I1026 03:09:53.260455 volume_growth.go:384 Created Volume 8 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.260470 volume_growth.go:397 Registered Volume 8 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.260763 store.go:338 In dir /data (disk ID 0) adds volume:9 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.304206 store.go:343 add volume 9 on disk ID 0
+I1026 03:09:53.304297 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 9
+I1026 03:09:53.304456 volume_growth.go:384 Created Volume 9 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.304513 volume_growth.go:397 Registered Volume 9 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.304730 store.go:338 In dir /data (disk ID 0) adds volume:10 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.359757 store.go:343 add volume 10 on disk ID 0
+I1026 03:09:53.359840 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 10
+I1026 03:09:53.359968 volume_growth.go:384 Created Volume 10 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.360019 volume_growth.go:397 Registered Volume 10 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.360250 store.go:338 In dir /data (disk ID 0) adds volume:11 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.413538 store.go:343 add volume 11 on disk ID 0
+I1026 03:09:53.413622 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 11
+I1026 03:09:53.413753 volume_growth.go:384 Created Volume 11 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.413770 volume_growth.go:397 Registered Volume 11 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.413961 store.go:338 In dir /data (disk ID 0) adds volume:12 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.476919 store.go:343 add volume 12 on disk ID 0
+I1026 03:09:53.477011 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 12
+I1026 03:09:53.477191 volume_growth.go:384 Created Volume 12 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.477210 volume_growth.go:397 Registered Volume 12 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.477495 store.go:338 In dir /data (disk ID 0) adds volume:13 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.547855 store.go:343 add volume 13 on disk ID 0
+I1026 03:09:53.547936 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 13
+I1026 03:09:53.548088 volume_growth.go:384 Created Volume 13 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.548102 volume_growth.go:397 Registered Volume 13 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.548302 store.go:338 In dir /data (disk ID 0) adds volume:14 collection: replicaPlacement:000 ttl:
+I1026 03:09:53.592479 store.go:343 add volume 14 on disk ID 0
+I1026 03:09:53.592591 volume_grpc_client_to_master.go:303 volume server seaweedfs-node-1:8080 adds volume 14
+I1026 03:09:53.592708 volume_growth.go:384 Created Volume 14 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:09:53.592721 volume_growth.go:397 Registered Volume 14 on topo:dc1:DefaultRack:seaweedfs-node-1:8080
+I1026 03:11:24.275902 empty_folder_cleaner.go:564 EmptyFolderCleaner: deleting empty folder /buckets/bh-demo-dev-uploads/.baseharbor (triggered by verify-486616ff4e88)
+I1026 03:12:19.466488 s3api_object_handlers_delete.go:209 DeleteObjectHandler bh-demo-dev-uploads .baseharbor/verify-df44023bde92

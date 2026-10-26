@@ -1,0 +1,555 @@
+package application
+
+import (
+	"sort"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/availability"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+)
+
+const CurrentVersion = 1
+
+const defaultServiceInstance = "default"
+
+// Manifest is the declarative application backend request understood by BaseHarbor.
+type Manifest struct {
+	providerPreferences *[]ProviderPreference // deployment-only; never serialized
+	// Read-only native owner projection; never authored or serialized intent.
+	backendPlacements map[capability.ProviderKind]capability.ProviderPlacement
+	Version           int
+	ApplicationID     string
+	Name              string
+	Environment       string
+	Services          Services
+	Secrets           SecretRequirements
+	Workload          WorkloadConfig
+	Exposures         []HTTPExposureRequirement
+	Telemetry         TelemetryRequirements
+	Metrics           MetricsRequirements
+	Logs              LogsRequirements
+	Runtime           RuntimeRequirements
+	Identity          IdentityRequirements
+	HA                bool
+	Availability      map[string]availability.Override
+	Consumes          []ConsumptionRequirement
+}
+
+type RuntimeRequirements struct {
+	Permissions []RuntimePermission
+}
+
+type RuntimePermission struct {
+	Capability string
+	Services   []string
+	Operations []string
+}
+
+type TelemetryRequirements struct {
+	OTLP *OTLPRequirement
+}
+
+type OTLPRequirement struct {
+	Signals []string
+}
+
+type MetricsRequirements struct {
+	Sources []MetricsSourceRequirement
+}
+
+type LogsRequirements struct {
+	Collect []string
+}
+
+type MetricsSourceRequirement struct {
+	Name    string
+	Service string
+	Port    int
+	Path    string
+}
+
+type Services struct {
+	SQL                          bool
+	Cache                        bool
+	KeyValue                     bool
+	DocumentDatabase             bool
+	MessagingQueue               bool
+	MessagingPubSub              bool
+	MessagingStream              bool
+	Secrets                      bool
+	ObjectStorage                bool
+	Identity                     bool
+	SQLManagementUI              bool
+	CacheManagementUI            bool
+	KeyValueManagementUI         bool
+	DocumentDatabaseManagementUI bool
+	MessagingManagementUI        bool
+	SecretsManagementUI          bool
+	ObjectStorageManagementUI    bool
+	IdentityManagementUI         bool
+	ObservabilityManagementUI    bool
+	SQLInstances                 map[string]ServiceInstance
+	CacheInstances               map[string]ServiceInstance
+	KeyValueInstances            map[string]ServiceInstance
+	DocumentDatabaseInstances    map[string]ServiceInstance
+	MessagingQueueInstances      map[string]ServiceInstance
+	MessagingPubSubInstances     map[string]ServiceInstance
+	MessagingStreamInstances     map[string]ServiceInstance
+	ObjectStorageBuckets         map[string]ServiceInstance
+}
+
+type IdentityRequirements struct {
+	CallbackPaths  []string
+	LogoutPaths    []string
+	Scopes         []string
+	Claims         []string
+	Authentication IdentityAuthenticationRequirements
+}
+
+type IdentityAuthenticationRequirements struct {
+	MFA          string
+	Methods      []string
+	Passwordless bool
+}
+
+func HasIdentity(m Manifest) bool { return m.Services.Identity }
+
+func WithIdentity(m Manifest) Manifest {
+	m.Services.Identity = true
+	if len(m.Identity.Scopes) == 0 {
+		m.Identity.Scopes = []string{"openid", "profile", "email"}
+	}
+	return m
+}
+
+func WithIdentityCallbackPath(m Manifest, path string) Manifest {
+	m = WithIdentity(m)
+	m.Identity.CallbackPaths = append(m.Identity.CallbackPaths, strings.TrimSpace(path))
+	return m
+}
+
+func WithIdentityLogoutPath(m Manifest, path string) Manifest {
+	m = WithIdentity(m)
+	m.Identity.LogoutPaths = append(m.Identity.LogoutPaths, strings.TrimSpace(path))
+	return m
+}
+
+func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwordless bool) Manifest {
+	m = WithIdentity(m)
+	m.Identity.Authentication = IdentityAuthenticationRequirements{MFA: strings.TrimSpace(mfa), Methods: append([]string(nil), methods...), Passwordless: passwordless}
+	return m
+}
+
+// WorkloadConfig carries only portable logical workload-component identity.
+// Source-format metadata such as Compose/Kubernetes/Quadlet paths belongs to
+// repository authoring metadata and never to portable application intent.
+type WorkloadConfig struct {
+	Components []string
+}
+
+// HTTPExposureRequirement is provider-neutral public HTTP exposure intent.
+// Hostname, host port, TLS source paths and reverse-proxy implementation are
+// deployment/provider state and deliberately absent.
+type HTTPExposureRequirement struct {
+	Name       string
+	Service    string
+	Port       int
+	Protocol   string
+	Visibility string
+}
+
+// ServiceInstance is the stable logical identity of one requested backend
+// service. The empty v1 shape is intentional: topology remains a BaseHarbor
+// implementation detail and future intent such as availability can evolve here.
+type ServiceInstance struct{}
+
+func AvailabilityIntent(m Manifest) availability.Intent {
+	return availability.Intent{HA: m.HA, Overrides: m.Availability}
+}
+
+func WithHA(m Manifest, enabled bool) Manifest {
+	m.HA = enabled
+	return m
+}
+
+func WithAvailabilityOverride(m Manifest, component string, ha *bool, instances int) Manifest {
+	if m.Availability == nil {
+		m.Availability = map[string]availability.Override{}
+	}
+	m.Availability[strings.TrimSpace(component)] = availability.Override{HA: ha, Instances: instances}
+	return m
+}
+
+// SecretRequirements declares application-owned secret requirements. Values
+// never belong in the manifest. Generate only expresses explicit intent for
+// BaseHarbor to create a missing value directly in the managed secret backend.
+type SecretRequirements struct {
+	Required []SecretRequirement
+	Optional []SecretRequirement
+}
+
+type SecretRequirement struct {
+	Name     string
+	Generate *SecretGeneration
+}
+
+type SecretGeneration struct {
+	Type   string
+	Length int
+	Bytes  int
+}
+
+func New(name, environment string, sql, cache, secrets bool) Manifest {
+	if environment == "" {
+		environment = "dev"
+	}
+	return Manifest{Version: CurrentVersion, ApplicationID: MustNewApplicationID(), Name: name, Environment: environment, Services: Services{SQL: sql, Cache: cache, Secrets: secrets}}
+}
+
+func WithSQLInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.SQLInstances == nil {
+		m.Services.SQLInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.SQLInstances[name] = ServiceInstance{}
+	}
+	m.Services.SQL = true
+	return m
+}
+
+func WithCacheInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.CacheInstances == nil {
+		m.Services.CacheInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.CacheInstances[name] = ServiceInstance{}
+	}
+	m.Services.Cache = true
+	return m
+}
+
+func WithKeyValueInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.KeyValueInstances == nil {
+		m.Services.KeyValueInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.KeyValueInstances[name] = ServiceInstance{}
+	}
+	m.Services.KeyValue = true
+	return m
+}
+
+func WithDocumentDatabaseInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.DocumentDatabaseInstances == nil {
+		m.Services.DocumentDatabaseInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.DocumentDatabaseInstances[name] = ServiceInstance{}
+	}
+	m.Services.DocumentDatabase = true
+	return m
+}
+
+func WithMessagingQueueInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingQueueInstances == nil {
+		m.Services.MessagingQueueInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingQueueInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingQueue = true
+	return m
+}
+
+func WithMessagingPubSubInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingPubSubInstances == nil {
+		m.Services.MessagingPubSubInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingPubSubInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingPubSub = true
+	return m
+}
+
+func WithMessagingStreamInstances(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.MessagingStreamInstances == nil {
+		m.Services.MessagingStreamInstances = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.MessagingStreamInstances[name] = ServiceInstance{}
+	}
+	m.Services.MessagingStream = true
+	return m
+}
+
+func WithObjectStorageBuckets(m Manifest, names ...string) Manifest {
+	if len(names) == 0 {
+		return m
+	}
+	if m.Services.ObjectStorageBuckets == nil {
+		m.Services.ObjectStorageBuckets = make(map[string]ServiceInstance, len(names))
+	}
+	for _, name := range names {
+		m.Services.ObjectStorageBuckets[name] = ServiceInstance{}
+	}
+	m.Services.ObjectStorage = true
+	return m
+}
+
+func ObjectStorageBucketNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.ObjectStorage, m.Services.ObjectStorageBuckets)
+}
+
+func WithWorkloadComponents(m Manifest, components ...string) Manifest {
+	m.Workload.Components = append([]string(nil), components...)
+	return m
+}
+
+func WorkloadComponentNames(m Manifest) []string {
+	return append([]string(nil), m.Workload.Components...)
+}
+
+func WithHTTPExposure(m Manifest, name, service string, port int, protocol string) Manifest {
+	m.Exposures = append(m.Exposures, HTTPExposureRequirement{Name: name, Service: service, Port: port, Protocol: protocol, Visibility: "public"})
+	return m
+}
+
+func WithOTLPTelemetry(m Manifest, signals ...string) Manifest {
+	m.Telemetry.OTLP = &OTLPRequirement{Signals: append([]string(nil), signals...)}
+	return m
+}
+
+func HasOTLPTelemetry(m Manifest) bool { return m.Telemetry.OTLP != nil }
+
+func WithMetricsSource(m Manifest, name, service string, port int, path string) Manifest {
+	m.Metrics.Sources = append(m.Metrics.Sources, MetricsSourceRequirement{
+		Name: strings.TrimSpace(name), Service: strings.TrimSpace(service), Port: port, Path: strings.TrimSpace(path),
+	})
+	return m
+}
+
+func HasMetricsSources(m Manifest) bool { return len(m.Metrics.Sources) > 0 }
+
+func WithLogsCollection(m Manifest, sources ...string) Manifest {
+	m.Logs.Collect = append([]string(nil), sources...)
+	return m
+}
+
+func HasLogsCollection(m Manifest) bool { return len(m.Logs.Collect) > 0 }
+
+func WithRuntimePermission(m Manifest, capabilityID string, services []string, operations ...string) Manifest {
+	m.Runtime.Permissions = append(m.Runtime.Permissions, RuntimePermission{
+		Capability: strings.TrimSpace(capabilityID),
+		Services:   append([]string(nil), services...),
+		Operations: append([]string(nil), operations...),
+	})
+	return m
+}
+
+func HasRuntimeCapabilityPermission(m Manifest, capabilityID string) bool {
+	capabilityID = strings.TrimSpace(capabilityID)
+	for _, permission := range m.Runtime.Permissions {
+		if permission.Capability == capabilityID {
+			return true
+		}
+	}
+	return false
+}
+
+func RuntimePermissionFor(m Manifest, capabilityID, operation string) bool {
+	capabilityID = strings.TrimSpace(capabilityID)
+	operation = strings.TrimSpace(operation)
+	for _, permission := range m.Runtime.Permissions {
+		if permission.Capability != capabilityID {
+			continue
+		}
+		for _, allowed := range permission.Operations {
+			if allowed == operation {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func SQLInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.SQL, m.Services.SQLInstances)
+}
+
+func CacheInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.Cache, m.Services.CacheInstances)
+}
+
+func KeyValueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.KeyValue, m.Services.KeyValueInstances)
+}
+
+func DocumentDatabaseInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.DocumentDatabase, m.Services.DocumentDatabaseInstances)
+}
+
+func MessagingQueueInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingQueue, m.Services.MessagingQueueInstances)
+}
+
+func MessagingPubSubInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingPubSub, m.Services.MessagingPubSubInstances)
+}
+
+func MessagingStreamInstanceNames(m Manifest) []string {
+	return serviceInstanceNames(m.Services.MessagingStream, m.Services.MessagingStreamInstances)
+}
+
+func RabbitMQInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, names := range [][]string{
+		MessagingQueueInstanceNames(m),
+		MessagingPubSubInstanceNames(m),
+		MessagingStreamInstanceNames(m),
+	} {
+		for _, name := range names {
+			seen[name] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func ValkeyInstanceNames(m Manifest) []string {
+	seen := map[string]struct{}{}
+	for _, name := range CacheInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	for _, name := range KeyValueInstanceNames(m) {
+		seen[name] = struct{}{}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func serviceInstanceNames(enabled bool, instances map[string]ServiceInstance) []string {
+	if len(instances) == 0 {
+		if enabled {
+			return []string{defaultServiceInstance}
+		}
+		return nil
+	}
+	names := make([]string, 0, len(instances))
+	for name := range instances {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func WithRequiredSecrets(m Manifest, names ...string) Manifest {
+	for _, name := range names {
+		m.Secrets.Required = append(m.Secrets.Required, SecretRequirement{Name: name})
+	}
+	if len(names) > 0 {
+		m.Services.Secrets = true
+	}
+	return m
+}
+
+func WithOptionalSecrets(m Manifest, names ...string) Manifest {
+	for _, name := range names {
+		m.Secrets.Optional = append(m.Secrets.Optional, SecretRequirement{Name: name})
+	}
+	if len(names) > 0 {
+		m.Services.Secrets = true
+	}
+	return m
+}
+
+func WithGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, true, name, generationType, size)
+}
+
+func WithOptionalGeneratedSecret(m Manifest, name, generationType string, size int) Manifest {
+	return withGeneratedSecret(m, false, name, generationType, size)
+}
+
+func withGeneratedSecret(m Manifest, required bool, name, generationType string, size int) Manifest {
+	generation := &SecretGeneration{Type: generationType}
+	switch generationType {
+	case "random":
+		generation.Length = size
+	case "hex":
+		generation.Bytes = size
+	}
+	requirement := SecretRequirement{Name: name, Generate: generation}
+	if required {
+		m.Secrets.Required = append(m.Secrets.Required, requirement)
+	} else {
+		m.Secrets.Optional = append(m.Secrets.Optional, requirement)
+	}
+	m.Services.Secrets = true
+	return m
+}
+
+func RequiredSecretNames(m Manifest) []string {
+	names := make([]string, 0, len(m.Secrets.Required))
+	for _, requirement := range m.Secrets.Required {
+		names = append(names, requirement.Name)
+	}
+	return names
+}
+
+func OptionalSecretNames(m Manifest) []string {
+	names := make([]string, 0, len(m.Secrets.Optional))
+	for _, requirement := range m.Secrets.Optional {
+		names = append(names, requirement.Name)
+	}
+	return names
+}
+
+func GeneratedSecretRequirements(m Manifest) []SecretRequirement {
+	var generated []SecretRequirement
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
+		if requirement.Generate != nil {
+			generated = append(generated, requirement)
+		}
+	}
+	sort.Slice(generated, func(i, j int) bool { return generated[i].Name < generated[j].Name })
+	return generated
+}
+
+func SecretRequirementByName(m Manifest, name string) (SecretRequirement, bool) {
+	for _, requirement := range append(append([]SecretRequirement(nil), m.Secrets.Required...), m.Secrets.Optional...) {
+		if requirement.Name == name {
+			return requirement, true
+		}
+	}
+	return SecretRequirement{}, false
+}

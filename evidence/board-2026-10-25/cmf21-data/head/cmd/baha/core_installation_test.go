@@ -1,0 +1,121 @@
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/creack/pty"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+)
+
+func TestCoreRequiredNoninteractiveHasNoMutation(t *testing.T) {
+	target := configureTestTarget(t)
+	ctx := machineNoninteractiveContext(context.Background())
+	err := requireApplicationCore(ctx, strings.NewReader(""), io.Discard)
+	var failure *machine.Error
+	if !errors.As(err, &failure) || failure.CauseCode != "core_required" || !failure.Retryable {
+		t.Fatalf("bootstrap requirement: %v", err)
+	}
+	root, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coreinstallation.Load(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("implicit mutation: %v", err)
+	}
+}
+
+func TestCoreBootstrapPromptPreservesApplicationInput(t *testing.T) {
+	configureTestTarget(t)
+	previous := applicationCoreBootstrap
+	t.Cleanup(func() { applicationCoreBootstrap = previous })
+	calls := 0
+	applicationCoreBootstrap = func(_ context.Context, _ io.Reader, _ io.Writer, options runtimeUpOptions) (coreinstallation.State, error) {
+		calls++
+		if options.MachineRole != coreinstallation.Deployment || !options.Yes || !options.ControlPlaneOnly {
+			t.Fatalf("bootstrap defaults: %+v", options)
+		}
+		return coreinstallation.State{Ready: true}, nil
+	}
+	reader := bufio.NewReader(strings.NewReader("y\n2\napplication-answer\n"))
+	var out bytes.Buffer
+	if err := requireApplicationCore(context.Background(), reader, &out); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := reader.ReadString('\n')
+	if err != nil || answer != "application-answer\n" || calls != 1 {
+		t.Fatalf("workflow input lost: %q %v", answer, err)
+	}
+	if !strings.Contains(out.String(), "Set them up now?") || !strings.Contains(out.String(), "deployment machine") {
+		t.Fatalf("missing setup questions: %s", out.String())
+	}
+}
+
+func TestApplicationInitDoesNotAskForOrBootstrapCore(t *testing.T) {
+	for _, answer := range []string{"n\n", "y\n1\n"} {
+		t.Run(strings.TrimSpace(answer), func(t *testing.T) {
+			configureTestTarget(t)
+			t.Chdir(httpsAdoptionFixture(t, false))
+			previous, previousInput := applicationCoreBootstrap, appInitInput
+			t.Cleanup(func() { applicationCoreBootstrap, appInitInput = previous, previousInput })
+			calls := 0
+			applicationCoreBootstrap = func(context.Context, io.Reader, io.Writer, runtimeUpOptions) (coreinstallation.State, error) {
+				calls++
+				return coreinstallation.State{}, errors.New("Core bootstrap failed")
+			}
+			appInitInput = interactiveCoreInput(t, answer)
+			if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat("baseharbor.yaml"); err != nil {
+				t.Fatal("authored intent was not initialized")
+			}
+			if calls != 0 {
+				t.Fatalf("bootstrap calls: %d", calls)
+			}
+		})
+	}
+}
+
+func TestApplicationInitContinuesWithoutManagementInstallation(t *testing.T) {
+	configureTestTarget(t)
+	t.Chdir(httpsAdoptionFixture(t, false))
+	previous, previousInput := applicationCoreBootstrap, appInitInput
+	t.Cleanup(func() { applicationCoreBootstrap, appInitInput = previous, previousInput })
+	calls := 0
+	applicationCoreBootstrap = func(context.Context, io.Reader, io.Writer, runtimeUpOptions) (coreinstallation.State, error) {
+		calls++
+		return coreinstallation.State{Ready: true}, nil
+	}
+	appInitInput = interactiveCoreInput(t, "y\n1\n")
+	if err := runWithIO(context.Background(), []string{"app", "init", "--quick"}, io.Discard, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat("baseharbor.yaml"); err != nil || calls != 0 {
+		t.Fatalf("original workflow did not continue: %v, calls=%d", err, calls)
+	}
+}
+
+// Application consent tests must prove a real TTY. A string reader is piped
+// input and cannot authorize implicit application-triggered Core installation.
+func interactiveCoreInput(t *testing.T, answer string) *os.File {
+	t.Helper()
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Skipf("interactive consent requires PTY support: %v", err)
+	}
+	t.Cleanup(func() { _ = master.Close(); _ = slave.Close() })
+	if answer != "" {
+		if _, err := master.Write([]byte(answer)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return slave
+}

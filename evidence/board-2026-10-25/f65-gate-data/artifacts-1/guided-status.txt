@@ -1,0 +1,169 @@
+Docker endpoint  unix:///run/user/1000/docker.sock
+Docker mode      rootless
+Docker daemon    579a6fe9-5916-4170-b629-e14dbf2ae46c
+BaseHarbor · demo · dev
+
+Application
+  READY      application              BaseHarbor-managed capabilities, bindings and workload
+                                      readiness verified
+
+Services
+  READY      object-storage           1 bucket(s) passed authenticated S3 Put/Get
+  READY      postgres                 1 app-isolated database resource(s) ready on shared Target
+                                      provider
+  READY      postgres/default         scope=shared owner=demo/dev database=baha_demo_dev_048fb392
+                                      role=baha_demo_dev_bde6cad1 credential_scope=application
+                                      topology_ha=false members=1
+  READY      postgres/isolation       shared provider ownership, application role boundaries and
+                                      cross-application access isolation verified
+  READY      valkey                   2 app-isolated Valkey resource(s) ready on shared Target
+                                      provider
+  READY      secrets                  isolated OpenBao AppRole authentication succeeded
+  READY      required-secret/APP_SECRET present and usable
+  READY      runtime-broker           mTLS identity and app-scoped OpenBao readiness succeeded
+  READY      object-storage/seaweedfs/seaweedfs-topology provider=seaweedfs instance=seaweedfs ha-requested=false
+                                      ha-active=false data-members=1 service-members=1 replicas=0
+                                      auxiliary-services=3/3 configured-service-members=1
+                                      members=[seaweedfs-node-1]
+                                      helpers=[seaweedfs-access,seaweedfs-admin-1,seaweedfs-admin-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+
+Workload
+  READY      workload/demo-app        running readiness=endpoint
+  READY      workload                 1/1 selected Compose service(s) ready
+
+Observability
+  VERIFIED   telemetry/otlp           real OTLP HTTP/protobuf export accepted
+  VERIFIED   telemetry/otel-collector/otel-collector-topology provider=otel-collector instance=otel-collector
+                                      ha-requested=false ha-active=false data-members=0
+                                      service-members=1 replicas=0-stateless auxiliary-services=1/1
+                                      configured-service-members=1 members=[otel-collector-1]
+                                      helpers=[otel-collector-access] process-redundancy=false
+                                      replication-proof=not-collected failover-proof=false
+                                      host-failure-tolerance=false
+  VERIFIED   metrics/prometheus/prometheus-topology provider=prometheus instance=prometheus ha-requested=false
+                                      ha-active=false data-members=1 service-members=1
+                                      replicas=0-independent-tsdb auxiliary-services=1/1
+                                      configured-service-members=1 members=[prometheus-1]
+                                      helpers=[prometheus-access] process-redundancy=false
+                                      replication-proof=not-collected failover-proof=false
+                                      host-failure-tolerance=false
+  VERIFIED   logs/loki/loki-topology  provider=loki instance=loki ha-requested=false ha-active=false
+                                      data-members=1 service-members=1 replicas=0
+                                      auxiliary-services=2/2 configured-service-members=1
+                                      members=[loki] helpers=[alloy,loki-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+  VERIFIED   traces/tempo/tempo-topology provider=tempo instance=tempo ha-requested=false
+                                      ha-active=false data-members=1 service-members=1 replicas=0
+                                      auxiliary-services=1/1 configured-service-members=1
+                                      members=[tempo] helpers=[tempo-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+  VERIFIED   logs                     1 workload log stream(s) queryable
+
+Exposure
+  READY      managed-exposure/demo-app https://demo.baha.localhost:18443
+
+Other
+  READY      identity/oidc            OIDC discovery, binding and provider state verified via
+                                      keycloak
+  READY      service-bindings         standard workload service bindings projected and verified
+  READY      rabbitmq                 1 logical instance(s) passed AMQPS and availability
+                                      verification
+  READY      mongodb                  1 instance(s) passed TLS document semantics and availability
+                                      verification
+  READY      management-ui/pgadmin    https://pgadmin.baha.localhost:18443
+  READY      management-ui/redis-commander https://cache.baha.localhost:18443
+  READY      management-ui/rabbitmq   https://demo-rabbitmq.baha.localhost:18443
+  READY      management-ui/mongodb    https://demo-mongodb.baha.localhost:18443
+  READY      management-ui/object-storage https://storage.baha.localhost:18443
+  READY      management-ui/openbao    https://secrets.baha.localhost:18443
+  READY      management-ui/identity-login https://auth.baha.localhost:18443
+  READY      management-ui/identity-admin https://auth-admin.baha.localhost:18443
+  READY      management-ui/prometheus https://metrics.baha.localhost:18443
+  READY      management-ui            9/9 selected management UI surface(s) reachable
+  READY      application/mongodb/document_database/default-topology provider=mongodb instance=document_database/default
+                                      ha-requested=false ha-active=false data-members=1
+                                      service-members=1 replicas=0 auxiliary-services=2/2
+                                      configured-service-members=1 members=[mongodb]
+                                      helpers=[mongodb-ui,mongodb-ui-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+                                      physical-owner=demo/dev placement=application
+  READY      application/rabbitmq/messaging/default-topology provider=rabbitmq instance=messaging/default
+                                      ha-requested=false ha-active=false data-members=1
+                                      service-members=1 replicas=0 auxiliary-services=2/2
+                                      configured-service-members=1 members=[rabbitmq]
+                                      helpers=[rabbitmq-access,rabbitmq-ui] process-redundancy=false
+                                      replication-proof=not-collected failover-proof=false
+                                      host-failure-tolerance=false physical-owner=demo/dev
+                                      placement=application
+  READY      shared-backends/postgresql/shared-pgadmin-topology provider=postgresql instance=shared-pgadmin ha-requested=false
+                                      ha-active=false data-members=0 service-members=0 replicas=0
+                                      auxiliary-services=1/1 configured-service-members=0 members=[]
+                                      helpers=[shared-pgadmin] process-redundancy=false
+                                      replication-proof=not-collected failover-proof=false
+                                      host-failure-tolerance=false physical-owner=core
+                                      placement=shared consumer=demo/dev
+  READY      shared-backends/valkey/shared-cache-topology provider=valkey instance=shared-cache ha-requested=false
+                                      ha-active=false data-members=0 service-members=0 replicas=0
+                                      auxiliary-services=2/2 configured-service-members=0 members=[]
+                                      helpers=[shared-cache-ui,shared-cache-ui-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+                                      physical-owner=core placement=shared consumer=demo/dev
+  READY      shared-backends/valkey/shared-valkey-core-shared-default-topology provider=valkey instance=shared-valkey-core-shared-default
+                                      ha-requested=false ha-active=false data-members=1
+                                      service-members=1 replicas=0 auxiliary-services=1/1
+                                      configured-service-members=1
+                                      members=[shared-valkey-core-shared-default]
+                                      helpers=[shared-valkey-core-shared-default-access]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+                                      physical-owner=core placement=shared consumer=demo/dev
+  READY      core-shared/openbao/openbao-topology provider=openbao instance=openbao ha-requested=false
+                                      ha-active=false data-members=0 service-members=1
+                                      replicas=0-shared-sql auxiliary-services=2/2
+                                      configured-service-members=1 members=[openbao-member-1]
+                                      helpers=[openbao,openbao-admin] process-redundancy=false
+                                      replication-proof=not-collected failover-proof=false
+                                      host-failure-tolerance=false physical-owner=core
+                                      placement=shared consumer=demo/dev
+  READY      core-shared/postgresql/sql/default-topology provider=postgresql instance=sql/default ha-requested=false
+                                      ha-active=false data-members=1 service-members=1 replicas=0
+                                      auxiliary-services=2/3 configured-service-members=1
+                                      members=[postgres-member-1] helpers=[postgres,postgres-admin]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+                                      physical-owner=core placement=shared consumer=demo/dev
+  READY      identity/keycloak/keycloak-topology provider=keycloak instance=keycloak ha-requested=false
+                                      ha-active=false data-members=0 service-members=1
+                                      replicas=0-shared-sql auxiliary-services=0/0
+                                      configured-service-members=1 members=[keycloak-1] helpers=[]
+                                      process-redundancy=false replication-proof=not-collected
+                                      failover-proof=false host-failure-tolerance=false
+  READY      canonical-development-urls 10 canonical HTTPS endpoint(s) verified
+
+Runtime
+  INFO       Swagger/OpenAPI          https://demo.baha.localhost:18443/swagger/
+
+Service TLS
+  READY      messaging/default        managed-local · owner=issuer · renewal=automatic-reconcile ·
+                                      expires=2026-11-25 11:27 CET
+  INFO       messaging/default issuer openbao://baseharbor-pki/baseharbor-services
+  READY      document-database/default managed-local · owner=issuer · renewal=automatic-reconcile ·
+                                      expires=2026-11-25 11:27 CET
+  INFO       document-database/default issuer openbao://baseharbor-pki/baseharbor-services
+
+Runtime artifact
+  INFO       reference                localhost/baseharbor-runtime:f65
+  INFO       expected version         dev
+  INFO       image id                 sha256:9ac4203deed2cf08e03211f3b7af0a1cdaea625539c827fc469b5432d5482a18
+  INFO       digest                   localhost/baseharbor-runtime@sha256:9ac4203deed2cf08e03211f3b7af0a1cdaea625539c827fc469b5432d5482a18
+
+TLS
+  READY      certificate              local development TLS
+
+READY

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:best-practices"
+  ],
+  "timezone": "Europe/Berlin",
+  "schedule": [
+    "* 2-5 * * *"
+  ],
+  "dependencyDashboard": true,
+  "rebaseWhen": "behind-base-branch",
+  "automerge": false,
+  "platformAutomerge": false,
+  "ignoreTests": false,
+  "minimumReleaseAge": "14 days",
+  "prConcurrentLimit": 1,
+  "branchConcurrentLimit": 1,
+  "pruneStaleBranches": false,
+  "configMigration": false,
+  "groupName": "all dependencies",
+  "groupSlug": "all-dependencies",
+  "groupSingleUpdates": true,
+  "separateMajorMinor": false,
+  "separateMinorPatch": false,
+  "separateMultipleMajor": false,
+  "separateMultipleMinor": false,
+  "branchTopic": "all-dependencies",
+  "group": {
+    "branchTopic": "all-dependencies",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": ""
+  },
+  "labels": [
+    "dependencies"
+  ],
+  "packageRules": [
+    {
+      "description": "One reviewed batch across managers, update types, pins and digests; override inherited groups and automerge rules",
+      "matchPackageNames": [
+        "*"
+      ],
+      "groupName": "all dependencies",
+      "groupSlug": "all-dependencies",
+      "groupSingleUpdates": true,
+      "separateMajorMinor": false,
+      "separateMinorPatch": false,
+      "separateMultipleMajor": false,
+      "separateMultipleMinor": false,
+      "automerge": false,
+      "branchTopic": "all-dependencies",
+      "commitMessageAction": "Update",
+      "commitMessageTopic": "all dependencies",
+      "commitMessageExtra": "",
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "deps"
+    }
+  ],
+  "lockFileMaintenance": {
+    "enabled": false,
+    "automerge": false
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "minimumReleaseAge": null,
+    "groupName": "all dependencies",
+    "groupSlug": "all-dependencies",
+    "groupSingleUpdates": true,
+    "separateMajorMinor": false,
+    "separateMinorPatch": false,
+    "separateMultipleMajor": false,
+    "separateMultipleMinor": false,
+    "automerge": false,
+    "branchTopic": "all-dependencies",
+    "commitMessageAction": "Update",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": "",
+    "commitMessageSuffix": "",
+    "prConcurrentLimit": 1,
+    "branchConcurrentLimit": 1,
+    "addLabels": [
+      "security"
+    ],
+    "vulnerabilityFixStrategy": "highest"
+  },
+  "baseBranchPatterns": [
+    "develop"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track OCI image constants embedded in Go provider/runtime code",
+      "managerFilePatterns": [
+        "/\\.go$/"
+      ],
+      "matchStrings": [
+        "(?:Image|image)\\s*=\\s*\"(?<depName>(?:docker\\.io|quay\\.io|ghcr\\.io)/[^\":\\s]+):(?<currentValue>[^\"\\s@]+)(?:@(?<currentDigest>sha256:[a-f0-9]{64}))?\""
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "replacement": {
+    "branchTopic": "all-dependencies",
+    "commitMessageAction": "Update",
+    "commitMessageTopic": "all dependencies",
+    "commitMessageExtra": ""
+  },
+  "semanticCommits": "enabled",
+  "semanticCommitType": "chore",
+  "semanticCommitScope": "deps"
+}

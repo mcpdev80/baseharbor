@@ -1,0 +1,15 @@
+{"level": "info", "ts": 1792984131.5237143, "msg": "maxprocs: Leaving GOMAXPROCS=8: CPU quota undefined"}
+{"level": "info", "ts": 1792984131.5237293, "msg": "GOMEMLIMIT is updated", "GOMEMLIMIT": 22668071731, "previous": 9223372036854775807}
+{"level": "info", "ts": 1792984131.5237324, "msg": "using config from file", "file": "/etc/caddy/Caddyfile"}
+{"level": "info", "ts": 1792984131.5237343, "msg": "adapted config to JSON", "adapter": "caddyfile"}
+{"level": "warn", "ts": 1792984131.5237353, "msg": "Caddyfile input is not formatted; run 'caddy fmt --overwrite' to fix inconsistencies", "adapter": "caddyfile", "file": "/etc/caddy/Caddyfile", "line": 2}
+{"level": "info", "ts": 1792984131.5242767, "logger": "admin", "msg": "admin endpoint started", "address": "localhost:2019", "enforce_origin": false, "origins": ["//localhost:2019", "//[::1]:2019", "//127.0.0.1:2019"]}
+{"level": "info", "ts": 1792984131.5244608, "logger": "tls.cache.maintenance", "msg": "started background certificate maintenance", "cache": "0x1a0c19cf6800"}
+{"level": "info", "ts": 1792984131.524546, "logger": "http.auto_https", "msg": "automatic HTTP->HTTPS redirects are disabled", "server_name": "srv0"}
+{"level": "info", "ts": 1792984131.5247197, "logger": "http", "msg": "enabling HTTP/3 listener", "addr": ":9443"}
+{"level": "info", "ts": 1792984131.5248897, "logger": "http.log", "msg": "server running", "name": "srv0", "protocols": ["h1", "h2", "h3"]}
+{"level": "info", "ts": 1792984131.5249333, "msg": "autosaved config (load with --resume flag)", "file": "/config/caddy/autosave.json"}
+{"level": "info", "ts": 1792984131.5249426, "msg": "serving initial configuration"}
+{"level": "info", "ts": 1792984131.5249476, "logger": "tls", "msg": "cleaning storage unit", "storage": "FileStorage:/data/caddy"}
+{"level": "info", "ts": 1792984131.5250294, "logger": "tls", "msg": "finished cleaning storage units"}
+{"level": "info", "ts": 1792984131.5252137, "logger": "watcher", "msg": "watching config file for changes", "config_file": "/etc/caddy/Caddyfile"}

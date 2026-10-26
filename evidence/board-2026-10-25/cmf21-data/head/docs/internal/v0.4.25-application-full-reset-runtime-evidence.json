@@ -1,0 +1,155 @@
+{
+  "schema": "baseharbor.scoped-native-evidence/v1",
+  "release": "0.4.25",
+  "source": {
+    "repository": "mcpdev80/baseharbor",
+    "commit": "c3592ede8a9beffd16ff1a243132209e39eaa81f",
+    "tree": "5cbe5421eae147c0178cfdf8ad1a9fdf086a3407"
+  },
+  "workflow": {
+    "run_id": 38452163506,
+    "attempt": 1
+  },
+  "result": "pass",
+  "pre_release_ready": false,
+  "scope": "Local selected application-scoped PostgreSQL full reset, concrete outer-scope confirmations and separate persistent-data deletion consent.",
+  "jobs": [
+    {
+      "id": 115485546881,
+      "runtime": "podman",
+      "result": "success",
+      "logs_reviewed": true,
+      "artifacts": [
+        {
+          "id": 11841406457,
+          "name": "application-reset-podman-38452163506-1",
+          "digest": "sha256:76d43dae8be2b2b71dff58a5daa91d9b6f264cdf8e0179e31cfd0d445ebd0d56"
+        }
+      ]
+    },
+    {
+      "id": 115485547476,
+      "runtime": "docker",
+      "result": "success",
+      "logs_reviewed": true,
+      "artifacts": [
+        {
+          "id": 11841825733,
+          "name": "application-reset-docker-38452163506-1",
+          "digest": "sha256:8115ce48d645fec6188b1d306c22f8cea021eaf2585eadf1e8350a6580e7b7df"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    "Fresh native runtime has no Core containers.",
+    "SQL marker is seeded once through actual retained credentials over verify-full TLS.",
+    "No acknowledgement, one acknowledgement and two acknowledgements without separate data consent all preserve actual original authenticated data.",
+    "Refused consent does not change the meaningful current plan.",
+    "Two current outer-scope acknowledgements plus separate data consent remove selected native containers/data volumes and the deployment record.",
+    "Authored source remains byte-identical.",
+    "Structured JSON reports verified destroyed state and data_deleted=true."
+  ],
+  "local_qualification": {
+    "base_snapshot": {
+      "parent": "9463ae66553fef2e149067f7deabd55dd0b9a325",
+      "tree": "91e598ff2618b9b9144b1900f2c5809dd779333a",
+      "nine_checks": "pass",
+      "actionlint": "pass"
+    },
+    "final_production_snapshot": {
+      "parent": "d63de5523f71cacce51a4dfa7d4b3c97993ed53a",
+      "tree": "27372b1d980aca31df4c5667bba1d71a73422a8d",
+      "nine_checks": "pass",
+      "source_commit": "aa2c82d0263382b3f04269b4c0171c16c23b19d9"
+    },
+    "final_fixture_only_change": "Typed JSON decoding compiled and the exact source passed both native engines; no production source changed."
+  },
+  "failed_attempts": [
+    {
+      "source": "aea1bb86dee2a5c993a7351d9cb8c747f3536471",
+      "run": 38447345259,
+      "cause": "Reset consent included full footprint projection; runtime samples could invalidate an unchanged owner.",
+      "result": "failure",
+      "artifacts": [
+        {
+          "id": 11838339048,
+          "name": "application-reset-docker-38447345259-1",
+          "digest": "sha256:5d835dacc05b1d70c2a112052fa9e9ef851530769f343d8746dcddf3e1ba7604"
+        },
+        {
+          "id": 11838209350,
+          "name": "application-reset-podman-38447345259-1",
+          "digest": "sha256:de854152061f8e6a3c760fa03a2102d35050c0a0996f6d32ae627e38ffe0ac11"
+        }
+      ]
+    },
+    {
+      "source": "879d14464336ad0384ce7778228ff37a03dd11d9",
+      "run": 38448509771,
+      "cause": "Provider impact still changed after refused attempts; actual SQL data remained usable.",
+      "result": "failure",
+      "artifacts": [
+        {
+          "id": 11840060797,
+          "name": "application-reset-podman-38448509771-1",
+          "digest": "sha256:010e294426e48465e16810410a837301923596a441f3eee9341be08ce1b97c3f"
+        },
+        {
+          "id": 11839362644,
+          "name": "application-reset-docker-38448509771-1",
+          "digest": "sha256:29fc7342e8d2a00dc937df4b1f6e8dd52fbc8e872961677951042b460922cce2"
+        }
+      ]
+    },
+    {
+      "source": "d63de5523f71cacce51a4dfa7d4b3c97993ed53a",
+      "run": 38449650957,
+      "cause": "Diagnostics identified regenerated workload.override.yaml mtime in public material evidence; delete-plan presentation materialized the override before consent.",
+      "result": "failure",
+      "artifacts": [
+        {
+          "id": 11840375531,
+          "name": "application-reset-docker-38449650957-1",
+          "digest": "sha256:dc5a41c1e6bc771c3f50742b17c18418a950ee2024068e96cacd8e5a9cc56b9a"
+        },
+        {
+          "id": 11839558884,
+          "name": "application-reset-podman-38449650957-1",
+          "digest": "sha256:8acc3fba300b374bc20ce3630135e98982baeefc3677e616eae566060a5ef04d"
+        }
+      ]
+    },
+    {
+      "source": "aa2c82d0263382b3f04269b4c0171c16c23b19d9",
+      "run": 38451260554,
+      "cause": "Actual selected runtime/data and deployment deletion succeeded, but fixture compared pretty JSON text and then attempted cleanup of an already removed owner.",
+      "result": "failure",
+      "artifacts": [
+        {
+          "id": 11841135699,
+          "name": "application-reset-docker-38451260554-1",
+          "digest": "sha256:b15840af4f0d930f4b571a8d6db5002ee001a13a71017fc269626fadd93f06a9"
+        },
+        {
+          "id": 11840735875,
+          "name": "application-reset-podman-38451260554-1",
+          "digest": "sha256:385cbd5deaeb6da6723227b4093bee9a5e138c46cf0f4069c22efe5859aba2a0"
+        }
+      ]
+    }
+  ],
+  "corrections": [
+    "Outer-scope identity binds actual deployment/configuration/protected content and shared semantic impact ID; footprint measurements do not invalidate unchanged consent.",
+    "Delete-plan presentation no longer materializes/replaces workload.override.yaml before consent.",
+    "File metadata evidence excludes volatile mtime; actual file content remains privately bound to revision.",
+    "Reset fixture decodes semantic JSON and avoids emergency cleanup of an already verified removed owner."
+  ],
+  "boundaries": [
+    "Only the selected local PostgreSQL app reset is newly native-qualified. Other provider-family/material/deletion/foreign-sharing cases remain separately scoped.",
+    "Remote apply/up/repair now invoke common consent; default remote retirement retains publication/deployment owner; verified reactivation preserves immutable source provenance. Their actual authenticated remote qualification remains pending.",
+    "Current exact Console/Connector joint browser, enrollment/renewal/revocation and remote engine matrix is being prepared. Demo final native/recovery and canonical release audit remain required.",
+    "No full pre-release, merge, tag, release or production Pages publication."
+  ]
+}
+

@@ -1,0 +1,17 @@
+[
+  {
+    "group": "guided",
+    "status": "PASS",
+    "detail": "selected acceptance gate passed"
+  },
+  {
+    "group": "lifecycle",
+    "status": "PASS",
+    "detail": "selected acceptance gate passed"
+  },
+  {
+    "group": "data-capabilities",
+    "status": "PASS",
+    "detail": "selected acceptance gate passed"
+  }
+]

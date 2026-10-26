@@ -1,0 +1,5 @@
+Source readability
+
+Go file size       PASS (<= 800 lines or no worse than explicit baseline)
+Function span      PASS (<= 200 lines or no worse than explicit baseline)
+Regression ratchet PASS (new/worsened violations fail closed)

@@ -1,0 +1,185 @@
+{
+  "repository": "mcpdev80/baseharbor",
+  "gate": "selected-https-add-remove-re-add",
+  "test": "TestSelectiveHTTPSRuntimeAddRemoveReAdd",
+  "observed_at": "2026-10-11",
+  "pre_release_ready": false,
+  "complete_native_acceptance": false,
+  "attempts": [
+    {
+      "candidate_sha": "4074684d0f95e071c4d53945dc8d07755840a845",
+      "candidate_tree": "44cf30a11eed7531eba4539a9d089701dffa6a7c",
+      "workflow_run_id": 38147584820,
+      "attempt": 1,
+      "test_result": "PASS",
+      "complete_runtime_union_converged": false,
+      "scope": "Actual selected Caddy runtime and Podman boot definitions converge true-false-true, actual TLS/browser workload route verified when enabled, public CA and system ID retained, verified deployment record, no SQL/Secrets/Identity/management Core, cleanup has zero containers. The disabled phase mistakenly allowed the residual own gateway, so this is NOT full runtime-union acceptance. Corrected fixture and gateway-owner retirement require a matching follow-up SHA.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114494070749,
+          "conclusion": "success",
+          "test_seconds": 59.12,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            2,
+            3
+          ],
+          "artifact_id": 11705114043,
+          "artifact_name": "coreless-docker-38147584820-1",
+          "artifact_digest": "sha256:c0a2d995fddd2a28dcb5699ddfc1d314b9f3f7db83032058b05ea27d3a7c5659"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114494070853,
+          "conclusion": "success",
+          "test_seconds": 50.33,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            2,
+            3
+          ],
+          "actual_container_boot_definitions_by_phase": [
+            true,
+            false,
+            true
+          ],
+          "artifact_id": 11704674169,
+          "artifact_name": "coreless-podman-38147584820-1",
+          "artifact_digest": "sha256:38ad4969af2070726a56ecc00aff94a49b9721a97093dc682f112bad672771b6"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "c2b0930a8932c0a6d2abd70c9a78e19f92b32364",
+      "candidate_tree": "e07b847d879ab3269a66f6c65f06c816dbd628eb",
+      "workflow_run_id": 38148847169,
+      "attempt": 1,
+      "test_result": "PASS",
+      "workflow_result": "FAIL",
+      "complete_runtime_union_converged": true,
+      "scope": "Only HTTPS add/remove/re-add qualified: actual complete container union 3/1/3, selected Caddy 1/0/1, verified TLS routes and preserved public CA/system identity; unrelated later local-prod doctor failed before stdio. This does not qualify local-prod or the complete workflow.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114497826807,
+          "conclusion": "failure",
+          "https_test_result": "PASS",
+          "test_seconds": 57.7,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "artifact_id": 11706181368,
+          "artifact_digest": "sha256:d9948163b18acec8fc5db2439c9d56651576684bdf0532c9131cfab55d9c2486"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114497827011,
+          "conclusion": "failure",
+          "https_test_result": "PASS",
+          "test_seconds": 54.01,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "actual_container_boot_definitions_by_phase": [
+            true,
+            false,
+            true
+          ],
+          "artifact_id": 11706366195,
+          "artifact_digest": "sha256:182a451cb73b764876d56f5a92083a68da592ff5d52415407a1878dacc69a5b8"
+        }
+      ]
+    },
+    {
+      "candidate_sha": "dec6b0f51a529ab393466eef13e503dda5c1e067",
+      "candidate_tree": "1e9a253a28440b72fbcf5e9be849ac3588f93be8",
+      "workflow_run_id": 38150415411,
+      "attempt": 1,
+      "test_result": "PASS",
+      "workflow_result": "PASS",
+      "complete_runtime_union_converged": true,
+      "scope": "Actual selected HTTPS lifecycle on both rootless engines: Caddy 1/0/1, complete native container union 3/1/3, real workload HTTPS/CA retention, stable system identity/verified deployment and zero-container cleanup. Same run also qualified bounded local-prod CLI/stdio journey; final current ecosystem candidate remains unqualified.",
+      "runtime_jobs": [
+        {
+          "runtime": "docker",
+          "rootless": true,
+          "job_id": 114502530530,
+          "conclusion": "success",
+          "https_test_result": "PASS",
+          "test_seconds": 57.09,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "artifact_id": 11705693186,
+          "artifact_digest": "sha256:ab13afcc9892e36e0f21908a62854ea0b291e119fb2979b5df3bb002f9262ff9"
+        },
+        {
+          "runtime": "podman",
+          "rootless": true,
+          "job_id": 114502530324,
+          "conclusion": "success",
+          "https_test_result": "PASS",
+          "test_seconds": 59.95,
+          "selected_caddy_by_phase": [
+            1,
+            0,
+            1
+          ],
+          "actual_total_by_phase": [
+            3,
+            1,
+            3
+          ],
+          "actual_container_boot_definitions_by_phase": [
+            true,
+            false,
+            true
+          ],
+          "artifact_id": 11705713233,
+          "artifact_digest": "sha256:963b40dbe4aba83a3afc3c4ccccea767a0310d7d81d185d7d1dc5437c63fbff5"
+        }
+      ]
+    }
+  ],
+  "not_qualified": [
+    "All required selective runtime gates on one final integrated SHA",
+    "Full provider/direct mutation impacts and confirmed replacement/destructive paths",
+    "Candidate-compatible complete ecosystem readiness"
+  ]
+}

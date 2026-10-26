@@ -1,0 +1,10 @@
+{
+  "base_failed_tests": 9,
+  "head_failed_tests": 9,
+  "NEW": 0,
+  "REMOVED": 0,
+  "new_names": [],
+  "removed_names": [],
+  "base_package_fail": true,
+  "head_package_fail": true
+}
