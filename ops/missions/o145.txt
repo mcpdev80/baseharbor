@@ -1,0 +1,10 @@
+pwd-PFLICHT vor JEDEM git-Befehl. WORKTREE (read-only-Arbeit): git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/dev/baseharbor-ecosystem/worktrees/o145-verify1 ec82d476. KEIN push/Commit/Datei-Aenderung am Produkt.
+ROLLE: W5 - UNABHÄNGIGE Verifikation des PR1-Kandidaten (PR #1090, work/r27-minimal-receipt, ec82d476126291d372df2c13bd36273767574869) für v0.4.27 'Receipt statt PKI'. Massstab: baseharbor-plan decisions/2026-10-26-minimal-receipts.md + evidence/r27-ci-replacement-2026-10-26/RECEIPT-PR1.md (Claims, die du NICHT glauben, sondern nachrechnen sollst).
+PFLICHECKS:
+1. Schema: exakt sechs Top-Level-Felder (gate, run{id,attempt}, sha, status, plan, approved{by,at,receipt_commit|null}), Groessenpruefung <500 Bytes gegen echten Writer-Aufruf (temp Dir), keine Signaturen/Archive/Retention.
+2. Tests selbst ausfuehren: python3 scripts/test_receipt_chain.py - zaehlen, ob >=6 Tests laufen und die drei Negativfaelle (falsche SHA, tote Run-ID, editierte Receipt) ECHT ablehnen (nicht nur 'ein Error tritt auf' - pruefe Asserts auf spezifische Fehlerklassen).
+3. Verifier offline/live-Trennung: live liest nur bounded trusted-pr-plan, offline nur caller-pinned protected Planning-Revision (Code-Zeilen belegen); kein Pfad, der nach Akzeptanz nochmal GitHub-API braucht.
+4. Pilot-Ehrlichkeit: 'fresh attempt 1 only' + automatischer Task-Link vorbereitet (attest-Pfad); manuell kopierte Run-IDs duenfen keinen Erfolg ergeben - wo haelt der Code das?
+5. Docs EN/DE identisch, keine Versprechen ueber PR1 hinaus (keine PKI/Archive).
+BEFUNDE nach Schwere mit file:line; Verdict: PR1-VERIFIKATION-BESTANDEN (Grundlage fuer Owner-Akzeptanz) oder LISTE mit zu beheben, das ein Worker (nicht Codex) umsetzen kann. Evidence /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-26/o145-pr1-verify.md (## PLAN zuerst).
+END O145-VERIFY-DONE / END O145-BLOCKED

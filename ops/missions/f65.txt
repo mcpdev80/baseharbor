@@ -1,0 +1,12 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl. WORKTREE:
+  git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add /home/marcel/dev/baseharbor-ecosystem/worktrees/f65-switch 3a28fb9c
+KEIN push/force/amend/Merge/CI-Dispatch. SECRETS nur redigiert.
+KONTEXT: data-capabilities Journey: add PASS (Drift-Kette d409f26f+6dadf486 wirkt), switch FAIL seit erstmals erreichbar: verify postgres password-auth (user baha_new_sql_dev_56d7c895) - siehe /home/marcel/tmp-ops/q125v-gate1.log Zeile ~4591 (unabhaengiger Coordinator-Lauf) + f64/q125 Evidence in evidence/board-2026-10-25/ (f64-driftfix.md Blocker-Sektion mit file:line-Mechanismus; q125-switchcred.md incl. HANDOFF-BEFUND: deren ensureRuntimeEnv-Eingriff wirkt im Gate nicht).
+MISSION: switch-Pfad WIRKLICH fixen.
+1. Verstehe zuerst den REALEN Render-Pfad der switch-back compose/env-Werte (bindings vs retained runtime.env; welche Funktion setzt POSTGRES_USER/DB/PASSWORD fuer den postgres-Service beim switch - ggf. NICHT ensureRuntimeEnv sondern compose-rendering/shared_backends/state-Write). Beweise mit eigenem Debug-Dump (Vorlage: wt-d40-o143/cmd/baha/o143_debug_dump.go, env-gated, nur Diagnose-Build) WELCHE Werte wann wohin geschrieben werden und woher die Volume-Wirklichkeit (Rolle baseharbor) stammt.
+2. Implementiere den Platzhalter-losen, placement-korrekten Fix an der ECHTEN Schreibstelle. Bestehende f64/q125-Aenderungen beibehalten oder sinnvoll konsolidieren (Begruendung im Evidence).
+3. TESTS: neue Regressionen + alle bestehenden credential/runtime/shared/CMF*/q124-Tests gruen; NEW=0 gegen 2f9afafd self-computed; build/vet/gofmt.
+4. PFLICHT-ABNAHME VOR DONE: 2x KOMPLETTER lokaler Gate mit RESULT PASS (Rezept in f64-driftfix.md; rootless docker laeuft; VOR jedem Lauf pgrep -f acceptance.sh pruefen dass keins laeuft, dann sauber aufraeumen; komplette Journey add+switch+remove+cancel+no). Logs -> evidence/board-2026-10-25/f65-gate-data/gate-run{1,2}.log. Logs selbst erzeugen, NICHT beschoenigen.
+5. EIN ordinary Commit auf 3a28fb9c on top. Evidence evidence/board-2026-10-25/f65-switchfix.md (## PLAN, Haken live; echte SHA-Strings aus git rev-parse, NIE aus dem Kopf; Datei-/Zeilenbelege; Gate-Zusammenfassung mit Zeilenverweisen aufs Log).
+STOP: neuartiger Fehler ausserhalb switch -> Dump + END F65-BLOCKED.
+END F65-SWITCHFIX-DONE / END F65-BLOCKED

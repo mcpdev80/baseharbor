@@ -1,0 +1,487 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/health"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+const (
+	controlPlaneStartTimeout        = 10 * time.Minute
+	controlPlaneComposeStartTimeout = 8 * time.Minute
+)
+
+func runtimeUp(parent context.Context, out io.Writer) error {
+	return runtimeUpExisting(parent, out, "")
+}
+
+func runtimeUpWithPorts(parent context.Context, out io.Writer, ports bhruntime.Ports, ha bool) error {
+	return runtimeUpWithPortsSelection(parent, out, ports, ha, false)
+}
+
+func runtimeUpWithPortsSelection(parent context.Context, out io.Writer, ports bhruntime.Ports, ha, controlPlaneOnly bool) error {
+	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
+	defer cancel()
+
+	compose, files, err := startControlPlaneRuntime(ctx, out, ports, ha)
+	if err != nil {
+		return err
+	}
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("wait for OpenBao control-plane readiness: %w", err)
+	}
+	if state, inspectErr := platformopenbao.Inspect(ctx, compose, files); inspectErr == nil && state.Initialized && !state.Sealed {
+		if managerErr := platformopenbao.CheckManager(ctx, compose, files); managerErr == nil {
+			if err := reconcileControlPlaneServiceAccess(ctx, compose, files, ""); err != nil {
+				return fmt.Errorf("reconcile control-plane service access: %w", err)
+			}
+		}
+	}
+	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
+		return fmt.Errorf("resume shared platform runtime: %w", err)
+	}
+	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
+	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
+	return nil
+}
+
+func waitForOpenBaoExecReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
+	_, err := waitForOpenBaoStateReady(ctx, compose, files)
+	return err
+}
+
+func waitForOpenBaoStateReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) (platformopenbao.State, error) {
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for {
+		if state, err := platformopenbao.Inspect(ctx, compose, files); err == nil {
+			return state, nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return platformopenbao.State{}, lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return platformopenbao.State{}, ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}
+
+func waitForOpenBaoManagerReady(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for {
+		if err := platformopenbao.CheckManager(ctx, compose, files); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		if time.Now().After(deadline) {
+			return lastErr
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+func runtimeUpExisting(parent context.Context, out io.Writer, recoveryFile string) error {
+	return runtimeUpExistingSelection(parent, out, recoveryFile, false)
+}
+
+func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryFile string, controlPlaneOnly bool) error {
+	ctx, cancel := context.WithTimeout(parent, controlPlaneStartTimeout)
+	defer cancel()
+
+	files, err := existingTargetRuntimeFiles(parent)
+	if err != nil {
+		return fmt.Errorf("runtime is not initialized: %w", err)
+	}
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	files, err = prepareCoreDefaultNetworkBinding(ctx, target, files)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(recoveryFile) == "" {
+		checks := health.RuntimeChecksForFiles(files)
+		if len(checks) > 0 {
+			_, ready := health.Format(checks)
+			if ready {
+				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY. No changes.")
+				return nil
+			}
+		}
+	}
+
+	resolvedRecoveryFile, _, err := resolveTargetRecoveryFile(ctx, recoveryFile)
+	if err != nil {
+		return err
+	}
+	compose, err := startExistingControlPlaneRuntime(ctx, files)
+	if err != nil {
+		return err
+	}
+	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
+		return err
+	}
+	if _, found, err := bhruntime.LoadControlPlaneCredentialRotation(files); err != nil {
+		return fmt.Errorf("inspect pending control-plane credential rotation: %w", err)
+	} else if found {
+		fmt.Fprintln(out, "Resuming pending control-plane credential rotation...")
+		if err := rotateControlPlaneDatabaseCredentials(ctx, compose, files, resolvedRecoveryFile); err != nil {
+			return fmt.Errorf("resume control-plane credential rotation: %w", err)
+		}
+	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, resolvedRecoveryFile); err != nil {
+		return fmt.Errorf("reconcile control-plane service access: %w", err)
+	}
+	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
+		return fmt.Errorf("resume shared platform runtime after verified control plane: %w", err)
+	}
+	fmt.Fprintln(out, "BaseHarbor control-plane runtime started and ready")
+	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
+	return nil
+}
+
+func reconcileControlPlaneServiceAccess(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string) error {
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return err
+	}
+	if !state.Initialized || state.Sealed {
+		return nil
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return err
+	}
+	issuer := platformopenbao.NewServiceIssuer(compose, files)
+	status, err := issuer.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.Ready {
+		return errors.New("managed service issuer is not ready")
+	}
+	bootstrapRestart, err := bhruntime.ControlPlaneServiceAccessNeedsBootstrapRestart(files)
+	if err != nil {
+		return err
+	}
+	postgresRuntimeCert := filepath.Join(filepath.Dir(files.Compose), "providers", "postgresql", "runtime", "server-cert.pem")
+	previousPostgresCert, previousPostgresCertErr := os.ReadFile(postgresRuntimeCert)
+	if previousPostgresCertErr != nil && !errors.Is(previousPostgresCertErr, os.ErrNotExist) {
+		return fmt.Errorf("read current PostgreSQL server certificate before reconcile: %w", previousPostgresCertErr)
+	}
+	if err := bhruntime.EnsureServiceAccess(ctx, issuer, files); err != nil {
+		return err
+	}
+	nextPostgresCert, err := os.ReadFile(postgresRuntimeCert)
+	if err != nil {
+		return fmt.Errorf("read reconciled PostgreSQL server certificate: %w", err)
+	}
+	postgresTLSChanged := string(previousPostgresCert) != string(nextPostgresCert)
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if bootstrapRestart {
+		if err := compose.DownProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+			return fmt.Errorf("restart control plane for managed PKI transition: %w", err)
+		}
+	}
+	if err := compose.UpProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return err
+	}
+	if !bootstrapRestart && postgresTLSChanged {
+		if err := rollControlPlanePostgresTLS(ctx, compose, files); err != nil {
+			return err
+		}
+	}
+
+	// The initial bootstrap trust transition restarts OpenBao so its PostgreSQL
+	// client loads the managed PostgreSQL CA. Later OpenBao listener certificate
+	// rotations are handled by OpenBao 2.7 tls_auto_reload.
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("wait for OpenBao after native TLS reconcile: %w", err)
+	}
+	state, err = platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return err
+	}
+	if state.Sealed {
+		if strings.TrimSpace(recoveryFile) == "" {
+			return usageError(
+				"OpenBao restarted while enabling native TLS and is sealed",
+				"Re-run with '--recovery-file PATH' using the recovery material created during bootstrap.",
+			)
+		}
+		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
+			return fmt.Errorf("unseal OpenBao after native TLS reconcile: %w", err)
+		}
+	}
+	if err := waitForOpenBaoManagerReady(ctx, compose, files, 30*time.Second); err != nil {
+		return fmt.Errorf("verify OpenBao manager after native TLS reconcile: %w", err)
+	}
+
+	policy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	policy.ServerName = "openbao"
+	material, err := serviceaccess.ExistingTLSMaterial(policy, filepath.Join(filepath.Dir(files.Compose), "providers", "openbao", "service-access", "pki"))
+	if err != nil {
+		return fmt.Errorf("load OpenBao native TLS material: %w", err)
+	}
+	client, err := serviceaccess.NewHTTPClient(material, false)
+	if err != nil {
+		return err
+	}
+	cfg, err := bhruntime.LoadConfig(files.Env)
+	if err != nil {
+		return err
+	}
+	endpoint, err := serviceaccess.LoopbackHTTPSURL(cfg.OpenBaoPort)
+	if err != nil {
+		return err
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if err := serviceaccess.WaitHTTPS(verifyCtx, client, endpoint, "/v1/sys/health"); err != nil {
+		return fmt.Errorf("verify OpenBao native HTTPS endpoint: %w", err)
+	}
+	if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-admin",
+		"sh", "-ec",
+		"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\""); err != nil {
+		return fmt.Errorf("verify control-plane PostgreSQL after native TLS reconcile: %w", err)
+	}
+
+	// Retire previous trust only after both stable service paths have accepted
+	// the replacement leaves. Re-project the new-only CA bundles afterwards
+	// and verify the operator path one more time.
+	// An overlap bundle also accepts the old listener certificate while
+	// OpenBao's automatic TLS reload is still pending. Verify against only
+	// the active issuer before removing that fallback trust.
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return fmt.Errorf("resolve active OpenBao CA before retirement: %w", err)
+	}
+	if err := waitForOpenBaoReplacementCA(ctx, material, endpoint, trust.PEM); err != nil {
+		return fmt.Errorf("verify replacement OpenBao listener before CA retirement: %w", err)
+	}
+	if err := bhruntime.RetireControlPlaneServiceAccessOverlap(ctx, issuer, files); err != nil {
+		return err
+	}
+	if err := waitForOpenBaoManagerReady(ctx, compose, files, 30*time.Second); err != nil {
+		return fmt.Errorf("verify OpenBao manager after CA retirement: %w", err)
+	}
+	postRetirePolicy, err := serviceaccess.Resolve("prod", "openbao", serviceaccess.AuthenticationNative)
+	if err != nil {
+		return err
+	}
+	postRetirePolicy.ServerName = "openbao"
+	postRetireMaterial, err := serviceaccess.ExistingTLSMaterial(postRetirePolicy, filepath.Join(filepath.Dir(files.Compose), "providers", "openbao", "service-access", "pki"))
+	if err != nil {
+		return err
+	}
+	postRetireClient, err := serviceaccess.NewHTTPClient(postRetireMaterial, false)
+	if err != nil {
+		return err
+	}
+	postRetireCtx, postRetireCancel := context.WithTimeout(ctx, 15*time.Second)
+	defer postRetireCancel()
+	if err := serviceaccess.WaitHTTPS(postRetireCtx, postRetireClient, endpoint, "/v1/sys/health"); err != nil {
+		return fmt.Errorf("verify OpenBao native HTTPS endpoint after CA retirement: %w", err)
+	}
+	if _, err := compose.ExecProject(ctx, files.Project, files.Compose, files.Env, "postgres-admin",
+		"sh", "-ec",
+		"pg_isready -h postgres -p 5432 -U \"$BASEHARBOR_POSTGRES_USER\" -d \"$BASEHARBOR_POSTGRES_DB\""); err != nil {
+		return fmt.Errorf("verify control-plane PostgreSQL after CA retirement: %w", err)
+	}
+	return nil
+}
+
+func rollControlPlanePostgresTLS(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files) error {
+	credentials, err := bhruntime.LoadControlPlaneCredentials(files)
+	if err != nil {
+		return err
+	}
+	environment, err := bhruntime.RuntimeEnvironment(files)
+	if err != nil {
+		return err
+	}
+	primary, err := controlPlanePostgresPrimary(ctx, compose, files)
+	if err != nil {
+		return fmt.Errorf("resolve PostgreSQL primary before TLS rotation: %w", err)
+	}
+	members := files.PostgresMembers()
+	order := make([]string, 0, len(members))
+	for _, member := range members {
+		if member != primary {
+			order = append(order, member)
+		}
+	}
+	order = append(order, primary)
+
+	workdir := filepath.Dir(files.Compose)
+	for _, member := range order {
+		if err := compose.UpProjectFilesSelectedForceRecreateNoBuild(
+			ctx,
+			files.Project,
+			workdir,
+			environment,
+			[]string{member},
+			files.Compose,
+		); err != nil {
+			return fmt.Errorf("roll PostgreSQL TLS on %s: %w", member, err)
+		}
+		if err := waitForControlPlanePostgresCredential(
+			ctx,
+			compose,
+			files,
+			credentials.PostgresUser,
+			credentials.PostgresPassword,
+			"postgres",
+		); err != nil {
+			return fmt.Errorf("verify PostgreSQL stable endpoint after TLS rotation on %s: %w", member, err)
+		}
+	}
+	return nil
+}
+
+func startControlPlaneRuntime(ctx context.Context, out io.Writer, ports bhruntime.Ports, ha bool) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+	target, files, err := ensureTargetRuntimeFiles(ctx, ports, ha)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	compose, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return nil, bhruntime.Files{}, err
+	}
+	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
+	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	startCancel()
+	if err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if diagnostics, ok := compose.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
+				return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
+			}
+		}
+		return nil, bhruntime.Files{}, fmt.Errorf("start control plane within %s: %w", controlPlaneComposeStartTimeout, err)
+	}
+	return compose, files, nil
+}
+
+func startExistingControlPlaneRuntime(ctx context.Context, files bhruntime.Files) (bhruntime.RuntimeProvider, error) {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	compose, err := detectRuntimeForTarget(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+	if err := compose.ConfigProject(ctx, files.Project, files.Compose, files.Env); err != nil {
+		return nil, err
+	}
+	startCtx, startCancel := context.WithTimeout(ctx, controlPlaneComposeStartTimeout)
+	err = compose.UpProject(startCtx, files.Project, files.Compose, files.Env)
+	startCancel()
+	if err != nil {
+		diagnosticCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if diagnostics, ok := compose.(interface {
+			DiagnosticsProject(context.Context, string, string, string) string
+		}); ok {
+			if details := strings.TrimSpace(diagnostics.DiagnosticsProject(diagnosticCtx, files.Project, files.Compose, files.Env)); details != "" {
+				return nil, fmt.Errorf("restart control plane within %s: %w\n%s", controlPlaneComposeStartTimeout, err, details)
+			}
+		}
+		return nil, fmt.Errorf("restart control plane within %s: %w", controlPlaneComposeStartTimeout, err)
+	}
+	return compose, nil
+}
+
+func verifyExistingControlPlaneAfterStart(ctx context.Context, compose bhruntime.RuntimeProvider, files bhruntime.Files, recoveryFile string, out io.Writer) error {
+	// A restart may need to bring the PostgreSQL HA endpoint and the OpenBao
+	// members back in dependency order. Reuse the same bounded member-exec
+	// readiness budget as the initial start instead of racing a shorter
+	// restart-only probe window.
+	if err := waitForOpenBaoExecReady(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao after control-plane start: %w", err)
+	}
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return fmt.Errorf("inspect OpenBao after control-plane start: %w", err)
+	}
+
+	if !state.Initialized {
+		fmt.Fprintln(out, "BaseHarbor control-plane runtime started; OpenBao is not initialized yet.")
+		fmt.Fprintln(out, "next: run 'baha openbao bootstrap --recovery-file PATH'")
+		return nil
+	}
+	if state.Sealed {
+		if recoveryFile == "" {
+			return usageError(
+				"OpenBao is initialized but sealed after the control-plane restart",
+				"Re-run 'baha up --recovery-file /secure/openbao-recovery.json'. BaseHarbor will not unseal OpenBao without operator-held recovery material.",
+			)
+		}
+		fmt.Fprintln(out, "OpenBao is sealed; unsealing from the operator recovery file...")
+		if err := platformopenbao.Unseal(ctx, compose, files, recoveryFile); err != nil {
+			return fmt.Errorf("unseal OpenBao after control-plane start: %w", err)
+		}
+	}
+	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+		return fmt.Errorf("verify OpenBao manager authentication after control-plane start: %w", err)
+	}
+	if err := reconcileControlPlaneServiceAccess(ctx, compose, files, recoveryFile); err != nil {
+		return fmt.Errorf("reconcile control-plane service access after start: %w", err)
+	}
+
+	var formatted string
+	var ok bool
+	readinessDeadline := time.Now().Add(30 * time.Second)
+	for {
+		formatted, ok = health.Format(health.RuntimeChecksForFiles(files))
+		if ok {
+			fmt.Fprint(out, formatted)
+			return nil
+		}
+		if time.Now().After(readinessDeadline) {
+			fmt.Fprint(out, formatted)
+			detail := strings.TrimSpace(formatted)
+			if detail == "" {
+				return errors.New("control-plane runtime started but did not become ready")
+			}
+			return fmt.Errorf("control-plane runtime started but did not become ready: %s", detail)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+}

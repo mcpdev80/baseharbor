@@ -1,0 +1,21 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl; FALLS pwd ROOT: cd baseharbor. READ-ONLY Analyse-Auftrag: KEIN push/commit in Produkt-Repos, KEIN CI-Dispatch/rerun, KEIN Merge/Review. Arbeit nur in eigenem Read-Only-Worktree + Evidence-Dateien.
+
+FRAGESTELLUNG (exakt eine): Warum enthaelt der WIZARD-Plan (consent-Grundlage) im Journey-Schritt new-edit-new-sql-add den Fact-State `unverifiable`, waehrend derselbe Prozess/Check kurz spaeter `stopped-but-owned` beobachtet - obgleich der neue ENOENT-Fallback-Patch (in Arbeit, q124) die observeNativeBackendProviderFacts-Fruehreturns behebt?
+
+MATERIAL (committet, Dateien unter /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-25/):
+- m1077-consent-drift-analysis.md: Gesamtbild, Reproduktionsrezept (rootless docker, acceptance.sh data-capabilities, Demo 9493e82, Head 87736a3647).
+- m1077-drift-data/: wizard.json+apply.json (PlanID identisch 8e0b36fbddf4!) + die zwei Drift-Digests (8e0b36...=consent, dcd672...=revalidiert) + observe-sample.log. 5 Drift-Felder: Facts[postgresql/application/<app>/dev-*/default-*/State, Consumers[...]/Requirements[0]/state, Plan/impacts[0]/before/state: unverifiable->stopped-but-owned; operation add->resume; Plan/revision.
+- Binarier mit Observation-Fix gebaut: /home/marcel/tmp-ops/bin-m1077/baha (commit-tag 87736a3647 + beide Patches, BAHA_DEBUG_PLAN_DIR-HOOKS ENTFERNT in Quellversion der Patches; das Binary hier hat sie noch - fuer Logs nutzbar).
+
+KONTEXTQUELLEN (Produktcode, Read-only):
+- Overlay: cmd/baha/app_core_requirement.go applicationLifecycleSnapshot (~:81-99): existing[instance.ID] && keine observation -> State=unverifiable ("Registry presence is not a live or stopped-state observation").
+- Preview-Pfad: cmd/baha/guided_application_read_context.go readGuidedApplicationContext -> buildResolvedApplicationPlan -> observeApplicationProviderFacts.
+- Journey: baseharbor-demo/tests/data-capabilities/new_edit.py + guided/new_edit.py (add setzt env BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application).
+- Consent: internal/application/provider_change_digest.go + provider_change_consent.go (:26-28).
+
+ZIEL-LIEFERUNG (eine Datei evidence/board-2026-10-25/o141-wizard-factgap.md, ## PLAN + Todos zuerst):
+1. Code-Pfad exakt belegen (file:line), WARUM im Wizard-Augenblick die observation fuer genau diesen Application-Scope-Instance fehlt, im Apply-Augenblick aber da ist. Hypothesen pruefen statt vermuten, z.B.: (a) Wizard observiert vor Env-/Preference-Anwendung mit anderem resolved-View; (b) scope=application-Placement hat im Preview noch KEIN Registry-Entry+Intents, im Apply schon; (c) observation laeuft in anderem Prozess (control-plane) mit anderem Store-Pfad; (d) nativeBackendOwnerIntents/immutabler Snapshot versetzt.
+2. Wenn moeglich: REPRODUIZIERE die Luecke ohne volles Docker-Gate - fokussierter Go-Test oder CLI gegen lokales State (der Host hat rootless docker + /home/marcel/tmp-ops-Setup, falls ein echter Lauf noetig ist ist ER erlaubt: acceptance.sh mit DEMO_ATOMIC_GATE=1, aber max EIN Gate-Durchlauf ~20min, sauber aufräumen wie im Rezept).
+3. GENAU EIN umsetzbares Korrekturrezept (Datei, Aenderung, Testanforderung, Stop-Kriterium), das den Drift beseitigt, OHNE Consent-Semantik zu verwässern (kein Digest-Wildcard fuer unverifiable als Default; Begruendung falls doch).
+4. Kandidaten unveraendert lassen; keine PR-Kommentare.
+END O141-FACTGAP-DONE / END O141-FACTGAP-BLOCKED

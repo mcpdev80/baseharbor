@@ -1,0 +1,6 @@
+OWNER-ANWEISUNG (Marcel, 2026-10-24): Koordinationsuebergabe - KEINE neuen Arbeiten mehr starten. Aufgabe jetzt: ARBEIT SICHERN.
+1. Brich keine laufenden Tests ab; schliesse den aktuellen kohärenten Stand ab (kein halber Edit).
+2. Fokussierte Suites einmal laufen lassen, exakte Outputs + Exit-Codes in evidence/board-2026-10-24/o140-policypr.md dokumentieren.
+3. Ordinary commit + ordinary push auf branch work/v0.4.26-ci-qualifier-1060 (Worktree worktrees/o140-policy; KEIN force, KEIN amend). Commit-Message "wip(o140): policy qualifier state <UTC>". Diff muss weiterhin NUR scripts/pr-gate-plan.py + scripts/test_pr_gate_plan.py sein.
+4. PR NUR eroeffnen wenn Diff + Tests gruen; sonst PR weglassen und exakten Stand + naechsten Schritt in der Evidence festhalten.
+5. END-Marker "END O140-POLICYPR-STOPPRESERVED" (oder -PUSHED falls PR entstand) setzen, then STOP.

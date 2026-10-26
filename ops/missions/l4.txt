@@ -1,0 +1,5 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b l4/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/l4-ustrack 084b3abc. KEIN push.
+AUFGAB (exakt 1 Datei): scripts/ci-workflow-policy.sh - die Allowlist nennt nur receipt-shadow.yml; receipt-post-run.yml und receipt-approval.yml fehlen, daher 'Workflow policy'-FAIL (L3-Beweis: scripts/test_ci_workflow_policy_receipts.py [VIOLATION] NOT in allowlist). Beide Eintraege ergaenzen, Stil/Kommentierung analog shadow-Zeile (DORMANT-Historie). KEINE weitere Datei aendern.
+BELEG: python3 scripts/test_ci_workflow_policy_receipts.py -> 0 Violations + exit 0; bash -n scripts/ci-workflow-policy.sh; chain/writer/verifier-Tests unauffaellig (kurz laufen lassen).
+EIN Commit "ci(policy): allowlist receipt post-run and approval workflows". Evidence evidence/board-2026-10-26/l4-allowlist.md (## PLAN, Diff, Testausgabe).
+END L4-DONE / END L4-BLOCKED

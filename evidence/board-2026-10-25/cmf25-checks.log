@@ -1,0 +1,15 @@
+PASS py_compile exact candidate
+PASS six surrounding guard/runtime functions AST unchanged
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.207s
+
+OK
+PASS existing helper suite runtime=docker
+..........
+----------------------------------------------------------------------
+Ran 10 tests in 0.214s
+
+OK
+PASS existing helper suite runtime=podman
+PASS focused semantics: ignored drift, all three identity fields, two-volume cardinality, duplicate containers, mount mismatch

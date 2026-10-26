@@ -1,0 +1,437 @@
+openapi: 3.1.0
+info:
+  title: BaseHarbor Runtime Resource API
+  version: 1.0.0
+  description: |
+    Provider-neutral application-time resource API for BaseHarbor workloads.
+    This API is independent from any concrete capability provider.
+servers:
+  - url: https://baseharbor-runtime:8443
+    description: Canonical per-application Runtime Broker endpoint inside the application network.
+tags:
+  - name: Secrets
+    description: Application-scoped runtime secret operations.
+  - name: Capabilities
+    description: Runtime capabilities available to the authenticated application.
+  - name: Resources
+    description: Application-owned logical runtime resources and bindings.
+  - name: Operations
+    description: Asynchronous runtime operation state.
+security:
+  - runtimeMTLS: []
+    runtimeBearer: []
+paths:
+  /runtime/v1/secrets:
+    post:
+      tags: [Secrets]
+      operationId: createRuntimeSecret
+      summary: Create an application-scoped dynamic secret
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretValueRequest'
+      responses:
+        '201':
+          description: Secret reference created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretReferenceResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/secrets/resolve:
+    post:
+      tags: [Secrets]
+      operationId: resolveRuntimeSecret
+      summary: Resolve an application-scoped dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretReferenceRequest'
+      responses:
+        '200':
+          description: Secret value resolved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretValueResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    put:
+      tags: [Secrets]
+      operationId: rotateRuntimeSecret
+      summary: Replace the value behind an existing dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretRotateRequest'
+      responses:
+        '200':
+          description: Secret value rotated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretConfiguredResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags: [Secrets]
+      operationId: deleteRuntimeSecret
+      summary: Delete an application-scoped dynamic secret reference
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SecretReferenceRequest'
+      responses:
+        '204':
+          description: Secret reference deleted.
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/capabilities:
+    get:
+      tags: [Capabilities]
+      operationId: listRuntimeCapabilities
+      summary: List runtime capabilities available to the authenticated application
+      responses:
+        '200':
+          description: Available runtime capabilities and allowed operations.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [capabilities]
+                properties:
+                  capabilities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Capability'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/resources:
+    post:
+      tags: [Resources]
+      operationId: createRuntimeResource
+      summary: Request an application-owned logical resource
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResourceRequest'
+      responses:
+        '200':
+          description: Existing idempotent operation returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '202':
+          description: Resource provisioning accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/resources/{resourceId}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Resources]
+      operationId: getRuntimeResource
+      summary: Get an application-owned logical resource
+      responses:
+        '200':
+          description: Resource state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resource'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags: [Resources]
+      operationId: deleteRuntimeResource
+      summary: Request deletion of an application-owned logical resource
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Existing idempotent delete operation returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        '202':
+          description: Deletion accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/resources/{resourceId}/binding:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Resources]
+      operationId: getRuntimeResourceBinding
+      summary: Get the application-facing binding for a ready resource
+      responses:
+        '200':
+          description: Provider-neutral binding metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuntimeBindingResponse'
+        default:
+          $ref: '#/components/responses/Problem'
+  /runtime/v1/operations/{operationId}:
+    parameters:
+      - name: operationId
+        in: path
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    get:
+      tags: [Operations]
+      operationId: getRuntimeOperation
+      summary: Get asynchronous operation state
+      responses:
+        '200':
+          description: Operation state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Operation'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  securitySchemes:
+    runtimeMTLS:
+      type: mutualTLS
+      description: Application-specific mTLS identity issued by BaseHarbor.
+    runtimeBearer:
+      type: http
+      scheme: bearer
+      description: Application-scoped BaseHarbor runtime token.
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Stable caller-generated key used to make mutating requests idempotent.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 200
+    ResourceId:
+      name: resourceId
+      in: path
+      required: true
+      description: Opaque BaseHarbor logical resource identifier.
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    Problem:
+      description: Request failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    SecretValueRequest:
+      type: object
+      additionalProperties: false
+      required: [value]
+      properties:
+        value:
+          type: string
+          minLength: 1
+          writeOnly: true
+    SecretReferenceRequest:
+      type: object
+      additionalProperties: false
+      required: [ref]
+      properties:
+        ref:
+          type: string
+          minLength: 1
+          examples: [baseharbor://secrets/dyn-0123456789abcdef0123456789abcdef]
+    SecretRotateRequest:
+      type: object
+      additionalProperties: false
+      required: [ref, value]
+      properties:
+        ref:
+          type: string
+          minLength: 1
+        value:
+          type: string
+          minLength: 1
+          writeOnly: true
+    SecretReferenceResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, configured]
+      properties:
+        ref:
+          type: string
+        configured:
+          type: boolean
+          const: true
+    SecretValueResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, value]
+      properties:
+        ref:
+          type: string
+        value:
+          type: string
+          writeOnly: true
+    SecretConfiguredResponse:
+      type: object
+      additionalProperties: false
+      required: [ref, configured]
+      properties:
+        ref:
+          type: string
+        configured:
+          type: boolean
+          const: true
+    Capability:
+      type: object
+      additionalProperties: false
+      required: [capability, operations]
+      properties:
+        capability:
+          type: string
+          examples: [object-storage.s3/v1]
+        operations:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [runtime.create, runtime.get, runtime.delete, runtime.rotate]
+    CreateResourceRequest:
+      type: object
+      additionalProperties: false
+      required: [capability, name]
+      properties:
+        capability:
+          type: string
+          minLength: 1
+          examples: [object-storage.s3/v1]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          examples: [user-4711]
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Capability-versioned portable parameters only; provider-specific fields are forbidden.
+    Resource:
+      type: object
+      additionalProperties: false
+      required: [id, capability, name, state]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          examples: [res-s3-0123456789abcdef01234567]
+        capability:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          enum: [provisioning, ready, deleting, failed]
+    RuntimeBindingResponse:
+      type: object
+      additionalProperties: false
+      required: [resource_id, capability, binding]
+      properties:
+        resource_id:
+          type: string
+        capability:
+          type: string
+          examples: [object-storage.s3/v1]
+        binding:
+          description: |
+            Capability-specific application binding. This endpoint is authenticated and may return
+            scoped credential material required to consume the resource. Credentials are never copied
+            into operation state, resource metadata, logs, metrics or the portable application manifest.
+          oneOf:
+            - $ref: '#/components/schemas/S3RuntimeBinding'
+    S3RuntimeBinding:
+      type: object
+      additionalProperties: false
+      required: [resource_id, endpoint, bucket, region, access_key_id, secret_access_key]
+      properties:
+        resource_id:
+          type: string
+        endpoint:
+          type: string
+          description: S3-compatible endpoint reachable by the authorized workload.
+        bucket:
+          type: string
+        region:
+          type: string
+          examples: [us-east-1]
+        access_key_id:
+          type: string
+          description: Resource-scoped S3 access key identifier. Treat as sensitive binding material.
+        secret_access_key:
+          type: string
+          format: password
+          description: Resource-scoped S3 secret access key. Treat as secret material.
+    Operation:
+      type: object
+      additionalProperties: false
+      required: [id, state]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        state:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        resource_id:
+          type: string
+        error:
+          $ref: '#/components/schemas/Problem'
+    Problem:
+      type: object
+      additionalProperties: true
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference

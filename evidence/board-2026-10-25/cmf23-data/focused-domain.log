@@ -1,0 +1,309 @@
+=== RUN   TestObserveSQLConsumerInventoryRequiresActualCredentialBoundCatalog
+--- PASS: TestObserveSQLConsumerInventoryRequiresActualCredentialBoundCatalog (0.00s)
+=== RUN   TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry
+--- PASS: TestExternalRemovalInterruptionRetainsRegistrationOwnerAndCanRetry (0.41s)
+=== RUN   TestExternalRemovalConsentInvalidatedByNewTarget
+--- PASS: TestExternalRemovalConsentInvalidatedByNewTarget (0.05s)
+=== RUN   TestBackendProjectionRetainsExistingIdentityMaterial
+--- PASS: TestBackendProjectionRetainsExistingIdentityMaterial (0.64s)
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/workload-secret
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-secret
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/application-secret-ref
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/workload-trust
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-trust
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/client-id
+=== RUN   TestIdentityBindingDetectsDivergentCredentialDelivery/missing-secret
+--- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery (4.16s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/workload-secret (0.65s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-secret (0.66s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/application-secret-ref (0.61s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/workload-trust (0.67s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/runtime-trust (0.48s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/client-id (0.55s)
+    --- PASS: TestIdentityBindingDetectsDivergentCredentialDelivery/missing-secret (0.54s)
+=== RUN   TestIdentityBindingCannotDropExistingCredentialOrTrustByOmission
+--- PASS: TestIdentityBindingCannotDropExistingCredentialOrTrustByOmission (0.73s)
+=== RUN   TestNativeCredentialRoleMappingDoesNotPretendFineGrainedAuthorization
+--- PASS: TestNativeCredentialRoleMappingDoesNotPretendFineGrainedAuthorization (0.00s)
+=== RUN   TestMongoDBServiceBindingUsesApplicationCredentialsOnly
+    mongodb_binding_test.go:28: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestMongoDBServiceBindingUsesApplicationCredentialsOnly (0.12s)
+=== RUN   TestNativeBackendInventoryUsesExactNamedInstancesAndRetainsHAResources
+--- PASS: TestNativeBackendInventoryUsesExactNamedInstancesAndRetainsHAResources (0.00s)
+=== RUN   TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition
+--- PASS: TestNativeBackendInventoryChecksRetainedOrDesiredCanonicalDefinition (0.03s)
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/simple
+=== RUN   TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/special-values
+--- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner (0.29s)
+    --- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/simple (0.18s)
+    --- PASS: TestPostgresBackupRestoreExecutesRetainedTLSConsumerIdentityAndSelectedOwner/special-values (0.11s)
+=== RUN   TestProviderChangeCredentialsAndUnverifiedContinuation
+--- PASS: TestProviderChangeCredentialsAndUnverifiedContinuation (0.00s)
+=== RUN   TestProviderChangeCountdownDoesNotInvalidateConcreteConsent
+--- PASS: TestProviderChangeCountdownDoesNotInvalidateConcreteConsent (0.00s)
+=== RUN   TestProviderChangeMaterialExpiryInvalidatesConsentWithoutValidationFunction
+--- PASS: TestProviderChangeMaterialExpiryInvalidatesConsentWithoutValidationFunction (0.00s)
+=== RUN   TestProviderImpactScopedUnbindRetainsOtherAppAndRetryScope
+--- PASS: TestProviderImpactScopedUnbindRetainsOtherAppAndRetryScope (0.00s)
+=== RUN   TestProviderImpactIntentRemovalAndSamplingDoNotInventDemandOrStaleConsent
+--- PASS: TestProviderImpactIntentRemovalAndSamplingDoNotInventDemandOrStaleConsent (0.00s)
+=== RUN   TestImpactScopeConsentTracksConsequencesButNotCountdownSamples
+--- PASS: TestImpactScopeConsentTracksConsequencesButNotCountdownSamples (0.00s)
+=== RUN   TestScopeOwnerDestructionRequiresSeparateConsentWithoutLeaves
+--- PASS: TestScopeOwnerDestructionRequiresSeparateConsentWithoutLeaves (0.00s)
+=== RUN   TestResolveProviderPlacementUsesSimpleSafeDefault
+--- PASS: TestResolveProviderPlacementUsesSimpleSafeDefault (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsExplicitSupportedOverride
+--- PASS: TestResolveProviderPlacementAllowsExplicitSupportedOverride (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsSharedBoundary
+--- PASS: TestResolveProviderPlacementAllowsSharedBoundary (0.00s)
+=== RUN   TestResolveProviderPlacementDefaultsPostgresAndValkeyToShared
+--- PASS: TestResolveProviderPlacementDefaultsPostgresAndValkeyToShared (0.00s)
+=== RUN   TestResolveProviderPlacementAllowsDedicatedPostgresOverride
+--- PASS: TestResolveProviderPlacementAllowsDedicatedPostgresOverride (0.00s)
+=== RUN   TestResolveProviderPlacementRejectsBoundaryOutsideShared
+--- PASS: TestResolveProviderPlacementRejectsBoundaryOutsideShared (0.00s)
+=== RUN   TestPrometheusExternalPlacementFailsClosedUntilAdapterExists
+--- PASS: TestPrometheusExternalPlacementFailsClosedUntilAdapterExists (0.00s)
+=== RUN   TestProviderPlacementNameTokenIsStableAndSafe
+--- PASS: TestProviderPlacementNameTokenIsStableAndSafe (0.00s)
+=== RUN   TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt
+--- PASS: TestResolveProviderPlacementRejectsBoundaryWhenAdapterCannotRealizeIt (0.00s)
+=== RUN   TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent
+--- PASS: TestResolveProviderPlacementUsesOrganizationExternalDefaultWithoutChangingIntent (0.00s)
+=== RUN   TestExplicitProviderPlacementOverridesOrganizationDefault
+--- PASS: TestExplicitProviderPlacementOverridesOrganizationDefault (0.02s)
+=== RUN   TestPendingProviderOwnersDoNotReplaceAppliedPlacement
+--- PASS: TestPendingProviderOwnersDoNotReplaceAppliedPlacement (0.01s)
+=== RUN   TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement
+--- PASS: TestRegisterReferenceProvidersPersistsRuntimeOnlyMetricsPlacement (0.00s)
+=== RUN   TestRegisteredProviderPlacementSurvivesDesiredOverrideChange
+--- PASS: TestRegisteredProviderPlacementSurvivesDesiredOverrideChange (0.00s)
+=== RUN   TestRetainedCanonicalIntentPreservesOneConsumerBindingsAndDependencies
+--- PASS: TestRetainedCanonicalIntentPreservesOneConsumerBindingsAndDependencies (0.00s)
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-app
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-environment
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/missing-owner
+=== RUN   TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/inactive
+--- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-app (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/different-environment (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/missing-owner (0.00s)
+    --- PASS: TestRetainedIntentRejectsForeignOwnershipAndInactiveProjection/inactive (0.00s)
+=== RUN   TestRetainedIntentDeduplicatesRootsAndPreservesExplicitPreferences
+--- PASS: TestRetainedIntentDeduplicatesRootsAndPreservesExplicitPreferences (0.00s)
+=== RUN   TestUnknownRetainedCapabilityKeepsOverallUnionIncomplete
+--- PASS: TestUnknownRetainedCapabilityKeepsOverallUnionIncomplete (0.00s)
+=== RUN   TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses
+--- PASS: TestReconcileRabbitMQCredentialsUsesStdinAndSeparateClasses (1.00s)
+=== RUN   TestRabbitMQRuntimeEnvKeepsCredentialClassesDistinct
+--- PASS: TestRabbitMQRuntimeEnvKeepsCredentialClassesDistinct (0.00s)
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/messaging
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/document
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/sql
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/cache
+=== RUN   TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/object
+--- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner (0.54s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/messaging (0.12s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/document (0.12s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/sql (0.10s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/cache (0.10s)
+    --- PASS: TestCapabilityRetirementRetainsExistingCredentialAndRecoveryOwner/object (0.11s)
+=== RUN   TestInvalidRetainedEnvironmentCannotBeRewrittenOrDisclosed
+--- PASS: TestInvalidRetainedEnvironmentCannotBeRewrittenOrDisclosed (0.00s)
+=== RUN   TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials
+    runtime_inspect_test.go:50: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials (0.05s)
+=== RUN   TestNativeCacheProjectionPreservesSharedCredentialOwnerAndUsesActualPrincipal
+--- PASS: TestNativeCacheProjectionPreservesSharedCredentialOwnerAndUsesActualPrincipal (0.00s)
+=== RUN   TestManagedRuntimeObservabilityExcludesSharedBackendServices
+--- PASS: TestManagedRuntimeObservabilityExcludesSharedBackendServices (0.01s)
+=== RUN   TestDedicatedSharedDedicatedSwitchBackRestoresOriginalCredentials
+--- PASS: TestDedicatedSharedDedicatedSwitchBackRestoresOriginalCredentials (0.11s)
+=== RUN   TestUnchangedDedicatedReapplyDoesNotRotateCredentials
+--- PASS: TestUnchangedDedicatedReapplyDoesNotRotateCredentials (0.05s)
+=== RUN   TestCredentialOwnerSlotsSkippedWhenNoSQLInstances
+--- PASS: TestCredentialOwnerSlotsSkippedWhenNoSQLInstances (0.07s)
+=== RUN   TestNamedSQLInstanceRoundTripKeepsOwnOwnerSlots
+--- PASS: TestNamedSQLInstanceRoundTripKeepsOwnOwnerSlots (0.13s)
+=== RUN   TestReallocateRuntimePortsPreservesCredentials
+    runtime_ports_test.go:17: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestReallocateRuntimePortsPreservesCredentials (0.10s)
+=== RUN   TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials
+    runtime_postgres_test.go:187: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system
+--- FAIL: TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials (0.22s)
+=== RUN   TestRemoteBackendProbeKeepsTLSAndContainerCredentialReference
+--- PASS: TestRemoteBackendProbeKeepsTLSAndContainerCredentialReference (0.00s)
+=== RUN   TestReapplyDoesNotRegenerateMissingRetainedPassword
+--- PASS: TestReapplyDoesNotRegenerateMissingRetainedPassword (0.04s)
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ha
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ha
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/object
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache-ui
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-sql
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-cache
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-messaging
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-document
+=== RUN   TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-object
+--- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies (1.89s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql (0.09s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache (0.09s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging (0.09s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ui (0.11s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/messaging-ha (0.18s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document (0.11s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ui (0.16s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/document-ha (0.13s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/object (0.14s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/sql-ui (0.13s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/cache-ui (0.07s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-sql (0.15s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-cache (0.05s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-messaging (0.10s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-document (0.22s)
+    --- PASS: TestRetainedCredentialGroupsDoNotRegenerateAcrossProviderFamilies/named-object (0.06s)
+=== RUN   TestEnsureRuntimeRejectsLostCredentialsBeforeIssuanceOrProjection
+--- PASS: TestEnsureRuntimeRejectsLostCredentialsBeforeIssuanceOrProjection (0.00s)
+=== RUN   TestAddingIndependentCredentialsPreservesExistingMaterial
+--- PASS: TestAddingIndependentCredentialsPreservesExistingMaterial (0.08s)
+=== RUN   TestRetiringDamagedCredentialsDoesNotPreventIntentionalRemoval
+--- PASS: TestRetiringDamagedCredentialsDoesNotPreventIntentionalRemoval (0.09s)
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-file
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-group
+=== RUN   TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-file
+--- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing (0.01s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/sql-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/cache-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/messaging-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/document-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/object-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-sql-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-cache-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-messaging-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-document-missing-file (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-group (0.00s)
+    --- PASS: TestExistingNativeOwnerPreventsRegenerationWhenEntireCredentialGroupIsMissing/named-object-missing-file (0.00s)
+=== RUN   TestNewDefaultBindingDoesNotAdoptExistingNamedCredentialGroup
+--- PASS: TestNewDefaultBindingDoesNotAdoptExistingNamedCredentialGroup (0.05s)
+=== RUN   TestSharedBackendAliasesCountOnePhysicalModuleAndProtectRemainingConsumer
+--- PASS: TestSharedBackendAliasesCountOnePhysicalModuleAndProtectRemainingConsumer (0.00s)
+=== RUN   TestSharedBackendSelectiveDependencyWithoutManagementBundle
+--- PASS: TestSharedBackendSelectiveDependencyWithoutManagementBundle (0.03s)
+=== RUN   TestSharedBackendSelectiveDependencyPreservesExistingBinding
+--- PASS: TestSharedBackendSelectiveDependencyPreservesExistingBinding (0.03s)
+=== RUN   TestRetainedCacheDoesNotInventStandaloneSQLMigration
+--- PASS: TestRetainedCacheDoesNotInventStandaloneSQLMigration (0.03s)
+=== RUN   TestTargetSharedBackendDestroyRequiresReleasedConsumersAndCanonicalOwnership
+--- PASS: TestTargetSharedBackendDestroyRequiresReleasedConsumersAndCanonicalOwnership (0.23s)
+=== RUN   TestSharedBackendDestroyRefusesUnprotectedOrReplacedOwnershipState
+--- PASS: TestSharedBackendDestroyRefusesUnprotectedOrReplacedOwnershipState (0.06s)
+=== RUN   TestSharedBackendJoinsVerifiedCoreNetworkWithoutSQLMigration
+--- PASS: TestSharedBackendJoinsVerifiedCoreNetworkWithoutSQLMigration (0.11s)
+=== RUN   TestSharedBackendStandaloneNetworkKeepsExistingOwner
+--- PASS: TestSharedBackendStandaloneNetworkKeepsExistingOwner (0.14s)
+=== RUN   TestSharedBackendNetworkRejectsPartialCoreOwner
+--- PASS: TestSharedBackendNetworkRejectsPartialCoreOwner (0.00s)
+=== RUN   TestSharedBackendTLSLifecycleUsesPhysicalOwners
+--- PASS: TestSharedBackendTLSLifecycleUsesPhysicalOwners (0.06s)
+=== RUN   TestSharedBackendResolvedConsumerConvergencePreservesDataAndCredentials
+--- PASS: TestSharedBackendResolvedConsumerConvergencePreservesDataAndCredentials (0.11s)
+=== RUN   TestSharedBackendInventoryIsCanonicalAndReadOnly
+--- PASS: TestSharedBackendInventoryIsCanonicalAndReadOnly (0.08s)
+=== RUN   TestVerifySharedPostgresStateOwnershipRequiresProviderAdminCredential
+--- PASS: TestVerifySharedPostgresStateOwnershipRequiresProviderAdminCredential (0.00s)
+=== RUN   TestSharedPostgresStateContainsCredentialReferencesNotSecrets
+--- PASS: TestSharedPostgresStateContainsCredentialReferencesNotSecrets (0.05s)
+=== RUN   TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization
+--- PASS: TestOTLPAuthorityChangesSeparateRetainedManagedIdentityAndExternalAuthorization (0.31s)
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/postgres
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/valkey
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/rabbitmq
+=== RUN   TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/mongodb
+--- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/postgres (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/valkey (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/rabbitmq (0.00s)
+    --- PASS: TestRetainedApplicationDataTopologyCannotBeImplicitlyReconciled/mongodb (0.00s)
+=== RUN   TestRetainedIndependentNumericInstanceIsNotAReplica
+--- PASS: TestRetainedIndependentNumericInstanceIsNotAReplica (0.00s)
+=== RUN   TestFootprintBindingFixtures
+=== RUN   TestFootprintBindingFixtures/automatic
+=== RUN   TestFootprintBindingFixtures/explicit
+=== RUN   TestFootprintBindingFixtures/missing
+=== RUN   TestFootprintBindingFixtures/incompatible
+=== RUN   TestFootprintBindingFixtures/ambiguous
+=== RUN   TestFootprintBindingFixtures/foreign
+=== RUN   TestFootprintBindingFixtures/observed-foreign
+=== RUN   TestFootprintBindingFixtures/stopped-owned
+=== RUN   TestFootprintBindingFixtures/unverifiable
+=== RUN   TestFootprintBindingFixtures/newly-required
+=== RUN   TestFootprintBindingFixtures/foreign-target
+=== RUN   TestFootprintBindingFixtures/external-byo
+--- PASS: TestFootprintBindingFixtures (0.00s)
+    --- PASS: TestFootprintBindingFixtures/automatic (0.00s)
+    --- PASS: TestFootprintBindingFixtures/explicit (0.00s)
+    --- PASS: TestFootprintBindingFixtures/missing (0.00s)
+    --- PASS: TestFootprintBindingFixtures/incompatible (0.00s)
+    --- PASS: TestFootprintBindingFixtures/ambiguous (0.00s)
+    --- PASS: TestFootprintBindingFixtures/foreign (0.00s)
+    --- PASS: TestFootprintBindingFixtures/observed-foreign (0.00s)
+    --- PASS: TestFootprintBindingFixtures/stopped-owned (0.00s)
+    --- PASS: TestFootprintBindingFixtures/unverifiable (0.00s)
+    --- PASS: TestFootprintBindingFixtures/newly-required (0.00s)
+    --- PASS: TestFootprintBindingFixtures/foreign-target (0.00s)
+    --- PASS: TestFootprintBindingFixtures/external-byo (0.00s)
+=== RUN   TestFootprintCorelessAndUnboundAreDifferent
+--- PASS: TestFootprintCorelessAndUnboundAreDifferent (0.00s)
+=== RUN   TestFootprintReusesBindingAndDependencyUnion
+--- PASS: TestFootprintReusesBindingAndDependencyUnion (0.00s)
+=== RUN   TestFootprintEvidenceValidation
+--- PASS: TestFootprintEvidenceValidation (0.00s)
+=== RUN   TestFootprintUnusedRespectsTargetWideConsumers
+--- PASS: TestFootprintUnusedRespectsTargetWideConsumers (0.00s)
+=== RUN   TestFootprintUnprojectedDependenciesNeverClaimCoreless
+--- PASS: TestFootprintUnprojectedDependenciesNeverClaimCoreless (0.00s)
+=== RUN   TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload
+--- PASS: TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload (0.00s)
+FAIL
+FAIL	github.com/mcpdev80/baseharbor/internal/application	12.191s
+FAIL

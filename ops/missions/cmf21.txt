@@ -1,0 +1,10 @@
+ROLLE: REVIEW (Runde 3 auf R1; KEIN MERGE/PUSH/CI-Dispatch).
+Kandidat: /home/marcel/dev/baseharbor-ecosystem/worktrees/f62-r1, Commit 6f165d30 (Parent 25b46572). Diff 2f9afafd..6f165d30 SHA-genau gegen die Rezepte aus codex-verdict-1077-cee2ef5b.md (F1-F5) und codex-verdict-1077-25b46572-r2.md (R1).
+PFLICHECKS:
+1. R1-beide-Haelften eigenhaendig: (a) Preview-Projections koennen verifyApplicationRuntimeRetirement/Ownership-Wege nicht mehr authorisieren (Fail-closed == Baseline 2f9afafd); (b) materialization cause/code erscheint im serialisierten machine.JSON Output (nicht nur Go-Cause).
+2. F1-F5 remain green (CMF19-Tests + CMF20-Tests + q124-Tests).
+3. Baseline: ein go test ./cmd/baha/ -count=1 Durchlauf auf 2f9afafd (read-only Check-out) vs. Kandidat - NEW=0 selbst nachpruefen, nicht Evidence glauben.
+4. consent digest/footprint.go/q124-Bestaetigung unveraendert (Diff-Beleg).
+5. build/vet/gofmt.
+URTEIL evidence/board-2026-10-25/codex-verdict-1077-6f165d30-r3.md: ACCEPT (mit expliziter FF-Push-Empfehlung 6f165d30 -> fix/v0.4.26-edit-preview-error) oder REQUEST_CHANGES mit Rezepten. ROLLE-Label, UTC, SHAs before/after.
+END CMF21-REVIEW-DONE / END CMF21-BLOCKED

@@ -1,0 +1,10 @@
+pwd-PFLICHT vor JEDEM git-Befehl. WORKTREE+BRANCH: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b w3/r27-verifier /home/marcel/dev/baseharbor-ecosystem/worktrees/w3-verifier ec82d476. KEIN push.
+ROLLE: W3 des Drei-Worker-Pakets. Massstab: CODEMAN-START.md + evidence/board-2026-10-26/FREEZE-PR1.md (Interfaces FROZEN; GATE='public-contracts'; live liest bounded trusted-pr-plan, offline nur caller-pinned Planning-Revision; kein Artefakt-Retention).
+EXKLUSIVE WRITES: scripts/receipt_verifier.py, NEU scripts/test_receipt_verifier.py, scripts/test_receipt_chain.py (von W2/W1 unangetastet lassen - dir zugeteilt), NEU .github/workflows/receipt-approval.yml (DORMANT für PR2: authentifizierter Owner-Approval-Commit-Pfad, `if: false`/manuell, nichts wird scharf).
+AUFGAB:
+1. Verifier-Korrekturen gemäss o145-Befunden (o145-pr1-verify.md) - insbesondere live provenance/integration binding und die drei Pflicht-Negative (falsche SHA, tote Run-ID, editierte Receipt) mit spezifischen FehlerklassenAsserts (ReceiptError-Gründe prüfen, nicht nur Exception-Existenz).
+2. test_receipt_chain.py NICHT duplizieren: bestehende 6 Tests erhalten; NEUE Verifier-Tiefe kommt in test_receipt_verifier.py.
+3. Approve-Pfad: 'by/at/receipt_commit' in protected Planning revision; receipt-approval.yml DORMANT, aber aufrufbar dokumentiert (CLI-Argumente exakt wie FREEZE).
+4. Laufend: python3 scripts/test_receipt_chain.py + python3 scripts/test_receipt_verifier.py + py_compile; alle Tests grün, interface zu receipt_writer.py bleibt binär-kompatibel (write->verify roundtrip Test).
+EIN ordinary Commit 'feat(ci): deepen receipt verifier negatives and offline binding tests' + EVIDENCE evidence/board-2026-10-26/w3-verifier.md (## PLAN, file:line, Testausgaben).
+END W3-DONE / END W3-BLOCKED

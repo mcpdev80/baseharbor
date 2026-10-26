@@ -1,0 +1,5 @@
+PR · Trusted Plan	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-24T13:45:37.1184895Z HEAD is now at 65aa063e docs(ci): record-only Core-921 CI binding qualification for #1056 (Q) (#1063)
+PR Selected Checks	Enforce every required check (unqualified runtime remains blocked)	2026-10-24T13:47:13.0556978Z   EXPECTED_BASE: 65aa063e90767c85af976081c100be1817370e67
+PR Selected Checks	Enforce every required check (unqualified runtime remains blocked)	2026-10-24T13:47:13.0557512Z   EXPECTED_HEAD: 0f3bd169d4a02c5f019da822b4f45f66b972423e
+PR Selected Checks	Enforce every required check (unqualified runtime remains blocked)	2026-10-24T13:47:13.0558074Z   EXPECTED_INTEGRATION: 42481f4c980b449f83e87abfcfbd1b2046eb7df2
+PR Selected Checks	Enforce every required check (unqualified runtime remains blocked)	2026-10-24T13:47:14.8405574Z BLOCKED: coverage-unresolved: workflow execution/cleanup/evidence impact requires native qualification: .github/workflows/ci.yml; CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py

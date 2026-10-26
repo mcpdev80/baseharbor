@@ -1,0 +1,5 @@
+ROLLE: KREUZREVIEW (read-only am Produkt; Evidence + ein Commit NUR unter evidence/board-2026-10-26/). Gemäss CODEMAN-Rotation: W3 reviewed W2.
+Kandidat: worktree /home/marcel/dev/baseharbor-ecosystem/worktrees/w2-writer, Commit bb2ed8c8 (Parent ec82d476), Write-Set scripts/receipt_writer.py + scripts/test_receipt_writer.py + .github/workflows/receipt-post-run.yml.
+PRUEFGENAU: (1) interface write()/commit_file() Signaturen unveraendert gegen FREEZE-PR1.md (Hash d6f830d9 fuer Writer - Diff lesen, Aenderung begruendet?); (2) 'publication before success report' wirklich implementiert (Zeile fuer Zeile, inkl. expected-Pfad); (3) Credentials nur im trusted post-run context, nichts in PR/Fork-Ausfuehrung; (4) post-run.yml dormant + ruft exakt die FREEZE-Argumente; (5) Tests: python3 scripts/test_receipt_writer.py + test_receipt_chain.py selbst ausfuehren; (6) kein Scope-Kriechen in W1/W3-Dateien (git diff --name-only ec82d476..HEAD).
+VERDICT evidence/board-2026-10-26/w3-reviews-w2.md: FREIGEBEN oder REWORK mit konkretem Rezept (Datei/Aenderung/Test). ROLLE+UTC+SHA.
+END W3REVIEW-DONE / END W3REVIEW-BLOCKED

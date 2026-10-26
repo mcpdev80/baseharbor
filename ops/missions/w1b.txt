@@ -1,0 +1,6 @@
+FORTSETZUNG W1-Paket (Same lane, gleicher Branch worktree f71-contract @ 0b6f098d): CODEMAN-START.md W1-Zeile verlangt zusätzlich zu deinem fertigen Mapping noch:
+(a) .github/workflows/receipt-shadow.yml NEU - DORMANTer Schatten-Final-Check-Konsument für PR2 (liest Receipt via scripts/receipt_verifier.py retained/live wie im FREEZE dokumentiert; `if: false` o.ä., nichts scharf, keine Änderung an bestehenden Workflow-Triggern oder aktiven Required Checks),
+(b) docs/development/minimal-ci-receipts.md + DE-Pair: um deinen Mapping-Pfad ergänzen (EN/DE deckungsgleich),
+(c) pr-check-runner.py/test_pr_gate_plan.py nur falls dein Mapping es für Discovery braucht.
+KEIN push; EIN ordinary Commit 'ci(receipt): prepare dormant shadow final-check consumption (PR2)'; Evidence board-2026-10-26/w1-shadow.md mit Haken + Testläufen (bestehende receipts-Suiten grün: chain + writer? - writer existiert noch nicht von W2, nur chain + dein Mapping-Test).
+END W1B-DONE / END W1B-BLOCKED

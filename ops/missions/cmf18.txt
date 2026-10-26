@@ -1,0 +1,15 @@
+ROLLE: REVIEW (Abnahme/Analyse, KEIN MERGE, KEIN Recipe-Vollzug durch dich).
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl; Produkt-git NUR in /home/marcel/dev/baseharbor-ecosystem/baseharbor oder eigenem worktree; Root-Repo verboten.
+READ-ONLY: kein push, kein merge, kein close/reopen, kein workflow_dispatch/rerun, kein force, keine Produktänderungen. GitHub reads + gh run logs erlaubt.
+
+FRAGESTELLUNG (genau eins, kein source review - das laeuft parallel separat):
+PR mcpdev80/baseharbor#1060 head `0f3bd169d4a02c5f019da822b4f45f66b972423e`, base develop `65aa063e90767c85af976081c100be1817370e67`. CI run 40099514587: plan/focused/validation PASS, aber `PR Selected Checks` FAIL mit:
+"BLOCKED: coverage-unresolved: workflow execution/cleanup/evidence impact requires native qualification: .github/workflows/ci.yml; CI execution/evidence impact requires specific qualification: scripts/pr-check-runner.py"
+
+AUFGAB:
+1. Run 40099514587 Logs + den Planner-Pfad in scripts/pr-gate-plan.py (core-752 review/merge-chain und coverage-unresolved Logik, ca. :545-581 und :1098-1119) sowie scripts/pr-check-runner.py:68-70 analysieren.
+2. Belegen: WARUM melden ci.yml und pr-check-runner.py 'unknown/native qualification required' auf genau diesem head - welche Record-/Akte-Semantik (target base docs/internal/ci-binding-qualifications.md) entscheidet hier, und warum reichte der develop-Akte-Stand nicht.
+3. LIEFERN: GENAU EIN umsetzbares Rezept (Datei, Aenderung, Testanforderung, Stop-Kriterium) wie #1060 merge-reif wird: erwartetes Muster = separater record-only Akte-PR (Muster #1058/#1063) fuer den FINAL-head von #1060, danach ordinary forward merge develop in #1060, KEIN rerun identischer Checks, KEINE broadened allowlist, KEIN self-authorizing-Eintrag ins PR-Branch-Diff. Wenn das Muster hier NICHT passt, exakt begründen (file:line) und alternatives Minimalrezept geben.
+4. History-Kontext: cmf15-Befunde A-F in evidence/board-2026-10-24/codex-verdict-1060-history.md; q121-repair in q121-1060repair.md. NICHTs davon erneut abnehmen (paralleles Review laeuft), nur die Qualifikations-Luecke klaeren.
+Ausgabe: evidence/board-2026-10-24/codex-recipe-1060-qualification.md mit UTC-Zeit, commit-SHA before/after (unveraendert bestaetigen), ROLLE-Label REVIEW und wuertlichem Urteil.
+END CMF18-RECIPE-DONE / END CMF18-BLOCKED

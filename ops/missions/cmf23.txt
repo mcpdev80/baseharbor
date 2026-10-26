@@ -1,0 +1,11 @@
+ROLLE: REVIEW (Gesamt-Kandidat der #1077-Kette; KEIN MERGE/PUSH/CI-Dispatch, keine Umsetzung).
+Kandidat: /home/marcel/dev/baseharbor-ecosystem/worktrees/f65-switch Commit a39e6bf5; Kette 2f9afafd->(25b46572/6f165d30/d409f26f)->6dadf486->3a28fb9c->a39e6bf5. Voll-Diff 2f9afafd..a39e6bf5 SHA-genau pruefen.
+Kontext-Evidence: codex-verdict-1077-*-r{1..4}.md, o143-drift-still.md, f64-driftfix.md, q125-switchcred.md (inkl. HANDOFF-Befunden), f65-switchfix.md, q125v-gate1.log (Gegenlauf), f65-gate-data/gate-run{1,2}.log.
+PFLICHECKS:
+1. Drift-Kette (F1-F5/R1/R2) bleibt intakt: CMF19-22-Tests + Autorisierungs-Audit (kein preview/unmeasured fact autorisiert verify/prep/ownership) selbst erneut.
+2. Credential-Aenderungen 3a28fb9c+a39e6bf5: placement-aware retention OHNE Ueberschreiben bei unveraenderter Placement; Volume-/Role-Wirklichkeit wird korrekt getroffen; keine Secrets im Code/Tests hardcodiert.
+3. q125-Verschnitt: pruefe explizit, ob 3a28fb9c (unwirksamer Teil) mit a39e6bf5 konsolidiert ist oder toter Code/Doppellogik bleibt - Befund wenn ja.
+4. Gate-Claims unabhaengig stichproben: gate-run1/2 Logs gegen Behauptungen (Journey-Schritte add+switch+remove+cancel+no wirklich ausgefuehrt?), NEW=0-Aussage gegen eigenen cmd/baha Teillaunch verifizieren.
+5. build/vet/gofmt + consent digest/footprint/q124 unveraendert.
+URTEIL evidence/board-2026-10-25/codex-verdict-1077-a39e6bf5-r5.md: ACCEPT mit expliziter FF-Empfehlung (a39e6bf5->fix/v0.4.26-edit-preview-error, merge erst nach gruener Runtime-CI) oder REQUEST_CHANGES mit Rezepten. ROLLE-Label, UTC, SHAs before/after.
+END CMF23-REVIEW-DONE / END CMF23-BLOCKED

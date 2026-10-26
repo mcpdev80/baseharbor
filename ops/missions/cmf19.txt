@@ -1,0 +1,11 @@
+ROLLE: REVIEW (Pflichtschlussabnahme des Kandidaten; KEIN MERGE, KEIN PUSH, KEIN CI-Dispatch).
+Kandidat: /home/marcel/dev/baseharbor-ecosystem/worktrees/o142-consentfix, Commit cee2ef5b084983c47e85b041562fd476f395555c (parent 2f9afafd, PR #1077-Zweigfix-Kette). Diff gegen 2f9afafd pruefen (SHA-genau).
+Massstab: evidence/board-2026-10-25/o141-wizard-factgap.md Abschnitt 3 (Rezept) + o142-consentfix.md (Umsetzungsbeweise) + Repository-Regeln (AGENTS/DEVELOPMENT_GUIDELINES).
+PFLICHTCHECKS (mindestens):
+1. git -C worktrees/o142-consentfix diff 2f9afafd cee2ef5b --stat + Vollstaendiger Diff-Read: nur beobachtungs-/testseitige Aenderungen, keine Consent-Digest-/footprint.go-Aenderung (kein unverifiable-Wildcard).
+2. Selbst ausfuehren (read-only im Worktree): CGO_ENABLED=0 go build ./... ; go vet ./cmd/baha/ ; gofmt -l cmd/baha internal/application ; go test ./cmd/baha/ -run 'TestWizard|TestO141|TestZeroContainerListing|TestProviderContinuation' -count=1 -v.
+3. Fail-closed-Integritaet: ohne Owner-Intent/ohne gebundene Instanz bleibt unverifiable (Testnachweis); checkRetainedApplicationProviderOwnership-Regression gruen.
+4. Vertrauenswuerdigkeit: kein Pfad-Raten, keine Disk-Nennung aus CWD relativ (o141-Ursache adressiert?), Typ-Fehler runtime-inventory-not-yet-materialized wird nicht als Erfolg missdeutet.
+5. Konsistenz mit q124-Patch (2f9afafd) - keine Double-Confirmation-Negation, keine toten Zweige.
+URTEIL in evidence/board-2026-10-25/codex-verdict-1077-cee2ef5b.md: ACCEPT / REQUEST_CHANGES mit je einem exakten Rezept pro Befund (Datei, Aenderung, Testanforderung, Stop-Kriterium), UTC-Zeit, Kandidaten-SHA before/after (unveraendert bestaetigen), ROLLE-Label. KEIN push/merge/approve am PR.
+END CMF19-REVIEW-DONE / END CMF19-BLOCKED

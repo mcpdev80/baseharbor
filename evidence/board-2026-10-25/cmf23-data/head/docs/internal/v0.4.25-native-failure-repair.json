@@ -1,0 +1,86 @@
+{
+  "schema": "baseharbor.native-failure-repair/v1",
+  "release": "v0.4.25",
+  "failure_run": 38581635648,
+  "source_fix": "8b672441a80a7033c96de295b28ae6da216a2d2e",
+  "source_tree": "77024329141ca582138ec7291a70390623bb5269",
+  "local": {
+    "snapshot_tree": "1418a32c2aa3bf93c7614bb01eca64cae00ada03",
+    "checks": "all nine pass",
+    "report": "baseharbor-local-qualification-m66gkaev/result.json",
+    "subsequent_changes": "Absent-runtime inventory also rejects linked ancestors using existing owner reader; focused cmd/baha race test passes.",
+    "terminal_race": "Actual regression fails before and passes after; full terminal tests pass under race detector.",
+    "evidence_resume": "47 tests pass; current v0.4.25 admits only existing reviewed v0.4.24 nonexecuted collector/pin and isolated backup fixture equivalences."
+  },
+  "confirmed_failures": [
+    {
+      "scope": [
+        "ha/docker/data",
+        "atomic/docker/control-plane-recovery"
+      ],
+      "jobs": [
+        115915511508,
+        115922980028
+      ],
+      "cause": "Docker restart fixture omitted explicit persisted Target; protected stop admission correctly refused missing config owner.",
+      "fix": "Create explicit local Target for either engine; production admission unchanged.",
+      "native_result": "pending"
+    },
+    {
+      "scope": [
+        "integration/docker/core-bootstrap",
+        "integration/podman/core-bootstrap"
+      ],
+      "jobs": [
+        115915512332,
+        115915512315
+      ],
+      "cause": "Provider-only application had no local runtime directory; retained material inventory required absent root.",
+      "fix": "Only absent root plus ErrRuntimeNotApplied yields empty inventory after canonical parent checks. Existing material is inventoried; lost applied projection and redirected ancestors fail.",
+      "native_result": "pending"
+    },
+    {
+      "scope": [
+        "integration/podman/coreless-lifecycle"
+      ],
+      "job": 115915511623,
+      "artifact": 11904915404,
+      "zip_sha256": "7c433e600c28d4de4ef12bf79e604c59c5eea2e1672687d44edae84fcc28c51a",
+      "cause": "Terminal.Section and Activity progress wrote concurrently to the same output buffer.",
+      "fix": "Both Terminal streams share the same synchronized writer.",
+      "native_result": "pending"
+    },
+    {
+      "scope": [
+        "integration/docker/coreless-lifecycle"
+      ],
+      "job": 115915512211,
+      "cause": "Go module proxy HTTP/2 INTERNAL_ERROR before test execution.",
+      "retry_run": 38581635648,
+      "retry_attempt": 2,
+      "retry_job": 115941661371,
+      "native_result": "in progress; not a product-failure conclusion"
+    }
+  ],
+  "preserved_podman_recovery": {
+    "gate": "atomic/podman/control-plane-recovery",
+    "candidate": "869aca11401c9fb05bcf65efb698ef000af52d40",
+    "demo": "a04eb8e0a967e205cdba426b01297fe72b07d790",
+    "job": 115926826785,
+    "attempt": 1,
+    "artifact": 11905252302,
+    "zip_sha256": "fdc64137d2cbf82ebb84773c36e7bdd1a870bad606f4bb6c69bd809af8248aa4",
+    "downloaded_digest_source_manifest_cleanup_verified": true,
+    "result": "success on recorded inputs; final input-equivalence still required"
+  },
+  "final_evidence_job": {
+    "job": 115930632498,
+    "attempt": 1,
+    "result": "failure",
+    "cause": "APPROVAL_RESULT=skipped; final approval precondition fails. No release-approved result was emitted."
+  },
+  "reuse_boundary": "Registered origin runs remain authoritative. Current Go/auth/schema/workflow/producer changes invalidate fingerprints. Only input-equivalent authenticated manifests with exact source/job/attempt/ZIP digest and cleanup qualify; no old green is relabelled for changed inputs.",
+  "native_acceptance": "pending",
+  "pre_release_ready": false,
+  "complete_pre_release_started": false
+}

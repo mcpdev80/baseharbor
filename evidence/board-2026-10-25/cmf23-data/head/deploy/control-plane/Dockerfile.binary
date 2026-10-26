@@ -1,0 +1,11 @@
+FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+RUN apk add --no-cache ca-certificates curl \
+    && mkdir -p /var/lib/baseharbor/runtime-operations /var/lib/baseharbor/runtime-resources /var/lib/baseharbor/runtime-metrics \
+    && chown -R 65532:65532 /var/lib/baseharbor \
+    && chgrp -R 0 /var/lib/baseharbor \
+    && chmod -R g=u /var/lib/baseharbor
+COPY baha /usr/local/bin/baha
+RUN chmod 0755 /usr/local/bin/baha
+USER 65532:65532
+ENTRYPOINT ["/usr/local/bin/baha"]
+CMD ["serve"]

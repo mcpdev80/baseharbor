@@ -1,0 +1,1497 @@
+1792962345 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792962580 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792962927 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792962976 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792963125 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792963167 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792963174 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792963375 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792963490 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792963833 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792963882 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792964029 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792964129 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792964205 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792964337 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792964394 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792964741 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792964789 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792964869 WATCHDOG REMINDER[observe:pane:7c28246b]: PANE observation UNKNOWN for codeman-7c28246b - dialog state unverified, flag retained, no RESOLVED emitted
+1792964891 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792964929 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792964967 WATCHDOG REMINDER[stall:o143]: stall observation UNKNOWN/unresolved for o143 (dialog) - NO resend or respawn advice until delivery/execution is observed
+1792965030 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792965100 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792965239 WATCHDOG REMINDER[events]: EVENTS: 3 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792965246 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792965297 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792965378 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792965646 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792965695 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792965834 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792965995 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792966203 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792966263 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792966316 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792966551 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792966610 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792966749 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792966941 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967108 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792967220 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792967291 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792967298 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792967426 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 41min (open 7 done 0)
+1792967457 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792967495 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 42min (open 7 done 0)
+1792967516 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792967565 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 43min (open 7 done 0)
+1792967628 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 45min
+1792967628 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967634 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 45min (open 7 done 0)
+1792967655 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792967698 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 47min
+1792967698 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967704 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 46min (open 7 done 0)
+1792967767 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 48min
+1792967767 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967773 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 47min (open 7 done 0)
+1792967837 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 49min
+1792967837 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967843 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 48min (open 7 done 0)
+1792967907 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 50min
+1792967907 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967914 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 49min (open 7 done 0)
+1792967968 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792967968 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 51min
+1792967968 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792967975 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 50min (open 7 done 0)
+1792968016 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792968028 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 52min
+1792968028 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968035 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 51min (open 7 done 0)
+1792968098 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 53min
+1792968098 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968105 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 52min (open 7 done 0)
+1792968159 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 54min
+1792968159 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968165 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 53min (open 7 done 0)
+1792968228 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 55min
+1792968228 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968298 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 57min
+1792968298 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968305 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792968358 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 58min
+1792968358 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968374 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792968425 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792968427 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 59min
+1792968427 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968487 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 60min
+1792968487 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968547 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 61min
+1792968547 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968565 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792968608 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 62min
+1792968608 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968668 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 63min
+1792968668 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968728 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 64min
+1792968728 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968798 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 65min
+1792968798 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968868 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792968868 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 66min
+1792968868 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792968925 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792968937 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 67min
+1792968937 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969007 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 68min
+1792969007 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969076 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 70min
+1792969076 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969146 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 71min
+1792969146 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969215 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 72min
+1792969215 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969283 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792969285 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 73min
+1792969285 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969292 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792969333 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792969345 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 74min
+1792969345 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969415 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 75min
+1792969415 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969473 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792969475 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 76min
+1792969475 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969545 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 77min
+1792969545 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969615 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 79min
+1792969615 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969676 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 80min
+1792969676 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969746 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 81min
+1792969746 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969815 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792969815 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 82min
+1792969815 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969831 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792969884 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 83min
+1792969884 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792969953 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 84min
+1792969953 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970023 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 85min
+1792970023 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970092 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 87min
+1792970092 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970161 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 88min
+1792970161 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970188 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792970231 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 89min
+1792970231 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970247 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792970300 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 90min
+1792970300 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970308 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792970361 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 91min
+1792970361 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970378 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792970430 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 92min
+1792970430 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970500 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 93min
+1792970500 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970560 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 94min
+1792970560 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970621 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 95min
+1792970621 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970627 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 41min (open 3 done 4)
+1792970681 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 96min
+1792970681 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970688 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 42min (open 3 done 4)
+1792970740 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792970741 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792970741 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 97min
+1792970741 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970748 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 43min (open 3 done 4)
+1792970811 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 99min
+1792970811 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970818 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 44min (open 3 done 4)
+1792970881 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 100min
+1792970881 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970887 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 45min (open 3 done 4)
+1792970951 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 101min
+1792970951 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792970956 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 46min (open 3 done 4)
+1792971020 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 102min
+1792971020 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971027 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 48min (open 3 done 4)
+1792971089 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792971091 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 103min
+1792971091 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971097 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 49min (open 3 done 4)
+1792971148 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792971160 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 104min
+1792971160 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971166 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 50min (open 3 done 4)
+1792971230 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 106min
+1792971230 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971237 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 51min (open 3 done 4)
+1792971278 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792971290 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 107min
+1792971290 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971297 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 52min (open 3 done 4)
+1792971298 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792971351 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 108min
+1792971351 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971358 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 53min (open 3 done 4)
+1792971412 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 109min
+1792971412 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971418 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 54min (open 3 done 4)
+1792971472 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 110min
+1792971472 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971479 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 55min (open 3 done 4)
+1792971542 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 111min
+1792971542 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971549 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 56min (open 3 done 4)
+1792971602 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 112min
+1792971602 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971609 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 57min (open 3 done 4)
+1792971641 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792971663 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792971663 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 113min
+1792971663 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971669 WATCHDOG REMINDER[planstale:o143]: o143 busy but PLAN file untouched 58min (open 3 done 4)
+1792971732 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 114min
+1792971732 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971802 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 115min
+1792971802 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971871 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 116min
+1792971871 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971940 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 117min
+1792971940 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792971998 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792972010 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792972010 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 119min
+1792972010 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972016 WATCHDOG REMINDER[todos:o143]: o143 SYNC: native todos all completed but 2 open checkboxes in o143-drift-still.md
+1792972057 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792972079 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 120min
+1792972079 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972148 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 121min
+1792972148 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972185 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792972218 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 122min
+1792972218 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972287 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 123min
+1792972287 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972294 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792972347 WATCHDOG REMINDER[events]: EVENTS: 3 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792972347 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 124min
+1792972347 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972353 WATCHDOG REMINDER[idlenoend:o143]: o143 idle-confirmed with NO END marker - verify, re-task or rotate
+1792972417 WATCHDOG REMINDER[plan-lanes]: OBS: model identity UNKNOWN for f64 - excluded from pool counts (not inferred from name letters)
+1792972417 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 125min
+1792972417 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792972423 WATCHDOG REMINDER[todos:o143]: o143 SYNC: native todos all completed but 1 open checkboxes in o143-drift-still.md
+1792972545 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792972825 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792972911 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792972962 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792973091 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792973319 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792973381 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792973449 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792973813 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792973864 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792973992 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792974350 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792974357 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792974367 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792974697 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792974714 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792974765 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792974894 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792975175 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 45min
+1792975175 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975244 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 46min
+1792975244 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975271 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792975313 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 48min
+1792975313 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975383 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 49min
+1792975383 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975390 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792975453 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 50min
+1792975453 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975513 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 51min
+1792975513 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975582 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 52min
+1792975582 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975621 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792975643 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792975643 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 53min
+1792975643 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975669 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792975712 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 54min
+1792975712 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975782 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 55min
+1792975782 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975798 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792975851 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 56min
+1792975851 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975920 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 58min
+1792975920 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792975990 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 59min
+1792975990 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976052 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 60min
+1792976052 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976112 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 61min
+1792976112 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976180 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792976181 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 62min
+1792976181 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976251 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 63min
+1792976251 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976321 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 64min
+1792976321 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976391 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 65min
+1792976391 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976398 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792976451 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 66min
+1792976451 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976520 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 68min
+1792976520 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976537 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792976578 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792976590 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792976590 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 69min
+1792976590 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976659 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 70min
+1792976659 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976706 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792976728 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 71min
+1792976728 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976798 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 72min
+1792976798 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976868 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 73min
+1792976868 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976937 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 75min
+1792976937 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792976997 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 76min
+1792976997 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977058 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 77min
+1792977058 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977086 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792977118 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 78min
+1792977118 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977188 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 79min
+1792977188 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977249 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792977249 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 80min
+1792977249 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977319 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 81min
+1792977319 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977379 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 82min
+1792977379 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977387 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792977438 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792977440 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 83min
+1792977440 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977487 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792977509 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 84min
+1792977509 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792977616 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792977648 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792977994 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792978341 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792978390 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792978412 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792978419 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792978520 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792978552 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792978901 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792979249 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792979302 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792979355 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792979423 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792979433 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792979486 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792979803 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792980151 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792980211 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792980293 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 46min
+1792980293 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980331 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792980363 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 47min
+1792980363 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980423 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792980423 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 48min
+1792980423 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980431 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792980484 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 49min
+1792980484 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980553 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 50min
+1792980553 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980613 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 51min
+1792980613 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980683 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 52min
+1792980683 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980710 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792980753 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 53min
+1792980753 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980822 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 54min
+1792980822 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980892 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 56min
+1792980892 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792980961 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 57min
+1792980961 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792981031 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 58min
+1792981031 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792981036 WATCHDOG REMINDER[todos:f64]: f64 SYNC: native todos all completed but 1 open checkboxes in f64-driftfix.md
+1792981057 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792981100 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 59min
+1792981100 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792981106 WATCHDOG REMINDER[idlenoend:f64]: f64 idle-confirmed with NO END marker - verify, re-task or rotate
+1792981117 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792981170 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 60min
+1792981170 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792981237 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792981239 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792981239 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1792981239 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 61min
+1792981239 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792981246 WATCHDOG REMINDER[idlenoend:q125]: q125 idle-confirmed with NO END marker and NO evidence file - verify, re-task or rotate
+1792981309 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792981454 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792981523 WATCHDOG REMINDER[planfile:q125]: q125 busy>4min with NO evidence/PLAN file
+1792981613 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792981959 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792982019 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792982139 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792982141 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792982210 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792982488 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792982495 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792982515 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792982862 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792982921 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792983041 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792983043 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792983419 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792983451 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792983528 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792983768 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792983827 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792983870 WATCHDOG REMINDER[events]: EVENTS: 3 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792983870 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1792983870 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792983949 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792984321 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792984539 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792984652 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792984669 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792984738 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792984791 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792984849 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792984861 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792985228 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792985556 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792985577 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792985646 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792985756 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792985758 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792985827 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792986130 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792986486 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792986555 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792986594 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792986673 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792986726 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792986795 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792987040 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792987396 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792987465 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792987556 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 46min
+1792987556 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987583 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792987625 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 47min
+1792987625 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987632 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792987695 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 48min
+1792987695 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987764 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792987764 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 50min
+1792987764 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987833 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 51min
+1792987833 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987902 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 52min
+1792987902 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792987949 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792987971 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 53min
+1792987971 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988041 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 54min
+1792988041 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988110 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 55min
+1792988110 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988179 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 56min
+1792988179 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988248 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 58min
+1792988248 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988305 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792988317 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 59min
+1792988317 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988365 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792988387 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 60min
+1792988387 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988456 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 61min
+1792988456 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988493 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792988525 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 62min
+1792988525 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988594 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 63min
+1792988594 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988663 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 65min
+1792988663 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988670 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792988733 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792988733 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 66min
+1792988733 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988802 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 67min
+1792988802 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988859 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792988871 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 68min
+1792988871 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792988940 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 69min
+1792988940 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989009 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 70min
+1792989009 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989079 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 71min
+1792989079 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989148 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 73min
+1792989148 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989215 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792989217 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 74min
+1792989217 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989274 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792989286 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 75min
+1792989286 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989355 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 76min
+1792989355 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989402 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792989425 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 77min
+1792989425 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989494 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 78min
+1792989494 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989563 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 80min
+1792989563 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989632 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 81min
+1792989632 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989702 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792989702 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 82min
+1792989702 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989710 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792989760 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792989763 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 83min
+1792989763 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989823 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 84min
+1792989823 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989883 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 85min
+1792989883 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792989944 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 86min
+1792989944 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990014 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 87min
+1792990014 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990075 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 88min
+1792990075 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990123 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792990134 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 89min
+1792990134 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990181 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792990204 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 90min
+1792990204 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990273 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 91min
+1792990273 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990309 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792990342 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 93min
+1792990342 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990411 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 94min
+1792990411 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990480 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 95min
+1792990480 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990549 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 96min
+1792990549 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990618 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792990618 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 97min
+1792990618 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990665 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792990687 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 98min
+1792990687 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990694 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792990757 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 99min
+1792990757 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990826 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 101min
+1792990826 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990895 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 102min
+1792990895 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792990964 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 103min
+1792990964 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991031 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792991033 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 104min
+1792991033 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991091 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792991103 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 105min
+1792991103 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991172 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 106min
+1792991172 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991219 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792991241 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 108min
+1792991241 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991310 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 109min
+1792991310 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991379 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 110min
+1792991379 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991449 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 111min
+1792991449 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991518 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792991518 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 112min
+1792991518 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991565 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792991587 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 113min
+1792991587 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991656 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 114min
+1792991656 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991725 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 116min
+1792991725 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991732 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792991794 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 117min
+1792991794 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991864 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 118min
+1792991864 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991933 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 119min
+1792991933 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792991949 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792992000 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792992002 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 120min
+1792992002 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992071 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 121min
+1792992071 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992129 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792992141 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 123min
+1792992141 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992210 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 124min
+1792992210 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992279 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 125min
+1792992279 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992348 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 126min
+1792992348 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992417 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 127min
+1792992417 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992474 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792992486 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792992486 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 128min
+1792992486 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992555 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 129min
+1792992555 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992625 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 131min
+1792992625 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992694 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 132min
+1792992694 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992763 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 133min
+1792992763 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992770 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792992832 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 134min
+1792992832 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992859 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792992902 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 135min
+1792992902 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792992918 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792992971 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 136min
+1792992971 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993038 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792993040 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 138min
+1792993040 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993109 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 139min
+1792993109 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993178 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 140min
+1792993178 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993248 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 141min
+1792993248 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993316 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 142min
+1792993316 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993384 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792993386 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 143min
+1792993386 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993455 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792993455 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 144min
+1792993455 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993524 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 146min
+1792993524 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993593 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 147min
+1792993593 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993662 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 148min
+1792993662 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993731 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 149min
+1792993731 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993768 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792993801 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 150min
+1792993801 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993807 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792993828 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792993870 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 151min
+1792993870 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993939 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 152min
+1792993939 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792993956 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792994009 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 154min
+1792994009 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994069 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 155min
+1792994069 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994138 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 156min
+1792994138 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994208 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 157min
+1792994208 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994277 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 158min
+1792994277 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994293 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792994346 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 159min
+1792994346 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994415 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792994415 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 160min
+1792994415 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994484 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 162min
+1792994484 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994554 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 163min
+1792994554 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994623 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 164min
+1792994623 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994670 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792994692 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 165min
+1792994692 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994728 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792994761 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 166min
+1792994761 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994830 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 167min
+1792994830 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994837 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792994857 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792994900 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 169min
+1792994900 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792994969 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 170min
+1792994969 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995038 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 171min
+1792995038 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995107 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 172min
+1792995107 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995176 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 173min
+1792995176 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995203 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792995245 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 174min
+1792995245 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995314 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 175min
+1792995314 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995383 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792995383 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 177min
+1792995383 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995452 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 178min
+1792995452 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995522 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 179min
+1792995522 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995579 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792995591 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 180min
+1792995591 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995638 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792995660 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 181min
+1792995660 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995730 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 182min
+1792995730 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995766 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792995799 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 183min
+1792995799 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995868 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 185min
+1792995868 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792995875 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792995938 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 186min
+1792995938 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996007 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 187min
+1792996007 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996076 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 188min
+1792996076 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996112 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792996145 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 189min
+1792996145 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996214 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 190min
+1792996214 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996283 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 192min
+1792996283 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996353 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792996353 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 193min
+1792996353 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996421 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 194min
+1792996421 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996489 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792996490 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 195min
+1792996490 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996547 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792996559 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 196min
+1792996559 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996629 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 197min
+1792996629 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996676 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792996698 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 198min
+1792996698 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996767 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 200min
+1792996767 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996836 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 201min
+1792996836 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996906 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 202min
+1792996906 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792996912 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792996975 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 203min
+1792996975 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997022 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792997044 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 204min
+1792997044 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997114 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 205min
+1792997114 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997183 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 207min
+1792997183 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997252 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 208min
+1792997252 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997322 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792997322 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 209min
+1792997322 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997389 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792997391 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 210min
+1792997391 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997448 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792997460 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 211min
+1792997460 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997529 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 212min
+1792997529 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997576 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792997598 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 213min
+1792997598 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997668 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 215min
+1792997668 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997737 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 216min
+1792997737 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997806 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 217min
+1792997806 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997875 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 218min
+1792997875 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997932 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792997944 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 219min
+1792997944 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792997951 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792998014 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 220min
+1792998014 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998083 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 222min
+1792998083 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998152 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 223min
+1792998152 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998221 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 224min
+1792998221 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998290 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792998290 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 225min
+1792998290 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998307 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792998358 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792998360 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 226min
+1792998360 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998429 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 227min
+1792998429 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998486 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792998498 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 228min
+1792998498 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998567 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 230min
+1792998567 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998636 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 231min
+1792998636 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998705 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 232min
+1792998705 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998774 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 233min
+1792998774 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998842 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792998843 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 234min
+1792998843 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998912 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 235min
+1792998912 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998981 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 237min
+1792998981 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792998988 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1792999051 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 238min
+1792999051 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999120 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 239min
+1792999120 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999189 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 240min
+1792999189 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999215 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1792999258 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792999258 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 241min
+1792999258 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999275 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1792999327 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 242min
+1792999327 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999395 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1792999397 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 243min
+1792999397 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999466 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 245min
+1792999466 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999535 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 246min
+1792999535 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999604 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 247min
+1792999604 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999673 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 248min
+1792999673 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999743 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 249min
+1792999743 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999759 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1792999812 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 250min
+1792999812 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999881 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 252min
+1792999881 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1792999951 WATCHDOG REMINDER[events]: EVENTS: 4 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1792999957 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1792999957 WATCHDOG REMINDER[idlenoend:f65]: f65 idle-confirmed with NO END marker and NO evidence file - verify, re-task or rotate
+1793000028 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793000118 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793000178 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793000307 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793000500 WATCHDOG REMINDER[events]: EVENTS: 5 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793000631 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793000631 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793000668 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793000915 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793001025 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793001054 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793001085 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793001213 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793001256 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793001571 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793001593 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793001663 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793001663 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793001877 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793001929 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793001941 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793001941 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793001989 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793002080 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793002080 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793002087 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793002118 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793002140 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793002140 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793002209 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793002209 WATCHDOG REMINDER[plan-lanes]: OBS: 1 idle lane(s) NOT yet 2-poll confirmed (no watcher evidence) - not reported as terminal
+1793002209 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793002477 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793002805 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793002837 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793002897 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793003028 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793003059 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793003112 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793003249 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 41min (open 10 done 0)
+1793003302 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793003309 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 42min (open 10 done 0)
+1793003380 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 43min (open 10 done 0)
+1793003391 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793003441 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 44min (open 10 done 0)
+1793003502 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 45min (open 10 done 0)
+1793003561 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 46min (open 10 done 0)
+1793003631 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 47min (open 10 done 0)
+1793003701 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 48min (open 10 done 0)
+1793003743 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793003771 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793003771 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 49min (open 10 done 0)
+1793003802 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793003840 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 50min (open 10 done 0)
+1793003910 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 52min (open 10 done 0)
+1793003931 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793003980 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 53min (open 10 done 0)
+1793004044 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793004050 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 54min (open 10 done 0)
+1793004052 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793004110 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 55min (open 10 done 0)
+1793004181 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 56min (open 10 done 0)
+1793004234 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793004241 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 57min (open 10 done 0)
+1793004292 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793004311 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 58min (open 10 done 0)
+1793004372 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 59min (open 10 done 0)
+1793004432 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 60min (open 10 done 0)
+1793004503 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 61min (open 10 done 0)
+1793004563 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 62min (open 10 done 0)
+1793004633 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 64min (open 10 done 0)
+1793004644 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793004694 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793004694 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 65min (open 10 done 0)
+1793004706 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793004756 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 66min (open 10 done 0)
+1793004817 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 67min (open 10 done 0)
+1793004838 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793004877 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 68min (open 10 done 0)
+1793004938 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 69min (open 10 done 0)
+1793004992 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793004999 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 70min (open 10 done 0)
+1793005000 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793005060 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 71min (open 10 done 0)
+1793005121 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 72min (open 10 done 0)
+1793005174 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793005181 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 73min (open 10 done 0)
+1793005202 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793005251 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 74min (open 10 done 0)
+1793005310 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 75min (open 10 done 0)
+1793005381 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 76min (open 10 done 0)
+1793005451 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 77min (open 10 done 0)
+1793005520 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 78min (open 10 done 0)
+1793005551 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793005590 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 80min (open 10 done 0)
+1793005611 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793005661 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793005661 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 81min (open 10 done 0)
+1793005722 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 82min (open 10 done 0)
+1793005743 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793005792 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 83min (open 10 done 0)
+1793005845 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 46min
+1793005845 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793005852 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 84min (open 10 done 0)
+1793005906 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 47min
+1793005906 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793005912 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 85min (open 10 done 0)
+1793005976 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 48min
+1793005976 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793005983 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 86min (open 10 done 0)
+1793005984 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793006037 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 49min
+1793006037 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006043 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 87min (open 10 done 0)
+1793006105 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793006107 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793006107 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 50min
+1793006107 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006114 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 88min (open 10 done 0)
+1793006167 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 51min
+1793006167 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006174 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 89min (open 10 done 0)
+1793006228 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 52min
+1793006228 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006235 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 90min (open 10 done 0)
+1793006289 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 53min
+1793006289 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006296 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 91min (open 10 done 0)
+1793006350 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 54min
+1793006350 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006358 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 92min (open 10 done 0)
+1793006412 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 55min
+1793006412 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006419 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 93min (open 10 done 0)
+1793006460 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793006472 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 56min
+1793006472 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006479 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 94min (open 10 done 0)
+1793006521 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793006533 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 57min
+1793006533 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006540 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 95min (open 10 done 0)
+1793006594 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 58min
+1793006594 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006601 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793006601 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 96min (open 10 done 0)
+1793006643 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793006655 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 59min
+1793006655 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006662 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 97min (open 10 done 0)
+1793006716 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 61min
+1793006716 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006723 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 98min (open 10 done 0)
+1793006776 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 62min
+1793006776 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006784 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 99min (open 10 done 0)
+1793006837 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 63min
+1793006837 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006844 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 100min (open 10 done 0)
+1793006898 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 64min
+1793006898 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006905 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 101min (open 10 done 0)
+1793006906 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793006959 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 65min
+1793006959 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793006967 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 103min (open 10 done 0)
+1793007008 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793007020 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793007020 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 66min
+1793007020 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007026 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 104min (open 10 done 0)
+1793007090 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 67min
+1793007090 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007097 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 105min (open 10 done 0)
+1793007151 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 68min
+1793007151 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007158 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 106min (open 10 done 0)
+1793007211 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 69min
+1793007211 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007219 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 107min (open 10 done 0)
+1793007273 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 70min
+1793007273 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007279 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 108min (open 10 done 0)
+1793007342 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 71min
+1793007342 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007349 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 109min (open 10 done 0)
+1793007370 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793007402 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 72min
+1793007402 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007408 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 110min (open 10 done 0)
+1793007429 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793007472 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 73min
+1793007472 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007478 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 111min (open 10 done 0)
+1793007541 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 74min
+1793007541 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007547 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793007547 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 112min (open 10 done 0)
+1793007559 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793007601 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 75min
+1793007601 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007607 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 113min (open 10 done 0)
+1793007671 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 76min
+1793007671 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007676 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 114min (open 10 done 0)
+1793007740 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 78min
+1793007740 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007746 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 116min (open 10 done 0)
+1793007809 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 79min
+1793007809 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007815 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 117min (open 10 done 0)
+1793007879 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 80min
+1793007879 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007885 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 118min (open 10 done 0)
+1793007886 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793007917 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793007939 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793007939 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 81min
+1793007939 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793007945 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 119min (open 10 done 0)
+1793008008 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 82min
+1793008008 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008016 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 120min (open 10 done 0)
+1793008070 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 83min
+1793008070 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008077 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 121min (open 10 done 0)
+1793008130 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 84min
+1793008130 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008136 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 122min (open 10 done 0)
+1793008200 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 85min
+1793008200 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008206 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 123min (open 10 done 0)
+1793008270 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 86min
+1793008270 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008287 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793008338 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793008339 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 88min
+1793008339 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008409 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 89min
+1793008409 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008466 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793008478 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 90min
+1793008478 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008484 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793008547 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 91min
+1793008547 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008617 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 92min
+1793008617 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008687 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 93min
+1793008687 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008756 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 95min
+1793008756 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008824 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793008825 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 96min
+1793008825 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008895 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793008895 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 97min
+1793008895 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793008902 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793008965 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 98min
+1793008965 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009034 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 99min
+1793009034 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009104 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 100min
+1793009104 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009173 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 101min
+1793009173 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009189 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793009240 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793009242 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 103min
+1793009242 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009312 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 104min
+1793009312 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009369 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793009381 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 105min
+1793009381 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009386 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793009450 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 106min
+1793009450 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009511 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 107min
+1793009511 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009572 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 108min
+1793009572 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009642 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 109min
+1793009642 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009712 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 110min
+1793009712 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009729 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793009772 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 111min
+1793009772 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009833 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793009833 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 112min
+1793009833 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009903 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 114min
+1793009903 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793009910 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793009973 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 115min
+1793009973 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010042 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 116min
+1793010042 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010099 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793010111 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 117min
+1793010111 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010149 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793010181 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 118min
+1793010181 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010251 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 119min
+1793010251 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010279 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793010311 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 120min
+1793010311 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010318 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793010371 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 121min
+1793010371 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010442 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 123min
+1793010442 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010511 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 124min
+1793010511 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010571 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 125min
+1793010571 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010630 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793010631 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 126min
+1793010631 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010701 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 127min
+1793010701 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010763 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793010763 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 128min
+1793010763 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010823 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 129min
+1793010823 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010883 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 130min
+1793010883 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793010891 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793010944 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 131min
+1793010944 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011002 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793011014 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 132min
+1793011014 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011052 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793011074 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 133min
+1793011074 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011144 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 134min
+1793011144 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011183 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793011205 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 135min
+1793011205 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011267 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 136min
+1793011267 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011274 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793011328 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 137min
+1793011328 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011389 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 138min
+1793011389 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011450 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 139min
+1793011450 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011457 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 40min (open 5 done 5)
+1793011511 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 140min
+1793011511 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011518 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 41min (open 5 done 5)
+1793011540 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793011572 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 141min
+1793011572 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011579 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 42min (open 5 done 5)
+1793011633 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 142min
+1793011633 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011640 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 43min (open 5 done 5)
+1793011693 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793011693 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 143min
+1793011693 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011701 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 44min (open 5 done 5)
+1793011754 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 144min
+1793011754 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011762 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 45min (open 5 done 5)
+1793011815 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 145min
+1793011815 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011823 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 46min (open 5 done 5)
+1793011824 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793011877 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 147min
+1793011877 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011884 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 47min (open 5 done 5)
+1793011905 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793011938 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 148min
+1793011938 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793011946 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 48min (open 5 done 5)
+1793011956 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793011999 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 149min
+1793011999 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012007 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 49min (open 5 done 5)
+1793012060 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 150min
+1793012060 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012068 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 50min (open 5 done 5)
+1793012089 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793012121 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 151min
+1793012121 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012129 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 51min (open 5 done 5)
+1793012183 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 152min
+1793012183 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012190 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793012190 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 52min (open 5 done 5)
+1793012244 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 153min
+1793012244 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012251 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 53min (open 5 done 5)
+1793012304 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 154min
+1793012304 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012311 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 54min (open 5 done 5)
+1793012365 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 155min
+1793012365 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012372 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 55min (open 5 done 5)
+1793012425 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 156min
+1793012425 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012431 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 56min (open 5 done 5)
+1793012442 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793012495 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 157min
+1793012495 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012501 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 58min (open 5 done 5)
+1793012564 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 158min
+1793012564 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012571 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 59min (open 5 done 5)
+1793012634 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793012634 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 159min
+1793012634 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012640 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 60min (open 5 done 5)
+1793012703 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 160min
+1793012703 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012709 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 61min (open 5 done 5)
+1793012773 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 161min
+1793012773 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012778 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 62min (open 5 done 5)
+1793012780 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793012810 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793012842 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 163min
+1793012842 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012848 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 63min (open 5 done 5)
+1793012859 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793012912 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 164min
+1793012912 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012918 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 64min (open 5 done 5)
+1793012981 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 165min
+1793012981 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793012987 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 66min (open 5 done 5)
+1793012998 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793013050 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 166min
+1793013050 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013056 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 67min (open 5 done 5)
+1793013119 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 167min
+1793013119 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013125 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793013125 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 68min (open 5 done 5)
+1793013189 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 168min
+1793013189 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013195 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 69min (open 5 done 5)
+1793013259 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 170min
+1793013259 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013264 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 70min (open 5 done 5)
+1793013328 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 171min
+1793013328 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013334 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 71min (open 5 done 5)
+1793013344 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793013397 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 172min
+1793013397 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013403 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 73min (open 5 done 5)
+1793013466 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 173min
+1793013466 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013472 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 74min (open 5 done 5)
+1793013536 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793013536 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 174min
+1793013536 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013542 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 75min (open 5 done 5)
+1793013605 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 175min
+1793013605 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013611 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 76min (open 5 done 5)
+1793013675 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 176min
+1793013675 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013681 WATCHDOG REMINDER[planstale:f65]: f65 busy but PLAN file untouched 77min (open 5 done 5)
+1793013712 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793013744 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 178min
+1793013744 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013762 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793013814 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 179min
+1793013814 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013821 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793013884 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 180min
+1793013884 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793013902 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793013945 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 181min
+1793013945 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014015 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 182min
+1793014015 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014076 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 183min
+1793014076 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014083 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793014137 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 184min
+1793014137 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014198 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 185min
+1793014198 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014246 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793014259 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 186min
+1793014259 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014319 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 187min
+1793014319 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014379 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 188min
+1793014379 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014440 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793014440 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 189min
+1793014440 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014501 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 190min
+1793014501 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014561 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 191min
+1793014561 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014621 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793014622 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 192min
+1793014622 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014670 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793014692 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 193min
+1793014692 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014753 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 194min
+1793014753 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014762 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793014803 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793014815 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 195min
+1793014815 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014876 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 197min
+1793014876 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793014946 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 198min
+1793014946 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015007 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 199min
+1793015007 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015014 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793015068 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 200min
+1793015068 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015129 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 201min
+1793015129 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015147 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793015190 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 202min
+1793015190 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015251 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 203min
+1793015251 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015311 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 204min
+1793015311 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015372 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793015372 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 205min
+1793015372 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015434 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 206min
+1793015434 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015495 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 207min
+1793015495 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015523 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793015556 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 208min
+1793015556 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015574 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted
+1793015616 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 209min
+1793015616 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015677 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 210min
+1793015677 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015685 WATCHDOG REMINDER[flash:review#1077]: PR #1077 MERGEABLE >20min - review/merge trigger pending
+1793015706 WATCHDOG REMINDER[observe:pane:adebf29e]: PANE observation UNKNOWN for codeman-adebf29e - dialog state unverified, flag retained, no RESOLVED emitted
+1793015738 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 211min
+1793015738 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015808 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 212min
+1793015808 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015877 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 213min
+1793015877 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015946 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 214min
+1793015946 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793015952 WATCHDOG REMINDER[stall:f65]: stall observation UNKNOWN/unresolved for f65 (unknown: no-db-session) - NO resend or respawn advice until delivery/execution is observed
+1793016016 WATCHDOG REMINDER[events]: EVENTS: 2 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793016016 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 216min
+1793016016 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793016054 WATCHDOG REMINDER[observe:pane:15391a78]: PANE observation UNKNOWN for codeman-15391a78 - dialog state unverified, flag retained, no RESOLVED emitted
+1793016086 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 217min
+1793016086 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793016156 WATCHDOG REMINDER[events]: EVENTS: 3 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793016156 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 218min
+1793016156 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793016226 WATCHDOG REMINDER[events]: EVENTS: 5 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793016226 WATCHDOG REMINDER[plan-lanes]: PLAN: coordinator-plan.md untouched 219min
+1793016226 WATCHDOG REMINDER[plan-lanes]: PLAN: 32 open step(s), newest lane work must appear here
+1793016295 WATCHDOG REMINDER[events]: EVENTS: 1 un-acked (run events-check.py --ack after processing) - process queue then events-check --ack
+1793016429 WATCHDOG REMINDER[observe:pane:1bc3a7af]: PANE observation UNKNOWN for codeman-1bc3a7af - dialog state unverified, flag retained, no RESOLVED emitted
+1793016481 WATCHDOG REMINDER[observe:pane:637e2814]: PANE observation UNKNOWN for codeman-637e2814 - dialog state unverified, flag retained, no RESOLVED emitted

@@ -1,0 +1,218 @@
+[
+  {
+    "path": "cmd/baha/app_footprint_presenter.go",
+    "unchanged": true,
+    "base_sha256": "13a4130381a64e15d1e31585bdd37ff9f412220c7b63bf8363ccab5c35a7938c",
+    "head_sha256": "13a4130381a64e15d1e31585bdd37ff9f412220c7b63bf8363ccab5c35a7938c"
+  },
+  {
+    "path": "cmd/baha/app_footprint_presenter_test.go",
+    "unchanged": true,
+    "base_sha256": "cd15ed467a2550be462190ba1a53e54a58043f5c1ce1573fb9c00df9b9f183e8",
+    "head_sha256": "cd15ed467a2550be462190ba1a53e54a58043f5c1ce1573fb9c00df9b9f183e8"
+  },
+  {
+    "path": "cmd/baha/app_footprint_show.go",
+    "unchanged": true,
+    "base_sha256": "bd35ce238fcf5ec046ef0e9143f24d685c736019862ab82008616094a7cf3a05",
+    "head_sha256": "bd35ce238fcf5ec046ef0e9143f24d685c736019862ab82008616094a7cf3a05"
+  },
+  {
+    "path": "cmd/baha/app_footprint_show_test.go",
+    "unchanged": true,
+    "base_sha256": "e8e070fa47aa3c0a2e9bc1cb7c7d0c1f20ee2172729b80c23a82bae478ac99bb",
+    "head_sha256": "e8e070fa47aa3c0a2e9bc1cb7c7d0c1f20ee2172729b80c23a82bae478ac99bb"
+  },
+  {
+    "path": "cmd/baha/provider_change_confirmation.go",
+    "unchanged": true,
+    "base_sha256": "fa9eafe8c81ed09e1ee41d0acc0f037567836da6de2e26265f8bbb3cdf7e0b82",
+    "head_sha256": "fa9eafe8c81ed09e1ee41d0acc0f037567836da6de2e26265f8bbb3cdf7e0b82"
+  },
+  {
+    "path": "cmd/baha/provider_change_confirmation_test.go",
+    "unchanged": true,
+    "base_sha256": "2219bc2bd123239a94d214897b3f7e991db2745c8711ee9b8ccfcca102d3a613",
+    "head_sha256": "2219bc2bd123239a94d214897b3f7e991db2745c8711ee9b8ccfcca102d3a613"
+  },
+  {
+    "path": "cmd/baha/provider_change_context.go",
+    "unchanged": true,
+    "base_sha256": "1d4e29fd7d74e7ab35d2480b92a89f85fcb0c83f844f799ca8595db3eab3d92f",
+    "head_sha256": "1d4e29fd7d74e7ab35d2480b92a89f85fcb0c83f844f799ca8595db3eab3d92f"
+  },
+  {
+    "path": "contracts/footprint/v1/footprint.schema.json",
+    "unchanged": true,
+    "base_sha256": "c21f2ea64da8dbbdbac6615294b9c831709f28b921ec3891eb0e4464fd11dd05",
+    "head_sha256": "c21f2ea64da8dbbdbac6615294b9c831709f28b921ec3891eb0e4464fd11dd05"
+  },
+  {
+    "path": "internal/application/footprint.go",
+    "unchanged": true,
+    "base_sha256": "5b7b99c905a7428d9b32d74d9a501b97102a4381bfaccfbefc13ca1115f364a5",
+    "head_sha256": "5b7b99c905a7428d9b32d74d9a501b97102a4381bfaccfbefc13ca1115f364a5"
+  },
+  {
+    "path": "internal/application/provider_change_catalog_test.go",
+    "unchanged": true,
+    "base_sha256": "352c0f98e687a0885743d9c8451cdc58a9486c67680c5494a287fb0c51d1614c",
+    "head_sha256": "352c0f98e687a0885743d9c8451cdc58a9486c67680c5494a287fb0c51d1614c"
+  },
+  {
+    "path": "internal/application/provider_change_consent.go",
+    "unchanged": true,
+    "base_sha256": "e7936b004ea19f32807514eebb80e8c1ebf654f12d23a710bad8921f1828c56a",
+    "head_sha256": "e7936b004ea19f32807514eebb80e8c1ebf654f12d23a710bad8921f1828c56a"
+  },
+  {
+    "path": "internal/application/provider_change_consent_test.go",
+    "unchanged": true,
+    "base_sha256": "2d7aed338ab79e35e3f30329bc02d6de78aba70032054cfd7945e2757b22c110",
+    "head_sha256": "2d7aed338ab79e35e3f30329bc02d6de78aba70032054cfd7945e2757b22c110"
+  },
+  {
+    "path": "internal/application/provider_change_consumer.go",
+    "unchanged": true,
+    "base_sha256": "f50c0bec540cee78d1daea9249f35073aff9c05ea0f911d823ea3ddded1dfb96",
+    "head_sha256": "f50c0bec540cee78d1daea9249f35073aff9c05ea0f911d823ea3ddded1dfb96"
+  },
+  {
+    "path": "internal/application/provider_change_consumer_test.go",
+    "unchanged": true,
+    "base_sha256": "1b1e07c038b05840b0b1c15b93f5bc1bc9def567c05637663410fa3194d517ca",
+    "head_sha256": "1b1e07c038b05840b0b1c15b93f5bc1bc9def567c05637663410fa3194d517ca"
+  },
+  {
+    "path": "internal/application/provider_change_dependencies.go",
+    "unchanged": true,
+    "base_sha256": "3c742a08b8fbbac1b495b92a7dcdde0703738c6e8858c599ebcf35d35143c7e6",
+    "head_sha256": "3c742a08b8fbbac1b495b92a7dcdde0703738c6e8858c599ebcf35d35143c7e6"
+  },
+  {
+    "path": "internal/application/provider_change_dependency_result.go",
+    "unchanged": true,
+    "base_sha256": "40de321c3027191dfbc4d5d877e125a18c851e89ab4561c72b09588aa431d9fa",
+    "head_sha256": "40de321c3027191dfbc4d5d877e125a18c851e89ab4561c72b09588aa431d9fa"
+  },
+  {
+    "path": "internal/application/provider_change_dependency_result_test.go",
+    "unchanged": true,
+    "base_sha256": "741fa0a410a3f9f66484bce9bf5ad8e5309053958b0f4cb941f860494df95726",
+    "head_sha256": "741fa0a410a3f9f66484bce9bf5ad8e5309053958b0f4cb941f860494df95726"
+  },
+  {
+    "path": "internal/application/provider_change_dependency_verification_test.go",
+    "unchanged": true,
+    "base_sha256": "11157eeff8af0d60bf37b5cf1f5edeaa424cb409c76d3f60e29744baf868f5a0",
+    "head_sha256": "11157eeff8af0d60bf37b5cf1f5edeaa424cb409c76d3f60e29744baf868f5a0"
+  },
+  {
+    "path": "internal/application/provider_change_digest.go",
+    "unchanged": true,
+    "base_sha256": "6c828dd6974337b291de2b5d7325952f521c192eca076dbdcb22ebffe0f062e3",
+    "head_sha256": "6c828dd6974337b291de2b5d7325952f521c192eca076dbdcb22ebffe0f062e3"
+  },
+  {
+    "path": "internal/application/provider_change_function_result.go",
+    "unchanged": true,
+    "base_sha256": "eba8b7b37ad11460bb6e479422f46d8dbf8c79dee5fc696cc712d43a1a277476",
+    "head_sha256": "eba8b7b37ad11460bb6e479422f46d8dbf8c79dee5fc696cc712d43a1a277476"
+  },
+  {
+    "path": "internal/application/provider_change_materials.go",
+    "unchanged": true,
+    "base_sha256": "2ec6e0e17716d29364ef674626b49e73b3b44b2b5801edefb195a2e2e1211303",
+    "head_sha256": "2ec6e0e17716d29364ef674626b49e73b3b44b2b5801edefb195a2e2e1211303"
+  },
+  {
+    "path": "internal/application/provider_change_plan.go",
+    "unchanged": true,
+    "base_sha256": "9ec4f718e407654e42309bd2f34b4b452ce218adc7afcbc32cce9b34ad4b4185",
+    "head_sha256": "9ec4f718e407654e42309bd2f34b4b452ce218adc7afcbc32cce9b34ad4b4185"
+  },
+  {
+    "path": "internal/application/provider_change_plan_test.go",
+    "unchanged": true,
+    "base_sha256": "c6327b4f04b8d2c3129239b133734511523f6a75fb660219e8eccc4925b59c48",
+    "head_sha256": "c6327b4f04b8d2c3129239b133734511523f6a75fb660219e8eccc4925b59c48"
+  },
+  {
+    "path": "internal/application/provider_change_receipt_validation.go",
+    "unchanged": true,
+    "base_sha256": "36a56bc48049e2f3d75e6346c41ff51441cbe81833ed69f2429314a0a2880bd5",
+    "head_sha256": "36a56bc48049e2f3d75e6346c41ff51441cbe81833ed69f2429314a0a2880bd5"
+  },
+  {
+    "path": "internal/application/provider_change_recovery.go",
+    "unchanged": true,
+    "base_sha256": "ab92fa9c9e22089b085f48908c2555966bf9e13e3e7668794c45f433bfdb75cd",
+    "head_sha256": "ab92fa9c9e22089b085f48908c2555966bf9e13e3e7668794c45f433bfdb75cd"
+  },
+  {
+    "path": "internal/application/provider_change_recovery_test.go",
+    "unchanged": true,
+    "base_sha256": "7eec29dda346e56e57681ef0c4358f554481e066fb6a729e2259bc62d58703c4",
+    "head_sha256": "7eec29dda346e56e57681ef0c4358f554481e066fb6a729e2259bc62d58703c4"
+  },
+  {
+    "path": "internal/application/provider_change_result.go",
+    "unchanged": true,
+    "base_sha256": "4939abe54c93070014f72706da219dad3736d57f6b5c654a998274945ccadeb0",
+    "head_sha256": "4939abe54c93070014f72706da219dad3736d57f6b5c654a998274945ccadeb0"
+  },
+  {
+    "path": "internal/application/provider_change_result_test.go",
+    "unchanged": true,
+    "base_sha256": "b2311e40a2c148a222e9351899dd18b5115f5cf09dceb7215a4b8cfe282f4be4",
+    "head_sha256": "b2311e40a2c148a222e9351899dd18b5115f5cf09dceb7215a4b8cfe282f4be4"
+  },
+  {
+    "path": "internal/application/provider_change_retention.go",
+    "unchanged": true,
+    "base_sha256": "141a21a8dff45da1376e3d57030343711e3bbd931c0c83d21262d22bc5e19507",
+    "head_sha256": "141a21a8dff45da1376e3d57030343711e3bbd931c0c83d21262d22bc5e19507"
+  },
+  {
+    "path": "internal/application/provider_change_scope.go",
+    "unchanged": true,
+    "base_sha256": "b9b76e9d6870e7141884a840bb3b97b02f760566982d130673ca25318a2a35ef",
+    "head_sha256": "b9b76e9d6870e7141884a840bb3b97b02f760566982d130673ca25318a2a35ef"
+  },
+  {
+    "path": "internal/application/provider_change_scope_result.go",
+    "unchanged": true,
+    "base_sha256": "e35cd4fce5048bb0c0f3f126934696d70a2e95d14f25e329087c6330b719dfed",
+    "head_sha256": "e35cd4fce5048bb0c0f3f126934696d70a2e95d14f25e329087c6330b719dfed"
+  },
+  {
+    "path": "internal/application/provider_change_scope_test.go",
+    "unchanged": true,
+    "base_sha256": "a95a7841e0ee63e4ed6ba42fed18d80c7b988fa9b490d3031f3f3eac1f8163a6",
+    "head_sha256": "a95a7841e0ee63e4ed6ba42fed18d80c7b988fa9b490d3031f3f3eac1f8163a6"
+  },
+  {
+    "path": "internal/application/provider_change_types.go",
+    "unchanged": true,
+    "base_sha256": "371f3fe1f548836004ce77c3b0a8369b770ed2920a899800dde1b5ce47401f98",
+    "head_sha256": "371f3fe1f548836004ce77c3b0a8369b770ed2920a899800dde1b5ce47401f98"
+  },
+  {
+    "path": "internal/application/provider_change_validation.go",
+    "unchanged": true,
+    "base_sha256": "1ef2aa2c2ae25a6e513ca55f0607026882032ffd179911a40adb029c56fe636e",
+    "head_sha256": "1ef2aa2c2ae25a6e513ca55f0607026882032ffd179911a40adb029c56fe636e"
+  },
+  {
+    "path": "internal/capability/provider_change_contract.go",
+    "unchanged": true,
+    "base_sha256": "ee71784837cd28742b72a57646aed1b7065a6b6da83f9e9223ffd526e586a2cf",
+    "head_sha256": "ee71784837cd28742b72a57646aed1b7065a6b6da83f9e9223ffd526e586a2cf"
+  },
+  {
+    "path": "internal/capability/provider_change_contract_test.go",
+    "unchanged": true,
+    "base_sha256": "b113bfae894cfe3ed7f2ddcab9174616d26f955f6adcba859ffc6d60d0abaf38",
+    "head_sha256": "b113bfae894cfe3ed7f2ddcab9174616d26f955f6adcba859ffc6d60d0abaf38"
+  }
+]

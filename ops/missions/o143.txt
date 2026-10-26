@@ -1,0 +1,15 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl. KEIN push, KEIN Produkt-Commit. DIAGNOSE-MISSION.
+KONTEXT: PR #1077 Kandidatenkette bis d409f26f gemergt/akzeptiert (cmf22 ACCEPT), CI laeuft trotzdem mit IDENTISCHEM Fehler: Journey new-edit-new-sql-add -> 'provider change: stale-impact-consent' (docker UND podman data-capabilities Gates). Wizard zeigt honest 'Before: unverifiable' und confirmed plan 6331edf3db5b... (2 confirmationen), Apply-Revalidierung liefert weiter anderen Digest.
+LOKALE REPRODUKTION ist DETERMINISTISCH verfuegbar:
+  - Candidate-Binary: /home/marcel/tmp-ops/bin-d40/baha (d409f26f, commit embedded); Source: /home/marcel/tmp-ops/wt-d40 (detached d409f26f; git fetch /home/marcel/dev/baseharbor-ecosystem/worktrees/f63-r2 d409f26f falls noetig).
+  - Runtime-Image: localhost/baseharbor-runtime:d40 (rootless docker laeuft; DOCKER_HOST=unix:///run/user/1000/docker.sock).
+  - Gate-Aufruf (exakt, in /home/marcel/tmp-ops/demo-run):
+    setsid env DOCKER_HOST=unix:///run/user/1000/docker.sock XDG_RUNTIME_DIR=/run/user/1000 TMPDIR=/home/marcel/tmp-ops XDG_CONFIG_HOME=/home/marcel/tmp-ops/pr2-xdg/config BASEHARBOR_TARGET=atomic-docker-data-capabilities BASEHARBOR_SOURCE_REF=d409f26f4a6261c2dc614320fbfebd050a637cb8 BASEHARBOR_PREBUILT_BINARY=/home/marcel/tmp-ops/bin-d40/baha BASEHARBOR_RUNTIME_IMAGE=localhost/baseharbor-runtime:d40 BASEHARBOR_TEST_RUNTIME=docker DEMO_ATOMIC_GATE=1 ARTIFACT_DIR=/home/marcel/tmp-ops/o143-temp RUNNER_TEMP=/home/marcel/tmp-ops/o143-temp bash scripts/acceptance.sh data-capabilities
+    Vor JEDEM Lauf: docker ps -aq rm -f + networks + volumes loeschen; rm -rf demo-run/.new-edit-fixtures pr2-xdg pr2-temp o143-temp; XDG/temp dirs anlegen. Dauer ~5-8min, Fail im Schritt new-edit-new-sql-add.
+AUFGAB:
+1. In einem NEUGENOMMENEN Debug-Zweig (/home/marcel/tmp-ops/wt-d40-o143, KEIN Produkt-Worktree anfassen): env-gated Debug-Hooks (BASEHARBOR_O143_DEBUG=1) in wizard- und apply-Pfad, die den jeweils digest-gespeisten Plan-JSON exakt dumpen (wizard-dump.json / apply-dump.json) NUR fuers Diagnose-Binary. Debug-Build nach /home/marcel/tmp-ops/bin-o143.
+2. Einen Gate-Lauf mit Debug-Binary fahren, Dumps sichern.
+3. Feldgenauer Diff wizard vs. apply (wie m1077-consent-drift-analysis.md seinerzeit): WELCHE Fact-Felder driften JETZT noch (vermutlich unverifiable(wizard) vs gemessen(apply) - nachweiseno oder widerlegen)? Warum ist der Apply-Beobachtungszeitpunkt anders (Materialisierung dazwischen? Container running beim apply aber nicht beim wizard? Store.Root-CWD?).
+4. Vergleich mit Alter Drift (5 Felder, m1077-drift-data/): Was hat die Kette 25b46572..d409f26f daran geaendert?
+LIEFERGUT: evidence/board-2026-10-25/o143-drift-still.md (## PLAN zuerst; Dumps+Log in o143-drift-data/ committen; Root-Cause; WURZEL-REZEPT fuer echten Fix inkl. Datei-/Funktionsebene, mit Hinweis ob consent-Vergleich oder Observationszeitpunkt zu aendern ist; KEIN Produkt-Commit).
+END O143-DONE / END O143-BLOCKED

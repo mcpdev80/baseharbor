@@ -1,0 +1,30 @@
+=== RUN   TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement
+--- PASS: TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement (0.04s)
+=== RUN   TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement
+--- PASS: TestCMF20PreviewProjectionMustNotVerifyRuntimeRetirement (0.04s)
+=== RUN   TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic
+--- PASS: TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic (0.05s)
+=== RUN   TestCMF20WizardPreviewFootprintKeepsProjectionPreviewOnly
+--- PASS: TestCMF20WizardPreviewFootprintKeepsProjectionPreviewOnly (0.05s)
+=== RUN   TestCMF20RetirementMachineResultMustPreserveDiagnostic
+--- PASS: TestCMF20RetirementMachineResultMustPreserveDiagnostic (0.05s)
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/missing-env
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose
+=== RUN   TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir
+--- PASS: TestCMF20OwnerFileFailuresStayFailClosed (0.40s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-compose (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/missing-env (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-dir (0.05s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/symlink-compose (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-dir (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unprotected-compose (0.04s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/noncanonical-compose (0.07s)
+    --- PASS: TestCMF20OwnerFileFailuresStayFailClosed/unreadable-dir (0.08s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.642s

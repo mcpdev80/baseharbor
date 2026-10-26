@@ -1,0 +1,10 @@
+ROLLE: REVIEW (Korrektur-Runde zu cmf19; KEIN MERGE/PUSH/CI-Dispatch).
+Kandidat: /home/marcel/dev/baseharbor-ecosystem/worktrees/f61-r5, Commit 25b46572, Parents 61acf0e6 (cherry-pick von cee2ef5b) und 2f9afafd (PR-Zweig-Head). Diff 2f9afafd..25b46572 SHA-genau pruefen.
+Massstab: evidence/board-2026-10-25/codex-verdict-1077-cee2ef5b.md (eigene Rezepte F1-F5) + f61-c1056fix.md.
+PFLICHECKS:
+1. Fuer JEDES der 5 Rezepte einzeln nachweisen: eroelft (file:line + eigener Lauf der zugehörigen CMF19-Regressions-Tests, portiert/verlinkt laut f61-Evidence).
+2. Baseline-Honesty: `go test ./cmd/baha/ -count=1` auf 2f9afafd (eigener Read-only-Checkout, NICHT der f61-Baseline-Vergleich mit 61acf0e6) vs. 25b46572 - die ENV-bedingten Failures müssen dieselbe Menge sein; NEW=0 nachweisen.
+3. Keine Consent-Digest-/footprint.go-/q124-Bestaetigungssemantik-Aenderung; Fail-closed-Testliste vollstaendig durchlaufen.
+4. build/vet/gofmt.
+URTEIL in evidence/board-2026-10-25/codex-verdict-1077-25b46572-r2.md mit ROLLE-Label, UTC, SHA before/after. Bei ACCEPT: explizit bestaetigen, dass FF-Push von 25b46572 auf fix/v0.4.26-edit-preview-error die korrekte naechste Maintainer-Aktion ist. Bei REQUEST_CHANGES: Rezepte.
+END CMF20-REVIEW-DONE / END CMF20-BLOCKED

@@ -1,0 +1,5 @@
+=== RUN   TestCMF22NeutralProjectionCannotAuthorizeProviderRetirement
+    cmf20_r1_test.go:201: fail-closed retirement authorization: The last consumer cannot be released without verified runtime and complete consumer inventory.
+--- PASS: TestCMF22NeutralProjectionCannotAuthorizeProviderRetirement (0.06s)
+PASS
+ok  	github.com/mcpdev80/baseharbor/cmd/baha	0.065s

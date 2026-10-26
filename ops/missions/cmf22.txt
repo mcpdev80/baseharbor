@@ -1,0 +1,11 @@
+ROLLE: REVIEW (Runde 4, finaler Kandidat der #1077-Kette; KEIN MERGE/PUSH/CI-Dispatch).
+Kandidat: /home/marcel/dev/baseharbor-ecosystem/worktrees/f63-r2 Commit d409f26f; Kette 2f9afafd->25b46572->6f165d30->d409f26f. Voll-Diff 2f9afafd..d409f26f SHA-genau.
+Massstab: Rezepte aus codex-verdict-1077-cee2ef5b.md (F1-F5), codex-verdict-1077-25b46572-r2.md (R1), codex-verdict-1077-6f165d30-r3.md (R2) + deren Stop-Kriterien.
+PFLICHECKS:
+1. R2-Rezept 1-3 end-to-end eigenhaendig: preparation-Gate verlangt echte runtime measurement (providerFactIsRuntimeMeasurement); CMF21-Regression laeuft selbst (before/after Diskriminierung gegen 6f165d30 oder 2f9afafd); JSON-Pfad mit outer provider_retirement_unverifiable + nested runtime-inventory-not-yet-materialized (code/instance/Target).
+2. Kein einziger Autorisierungs-/Verifizierungs-Consumer akzeptiert preview-only projections (Audit aller observeApplicationProviderFacts*-Aufrufer: buildResolvedApplicationPlan, app_new_wizard.go, app_edit.go, retirement prep/verify, ownership).
+3. F1-F5 + alle CMF19/CMF20/q124/owner-file Tests selbst erneut ausfuehren; gofmt/vet/build.
+4. Baseline-Honesty NEW=0 gegen 2f9afafd selbst rechnen (go test ./cmd/baha/ -count=1 -json beide).
+5. consent digest/footprint.go unveraendert; kein unverifiable-Wildcard.
+URTEIL evidence/board-2026-10-25/codex-verdict-1077-d409f26f-r4.md: ACCEPT (explizit: FF-Push d409f26f auf fix/v0.4.26-edit-preview-error ist Maint-naechster Schritt; keine Merge-Empfehlung vor gruenem Runtime-Gate) oder REQUEST_CHANGES mit Rezept. ROLLE-Label, UTC, SHAs.
+END CMF22-REVIEW-DONE / END CMF22-BLOCKED

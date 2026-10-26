@@ -1,0 +1,12 @@
+{
+  "id": "provider-contract/v1",
+  "contract": "baseharbor.provider/v1",
+  "report_version": "baseharbor.provider-conformance/v1",
+  "package": "github.com/mcpdev80/baseharbor/conformance/provider/v1",
+  "entry_points": {"lifecycle": "Run", "full": "RunFull"},
+  "acceptance_suite": "full",
+  "result": "deterministic JSON with named pass/fail checks and suite identity",
+  "exit_codes": {"pass": 0, "fail": 1, "report_io_error": 2},
+  "version_pin": "immutable source revision or released public Go module version",
+  "required_full_hooks": ["Driver", "StateDigester", "ReconciliationDriver", "Drifter", "Destroyer", "FaultFixture", "OwnershipFixture"]
+}

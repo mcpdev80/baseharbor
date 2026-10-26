@@ -1,0 +1,80 @@
+{
+  "schema": "baseharbor.workspace-continuation-checkpoint/v1",
+  "release": "0.4.25",
+  "pre_release_ready": false,
+  "published_product": {
+    "commit": "5f4a919da5161cc0f061c3526f11b51e9af07497",
+    "tree": "ec7d5b8a5f000a587cf1093e904a556be45f8304"
+  },
+  "published_receipt_commit": "cbc0784a880a55406bf57b4bbca1f1fc1c2186e1",
+  "workspace": "/workspace/scratch/fa5b3f309dfc/baseharbor-session2-destroy",
+  "execution_blocker": "Local exec-server transport disconnected. Recovery timed out; another recovery attempt remained pending and was terminated. No permission/approval rejection occurred.",
+  "unpublished_scope": {
+    "files": [
+      "cmd/baha/application_destroy_authorization.go",
+      "cmd/baha/application_destroy_authorization_test.go",
+      "cmd/baha/application_full_reset_native_test.go",
+      "cmd/baha/app_lifecycle.go",
+      "cmd/baha/app_remote_lifecycle.go",
+      "cmd/baha/application_runtime_retirement_result.go",
+      "docs/spec/capability-first-v0425.md",
+      "docs/de/spec/capability-first-v0425.md",
+      "docs/internal/v0.4.25-provider-mutation-coverage.md",
+      ".github/workflows/targeted-integration.yml"
+    ],
+    "behavior": [
+      "applicationDestructionPlan composes selected deployment owner, existing retirement ProviderPlan, protected file references and permanent/retained effects into provider-impact-scope/v1.",
+      "buildApplicationDestructionPlan authorizes destroy, revalidates current source/Target, loads exact existing deployment owner, uses existing retirement union/impact, observes protected deployment files, and binds record/config revisions to scope; knowledge remains incomplete.",
+      "authorizeApplicationDestruction presents Achtung, collects current outer-scope first/second and separate reset delete_data consent through existing CLI/JSON/MCP context, validates scope, then rebuilds/revalidates before mutation. Generic --yes and embedded leaf approval cannot authorize full reset.",
+      "Remote destroy calls this authority before DestroyApplication. Default remote destroy records pending retirement, preserves original protected publication/deployment/credentials, releases references only after actual verified container removal and records partial consequence receipt. Full reset uses separate deletion consent then existing cleanup.",
+      "restoreRemoteApplication uses retired_intent for runtime-retired owner and pins actual retained backend_placements before remote lifecycle validation.",
+      "Repeated remote apply uses recordAppliedDeployment after verified immutable runtime apply, permitting retained-owner reactivation.",
+      "applicationDestroyResult no longer treats all remote destruction as deleted-owner success; default uses verified retirement owner/partial receipt.",
+      "Unit tests reject nil/one/leaf/stale consent and missing separate deletion consent; accepted unknown outcomes remain allowed, registry unchanged; changed recovery owner invalidates consent.",
+      "Native full reset test initializes fresh application-scoped SQL, seeds actual TLS-authenticated marker, proves refused acknowledgement attempts preserve original marker, then validates separate current outer-scope deletion removes owned data and deployment while source remains unchanged."
+    ],
+    "qualified_before_native_fixture_addition": {
+      "snapshot_tree": "8219a735d01c8a10f57fd5b1f73c5ba2c20f4999",
+      "parent": "5f4a919da5161cc0f061c3526f11b51e9af07497",
+      "output": "/tmp/baseharbor-local-qualification-rpb6c_8d/result.json",
+      "checks": "All nine passed: full Go, CLI/application races, vet, build, strict EN/DE, docs/readability audits, script tests."
+    },
+    "subsequent_checks": {
+      "unit_compile_and_scope_tests": "pass",
+      "actionlint": "pass before correcting an accidentally entered artifact pin; corrected pin matches existing repository b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+      "pending_final_qualification": "/tmp/baseharbor-local-qualification-og5vgll9/result.json; result unavailable after exec transport interruption; do not claim pass."
+    },
+    "native_gate": {
+      "workflow_job": "application_full_reset",
+      "marker": "[app-full-reset-runtime]",
+      "test": "TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData",
+      "engines": [
+        "docker",
+        "rootless podman"
+      ],
+      "status": "prepared, unpublished, not run"
+    }
+  },
+  "consumers": {
+    "console": {
+      "workspace": "/workspace/scratch/fa5b3f309dfc/baseharbor-console-session2",
+      "branch": "work/v0.4.25-integrations-docs",
+      "commit": "2e71929456fcecdd7d7eac22082fd61f07c3fa60",
+      "source_tests": "60 tests pass; architecture check passes.",
+      "contract_gap": "control.golden.json differs from current Core (stop/target/runtime mutation metadata); five other artifacts equal. Canonical source-lock and integration candidate still select 76b68dcc19b90e138e21cd44a061637bf4b67363. Prepared branch already supports error.details and selected app.stop outer-scope acknowledgement.",
+      "next": "Update exact canonical artifacts and pins; adapt destroy outer-scope acknowledgement and native browser/CLI/remote helpers to current plan-bound consent. Avoid duplicate implementation based on old main."
+    },
+    "connector": {
+      "workspace": "/workspace/scratch/fa5b3f309dfc/baseharbor-connector-session2",
+      "branch": "work/v0.4.25-integrations-docs",
+      "commit": "d5e58ab1a827ede8dc0ae9e7ed02d0fe5de96a66",
+      "next": "Update exact Core/Demo/Console candidate and joint receipt required selective steps; old native/browser cleanup helpers lack current acknowledgements. Real enrollment/renewal/revocation/mTLS/remote native proof still required."
+    }
+  },
+  "continuation": [
+    "Recover local execution and inspect existing dirty files; do not reset or overwrite them.",
+    "Fetch current shared branch and integrate receipt-only commits without losing dirty edits.",
+    "Complete final qualification and scoped native full-reset/remote default-retirement/reactivation acceptance; publish only verified exact tree with expected-head nonforce update.",
+    "Complete current immutable authenticated ecosystem matrix, universal remaining provider consequences, docs/pins/readiness audit. No full pre-release or promotion authorization."
+  ]
+}

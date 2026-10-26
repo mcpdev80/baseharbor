@@ -1,0 +1,18 @@
+[
+  {
+    "failure": "--- FAIL: TestMongoDBServiceBindingUsesApplicationCredentialsOnly (0.12s)",
+    "detail": "    mongodb_binding_test.go:28: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  },
+  {
+    "failure": "--- FAIL: TestCheckRuntimePermissionsRejectsBroadOpenBaoCredentials (0.05s)",
+    "detail": "    runtime_inspect_test.go:50: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  },
+  {
+    "failure": "--- FAIL: TestReallocateRuntimePortsPreservesCredentials (0.10s)",
+    "detail": "    runtime_ports_test.go:17: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  },
+  {
+    "failure": "--- FAIL: TestEnsureRuntimeBackfillsPortsWithoutRotatingCredentials (0.22s)",
+    "detail": "    runtime_postgres_test.go:187: reconcile managed runtime observability: open /home/marcel/.local/share/baseharbor/observability/signals.json.lock: read-only file system"
+  }
+]

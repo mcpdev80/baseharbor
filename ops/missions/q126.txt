@@ -1,0 +1,11 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl. REPO: baseharbor-demo. WORKTREE:
+  git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor-demo worktree add -b fix/podman-volume-metadata-compare /home/marcel/dev/baseharbor-ecosystem/worktrees/q126-podfix origin/main
+KEIN push/force/amend/Merge.
+MISSION: Exakt das DEMO-Rezept aus evidence/board-2026-10-25/o144-podman-remove.md §4 umsetzen (Wortlaut dort massgeblich, incl. den TWO genannten Stellen):
+- tests/data-capabilities/new_edit.py retained_sql() Zeile ~222: Ganz-Dict-Vergleich volumes(item)!=expected_volumes ersetzen durch Stable-Identity-Vergleich (Name, Labels, CreatedAt; Namespace/Options normalisiert ignoriert, Abwesenheit != Aenderung) - analog den bestehenden foreign-sentinel Guards (Zeilen ~99-102,121-124).
+- Zweite identifizierte Stelle gemäss o144 §4/§5 gleicher Klasse ebenfalls anpassen.
+- KEINE Produktlogik, keine baseharbor-Dateien, keine assertions-strength loss: Labels/Name/Createdat bleiben verglichen.
+TESTS: python syntax/import checks; falls demo-Repo lokale Tests für die Guided-Helpers hat, ausführen; .github-Workflows lesen und dokumentieren welche demo-Gates bei PR laufen (podman dabei?); ein DOCKER-seitiger Selbsttest wo moeglich (rootless docker auf diesem Host vorhanden; BASEHARBOR_PREBUILT_BINARY=/home/marcel/tmp-ops/bin-q126v/baha falls nötig - baue Binary von baseharbor a39e6bf5 CGO_ENABLED=0 commit=a39e6bf5...; Ziel: acceptance.sh data-capabilities docker RESULT exit=0 wie bisher (Regression-frei)). Podman ist lokal NICHT verfügbar - Verifikation läuft über Demo-PR-CI.
+EVIDENCE evidence/board-2026-10-25/q126-podfix.md (## PLAN, Diff-Auszug file:line, docker-Gate exit-0 Logauszug, Hinweis fuer Maintainer auf erwarteten podman-Jobwechsel).
+EIN ordinary Commit "test(demo): compare stable volume identity fields instead of raw podman inspect dicts".
+END Q126-DONE / END Q126-BLOCKED

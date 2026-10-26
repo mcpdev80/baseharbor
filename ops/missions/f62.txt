@@ -1,0 +1,11 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl; FALLS pwd ROOT: cd baseharbor. WORKTREE-PFLICHT:
+  git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add /home/marcel/dev/baseharbor-ecosystem/worktrees/f62-r1 25b46572
+  (falls 25b46572 nur in worktrees/f61-r5 existiert: von dort `git fetch /home/marcel/dev/baseharbor-ecosystem/worktrees/f61-r5 25b46572` zuerst.)
+KEIN push/force/amend/Merge/CI-Dispatch.
+MISSION: Bar-Umsetzung NUR des Blocking-Finding R1 aus evidence/board-2026-10-25/codex-verdict-1077-25b46572-r2.md ('Change'-Block, Abschnitte R1 + Rezept 1; Wortlaut massgeblich):
+1. Preview-only Registry-Projections duerfen NICHT in den ordinary verified/measured Fact-Pfad gelangen (app_core_requirement.go:323-325,303-314 + application_native_backend_observation.go:252-260): Consumers (buildResolvedApplicationPlan, app_new_wizard.go:237, app_edit.go:300, retirement/verification) muessen preview-vs-verifikation explizit unterscheiden; verifyApplicationRuntimeRetirement darf aus projezierten Facts nil liefern (Fail-closed wie 2f9afafd-Baseline).
+2. Typed per-instance diagnostics (runtime-inventory-not-yet-materialized) durch den bestehenden structured caller/result/output-Pfad tragen, sodass sie die echte machine.JSON-Ausgabe erreichen - machine.Error.Cause ist json:"-" (internal/machine/contract.go:68), daher Code/Feld SO setzen, dass der cause/code im serialisierten Output sichtbar ist (nicht nur Go-Chain).
+3. q124 fresh-list-Verhalten, consent digest, footprint.go bleiben unveraendert (kein wildcard).
+TESTPFLICHT: Die zwei CMF20-Unabhaengigkeits-Tests (TestCMF20RegistryProjectionCannotVerifyRuntimeRetirement, TestCMF20RetainedOwnershipMachineResultMustPreserveDiagnostic) sind in der Review-Evidence/cm f20-data referenziert - falls nicht im Baum, selbe Assertions selbst ergaenzen; plus alle CMF19-Tests + F1-F4-Tests weiter gruen. Volle go test ./cmd/baha/ -count=1 (Baseline-Menge der ENV-Failures gegen 2f9afafd dokumentieren), internal/application, build/vet/gofmt.
+EIN ordinary Commit "fix(obs): keep registry projections out of verified paths and propagate materialization diagnostics". Evidence evidence/board-2026-10-25/f62-r1.md (## PLAN zuerst; file:line; Testoutputs; SHA). KEIN push.
+END F62-R1-DONE / END F62-R1-BLOCKED

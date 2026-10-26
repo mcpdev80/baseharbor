@@ -1,0 +1,133 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+)
+
+// appEditLoadReader reads the existing authorized application context for a Target.
+type appEditLoadReader func(context.Context, string) (GuidedReadContext, error)
+
+// appEditLoaded preserves the exact input document, including fields not editable
+// by the compact wizard. Source must be used when producing an unchanged roundtrip.
+type appEditLoaded struct {
+	Source        []byte
+	Target        string
+	ApplicationID string
+	Capabilities  []capability.Requirement
+	Preferences   []application.ProviderPreference
+	Complete      bool
+}
+
+type appEditLoadError struct{ Kind string }
+
+func (e *appEditLoadError) Error() string { return "app edit load: " + e.Kind }
+
+// appEditLoad never rewrites the source, creates an ID, or mutates a Target.
+func appEditLoad(ctx context.Context, target string, source []byte, read appEditLoadReader) (appEditLoaded, error) {
+	if target == "" || read == nil || len(bytes.TrimSpace(source)) == 0 {
+		return appEditLoaded{}, &appEditLoadError{Kind: "missing"}
+	}
+	manifest, parseErr := application.ParseYAML(string(source))
+	if parseErr != nil {
+		manifest, parseErr = application.ParseCanonicalYAML(string(source))
+		if parseErr != nil {
+			return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+		}
+	}
+	contract, parseErr := application.PortableContractFromManifest(manifest)
+	if parseErr != nil {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	view, err := read(ctx, target)
+	if err != nil {
+		var guided *GuidedReadError
+		if errors.As(err, &guided) {
+			switch guided.Kind {
+			case "missing", "ambiguous", "incompatible", "wrong_target", "unverifiable":
+				return appEditLoaded{}, &appEditLoadError{Kind: guided.Kind}
+			}
+		}
+		return appEditLoaded{}, &appEditLoadError{Kind: "unverifiable"}
+	}
+	if view.Target != target || view.Footprint.Target != target {
+		return appEditLoaded{}, &appEditLoadError{Kind: "wrong_target"}
+	}
+	if view.ApplicationID == "" || view.Name == "" {
+		return appEditLoaded{}, &appEditLoadError{Kind: "missing"}
+	}
+	if manifest.Name != view.Name || manifest.Environment != view.Environment ||
+		(manifest.ApplicationID != "" && manifest.ApplicationID != view.ApplicationID) {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	// Managed secrets are authoritative contract intent, stored outside
+	// PortableContract.Capabilities. The resolved Footprint already carries
+	// that default requirement for the selected Target.
+	secret := capability.Requirement{Kind: capability.Secrets, Name: "default"}
+	footprintSecrets := 0
+	for _, resolution := range view.Footprint.Requirements {
+		if resolution.Requirement == secret {
+			footprintSecrets++
+		}
+	}
+	if footprintSecrets > 1 || (footprintSecrets == 1) != contract.Secrets.Managed {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	// Compare exact logical requirement identities without assuming ordering.
+	counts := make(map[capability.Requirement]int, len(contract.Capabilities))
+	for _, requirement := range contract.Capabilities {
+		counts[requirement]++
+	}
+	for _, requirement := range view.Capabilities {
+		counts[requirement]--
+	}
+	if len(contract.Capabilities) != len(view.Capabilities) {
+		return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+	}
+	for _, count := range counts {
+		if count != 0 {
+			return appEditLoaded{}, &appEditLoadError{Kind: "incompatible"}
+		}
+	}
+	// Deep-copy through JSON: both the source document and nested selections
+	// remain detached from the authority's in-memory maps and slices.
+	var snapshot struct {
+		Capabilities []capability.Requirement         `json:"capabilities"`
+		Preferences  []application.ProviderPreference `json:"preferences"`
+	}
+	raw, err := json.Marshal(struct {
+		Capabilities []capability.Requirement         `json:"capabilities"`
+		Preferences  []application.ProviderPreference `json:"preferences"`
+	}{view.Capabilities, view.Preferences})
+	if err != nil || json.Unmarshal(raw, &snapshot) != nil {
+		return appEditLoaded{}, &appEditLoadError{Kind: "unverifiable"}
+	}
+	if contract.Secrets.Managed {
+		present := false
+		for _, requirement := range snapshot.Capabilities {
+			if requirement == secret {
+				present = true
+				break
+			}
+		}
+		if !present {
+			snapshot.Capabilities = append(snapshot.Capabilities, secret)
+		}
+	}
+	return appEditLoaded{
+		Source: bytes.Clone(source),
+		Target: target, ApplicationID: view.ApplicationID,
+		Capabilities: snapshot.Capabilities, Preferences: snapshot.Preferences,
+		Complete: view.Complete,
+	}, nil
+}
+
+// appEditLoadSource is an exact, read-only roundtrip of the original document.
+func appEditLoadSource(loaded appEditLoaded) []byte {
+	return bytes.Clone(loaded.Source)
+}

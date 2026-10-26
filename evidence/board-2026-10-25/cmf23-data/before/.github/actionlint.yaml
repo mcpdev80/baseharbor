@@ -1,0 +1,7 @@
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - baseharbor
+    - docker
+    - podman
+    - k3s

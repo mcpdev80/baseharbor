@@ -1,0 +1,11 @@
+pwd-PFLICHT vor JEDEM git-Befehl. WORKTREE+BRANCH: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b w2/r27-writer /home/marcel/dev/baseharbor-ecosystem/worktrees/w2-writer ec82d476. KEIN push, KEIN Commit ausserhalb deines Write-Sets.
+ROLLE: W2 des Drei-Worker-Pakets v0.4.27 'Receipt statt PKI'. Massstab: baseharbor-plan evidence/r27-ci-replacement-2026-10-26/CODEMAN-START.md + /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-26/FREEZE-PR1.md (Interfaces FROZEN - keine zweiten Contracts; GATE='public-contracts'; Receipt-Pfad evidence/receipts/public-contracts/<run>-<attempt>.json).
+EXKLUSIVE WRITES: scripts/receipt_writer.py, NEU scripts/test_receipt_writer.py, NEU .github/workflows/receipt-post-run.yml (DORMANT: `if: false` oder Tag-trigger ohne Aktivierung - PR2-Inhalt, darf PR1 nicht aktivieren).
+AUFGAB:
+1. Writer-Korrekturen gemäss o145-Befunden (evidence/board-2026-10-26/o145-pr1-verify.md) falls dort Writer-Seitiges bemängelt - sonst Erhalt des Bestehenden; interface write()/commit_file() Signaturen unverändert.
+2. 'Safe fast-forward publication': Vor Erfolgsbericht verifiziert der Writer den geplanten git-Commit (expected-Parameter vorhanden?) - ergänze fehlende Prüfung + Test.
+3. Post-run-Aufruf + automatischer gate-plan/task-Referenz-LINK: NUR als dokumentierter CLI-Pfad/womöglich Option im Workflow (dormant), KEIN neues Produktions-Script, keine Services, keine Archive.
+4. Fokussierte Tests: test_receipt_writer.py (echtes temp-Git, fake API; keine Berührung von test_receipt_chain.py - das gehört W3). Bestehende 6 Ketten-Tests MÜSSEN weiter grün laufen (auch wenn du sie nicht änderst).
+5. Nach jedem commit-reifen Stand: python3 scripts/test_receipt_writer.py + python3 scripts/test_receipt_chain.py + py_compile der Scripts.
+EIN ordinary Commit 'feat(ci): harden receipt writer publication checks and focused tests' + EVIDENCE /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-26/w2-writer.md (## PLAN, Diff-Auszüge, Testausgaben, Hinweis welche Code-Stellen W3-Interface berühren - should be none).
+END W2-DONE / END W2-BLOCKED

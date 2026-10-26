@@ -1,0 +1,4 @@
+ROLLE: REVIEW (read-only Produkt; Evidence-only-Commit). Gegenstand: L5-Baustein 6e170894 (scripts/receipt_tasklink.py + test + dormant post-run-Hook), Parent 084b3abc.
+PRUEFE: (1) Fail-closed-Eigenschaften des Task-Links (falscher/fehlender Receipt -> kein Karten-Touch); (2) Bound: schreibt NUR die eine Task-Referenz, keine weiteren Kartenfelder; (3) YML-Hook: base_ref-als-BASE_SHA-Problem - wie wirkt es im dormanten Zustand und was ist die minimale SHA-Auflösung fuer Aktivierung (konkreter Vorschlag datei:zeile, KEIN Code-Umbau jetzt); (4) test_receipt_tasklink.py haelt was es vorgibt; (5) Integrationshinweise fuer Coordinator-Merge (Konflikte mit L4/L6-Zweigen?).
+VERDICT evidence/board-2026-10-26/p3r-reviews-l5.md: FREIGEBEN (mit Aktivierungs-Auflagen) oder REWORK+Rezept. ROLLE+UTC+SHA.
+END P3R-REVIEW-DONE / END P3R-BLOCKED

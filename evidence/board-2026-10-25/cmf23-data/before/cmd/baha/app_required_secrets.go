@@ -1,0 +1,113 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+func inspectRequiredApplicationSecrets(
+	ctx context.Context,
+	compose bhruntime.RuntimeProvider,
+	platformFiles bhruntime.Files,
+	m application.Manifest,
+	files application.RuntimeFiles,
+) ([]openbao.RequiredSecretStatus, error) {
+	required := application.RequiredSecretNames(m)
+	if len(required) == 0 {
+		return nil, nil
+	}
+	if !m.Services.Secrets {
+		return nil, fmt.Errorf("required secrets are declared but managed secrets are disabled")
+	}
+	identity := openbao.ApplicationIdentity{Name: m.Name, Environment: m.Environment}
+	statuses, err := openbao.InspectRequiredApplicationSecrets(
+		ctx,
+		compose,
+		platformFiles,
+		identity,
+		openbao.ApplicationCredentialsPath(files.Dir),
+		required,
+	)
+	if err != nil {
+		return nil, err
+	}
+	for i := range statuses {
+		requirement, ok := application.SecretRequirementByName(m, statuses[i].Name)
+		statuses[i].Generated = ok && requirement.Generate != nil
+	}
+	return statuses, nil
+}
+
+func checkRequiredApplicationSecrets(
+	ctx context.Context,
+	compose bhruntime.RuntimeProvider,
+	platformFiles bhruntime.Files,
+	m application.Manifest,
+	files application.RuntimeFiles,
+) error {
+	statuses, err := inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+	if err != nil {
+		return err
+	}
+	if err := openbao.RequireApplicationSecrets(statuses); err != nil {
+		for _, status := range statuses {
+			if status.Present && status.Usable {
+				continue
+			}
+			return &machine.Error{
+				Code:        machine.ErrorRequiredSecretMissing,
+				CauseCode:   "required_secret_missing",
+				Message:     fmt.Sprintf("Required application secret %s is missing or unusable.", status.Name),
+				Resource:    status.Name,
+				Remediation: "requires developer input",
+				Next:        "Run 'baha app secret set " + status.Name + "' interactively or use --stdin for automation.",
+				Cause:       err,
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+func printRequiredSecretStatus(out io.Writer, statuses []openbao.RequiredSecretStatus) {
+	if len(statuses) == 0 {
+		return
+	}
+	configured := false
+	for _, status := range statuses {
+		configured = configured || status.Present
+	}
+	if !configured {
+		fmt.Fprintln(out, "No application secrets have been configured yet.")
+	}
+	fmt.Fprintf(out, "  %-24s %-38s %s\n", "REQUIRED SECRET", "STATUS", "ACTION")
+	for _, status := range statuses {
+		state := "present"
+		action := "-"
+		switch {
+		case !status.Present && status.Generated:
+			state = "missing - will be generated automatically"
+			action = "baha app apply"
+		case !status.Present:
+			state = "missing - user input required"
+			action = "baha app secret set " + status.Name
+		case !status.Usable:
+			state = "present but unusable"
+			action = "baha app secret set " + status.Name + " --stdin"
+		}
+		fmt.Fprintf(out, "  %-24s %-38s %s\n", status.Name, state, action)
+	}
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
+}

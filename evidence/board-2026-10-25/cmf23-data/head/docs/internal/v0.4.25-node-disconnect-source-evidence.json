@@ -1,0 +1,99 @@
+{
+  "schema_version": "v0.4.25-node-disconnect-source-evidence/v1",
+  "pre_release_ready": false,
+  "complete_native_gate_pass": false,
+  "qualified_source": {
+    "commit": "9c8fba1df046c58084d08d6688ef67b6f42af577",
+    "tree": "61743cba3601559f30050d86c85f8fb8ffb3222f",
+    "parent": "5543a77888441bb603f175a40291e3b39d6929c3",
+    "run_id": 38161188026,
+    "run_attempt": 1,
+    "run_url": "https://github.com/mcpdev80/baseharbor/actions/runs/38161188026",
+    "source_job_id": 114534267150,
+    "workflow_policy_job_id": 114534266980,
+    "conclusion": "success",
+    "go_version": "1.25.0",
+    "scope": "Existing Source Preflight only; no native Connector, browser, final ecosystem matrix or complete pre-release execution."
+  },
+  "checks": [
+    "Formatting and source readability",
+    "Contracts, internal, spec and command package unit tests with PostgreSQL fixture; go vet",
+    "Enrollment/operator/target-session/terminal boundary race tests",
+    "Command Node-disconnect lifecycle race tests",
+    "Existing release/evidence/artifact script tests",
+    "EN and DE strict documentation builds; 155 paired pages and technical parity",
+    "Documentation audit and workflow policy/actionlint",
+    "GoReleaser Linux amd64 and arm64 snapshot build; no release publication"
+  ],
+  "tests": {
+    "core_guard": [
+      "Current two explicit acknowledgements; no mutation for absent, incomplete, stale or ambiguous consent",
+      "Stable read-only concrete plan with certificate serial excluded from public output",
+      "Retained protected config, Target bindings and deployment recovery owners after revocation",
+      "Revalidate renewed certificate and changed owners before mutation",
+      "Actual issuer failure reported as partial; fresh-plan retry",
+      "Foreign, redirected and changed recovery-owner rejection"
+    ],
+    "http_boundary": [
+      "Tenant/operator permission checks on both routes",
+      "No destructive fallback without configured authority",
+      "Read-only plan route strips supplied mutation consent",
+      "Reject ambiguous JSON/consent before authority invocation"
+    ],
+    "limitations": [
+      "Authority in source lifecycle tests is a fixture. Actual DB admission and issuer revocation still require the native NodeConnector gate.",
+      "Client aggregate Core/local plan and retained-owner reporting compile and are covered by command package tests, but no new end-to-end TLS client or browser qualification is claimed."
+    ]
+  },
+  "snapshot_outputs": {
+    "uploaded_actions_artifacts": [],
+    "note": "Source Preflight builds snapshot archives but does not upload them as durable Actions artifacts. Checksums observed in job output identify those ephemeral build outputs only.",
+    "archives": [
+      {
+        "name": "baseharbor_linux_amd64.tar.gz",
+        "sha256": "859ba6b8cf9be29b4f38e5e42a4651e517eacef849b3f8bcd9b50601f7b897d3"
+      },
+      {
+        "name": "baseharbor_linux_arm64.tar.gz",
+        "sha256": "1c165a5f862ade4fbd2f3048d3242f3ca14bb6cc395d4c51d0f3b1c0229d0d05"
+      }
+    ]
+  },
+  "previous_attempts": [
+    {
+      "commit": "3ed22b8d73d1e03c3e403611aed7e0952d833f4e",
+      "tree": "47d1ccda71284b47b7d9bb4a8c09d7b40fa0b1db",
+      "run_id": 38160090254,
+      "source_job_id": 114530985273,
+      "conclusion": "failure",
+      "reason": "Unformatted reconstructed source. Recovered and verified complete gofmt output; no canonical publication."
+    },
+    {
+      "commit": "0d7f4414645ddaaa00fc5243ae4adbcd94bcfaaf",
+      "tree": "8b8899d95cda9ebff91140dc4fb685b4a7bc5c4c",
+      "run_id": 38160389817,
+      "source_job_id": 114531876036,
+      "conclusion": "failure",
+      "reason": "HTTP fixtures used nonexistent role admin and correctly received 403. Corrected fixtures to existing editor role; production RBAC unchanged."
+    },
+    {
+      "commit": "5c1523f60210d50d4498957910d74acb0a087098",
+      "tree": "e162f9dc82ac9b09333c4d9648972ad8c56b36b7",
+      "run_id": 38160735002,
+      "source_job_id": 114532918631,
+      "conclusion": "failure",
+      "reason": "Tests/vet and existing boundary races passed; documentation technical parity detected lost English fenced examples during paragraph replacement. Restored all 10 original paired examples and added command Node-disconnect race qualification."
+    }
+  ],
+  "integration": {
+    "base_commit": "8bdb9a91cd2464e363a2c9030bd4b3baaf64d2b4",
+    "base_tree": "89087b69694181745bdd7c19e0cb09d070375ce1",
+    "source_equivalence": "Compared 5543 to integration base: only two existing evidence JSON files changed. All 16 changed source/docs/workflow paths match their qualified source base, and all five new files remain absent. Preserve peer evidence unchanged."
+  },
+  "remaining": [
+    "Actual authenticated NodeConnector/mTLS admission, live session loss and issuer revocation; retained native owners/data and cleanup",
+    "Final fixed Core/Demo/Console/NodeConnector compatibility matrix",
+    "Open runtime retirement/default destroy native gates, interrupted-state retry and public end-user OAuth",
+    "Release audit, changelog, release notes and issue acceptance on final immutable candidate"
+  ]
+}

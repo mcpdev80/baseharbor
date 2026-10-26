@@ -1,0 +1,346 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
+	"io"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+var appInitInput io.Reader = os.Stdin
+
+type appProjectDetection struct {
+	Name                     string
+	WorkloadSourceCandidates []repositoryinspect.WorkloadSourceCandidate
+	SelectedWorkloadSource   *repositoryinspect.WorkloadSourceCandidate
+	WorkloadEvidence         *repositoryinspect.WorkloadEvidence
+	ComposeCandidates        []string
+	Compose                  string
+	WorkloadServices         []string
+	WorkloadProtocols        map[string]string
+	InfrastructureServices   []string
+	AmbiguousServices        []string
+	SQL                      bool
+	SQLSource                string
+	SQLInstances             []string
+	Cache                    bool
+	CacheSource              string
+	CacheInstances           []string
+	ObjectStorage            bool
+	ObjectStorageSuggested   bool
+	ObjectStorageSource      string
+	Metrics                  bool
+	MetricsSuggested         bool
+	MetricsSource            string
+	OTLP                     bool
+	OTLPSuggested            bool
+	OTLPSignals              []string
+	OTLPSource               string
+	LogsSuggested            bool
+	RuntimeAPI               bool
+	RuntimePermissions       map[string][]string
+	Ports                    []repositoryinspect.PortEvidence
+	SecretCandidates         []string
+	SecretSources            map[string]string
+	EnvFiles                 []string
+}
+
+type guidedSecretPolicy struct {
+	Name      string
+	Source    string
+	Required  bool
+	Provision string
+}
+
+func appGuidedInitCommand() *cli.Command {
+	return &cli.Command{
+		Name:    "init",
+		Summary: "Detect the current project and create baseharbor.yaml",
+		Usage:   "baha app init [--quick] | baha app init [NAME] [--environment ENV] [--sql|--sql-instance NAME] [--cache|--cache-instance NAME] [--key-value|--key-value-instance NAME] [--document-db|--document-db-instance NAME] [--messaging-queue|--messaging-queue-instance NAME] [--messaging-pubsub|--messaging-pubsub-instance NAME] [--messaging-stream|--messaging-stream-instance NAME] [--s3|--s3-bucket NAME] [--secrets|--require-secret NAME]...",
+		Long:    "With no arguments, analyzes the current repository first and opens a compact guided setup that asks only about missing or ambiguous information. --quick accepts unambiguous detections and safe defaults without interactive questions. Existing flags keep the deterministic non-interactive manifest generator for CI and scripts.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			quick := false
+			yes := false
+			for _, arg := range args {
+				if arg == "--quick" {
+					quick = true
+				}
+				if arg == "--yes" || arg == "-y" {
+					yes = true
+				}
+			}
+			if noInput(ctx) && len(args) == 0 {
+				return usageError("app init needs explicit non-interactive input", "Use 'baha app init --quick' for detected safe defaults or provide deterministic app-init flags.")
+			}
+			if quick {
+				for _, arg := range args {
+					if arg != "--quick" && arg != "--yes" && arg != "-y" {
+						return usageError("--quick cannot be combined with explicit app-init arguments", "Use either 'baha app init --quick' or the deterministic app-init flags.")
+					}
+				}
+				ctx = withAssumeYes(ctx, yes || assumeYes(ctx))
+			} else if len(args) > 0 {
+				return appInitCommand().Run(ctx, args, out, errOut)
+			}
+
+			if _, err := os.Stat(application.RepositoryManifestName); err == nil {
+				return fmt.Errorf("%s already exists; edit the existing application contract instead", application.RepositoryManifestName)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+
+			detected, err := detectAppProject(".")
+			if err != nil {
+				return err
+			}
+			if quick {
+				m, err := manifestFromDetectedProject(detected, true)
+				if err != nil {
+					return err
+				}
+				printProjectDetection(out, detected)
+				fmt.Fprintln(out, "\nQuick mode selected detected values and safe defaults.")
+				return writeRepositoryManifest(ctx, m, out)
+			}
+
+			if !appInitReaderIsTerminal(appInitInput) {
+				return usageError("interactive app init requires a terminal", "Use 'baha app init --quick' for detected safe defaults or explicit flags for CI/scripts.")
+			}
+			return runAppInitWizard(ctx, detected, out)
+		},
+	}
+}
+
+func runAppInitWizard(ctx context.Context, d appProjectDetection, out io.Writer) error {
+	reader := bufio.NewReader(applicationInput(ctx, appInitInput))
+	fmt.Fprintln(out, "Analyzing repository...")
+	printProjectDetection(out, d)
+	fmt.Fprintln(out)
+
+	selection, err := collectGuidedInitSelection(reader, out, d)
+	if err != nil {
+		return err
+	}
+	m, err := buildGuidedInitManifest(reader, out, d, selection)
+	if err != nil {
+		return err
+	}
+	if err := m.Validate(); err != nil {
+		return err
+	}
+	devSetup, err := collectGuidedDevAccess(ctx, reader, out, m)
+	if err != nil {
+		return err
+	}
+
+	printAdoptionSummary(out, m, d, selection.secretPolicies)
+	printGuidedDevAccessSummary(out, devSetup)
+	if cli.OutputOptionsFromContext(ctx).Verbose {
+		fmt.Fprintln(out, "\nGenerated baseharbor.yaml")
+		fmt.Fprintln(out, "----------------------------------------")
+		fmt.Fprint(out, m.AuthoredYAML())
+		fmt.Fprintln(out, "----------------------------------------")
+	}
+	confirm, err := promptYesNo(reader, out, "Write baseharbor.yaml?", true)
+	if err != nil {
+		return err
+	}
+	if !confirm {
+		fmt.Fprintln(out, "No changes were made.")
+		zeroBytes(devSetup.password)
+		return nil
+	}
+	manifestPath, err := filepath.Abs(application.RepositoryManifestName)
+	if err != nil {
+		return err
+	}
+	if err := authorizeMCPOperation(ctx, "app.adopt", "", m.Environment, m.ApplicationID, manifestPath); err != nil {
+		zeroBytes(devSetup.password)
+		return err
+	}
+	if err := applyGuidedDevAccess(devSetup); err != nil {
+		return fmt.Errorf("configure local development access: %w", err)
+	}
+	var repositoryMetadataPath string
+	if selection.persistWorkloadSource && selection.workloadSource != nil {
+		repositoryMetadataPath, err = repositoryinspect.WriteRepositoryMetadata(".", *selection.workloadSource)
+		if err != nil {
+			return fmt.Errorf("persist workload source selection: %w", err)
+		}
+	}
+	if err := writeRepositoryManifest(ctx, m, out); err != nil {
+		if repositoryMetadataPath != "" {
+			_ = os.Remove(repositoryMetadataPath)
+		}
+		return err
+	}
+	if repositoryMetadataPath != "" {
+		fmt.Fprintf(out, "Repository source selection: %s\n", repositoryMetadataPath)
+	}
+	return nil
+}
+
+func detectedApplicationManifest(name, environment string, sql, cache, objectStorage, secrets, hasWorkload bool) application.Manifest {
+	if environment == "" {
+		environment = "dev"
+	}
+	return application.Manifest{
+		Version:       application.CurrentVersion,
+		ApplicationID: application.MustNewApplicationID(),
+		Name:          name,
+		Environment:   environment,
+		Services: application.Services{
+			SQL:           sql,
+			Cache:         cache,
+			ObjectStorage: objectStorage,
+			Secrets:       secrets,
+		},
+	}
+}
+
+func manifestFromDetectedProject(d appProjectDetection, quick bool) (application.Manifest, error) {
+	if quick && len(d.WorkloadSourceCandidates) > 1 && d.SelectedWorkloadSource == nil {
+		allCompose := true
+		for _, candidate := range d.WorkloadSourceCandidates {
+			if candidate.Kind != repositoryinspect.WorkloadSourceCompose {
+				allCompose = false
+				break
+			}
+		}
+		if allCompose {
+			return application.Manifest{}, usageError("multiple Compose files were detected", "Run 'baha app init' interactively to choose the application workload Compose file.")
+		}
+		return application.Manifest{}, usageError("multiple workload sources were detected", "Run 'baha app init' interactively to choose the authoritative Compose, Quadlet or Kubernetes source.")
+	}
+	if quick && len(d.AmbiguousServices) > 0 {
+		return application.Manifest{}, usageError("ambiguous Compose service classification was detected", "Run 'baha app init' interactively to classify: "+strings.Join(d.AmbiguousServices, ", "))
+	}
+	sql, cache, objectStorage := d.SQL, d.Cache, d.ObjectStorage
+	// Secret names discovered from env/example files are heuristic evidence only.
+	// Quick mode must never promote them into required portable contract entries
+	// without an explicit developer confirmation.
+	secrets := false
+	hasWorkload := len(d.WorkloadServices) > 0
+	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
+		return application.Manifest{}, usageError(
+			"no unambiguous application requirements were detected",
+			"Run 'baha app init' interactively or use explicit capability flags.",
+		)
+	}
+	m := detectedApplicationManifest(d.Name, "dev", sql, cache, objectStorage, secrets, hasWorkload)
+	if sqlNamed := quickNamedInstances(d.SQLInstances); len(sqlNamed) > 0 {
+		m = application.WithSQLInstances(m, sqlNamed...)
+	}
+	if cacheNamed := quickNamedInstances(d.CacheInstances); len(cacheNamed) > 0 {
+		m = application.WithCacheInstances(m, cacheNamed...)
+	}
+	if !quick {
+		m = application.WithRequiredSecrets(m, d.SecretCandidates...)
+	}
+	if len(d.WorkloadServices) > 0 {
+		m = application.WithWorkloadComponents(m, d.WorkloadServices...)
+		var err error
+		m, err = addGuidedDetectedExposures(m, guidedInitSelection{workloadServices: d.WorkloadServices, workloadProtocols: d.WorkloadProtocols, workloadPorts: d.Ports})
+		if err != nil {
+			return application.Manifest{}, err
+		}
+	}
+	if quick && d.Metrics {
+		service, port, ok := detectedMetricsTarget(d, d.WorkloadServices)
+		if !ok {
+			return application.Manifest{}, usageError("metrics endpoint was detected but its workload service/port is ambiguous", "Run 'baha app init' interactively to confirm the metrics target.")
+		}
+		m = application.WithMetricsSource(m, "application", service, port, "/metrics")
+	}
+	if quick && d.OTLP {
+		if len(d.OTLPSignals) == 0 {
+			return application.Manifest{}, usageError("OTLP export was detected but the signal set is ambiguous", "Run 'baha app init' interactively to confirm traces, metrics and/or logs.")
+		}
+		m = application.WithOTLPTelemetry(m, d.OTLPSignals...)
+	}
+	if quick && len(d.RuntimePermissions) > 0 {
+		if len(d.WorkloadServices) != 1 {
+			return application.Manifest{}, usageError("runtime capability use was detected but the workload service scope is ambiguous", "Run 'baha app init' interactively to confirm the authorized workload service.")
+		}
+		for capabilityID, operations := range d.RuntimePermissions {
+			m = application.WithRuntimePermission(m, capabilityID, d.WorkloadServices, operations...)
+		}
+	}
+	if err := m.Validate(); err != nil {
+		return application.Manifest{}, err
+	}
+	return m, nil
+}
+
+func applyGuidedSecretPolicies(m application.Manifest, policies []guidedSecretPolicy) application.Manifest {
+	for _, policy := range policies {
+		switch {
+		case policy.Required && policy.Provision == "generate":
+			m = application.WithGeneratedSecret(m, policy.Name, "random", 32)
+		case !policy.Required && policy.Provision == "generate":
+			m = application.WithOptionalGeneratedSecret(m, policy.Name, "random", 32)
+		case policy.Required:
+			m = application.WithRequiredSecrets(m, policy.Name)
+		default:
+			m = application.WithOptionalSecrets(m, policy.Name)
+		}
+	}
+	return m
+}
+
+func writeRepositoryManifest(ctx context.Context, m application.Manifest, out io.Writer) error {
+	// Detection uses a transient ID for footprint previews, not an owner claim.
+	m.ApplicationID = ""
+	result, err := persistRepositoryApplication(ctx, ".", m, nil)
+	if err != nil {
+		return err
+	}
+	absolute := result.Manifest
+	fmt.Fprintf(out, "created repository manifest for %s (%s)\n", m.Name, m.Environment)
+	fmt.Fprintf(out, "manifest: %s\n", absolute)
+	if len(application.RequiredSecretNames(m)) > 0 {
+		fmt.Fprintf(out, "required application secrets: %s\n", strings.Join(application.RequiredSecretNames(m), ", "))
+	}
+	fmt.Fprintln(out, "next: run 'baha up'")
+	return nil
+}
+
+func quickAdoptionOnlyArguments(args []string) bool {
+	quick := false
+	for _, arg := range args {
+		switch arg {
+		case "--quick":
+			quick = true
+		case "--yes", "-y":
+		default:
+			return false
+		}
+	}
+	return quick
+}
+
+func uniqueSorted(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}

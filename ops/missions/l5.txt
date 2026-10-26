@@ -1,0 +1,7 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b l5/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/l5-ustrack 084b3abc. KEIN push.
+AUFGAB (PR2-Baustein, DORMANT-Pflicht): Automatischer Task-Link. Massstab: evidence/board-2026-10-26/p2-shadow-runbook.md Abschnitt '3. Automatic task link - missing building block' (dort benannte Stelle/Fehlstueck) + FREEZE-PR1.md.
+- Implementiere den fehlenden Baustein exakt wie im Runbook vorgeschlagen (vermutlich scripts/receipt_tasklink.py ODER die dort benannte Luecke - Wortlauf des Runbuchs folgt, NICHT erfinden; bei Abweichung END L5-BLOCKED mit Begruendung).
+- Integration in bestehende receipt-Workflows NUR als dormanten Job-Aufruf (innerhalb der existing dormant guard-Jobs), KEIN neuer Workflow, KEIN Trigger an veraenderten Pfaden.
+- Fokussierter Test scripts/test_receipt_tasklink.py (temp-Git + fake Planning; Link zeigt auf richtige Task-Karte und scheitert fail-closed bei fehlendem/anderem Receipt). Bestehende 6 Suiten bleiben gruen.
+EIN Commit "feat(ci): bounded automatic task link for receipt approval (dormant)". Evidence evidence/board-2026-10-26/l5-tasklink.md (## PLAN, Runbook-Referenz, Diff, Tests).
+END L5-DONE / END L5-BLOCKED

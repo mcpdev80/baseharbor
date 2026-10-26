@@ -1,0 +1,18 @@
+pwd-PFLICHT: `pwd -P` vor JEDEM git-Befehl. FALLS pwd ROOT: cd baseharbor. ALLE git-Arbeit NUR in /home/marcel/dev/baseharbor-ecosystem/worktrees/m1077 (Owner hat #1077 an uns uebertragen; PR-Branch fix/v0.4.26-edit-preview-error, aktueller Remote-Head 87736a364735ffc303d1c5f940d1046767ff003c, seit 12:21Z unveraendert). KEIN force, KEIN amend, KEIN Rebuild der Historie, KEIN Merge, KEIN Review-Selbstkommando, KEIN workflow_dispatch.
+
+MISSION: Die beiden fertigen, lokal validierten Observations-Robustheits-Patches als pruefbaren Kandidaten auf den PR-Branch bringen.
+Der Worktree enthaelt bereits exakt diese Changes (uncommitted):
+1. cmd/baha/application_provider_container_observation.go: observeCanonicalProviderContainersConfirmed - count==0+stopped-Urteil wird genau einmal per frischer ListRuntimeContainers-Listung bestaetigt; umgestellt an 6 Call-Sites (broker/identity x2/native/shared/standalone observation files). Neuer Unit-Test TestZeroContainerListingIsConfirmedByFreshListing in application_provider_container_observation_test.go.
+2. cmd/baha/application_native_backend_observation.go: nativeBackendInventory-Fehler fuehrte zu lautlosem Total-Fruehreturn (Fact fehlt -> Overlay setzt State=unverifiable). Jetzt: bei errors.Is(err, fs.ErrNotExist) MIT ableitbarem files.Project wird expected=nil gesetzt und der Loop laeuft weiter (seine bestehende binding-abgeleitete Fallback-Prufung observiert den Instance korrekt); alle anderen Fehlerarten bleiben hart fail-closed.
+
+SCHRITTE:
+1. ERSTER SCHRITT: evidence/board-2026-10-25/q124-observe-stability.md mit ## PLAN + nativen Todos.
+2. `git -C /home/marcel/dev/baseharbor-ecosystem/worktrees/m1077 status --porcelain` + `git diff` auditieren: esMuessen genau die 8 Dateien (7 obs + 1 test) geaendert sein; Debug-Reste (zz_debug*, debugDumpPlan, debugLogConsent, dbg(, BAHA_DEBUG_PLAN_DIR) MUESSEN weg sein - falls vorhanden: entfernen, nicht committen.
+3. `gofmt -l cmd/baha internal/application` (leer), `go vet ./cmd/baha/ ./internal/application/`, `CGO_ENABLED=0 go build ./...`, `go test ./cmd/baha/ -run 'TestZeroContainerListing|TestProviderContinuation' -count=1` und `go test ./internal/application/ -run 'Consent|Digest|Provider' -count=1` - Exaktausgaben ins Evidence.
+4. `git fetch origin fix/v0.4.26-edit-preview-error`: wenn Remote-Head != 87736a3647... -> ordinary `git merge FETCH_HEAD` in den Branch; bei Konflikt STOP + Report (kein force). Branch-Setup: der Worktree ist detached HEAD auf 87736a3647 - `git checkout -B fix/v0.4.26-edit-preview-error 87736a364735ffc303d1c5f940d1046767ff003c` (der einzige lokale Inhalt sind die 8 Dateien; checkout -B behaelt den Working Tree).
+5. EIN ordinary Commit: "fix(obs): stabilize provider fact observation against racy listings and unmaterialized inventory dirs" + Signed-off wie im Repo ueblich NICHT (kein Trailer erfunden), Body: referenziert stale-impact-consent #1077 Journey new-edit-new-sql-add.
+6. `git push origin HEAD:refs/heads/fix/v0.4.26-edit-preview-error` (ordinary; non-fast-forward => STOP).
+7. `gh pr view 1077` neuer Head; PR-CI-Namen/Start beobachten max 10min; NICHT rerunnen/dispatchen.
+8. Evidence: neue Head-SHA, Dateiliste, Diffstat, Testausgaenge, CI-Run-IDs.
+STOP-KRITERIEN: Debug-Reste unauffindbar-anders als erwartet; Testfailure in den schnellen Suites; Remote-Head-Merge Konflikt; Push non-fast-forward.
+END Q124-OBSERVE-PUSHED / END Q124-OBSERVE-BLOCKED

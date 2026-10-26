@@ -1,0 +1,29 @@
+{
+  "schema": "baseharbor.pr-gate-map/v1",
+  "release": "v0.4.26",
+  "policy": "conservative-v1",
+  "notes": "Two unsuccessful refinement rounds mean retaining the full-catalog fallback; no dependency analyzer. Do not interpret a selected gate as completed evidence.",
+  "areas": {
+    "prose": {
+      "prefixes": [
+        "atomic/static/",
+        "integration/static/"
+      ],
+      "exact": []
+    },
+    "docker": {
+      "prefixes": [
+        "atomic/static/",
+        "integration/static/",
+        "atomic/docker/",
+        "ha/docker/",
+        "integration/docker/"
+      ],
+      "exact": [
+        "adoption/conformance",
+        "adoption/realworld-compose",
+        "journey/docker"
+      ]
+    }
+  }
+}

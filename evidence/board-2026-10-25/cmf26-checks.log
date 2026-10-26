@@ -1,0 +1,162 @@
+CHECK 0
+...............
+----------------------------------------------------------------------
+Ran 15 tests in 0.193s
+
+OK
+
+
+CHECK 1
+test_distinct_names_with_equal_labels_and_time_are_distinguishable (__main__.RetainedSQLIdentityRegressionTest.test_distinct_names_with_equal_labels_and_time_are_distinguishable) ... ok
+test_duplicate_matching_containers_raise_uniqueness_error (__main__.RetainedSQLIdentityRegressionTest.test_duplicate_matching_containers_raise_uniqueness_error) ... ok
+test_each_changed_identity_field_raises (__main__.RetainedSQLIdentityRegressionTest.test_each_changed_identity_field_raises) ... ok
+test_namespace_and_options_drift_preserves_retained_sql (__main__.RetainedSQLIdentityRegressionTest.test_namespace_and_options_drift_preserves_retained_sql) ... ok
+test_reordered_labels_preserve_retained_sql (__main__.RetainedSQLIdentityRegressionTest.test_reordered_labels_preserve_retained_sql) ... ok
+test_removal_adapts_usage_and_add_restores_exact_strict_source (__main__.SQLWorkloadTransitionTest.test_removal_adapts_usage_and_add_restores_exact_strict_source) ... ok
+test_restore_preserves_concurrent_application_edit_and_link (__main__.SQLWorkloadTransitionTest.test_restore_preserves_concurrent_application_edit_and_link) ... ok
+test_unknown_or_duplicated_startup_is_not_changed (__main__.SQLWorkloadTransitionTest.test_unknown_or_duplicated_startup_is_not_changed) ... ok
+test_actual_child_engine_context_and_metadata_only_snapshot (__main__.SentinelIdentityTest.test_actual_child_engine_context_and_metadata_only_snapshot) ... ok
+test_canonical_postgres_layout_excludes_same_image_admin_and_init (__main__.SentinelIdentityTest.test_canonical_postgres_layout_excludes_same_image_admin_and_init) ... ok
+test_missing_receipt_does_not_invoke_runtime (__main__.SentinelIdentityTest.test_missing_receipt_does_not_invoke_runtime) ... ok
+test_pause_failure_blocks_proof_but_exact_owner_can_remove (__main__.SentinelIdentityTest.test_pause_failure_blocks_proof_but_exact_owner_can_remove) ... ok
+test_public_success_without_private_identity_blocks_proof (__main__.SentinelIdentityTest.test_public_success_without_private_identity_blocks_proof) ... ok
+test_replaced_native_identity_never_removes_resources (__main__.SentinelIdentityTest.test_replaced_native_identity_never_removes_resources) ... ok
+test_world_readable_or_symlink_receipt_is_rejected (__main__.SentinelIdentityTest.test_world_readable_or_symlink_receipt_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.207s
+
+OK
+
+
+CHECK 2
+test_distinct_names_with_equal_labels_and_time_are_distinguishable (__main__.RetainedSQLIdentityRegressionTest.test_distinct_names_with_equal_labels_and_time_are_distinguishable) ... ok
+test_duplicate_matching_containers_raise_uniqueness_error (__main__.RetainedSQLIdentityRegressionTest.test_duplicate_matching_containers_raise_uniqueness_error) ... ok
+test_each_changed_identity_field_raises (__main__.RetainedSQLIdentityRegressionTest.test_each_changed_identity_field_raises) ... ok
+test_namespace_and_options_drift_preserves_retained_sql (__main__.RetainedSQLIdentityRegressionTest.test_namespace_and_options_drift_preserves_retained_sql) ... ok
+test_reordered_labels_preserve_retained_sql (__main__.RetainedSQLIdentityRegressionTest.test_reordered_labels_preserve_retained_sql) ... ok
+test_removal_adapts_usage_and_add_restores_exact_strict_source (__main__.SQLWorkloadTransitionTest.test_removal_adapts_usage_and_add_restores_exact_strict_source) ... ok
+test_restore_preserves_concurrent_application_edit_and_link (__main__.SQLWorkloadTransitionTest.test_restore_preserves_concurrent_application_edit_and_link) ... ok
+test_unknown_or_duplicated_startup_is_not_changed (__main__.SQLWorkloadTransitionTest.test_unknown_or_duplicated_startup_is_not_changed) ... ok
+test_actual_child_engine_context_and_metadata_only_snapshot (__main__.SentinelIdentityTest.test_actual_child_engine_context_and_metadata_only_snapshot) ... ok
+test_canonical_postgres_layout_excludes_same_image_admin_and_init (__main__.SentinelIdentityTest.test_canonical_postgres_layout_excludes_same_image_admin_and_init) ... ok
+test_missing_receipt_does_not_invoke_runtime (__main__.SentinelIdentityTest.test_missing_receipt_does_not_invoke_runtime) ... ok
+test_pause_failure_blocks_proof_but_exact_owner_can_remove (__main__.SentinelIdentityTest.test_pause_failure_blocks_proof_but_exact_owner_can_remove) ... ok
+test_public_success_without_private_identity_blocks_proof (__main__.SentinelIdentityTest.test_public_success_without_private_identity_blocks_proof) ... ok
+test_replaced_native_identity_never_removes_resources (__main__.SentinelIdentityTest.test_replaced_native_identity_never_removes_resources) ... ok
+test_world_readable_or_symlink_receipt_is_rejected (__main__.SentinelIdentityTest.test_world_readable_or_symlink_receipt_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.202s
+
+OK
+
+
+CHECK 3
+diff --git a/tests/data-capabilities/new_edit.py b/tests/data-capabilities/new_edit.py
+index 987f155..b44962f 100644
+--- a/tests/data-capabilities/new_edit.py
++++ b/tests/data-capabilities/new_edit.py
+@@ -214,12 +214,19 @@ def volumes(item):
+     return {name: json.loads(native("volume", "inspect", name))[0] for name in names}
+ 
+ 
++def _volume_identity(vol):
++    return (vol.get("Name"),
++            tuple(sorted((vol.get("Labels") or {}).items())),
++            vol.get("CreatedAt"))
++
++
+ def retained_sql(expected_volumes):
+     matches = []
+     for identifier, item in owned_postgres().items():
+         mounted = {mount["Name"] for mount in item.get("Mounts", []) if mount.get("Type") == "volume"}
+         if mounted == set(expected_volumes):
+-            if volumes(item) != expected_volumes:
++            if {_volume_identity(v) for v in volumes(item).values()} != \
++               {_volume_identity(v) for v in expected_volumes.values()}:
+                 raise RuntimeError("retained SQL volume metadata changed")
+             matches.append(identifier)
+     if len(matches) != 1:
+@@ -354,7 +361,7 @@ def main():
+         foreign_after = inspect(foreign)
+         if (foreign_after["Id"] != foreign_before["Id"] or foreign_after["State"].get("Paused") is not True
+                 or foreign_after["Config"].get("Labels") != foreign_before["Config"].get("Labels")
+-                or json.loads(native("volume", "inspect", foreign_volume)) != foreign_volume_before):
++                or _volume_identity(json.loads(native("volume", "inspect", foreign_volume))[0]) != _volume_identity(foreign_volume_before[0])):
+             raise RuntimeError("New/Edit changed a foreign paused resource or its volume")
+         (ARTIFACT_DIR / "new-edit-sql.json").write_text(json.dumps({
+             "journey": "real-cli-native-sql-new-edit", "target": os.environ["BASEHARBOR_TARGET"],
+M	tests/data-capabilities/new_edit.py
+M	tests/data-capabilities/new_edit_helpers_test.py
+?? tests/data-capabilities/__pycache__/
+?? tests/guided/__pycache__/
+
+
+CHECK 4
+9493e82faa66ade9c4bacbdb2c269d1f065adf39
+f8157ecf9c349aec021c36537a9db9cebca9aec5
+f8157ecf9c349aec021c36537a9db9cebca9aec5
+f8157ecf9c349aec021c36537a9db9cebca9aec5
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import observed
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.environ.get("BH_ROOT_DIR") or os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+PLAN = os.environ.get("BH_COORDINATOR_PLAN") or os.path.join(
+    ROOT, "evidence", "board-2026-10-22", "coordinator-plan.md")
+STATE = os.environ.get("WATCHER_STATE") or os.path.join(HERE, "watcher-state.json")
+CURRENCY = os.path.join(HERE, "board-currency.json")
+GATEWAY_LATENCY_CACHE = os.path.join(HERE, "gateway-latency.json")
+GATEWAY_URL = os.environ.get("GATEWAY_URL") or "http://192.168.6.132:4000/v1/models"
+    import log_queue
+    reminders = "--reminders" in argv
+    path = (os.environ.get("REMINDERS_LOG") or os.path.join(HERE, "reminders.log")) if reminders else LOG
+    ackfile = (os.environ.get("REMINDERS_ACK") or os.path.join(HERE, "reminders-ack.json")) if reminders else STATE
+    try:
+        with open(ackfile) as fh:
+            previous = json.load(fh)
+        stat = os.stat(path)
+        if stat.st_size < previous.get("pos", 0) or (previous.get("identity") and previous["identity"] != "%s:%s" % (stat.st_dev, stat.st_ino)):
+            sys.stderr.write("events-check: LOG ROTATED detected - scanning retained records\n")
+    except (OSError, ValueError):
+        pass
+    records, cursor = log_queue.read(path, ackfile, "--ack" in argv)
+    if "--json" in argv:
+        print(json.dumps({"unread": len(records), "entries": records, "cursor": cursor}))
+    else:
+        for line in records:
+            try:
+                int(line.split(" ", 1)[0])
+                print(line)
+            except ValueError:
+                print("[preserved-malformed] " + line)
+    if "--ack" in argv:
+        sys.stderr.write("events-check: acked {} record(s) up to offset {}\n".format(len(records), cursor.get("pos", 0)))
+    elif not records:
+        sys.stderr.write("events-check: no un-acked records\n")
+    return 0
+
+   must PASS — this is the failing case (§1 call site, job log Z3516–3520).
+2. Add a **unit** guard in `tests/data-capabilities/new_edit_helpers_test.py`:
+   a `retained_sql_identity_test` that constructs two podman-style volume-inspect
+   dicts equal on `Name`+`Labels`+`CreatedAt` but differing on `Namespace`/`Options`
+   and asserts the new identity comparison treats them as equal, and a second
+   case that differs on `Labels`/`CreatedAt` and asserts the comparison rejects
+   them. This pins the exact field semantics that podman drift would otherwise
+   regress.
+3. The docker gate must remain unaffected (docker inspect has no `Namespace`;
+   identity tuple is unchanged for docker-shaped dicts).
+
+### 4.4 Stop criteria
+
+- `podman data-capabilities` acceptance `demo-data-capabilities` group turns from
+  FAIL to PASS **and** the new `retained_sql_identity_test` unit test is green.
+- `docker data-capabilities` still passes (no regression).
+- No change to `cmd/baha/**` or `internal/application/**` (the defect is proven
+  harness-side; product is not touched).
+
+### 4.5 Cheapest CI-only verification (no full matrix)
+
+
+

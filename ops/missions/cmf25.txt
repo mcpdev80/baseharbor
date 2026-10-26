@@ -1,0 +1,8 @@
+ROLLE: REVIEW (kleines eigenhaendiges Review; KEIN MERGE/PUSH). Kandidat: baseharbor-demo PR #126, Commit 6cecb74 (Parent 9493e82=main), Diff = tests/data-capabilities/new_edit.py +9/-2. PR-CI laeuft hiesig NICHT (Workflow nur push auf work/* - wie bei #124/#125); Qualifikation ist dieses Review + spaeterer baseharbor-Gate-Rerun.
+PRUEFE:
+1. Diff gegen o144-Rezept §4 (evidence/board-2026-10-25/o144-podman-remove.md): beide benannten Stellen, genau Name/Labels/CreatedAt-Tuple, Namespace/Options ignoriert, KEINE weitere Assertion abgeschwaeht (Container-Id/State/Paused/Config-Labels Guards muessen unveraendert sein - Diff-Zeilen belegen).
+2. Semantik: Mengenvergleich der Tuples - pruefe ob Zwei-Volumes-mit-gleicher-Identitaet-Edgecase die Eindeutigkeit der retained-SQL-Erkennung gefaehrden koennte (Mount-Set-Vergleich bleibt vorgelagert - beurteilen).
+3. Python-Syntax/Imports (py_compile), keine Secrets, keine Pfadannahmen docker-only.
+4. o144-Faktenlage-Gegencheck: baseharbor remove/retention schreibt wirklich keine Volume-Labels (stichprobenhaft im baseharbor-Baum a39e6bf5).
+URTEIL evidence/board-2026-10-25/codex-verdict-demo126.md: ACCEPT (explizit: Merge in main, danach baseharbor #1077 podman-Job-Rerun als Runtime-Qualifikation) oder REQUEST_CHANGES mit Rezept. ROLLE-Label, UTC, SHA.
+END CMF25-REVIEW-DONE / END CMF25-BLOCKED
