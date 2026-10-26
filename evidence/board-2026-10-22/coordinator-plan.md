@@ -281,3 +281,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [ ] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
 - [ ] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
 - 01:3xZ Befund: Trusted Plan laeuft pr-gate-plan.py aus develop-Kopie -> PR-interne Mappings (L6) wirken nicht im eigenen Run; Shadow-Workflow correctly skipped (dormant-Beweis). Bootstrap-PR noetig analog RUNTIME_STEP_CAP/DISPATCH_GATE_REF. W7 flash f0cfd27b dispatched (Simulation + exakter Bootstrap-Eintrag, nur 3+1 Dateien). PR1 #1090 bleibt bis dahin auf 3a0df114.
+- 02:2xZ OWNER-KRITIK am Tick ignoriert -> korrigiert: R1 (ornith 021d5147) Review L4+L6-Block; R2 (qwen a32dd920) base_ref->SHA-Auflösung auf L5-Zweig (PR2 dormant-safe). Pool=3 busy (W7,R1,R2).
