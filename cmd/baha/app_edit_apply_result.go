@@ -283,7 +283,15 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		}
 		desiredResolved := resolved
 		desiredResolved.Manifest = application.WithProviderPreferences(desired, preferences)
-		snapshot, _, err := applicationLifecycleSnapshot(desiredResolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		observations := observeApplicationProviderFactsFunc(ctx, resolved)
+		if retention, ok := providerObservationRetentionFrom(ctx); ok {
+			// Retain the exact observation this displayed plan was computed
+			// from so the later Apply revalidation reuses this same-timepoint
+			// observation instead of re-observing after materialization or
+			// container removal.
+			retention.set(observations)
+		}
+		snapshot, _, err := applicationLifecycleSnapshot(desiredResolved, observations)
 		if err != nil {
 			return application.ProviderImpactPlan{}, err
 		}

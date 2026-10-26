@@ -98,6 +98,13 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 		return evidence, err
 	}
 	defer unlock()
+	// One lifecycle-wide observation retention. Every read-only planner and
+	// revalidation build under this context consumes the same pre-mutation
+	// observation timepoint, so consent revalidation never compares against a
+	// state that a later lifecycle step (materialization or owned-runtime
+	// removal) has already changed. Source and intent revalidation remain
+	// independent of this retention.
+	ctx = withProviderObservationRetention(ctx, &providerObservationRetention{})
 	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
 		return evidence, execution.recordFailedDeployment(err)
 	}
@@ -145,6 +152,14 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	if hooks.CollectEvidence {
 		evidence.Resolved = execution.resolved
 		evidence.Before = observeApplicationProviderFactsFunc(ctx, execution.resolved)
+		if retention, ok := providerObservationRetentionFrom(ctx); ok {
+			if observations, held := retention.current(); held {
+				// The authorization step of this same lifecycle already took
+				// the pre-mutation snapshot under the target lock; reuse that
+				// one shared observation instead of a second fresh one.
+				evidence.Before = observations
+			}
+		}
 		defer func() {
 			// Capture the registry identity/ownership together with the after
 			// facts, still under the Target lifecycle lock.

@@ -217,8 +217,9 @@ func canonicalRuntimeDirectoryMissing(files application.RuntimeFiles) bool {
 // independently: an owned, application-scoped PostgreSQL/Valkey instance needs
 // an exact binding (provider instance, application UUID, environment, offered
 // capability and logical resource name derived from the manifest) plus a
-// derivable canonical resource union before it receives its own
-// stopped-but-owned preview. One instance's proof is never transferred to a
+// canonical resource union derivable from the applied intents or, for a never
+// materialized instance, from the proven binding resource name before it
+// receives its own stopped-but-owned preview. One instance's proof is never transferred to a
 // peer, and no proven instance short-circuits the others. The recorded fact is
 // preview-only: it carries unknown quantities, never a measured zero, and is
 // paired with the typed materialization diagnostic so consumers must
@@ -226,7 +227,7 @@ func canonicalRuntimeDirectoryMissing(files application.RuntimeFiles) bool {
 // the registry projection as verified runtime success.
 func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts map[string]application.ProviderFact) (bool, error) {
 	intents, err := nativeBackendOwnerIntents(resolved)
-	if err != nil || len(intents) == 0 {
+	if err != nil {
 		return false, nil
 	}
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
@@ -248,8 +249,28 @@ func recordCanonicalMissingRuntimeInventory(resolved resolvedApplication, facts 
 			continue
 		}
 		resources, err := nativeBackendOwnedResourceUnion(intents, files, &instance)
-		if err != nil || len(resources) == 0 {
+		if err != nil {
 			continue
+		}
+		if len(resources) == 0 {
+			// The applied intents have not yet materialized this instance. Its
+			// proven binding names the canonical resource, so derive the same
+			// resource projection from the manifest (as the confirmed runtime
+			// observer does for registry-bound application SQL). Dropping to
+			// no-fact here would make the preview unverifiable while a later
+			// observation of the same instance path measures it: exactly the
+			// preview-vs-revalidate drift this prognostic fact removes.
+			inspectionManifest := resolved.Manifest
+			switch instance.Provider.Kind {
+			case capability.ProviderPostgreSQL:
+				inspectionManifest = application.WithSQLInstances(resolved.Manifest, binding.Resource.Name)
+			case capability.ProviderValkey:
+				inspectionManifest = application.WithCacheInstances(resolved.Manifest, binding.Resource.Name)
+			}
+			resources, err = application.NativeBackendInstanceResources(inspectionManifest, files, instance)
+			if err != nil || len(resources) == 0 {
+				continue
+			}
 		}
 		facts[instance.ID] = application.ProviderFact{
 			Target: resolved.Target.Name,

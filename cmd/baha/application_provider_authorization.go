@@ -15,6 +15,19 @@ func authorizeApplicationProviderChanges(ctx context.Context, resolved resolvedA
 	if err := revalidateApplicationProviderIntent(ctx, resolved); err != nil {
 		return err
 	}
+	if _, ok := retainedProviderObservations(ctx); !ok {
+		// The acknowledged plan and its revalidation consume ONE shared
+		// observation of the same timepoint. Re-observing after the consent
+		// prompt let a materialization or owned-runtime removal between the
+		// two builds change digest-bearing fact states without any external
+		// decision, failing fail-closed as stale-impact-consent drift. Source
+		// and Target identity revalidation remains unchanged above and below.
+		observations := observeApplicationProviderFactsFunc(ctx, resolved)
+		if retention, held := providerObservationRetentionFrom(ctx); held {
+			retention.set(observations)
+		}
+		ctx = withRetainedProviderObservations(ctx, observations)
+	}
 	plan, err := buildResolvedApplicationPlan(ctx, resolved)
 	if err != nil {
 		return err

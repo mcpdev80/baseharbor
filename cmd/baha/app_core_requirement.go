@@ -219,6 +219,19 @@ type applicationLifecyclePlan struct {
 }
 
 func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplication) (applicationLifecyclePlan, error) {
+	observations, ok := retainedProviderObservations(ctx)
+	if !ok {
+		observations = observeApplicationProviderFacts(ctx, resolved)
+	}
+	return buildResolvedApplicationPlanWithObservations(ctx, resolved, observations)
+}
+
+// buildResolvedApplicationPlanWithObservations builds the plan from one caller-
+// supplied observation. Consent revalidation uses it to compare plan digests
+// computed from the SAME observation timepoint; a fresh observation taken
+// after a later lifecycle step materialized or removed runtime would turn an
+// unchanged plan into stale-impact-consent drift.
+func buildResolvedApplicationPlanWithObservations(ctx context.Context, resolved resolvedApplication, observations map[string]application.ProviderFact) (applicationLifecyclePlan, error) {
 	plan, err := application.BuildPlan(resolved.Manifest)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
@@ -226,7 +239,7 @@ func buildResolvedApplicationPlan(ctx context.Context, resolved resolvedApplicat
 	// Read-only plan surfaces consume the observation for preview state only:
 	// registry projections stay distinguishable through their unknown
 	// quantities and never authorize verification from this path.
-	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFacts(ctx, resolved))
+	snapshot, preferences, err := applicationLifecycleSnapshot(resolved, observations)
 	if err != nil {
 		return applicationLifecyclePlan{}, err
 	}

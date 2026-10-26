@@ -86,6 +86,25 @@ func authorizeConfirmedApplicationEdit(ctx context.Context, resolved resolvedApp
 	if err := application.ValidateProviderChangeConsent(approved, *consent); err != nil {
 		return classifyProviderChangeConsent(err)
 	}
+	if _, ok := retainedProviderObservations(ctx); !ok {
+		if retention, ok := providerObservationRetentionFrom(ctx); ok {
+			if observations, held := retention.current(); held {
+				// The confirmation-timepoint observation retained by the Edit
+				// planner: revalidation compares against the SAME observation
+				// the confirmed plan was computed from, never a fresh
+				// observation taken after a later lifecycle step materialized
+				// or removed the runtime.
+				ctx = withRetainedProviderObservations(ctx, observations)
+			}
+		}
+	}
+	if _, ok := retainedProviderObservations(ctx); !ok {
+		observations := observeApplicationProviderFactsFunc(ctx, resolved)
+		if retention, held := providerObservationRetentionFrom(ctx); held {
+			retention.set(observations)
+		}
+		ctx = withRetainedProviderObservations(ctx, observations)
+	}
 	current, err := buildResolvedApplicationPlan(ctx, resolved)
 	if err != nil {
 		return err
