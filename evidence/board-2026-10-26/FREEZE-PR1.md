@@ -47,3 +47,8 @@ work/r27-minimal-receipt), then pushes. PR1 vs dormant PR2 commits kept separabl
 
 ## Cross-review rotation (after each primary slice)
 W1 reviews W3, W3 reviews W2, W2 reviews W1 — file reservations transfer explicitly.
+
+## AMENDMENT 2026-10-27 (koordinierte Revision, dokumentiert gemaess FREEZE-Klausel; Quelle: x2-verify-pr1.md)
+- receipt_writer.py + docs/development/minimal-ci-receipts.md (+DE) wurden in den L-Slices bewusst gegenueber ec82d476 geaendert (Publication-Checks, Doku-Konsistenz zu Bootstrap/Allowlist). Verifier + chain-Test hash-identisch.
+- Zusätzliche PR1-Pfade scripts/ci-workflow-policy.sh + test_ci_workflow_policy_receipts.py (Allowlist-Sync, L4) sind Teil der Qualifikation und im ACCEPTANCE-PR1-Record benannt.
+- PR #1090 bleibt bis zur Merge-Entscheidung OPEN; acceptance = Qualifikation, merge = separater Schritt (Deadline-Regime unveraendert).
