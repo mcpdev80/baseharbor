@@ -280,3 +280,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [ ] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
 - [ ] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
 - [ ] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
+- 01:3xZ Befund: Trusted Plan laeuft pr-gate-plan.py aus develop-Kopie -> PR-interne Mappings (L6) wirken nicht im eigenen Run; Shadow-Workflow correctly skipped (dormant-Beweis). Bootstrap-PR noetig analog RUNTIME_STEP_CAP/DISPATCH_GATE_REF. W7 flash f0cfd27b dispatched (Simulation + exakter Bootstrap-Eintrag, nur 3+1 Dateien). PR1 #1090 bleibt bis dahin auf 3a0df114.
