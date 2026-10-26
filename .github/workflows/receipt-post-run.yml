@@ -40,24 +40,25 @@ jobs:
         with:
           python-version: '3.14'
 
-      - name: Resolve planning repo and task reference
+      - name: Automatic task-link (dormant)
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_SHA: ${{ github.base_ref || 'main' }}
+          WORKFLOW_ID: ${{ github.workflow_id }}
         shell: bash
         run: |
           set -euo pipefail
-          # The post-run writer reads the task reference from the PR plan
-          # artifact published by the CI workflow. This step only documents
-          # the CLI path; the actual writer invocation lives in the
-          # receipt_writer.py module and is exercised by focused tests.
-          echo "Task reference path: evidence/receipt-plans/public-contracts.json"
-          echo "CLI entry: python3 scripts/receipt_writer.py --planning <planning-repo> --plan <plan-revision> --run <run-id> --attempt <attempt>"
-          echo "Dormant: this workflow must be activated by a separate PR2 commit."
-          # Automatic gate-plan/task-link: the task reference is extracted
-          # from the plan JSON (field "task") and emitted to the summary
-          # for traceability. No new production script or service is created.
-          echo "## Receipt post-run writer (dormant)" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Entry point: `scripts/receipt_writer.py`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Receipt path: `evidence/receipts/public-contracts/<run-id>-<attempt>.json`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Task reference: `<plan>.task` field (format `tasks/<slug>.md`)" >> "$GITHUB_STEP_SUMMARY"
+          # The post-run writer invokes the tasklink producer to write the
+          # bounded plan fixture with the automatic task link BEFORE the
+          # writer runs. This step is DORMANT behind the same never-true
+          # guard; activation requires the separate PR2 commit.
+          echo "DORMANT: python3 scripts/receipt_tasklink.py \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --planning <planning-repo> \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --workflow-id $WORKFLOW_ID \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --head $HEAD_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --candidate $CANDIDATE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --base $BASE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --task tasks/<task-id>.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dormant: requires separate PR2 activation."
