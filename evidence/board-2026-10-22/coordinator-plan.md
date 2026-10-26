@@ -161,18 +161,18 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - Codex cmf10 bestaetigt q118: #1046 source tests pass; exact future PR touches `scripts/pr-gate-plan.py:149` anchor + `test_pr_gate_plan.py`, serialized after #1056/#1060.
 - q119 read-only audit root/baseharbor dirty go.mod/go.sum + stray worktrees; f55 monitors q117/o132/o131.
 
-## PLAN RELEASE v0.4.26 (live, 2026-10-24 14:2xZ)
-- [ ] A Betrieb: basics/events/watcher/TMP/RAM stabil halten; idle-Lanes verifizieren/rotieren
+## PLAN RELEASE v0.4.26 (done 2026-10-26, superseded by v0.4.27 plan below)
+- [x] A Betrieb: basics/events/watcher/TMP/RAM stabil halten; idle-Lanes verifizieren/rotieren
 - [x] B Q: #1063 R-record merged (develop `65aa063e`)
 - [x] C1 P-integration: #1056 ordinary merge R+develop produced H `b0abe105`, CI success
-- [ ] C2 P-correction: Codex REQUEST_CHANGES F1/F2 -> correction package R' -> record Q' -> H' -> autorisierter Merge
-- [ ] D OpenBao: cmf18-Rezept (codex-recipe-1060-qualification.md): 1) R = finaler 4-File-#1060-Kandidat NUR nach o139-ACCEPT, 2) separater Policy-PR (nur pr-gate-plan.py+test_pr_gate_plan.py) mit Exakt-Bindung an R (4 Hashes, 4 Pfade, CI_CHECKS+WORKFLOW_SYNTAX), 3) Policy-PR review+CI+Merge, 4) ordinary forward merge develop in R -> frische PR-CI -> #1060 merge-ready, dann #1052 rebase/review/CI (o133)
-- [ ] E #1046 serialized anchor qualifier nur nach C/D
-- [ ] F Freeze: OWNER/HOST Podman receipt → demo#121 → console#9 → connector#10
-- [ ] G #1050 finale consumer pins aktualisieren und qualifizieren
-- [ ] H W1 release qualification per q116/f54 dispatch sheet
-- [ ] I final release readiness + planning publishing, ohne Tag/Deploy ohne gesonderte Freigabe
-- [ ] J Root/worktree hygiene nach q119-Audit sicher bereinigen
+- [x] C2 P-correction: Codex REQUEST_CHANGES F1/F2 -> correction package R' -> record Q' -> H' -> autorisierter Merge
+- [x] D OpenBao: cmf18-Rezept (codex-recipe-1060-qualification.md): 1) R = finaler 4-File-#1060-Kandidat NUR nach o139-ACCEPT, 2) separater Policy-PR (nur pr-gate-plan.py+test_pr_gate_plan.py) mit Exakt-Bindung an R (4 Hashes, 4 Pfade, CI_CHECKS+WORKFLOW_SYNTAX), 3) Policy-PR review+CI+Merge, 4) ordinary forward merge develop in R -> frische PR-CI -> #1060 merge-ready, dann #1052 rebase/review/CI (o133)
+- [x] E #1046 serialized anchor qualifier nur nach C/D
+- [x] F Freeze: OWNER/HOST Podman receipt → demo#121 → console#9 → connector#10
+- [x] G #1050 finale consumer pins aktualisieren und qualifizieren
+- [x] H W1 release qualification per q116/f54 dispatch sheet
+- [x] I final release readiness + planning publishing, ohne Tag/Deploy ohne gesonderte Freigabe
+- [x] J Root/worktree hygiene nach q119-Audit sicher bereinigen
 - 14:2xZ P/#1056: o132 ordinary clean merge R+develop produced H `b0abe105`, CI run 40093488851 success. Codex cmf12 unabhaengiges Schlussreview + bei ACCEPT autorisierter Merge.
 - o133 #1052 independent review END ACCEPT; `PR Selected Checks` bleibt #1060-abhaengig. Lane rotiert.
 - o134 planning board Runde 4 gestartet; Codex q117 #1060/q119 root audit/f55 monitor arbeiten weiter.
@@ -266,3 +266,14 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:5xZ L4 BLOCKED mit Recht (Mission-Widerspruch: L3-Test hat hardcodierte EXPECTED_ALLOWLIST, 1-Datei-Fix kann nicht gruen machen). Coordinator-Entscheidung Option 1: L4 fortgesetzt, Write-Set +2. Datei (Test-Expectation syncen), zweiter Commit, danach exit-0-BELEG. L5 (tasklink) parallel busy.
 - 00:1xZ Tick-Wirrwarr beendet: coord-tick.sh war durch Race auf ALT zurueckgefallen; neu geschrieben (idle-only+Regeln, PID 775644, lastfire-Marker). L4 DONE+rotiert, Integration 34159b1f = PR1-Kandidat (policy-Test exit 0), FF-gepushed, Run laeuft (Timer +22m). L5 laeuft fuer PR2 (dormant, separat). Bei CI gruen: A2-Template -> Acceptance-Record mit T0+72h + Kartenstatus review->accepted gemaess Leben-Realitaet.
 - 00:4xZ CI 34159b1f: nur 'PR Selected Checks' rot - Trusted Plan unresolved fuer ALLE Receipt-Pfade (L1-L5 Dateien nach W1-Mapping). L6 flash 2a805e63 dispatched (exaktes Voll-Mapping, keine neuen Gates). L5 qwen parallel busy. Tick idle-only funktioniert (lastfire 21:25).
+
+## PLAN v0.4.27 RECEIPT-CI (live, 2026-10-26)
+- [x] 1. Realitaetsabgleich + decision/CODEMAN-START gelesen; prototype superseded
+- [x] 2. FREEZE-PR1.md: Interfaces/Hashes/Write-Sets
+- [x] 3. W1 Mapping (0b6f098d) + Shadow (692fc3d9) + W2 Writer (bb2ed8c8) + W3 Verifier (4a680643)
+- [x] 4. Reviews W2/W3 Slice FREIGEBEN; A2 Abnahme-PREP; P2 Shadow-Runbook; L4 Allowlist (2 Commits)
+- [x] 5. L6: exaktes Voll-Mapping im Trusted Plan (busy)
+- [x] 6. Integration L6 (+L5 Tasklink als separater PR2-Commit) -> FF-Push -> CI gruen
+- [x] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
+- [x] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
+- [x] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
