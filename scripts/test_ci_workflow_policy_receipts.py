@@ -3,19 +3,20 @@
 test_ci_workflow_policy_receipts.py
 
 Permanent regression test that exercises the workflow-policy function
-against the three real receipt-*.yml files and asserts the expected
-violations. This test FAILS on purpose until L1/L2 land and the allowlist
-is updated to include receipt-approval.yml and receipt-post-run.yml.
+against the three real receipt-*.yml files and asserts the registered
+state. L1/L2 landed the job-level dormancy guards and the workflow-policy
+allowlist now includes receipt-approval.yml and receipt-post-run.yml, so
+this suite expects green (0 violations).
 
 The test writes the EXPECTATION firm:
-- receipt-post-run.yml: NOT in allowlist → policy violation
-- receipt-approval.yml: NOT in allowlist → policy violation
+- receipt-post-run.yml: IN allowlist → no violation
+- receipt-approval.yml: IN allowlist → no violation
 - receipt-shadow.yml: IN allowlist → no violation
 
 The allowed Dormancy-Form per mission spec is "job-level never-true Guard".
-receipt-shadow.yml uses the correct form (job-level if guard).
-receipt-post-run.yml and receipt-approval.yml use workflow-level `if: false`
-which is a valid dormancy mechanism but NOT the preferred job-level guard.
+All three receipt workflows use that form (job-level `if:` guard):
+receipt-shadow.yml (line 23), receipt-post-run.yml (line 24) and
+receipt-approval.yml (line 56).
 """
 
 import glob
@@ -42,6 +43,8 @@ EXPECTED_ALLOWLIST = {
     "podman-acceptance.yml",
     "pre-release-runtime-suite.yml",
     "pre-release.yml",
+    "receipt-approval.yml",
+    "receipt-post-run.yml",
     "receipt-shadow.yml",
     "release.yml",
     "renovate.yml",
@@ -56,15 +59,15 @@ EXPECTED_ALLOWLIST = {
 # Receipt workflow files we want to test
 RECEIPT_FILES = {
     "receipt-post-run.yml": {
-        "expected_in_allowlist": False,
-        "dormancy_form": "workflow-level if: false",
-        "dormancy_line": 5,
+        "expected_in_allowlist": True,
+        "dormancy_form": "job-level never-true guard",
+        "dormancy_line": 24,
         "preferred_form": "job-level never-true guard",
     },
     "receipt-approval.yml": {
-        "expected_in_allowlist": False,
-        "dormancy_form": "workflow-level if: false",
-        "dormancy_line": 48,
+        "expected_in_allowlist": True,
+        "dormancy_form": "job-level never-true guard",
+        "dormancy_line": 56,
         "preferred_form": "job-level never-true guard",
     },
     "receipt-shadow.yml": {
@@ -160,10 +163,9 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
     """
     Permanent regression test for workflow-policy against receipt workflows.
 
-    This test FAILS currently because receipt-approval.yml and
-    receipt-post-run.yml are not in the allowlist. That is EXPECTED and
-    intentional - the test documents the current state and will pass
-    once L1/L2 land and the allowlist is updated.
+    L1/L2 landed the job-level dormancy guards and the workflow-policy
+    allowlist now registers receipt-approval.yml and receipt-post-run.yml,
+    so this suite documents the registered (green) state with 0 violations.
     """
 
     def setUp(self):
@@ -178,10 +180,11 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
         if not self.workflow_files:
             self.skipTest("No receipt-*.yml files found in .github/workflows/")
 
-    def test_receipt_post_run_not_in_allowlist(self):
+    def test_receipt_post_run_in_allowlist_with_job_level_guard(self):
         """
-        receipt-post-run.yml is NOT in the workflow-policy allowlist.
-        This is expected to FAIL until the allowlist is updated.
+        receipt-post-run.yml IS in the workflow-policy allowlist (L4) and uses
+        the preferred job-level never-true dormancy guard (L1). This is the
+        registered, expected state; the suite is green.
         """
         filename = "receipt-post-run.yml"
         filepath = WORKTREE_DIR / filename
@@ -190,28 +193,29 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
         text = _load_workflow_yaml(filepath)
         allowlist_check = _check_allowlist_presence(filename)
 
-        # EXPECTED: NOT in allowlist (this will fail the assertion)
-        self.assertFalse(
+        # EXPECTED: IS in allowlist (registered at L4)
+        self.assertTrue(
             allowlist_check["in_allowlist"],
-            f"{filename} should NOT be in the allowlist (expected violation)",
+            f"{filename} should be in the allowlist (registered at L4)",
         )
 
-        # Document the dormancy guard
+        # Document the dormancy guard - should be job-level never-true
         guard = _find_dormancy_guard(text)
         self.assertIsNotNone(
             guard["guard_type"],
             f"{filename} should have a dormancy guard",
         )
         self.assertIn(
-            "workflow-level",
+            "job-level",
             guard["guard_type"],
-            f"{filename} uses {guard['guard_type']} (LESS IDEAL than job-level guard)",
+            f"{filename} uses {guard['guard_type']} (the allowed Dormancy-Form)",
         )
 
-    def test_receipt_approval_not_in_allowlist(self):
+    def test_receipt_approval_in_allowlist_with_job_level_guard(self):
         """
-        receipt-approval.yml is NOT in the workflow-policy allowlist.
-        This is expected to FAIL until the allowlist is updated.
+        receipt-approval.yml IS in the workflow-policy allowlist (L4) and uses
+        the preferred job-level never-true dormancy guard (L2). This is the
+        registered, expected state; the suite is green.
         """
         filename = "receipt-approval.yml"
         filepath = WORKTREE_DIR / filename
@@ -220,22 +224,22 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
         text = _load_workflow_yaml(filepath)
         allowlist_check = _check_allowlist_presence(filename)
 
-        # EXPECTED: NOT in allowlist (this will fail the assertion)
-        self.assertFalse(
+        # EXPECTED: IS in allowlist (registered at L4)
+        self.assertTrue(
             allowlist_check["in_allowlist"],
-            f"{filename} should NOT be in the allowlist (expected violation)",
+            f"{filename} should be in the allowlist (registered at L4)",
         )
 
-        # Document the dormancy guard
+        # Document the dormancy guard - should be job-level never-true
         guard = _find_dormancy_guard(text)
         self.assertIsNotNone(
             guard["guard_type"],
             f"{filename} should have a dormancy guard",
         )
         self.assertIn(
-            "workflow-level",
+            "job-level",
             guard["guard_type"],
-            f"{filename} uses {guard['guard_type']} (LESS IDEAL than job-level guard)",
+            f"{filename} uses {guard['guard_type']} (the allowed Dormancy-Form)",
         )
 
     def test_receipt_shadow_in_allowlist_with_job_level_guard(self):
@@ -300,13 +304,13 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
         missing_from_allowlist = actual_files - EXPECTED_ALLOWLIST
         extra_in_allowlist = EXPECTED_ALLOWLIST - actual_files
 
-        # Document the violations (may fail - that's expected)
+        # Fail-closed: any workflow file not registered in EXPECTED_ALLOWLIST breaks policy.
         if missing_from_allowlist:
             for extra in sorted(missing_from_allowlist):
                 print(
                     f"\n  [VIOLATION] '{extra}' is NOT in the allowlist"
                 )
-            # This will fail the test - expected until L1/L2 land
+            # Registered surface is complete on the current branch: 0 violations expected.
             self.assertEqual(
                 missing_from_allowlist,
                 set(),
