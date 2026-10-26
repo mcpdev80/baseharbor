@@ -3,9 +3,9 @@
 # PR2 proves the end-to-end flow: producer, writer, published receipt, live
 # verifier, and the sole Owner approval edit. This workflow stays disabled in
 # every PR until a maintainer explicitly enables it for the accepted consumption
-# path (PR3 cuts over only that path). Nothing here is active: `if: false` skips
-# the job, no trigger is armed, and no required check is added. Existing
-# workflows and required checks are unchanged.
+# path (PR3 cuts over only that path). Nothing here is active: the job-level
+# never-true guard skips the job, no trigger is armed, and no required check is
+# added. Existing workflows and required checks are unchanged.
 #
 # The approval is the single allowed edit that replaces `approved: null` in a
 # live-verified, unapproved receipt with the Owner identity, a UTC timestamp and
@@ -45,13 +45,15 @@ on:
         type: string
         required: false
 
-if: false
-
 permissions:
   contents: write
 
 jobs:
   approve:
+    # DORMANT: never runs on this repository. Activate by replacing this
+    # never-true guard in the accepted consumption path (PR3 cutover). Until
+    # then nothing runs, no trigger is armed and no required check is added.
+    if: github.repository == 'mcpdev80/receipt-approval-dormant'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
