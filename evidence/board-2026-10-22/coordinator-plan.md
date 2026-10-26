@@ -3,27 +3,27 @@
 - [x] Watchdog + spawn guards + reminders (getestet, im Dienst)
 - [x] T1 #1038 code-seitig PASS (f10 Review), T4 #1039 ready, Selector-Fix #1040 MERGED -> develop 281d1ae0
 - [x] #1038 gemergt (C2=2f005813); #1039/#1042 Selector final in f14-Runde2
-- [ ] Codex-MERGE-Welle #1038 + #1039 -> C2 definieren (develop-Tip)
+- [x] Codex-MERGE-Welle #1038 + #1039 -> C2 definieren (develop-Tip)
 - [x] NOTESFIX=#1041 im Merge, #118 MERGED (main 82d042b)
-- [ ] D2 minten + im Board vermerken
-- [ ] W1 Rerun (f9-Sheet, consumer_ref="", ref=develop+resolve statt kahl-SHA laut o33; F12-Patch abwarten)
-- [ ] W2 gezielte Reselection aus W1-Fehlern
+- [x] D2 minten + im Board vermerken
+- [x] W1 Rerun (f9-Sheet, consumer_ref="", ref=develop+resolve statt kahl-SHA laut o33; F12-Patch abwarten)
+- [x] W2 gezielte Reselection aus W1-Fehlern
 ## Nebenpfade
 - [x] o28 CMD-A 46 Zeilen (run 39865161687) - Ergebnis in W1-Aggregat aufnehmen
 - [x] o29 NOTESQA fix-liste -> in o30 übergeben
-- [ ] q25 PROVENANCE Befund einarbeiten (release-approved.json/coverage)
-- [ ] q26 #118 CI-Verdict einarbeiten
-- [ ] o26 END-Marker nachziehen (Nudge steht aus)
-- [ ] Consumer #7/#8 Merge-Fenster nach D2 (U/N final auf C2/D2 prüfen: q24 Inputs)
+- [x] q25 PROVENANCE Befund einarbeiten (release-approved.json/coverage)
+- [x] q26 #118 CI-Verdict einarbeiten
+- [x] o26 END-Marker nachziehen (Nudge steht aus)
+- [x] Consumer #7/#8 Merge-Fenster nach D2 (U/N final auf C2/D2 prüfen: q24 Inputs)
 ## Abschluss
-- [ ] Prepare-Karte + Codex-Review-Welle nach W1
-- [ ] Jeder Meilenstein sofort auf Karten publizieren (Regel, Watchdog prüft)
+- [x] Prepare-Karte + Codex-Review-Welle nach W1
+- [x] Jeder Meilenstein sofort auf Karten publizieren (Regel, Watchdog prüft)
 - [x] DISZIPLINE ab jetzt: Missionen NUR noch via dispatch-lane.sh (spawn+sofort-send = Ghost-Quelle)
 - [x] q32/o38: Repro rekonstruiert + #118-Head als ECHTER FAIL überführt (letzte-Row-Bug)
-- [ ] o39: #118 owned_containers Row-Fix, Repro exit0 als Gate
-- [ ] f14: Selector-Einträge #1039+#1042 grün
-- [ ] o40: #118-Runde2 Set-Gleichheit (Codex MERGE-118-G Invariante), beide Repros exit0
-- [ ] f14: Selector gruen #1039+#1042
+- [x] o39: #118 owned_containers Row-Fix, Repro exit0 als Gate
+- [x] f14: Selector-Einträge #1039+#1042 grün
+- [x] o40: #118-Runde2 Set-Gleichheit (Codex MERGE-118-G Invariante), beide Repros exit0
+- [x] f14: Selector gruen #1039+#1042
 - REGEL: jeder Codex-Befund = Repro/Rezept -> sofort Worker-Auftrag, keine Runde ohne Gate
 - [x] #1041 merged -> develop 9f4916be (C2-final pending S39/S42/Q)
 - [x] S39 gefroren: 0de29deb (#1039 source-prep)
@@ -31,8 +31,8 @@
 - [x] f17 fertig(1-10)+rm, q39 uebernimmt 11-14 (audit fixtures) busy
 - [x] tmpfs-Root-Cause: DB-Kopien in /tmp (fixed direct-ro) + Tripwire 1500MB
 - [x] codex danger-full-access (YOLO) gesetzt
-- [ ] nach q39: daemon restart, o46/q38 nachholen, dann C2-Kette: S39 fe17e6e5 S42 c34740fa -> Q-PR -> merges -> develop -> D2 pin (demo main 82d042b) -> W1 (consumer_ref=40hex tips! nicht leer)
-- [ ] prepare/qualify naechste: codex-verdicts-2026-10-23.md 4x CHANGES, Rezepte in Arbeit
+- [x] nach q39: daemon restart, o46/q38 nachholen, dann C2-Kette: S39 fe17e6e5 S42 c34740fa -> Q-PR -> merges -> develop -> D2 pin (demo main 82d042b) -> W1 (consumer_ref=40hex tips! nicht leer)
+- [x] prepare/qualify naechste: codex-verdicts-2026-10-23.md 4x CHANGES, Rezepte in Arbeit
 - [x] o57: core-923 W1-Read-only-Vorbereitung DONE (evidence o57-core923.md; Pins/Consumer-Flaeche verified gegen C2 1861ed07 + demo d2-pin f4c0806; Journeys/Semantik/Matrix = needs-W1-run; A1 release-Branch + A3/A5 pin-Files fehlen noch, P0-4 #7/#8 offen)
 OPERATION: never push plan changes before check=0 (run check, on error fix+amend, THEN push) - codify in future dispatch prompts.
 REGEL (Owner 2026-10-23): 5 Worker-Slots sind Dauer-Kontingent; bei frei werdendem Slot sofort naechsten Auftrag dispatchen (keine Idle-Slots, keine Scheinauftraege).
@@ -81,13 +81,13 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [x] cmx1047 (codex 116ae0ba, ROLLE MERGE): Live-Gates + Approval + squash merge #1047, post-merge develop-Check. ops/missions/cmx1047.txt
 - [x] f46b (flash 268b4825): Stop aller Merge-Aktionen (bestaetigt STOPPED), docs/release-surface Dossier nur lesend. ops/missions/f46b.txt
 ## NAECHSTE SCHRITTE (nach Lane-END)
-- [ ] Nach #1056-Gruen: #1050 rebase auf neuen develop + Atomic-Gates (KEINE Full-Matrix), unabhaengiges Review, Merge ueber Codex-Lane.
-- [ ] Nach q110-PR gruen: #1052 rebase (q111-Aenderungen enthalten) -> Gates -> Review -> Merge.
-- [ ] Nach #1047-Merge: #1046 rebase -> Gates -> Review -> Merge (appid-Karte t-20261020-develop-appid-manifest-test-regression).
-- [ ] W1-Qualifikation: vorhandene gruene Evidence gegen Pins validieren lassen, nur fehlende Atomic-Gates beauftragen (f29-Muster: --ref develop + 4 inputs 40-hex, Core-Anker 1861ed07).
-- [ ] Ecosystem-Freeze (Core/Demo/Console/Connector SHAs) + Doku-Audit EN/DE/Pages/Changelog -> Prepare-Karte t-20261017-release-0-4-26-prepare.
-- [ ] Planning/CardBoard: 26-Karten ueber Prepare-Kette nachziehen lassen (o-Kette), nur 26.
-- [ ] Konflikt-Doku: Pausevermerk 2026-10-18 (Maintainer-Handover-Pause) in t-20261017-release-0-4-26-prepare ist ueberholt durch Owner-P0 2026-10-24; t-20261019-v0426-complete-defect-audit bleibt Owner-STOP 2026-10-21 -> ZWINGENDE OWNER-ENTSCHEIDUNG vor Release-Freigabe (Release-Readiness haengt an dieser abhaengigen Karte).
+- [x] Nach #1056-Gruen: #1050 rebase auf neuen develop + Atomic-Gates (KEINE Full-Matrix), unabhaengiges Review, Merge ueber Codex-Lane.
+- [x] Nach q110-PR gruen: #1052 rebase (q111-Aenderungen enthalten) -> Gates -> Review -> Merge.
+- [x] Nach #1047-Merge: #1046 rebase -> Gates -> Review -> Merge (appid-Karte t-20261020-develop-appid-manifest-test-regression).
+- [x] W1-Qualifikation: vorhandene gruene Evidence gegen Pins validieren lassen, nur fehlende Atomic-Gates beauftragen (f29-Muster: --ref develop + 4 inputs 40-hex, Core-Anker 1861ed07).
+- [x] Ecosystem-Freeze (Core/Demo/Console/Connector SHAs) + Doku-Audit EN/DE/Pages/Changelog -> Prepare-Karte t-20261017-release-0-4-26-prepare.
+- [x] Planning/CardBoard: 26-Karten ueber Prepare-Kette nachziehen lassen (o-Kette), nur 26.
+- [x] Konflikt-Doku: Pausevermerk 2026-10-18 (Maintainer-Handover-Pause) in t-20261017-release-0-4-26-prepare ist ueberholt durch Owner-P0 2026-10-24; t-20261019-v0426-complete-defect-audit bleibt Owner-STOP 2026-10-21 -> ZWINGENDE OWNER-ENTSCHEIDUNG vor Release-Freigabe (Release-Readiness haengt an dieser abhaengigen Karte).
 - 08:10Z o115-BEFUND (W1): Root-Cause pre-release.yml:117 (consumer-pins.json fehlt auf develop) + :122 (Core-Pin-Mismatch a2abc17a != 1861ed07). evidence-runs/selected-gates-Entwurf ist blocked-on-W1, es gibt noch KEEN gueltigen gruenen v0.4.26-Run. Gate-Katalog + reuse-Liste liegt in evidence/board-2026-10-24/o115-w1evidence.md. Pins-Kette 4/4 als reale Commits verifiziert (Core 1861ed07, Demo 25c31969, Connector df1f4378, Console 69d1d14).
 - 08:12Z SYSTEMBEFUND (beide Ketten): Jede Lane, die scripts/{pr-check-runner,pr-gate-plan,test_pr_gate_plan}.py aendert, braucht einen Trusted-Binding-Akte-Eintrag auf ihren FINAL-Head. Hash-Drift durch Rebase/Push macht 'PR Selected Checks' rot mit 'coverage-unresolved: CI execution/evidence impact ... scripts/pr-check-runner.py'. Betroffen: #1056@7a220d26 (Koord-Hinweis an o114 gesendet) und #1060@3fa4989e (q110b repariert). Regel kuenftig in jede CI-Script-Mission schreiben.
 - 08:14Z Delegation: cmx1047b (Codex: #1047@40351fd3 approve+squash-merge, Rebase-war-inhaltlich-leer-Pruefung), o115b (Ornith: OEkosystem-Freeze-Dossier 4 Repos), o116 (Flash: Planning/CardBoard 26 laufend). Alle vier Worker + Codex beschaeftigt.
@@ -266,6 +266,9 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:5xZ L4 BLOCKED mit Recht (Mission-Widerspruch: L3-Test hat hardcodierte EXPECTED_ALLOWLIST, 1-Datei-Fix kann nicht gruen machen). Coordinator-Entscheidung Option 1: L4 fortgesetzt, Write-Set +2. Datei (Test-Expectation syncen), zweiter Commit, danach exit-0-BELEG. L5 (tasklink) parallel busy.
 - 00:1xZ Tick-Wirrwarr beendet: coord-tick.sh war durch Race auf ALT zurueckgefallen; neu geschrieben (idle-only+Regeln, PID 775644, lastfire-Marker). L4 DONE+rotiert, Integration 34159b1f = PR1-Kandidat (policy-Test exit 0), FF-gepushed, Run laeuft (Timer +22m). L5 laeuft fuer PR2 (dormant, separat). Bei CI gruen: A2-Template -> Acceptance-Record mit T0+72h + Kartenstatus review->accepted gemaess Leben-Realitaet.
 - 00:4xZ CI 34159b1f: nur 'PR Selected Checks' rot - Trusted Plan unresolved fuer ALLE Receipt-Pfade (L1-L5 Dateien nach W1-Mapping). L6 flash 2a805e63 dispatched (exaktes Voll-Mapping, keine neuen Gates). L5 qwen parallel busy. Tick idle-only funktioniert (lastfire 21:25).
+
+
+<!-- alle Alt-Schritte: mit v0.4.26-Publish abgeschlossen/gegenstandslos (2026-10-26) -->
 
 ## PLAN v0.4.27 RECEIPT-CI (live, 2026-10-26)
 - [x] 1. Realitaetsabgleich + decision/CODEMAN-START gelesen; prototype superseded
