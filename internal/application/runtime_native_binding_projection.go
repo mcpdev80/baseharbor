@@ -51,6 +51,45 @@ func ensureNativeBackendEndpointValues(values map[string]string, m Manifest) err
 	return nil
 }
 
+// Each native PostgreSQL realization authenticates its retained data volume
+// with the credential material recorded at first materialization. A shared
+// placement phase legitimately redirects the consumed POSTGRES_DB/USER/
+// PASSWORD slots to the provider-managed shared identity and, through the
+// binding projection, overwrites the bindings/ files with the same shared-era
+// values; neither may serve as the return source. Like the independently owned
+// application host ports above, the dedicated credential material therefore
+// keeps its own protected owner slots: the first apply captures them, the
+// shared phase leaves them untouched, and a return to native placement restores
+// the consumed slots from them. Absent owner slots (states created before this
+// material existed) are captured from the current values and never invented.
+func ensureNativeBackendCredentialValues(values map[string]string, m Manifest) error {
+	shared := UsesSharedPostgreSQL(m)
+	for _, instance := range SQLInstanceNames(m) {
+		consumed := []string{
+			postgresRuntimeKey(instance, "DB"),
+			postgresRuntimeKey(instance, "USER"),
+			postgresRuntimeKey(instance, "PASSWORD"),
+		}
+		owner := []string{
+			postgresRuntimeKey(instance, "APPLICATION_DATABASE"),
+			postgresRuntimeKey(instance, "APPLICATION_ROLE"),
+			postgresRuntimeKey(instance, "APPLICATION_SECRET"),
+		}
+		for i := range consumed {
+			current := strings.TrimSpace(values[consumed[i]])
+			stored := strings.TrimSpace(values[owner[i]])
+			if stored == "" && current != "" {
+				values[owner[i]] = current
+				continue
+			}
+			if !shared && stored != "" && current != stored {
+				values[consumed[i]] = stored
+			}
+		}
+	}
+	return nil
+}
+
 // Native Valkey authenticates its default user through requirepass. Shared ACL
 // identity remains in the existing protected owner for a later return; only the
 // consumed native binding changes principal, with the same retained password.

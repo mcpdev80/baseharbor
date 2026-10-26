@@ -9,267 +9,243 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 )
 
-func TestResetPlacementStaleCredentialsOnDedicatedSwitchBack(t *testing.T) {
-	// Scenario: dedicated app -> shared backend -> dedicated switch-back
-	// The shared-era values in runtime.env should be replaced with bindings/ values.
-	m := New("switch-test", "dev", true, false, false)
-	root := t.TempDir()
-	path := filepath.Join(root, "runtime", "runtime.env")
-	bindingsDir := filepath.Join(root, "runtime", "bindings")
-
-	// 1. Initial dedicated apply creates correct bindings.
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureRuntimeEnv(path, m); err != nil {
-		t.Fatal(err)
-	}
-
-	// 2. Simulate shared-era credentials: write shared-era values to runtime.env
-	//    and create bindings with dedicated values.
-	sharedDB := "baha_switch_test_dev_56d7c895"
-	sharedUser := "baha_switch_test_dev_6db81550"
-	sharedPass := "shared-era-password-xxxx"
-	currentValues, _ := readRuntimeEnv(path)
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "DB")] = sharedDB
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "USER")] = sharedUser
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] = sharedPass
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "HOST_PORT")] = "5432"
-	writeRuntimeEnv(path, m, currentValues)
-
-	// 3. Create dedicated bindings/ directory with correct values.
-	//    These represent the actual dedicated role/database on the volume.
-	//    For the default instance, files go directly under bindings/postgres/
-	postgresBindingsDir := filepath.Join(bindingsDir, "postgres")
-	if err := os.MkdirAll(postgresBindingsDir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	dedicatedDB := "switch_test_dev"
-	dedicatedUser := "baseharbor"
-	dedicatedPass := "dedicated-password-xxxx"
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "database"), []byte(dedicatedDB+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "username"), []byte(dedicatedUser+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "password"), []byte(dedicatedPass+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// 4. Re-run ensureRuntimeEnv with dedicated placement.
-	//    The shared-era values should be replaced with bindings/ values.
-	//    Force application/dedicated placement for PostgreSQL to avoid default shared.
-	m2 := New("switch-test", "dev", false, false, false)
-	m2.Services.SQL = true
-	m2.backendPlacements = map[capability.ProviderKind]capability.ProviderPlacement{
+// dedicatedSQLManifest pins application-scoped PostgreSQL placement.
+func dedicatedSQLManifest(t *testing.T, name string) Manifest {
+	t.Helper()
+	m := New(name, "dev", true, false, false)
+	m.backendPlacements = map[capability.ProviderKind]capability.ProviderPlacement{
 		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
 	}
-	t.Logf("Before ensureRuntimeEnv: DB=%q, USER=%q",
-		currentValues[postgresRuntimeKey(defaultServiceInstance, "DB")],
-		currentValues[postgresRuntimeKey(defaultServiceInstance, "USER")])
-	if err := ensureRuntimeEnv(path, m2); err != nil {
-		t.Fatal(err)
-	}
+	return m
+}
 
-	after, err := readRuntimeEnv(path)
-	// Debug: print actual values
-	t.Logf("After ensureRuntimeEnv: DB=%q, USER=%q, PASS len=%d",
-		after[postgresRuntimeKey(defaultServiceInstance, "DB")],
-		after[postgresRuntimeKey(defaultServiceInstance, "USER")],
-		len(after[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")]))
-	t.Logf("SQLInstanceNames(m2)=%v, UsesSharedPostgreSQL(m2)=%v",
-		SQLInstanceNames(m2),
-		UsesSharedPostgreSQL(m2))
-	if err != nil {
-		t.Fatal(err)
+// sharedSQLManifest pins native-shared PostgreSQL placement.
+func sharedSQLManifest(t *testing.T, name string) Manifest {
+	t.Helper()
+	m := New(name, "dev", true, false, false)
+	m.backendPlacements = map[capability.ProviderKind]capability.ProviderPlacement{
+		capability.ProviderPostgreSQL: {Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
 	}
+	return m
+}
 
-	// 5. Verify: DB and USER should now match bindings/ values, not shared-era.
-	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] != dedicatedDB {
-		t.Errorf("DB not replaced: got %q (stale: %q, expected: %q)",
-			after[postgresRuntimeKey(defaultServiceInstance, "DB")], sharedDB, dedicatedDB)
-	}
-	if after[postgresRuntimeKey(defaultServiceInstance, "USER")] != dedicatedUser {
-		t.Errorf("USER not replaced: got %q (stale: %q, expected: %q)",
-			after[postgresRuntimeKey(defaultServiceInstance, "USER")], sharedUser, dedicatedUser)
+func writePlacementRuntimeEnv(t *testing.T, path string, m Manifest, values map[string]string) {
+	t.Helper()
+	if err := writeRuntimeEnv(path, m, values); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestResetPlacementStaleCredentialsDoesNotAffectUnchangedDedicated(t *testing.T) {
-	// When placement is already dedicated and bindings match runtime.env,
-	// no values should be overwritten.
-	m := New("stable-test", "dev", true, false, false)
-	root := t.TempDir()
-	path := filepath.Join(root, "runtime", "runtime.env")
-	bindingsDir := filepath.Join(root, "runtime", "bindings")
-
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := ensureRuntimeEnv(path, m); err != nil {
-		t.Fatal(err)
-	}
-
-	original, _ := readRuntimeEnv(path)
-
-	// Create bindings/ with values matching current runtime.env.
-	postgresBindingsDir := filepath.Join(bindingsDir, "postgres")
-	if err := os.MkdirAll(postgresBindingsDir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	currentDB := original[postgresRuntimeKey(defaultServiceInstance, "DB")]
-	currentUser := original[postgresRuntimeKey(defaultServiceInstance, "USER")]
-	currentPass := original[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")]
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "database"), []byte(currentDB+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "username"), []byte(currentUser+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "password"), []byte(currentPass+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Re-run with dedicated placement.
-	m2 := New("stable-test", "dev", false, false, false)
-	m2.Services.SQL = true
-	m2.backendPlacements = map[capability.ProviderKind]capability.ProviderPlacement{
-		capability.ProviderPostgreSQL: {Scope: capability.ScopeApplication, Ownership: capability.OwnershipBaseHarbor},
-	}
-	if err := ensureRuntimeEnv(path, m2); err != nil {
-		t.Fatal(err)
-	}
-
-	after, err := readRuntimeEnv(path)
+// simulateSharedBackendProjection mirrors what ReconcileSharedBackends writes
+// to the application runtime environment during a shared placement phase:
+// sharedPostgresRoleName-derived identifiers plus a provider-managed shared
+// password in the consumed slots (internal/application/shared_backends.go).
+func simulateSharedBackendProjection(t *testing.T, path string, m Manifest, instance string) (string, string, string) {
+	t.Helper()
+	values, err := readRuntimeEnv(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+	sharedDB := "baha_shared_era_db"
+	sharedUser := "baha_shared_era_user"
+	sharedPass := "shared-era-password-material"
+	values[postgresRuntimeKey(instance, "DB")] = sharedDB
+	values[postgresRuntimeKey(instance, "USER")] = sharedUser
+	values[postgresRuntimeKey(instance, "PASSWORD")] = sharedPass
+	writePlacementRuntimeEnv(t, path, m, values)
+	return sharedDB, sharedUser, sharedPass
+}
 
-	// Values should be unchanged - retention guarantees preserved.
-	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] != original[postgresRuntimeKey(defaultServiceInstance, "DB")] {
-		t.Error("DB was unnecessarily changed during unchanged dedicated")
+func readPlacementRuntimeEnv(t *testing.T, path string) map[string]string {
+	t.Helper()
+	values, err := readRuntimeEnv(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if after[postgresRuntimeKey(defaultServiceInstance, "USER")] != original[postgresRuntimeKey(defaultServiceInstance, "USER")] {
-		t.Error("USER was unnecessarily changed during unchanged dedicated")
+	return values
+}
+
+// The f64 blocker: dedicated -> shared -> dedicated switch-back must return
+// the native consumed slots to the original dedicated material. Bindings and
+// the consumed slots are both poisoned by the shared phase (f65 dump:
+// shared_backends.go writes runtime.env and projects the same values into
+// bindings/), so only the protected owner slots can restore them.
+func TestDedicatedSharedDedicatedSwitchBackRestoresOriginalCredentials(t *testing.T) {
+	name := "switch-back"
+	mDedicated := dedicatedSQLManifest(t, name)
+	root := t.TempDir()
+	path := filepath.Join(root, "runtime", "runtime.env")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if after[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] != original[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] {
-		t.Error("PASSWORD was unnecessarily changed during unchanged dedicated")
+	if err := ensureRuntimeEnv(path, mDedicated); err != nil {
+		t.Fatal(err)
+	}
+	original := readPlacementRuntimeEnv(t, path)
+	originalPassword := original[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")]
+	if originalPassword == "" {
+		t.Fatal("dedicated apply must materialize a password")
+	}
+	if original[postgresRuntimeKey(defaultServiceInstance, "APPLICATION_SECRET")] != originalPassword {
+		t.Fatal("first dedicated apply must capture the credential material in its owner slot")
+	}
+
+	mShared := sharedSQLManifest(t, name)
+	if !UsesSharedPostgreSQL(mShared) {
+		t.Fatal("shared manifest must report shared PostgreSQL placement")
+	}
+	if err := ensureRuntimeEnv(path, mShared); err != nil {
+		t.Fatal(err)
+	}
+	captured := readPlacementRuntimeEnv(t, path)
+	if captured[postgresRuntimeKey(defaultServiceInstance, "APPLICATION_SECRET")] != originalPassword {
+		t.Fatal("shared-phase apply must preserve the dedicated owner slots")
+	}
+	sharedDB, sharedUser, sharedPass := simulateSharedBackendProjection(t, path, mShared, defaultServiceInstance)
+
+	// Switch back: ensureRuntimeEnv for the dedicated manifest must restore DB,
+	// USER and PASSWORD from the protected owner slots, not from the poisoned
+	// bindings or consumed slots.
+	if err := ensureRuntimeEnv(path, mDedicated); err != nil {
+		t.Fatal(err)
+	}
+	after := readPlacementRuntimeEnv(t, path)
+	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] == sharedDB {
+		t.Errorf("DB still carries the shared-era value %q", sharedDB)
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "USER")] == sharedUser {
+		t.Errorf("USER still carries the shared-era value %q", sharedUser)
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] != postgresDatabaseName(mDedicated, defaultServiceInstance) {
+		t.Errorf("DB = %q, want dedicated database", after[postgresRuntimeKey(defaultServiceInstance, "DB")])
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "USER")] != "baseharbor" {
+		t.Errorf("USER = %q, want dedicated baseharbor role", after[postgresRuntimeKey(defaultServiceInstance, "USER")])
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] != originalPassword {
+		t.Error("PASSWORD was not restored to the material the retained volume authenticates against")
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] == sharedPass {
+		t.Error("PASSWORD still carries the shared-era material")
 	}
 }
 
-func TestResetPlacementStaleCredentialsSkippedWhenShared(t *testing.T) {
-	// When using shared backend, the reset function must NOT run.
-	// Shared backend provisioning writes its own values intentionally.
-	m := New("shared-test", "dev", false, false, false)
-	m.Services.SQL = true
+// Placement-unchanged dedicated reapplies must never rotate or replace
+// credential material (existing retention guarantee).
+func TestUnchangedDedicatedReapplyDoesNotRotateCredentials(t *testing.T) {
+	m := dedicatedSQLManifest(t, "stable")
 	root := t.TempDir()
 	path := filepath.Join(root, "runtime", "runtime.env")
-
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := ensureRuntimeEnv(path, m); err != nil {
 		t.Fatal(err)
 	}
-
-	original, _ := readRuntimeEnv(path)
-
-	// Write shared-era values (these should be preserved when shared is active).
-	sharedDB := "baha_shared_test_dev_56d7c895"
-	sharedUser := "baha_shared_test_dev_6db81550"
-	sharedPass := "shared-era-password"
-	currentValues, _ := readRuntimeEnv(path)
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "DB")] = sharedDB
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "USER")] = sharedUser
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] = sharedPass
-	currentValues[postgresRuntimeKey(defaultServiceInstance, "HOST_PORT")] = "5432"
-	writeRuntimeEnv(path, m, currentValues)
-
-	// Create bindings with DIFFERENT values (simulating what bindings might have).
-	bindingsDir := filepath.Join(root, "runtime", "bindings")
-	postgresBindingsDir := filepath.Join(bindingsDir, "postgres")
-	if err := os.MkdirAll(postgresBindingsDir, 0700); err != nil {
+	before := readPlacementRuntimeEnv(t, path)
+	if err := ensureRuntimeEnv(path, m); err != nil {
 		t.Fatal(err)
 	}
-	dedicatedDB := "different-database"
-	dedicatedUser := "different-user"
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "database"), []byte(dedicatedDB+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "username"), []byte(dedicatedUser+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(postgresBindingsDir, "password"), []byte("different-pass\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Re-run with shared backend.
-	// Override placement to use shared backend.
-	// UsesSharedPostgreSQL checks ResolveProviderPlacement which checks
-	// capability.ProviderPostgreSQL placement.
-	// For this test, set the env var to force shared.
-	oldScope := os.Getenv(ProviderScopeEnv(capability.ProviderPostgreSQL))
-	os.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), "shared")
-	defer func() {
-		if oldScope != "" {
-			os.Setenv(ProviderScopeEnv(capability.ProviderPostgreSQL), oldScope)
-		} else {
-			os.Unsetenv(ProviderScopeEnv(capability.ProviderPostgreSQL))
+	after := readPlacementRuntimeEnv(t, path)
+	for _, key := range []string{
+		postgresRuntimeKey(defaultServiceInstance, "DB"),
+		postgresRuntimeKey(defaultServiceInstance, "USER"),
+		postgresRuntimeKey(defaultServiceInstance, "PASSWORD"),
+		postgresRuntimeKey(defaultServiceInstance, "APPLICATION_DATABASE"),
+		postgresRuntimeKey(defaultServiceInstance, "APPLICATION_ROLE"),
+		postgresRuntimeKey(defaultServiceInstance, "APPLICATION_SECRET"),
+	} {
+		if after[key] != before[key] {
+			t.Errorf("%s changed across an unchanged-placement reapply", key)
 		}
-	}()
-
-	if err := ensureRuntimeEnv(path, m); err != nil {
-		t.Fatal(err)
-	}
-
-	after, err := readRuntimeEnv(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_ = original
-	_ = sharedPass
-	_ = dedicatedDB
-	_ = dedicatedUser
-	_ = sharedPass
-	// When shared is active, values should NOT be overwritten by bindings/.
-	// The reset function skips when UsesSharedPostgreSQL(m) == true.
-	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] != sharedDB {
-		t.Errorf("shared-era DB was incorrectly overwritten: got %q, expected %q",
-			after[postgresRuntimeKey(defaultServiceInstance, "DB")], sharedDB)
-	}
-	if after[postgresRuntimeKey(defaultServiceInstance, "USER")] != sharedUser {
-		t.Errorf("shared-era USER was incorrectly overwritten: got %q, expected %q",
-			after[postgresRuntimeKey(defaultServiceInstance, "USER")], sharedUser)
 	}
 }
 
-func TestResetPlacementStaleCredentialsSkipsWhenNoSQLInstances(t *testing.T) {
-	// When there are no SQL instances at all, the function must do nothing.
+// Shared placement must not redirect the consumed POSTGRES_* credential slots
+// through the native projection: the shared phase legitimately consumes the
+// provider-managed identity until the manifest returns to dedicated placement.
+func TestSharedPhaseNeverRewritesConsumedSlotsViaOwnerLogic(t *testing.T) {
+	name := "shared-only"
+	mShared := sharedSQLManifest(t, name)
+	root := t.TempDir()
+	path := filepath.Join(root, "runtime", "runtime.env")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureRuntimeEnv(path, mShared); err != nil {
+		t.Fatal(err)
+	}
+	first := readPlacementRuntimeEnv(t, path)
+	simulateSharedBackendProjection(t, path, mShared, defaultServiceInstance)
+	if err := ensureRuntimeEnv(path, mShared); err != nil {
+		t.Fatal(err)
+	}
+	after := readPlacementRuntimeEnv(t, path)
+	if after[postgresRuntimeKey(defaultServiceInstance, "DB")] != "baha_shared_era_db" {
+		t.Error("shared manifest must keep consuming the shared-era slot content")
+	}
+	if after[postgresRuntimeKey(defaultServiceInstance, "APPLICATION_SECRET")] != first[postgresRuntimeKey(defaultServiceInstance, "PASSWORD")] {
+		t.Error("first shared apply must have captured the pre-shared material into the owner slot")
+	}
+}
+
+// Applications without SQL instances are untouched by the projection.
+func TestCredentialOwnerSlotsSkippedWhenNoSQLInstances(t *testing.T) {
 	m := New("no-sql", "dev", false, false, false)
 	root := t.TempDir()
 	path := filepath.Join(root, "runtime", "runtime.env")
-
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	// No SQL services - just write some random data.
-	data := []byte("SOME_OTHER_KEY=some-value\n")
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Re-run without SQL.
 	if err := ensureRuntimeEnv(path, m); err != nil {
 		t.Fatal(err)
 	}
-
-	after, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(after), "SOME_OTHER_KEY=some-value") {
-		t.Error("file was modified despite no SQL instances")
+	if strings.Contains(string(data), "POSTGRES") {
+		t.Fatal("no-sql manifest must not gain PostgreSQL keys")
+	}
+}
+
+// Named instances keep their owner slots per instance.
+func TestNamedSQLInstanceRoundTripKeepsOwnOwnerSlots(t *testing.T) {
+	name := "multi-sql"
+	mDedicated := WithSQLInstances(dedicatedSQLManifest(t, name), defaultServiceInstance, "analytics")
+	if len(SQLInstanceNames(mDedicated)) != 2 {
+		t.Fatalf("test manifest needs two SQL instances, got %v", SQLInstanceNames(mDedicated))
+	}
+	root := t.TempDir()
+	path := filepath.Join(root, "runtime", "runtime.env")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureRuntimeEnv(path, mDedicated); err != nil {
+		t.Fatal(err)
+	}
+	original := readPlacementRuntimeEnv(t, path)
+
+	mShared := WithSQLInstances(sharedSQLManifest(t, name), defaultServiceInstance, "analytics")
+	if err := ensureRuntimeEnv(path, mShared); err != nil {
+		t.Fatal(err)
+	}
+	simulateSharedBackendProjection(t, path, mShared, "analytics")
+
+	if err := ensureRuntimeEnv(path, mDedicated); err != nil {
+		t.Fatal(err)
+	}
+	after := readPlacementRuntimeEnv(t, path)
+	for _, key := range []string{
+		postgresRuntimeKey("analytics", "DB"),
+		postgresRuntimeKey("analytics", "USER"),
+		postgresRuntimeKey("analytics", "PASSWORD"),
+	} {
+		if after[key] != original[key] {
+			t.Errorf("%s not restored to the dedicated material", key)
+		}
+	}
+	if after[postgresRuntimeKey("analytics", "APPLICATION_SECRET")] != original[postgresRuntimeKey("analytics", "PASSWORD")] {
+		t.Error("named instance owner slot lost the original material")
 	}
 }
