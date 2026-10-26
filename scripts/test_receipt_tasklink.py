@@ -240,5 +240,120 @@ class TaskLinkTest(unittest.TestCase):
         self.assertIn("blocked", result.stderr)
 
 
+class TestBaseShaResolution(unittest.TestCase):
+    """Verify base-Auflösung in receipt_tasklink.py — fake API, 6 Receipt-Suiten gruen."""
+    
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self._git("init", "-q")
+        self._git("config", "user.name", "Tasklink fixture")
+        self._git("config", "user.email", "tasklink@example.invalid")
+        self.candidate = "c" * 40
+        self.head = "a" * 40
+        self.base = "b" * 40
+        self.workflow_id = 17
+        self.task = "tasks/receipt-pilot.md"
+
+    def _git(self, *args):
+        import subprocess
+        return subprocess.check_output(["git", "-C", str(self.root), *args],
+                                       stderr=subprocess.PIPE)
+
+    def test_produce_plan_accepts_real_base_sha(self):
+        """produce_plan_fixture accepts a real 40-char base SHA from workflow_run.base.sha."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+        real_base_sha = "f" * 40
+        commit = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            real_base_sha, self.task,
+        )
+        fixture_path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(fixture_path.exists())
+        raw = fixture_path.read_bytes()
+        value = json.loads(raw)
+        self.assertEqual(value["base_sha"], real_base_sha)
+
+    def test_cli_accepts_real_base_sha(self):
+        """receipt_tasklink.py CLI accepts a real 40-char base SHA."""
+        import subprocess
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+        real_base_sha = "f" * 40
+        result = subprocess.run(
+            ["python3", str(Path(__file__).resolve().parent / "receipt_tasklink.py"),
+             "--planning", str(fresh_root),
+             "--workflow-id", str(self.workflow_id),
+             "--head", self.head,
+             "--candidate", self.candidate,
+             "--base", real_base_sha,
+             "--task", self.task],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(path.exists())
+        value = json.loads(path.read_bytes())
+        self.assertEqual(value["base_sha"], real_base_sha)
+
+    def test_fail_closed_rejects_non_hex_base_sha(self):
+        """produce_plan_fixture rejects non-hex base SHA (would catch 'main' fallback)."""
+        with self.assertRaises(tl.TaskLinkError):
+            tl.produce_plan_fixture(
+                self.root, self.workflow_id, self.head, self.candidate,
+                "main", self.task,
+            )
+
+    def test_fail_closed_rejects_short_base_sha(self):
+        """produce_plan_fixture rejects short/invalid base SHA."""
+        with self.assertRaises(tl.TaskLinkError):
+            tl.produce_plan_fixture(
+                self.root, self.workflow_id, self.head, self.candidate,
+                "abcdef", self.task,
+            )
+
+    def test_sha40_validates_all_sha_fields(self):
+        """sha40 validates head, candidate and base SHAs are 40-char hex."""
+        self.assertTrue(tl.sha40("a" * 40))
+        self.assertFalse(tl.sha40("abc"))
+        self.assertFalse(tl.sha40("MAIN"))
+        self.assertFalse(tl.sha40("main"))
+        self.assertFalse(tl.sha40("0123456789abcdef" * 2 + "extra"))
+
+    def test_produce_plan_with_mixed_valid_inputs(self):
+        """produce_plan_fixture correctly handles mixed valid inputs."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+        # All SHAs are 40-char hex, all valid
+        commit = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, "a" * 40, "c" * 40,
+            "b" * 40, "tasks/receipt-pilot.md",
+        )
+        self.assertIsNotNone(commit)
+        fixture_path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(fixture_path.exists())
+        raw = fixture_path.read_bytes()
+        value = json.loads(raw)
+        self.assertEqual(value["head_sha"], "a" * 40)
+        self.assertEqual(value["candidate_sha"], "c" * 40)
+        self.assertEqual(value["base_sha"], "b" * 40)
+
+
 if __name__ == "__main__":
     unittest.main()
