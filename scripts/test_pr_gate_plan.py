@@ -1182,6 +1182,72 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+class ReceiptControlPlaneMappingTests(unittest.TestCase):
+    def test_receipt_control_plane_script_maps_to_ci_class(self):
+        for path in ['scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
+                     'scripts/receipt_tasklink.py']:
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                checks = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'pr-planner-tests', 'ci-policy',
+                                  'ci-executor-verifier-tests'}, checks)
+
+    def test_receipt_control_plane_test_script_maps_to_ci_class(self):
+        for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
+                     'scripts/test_receipt_chain.py',
+                     'scripts/test_ci_workflow_policy_receipts.py',
+                     'scripts/test_receipt_tasklink.py',
+                     'scripts/test_pr_gate_plan_receipt_paths.py']:
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                checks = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'pr-planner-tests', 'ci-policy',
+                                  'ci-executor-verifier-tests'}, checks)
+
+    def test_receipt_control_plane_workflow_maps_ci_and_actionlint(self):
+        for path in ['.github/workflows/receipt-approval.yml',
+                     '.github/workflows/receipt-post-run.yml',
+                     '.github/workflows/receipt-shadow.yml']:
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                checks = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'ci-policy', 'ci-actionlint', 'pr-planner-tests',
+                                  'ci-executor-verifier-tests'}, checks)
+
+    def test_ci_workflow_policy_script_maps_to_ci_class(self):
+        path = 'scripts/ci-workflow-policy.sh'
+        result = planner.plan(diff(paths(path)), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual([], result['selected_gates'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertEqual({'pr-planner-tests', 'ci-policy',
+                          'ci-executor-verifier-tests'}, checks)
+
+    def test_unlisted_receipt_source_stays_unresolved(self):
+        result = planner.plan(diff(paths('scripts/receipt_producer.py')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        self.assertTrue(any('receipt_producer.py' in item for item in
+                            result['unresolved_coverage']))
+
+    def test_extra_unrelated_change_fails_closed(self):
+        result = planner.plan(diff(paths('scripts/receipt_writer.py',
+                                         'cmd/baha/app_new_command.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(any('cmd/baha/app_new_command.go' in item for item in
+                            result['unresolved_coverage']))
+
+
 # Registration coverage is part of the trusted planner qualification suite.
 try:
     from scripts.test_pr_registration_ci import RegistrationPlannerTests, RegistrationExecutorTests, RegistrationWorkflowRoute, RegistrationActualPackageSmoke
@@ -3463,6 +3529,45 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 dirty = git('commit-tree', git('rev-parse', followup + '^{tree}'),
                             '-p', reviewed, '-p', target, '-m', 'injected merge')
                 assert_rejected(actual(dirty))
+
+
+class ReceiptControlPlaneMappingTests(unittest.TestCase):
+    """Bootstrap regressions: persistent receipt-class mappings (v0.4.27)."""
+
+    def check_ids(self, result):
+        return {check['id'] for check in result['required_validation_checks']}
+
+    def test_complete_control_plane_inventory_resolves(self):
+        names = (sorted(planner.RECEIPT_CONTROL_PLANE_SCRIPTS) +
+                 sorted(planner.RECEIPT_CONTROL_PLANE_TEST_SCRIPTS) +
+                 sorted(planner.RECEIPT_CONTROL_PLANE_WORKFLOWS))
+        changes = [{'status': 'modified', 'path': path} for path in names]
+        result = planner.plan(diff(changes), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        self.assertTrue(self.check_ids(result) <= set(runner_validations()))
+
+    def test_unknown_receipt_like_path_stays_unresolved(self):
+        for path in ('scripts/receipt_publisher.py', 'evidence/receipts/pilot.json'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertIn(path, ' '.join(result['unresolved_coverage']))
+
+    def test_active_native_workflow_still_requires_native(self):
+        path = '.github/workflows/runtime-s3-acceptance.yml'
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('native qualification', ' '.join(result['unresolved_coverage']))
+
+
+def runner_validations():
+    import importlib.util
+    spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')
+    mod = importlib.util.module_from_spec(spec_v)
+    spec_v.loader.exec_module(mod)
+    return mod.VALIDATIONS
 
 
 if __name__ == '__main__':
