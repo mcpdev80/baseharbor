@@ -3531,5 +3531,44 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 assert_rejected(actual(dirty))
 
 
+class ReceiptControlPlaneMappingTests(unittest.TestCase):
+    """Bootstrap regressions: persistent receipt-class mappings (v0.4.27)."""
+
+    def check_ids(self, result):
+        return {check['id'] for check in result['required_validation_checks']}
+
+    def test_complete_control_plane_inventory_resolves(self):
+        names = (sorted(planner.RECEIPT_CONTROL_PLANE_SCRIPTS) +
+                 sorted(planner.RECEIPT_CONTROL_PLANE_TEST_SCRIPTS) +
+                 sorted(planner.RECEIPT_CONTROL_PLANE_WORKFLOWS))
+        changes = [{'status': 'modified', 'path': path} for path in names]
+        result = planner.plan(diff(changes), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        self.assertTrue(self.check_ids(result) <= set(runner_validations()))
+
+    def test_unknown_receipt_like_path_stays_unresolved(self):
+        for path in ('scripts/receipt_publisher.py', 'evidence/receipts/pilot.json'):
+            with self.subTest(path=path):
+                result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertIn(path, ' '.join(result['unresolved_coverage']))
+
+    def test_active_native_workflow_still_requires_native(self):
+        path = '.github/workflows/runtime-s3-acceptance.yml'
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('native qualification', ' '.join(result['unresolved_coverage']))
+
+
+def runner_validations():
+    import importlib.util
+    spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')
+    mod = importlib.util.module_from_spec(spec_v)
+    spec_v.loader.exec_module(mod)
+    return mod.VALIDATIONS
+
+
 if __name__ == '__main__':
     unittest.main()
