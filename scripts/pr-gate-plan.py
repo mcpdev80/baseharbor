@@ -627,6 +627,20 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
+# Minimal-receipts pilot (PR 1): the two receipt scripts and their focused
+# Python test suite are one exact path set, mapped to that suite as the
+# selected check. The paired EN/DE documents already resolve through the
+# existing documentation branch and its audit. No new workflow file, no new
+# matrix, no infrastructure: existing mechanisms qualify these sources only.
+RECEIPT_PILOT_SCRIPTS = {
+    'scripts/receipt_writer.py',
+    'scripts/receipt_verifier.py',
+    'scripts/test_receipt_chain.py',
+}
+RECEIPT_PILOT_CHECKS = [
+    {'id': 'receipt-chain-tests', 'owner': 'scripts/test_receipt_chain.py',
+     'command': 'python3 scripts/test_receipt_chain.py'},
+]
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -1348,6 +1362,9 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in PLANNING_SCRIPTS:
             area = 'ci-planner'
             require(CI_CHECKS)
+        elif path in RECEIPT_PILOT_SCRIPTS:
+            area = 'receipt-pilot-script'
+            require(RECEIPT_PILOT_CHECKS)
         elif path.startswith('.github/workflows/'):
             area = 'runtime-workflow-unresolved'
             require(CI_CHECKS)
