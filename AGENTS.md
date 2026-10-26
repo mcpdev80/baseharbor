@@ -67,6 +67,13 @@ Codeman-Dispatch und Überwachung
 - **Turn-Start-Pflichtprogramm (nicht verhandelbar):** vor jeder anderen Aktion `python3 evidence/board-2026-10-19/scripts/basics-check.py`
   ausführen (Events, Idle-Lanes, Pool-Mischung, PLAN-Alter, unpushed/ahead Planning) und alle FLAGS in derselben
   Turn-Kette abarbeiten; nach Events-Quitting `events-check.py --ack`. Diese Pflicht ersetzt Gedächtnis durch Skript.
+- **Coord-Tick + Coordinator-Grundregeln (Owner-Direktive 2026-10-26):** Ein Idle-only-Tick alle 10 Minuten
+  (Einzelheiten: RUNBOOK.md Abschnitt 3) zwingt bei Leerlauf des Coordinators: (1) mindestens drei Worker
+  arbeiten, wenn sinnvolle konfliktfreie Arbeit existiert; (2) für jede neue Aufgabe eine FRISCHE Lane verwenden
+  und fertig gemeldete Lanes sofort freigeben/löschen (Kontextansammlung in Altlanes ist ein Fehler); (3) das
+  CardBoard via baseharbor-plan (Karten-Metadaten, render + check, regulär publiziert) aktuell halten; (4) keine
+  `sleep`-/`wait`-Blöcke in Coordinator-Turns – Überwachung läuft über Watcher-Events und Timer; kurzeste
+  Präge-Polls nur, wenn ein Ergebnis sonst nicht feststellbar ist.
 - Standardpfad: spawn-lane.sh + dispatch-lane.sh gemäß RUNBOOK.md Abschnitt 2 (Pfade dort); ihre CLI-Optionen nicht aus widersprüchlichen historischen Notizen ableiten. Vor Einsatz einmal gegen installierte Codeman-Version und --help prüfen.
 - Reihenfolge: Session starten und Readiness/Modell identifizieren -> Auftrag zustellen und Empfang/Busy-Zustand verifizieren -> Watch registrieren -> per begrenztem wait --until idle,exit und read überwachen. Ein Zustell-Timeout ist weder Fehlschlag noch Abschlussnachweis. Bei unklarer Zustellung vor erneutem send den Session-Output prüfen, um doppelte Arbeit zu vermeiden.
 - --wait-Verwendung ausschließlich nach der verifizierten Semantik des Dispatch-Skripts. Keine gleichzeitig gültigen Regeln „erstes send mit --wait“ und „send niemals mit --wait“.

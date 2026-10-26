@@ -61,6 +61,11 @@ Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-2
   `pkill -f wait-workers` – das tötet den aufrufenden Shell selbst).
 - Der Daemon zählt ein Pane mit offenem Permission-Dialog als busy/idle je nach
   API-Lage – Dialog-Scan ist primär, Busy-Heuristik Sekundärnetz.
+- **Coord-Tick (Idle-only-Pflichtwecker):** `/home/marcel/tmp-ops/coord-tick.sh`
+  (nohup/setsid,PID via `ps -eo pid,cmd | grep coord-tick[.]sh`). Prüft alle 600 s den
+  Coordinator-Status über `agent list --json`; sendet die Tick-Nur wenn der Coordinator
+  `idle` ist (kein Interrupt bei laufender Arbeit). Tick-Nachricht enthält die vier
+  Coordinator-Grundregeln. Neustart nach Reboot: Skript erneut mit setsid starten.
 
 ## 4. Permission-Dialoge auflösen
 
