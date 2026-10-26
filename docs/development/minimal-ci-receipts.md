@@ -49,7 +49,7 @@ After approval, the retained verifier never calls GitHub. The caller must obtain
 
 ## Bootstrap and acceptance
 
-PR 1 contains these scripts, focused tests and EN/DE documentation only. It qualifies through the existing legacy path. A target-side exact path mapping/test-discovery prerequisite may still be needed; do not replace unresolved coverage with an exemption.
+PR 1 contains these scripts, focused tests and EN/DE documentation only. It qualifies through the existing legacy path. The exact target-side path mapping/test discovery now lives in `scripts/pr-gate-plan.py`: the three script paths above select the existing planner Python test lane check, because `scripts/test_pr_gate_plan.py` additionally discovers the receipt chain suite and `scripts/test_pr_gate_plan_receipt_paths.py`; both document paths select the existing documentation audit. No new gate, matrix or executable route leaves these lanes, removals and renames of these paths stay unresolved, and unresolved coverage is never replaced with an exemption.
 
 PR 2 proves one ordinary contributor PR end to end: producer, writer, published receipt, live verifier, Owner approval, automatic task link and shadow final-check consumption. The post-run completion cannot be awaited by the producer workflow that triggers it. PR 3 cuts over only the accepted consumption path, then further gates may follow.
 
