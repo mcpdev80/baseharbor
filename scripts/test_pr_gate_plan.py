@@ -1223,6 +1223,16 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 self.assertEqual({'ci-policy', 'ci-actionlint', 'pr-planner-tests',
                                   'ci-executor-verifier-tests'}, checks)
 
+    def test_ci_workflow_policy_script_maps_to_ci_class(self):
+        path = 'scripts/ci-workflow-policy.sh'
+        result = planner.plan(diff(paths(path)), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual([], result['selected_gates'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertEqual({'pr-planner-tests', 'ci-policy',
+                          'ci-executor-verifier-tests'}, checks)
+
     def test_unlisted_receipt_source_stays_unresolved(self):
         result = planner.plan(diff(paths('scripts/receipt_producer.py')), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])

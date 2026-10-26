@@ -642,7 +642,7 @@ PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 # fallthroughs so it is not masked by them.
 RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
     'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
-    'scripts/receipt_tasklink.py',
+    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
 })
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
