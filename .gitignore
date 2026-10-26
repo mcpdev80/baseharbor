@@ -8,3 +8,6 @@ evidence/**/scripts/*.db-*
 __pycache__/
 *.pyc
 worktrees/
+q114-fix1060/
+wt-wizardfix/
+worktrees/
