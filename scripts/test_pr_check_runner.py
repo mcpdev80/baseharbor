@@ -1,5 +1,8 @@
 """Check the trusted dynamic validation interface without running native gates."""
 import importlib.util
+import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -260,5 +263,32 @@ class Core754MCPExecutionTests(unittest.TestCase):
         with patch.object(runner.subprocess, 'run', return_value=CompletedProcess([], 0, '', '')):
             with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
                 runner.execute_validation('wizard-core754-mcp-tests', '.')
+
+    def test_receipt_execution_proves_actual_suite_run(self):
+        # The receipt check must run the real receipt suites, not merely match a
+        # filename. Discovery must report the receipt_writer tests, and a run that
+        # never executes any receipt suite fails closed.
+        repo = str(Path(__file__).resolve().parent.parent)
+        real = subprocess.run(
+            [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts',
+             '-p', 'test_receipt*.py', '-v'],
+            cwd=repo, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=dict(os.environ, PYTHONPATH=str(Path(repo) / 'scripts')))
+        self.assertEqual(0, real.returncode, real.stdout)
+        self.assertIn('test_receipt_writer', real.stdout)
+        executed = runner.execute_validation(
+            'receipt-execution-tests', repo)
+        self.assertEqual(
+            ['test_receipt_writer.py', 'test_receipt_verifier.py',
+             'test_receipt_chain.py', 'test_receipt_tasklink.py',
+             'test_ci_workflow_policy_receipts.py'], executed)
+        # A stub that never runs the receipt writer suite must not authenticate.
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        empty = CompletedProcess([], 0, 'Ran 0 tests in 0.000s\n\nOK\n', '')
+        with patch.object(runner.subprocess, 'run', return_value=empty):
+            with self.assertRaisesRegex(RuntimeError, 'did not run'):
+                runner.execute_validation('receipt-execution-tests', repo)
 if __name__ == '__main__':
     unittest.main()

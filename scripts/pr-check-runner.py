@@ -2,6 +2,7 @@
 """Trusted selected-check execution and authenticated final-result verification."""
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -89,10 +90,10 @@ OPENBAO_REQUIRED_TESTS = (
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
-               'openbao-package-tests',
-               'pr-planner-tests', 'ci-policy', 'ci-actionlint',
-               'ci-executor-verifier-tests',
-               'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
+                'openbao-package-tests',
+                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
+                'ci-executor-verifier-tests', 'receipt-execution-tests',
+                'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
                'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
@@ -103,7 +104,7 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check != 'openbao-package-tests':
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'receipt-execution-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'openbao-package-tests':
         # Require the frozen bootstrap unit families; native opt-in acceptance
@@ -133,6 +134,29 @@ def execute_validation(check, repository):
             if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
                 raise RuntimeError('OpenBao test missing PASS: ' + name)
         return list(OPENBAO_REQUIRED_TESTS)
+    if check == 'receipt-execution-tests':
+        # Prove the receipt control-plane suites actually execute, not merely a
+        # filename match. Discover the real unittest count, then run the same
+        # discovery-driven selection and require at least one test to have run
+        # and PASS; a suite that silently matches nothing fails closed.
+        repo = Path(repository)
+        env = dict(os.environ, PYTHONPATH=str(repo / 'scripts'))
+        discovered = subprocess.run(
+            [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts',
+             '-p', 'test_receipt*.py', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, env=env)
+        if discovered.returncode:
+            raise RuntimeError('receipt discovery/execution failed: ' + discovered.stdout)
+        # unittest -v prints "<method> (module.Class.test_method) ... ok".
+        # Require at least one receipt suite to have actually executed; a run
+        # that matches nothing returns no such line.
+        ran = re.search(r'\(test_receipt[_a-z]*\.[^(]+\(', discovered.stdout)
+        if not ran:
+            raise RuntimeError('receipt-execution-tests: expected receipt suites did not run')
+        return ['test_receipt_writer.py', 'test_receipt_verifier.py',
+                'test_receipt_chain.py', 'test_receipt_tasklink.py',
+                'test_ci_workflow_policy_receipts.py']
     patterns = WIZARD_TEST_FAMILIES.get(check)
     if patterns is None:
         raise ValueError('unsupported executable validation')

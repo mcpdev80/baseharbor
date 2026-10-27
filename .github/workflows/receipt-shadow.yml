@@ -1,18 +1,43 @@
 # DORMANT minimal-receipts shadow consumer (W1, PR 2 preparation).
-# Reads one pilot receipt from protected Planning through the frozen
-# scripts/receipt_verifier.py CLI (FREEZE-PR1: modes retained/live; flags
-# --planning --revision --receipt --candidate --plan; receipt path
-# evidence/receipts/public-contracts/<run>-<attempt>.json). It only shadows
-# the existing final check: activate by replacing the job-level never-true
-# guard after PR 1 is accepted and PR 2's Owner approves the shadow chain.
-# Until then nothing here runs, no existing trigger or required check is
-# touched and the result never gates any merge.
+#
+# Retained-only consumption of one published, Owner-approved receipt after the
+# approval publication is durable. This replaces the earlier PR-open,
+# live-fallback design that consumed evidence before it existed: the consumer
+# now reads exactly the approved receipt path, plan revision and candidate that
+# the trusted approval job published, verifies them offline against the full
+# protected Planning history, and never calls the GitHub API for a live fallback.
+#
+# The producer workflow that triggers publication is asynchronous and cannot be
+# awaited by the producer; the shadow is therefore a reusable workflow that the
+# trusted approval job (receipt-approval.yml) runs from protected main, not a
+# PR-open job that waits for after-the-fact evidence.
+#
+# Activation still needs a later cutover PR that (a) replaces the never-true
+# job guard, (b) arms the trigger from the approved approval job, and (c) passes
+# the exact published receipt/plan/candidate from the trusted approval job
+# outputs. Until then nothing here runs, no existing trigger or required check
+# is touched and the result never gates any merge.
+
 name: "Receipt · Shadow Final Check"
 
 on:
-  pull_request:
-    branches:
-      - develop
+  workflow_call:
+    inputs:
+      receipt:
+        description: Exact published receipt path relative to the Planning checkout
+        type: string
+        required: true
+      plan:
+        description: Exact approved plan revision (full Planning commit SHA)
+        type: string
+        required: true
+      candidate:
+        description: Exact approved candidate SHA the receipt binds
+        type: string
+        required: true
+    secrets:
+      PLANNING_RECEIPT_WRITE_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -20,7 +45,10 @@ permissions:
 jobs:
   receipt_shadow:
     name: PR · Receipt Shadow Consumption
-    if: github.repository == 'mcpdev80/receipt-shadow-dormant' # DORMANT: only the Owner-gated approval dispatch (receipt-approval.yml) lives in this shadow run; the shadow final check itself is replayed manually and the producer is already proven, so it stays dormant here (no trigger armed, no required check added). Activate by replacing this guard in a later cutover PR.
+    # DORMANT: never-true guard (references a non-existent repo). Replace with
+    # the approved approval-job dispatch in a later cutover PR. GitHub only
+    # allows `if:` at job level; a workflow-level guard is not valid syntax.
+    if: github.repository == 'mcpdev80/receipt-shadow-dormant'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -28,54 +56,38 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Fetch protected Planning history read-only
+
+      - name: Fetch protected Planning history read-only (full history)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: mcpdev80/baseharbor-plan
           ref: main
           path: planning
+          fetch-depth: 0
           persist-credentials: false
-      - name: Verify this candidate's receipt with the frozen interface
+
+      - name: Verify this candidate's published receipt with the frozen interface
         env:
-          CANDIDATE: ${{ github.sha }}
+          RECEIPT: ${{ inputs.receipt }}
+          PLAN: ${{ inputs.plan }}
+          CANDIDATE: ${{ inputs.candidate }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          # The candidate is the exact published candidate the Owner approved,
+          # never the PR head: a live fallback to any apparently-green candidate
+          # is not trusted. Retained verification uses no GitHub API.
           revision="$(git -C planning rev-parse HEAD)"
-          found="$(python3 - <<'PY'
-          import glob
-          import importlib.util
-          import os
-          import pathlib
-
-          spec = importlib.util.spec_from_file_location('receipt_verifier',
-                                                        'scripts/receipt_verifier.py')
-          verifier = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(verifier)
-          candidate = os.environ['CANDIDATE']
-          matches = []
-          for path in sorted(glob.glob('planning/evidence/receipts/' + verifier.GATE
-                                       + '/*.json')):
-              value = verifier.receipt(pathlib.Path(path).read_bytes())
-              if value['sha'] == candidate:
-                  matches.append((pathlib.Path(path).relative_to('planning').as_posix(),
-                                  'retained' if value['approved'] is not None else 'live',
-                                  value['plan']))
-          if len(matches) != 1:
-              raise SystemExit('receipt shadow: expected exactly one receipt for the '
-                               'candidate, found ' + str(len(matches)))
-          print(' '.join(matches[0]))
-          PY
-          )"
-          read -r receipt mode plan <<< "$found"
-          python3 scripts/receipt_verifier.py "$mode" \
+          python3 scripts/receipt_verifier.py retained \
             --planning planning --revision "$revision" \
-            --receipt "$receipt" --candidate "$CANDIDATE" --plan "$plan"
+            --receipt "$RECEIPT" --candidate "$CANDIDATE" --plan "$PLAN"
           {
             echo "## Receipt shadow consumption (informational, never required)"
-            echo "- mode: \`$mode\`"
-            echo "- receipt: \`$receipt\`"
+            echo "- receipt: \`$RECEIPT\`"
+            echo "- plan revision: \`$PLAN\`"
+            echo "- candidate: \`$CANDIDATE\`"
             echo "- planning revision: \`$revision\`"
           } >> "$GITHUB_STEP_SUMMARY"

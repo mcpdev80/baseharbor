@@ -652,6 +652,7 @@ jobs:
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
           python3 scripts/test_targeted_gate_ref.py
+          PYTHONPATH=scripts python3 scripts/pr-check-runner.py execute --check receipt-execution-tests --repository .
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}

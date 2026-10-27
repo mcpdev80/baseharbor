@@ -677,6 +677,8 @@ CI_CHECKS = [
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+    {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
+     'command': 'PYTHONPATH=scripts python3 -m unittest discover -s scripts -p "test_receipt*.py"'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
