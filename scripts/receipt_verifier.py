@@ -78,6 +78,66 @@ def full_sha(value):
     return isinstance(value, str) and SHA.fullmatch(value) is not None
 
 
+def extract_facts(producer_plan, *, artifact_size):
+    """Bounded, strict extraction of the authenticated producer facts (D3).
+
+    Derives head/candidate/base SHAs, run id, attempt and workflow id from the
+    real producer plan object and returns them as typed values. Every input is
+    validated for type, length and hexness BEFORE anything is returned, so a
+    malformed/missing/null/duplicate field blocks at extraction and no consumer
+    is invoked with spoofed context. Duplicate JSON keys are rejected by the
+    canonical decoder that built *producer_plan*; this guards the resolved value.
+
+    Parameters
+    ----------
+    producer_plan : dict
+        The decoded `pr-plan.json` payload from the authenticated artifact.
+    artifact_size : int
+        The artifact size in bytes from the authenticated artifact object,
+        already bounded by the caller against the documented maximum.
+
+    Returns
+    -------
+    dict
+        ``{"head_sha", "candidate_sha", "base_sha", "run_id", "attempt",
+        "workflow_id"}`` with strict positive-int and 40-hex SHA types.
+
+    Raises
+    ------
+    ReceiptError
+        On any missing/null/malformed/duplicate field, wrong type, non-positive
+        integer, non-hex/short SHA, or oversized artifact.
+    """
+    require(isinstance(producer_plan, dict), "producer plan is not an object")
+    require(isinstance(artifact_size, int) and type(artifact_size) is not bool
+            and 0 < artifact_size <= 65536, "artifact size must be a bounded positive int")
+    require(producer_plan.get("schema") == "baseharbor.pr-gate-plan/v1",
+            "unknown producer plan schema")
+
+    def _sha40(field):
+        raw = producer_plan.get(field)
+        require(isinstance(raw, str) and SHA.fullmatch(raw) is not None,
+                "missing or malformed %s (need 40 lowercase hex)" % field)
+        return raw
+
+    head_sha = _sha40("head_sha")
+    integration_sha = _sha40("integration_sha")
+    base_sha = _sha40("target_base_sha")
+
+    run_id = producer_plan.get("run_id")
+    require(type(run_id) is int and run_id > 0, "run_id must be a positive integer")
+    attempt = producer_plan.get("attempt")
+    require(type(attempt) is int and attempt == 1,
+            "attempt must be the integer 1 (pilot restriction)")
+    workflow_id = producer_plan.get("workflow_id")
+    require(type(workflow_id) is int and workflow_id > 0,
+            "workflow_id must be a positive integer")
+
+    return {"head_sha": head_sha, "candidate_sha": integration_sha,
+            "base_sha": base_sha, "run_id": run_id, "attempt": attempt,
+            "workflow_id": workflow_id}
+
+
 def receipt(raw):
     value = decode(raw, 500)
     require(set(value) == {"gate", "run", "sha", "status", "plan", "approved"},

@@ -2,6 +2,7 @@
 """Create one canonical, unapproved pilot receipt, commit it to Planning, and publish."""
 import argparse
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
@@ -77,12 +78,59 @@ def _remote_head(root, branch: str) -> Optional[str]:
     return None
 
 
+def _is_real_remote(root, remote="origin") -> bool:
+    """True when *remote* is a network (http/https) remote that needs
+    in-process authentication; local bare/`file:` remotes (tests) do not."""
+    try:
+        url = git(root, "remote", "get-url", remote).decode().strip()
+    except Exception:
+        return False
+    return url.startswith(("http://", "https://", "git@", "ssh://"))
+
+
+def _push_authed(root, args):
+    """Push with in-process auth injected for THIS call only.
+
+    The Planning write token authorizes the single bounded publication against
+    the real (network) Planning remote. The token is passed via
+    ``http.extraheader`` (an ephemeral git config value on the subprocess argv)
+    so it is never written to the checkout, never added to a persisted remote
+    URL and never echoed: the value is not captured in stdout/stderr here and
+    the caller never prints the push arguments. Any downstream read-back uses
+    an ordinary anonymous fetch. For a local bare/`file:` remote no
+    authentication is required; for a network remote a missing token fails
+    closed BEFORE the push is attempted — a local commit is never reported as
+    a durable publication.
+    """
+    args = list(args)
+    if not _is_real_remote(root):
+        return git_stderr(root, *args)
+    token = os.environ.get("PLANNING_RECEIPT_WRITE_TOKEN", "")
+    require(bool(token),
+            "PLANNING_RECEIPT_WRITE_TOKEN required; publication push blocked")
+    authed_args = ["-c", "http.extraheader=AUTHORIZATION: bearer %s" % token, *args]
+    return git_stderr(root, *authed_args)
+
+
 def _current_remote_bytes(root, path: str) -> Optional[bytes]:
     """Return the receipt bytes at the current remote HEAD, or None (absent)."""
     try:
         return git(root, "show", "origin/main:" + path)
     except Exception:
         return None
+
+
+_SCRUB_RE = re.compile(r"(Authorization|bearer)\s*[:=]\s*[^\s,]+", re.IGNORECASE)
+
+
+def _scrub_secret(text: str) -> str:
+    """Redact any bearer/authorization credential from a push diagnostic so a
+    rejection message can never leak the Planning write token."""
+    if not text:
+        return text
+    redacted = _SCRUB_RE.sub("\\1: <redacted>", text)
+    redacted = redacted.replace("x-access-token", "<redacted-token>")
+    return redacted
 
 
 def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
@@ -183,11 +231,12 @@ def publish(root: Path, path: str, local_commit: str, *,
     # A genuine receipt conflict (the durable receipt exists with different
     # bytes) blocks and raises.
     for attempt in range(1, MAX_PUSH_RETRIES + 1):
-        rc, out, err = git_stderr(root, "push", "origin", f"{local_commit}:refs/heads/main")
-        if rc == 0:
+        rc2, out2, err2 = _push_authed(
+            root, ("push", "origin", f"{local_commit}:refs/heads/main"))
+        if rc2 == 0:
             return path, _find_introduction(root, path, local_commit), local_commit
-        stderr = err.decode(errors="replace")
-        if attempt >= MAX_PUSH_RETRIES or not _is_rejected_push(rc, stderr):
+        stderr = _scrub_secret(err2.decode(errors="replace"))
+        if attempt >= MAX_PUSH_RETRIES or not _is_rejected_push(rc2, stderr):
             raise ReceiptError(f"publication push failed: {stderr.strip()}")
         # Non-fast-forward rejection — fresh remote diverged.
         try:
@@ -208,12 +257,12 @@ def publish(root: Path, path: str, local_commit: str, *,
         # The receipt is still absent on the fresh remote: re-apply our own
         # edit onto the fresh HEAD and ordinary-push.
         if _reapply_onto(root, path, raw, head=remote_after_fetch):
-            rc2, out2, err2 = git_stderr(root, "push", "origin", f"HEAD:refs/heads/main")
-            if rc2 == 0:
+            rc3, _, err3 = _push_authed(root, ("push", "origin", "HEAD:refs/heads/main"))
+            if rc3 == 0:
                 reapplied = git(root, "rev-parse", "HEAD").decode().strip()
                 return path, _find_introduction(root, path, reapplied), reapplied
-            reapplied_stderr = err2.decode(errors="replace")
-            if not _is_rejected_push(rc2, reapplied_stderr):
+            reapplied_stderr = _scrub_secret(err3.decode(errors="replace"))
+            if not _is_rejected_push(rc3, reapplied_stderr):
                 raise ReceiptError(f"publication re-apply push failed: {reapplied_stderr.strip()}")
             # Still diverged after re-apply (fast-forward exhausted): fall back to
             # idempotent return only if the fresh remote now carries our own bytes.
@@ -240,14 +289,14 @@ def _find_introduction(root: Path, path: str, revision: str) -> str:
     return revision
 
 
-def write(root, plan_revision, run_id, attempt, api=None) -> Tuple[str, str]:
+def write(root, plan_revision, run_id, attempt, api=None, *, product=None) -> Tuple[str, str]:
     plan = load_plan(root, plan_revision)
     value = {"gate": GATE, "run": {"id": run_id, "attempt": attempt},
              "sha": plan["candidate_sha"], "status": "pass", "plan": plan_revision,
              "approved": None}
     raw = canonical(value)
     receipt(raw)
-    live(value, plan, **({"api": api} if api is not None else {}))
+    live(value, plan, **({"api": api} if api is not None else {}), product=product)
     path = path_for(value)
     commit = commit_file(root, path, raw)
     return path, commit

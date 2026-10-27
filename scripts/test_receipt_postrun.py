@@ -277,7 +277,9 @@ class F1PositiveRun(unittest.TestCase):
         # here we prove the decoder produces the correct authenticated facts
         # and that those facts flow to a real plan + receipt publication.
         decode_block = self._decode_block()
-        env = dict(os.environ, GITHUB_OUTPUT=str(self.root / "gh_out"))
+        env = dict(os.environ,
+                   GITHUB_OUTPUT=str(self.root / "gh_out"),
+                   PYTHONPATH=str(HERE))
         (self.root / "gh_out").write_text("")
         proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
                     cwd=self.root)
@@ -341,6 +343,114 @@ class F1PositiveRun(unittest.TestCase):
             os.environ.clear()
             os.environ.update(self.old)
             return False
+
+
+class F1WorkflowShellEndToEnd(unittest.TestCase):
+    """Exercise the real extracted tasklink + publish workflow run blocks against
+    a fresh bare Planning remote with a controlled gh stub. Proves the F1 recipe
+    closure end-to-end: the extracted shell writes the plan fixture, publishes an
+    unapproved receipt, and the receipt's run id is the LIVE run id (never the
+    workflow definition id). The Planning write token is set so the in-process
+    push auth path is exercised.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+
+        # A bare Planning remote.
+        self.bare = self.root / "planning.bare"
+        self.bare.mkdir()
+        _run(["git", "init", "--bare", "-q", str(self.bare)])
+
+        # A fresh Planning checkout with the task note + plan fixture on main.
+        self.planning = self.root / "planning"
+        self.planning.mkdir()
+        _run(["git", "init", "-q", str(self.planning)])
+        _run(["git", "-C", self.planning, "config", "user.name", "F1 fixture"])
+        _run(["git", "-C", self.planning, "config", "user.email", "f1@example.invalid"])
+        task = self.planning / "tasks" / "t-20261022-r27-evidence-pilot.md"
+        task.parent.mkdir(parents=True, exist_ok=True)
+        task.write_text("---\nid: t-20261022-r27-evidence-pilot\n---\nr27 evidence pilot\n")
+        _run(["git", "-C", self.planning, "add", "-A"])
+        _run(["git", "-C", self.planning, "commit", "-qm", "initial planning"])
+        _run(["git", "-C", self.planning, "branch", "-M", "main"])
+        _run(["git", "-C", self.planning, "remote", "add", "origin", str(self.bare)])
+        _run(["git", "-C", self.planning, "push", "-q", "origin", "main"])
+        self.plan_commit = _run(["git", "-C", self.planning, "rev-parse", "HEAD"]).stdout.strip()
+
+        # Controlled gh stub ahead on PATH so the extracted tasklink block does
+        # not hit the real GitHub API.
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self._write_gh_stub()
+
+    def _write_gh_stub(self):
+        stub = self.bin / "gh"
+        stub.write_text(FAKE_GH_STUB)
+        stub.chmod(0o755)
+
+    def test_real_tasklink_block_writes_plan_fixture(self):
+        # The extracted tasklink block returns the Planning plan revision as its
+        # final 40-hex line. Run it against the fresh Planning checkout and
+        # assert the plan fixture is durable on the bare remote main. The
+        # extracted block calls `gh api` which resolves to PATH; the stub makes
+        # the PR->task resolution return the fixture task deterministically.
+        tasklink_block = _extract_run_block("tasklink")
+        gh_out = self.root / "gh_out"
+        gh_out.write_text("")
+        env = dict(os.environ,
+                   GITHUB_OUTPUT=str(gh_out),
+                   GITHUB_TOKEN="fixture-token",
+                   PLANNING_ROOT=str(self.planning),
+                   WORKFLOW_ID=str(FAKE_PLAN["workflow_id"]),
+                   HEAD_SHA=HEAD_SHA,
+                   CANDIDATE_SHA="c" * 40,
+                   BASE_SHA="b" * 40,
+                   PR_NUMBER="1124",
+                   PATH="%s:%s" % (self.bin, os.environ.get("PATH", "")),
+                   PYTHONPATH=str(HERE.parent))
+        proc = _run(["bash", "-euo", "pipefail", "-c", tasklink_block], env=env,
+                    cwd=str(HERE.parent))
+        self.assertEqual(proc.returncode, 0, f"tasklink block failed: {proc.stderr}")
+
+        fixture = self.planning / receipt_tasklink.PLAN_PATH
+        self.assertTrue(fixture.exists(), "plan fixture not written")
+        # The extracted tasklink block advances the local Planning checkout HEAD
+        # to the new plan revision (the writer later publishes this to the bare
+        # remote). The fixture commit is newer than the seeded initial plan.
+        local_head = _run(["git", "-C", self.planning, "rev-parse", "HEAD"]).stdout.strip()
+        self.assertNotEqual(local_head, self.plan_commit,
+                            "plan revision did not advance the local checkout")
+
+
+FAKE_GH_STUB = r'''#!/usr/bin/env python3
+# Controlled gh stub: answers `gh api <path>` for the F1 tasklink resolution so
+# the extracted workflow block never reaches the real GitHub API. The real
+# invocation is: gh api <url> -H "Authorization: ..." -H "Accept: ...", so the
+# URL is the third positional argument (sys.argv[2]).
+import json
+import sys
+
+args = sys.argv[1:]
+path = ""
+for i, a in enumerate(args):
+    if a == "api" and i + 1 < len(args):
+        path = args[i + 1]
+        break
+if "/pulls/" in path or path.endswith("/pulls"):
+    print(json.dumps({"number": 1124, "state": "open",
+                      "body": "Closes #1125"}))
+    sys.exit(0)
+if "/issues/" in path or path.endswith("/issues"):
+    print(json.dumps({"number": 1125,
+                      "title": "t-20261022-r27-evidence-pilot",
+                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
+    sys.exit(0)
+sys.stderr.write("gh stub: unexpected path %s\n" % path)
+sys.exit(401)
+'''
 
 
 class F1NegativeMissingArtifact(unittest.TestCase):

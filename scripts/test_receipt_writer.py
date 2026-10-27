@@ -15,6 +15,7 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 import receipt_writer as writer
 import receipt_verifier as verifier
@@ -579,6 +580,57 @@ class PublishRemoteTest(TestCase):
         durable = (concurrent / path).read_bytes()
         verifier.receipt(durable)
 
+    def test_publish_receipt_preserves_plan_ancestry_and_unrelated_edit(self):
+        """F3: a fresh unpublished plan fixture on main plus a receipt racing an
+        unrelated concurrent edit must retain BOTH the plan ancestry and the
+        unrelated edit. publish() re-applies only its own receipt edit onto the
+        fresh remote HEAD, never discarding an unrelated concurrent change or
+        the referenced plan commit.
+        """
+        # Seed the bare remote main with an unrelated edit (a plan fixture that
+        # an unrelated writer added), so the receipt's fast-forward push is a
+        # non-fast-forward and must trigger the re-apply path.
+        unrelated_wt = self.root / 'unrelated_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(unrelated_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.name', 'Unrelated'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.email',
+                        'unrelated@example.invalid'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        plan_parent = Path(unrelated_wt) / Path(verifier.PLAN_PATH).parent
+        plan_parent.mkdir(parents=True, exist_ok=True)
+        unrelated_plan = verifier.canonical(dict(
+            gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+            head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+            task='tasks/unrelated-pilot.md'))
+        (unrelated_wt / verifier.PLAN_PATH).write_bytes(unrelated_plan)
+        _git(unrelated_wt, 'add', verifier.PLAN_PATH)
+        _git(unrelated_wt, 'commit', '-qm', 'unrelated plan fixture')
+        _git(unrelated_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # Now publish the receipt from the client working tree.
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        _, intro, pub = writer.publish(self.wt, path, commit)
+
+        # The unrelated plan fixture AND the published receipt both survive on
+        # the durable remote main.
+        remote_wt = self.root / 'verify_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(remote_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(remote_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        self.assertTrue((remote_wt / verifier.PLAN_PATH).is_file(),
+                        "unrelated plan fixture was lost on receipt retry")
+        self.assertEqual((remote_wt / verifier.PLAN_PATH).read_bytes(),
+                         unrelated_plan, "unrelated plan fixture was overwritten")
+        self.assertTrue((remote_wt / path).is_file(), "receipt not durable")
+        # Exactly one receipt edit exists (our own), no force-push rewrite.
+        history = _git(remote_wt, 'log', '--format=%H', '--', path).decode().splitlines()
+        self.assertEqual(len(history), 1,
+                         "expected exactly one receipt edit, got %d" % len(history))
+
     def test_write_and_publish_returns_introduction_and_publication(self):
         """write_and_publish() returns correct introduction and publication commits."""
         path, intro, pub = writer.write_and_publish(self.wt, self._head_wt(), 123, 1, api=self._api)
@@ -597,6 +649,78 @@ class PublishRemoteTest(TestCase):
         remote_head_before = self._head_remote()
         path2, intro, pub = writer.publish(self.wt, path, commit)
         self.assertNotEqual(self._head_remote(), remote_head_before)
+
+    def test_missing_token_fails_closed_for_real_remote_before_pushing(self):
+        """Owner finding: a missing PLANNING_RECEIPT_WRITE_TOKEN must fail
+        closed BEFORE any push attempt against a real network remote — never
+        report a local commit as a durable publication.
+
+        Deterministic: a network remote URL is classified by _is_real_remote;
+        _push_authed then requires the token before issuing any push. No live
+        server is spawned (which would hang on git's dumb-HTTP protocol).
+        """
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        net_root = Path(tmp.name) / "net"
+        net_root.mkdir()
+        _git(net_root, "init", "-q")
+        _git(net_root, "config", "user.name", "x")
+        _git(net_root, "config", "user.email", "x@example.invalid")
+        (net_root / "f").write_text("x\n")
+        _git(net_root, "add", ".")
+        _git(net_root, "commit", "-qm", "f")
+        _git(net_root, "remote", "add", "origin",
+             "http://127.0.0.1:1/baseharbor.git")
+        self.assertTrue(writer._is_real_remote(net_root, "origin"))
+        old = os.environ.pop("PLANNING_RECEIPT_WRITE_TOKEN", None)
+        try:
+            with self.assertRaisesRegex(verifier.ReceiptError, "required"):
+                writer._push_authed(net_root, ("push", "origin", "HEAD"))
+        finally:
+            if old is not None:
+                os.environ["PLANNING_RECEIPT_WRITE_TOKEN"] = old
+
+    def test_push_auth_injected_for_real_remote_not_persisted(self):
+        """Owner finding: the push authenticates in-process only (extraheader),
+        never persists the credential, and never echoes it.
+        """
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        net_root = Path(tmp.name) / "net"
+        net_root.mkdir()
+        _git(net_root, "init", "-q")
+        _git(net_root, "config", "user.name", "x")
+        _git(net_root, "config", "user.email", "x@example.invalid")
+        (net_root / "f").write_text("x\n")
+        _git(net_root, "add", ".")
+        _git(net_root, "commit", "-qm", "f")
+        _git(net_root, "remote", "add", "origin",
+             "http://127.0.0.1:1/baseharbor.git")
+        self.assertTrue(writer._is_real_remote(net_root, "origin"))
+        # Missing token -> fails closed.
+        with self.assertRaisesRegex(verifier.ReceiptError, "required"):
+            writer._push_authed(net_root, ("push", "origin", "HEAD"))
+        # With a token the extraheader arg is present on the argv; the token is
+        # passed via -c http.extraheader, never stored in git config or the
+        # remote URL. The network push fails (no server); the error must not
+        # leak the token value.
+        with patch.dict(os.environ,
+                        {"PLANNING_RECEIPT_WRITE_TOKEN": "fixture-token-not-a-secret"},
+                        clear=True):
+            try:
+                writer._push_authed(net_root, ("push", "origin", "HEAD"))
+            except verifier.ReceiptError as exc:
+                self.assertNotIn("fixture-token", str(exc))
+        cfg = subprocess.run(["git", "-C", str(net_root), "config", "--local"],
+                             capture_output=True, text=True).stdout
+        self.assertNotRegex(cfg, r"authorization|extraheader|fixture-token",
+                            "push credential persisted in local git config")
+        remotes = subprocess.run(["git", "-C", str(net_root), "remote", "v"],
+                                 capture_output=True, text=True).stdout
+        self.assertNotRegex(remotes, r"fixture-token",
+                            "push credential leaked into remote URL")
 
     def test_publish_reports_push_failure(self):
         """BF-W2-1 fix: publish() MUST propagate git push errors, never return success.
