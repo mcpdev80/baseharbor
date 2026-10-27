@@ -123,3 +123,4 @@
 {"nonce":"dispatch-1793065987-648654-25784","sid":"bc2d3c20-cc50-40b7-98b9-aa8ea5244456","outcome":"currency-hold","currency":"stale"}
 {"nonce":"dispatch-1793066010-657037-22119","sid":"bc2d3c20-cc50-40b7-98b9-aa8ea5244456","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
 {"nonce":"dispatch-1793066572-809731-27767","sid":"6f3c3b13-32bd-41ef-bd4a-da433b6a8820","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}
+{"nonce":"dispatch-1793067909-1083909-16329","sid":"2015cc8a-c4a3-4dea-93e2-6769a10d1c9f","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

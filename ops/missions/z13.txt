@@ -1,0 +1,5 @@
+pwd-PFLICHT. ROLLE: REVIEW (read-only). Zwei Kandidaten final pruefen, je ein VERDICT:
+A) PR #1102 (head via gh pr view): Diff = NUR receipt-approval.yml resolve-step env; gelbe Fehler-Kette nachvollziehen (runs 40436294342 pin, 40437563155 depth, 40437960992 env-empty) - ist env-Replikation (inputs default identisch in resolve+approve) konsistent? REWORK falls Defaults divergieren.
+B) PR #1096 NEUER head (align-merge): Diff gegen develop enthaellt jetzt 4 Dateien (3x internal/application + 2x scripts mapping) - Mapping-Zweig pr-gate-plan.py:1347ff korrekt positioniert VOR generic internal/application? Simuliere base-copy-planner (develop base, integration=merge-tree(develop,head)): coverage resolved, unresolved [], selected_gates nicht leer, integration_sha == GH merge commit? (gh api repos/mcpdev80/baseharbor/pulls/1096 --jq .head.sha gegen pr-plan.json integration_sha des neuen CI-Runs vergleichen).
+Evidence evidence/board-2026-10-26/z13-verify-1102-1096.md mit BEIDEN Abschnitten + END.
+END Z13-DONE / END Z13-BLOCKED
