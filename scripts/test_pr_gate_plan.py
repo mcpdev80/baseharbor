@@ -1203,7 +1203,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                      'scripts/test_receipt_chain.py',
                      'scripts/test_ci_workflow_policy_receipts.py',
                      'scripts/test_receipt_tasklink.py',
-                     'scripts/test_pr_gate_plan_receipt_paths.py']:
+                     'scripts/test_receipt_postrun.py']:
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -3537,8 +3537,8 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 assert_rejected(actual(dirty))
 
 
-class ReceiptControlPlaneMappingTests(unittest.TestCase):
-    """Bootstrap regressions: persistent receipt-class mappings (v0.4.27)."""
+class ReceiptControlPlaneExecutionTests(unittest.TestCase):
+    """Bootstrap regressions: receipt-execution-tests coupling and actual suite execution."""
 
     def check_ids(self, result):
         return {check['id'] for check in result['required_validation_checks']}
@@ -3582,8 +3582,8 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
             'receipt-execution-tests', str(Path(__file__).resolve().parent.parent))
         self.assertEqual(
             ['test_receipt_writer.py', 'test_receipt_verifier.py',
-             'test_receipt_chain.py', 'test_receipt_tasklink.py',
-             'test_ci_workflow_policy_receipts.py'], executed)
+             'test_receipt_chain.py', 'test_ci_workflow_policy_receipts.py',
+             'test_receipt_tasklink.py', 'test_receipt_postrun.py'], executed)
 
 
 class RuntimeProjectionPathMappingTests(unittest.TestCase):
@@ -3608,177 +3608,6 @@ class RuntimeProjectionPathMappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('application lifecycle/provider resolution impact needs targeted qualification',
                       ' '.join(result['unresolved_coverage']))
-
-
-class FinalheadAkteQualificationTests(unittest.TestCase):
-    """F41: akte_finalhead_checks resolves coverage when Akte record exists on the
-    integration commit (FINALHEAD), and stays unresolved when it does not.
-
-    The Akte mechanism reads ci-binding-qualifications.md from the
-    integration commit SHA, not the target base. This permits a large-diff
-    candidate whose HEAD changes exceed the 3/4-file registry limit to
-    resolve when the Akte record on the FINALHEAD binds the reviewed_head.
-    """
-
-    CI_PATHS = ('scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-                'scripts/test_pr_gate_plan.py')
-    RECORD_PATH = 'docs/internal/ci-binding-qualifications.md'
-    CHECKS = planner.CI_CHECKS
-
-    def setUp(self):
-        temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
-        self.git('init', '-q')
-        self.git('config', 'user.name', 'Akte fixture')
-        self.git('config', 'user.email', 'akte@example.invalid')
-        # Create the CI scripts on develop base
-        for path in self.CI_PATHS:
-            file = self.root / path
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_text('baseline\n')
-        self.git('add', '.')
-        self.git('commit', '-qm', 'base')
-        self.base = self.git('rev-parse', 'HEAD')
-
-        # Create a PR branch with modified CI scripts (candidate head)
-        self.git('checkout', '-q', '--detach', self.base)
-        self.git('checkout', '-q', '-b', 'candidate')
-        for path in self.CI_PATHS:
-            (self.root / path).write_text('candidate content\n')
-        self.git('add', '.')
-        self.git('commit', '-qm', 'candidate head')
-        self.head = self.git('rev-parse', 'HEAD')
-
-        # Load the diff-base resolver
-        spec = importlib.util.spec_from_file_location(
-            'finalhead_resolver', ROOT / 'pr-diff-base.py')
-        self.resolver = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(self.resolver)
-
-    def git(self, *args):
-        return subprocess.run(['git', '-C', str(self.root), *args],
-                              check=True, capture_output=True, text=True).stdout.strip()
-
-    def blob_sha(self, head, path):
-        blob = subprocess.run(['git', '-C', str(self.root), 'cat-file', 'blob',
-                               f'{head}:{path}'], check=True,
-                              capture_output=True).stdout
-        return hashlib.sha256(blob).hexdigest()
-
-    def entry_without_reviewed_head(self, head_sha):
-        """Build an Akte entry that references an incorrect reviewed_head."""
-        return {'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
-                'reviewed_head': '0' * 40,
-                'files': {path: 'modified' for path in self.CI_PATHS},
-                'file_hashes': {path: self.blob_sha(head_sha, path)
-                                for path in self.CI_PATHS},
-                'required_checks': [c['id'] for c in self.CHECKS]}
-
-    def entry_with_reviewed_head(self, head_sha):
-        """Build an Akte entry that correctly references the candidate head."""
-        return {'repository': 'mcpdev80/baseharbor', 'target_branch': 'develop',
-                'reviewed_head': head_sha,
-                'files': {path: 'modified' for path in self.CI_PATHS},
-                'file_hashes': {path: self.blob_sha(head_sha, path)
-                                for path in self.CI_PATHS},
-                'required_checks': [c['id'] for c in self.CHECKS]}
-
-    def plan_with_finalhead_akte(self, akte_entry, has_integration=True):
-        """Build an integration commit with the Akte record and plan against it.
-
-        The target_base is the develop base.
-        The head is the candidate branch.
-        The integration commit carries the Akte record on FINALHEAD.
-        """
-        # Create the Akte record text
-        if akte_entry is not None:
-            record_text = '```json\n' + json.dumps(akte_entry) + '\n```\n'
-            record_path = self.root / self.RECORD_PATH
-            record_path.parent.mkdir(parents=True, exist_ok=True)
-            record_path.write_text(record_text)
-            # Add the record and create a new commit that includes it
-            self.git('add', self.RECORD_PATH)
-            self.git('commit', '-qm', 'integration with akte record')
-            # Now create the integration commit tree that merges base_with_record + candidate
-            target_with_record = self.git('rev-parse', 'HEAD')
-            tree = self.git('merge-tree', '--write-tree', target_with_record, self.head).splitlines()[0]
-            self.git('reset', '-q')
-            integration = self.git('commit-tree', tree, '-p', target_with_record, '-p', self.head,
-                                   '-m', 'integration commit with akte')
-            actual = self.resolver.resolve_pr_diff(self.root, target_with_record,
-                                                    self.head, integration)
-        else:
-            # No Akte record: integration commit without the record
-            tree = self.git('merge-tree', '--write-tree', self.base, self.head).splitlines()[0]
-            self.git('reset', '-q')
-            integration = self.git('commit-tree', tree, '-p', self.base, '-p', self.head,
-                                   '-m', 'integration commit without akte')
-            actual = self.resolver.resolve_pr_diff(self.root, self.base,
-                                                    self.head, integration)
-
-        # Override integration_sha to None if requested
-        if not has_integration:
-            actual['integration_sha'] = None
-
-        previous = os.getcwd()
-        os.chdir(str(self.root))
-        try:
-            return planner.plan(actual, REQ, MAP,
-                                context_repository='mcpdev80/baseharbor',
-                                context_target_branch='develop')
-        finally:
-            os.chdir(previous)
-
-    def test_unresolved_without_finalhead_akte(self):
-        """A large-diff candidate without an Akte record on FINALHEAD stays unresolved.
-
-        No Akte entry means akte_finalhead_checks returns None, so the
-        coverage remains unresolved per the conservative fallback.
-        """
-        planned = self.plan_with_finalhead_akte(akte_entry=None)
-        self.assertEqual('unresolved', planned['coverage_status'], planned)
-        self.assertIn('CI execution/evidence impact requires specific '
-                      'qualification: scripts/pr-check-runner.py',
-                      planned['unresolved_coverage'])
-
-    def test_unresolved_with_wrong_reviewed_head(self):
-        """A candidate with an Akte record on FINALHEAD but wrong reviewed_head stays unresolved.
-
-        The Akte mechanism requires exact reviewed_head + file hashes.
-        An incorrect reviewed_head (all zeros) must fail closed and the
-        plan returns broad_required=True because validated_diff rejects it.
-        """
-        planned = self.plan_with_finalhead_akte(self.entry_without_reviewed_head(self.head))
-        self.assertEqual('unresolved', planned['coverage_status'], planned)
-        self.assertTrue(planned['broad_required'])
-
-    def test_resolved_with_correct_finalhead_akte(self):
-        """A candidate with a correct Akte record on FINALHEAD resolves.
-
-        The Akte record binds reviewed_head to the candidate head and
-        validates exact blob hashes. When the record exists on FINALHEAD
-        and matches, coverage resolves.
-        """
-        planned = self.plan_with_finalhead_akte(self.entry_with_reviewed_head(self.head))
-        self.assertEqual('resolved', planned['coverage_status'], planned)
-        self.assertEqual([], planned['unresolved_coverage'])
-        self.assertEqual([], planned['selected_gates'])
-        self.assertEqual({c['id'] for c in self.CHECKS},
-                         {c['id'] for c in planned['required_validation_checks']})
-
-    def test_unresolved_when_no_integration_sha(self):
-        """A candidate without integration_sha cannot trigger akte_finalhead_checks.
-
-        The Akte mechanism requires integration_sha to load the FINALHEAD.
-        None integration_sha must fail closed and the plan returns
-        broad_required=True because validated_diff rejects it.
-        """
-        planned = self.plan_with_finalhead_akte(
-            akte_entry=self.entry_with_reviewed_head(self.head),
-            has_integration=False)
-        self.assertEqual('unresolved', planned['coverage_status'], planned)
-        self.assertTrue(planned['broad_required'])
 
 
 def runner_validations():

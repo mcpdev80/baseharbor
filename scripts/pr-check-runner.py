@@ -105,6 +105,7 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
 RECEIPT_EXECUTION_SUITES = (
     'test_receipt_writer', 'test_receipt_verifier', 'test_receipt_chain',
     'test_receipt_tasklink', 'test_ci_workflow_policy_receipts',
+    'test_receipt_postrun',
 )
 
 
