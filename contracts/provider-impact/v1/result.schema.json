@@ -1,0 +1,35 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "plan_id",
+    "status",
+    "outcomes"
+  ],
+  "properties": {
+    "version": {
+      "const": "baseharbor.provider-impact/v1"
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial",
+        "failed"
+      ]
+    },
+    "outcomes": {
+      "type": "array",
+      "items": {
+        "$ref": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/impact.schema.json#/$defs/execution"
+      }
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/provider-impact/v1/result.schema.json",
+  "title": "Verified/partial provider-change execution result"
+}

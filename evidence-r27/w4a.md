@@ -1,0 +1,1 @@
+W4A BOOT: worktree w4a created at /home/marcel/dev/baseharbor-ecosystem/worktrees/w4a, branch work/r27-fix-f1b-recovery, head f57b30ed48f19e62452ab793801a02ccd2658414 (verified = reviewed candidate head). LANE w4a CODEX-REVIEW worker, F1/F3/F5/D3 recipes.

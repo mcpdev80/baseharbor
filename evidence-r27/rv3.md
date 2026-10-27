@@ -71,3 +71,8 @@
 ## Ende
 
 END RV3-ACCEPT
+
+
+## Coordinator relocation note
+- rv3.md lag im ROOT evidence-r27/ (FehlAblage wie rv1); verschoben nach baseharbor-plan/evidence/board-2026-10-27/rv3-review-f57b30ed.md.
+- rv3-Vorpruefung meldete END RV3-ACCEPT auf f57b30ed; CODEX-R3 dokumentierte am selben SHA reproduzierte PARTLY/OPEN-Blocker (D2 shell-Pfade bypassed, lost-ack discard). Gemäss RUNBOOK 5 ist der Lane-Verdict KEINE Abnahme: ACCEPT-Historie gilt nur als Vorpruefungs-Dokument, Abnahme bleibt CODEX-Runde auf v3.6.

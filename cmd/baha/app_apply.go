@@ -1,0 +1,409 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+
+	"github.com/charmbracelet/x/term"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/cli"
+	logsprovider "github.com/mcpdev80/baseharbor/internal/logs"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/provideroperation"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+)
+
+var appApplySecretInput io.Reader = os.Stdin
+var appApplySecretReadHidden = readApplicationSecretFromTerminalBuffered
+var appApplySecretIsTerminal = requiredSecretInputIsTerminal
+
+func requiredSecretInputIsTerminal(input io.Reader) bool {
+	file, ok := input.(*os.File)
+	return ok && term.IsTerminal(file.Fd())
+}
+
+func requiredSecretInputError(name string) error {
+	return &machine.Error{Code: machine.ErrorRequiredSecretMissing, CauseCode: "required_secret_missing", Message: "Required application secret " + name + " is missing.", Resource: name, Remediation: "requires developer input", Next: "Run 'baha app secret set " + name + "' interactively or use --stdin for automation."}
+}
+
+func appApplyCommand(store application.Store) *cli.Command {
+	return &cli.Command{
+		Name:    "apply",
+		Summary: "Converge and verify an application's backend runtime",
+		Usage:   "baha app apply [NAME] [--skip-memory-preflight]",
+		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness.",
+		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			filtered, skip := stripMemoryPreflightOverride(args)
+			ctx = withMemoryPreflightOverride(ctx, skip)
+			return executeApplicationApplyLifecycle(ctx, store, filtered, out, errOut)
+		},
+	}
+}
+
+// applicationApplyLifecycleHooks carries optional result-propagation hooks. The
+// zero value reproduces the original error-only lifecycle: no observation, no
+// mutation slot.
+type applicationApplyLifecycleHooks struct {
+	// Mutate runs inside the Target lifecycle lock before provider
+	// authorization/retirement are resolved for the changed source and before
+	// the first deployment or source-independent lifecycle state write. A
+	// failing mutation aborts without convergence.
+	Mutate func(context.Context, resolvedApplication) error
+	// CollectEvidence captures authoritative provider facts around the run
+	// while the Target lock is held. The post-run observation uses a bounded
+	// independent read-only context so cancellation or a run error preserves
+	// whatever partial effects really happened.
+	CollectEvidence bool
+	// ApprovedPlan carries an already-confirmed Edit impact through the same
+	// invocation. After mutation it may be rebound only when the freshly
+	// resolved authorization surface is unchanged.
+	ApprovedPlan *application.ProviderImpactPlan
+}
+
+// applicationApplyLifecycleEvidence binds observed provider facts and the
+// provider registry snapshot to one concrete lifecycle invocation, captured
+// together under the same Target lock. The result projection must reuse these
+// captured facts and never re-read the registry after the lock is released.
+type applicationApplyLifecycleEvidence struct {
+	Resolved resolvedApplication
+	Registry capability.Registry
+	Before   map[string]application.ProviderFact
+	After    map[string]application.ProviderFact
+	SQL      map[string]application.SQLConsumerInventory
+}
+
+func executeApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) error {
+	_, err := runApplicationApplyLifecycle(ctx, store, args, out, errOut, applicationApplyLifecycleHooks{})
+	return err
+}
+
+// runApplicationApplyLifecycle uses named result slots so the deferred
+// post-observation writes evidence.After into the returned value on every path.
+func runApplicationApplyLifecycle(ctx context.Context, store application.Store, args []string, out, errOut io.Writer, hooks applicationApplyLifecycleHooks) (evidence applicationApplyLifecycleEvidence, lifecycleErr error) {
+	execution, err := newApplicationApplyExecution(ctx, store, args, out, errOut)
+	if err != nil {
+		return evidence, err
+	}
+	if isRemoteApplication(execution.resolved) {
+		return evidence, executeRemoteApplicationApply(ctx, execution.resolved, out)
+	}
+	unlock, err := lockApplicationTargetLifecycle(execution.resolved)
+	if err != nil {
+		return evidence, err
+	}
+	defer unlock()
+	if err := requireResolvedApplicationCore(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	// Keep the existing read-only retirement preparation before an Edit so the
+	// post-mutation preparation remains a true re-plan. Provider authorization,
+	// however, must not run against the obsolete pre-edit source.
+	if hooks.Mutate == nil {
+		if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+	}
+	execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+	if err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if hooks.Mutate != nil {
+		if err := hooks.Mutate(ctx, execution.resolved); err != nil {
+			return evidence, err
+		}
+		// Edit approval belongs to the confirmed desired source. Re-read under
+		// the same Target lock, then authorize and re-plan the changed source.
+		reresolved, err := resolveApplication(ctx, store, args, "apply")
+		if err != nil {
+			return evidence, err
+		}
+		if isRemoteApplication(reresolved) {
+			return evidence, errors.New("application source changed to a remote target during mutation")
+		}
+		execution, err = newApplicationApplyExecutionFromResolved(ctx, reresolved, io.Discard, io.Discard)
+		if err != nil {
+			return evidence, err
+		}
+		if hooks.ApprovedPlan != nil {
+			if err := authorizeConfirmedApplicationEdit(ctx, execution.resolved, *hooks.ApprovedPlan, applicationInput(ctx, runtimeInput), out); err != nil {
+				return evidence, err
+			}
+		} else if err := authorizeApplicationProviderChanges(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+			return evidence, err
+		}
+		execution.providerPlan, err = prepareApplicationProviderRetirementFunc(ctx, execution.resolved)
+		if err != nil {
+			return evidence, execution.recordFailedDeployment(err)
+		}
+	}
+	if hooks.CollectEvidence {
+		evidence.Resolved = execution.resolved
+		evidence.Before = observeApplicationProviderFactsFunc(ctx, execution.resolved)
+		defer func() {
+			// Capture the registry identity/ownership together with the after
+			// facts, still under the Target lifecycle lock.
+			evidence.After = observeApplyLifecycleAfter(ctx, evidence.Resolved)
+			if registry, err := appProviderRegistryFunc(evidence.Resolved); err == nil {
+				evidence.Registry = registry
+				evidence.SQL = observeNativeSQLApplyResults(ctx, evidence.Resolved, registry)
+			}
+		}()
+	}
+	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying")
+	if err != nil {
+		return evidence, fmt.Errorf("record deployment before mutation: %w", err)
+	}
+	execution.resolved.DeploymentRecord = &pending
+	if err := application.RetainPendingProviderOwnersAt(execution.resolved.TargetStateRoot, execution.manifest); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := materializeResolvedApplicationBroker(ctx, execution.resolved, applicationInput(ctx, runtimeInput), out); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.runPreflight(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.retainPendingProviderOwners(); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.prepareManagedRuntime(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.verifyManagedRuntime(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.convergeApplicationRuntime(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.reconcileDevelopmentCanonicalRoutes(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := retireReleasedApplicationProviders(ctx, execution.resolved, execution.compose, execution.issuer, execution.providerPlan, out); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	// Release old bindings only after owned runtime convergence is verified.
+	// Interrupted cleanup retains its existing registry owner for retry.
+	if err := execution.recordRealizedProviders(); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	if err := execution.recordVerifiedDeployment(ctx); err != nil {
+		return evidence, execution.recordFailedDeployment(err)
+	}
+	return evidence, recordApplicationAudit(ctx, execution.resolved, "apply", "success", "verified", "desired application state converged and verified")
+}
+
+func (e *applicationApplyExecution) recordFailedDeployment(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	if err := recordObservedDeployment(e.resolved, "failed", false); err != nil {
+		return errors.Join(cause, fmt.Errorf("record failed deployment state: %w", err))
+	}
+	return cause
+}
+
+type applicationSecretSetter interface {
+	Set(context.Context, string, string, []byte) error
+}
+
+func resolveMissingRequiredSecretsInteractive(
+	ctx context.Context,
+	service applicationSecretSetter,
+	compose bhruntime.RuntimeProvider,
+	platformFiles bhruntime.Files,
+	m application.Manifest,
+	files application.RuntimeFiles,
+	out io.Writer,
+) error {
+	statuses, err := inspectRequiredApplicationSecrets(ctx, compose, platformFiles, m, files)
+	if err != nil {
+		return fmt.Errorf("inspect required application secrets: %w", err)
+	}
+	var missing []openbao.RequiredSecretStatus
+	for _, status := range statuses {
+		if status.Generated || (status.Present && status.Usable) {
+			continue
+		}
+		missing = append(missing, status)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return promptAndStoreMissingRequiredSecrets(ctx, service, m.Name, missing, out)
+}
+
+func promptAndStoreMissingRequiredSecrets(
+	ctx context.Context,
+	service applicationSecretSetter,
+	applicationName string,
+	missing []openbao.RequiredSecretStatus,
+	out io.Writer,
+) error {
+	if len(missing) == 0 {
+		return nil
+	}
+	if noInput(ctx) || !appApplySecretIsTerminal(appApplySecretInput) {
+		return requiredSecretInputError(missing[0].Name)
+	}
+
+	fmt.Fprintln(out, "\nMissing required application secrets")
+	for _, status := range missing {
+		fmt.Fprintf(out, "  %s\n", status.Name)
+	}
+	reader := bufio.NewReader(appApplySecretInput)
+	confirmed, err := promptYesNo(reader, out, "Configure now?", true)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return requiredSecretInputError(missing[0].Name)
+		}
+		return err
+	}
+	if !confirmed {
+		return &machine.Error{
+			Code:        machine.ErrorRequiredSecretMissing,
+			CauseCode:   "required_secret_missing",
+			Message:     "Required application secret " + missing[0].Name + " remains unresolved.",
+			Resource:    missing[0].Name,
+			Remediation: "requires developer input",
+			Next:        "Run 'baha app secret set " + missing[0].Name + "' and retry.",
+		}
+	}
+
+	for _, status := range missing {
+		value, err := appApplySecretReadHidden(appApplySecretInput, reader, out, status.Name)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return requiredSecretInputError(status.Name)
+			}
+			return err
+		}
+		if err := service.Set(ctx, applicationName, status.Name, value); err != nil {
+			zeroBytes(value)
+			return fmt.Errorf("store application secret %s: %w", status.Name, err)
+		}
+		zeroBytes(value)
+		fmt.Fprintf(out, "[OK] secret %s stored securely\n", status.Name)
+	}
+	return nil
+}
+
+func startManagedRuntime(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
+	if !application.HasApplicationScopedRuntimeServices(m) {
+		return nil
+	}
+	const maxAttempts = 3
+	project := files.Project
+
+	providerOverride, providerLogging, err := logsprovider.ExistingProviderSourceOverride(files)
+	if err != nil {
+		return err
+	}
+	composeFiles := []string{files.Compose}
+	if providerLogging {
+		composeFiles = append(composeFiles, providerOverride)
+	}
+	environment, err := application.RuntimeEnvironment(files)
+	if err != nil {
+		return err
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		err := compose.UpProjectFilesSelectedProgress(ctx, project, files.Dir, environment, nil, func(detail string) {
+			cli.ReportActivityDetail(out, detail)
+		}, composeFiles...)
+		if err == nil {
+			op := provideroperation.New(compose, files.Project, files.Compose, files.Env)
+			if err := application.ReconcileRabbitMQCredentials(ctx, op, m, files); err != nil {
+				return err
+			}
+			if err := application.ReconcileMongoDBHA(ctx, op, m, files); err != nil {
+				return err
+			}
+			return nil
+		}
+		if !bhruntime.IsPortBindingConflict(err) || attempt == maxAttempts {
+			return err
+		}
+
+		if downErr := compose.DownProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); downErr != nil {
+			return errors.Join(err, fmt.Errorf("clean up partially started runtime before host-port retry: %w", downErr))
+		}
+		if reallocErr := application.ReallocateRuntimePorts(m, files); reallocErr != nil {
+			return errors.Join(err, fmt.Errorf("reallocate application host ports: %w", reallocErr))
+		}
+		environment, err = application.RuntimeEnvironment(files)
+		if err != nil {
+			return errors.Join(err, fmt.Errorf("reload application runtime environment after host-port reallocation: %w", err))
+		}
+		if configErr := compose.ConfigProjectFilesEnv(ctx, project, files.Dir, environment, composeFiles...); configErr != nil {
+			return errors.Join(err, fmt.Errorf("validate runtime after host-port reallocation: %w", configErr))
+		}
+		fmt.Fprintf(out, "[RETRY] host-port conflict detected; reassigned loopback ports (attempt %d/%d)\n", attempt+1, maxAttempts)
+	}
+	return errors.New("application runtime start exhausted host-port retries")
+}
+
+func verifyDesiredRuntimeServices(ctx context.Context, compose bhruntime.RuntimeProvider, m application.Manifest, files application.RuntimeFiles) error {
+	if m.Services.SQL {
+		if err := application.VerifyPostgresRuntime(ctx, compose, m, files); err != nil {
+			return err
+		}
+	}
+	if m.Services.Cache || m.Services.KeyValue {
+		if err := application.VerifyValkeyRuntime(ctx, compose, m, files); err != nil {
+			return err
+		}
+		if !application.UsesSharedValkey(m) {
+			if err := application.VerifyValkeyHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+				return err
+			}
+		}
+	}
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		if err := application.VerifyRabbitMQRuntime(ctx, m, files); err != nil {
+			return err
+		}
+		if err := application.VerifyRabbitMQHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+			return err
+		}
+	}
+	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
+		if err := application.VerifyMongoDBRuntime(ctx, m, files); err != nil {
+			return err
+		}
+		if err := application.VerifyMongoDBHACluster(ctx, provideroperation.New(compose, files.Project, files.Compose, files.Env), m, files); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderRuntimeReady(term *cli.Terminal, m application.Manifest) {
+	term.Section("Services")
+	if m.Services.SQL {
+		term.Result("READY", "PostgreSQL", "authenticated SELECT 1")
+	}
+	if m.Services.Cache || m.Services.KeyValue {
+		term.Result("READY", "Valkey", "semantic verification passed")
+	}
+	if len(application.RabbitMQInstanceNames(m)) > 0 {
+		term.Result("READY", "RabbitMQ", "AMQPS queue/pubsub/stream semantics verified")
+	}
+	if len(application.DocumentDatabaseInstanceNames(m)) > 0 {
+		term.Result("READY", "MongoDB", "TLS document write/read/delete verified")
+	}
+	if m.Services.Secrets {
+		term.Result("VERIFIED", "secrets", "isolated OpenBao application scope")
+		term.Result("READY", "runtime-broker", "mTLS identity verified")
+		if len(m.Secrets.Required) > 0 {
+			term.Result("VERIFIED", "required-secrets", fmt.Sprintf("%d declared secret(s) present", len(m.Secrets.Required)))
+		}
+	}
+}

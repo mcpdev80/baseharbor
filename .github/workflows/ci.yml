@@ -1,0 +1,987 @@
+name: "CI · Source & Quality"
+
+run-name: "CI · ${{ github.event.pull_request.number && format('PR #{0}', github.event.pull_request.number) || github.ref_name }}"
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'runtime-validation/ci/**'
+      - 'runtime-validation/source-preflight/**'
+      - 'runtime-validation/ha/**'
+  pull_request:
+    branches:
+      - develop
+      - main
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  workflow_policy:
+    name: Workflow policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Enforce fixed workflow surface
+        run: bash scripts/ci-workflow-policy.sh
+
+      - name: Validate workflow syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
+  release_source_preflight:
+    name: Release Source Preflight
+    permissions:
+      contents: read
+      actions: read
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/source-preflight/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:source-test-password@127.0.0.1:5432/baseharbor_test?sslmode=disable
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: baseharbor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: source-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d baseharbor_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Enforce workflow policy
+        run: bash scripts/ci-workflow-policy.sh
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+
+      - name: Install validation tooling
+        shell: bash
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Check Go formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l cmd internal spec contracts)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
+            for path in $files; do
+              echo "PUBLIC_FORMAT_PATH:$path"
+              gofmt "$path" | base64 -w 0 | fold -w 3072 | sed 's/^/PUBLIC_FORMAT_CHUNK:/'
+            done
+            exit 1
+          }
+
+      - name: Validate source readability
+        run: bash scripts/source-readability-audit.sh
+
+      - name: Run release-source tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test ./contracts/... ./internal/... ./spec/...
+          BASEHARBOR_LOGS_ENABLED=false go test ./cmd/baha
+          go vet ./...
+
+      - name: Exercise enrollment and operator boundary races
+        shell: bash
+        run: |
+          go test -race -p 2 ./internal/coreinstallation ./internal/operatorauth ./internal/machinehttp ./internal/targetenrollment ./internal/targetsession ./internal/runtimeexplorer ./internal/runtime/terminal -count=1
+          go test -race ./internal/runtime/terminal -run TestPTYInputResizeExitAndCancellation -count=25
+          go test -race -p 2 ./cmd/baha -run '^TestNodeDisconnect' -count=1
+
+      - name: Validate requirements-bound integration evidence
+        run: |
+          python scripts/test_pre_release_resume.py
+          python scripts/test_targeted_atomic_plan.py
+          python scripts/test_private_consumer_evidence.py
+          python scripts/test_public_consumer_evidence.py
+          python scripts/test_private_integration_producer.py
+          python scripts/test_pre_release_integration.py
+          python scripts/test_artifact_gc.py
+          python scripts/test_targeted_gate_ref.py
+
+      - name: Validate private source access preflight
+        run: python scripts/test_private_evidence_access_preflight.py
+
+      - name: Check protected private source and Actions access
+        if: github.ref_name == 'runtime-validation/source-preflight/v0.4.23-private-evidence-access'
+        env:
+          BASEHARBOR_PUBLIC_EVIDENCE_FILE: docs/releases/v0.4.23.consumer-pins.json
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/private_evidence_access_preflight.py
+
+      - name: Validate documentation
+        shell: bash
+        run: |
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
+
+      - name: Validate v0.4.21 release readiness
+        shell: bash
+        run: bash scripts/v0.4.21-readiness.sh
+
+      - name: Validate workflow syntax
+        shell: bash
+        run: "$RUNNER_TEMP/bin/actionlint -shellcheck="
+
+      - name: Build release snapshot
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --snapshot --clean
+
+      - name: Verify release snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/checksums.txt
+          test "$(find dist -maxdepth 1 -type f -name 'baseharbor_linux_*.tar.gz' | wc -l)" -eq 2
+          grep -q 'baseharbor_linux_amd64.tar.gz' dist/checksums.txt
+          grep -q 'baseharbor_linux_arm64.tar.gz' dist/checksums.txt
+
+      - name: Build exact candidate binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath             -ldflags="-s -w -X main.version=v0.4.21 -X main.commit=$candidate_sha -X main.date=unknown"             -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "$candidate_sha"
+
+  targeted_ha_docker:
+    name: Targeted HA · docker
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|control-plane|valkey|rabbitmq|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Docker runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+      - name: Run targeted HA acceptance
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  targeted_ha_podman:
+    name: Targeted HA · podman
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|control-plane|valkey|rabbitmq|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Podman runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+      - name: Run targeted HA acceptance
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Podman runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  validate:
+    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: baseharbor_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d baseharbor_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Python
+        id: setup_python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Install validation tooling
+        id: tooling
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-docs.txt
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        run: "$(go env GOPATH)/bin/actionlint -shellcheck="
+
+      - name: Validate documentation
+        id: docs
+        run: |
+          mkdocs build --strict --config-file mkdocs.yml
+          mkdocs build --strict --config-file mkdocs.de.yml
+          bash scripts/documentation-audit.sh
+
+      - name: Check formatting
+        id: formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          files="$(gofmt -l cmd internal spec contracts)"
+          test -z "$files" || {
+            echo "gofmt required:" >&2
+            echo "$files" >&2
+            gofmt -d $files >&2
+            exit 1
+          }
+
+      - name: Validate source readability
+        id: source_readability
+        run: bash scripts/source-readability-audit.sh
+
+      - name: Run unit and package tests
+        id: unit_tests
+        run: go test ./...
+
+      - name: Run runtime integration tests serially
+        id: runtime_integration
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+
+      - name: Run Go vet
+        id: vet
+        run: go vet ./...
+
+      - name: Validate Compose model
+        id: compose_model
+        shell: bash
+        run: |
+          cat > /tmp/baseharbor-runtime.env <<'EOF'
+          BASEHARBOR_POSTGRES_DB=baseharbor
+          BASEHARBOR_POSTGRES_USER=baseharbor
+          BASEHARBOR_POSTGRES_PASSWORD=ci-only
+          BASEHARBOR_POSTGRES_PORT=15432
+          BASEHARBOR_OPENBAO_PORT=18200
+          EOF
+          docker compose             --file internal/runtime/assets/compose.yaml             --env-file /tmp/baseharbor-runtime.env             config --quiet
+
+      - name: Build and smoke-test CLI
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          go build -trimpath -o /tmp/baha ./cmd/baha
+          /tmp/baha --help >/tmp/baha-help.txt
+          /tmp/baha app --help >/tmp/baha-app-help.txt
+          /tmp/baha agent describe -o json >/tmp/baha-agent.json
+          grep -q "Usage:" /tmp/baha-help.txt
+          grep -q "init" /tmp/baha-app-help.txt
+          grep -q '"contract_version":"v1"' /tmp/baha-agent.json
+          /tmp/baha version | grep -q '^baha '
+
+      - name: Cleanup persistent runner state
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+      - name: Generate CI evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/ci-evidence.tsv"
+          cat >"$rows" <<EOF
+          Tooling	${{ steps.tooling.outcome }}	documentation and workflow validation tools
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint
+          Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
+          Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
+          Unit/package tests	${{ steps.unit_tests.outcome }}	go test ./...
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle tests
+          Go vet	${{ steps.vet.outcome }}	go vet ./...
+          Compose model	${{ steps.compose_model.outcome }}	docker compose config validation
+          CLI smoke test	${{ steps.smoke.outcome }}	build, help, agent contract and version
+          Runner cleanup	${{ steps.cleanup.outcome }}	persistent Docker runner reset
+          EOF
+          bash scripts/ci-evidence.sh             "$RUNNER_TEMP/ci-evidence"             "BaseHarbor CI Evidence"             "ci"             "${{ github.ref_name }}"             "${{ github.sha }}"             "$rows"
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ci-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+  pr_plan:
+    name: PR · Trusted Plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      consumer_mode: ${{ steps.plan.outputs.consumer_mode }}
+      runtime_matrix: ${{ steps.plan.outputs.runtime_matrix }}
+      runtime_required: ${{ steps.plan.outputs.runtime_required }}
+      public_contracts_required: ${{ steps.plan.outputs.public_contracts_required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve exact immutable PR inputs using trusted base policy
+        id: plan
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INTEGRATION_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
+          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
+          python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
+          # Run the check-runner from the same trusted base checkout as the
+          # planner, so a validation id emitted by the planner is always an id
+          # the runner whitelist accepts. The base is pinned to base.sha with
+          # persist-credentials:false, keeping the runner out of PR control.
+          echo "matrix=$(python3 scripts/pr-check-runner.py matrix --plan pr-plan.json)" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags origin aa8caaa571a1b3a374ae37af43b224d234c7b6a0
+          git show aa8caaa571a1b3a374ae37af43b224d234c7b6a0:scripts/pr-gate-dependencies.py > "$RUNNER_TEMP/pr-gate-dependencies.py"
+          python3 "$RUNNER_TEMP/pr-gate-dependencies.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-gate-dependencies.json"
+          python3 -c 'import json,sys; path=sys.argv[1]; plan=json.load(open(path)); dependencies=json.load(open(sys.argv[2])); plan["required_consumer_dependencies"]=dependencies["dependencies"]; open(path,"w").write(json.dumps(plan))' pr-plan.json "$RUNNER_TEMP/pr-gate-dependencies.json"
+          mode="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["mode"])' "$RUNNER_TEMP/pr-gate-dependencies.json")"
+          echo "consumer_mode=$mode" >> "$GITHUB_OUTPUT"
+          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
+          git show 45500525aa65957a22e6076ac28fe5cb6c6f9610:scripts/pr-selected-runtime-matrix.py > "$RUNNER_TEMP/pr-selected-runtime-matrix.py"
+          python3 "$RUNNER_TEMP/pr-selected-runtime-matrix.py" --plan pr-plan.json --requirements scripts/release-requirements.json > "$RUNNER_TEMP/pr-runtime-matrix.json"
+          echo "runtime_matrix=$(python3 -c 'import json,sys; print(json.dumps({"include":json.load(open(sys.argv[1]))["include"]},separators=(",",":")))' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "runtime_required=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1]))["required"]).lower())' "$RUNNER_TEMP/pr-runtime-matrix.json")" >> "$GITHUB_OUTPUT"
+          echo "public_contracts_required=$(python3 -c 'import json; print(str("integration/static/public-contracts" in json.load(open("pr-plan.json"))["selected_gates"]).lower())')" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: trusted-pr-plan
+          path: pr-plan.json
+          retention-days: 30
+
+  pr_runner_interface:
+    name: PR · Runner Interface
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify integrated #896 isolation interface from trusted base
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p test_pr_runner_isolation.py -v
+          python3 -m py_compile scripts/pr-runner-isolation.py
+          echo "Verified integrated #896 in trusted PR base $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+  pr_consumer_pins:
+    name: PR · Consumer Pins
+    needs: pr_plan
+    outputs:
+      demo_ref: ${{ steps.resolve.outputs.demo_ref }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Resolve verified immutable v0.4.26 consumer graph
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INTEGRATION_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ecosystem_release_pins.py --tag v0.4.26 --core "$INTEGRATION_SHA" --output "$RUNNER_TEMP/pr-consumer-pins.json" > "$RUNNER_TEMP/pr-consumer-result.json"
+          test -s "$RUNNER_TEMP/pr-consumer-pins.json"
+          echo "demo_ref=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["demo_ref"])' "$RUNNER_TEMP/pr-consumer-result.json")" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pr-consumer-pins
+          path: ${{ runner.temp }}/pr-consumer-pins.json
+          if-no-files-found: error
+          retention-days: 30
+
+  pr_demo_pin:
+    name: PR · Demo Pin
+    needs: pr_plan
+    outputs:
+      demo_ref: ${{ steps.verify.outputs.demo_ref }}
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Verify exact Demo dependency against integration source
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_CORE_SHA: ${{ github.sha }}
+          EXPLICIT_PR_DEMO_SHA: ${{ vars.BASEHARBOR_PR_DEMO_SOURCE_SHA }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # PR qualification chooses an immutable Demo *source*; it never
+          # rewrites or validates the Demo release-candidate Core pin.
+          # A trusted repository variable can select a reviewed Demo SHA.
+          # Otherwise resolve main ONCE, then verify that exact commit.
+          if [ -n "$EXPLICIT_PR_DEMO_SHA" ]; then
+            demo_sha="$EXPLICIT_PR_DEMO_SHA"
+          else
+            demo_sha="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+          fi
+          [[ "$demo_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_CORE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git clone --filter=blob:none --no-checkout https://github.com/mcpdev80/baseharbor-demo.git "$RUNNER_TEMP/pr-demo"
+          git -C "$RUNNER_TEMP/pr-demo" fetch --depth=1 origin "$demo_sha"
+          git -C "$RUNNER_TEMP/pr-demo" checkout --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/pr-demo" rev-parse HEAD)" = "$demo_sha"
+          test -s "$RUNNER_TEMP/pr-demo/baseharbor-core.ref"
+          # BASEHARBOR_SOURCE_REF in existing demo/tests/acceptance.sh
+          # forces the exact PR candidate; actual gate compatibility and
+          # canonical manifest/evidence verification remain mandatory.
+          echo "PR demo source $demo_sha paired with exact Core $EXPECTED_CORE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "$demo_sha" > "$RUNNER_TEMP/verified-demo.sha"
+          echo "demo_ref=$demo_sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: verified-pr-demo-pin
+          path: ${{ runner.temp }}/verified-demo.sha
+          if-no-files-found: error
+          retention-days: 30
+
+  pr_candidate:
+    name: PR · Exact Candidate
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare candidate binary and image independently of Docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/pr-exact-candidate"
+          mkdir -p "$out"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$GITHUB_SHA -X main.date=unknown" -o "$out/baha" ./cmd/baha
+          "$out/baha" version | grep -F "$GITHUB_SHA"
+          cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
+          docker build --pull -t localhost/baseharbor-runtime:pre-release "$out"
+          docker image inspect localhost/baseharbor-runtime:pre-release >/dev/null
+          docker save -o "$out/baseharbor-runtime-pre-release.tar" localhost/baseharbor-runtime:pre-release
+          (cd "$out" && sha256sum baha baseharbor-runtime-pre-release.tar > checksums.sha256)
+          printf '%s\n' "$GITHUB_SHA" > "$out/candidate.sha"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
+          path: ${{ runner.temp }}/pr-exact-candidate
+          if-no-files-found: error
+          retention-days: 30
+
+  pr_focused:
+    name: PR · Focused Python
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Focused diff/planner/verifier/pins regressions
+        run: |
+          set -euo pipefail
+          python3 scripts/test_pr_diff_base.py
+          python3 scripts/test_pr_gate_plan.py
+          python3 scripts/test_pr_required_final.py
+          python3 scripts/test_pr_check_runner.py
+          python3 scripts/test_pr_wizard_workflow_route.py
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+          python3 scripts/test_pr_runtime_request.py
+          python3 scripts/test_pr_authenticated_results.py
+          python3 scripts/test_pr_actions_summary.py
+          python3 scripts/test_pr_gate_dependencies.py
+          git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
+          python3 scripts/test_pr_selected_runtime_matrix.py
+          python3 scripts/test_pr_verified_atomic_evidence.py
+          python3 scripts/test_ecosystem_release_pins.py
+          python3 scripts/test_pre_release_resume.py
+          python3 scripts/test_targeted_gate_ref.py
+          # R27-F2: execute the receipt control-plane suites with the TRUSTED
+          # base-runner selecting the exact registered modules; candidate code
+          # must not define its own receipt discovery.
+          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+          git show "${{ github.event.pull_request.base.sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
+          python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
+
+  pr_validations:
+    name: PR · Validation · ${{ matrix.check }}
+    needs: pr_plan
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute existing validation owner without publication
+        env:
+          VALIDATION: ${{ matrix.check }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$VALIDATION" in
+            not-required) echo 'NOT REQUIRED (not PASS)' ;;
+            documentation-audit) bash scripts/documentation-audit.sh ;;
+            mkdocs-en-strict|mkdocs-de-strict|pages-candidate-build)
+              python -m pip install --disable-pip-version-check -r requirements-docs.txt
+              case "$VALIDATION" in
+                mkdocs-en-strict) mkdocs build --strict --config-file mkdocs.yml ;;
+                mkdocs-de-strict) mkdocs build --strict --config-file mkdocs.de.yml ;;
+                pages-candidate-build)
+                  mkdocs build --strict --config-file mkdocs.yml
+                  mkdocs build --strict --config-file mkdocs.de.yml
+                  test -f site/index.html
+                  ;;
+              esac ;;
+            source-contracts)
+              go test ./internal/application/... ./contracts/... -count=1 ;;
+            cli-guided-tests) go test ./cmd/baha -run '^TestGuided' -count=1 ;;
+            cli-gofmt) test -z "$(gofmt -l cmd/baha)" ;;
+            pins-data-validation)
+              git fetch --no-tags origin "$BASE_SHA"
+              trusted_pins=$(mktemp -d "$RUNNER_TEMP/pins-validator.XXXXXX")
+              for helper in pr-check-runner.py ecosystem_release_pins.py private_consumer_evidence.py; do
+                git show "$BASE_SHA:scripts/$helper" > "$trusted_pins/$helper"
+              done
+              python3 "$trusted_pins/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            wizard-*-tests)
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            cli-vet) go vet ./cmd/baha ;;
+            cli-build) go build -o "$RUNNER_TEMP/baha-validation" ./cmd/baha ;;
+            capability-package-tests) go test ./internal/capability/... -count=1 ;;
+            inspect-gofmt) test -z "$(gofmt -l internal/repositoryinspect)" ;;
+            inspect-package-tests) go test ./internal/repositoryinspect/ -count=1 ;;
+            inspect-vet) go vet ./internal/repositoryinspect/ ;;
+            inspect-consumer-tests) go test ./cmd/baha -run 'Inspect|Reconcile' -count=1 ;;
+            inspect-consumer-build) go build -o "$RUNNER_TEMP/baha-inspect" ./cmd/baha ;;
+            pr-planner-tests)
+              python3 -m unittest scripts/test_pr_gate_plan.py ;;
+            ci-policy) bash scripts/ci-workflow-policy.sh ;;
+            ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
+            ci-executor-verifier-tests)
+              PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
+            receipt-execution-tests)
+              # R27-F2: the planner registers this check in every receipt-class
+              # plan; without an exact case it fell through to the fail-closed
+              # exit-2 default. Run the trusted base-owner selection exactly.
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            openbao-package-tests)
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            *) exit 2 ;;
+          esac
+
+  pr_public_contracts:
+    name: PR · Public Contracts
+    needs: [pr_plan, pr_demo_pin]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Execute original public-contracts integration owner
+        shell: bash
+        env:
+          CORE_SHA: ${{ github.sha }}
+          DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CORE_SHA"
+          [[ "$DEMO_SHA" =~ ^[a-f0-9]{40}$ ]]
+          python3 scripts/pre-release-integration.py \
+            --gate integration/static/public-contracts \
+            --candidate "$CORE_SHA" --demo "$DEMO_SHA" --tag v0.4.26 \
+            --output "$RUNNER_TEMP/integration-public-contracts"
+      - name: Upload original owner-produced integration evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: pre-release-integration-static-public-contracts-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/integration-public-contracts
+          if-no-files-found: error
+          retention-days: 30
+
+  pr_runtime_selected:
+    name: PR · Selected Runtime
+    needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.pr_plan.outputs.runtime_matrix) }}
+    uses: ./.github/workflows/pre-release-runtime-suite.yml
+    permissions:
+      contents: read
+    with:
+      ref: ${{ github.sha }}
+      demo_ref: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
+      runtime: ${{ matrix.runtime }}
+      gate: ${{ matrix.gate }}
+      candidate_artifact: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
+
+  pr_selected_final:
+    name: PR Selected Checks
+    needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.pr_plan.result == 'success'
+        with:
+          name: trusted-pr-plan
+      - name: Enforce every required check (unqualified runtime remains blocked)
+        env:
+          PLAN_JOB: ${{ needs.pr_plan.result }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_INTEGRATION: ${{ github.sha }}
+          FOCUSED_JOB: ${{ needs.pr_focused.result }}
+          VALIDATION_JOB: ${{ needs.pr_validations.result }}
+          GH_TOKEN: ${{ github.token }}
+          ACTIONS_RUN_ID: ${{ github.run_id }}
+          ACTIONS_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SELECTED_RUNTIME_REQUIRED: ${{ needs.pr_plan.outputs.runtime_required }}
+          SELECTED_RUNTIME_JOB: ${{ needs.pr_runtime_selected.result }}
+          PUBLIC_CONTRACTS_REQUIRED: ${{ needs.pr_plan.outputs.public_contracts_required }}
+          PUBLIC_CONTRACTS_JOB: ${{ needs.pr_public_contracts.result }}
+          VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
+        run: |
+          set -euo pipefail
+          test "$PLAN_JOB" = success
+          test -s pr-plan.json
+          python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
+          git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe c6db56c4ac077dbc496134cb0871c8e996a593fe
+          git show "${EXPECTED_BASE}:scripts/pr-authenticated-results.py" > "$RUNNER_TEMP/pr-authenticated-results.py"
+          git show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"
+          python3 "$RUNNER_TEMP/pr-authenticated-results.py" --plan pr-plan.json --repository mcpdev80/baseharbor --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" > "$RUNNER_TEMP/pr-results.json"
+          if { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then
+            [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
+            git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe
+            git show c6db56c4ac077dbc496134cb0871c8e996a593fe:scripts/pr-verified-atomic-evidence.py > "$RUNNER_TEMP/pr-verified-atomic-evidence.py"
+            python3 "$RUNNER_TEMP/pr-verified-atomic-evidence.py" \
+              --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" \
+              --requirements scripts/release-requirements.json \
+              --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" \
+              --head-sha "$EXPECTED_HEAD" --integration-sha "$EXPECTED_INTEGRATION" \
+              --demo-sha "$VERIFIED_DEMO_SHA"
+          fi
+          python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json --results "$RUNNER_TEMP/pr-results.json" --requirements scripts/release-requirements.json
+
+      - name: Summarize checked, reused, unnecessary and blocked work
+        if: always()
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          from pathlib import Path
+          from urllib.parse import urlsplit
+          from urllib.request import Request, urlopen
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+          base = f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
+          link = f"https://github.com/{repository}/actions/runs/{run_id}/attempts/{attempt}"
+          groups = {"Checked": [], "Reused": [], "Not required": [],
+                    "Failed": [], "Blocked": []}
+          try:
+              plan = json.loads(Path("pr-plan.json").read_text())
+              if not isinstance(plan, dict) or not isinstance(plan.get("required_validation_checks"), list) or not isinstance(plan.get("selected_gates"), list):
+                  raise ValueError("incomplete PR plan")
+              if plan.get("coverage_status") not in {"resolved", "unresolved"}:
+                  raise ValueError("missing coverage status")
+              if plan["coverage_status"] == "unresolved":
+                  groups["Blocked"].append(f"[Trusted plan coverage unresolved]({link}) · duration unknown")
+              required = {f"PR · Validation · {item['id']}" for item in
+                          plan.get("required_validation_checks", [])}
+              required.update({"PR · Trusted Plan", "PR · Focused Python",
+                               "Workflow policy", "PR Selected Checks"})
+              selected = set(plan.get("selected_gates", []))
+              for gate in selected:
+                  parts = gate.split("/")
+                  if len(parts) == 3 and parts[0] == "atomic" and parts[1] in {"docker", "podman"}:
+                      runtime, suite = parts[1], parts[2]
+                      required.add(
+                          f"PR · Selected Runtime ({gate}, {runtime}, {suite}) / "
+                          f"{runtime} · {suite}")
+              if "integration/static/public-contracts" in selected:
+                  required.add("PR · Public Contracts")
+              jobs = []
+              token = os.environ["GH_TOKEN"]
+              for page in range(1, 11):
+                  url = (f"https://api.github.com/repos/{repository}/actions/runs/"
+                         f"{run_id}/attempts/{attempt}/jobs?per_page=100&page={page}")
+                  request = Request(url, headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                  })
+                  with urlopen(request, timeout=15) as response:
+                      batch = json.load(response)["jobs"]
+                  jobs.extend(batch)
+                  if len(batch) < 100:
+                      break
+              if not jobs:
+                  raise ValueError("empty Actions jobs response")
+              def duration(job):
+                  a, b = job.get("started_at"), job.get("completed_at")
+                  if not a or not b:
+                      return "duration unknown"
+                  try:
+                      start = dt.datetime.fromisoformat(a.replace("Z", "+00:00"))
+                      end = dt.datetime.fromisoformat(b.replace("Z", "+00:00"))
+                      return f"{max(0, int((end - start).total_seconds()))}s"
+                  except ValueError:
+                      return "duration unknown"
+              seen = set()
+              for job in jobs:
+                  name = job.get("name") or "Unnamed job"
+                  seen.add(name)
+                  if name == "PR Selected Checks":
+                      continue  # This very job is still in progress.
+                  state = job.get("conclusion")
+                  item = f"[{name}]({job.get('html_url') or link}) · {duration(job)}"
+                  if state == "success":
+                      category = "Checked"
+                  elif state in {"failure", "timed_out", "action_required"}:
+                      category = "Failed"
+                  elif state == "skipped" and name not in required:
+                      category = "Not required"
+                  else:
+                      category = "Blocked"
+                  groups[category].append(item)
+              # This running final check cannot yet have a terminal conclusion.
+              # Every other mandatory name absent from an API response is blocked.
+              for name in sorted(required - seen - {"PR Selected Checks"}):
+                  groups["Blocked"].append(
+                      f"[Missing required job: {name}]({link}) · duration unknown")
+              # Reuse is display-only metadata from the trusted plan. Never infer
+              # reuse merely from a skipped job or a green previous run.
+              for evidence in plan.get("verified_reused_evidence", []):
+                  if not isinstance(evidence, dict) or evidence.get("verified") is not True:
+                      continue
+                  url = evidence.get("url")
+                  if not isinstance(url, str):
+                      continue
+                  parsed = urlsplit(url)
+                  prefix = f"/{repository}/actions/runs/"
+                  suffix = parsed.path[len(prefix):] if parsed.path.startswith(prefix) else ""
+                  if (parsed.scheme != "https" or parsed.netloc != "github.com"
+                          or not suffix or not suffix.split("/")[0].isdigit()
+                          or parsed.query or parsed.fragment):
+                      continue
+                  seconds = evidence.get("duration_seconds")
+                  elapsed = (f"{seconds}s" if type(seconds) is int and seconds >= 0
+                             else "duration unknown")
+                  groups["Reused"].append(f"[Plan-marked verified evidence]({url}) · {elapsed}")
+          except (OSError, ValueError, KeyError, TypeError) as error:
+              groups["Blocked"].append("Result overview unavailable; inspect the required check and run logs.")
+          lines = [f"## PR checks · [Run {run_id} (attempt {attempt})]({link})",
+                   "", "Presentation only; the independent required verifier remains authoritative.",
+                   ""]
+          for group, entries in groups.items():
+              lines.extend([f"### {group} ({len(entries)})", ""])
+              lines.extend(f"- {entry}" for entry in entries)
+              if not entries:
+                  lines.append("- None confirmed")
+              lines.append("")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+              output.write("\n".join(lines) + "\n")
+          PY

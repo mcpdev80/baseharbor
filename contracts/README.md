@@ -1,0 +1,60 @@
+# BaseHarbor machine-readable contracts
+
+Machine HTTP semantic envelopes are shipped in `machine/v1/control.schema.json`,
+with Core-generated synthetic examples in `machine/v1/control.golden.json`.
+These cover discovery, execution requests, execution state, events and typed
+error results. Consumers pin immutable public Core commits and content digests;
+fixture agreement is a source check, never runtime, authentication or release
+evidence.
+
+Portable contract schemas use JSON Schema 2020-12.
+
+- `service/v1/` — provider-neutral service intent.
+- `binding/v1/` — standards-aligned workload connection output.
+- `provider/v1/` — provider catalog/distribution metadata.
+
+These schemas are not provider product configuration. Provider-specific configuration uses a separate provider schema referenced by the provider descriptor.
+
+All v0.4 contracts are pre-freeze versioned drafts. See [compatibility policy](../COMPATIBILITY.md) and [public register](../docs/reference/public-contracts.md).
+
+Schema IDs use the controlled repository namespace in ADR 0018. The embedded `contracts.SchemaRegistry` verifies and resolves all packaged schemas offline; consumers pin the repository commit for external acquisition. No obsolete domain aliases are retained.
+
+Navigation and Runtime Explorer result shapes are generated from actual Core
+semantic types in `machine/v1/read-models.schema.json`; synthetic examples are
+in `machine/v1/read-models.golden.json`. Regenerate with
+`go run ./scripts/tools/machine-read-models -schema` and without `-schema` for
+examples. Drift tests compare both packaged artifacts to the actual types.
+`runtime.list` permits `null` for an empty Core inventory. Target configuration
+is not a connectivity/health observation; consumers must not invent these fields.
+
+The same generated read-model artifact also includes Runtime Explorer capability
+records, authenticated stream descriptors and actual Core terminal event/input
+examples. Terminal binary data uses standard JSON base64. The dedicated shipped
+terminal schemas remain the normative frame/bounds contract; generated example
+regressions validate against both their actual Core types and these schemas.
+
+The v0.4.25 foundation adds `footprint/v1/footprint.schema.json`, validated
+against actual pure domain fixture outputs, `provider-plan/v1/plan.schema.json`
+for the shared consumer union and data-preserving add/remove plan, and
+`connection-profile/v1/profile.schema.json`, a transport-shape contract for the
+future #777 importer/exporter. Schema validation cannot authenticate a Core,
+accept trust, grant access or prove runtime health. Normative semantics and
+Host Platform boundaries are specified in
+[Capability-first](../docs/spec/capability-first-v0425.md)
+([Deutsch](../docs/de/spec/capability-first-v0425.md)).
+
+Provider lifecycle consequences are packaged as `provider-impact/v1/impact.schema.json`
+with `consent.schema.json` for the existing authority acknowledgement projection,
+and verified/partial execution receipts as `provider-impact/v1/result.schema.json`.
+`provider-plan` embeds the same optional impact result through its canonical schema
+reference. Unknown or alternative-less outcomes require Achtung and two plan-bound
+acknowledgements, not a permanent developer-choice veto. Data deletion still needs
+separate explicit consent. The schemas contain authorized references and locations,
+never secret values. Domain fixtures and offline conformance tests prove shared
+CLI/JSON/MCP semantics; runtime authorities collect/verify actual evidence.
+
+The control contract permits optional object-shaped `error.details` on typed
+errors, executions and events. Core attaches the current redacted provider impact
+plan there when explicit acknowledgements are missing or stale. Consumers must
+preserve the failed state and show the plan; receiving details grants no consent
+or authority. Provider details retain their own versioned domain schema.
