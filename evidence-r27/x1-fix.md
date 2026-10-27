@@ -33,7 +33,9 @@ Ergebnis: `Ran 120 tests in 51.448s` — 118 passed, 2 pre-existing failures (BF
 
 ## END X1-DONE
 
-SHA: 06d80208360e3b7c43eec84958dcf5c534aed876
+SHA: c244ec24fce75994d20daebd8a78a614ae304d99
 PR: none (ordinary commit on work/r27-fix-approval-inputs, pushed to origin)
-ls-remote-Beweis: branch work/r27-fix-approval-inputs exists at origin
+ls-remote-Beweis:
+  $ git ls-remote origin refs/heads/work/r27-fix-approval-inputs
+  c244ec24fce75994d20daebd8a78a614ae304d99 refs/heads/work/r27-fix-approval-inputs
 Owner-Regel: KEINE GITHUB_* Overrides eingefuehrt; inputs-Block explizit deklariert.
