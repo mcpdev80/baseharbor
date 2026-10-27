@@ -17,11 +17,11 @@ permissions:
   actions: read
 
 jobs:
-  # Step 1: Verify producer identity and extract authenticated facts.
+  # Step 1: Capture producer identity and authenticated context.
   # We DO NOT check out PR-controlled code in this job. The controller
   # Python comes from the immutable reviewed CI repo (develop/main).
-  verify_producer:
-    name: "Verify Producer & Extract Facts"
+  producer_context:
+    name: "Capture Producer Context"
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -64,7 +64,7 @@ jobs:
   extract_plan:
     name: "Extract Trusted Plan & Map PR->Task"
     if: github.event.workflow_run.conclusion == 'success'
-    needs: verify_producer
+    needs: producer_context
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -161,7 +161,7 @@ jobs:
           echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
           echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
           echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
-           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha run=$run_id wf_id=${workflow_id} pr=${pr_number}"
+          echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha run=$run_id wf_id=${workflow_id} pr=${pr_number}"
 
   # Step 3: Write plan fixture (tasklink) and publish the receipt.
   # This is the ONLY step with contents:write — and it runs the IMMUTABLE
@@ -169,7 +169,7 @@ jobs:
   publish_receipt:
     name: "Publish Receipt to Planning"
     if: github.event.workflow_run.conclusion == 'success'
-    needs: [verify_producer, extract_plan]
+    needs: [producer_context, extract_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -307,7 +307,7 @@ jobs:
           echo "- **Head SHA:** ${{ needs.extract_plan.outputs.head_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Candidate SHA:** ${{ needs.extract_plan.outputs.candidate_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Base SHA:** ${{ needs.extract_plan.outputs.base_sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **PR Number:** ${{ needs.verify_producer.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **PR Number:** ${{ needs.extract_plan.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Conclusion:** ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ job.status }}" = "success" ]; then
             echo "- **Status:** ✅ Published" >> "$GITHUB_STEP_SUMMARY"
