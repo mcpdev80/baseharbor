@@ -57,6 +57,11 @@
 - Full receipt suite: 114/117 ok. 3 ERRORS (`test_approve_pr_happy_path`, `test_already_approved_is_idempotent_and_never_edits_twice`, `test_retry_after_publish_failure_creates_no_second_edit`) = Umgebungsfehler: `publish_evidence()` ruft `_git ... push origin` auf, der einen lokalen `origin`-Remote im planning-Worktree erwartet — im abgetrennten detached-Worktree fehlt dieser Remote. Reproduziert identisch auf develop `3431b22c` (kein Candidate-Regression).
 - `test_ci_workflow_policy_receipts.py`: 2 FAILs (`receipt-approval.yml`, `receipt-post-run.yml`). Grund: Parser `_find_dormancy_guard` klassifiziert nur `if:`-Werte mit den Schlüsselwörtern never/-dormant/''/workflow_dispatch als "job-level"; die v3.5-Korrekturen ersetzen den develop-"dormant"-Guard durch einen reinen `conclusion == 'success'`-Guard, den der Parser fälschlich als "workflow-level if guard" meldet. Beide Wände sind faktisch job-level (indented unter `jobs:`). Reproduziert auf develop (identisch) → Parser-Limitation, kein sicherheitskritisches Regress; GitHub-wirklich job-level bestätigt (line 25/72/194 unter `jobs:`).
 
+## Prüfungen (Forts. 2)
+
+- yaml.safe_load: alle drei receipt-*.yml parse-ok.
+- bash -n: jeder `run:`-Block der drei Jobs (verify_producer, extract_plan, publish_receipt) syntaktisch ok; heredoc `PY` schließt Zeile 171 korrekt (D3: Umleitung auf Python-Invocation).
+
 ## repo-rule compliance
 
 - Produkt-Branch: `develop` (3431b22c); Branch `work/r27-correction-v35` (f57b30ed) = v3.5-Kandidat.
