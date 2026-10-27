@@ -339,3 +339,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 04:0xZ Tick: cl1 sauber (9 Paket-PRs superseded-close belegt); ci2/qwen dispatched (v34+=1d8237e9 Akte-Merge, PR#1125-refresh). g1y Step-0-push ausstehend.
 - 04:2xZ BEFUNJ g1x war FAKE-DONE (END-Zeile nur in Datei, 0 commit/push). g1y STRIKE-1-WARN + Step-0-Zwang (2 Befehle zuerst).
 - 04:3xZ ROTATION: g1y strike2 (0 push, Step-0 ignoriert), w1b strike1-Loop (Deliverable PR#1127+akte ok, nur Endlos-Commentar). Neue frische Lanes folgen.
+- 04:35Z IRRUM KORRIGIERT: g1y HATTE geliefert (09c4f502 pushed, g1y.md da) - zu frueh rotiert; z1/flash FINISHER dispatched (Proofs ausfuehren + PR auf postrun-Branch). w1b bleibt rotiert (PR #1127 offen, Evidence fehlt -> wartet auf Staging-Lane).
