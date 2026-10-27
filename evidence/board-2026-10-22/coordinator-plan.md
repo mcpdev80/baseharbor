@@ -345,3 +345,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 05:4xZ w1c qwen strike2 rotiert; w1d/flash boot-gehaertet uebernimmt Akte-Dossier #1127. STG2+ci2b laufen.
 - 06:0xZ Tick: ci2b haengt am Boot (30min) -> Direktbefehl-Nudge; board STALE(6)=Root-Truemmer-Rauschen (plan selbst clean, remote cd4dbbe ok). stg2+w1d mit echten Worktrees.
 - 06:3xZ v3.5 f57b30ed GEPUST (Coord-Staging, FF-ok, PR#1129 head verified). stg2 rotiert. ci2b obsolet-stop. rv3/ornith Vorpruefung dispatched. CODEX-R3 wartet erste CI-Evidenz (ci-watch).
+- 06:5xZ CODEX-R3 gestartet auf f57b30ed (36ceda73, ROLLE REVIEW, Host-CI-Fails mitgeliefert). ci2b sauber obsolet-stop (8088b983) rotiert. Pool: w1d+rv3+codex.
