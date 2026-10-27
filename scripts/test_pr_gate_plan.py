@@ -3562,6 +3562,30 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
         self.assertIn('native qualification', ' '.join(result['unresolved_coverage']))
 
 
+class RuntimeProjectionPathMappingTests(unittest.TestCase):
+    """Z7 coverage-mapping bootstrap: the PR #1096 projection source resolves."""
+
+    def check_ids(self, result):
+        return {check['id'] for check in result['required_validation_checks']}
+
+    def test_exact_projection_source_resolves_under_source_contracts(self):
+        path = 'internal/application/runtime_native_binding_projection.go'
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        self.assertEqual({'source-contracts'}, self.check_ids(result))
+        self.assertTrue(self.check_ids(result) <= set(runner_validations()))
+
+    def test_unknown_application_source_stays_unresolved(self):
+        result = planner.plan(
+            diff([{'status': 'added', 'path': 'internal/application/unknown_impl.go'}]),
+            REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('application lifecycle/provider resolution impact needs targeted qualification',
+                      ' '.join(result['unresolved_coverage']))
+
+
 def runner_validations():
     import importlib.util
     spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')
