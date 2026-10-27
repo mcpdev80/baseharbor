@@ -359,3 +359,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:0xZ Tick: w4a=7df405f2 pushed (Nudge wirkte), w4b3 bootet sauber (9e7f00ec pushed), w4c noch 0 pushes. v35-CI bleibt fail (Input fuer R4).
 - 09:0xZ ci-watch-state wiederhergesetzt (2 Runs geseedet, sweep-Opfer); script+cron ok.
 - 09:1xZ ci-watch.sh sauber neu geschrieben (Branch-Liste v35/w4x, jq headBranch-Fallthrough entfernt, syntax-ok, Manuell-Lauf seeded). w4a/w4c busy>40min ohne Dialog (Pane: spinner) - Deliverables teilweise schon pushed.
+- 09:2xZ Tick: #1131 (akte2b) + w4a 88a2f15a + w4b3 evidence-push laeuft; w4c 0-push -> Push-Pflicht-Nudge. Reminders 30 = Ghost-Pane b7bbe04f-Rauschen, gepreuselt.
