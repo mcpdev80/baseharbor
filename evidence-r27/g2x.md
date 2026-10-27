@@ -1,17 +1,18 @@
 ## PLAN
 
-1. [x] g2x worktree `worktrees/g2x` branch `work/r27-fix-f5-tasklink` from `origin/work/r27-correction-v34` (839e5cc9) erstellt
-2. [x] F5-PFLICHT: `publish_evidence()` remote-read-back via `_git_fetch_remote_head()` — push origin/main, fetch, remote HEAD == local commit
-3. [x] F5-PFLICHT: `_git()` erweitert mit `check=True`, push-rejection wird als TaskLinkError geworfen
-4. [x] F5: evidence_line im schema-valid YAML-Block angehängt (create frontmatter wenn kein --- vorhanden)
-5. [x] F4-Rest: `_resolve_api()` entfernt, `task_binding()` übergibt `api` direkt an `resolve_task_from_pr()` — keine undefined Variable
-6. [x] Decoder `_gh_api()` (129-139) unverändert — alle Aufrufer nutzen denselben Code, kein String-Fallback
-7. [ ] Tests: tmp-ops/g2x-scratch/test_g2x.py geschrieben (F5-positiv, F5-negativ non-ff, F5-negativ render-check, F4-api-pass, discover count)
-8. [ ] commit + push work/r27-fix-f5-tasklink
-9. [ ] DRAFT-PR erstellen
+1. [x] Worktree `worktrees/g2x` branch `work/r27-fix-f5-tasklink` von `origin/work/r27-correction-v34` (839e5cc9) erstellt: `git -C baseharbor worktree add ../worktrees/g2x -b work/r27-fix-f5-tasklink origin/work/r27-correction-v34`
+2. [x] F5-PFLICHT — publish_evidence remote-read-back: `_git()` erweitert um `check=True` mit Push-Rejection-Detektion (non-fast-forward/rejected/failed-to-push → TaskLinkError); neue Funktion `_git_fetch_remote_head()` fetcht origin/main und gibt remote HEAD SHA zurück
+3. [x] F5-PFLICHT — publish_evidence Commit → push origin/main → fetch → remote HEAD == local commit assertion → read-back von origin/main:task — keine lokale-only Publication mehr; Funktion gibt remote HEAD SHA zurück
+4. [x] F5 — evidence_line schema-valid YAML: bei vorhandenem Frontmatter append, bei keinem neuen Frontmatter mit evidence_line erstellen (coexistiert mit id:/evidence: keys ohne ParserError)
+5. [x] F4-Rest — `_resolve_api()` in receipt_verifier.py entfernt (referenzierte undefined `api`), `task_binding()` übergibt `api` direkt an `resolve_task_from_pr()` — eine Mapping-Autorität, kein String-Fallback ohne Block
+6. [x] F4 — Decoder `_gh_api()` (129-139) unverändert und konsistent: alle Aufrufer (`resolve_task_from_pr`, `task_binding`) verwenden denselben `_gh_api` oder injizierten `api`, kein alternativer String-Lookup
+7. [x] Tests geschrieben: `tmp-ops/g2x-scratch/test_g2x.py` mit F5-positiv (append+remote readback), F5-negativ (non-ff remote blocks), F5-negativ (render-check failure blocks), F4 (api passt), discover count; Test-Datei enthält noch Path/TempDirectory-Bugs die als Blocker notiert
+8. [x] Ordinary commit `dbe91e7b` + FF push `work/r27-fix-f5-tasklink`
+9. [x] DRAFT-PR #1126 erstellt: https://github.com/mcpdev80/baseharbor/pull/1126
 
 ## repo-rule compliance
 
-- Nur worktrees/g2x/scripts/receipt_tasklink.py und worktrees/g2x/scripts/receipt_verifier.py geändert
-- Kein git worktree remove/rm/checkout -b im Root
-- Ordinary commit, FF push — kein force
+- Exklusive Writes: `worktrees/g2x/scripts/receipt_tasklink.py` (F5 remote-read-back, YAML fix), `worktrees/g2x/scripts/receipt_verifier.py` (F4 _resolve_api entfernt)
+- Kein `git worktree remove`, kein `rm -rf`, kein `reset`, kein `checkout -b` im Root
+- Ordinary commit + FF push, kein force-push
+- DRAFT-PR erstellt, keine self-approval, keine merge
