@@ -95,7 +95,17 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
-               'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
+                'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
+
+# R27-F2: the exact receipt control-plane suites this check must execute. This
+# is the execution-side mirror of pr-gate-plan.py RECEIPT_CONTROL_PLANE_TEST_
+# SCRIPTS; a glob like test_receipt*.py silently drops registered suites whose
+# name does not carry the prefix (test_ci_workflow_policy_receipts.py), so the
+# selection is an explicit module list, never a filename pattern.
+RECEIPT_EXECUTION_SUITES = (
+    'test_receipt_writer', 'test_receipt_verifier', 'test_receipt_chain',
+    'test_receipt_tasklink', 'test_ci_workflow_policy_receipts',
+)
 
 
 def execute_validation(check, repository):
@@ -135,28 +145,31 @@ def execute_validation(check, repository):
                 raise RuntimeError('OpenBao test missing PASS: ' + name)
         return list(OPENBAO_REQUIRED_TESTS)
     if check == 'receipt-execution-tests':
-        # Prove the receipt control-plane suites actually execute, not merely a
-        # filename match. Discover the real unittest count, then run the same
-        # discovery-driven selection and require at least one test to have run
-        # and PASS; a suite that silently matches nothing fails closed.
+        # Prove the registered receipt control-plane suites actually execute.
+        # Run the explicit module list (never a silent glob) and require, from
+        # the real unittest output, that every registered module executed at
+        # least one test and the combined run passed. A missing, empty or
+        # failing suite fails closed.
         repo = Path(repository)
+        for module in RECEIPT_EXECUTION_SUITES:
+            if not (repo / 'scripts' / (module + '.py')).is_file():
+                raise RuntimeError('registered receipt suite missing: ' + module + '.py')
         env = dict(os.environ, PYTHONPATH=str(repo / 'scripts'))
-        discovered = subprocess.run(
-            [sys.executable, '-m', 'unittest', 'discover', '-s', 'scripts',
-             '-p', 'test_receipt*.py', '-v'],
+        executed = subprocess.run(
+            [sys.executable, '-m', 'unittest', '-v', *RECEIPT_EXECUTION_SUITES],
             cwd=repo, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, env=env)
-        if discovered.returncode:
-            raise RuntimeError('receipt discovery/execution failed: ' + discovered.stdout)
+        if executed.returncode:
+            raise RuntimeError('receipt suite execution failed: ' + executed.stdout)
         # unittest -v prints "<method> (module.Class.test_method) ... ok".
-        # Require at least one receipt suite to have actually executed; a run
-        # that matches nothing returns no such line.
-        ran = re.search(r'\(test_receipt[_a-z]*\.[^(]+\(', discovered.stdout)
-        if not ran:
-            raise RuntimeError('receipt-execution-tests: expected receipt suites did not run')
-        return ['test_receipt_writer.py', 'test_receipt_verifier.py',
-                'test_receipt_chain.py', 'test_receipt_tasklink.py',
-                'test_ci_workflow_policy_receipts.py']
+        # The count and per-module presence come from the executed output, not
+        # from a hardcoded filename list.
+        if not re.search(r'(?m)^Ran [1-9][0-9]* tests?', executed.stdout):
+            raise RuntimeError('receipt-execution-tests: no receipt test executed')
+        for module in RECEIPT_EXECUTION_SUITES:
+            if not re.search(r'\(' + re.escape(module) + r'\.', executed.stdout):
+                raise RuntimeError('receipt suite did not execute: ' + module)
+        return [module + '.py' for module in RECEIPT_EXECUTION_SUITES]
     patterns = WIZARD_TEST_FAMILIES.get(check)
     if patterns is None:
         raise ValueError('unsupported executable validation')

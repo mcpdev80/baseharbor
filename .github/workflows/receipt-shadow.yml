@@ -13,9 +13,14 @@
 # PR-open job that waits for after-the-fact evidence.
 #
 # G5b: activation cutover — the approval job now dispatches this reusable
-# workflow with the exact published receipt/plan/candidate outputs. The
-# never-true guard is removed; the shadow is no longer dormant for this
-# narrow path. The result never gates any merge (informational only).
+# workflow with the exact published receipt/plan/candidate outputs.
+#
+# R27-F6 (shadow part): consumption is exclusively the verified approval-flow
+# results. The job-level guard fires only when all three approval outputs are
+# present, so nothing here runs before the publication is durable; empty or
+# manual run/SHA/path/plan values fail closed. The verifier code is checked
+# out at the authenticated run SHA (github.sha), never at an event-derived or
+# caller-chosen ref. The result never gates any merge (informational only).
 
 name: "Receipt · Shadow Final Check"
 
@@ -44,13 +49,21 @@ permissions:
 jobs:
   receipt_shadow:
     name: PR · Receipt Shadow Consumption
+    # R27-F6: start only after verified publication — every value must be a
+    # present approval-flow output (needs.approve.outputs.* from the caller).
+    # With any output missing/empty this job never runs; it cannot be steered
+    # by manual run/SHA/path/plan inputs.
+    if: ${{ !(inputs.receipt == '' || inputs.plan == '' || inputs.candidate == '') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check out the verifier from the trusted base
+      - name: Check out the verifier from the authenticated run
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          # Authenticated run SHA of the trusted approval context, evaluated by
+          # GitHub; never github.event.pull_request.* (empty for this
+          # workflow_dispatch chain) and never a caller-chosen ref.
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -68,21 +81,33 @@ jobs:
           RECEIPT: ${{ inputs.receipt }}
           PLAN: ${{ inputs.plan }}
           CANDIDATE: ${{ inputs.candidate }}
-          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           # The candidate is the exact published candidate the Owner approved,
           # never the PR head: a live fallback to any apparently-green candidate
           # is not trusted. Retained verification uses no GitHub API.
+          # Fail closed on malformed values: the inputs must be complete
+          # approval-flow outputs (receipt path, plan revision, candidate SHA),
+          # never manual or empty substitutions.
+          case "$RECEIPT" in evidence/receipts/*.json) ;; *)
+            echo "approved receipt path output missing or malformed" >&2; exit 1 ;; esac
+          [[ "$CANDIDATE" =~ ^[0-9a-fA-F]{40}$ ]] || {
+            echo "approved candidate output missing or not a full SHA" >&2; exit 1; }
+          [[ "$PLAN" =~ ^[0-9a-fA-F]{7,40}$ ]] || {
+            echo "approved plan revision output missing or malformed" >&2; exit 1; }
+          # The approved plan revision must exist in the protected Planning
+          # history: consumption starts only after the verified publication.
+          plan_rev="$(git -C planning rev-parse --verify "${PLAN}^{commit}")" || {
+            echo "approved plan revision is not in the protected Planning history" >&2; exit 1; }
           revision="$(git -C planning rev-parse HEAD)"
           python3 scripts/receipt_verifier.py retained \
             --planning planning --revision "$revision" \
-            --receipt "$RECEIPT" --candidate "$CANDIDATE" --plan "$PLAN"
+            --receipt "$RECEIPT" --candidate "$CANDIDATE" --plan "$plan_rev"
           {
             echo "## Receipt shadow consumption (informational, never required)"
             echo "- receipt: \`$RECEIPT\`"
-            echo "- plan revision: \`$PLAN\`"
+            echo "- plan revision: \`$plan_rev\`"
             echo "- candidate: \`$CANDIDATE\`"
             echo "- planning revision: \`$revision\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -659,11 +659,14 @@ RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
     'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
     'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
 })
+# R27-F2 exactness: only files that exist and are executed by the
+# receipt-execution-tests check may be registered here. The former entry
+# scripts/test_pr_gate_plan_receipt_paths.py named a file that does not exist
+# in the repository, so it could never be executed or observed in a diff.
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
     'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
     'scripts/test_receipt_tasklink.py',
-    'scripts/test_pr_gate_plan_receipt_paths.py',
 })
 RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-approval.yml',
@@ -678,7 +681,7 @@ CI_CHECKS = [
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
-     'command': 'PYTHONPATH=scripts python3 -m unittest discover -s scripts -p "test_receipt*.py"'},
+     'command': 'PYTHONPATH=scripts python3 scripts/pr-check-runner.py execute --check receipt-execution-tests --repository .'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
