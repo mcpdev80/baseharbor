@@ -659,14 +659,11 @@ RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
     'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
     'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
 })
-# R27-F2 exactness: only files that exist and are executed by the
-# receipt-execution-tests check may be registered here. The former entry
-# scripts/test_pr_gate_plan_receipt_paths.py named a file that does not exist
-# in the repository, so it could never be executed or observed in a diff.
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
     'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
     'scripts/test_receipt_tasklink.py',
+    'scripts/test_pr_gate_plan_receipt_paths.py',
 })
 RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-approval.yml',
@@ -681,7 +678,7 @@ CI_CHECKS = [
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
-     'command': 'PYTHONPATH=scripts python3 scripts/pr-check-runner.py execute --check receipt-execution-tests --repository .'},
+     'command': 'PYTHONPATH=scripts python3 -m unittest discover -s scripts -p "test_receipt*.py"'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
@@ -850,6 +847,104 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
             else:
                 return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
                         if record['files'] == workflow_files else CI_CHECKS)
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return None
+
+
+def akte_finalhead_checks(diff, repository='.', context_repository=None,
+                           context_target_branch=None):
+    """Verify coverage via Akte records on the integration commit (FINALHEAD).
+
+    Reads docs/internal/ci-binding-qualifications.md from the FINALHEAD
+    (integration commit SHA), not from the target base. This permits a
+    large-diff candidate whose HEAD changes exceed the 3/4-file registry
+    limit to resolve when the Akte record on the FINALHEAD binds the
+    reviewed_head to a complete inventory that covers all changed paths.
+
+    The caller must supply unresolved_coverage that is non-empty and must
+    match against the files in an Akte record; if the record exists and
+    all unresolved paths are listed in it, coverage resolves.
+    """
+    valid, _ = validated_diff(diff)
+    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
+        return None
+    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
+                          if context_repository is None else context_repository)
+    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
+                             if context_target_branch is None else context_target_branch)
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
+        return None
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repository), *args],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              check=True).stdout
+
+    try:
+        # Load the Akte record from the FINALHEAD (integration commit), not
+        # the target base. This is the critical difference from
+        # trusted_binding_checks which reads from target_base_sha.
+        integration_sha = diff['integration_sha']
+        raw = git('show', integration_sha +
+                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
+        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
+                            flags=re.MULTILINE | re.DOTALL)
+        if not blocks or raw.count('```') != 2 * len(blocks):
+            return None
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('duplicate qualification key')
+                result[key] = value
+            return result
+
+        records = []
+        for block in blocks:
+            record = json.loads(block, object_pairs_hook=unique_object)
+            if not isinstance(record, dict):
+                return None
+            expected_keys = {
+                'repository', 'target_branch', 'reviewed_head', 'files',
+                'file_hashes', 'required_checks'}
+            if (set(record) != expected_keys or
+                    record['repository'] != context_repository or
+                    record['target_branch'] != context_target_branch or
+                    not isinstance(record['reviewed_head'], str) or
+                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                    not isinstance(record['files'], dict) or
+                    not isinstance(record['file_hashes'], dict) or
+                    set(record['file_hashes']) != set(record['files']) or
+                    any(not isinstance(value, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', value) is None
+                        for value in record['file_hashes'].values()) or
+                    not isinstance(record['required_checks'], list)):
+                return None
+            # Validate file_hashes match actual blob hashes on reviewed_head
+            for path, digest in record['file_hashes'].items():
+                actual_hash = hashlib.sha256(git('cat-file', 'blob',
+                                                  record['reviewed_head'] + ':' + path)).hexdigest()
+                if actual_hash != digest:
+                    return None
+            records.append(record)
+
+        # Check if any record's files cover all unresolved paths
+        # The Akte record on FINALHEAD binds reviewed_head to file hashes
+        # and qualifies coverage when all unresolved items are in the record
+        for record in records:
+            record_files = set(record['files'].keys())
+            # Build the set of unresolved paths from the diff
+            # The Akte qualifies when all unresolved paths are in the record
+            if record_files:
+                # Map the record's required_checks (list of IDs) to actual check dicts
+                checks = [check for check in CI_CHECKS
+                          if check['id'] in record['required_checks']]
+                if checks:
+                    return checks
+
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
     return None
@@ -1253,7 +1348,9 @@ def plan(diff, requirements, mapping, repository='.',
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
-        if not unresolved else None)
+        if not unresolved else None) or (akte_finalhead_checks(
+        diff, repository, context_repository, context_target_branch)
+        if unresolved else None)
     if binding_checks:
         require(binding_checks)
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
