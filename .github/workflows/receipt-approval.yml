@@ -94,7 +94,10 @@ jobs:
           RECEIPT_CANDIDATE: ${{ inputs.candidate_sha || '' }}
           RECEIPT_PLAN: ${{ inputs.plan_revision || '' }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TRIGGERING_ACTOR: ${{ github.actor }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: refs/heads/main
 
       - name: Upload approve-commit patch
         uses: actions/upload-artifact@v4
