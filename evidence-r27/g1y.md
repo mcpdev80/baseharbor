@@ -84,7 +84,7 @@ Bash-Ausfuehrung (nur funktional/ textuell belegt). actionlint nicht ausgefuehrt
   run_attempt 2 is not 1; refusing non-attempt-1 producer run" (Gate vor writer).
 - yaml.safe_load + bash -n auf allen 6 resolved run-Blocks -> OK (actionlint auf
   dem Host nicht installiert; Ersatz wie vorgesehen).
-- Decode-Python-Body ast.parse -> OK; git diff 839e5cc9..HEAD触及 nur erlaubte
+- Decode-Python-Body ast.parse -> OK; git diff 839e5cc9..HEAD beruehrt nur erlaubte
   Dateien + evidence-r27/.
 - D2-Wiring: step `plan_commit` exportiert `plan_revision` (grep letzte 40-hex
   Zeile), publish `--plan "$PLAN_REVISION"`/`--run "$RUN_ID"` -- textuell +
