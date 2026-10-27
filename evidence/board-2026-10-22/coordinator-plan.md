@@ -372,3 +372,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:0xZ w4a DONE (#1133, evidence-Datei fehlt -> PR-Body als Referenz, ehrlich dokumentiert) rotiert. stg3/ornith v3.6-Staging dispatched (d3-Reihenfolge).
 - 11:1xZ rv5 2. Dialog (rv5-scratch, scope-konform) Allow once; rv5 baut echten bare-remote Positivfall (gut).
 - 11:2xZ b3 DONE (f362855) rotiert; vb/flash Gegenpruefung Board-Commit; rv5+stg3 busy.
+- 11:3xZ rv5 ACCEPT mit Wermutstropfen: 'Ran 129 FAILED (2f,3e)' imshadowed-Log-Abschnitt - Dossier kopiert nach board-2026-10-27/rv5-f2negatives.md, R4 muss echten Fail-Grund pruefen. rv5 rotiert.
