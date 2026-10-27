@@ -386,3 +386,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:3xZ CODEX-R4 = BLOCKED (verdict CODEX-REVIEW-27507add.md, Push-Nudge gesendet). R5-Welle nach Publish.
 - 13:4xZ R4 publiziert 66ed4a4, codex rotiert. Nach w5-END: EINZE Integration-Lane (alle Rest-F-Blocks als Sammelrezept), dann R5. Poolbegruendung: w5-Schreibsatz = scripts+workflows.
 - 13:5xZ w5 DONE pushed cdddf21d (96d87064 suites-align + evidence), PR-Check laeuft, rotiert. R4-copy in Root fuer Sammelrezept.
+- 14:0xZ w5 = PR #1135 (cdddf21d) fertig rotiert. NEUE STRATEGIE: r5i = SAMMEL-Lane fuer alle R4-Restblocks (kein 3er-Wave mehr) + stg4 v3.7-Staging parallel (andere Branch, disjunkt).
