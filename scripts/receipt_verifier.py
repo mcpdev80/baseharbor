@@ -8,7 +8,10 @@ never stand in for identity, and a wrong actor, triggering actor, event,
 repository, ref or producer workflow definition fails closed. Approval evidence
 auto-resolves from the contributor PR reference; receipt path, candidate SHA and
 plan revision are derived, never manual input. The sole approval edit publishes
-through W2's receipt_writer interface; nothing here exports a patch.
+through W2's receipt_writer interface; nothing here exports a patch. No push in
+this chain carries its own credentials: every Planning push (receipt and card)
+goes through the single writer mechanism with in-process push auth, and a
+missing write token fails closed before any push (planning addendum cc379b1-1).
 """
 import argparse
 import datetime as dt
@@ -23,6 +26,7 @@ from pathlib import Path
 
 GATE = "public-contracts"
 REPOSITORY = "mcpdev80/baseharbor"
+PLAN_REPOSITORY = "mcpdev80/baseharbor-plan"
 REPOSITORY_ID = 1360667669
 OWNER = "mcpdev80"
 API_VERSION = "2026-03-10"
@@ -32,6 +36,11 @@ RECEIPT_DIR = "evidence/receipts/public-contracts"
 PRODUCT_WORKFLOW = ".github/workflows/ci.yml"
 APPROVAL_WORKFLOW = ".github/workflows/receipt-approval.yml"
 HELPER_SOURCE = "scripts/receipt_verifier.py"
+# The ONLY Planning write credential the approval chain knows about; it is
+# checked for presence before any push and consumed exclusively by the
+# receipt_writer publication mechanism's in-process auth (planning addendum
+# cc379b1-1). Its value is never printed, logged or interpolated anywhere.
+PUSH_CREDENTIAL_ENV = "PLANNING_RECEIPT_WRITE_TOKEN"
 # The product default branch is main. Only an authenticated run whose real ref
 # is main may issue trust (CODE-AUDIT F7). This tuple is a policy allowlist
 # cross-checked against the authenticated run proof; it is never an identity
@@ -410,32 +419,71 @@ def resolve_evidence(planning, pull, api=None):
     return matches[0]
 
 
+def front_matter(text):
+    """Parse the YAML front matter of a Planning task note (CODE-AUDIT F4).
+
+    Returns the metadata mapping, or None when the note has no front-matter
+    block. Malformed front matter is a hard ReceiptError, never a silent skip:
+    the mapping authority must not fall back to loose text search.
+    """
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ReceiptError("Planning schema resolver requires PyYAML") from exc
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            try:
+                meta = yaml.safe_load("\n".join(lines[1:i]))
+            except yaml.YAMLError as exc:
+                raise ReceiptError("task note front matter is invalid YAML") from exc
+            if meta is None:
+                return {}
+            require(isinstance(meta, dict), "task note front matter must be a mapping")
+            return meta
+    raise ReceiptError("task note front matter block is unterminated")
+
+
+def task_pr_associations(planning, revision, name):
+    """PR markers declared in one task note's schema front matter at `revision`.
+
+    Quoted inline lists, block lists and block metadata all resolve identically
+    because the Planning YAML parser is the single authority (CODE-AUDIT F4);
+    body prose is never a binding source.
+    """
+    meta = front_matter(git(planning, "show", f"{revision}:{name}")
+                        .decode(errors="replace"))
+    entries = meta.get("prs")
+    if entries is None:
+        return []
+    if isinstance(entries, str):
+        entries = [entries]
+    require(isinstance(entries, list), "invalid prs metadata in task note: " + name)
+    return [str(entry).strip() for entry in entries]
+
+
 def task_binding(planning, plan_revision, task, pr_number, api=None):
     """Deterministic trusted PR-to-task mapping: exactly one Planning task note
-    lists this repository PR, it must be the plan's task, and the forward PR→task
-    resolver must resolve the same task (CODE-AUDIT F4). Uses the single shared
-    tasklink resolve_task_from_pr() for the forward lookup; task notes provide the
-    backward task→PR binding. Both must agree.
+    lists this repository PR in its schema front matter, it must be the plan's
+    task, and the forward PR→task resolver must resolve the same task
+    (CODE-AUDIT F4). One Planning-schema-aware resolver serves the backward
+    task→PR binding at the bound revision; the shared tasklink
+    resolve_task_from_pr() serves the forward lookup. Both must agree.
 
-    A caught resolver error is NEVER authorization: any resolution failure blocks.
-    The api parameter is ALWAYS forwarded to resolve_task_from_pr — when None
-    the resolver uses _gh_api, never falls through to a string-based lookup.
+    A caught resolver error is NEVER authorization: any resolution failure
+    blocks. The api parameter is ALWAYS forwarded to resolve_task_from_pr — in
+    tests an injected API keeps the resolver hermetic; a real network call is
+    never a fallback path in this lane's tests.
     """
     import receipt_tasklink
-    # The forward PR→task resolver is authoritative. A caught resolver error is
-    # not a fall-through to success; it fails closed (CODE-AUDIT F4). An injected
-    # API makes the resolver hermetic (no real gh/network) for tests.
-    # FIX: Always pass api through — no undefined _resolve-api fallback.
     expected_task = receipt_tasklink.resolve_task_from_pr(pr_number, planning, api)
     names = git(planning, "ls-tree", "-r", "--name-only", plan_revision, "--",
                 "tasks/").decode(errors="replace").splitlines()
-    bound = []
-    marker = f"{REPOSITORY}#{pr_number}".encode()
-    for name in names:
-        front = git(planning, "show", f"{plan_revision}:{name}")
-        match = re.search(rb"^prs:\s*\[([^\]]*)\]", front, re.MULTILINE)
-        if match and any(item.strip() == marker for item in match.group(1).split(b",")):
-            bound.append(name)
+    marker = f"{REPOSITORY}#{pr_number}"
+    bound = [name for name in names
+             if marker in task_pr_associations(planning, plan_revision, name)]
     # Exactly one task note must claim the PR, and it must be the plan's task.
     # When the PR body resolves, that task must equal the bound task too.
     require(bound == [task],
@@ -444,10 +492,44 @@ def task_binding(planning, plan_revision, task, pr_number, api=None):
             "PR-resolved task does not match the bound task note")
 
 
-# _resolve_api removed: F4 fix — api is now passed directly to
-# resolve_task_from_pr() by task_binding(), eliminating the undefined
-# intermediate function. The resolver either uses the injected api
-# or falls back to _gh_api — no string-based lookup exists.
+def evidence_reference(publication, path):
+    """Immutable public reference to one published receipt at its durable
+    publication SHA (CODEX-REVIEW F5): the reference is content-addressed, so
+    later Planning main movement can never redirect it."""
+    require(full_sha(publication), "evidence reference requires a full publication SHA")
+    require(str(path).startswith("evidence/receipts/"),
+            "evidence reference requires a published receipt path")
+    return f"https://github.com/{PLAN_REPOSITORY}/blob/{publication}/{path}"
+
+
+def writer_push_git(planning, path):
+    """Git adapter that routes every push through receipt_writer.publish().
+
+    The card publication reuses the SAME writer mechanism as the receipt
+    publication (in-process push authentication, bounded fast-forward re-apply,
+    durable read-back) instead of a second, self-credentialled push path
+    (planning addendum cc379b1-1). Non-push git operations are ordinary
+    read/commit calls against the checked-out repository. No credential value
+    is ever attached to an argument or included in an error message.
+    """
+    def git_fn(root, *args, check=True):
+        if args and args[0] == "push":
+            import receipt_writer
+            local = ""
+            for token in args[1:]:
+                left, sep, right = str(token).partition(":")
+                if sep and full_sha(left) and right.startswith("refs/"):
+                    local = left
+            require(full_sha(local), "card publication push carried no local commit")
+            published = receipt_writer.publish(Path(root), path, local)
+            require(isinstance(published, (tuple, list)) and len(published) == 3,
+                    "card publication push returned no durable tuple")
+            return b""
+        env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+        result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env)
+        require(result.returncode == 0, "Git operation failed: " + str(args[0]))
+        return result.stdout
+    return git_fn
 
 
 def publish_approval(planning, path, approval_commit, task=None, candidate_sha=None,
@@ -460,15 +542,25 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
     commit_file/write, so until W2's branch merges this call fails closed here
     instead of re-implementing push logic or exporting a patch (CODE-AUDIT F5).
 
-    G4b: after successful W2 publish, writes evidence reference to the
-    Planning task card via tasklink.publish_evidence() — automatic
-    evidence-Aktualisierung, no manual maintenance needed.
+    Returns the FINAL durable publication revision: when the card step runs,
+    that is tasklink's card-publication SHA (which contains both the receipt
+    edit and the evidence reference); otherwise the receipt publication. The
+    caller verifies retained history at exactly this revision.
+
+    Credential policy (planning addendum cc379b1-1): this path never invents or
+    attaches its own push credentials. Every Planning push is delegated to the
+    single receipt_writer publication mechanism, whose in-process push auth is
+    configured by the workflow. A missing write token fails closed BEFORE any
+    push is attempted, and no token value ever enters a message or log.
     """
     import receipt_writer
     helper = getattr(receipt_writer, "publish", None)
     if helper is None or not callable(helper):
         require(False,
                 "publication blocked: W2 receipt_writer.publish interface missing (finding BF-W3-1)")
+    require(os.environ.get(PUSH_CREDENTIAL_ENV, "") != "",
+            "publication blocked: Planning write credential " + PUSH_CREDENTIAL_ENV
+            + " is not configured; failing closed before any push")
     try:
         published = helper(planning, path, approval_commit)
     except Exception as exc:
@@ -480,14 +572,30 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
     path_back, introduction, publication = published
     require(path_back == path and full_sha(introduction) and full_sha(publication),
             "publication returned no durable commit")
-    # Automatic evidence publication: write the immutable task evidence
-    # reference to the Planning task card via tasklink and propagate any
-    # failure (fail closed — CODE-AUDIT F5). A local-only card write must
-    # never report complete publication.
+    # Automatic evidence publication (CODEX-REVIEW F5 verifier side): the card
+    # edit goes through tasklink and its durable publication SHA is captured and
+    # returned — never the older receipt publication alone. Failures propagate
+    # (fail closed); a local-only card write must never report complete
+    # publication. The evidence entry is an immutable public reference bound to
+    # the durable receipt edit, not a mutable relative path, and the card push
+    # reuses the same writer mechanism through the _git_fn seam (addendum).
     if task is not None and candidate_sha is not None and plan_revision is not None:
         import receipt_tasklink
-        receipt_tasklink.publish_evidence(
-            planning, task, path, candidate_sha, plan_revision)
+        receipt_commit = git(planning, "log", "--format=%H", "-n", "1",
+                             publication, "--", path).decode().split()
+        require(len(receipt_commit) == 1 and full_sha(receipt_commit[0]),
+                "receipt edit is not reachable in the durable publication history")
+        reference = evidence_reference(receipt_commit[0], path)
+        card_publication = receipt_tasklink.publish_evidence(
+            planning, task, reference, candidate_sha, plan_revision,
+            _git_fn=writer_push_git(planning, task))
+        require(full_sha(card_publication),
+                "tasklink returned no durable card publication SHA")
+        durable = git(planning, "show",
+                      f"{card_publication}:{task}").decode(errors="replace")
+        require(reference in durable,
+                "immutable evidence reference is not present at the card publication")
+        return card_publication
     return publication
 
 
@@ -537,16 +645,28 @@ def main():
                 parser.exit(2, "approve requires --pr and --product; receipt path, candidate "
                                "SHA and plan revision are auto-resolved, never manual input\n")
             result = approve_pr(args.planning, args.product, args.pr, pin=args.pin)
+            # Output contract (CODEX-REVIEW F6): every emitted value is the
+            # actual returned field of the verified chain — plan is the plan
+            # revision, candidate is the approved candidate, publication is the
+            # final durable (card) publication. A missing or malformed value is
+            # an explicit failure, never a silently skipped output line.
+            for name in ("introduction", "approval", "publication", "plan"):
+                require(full_sha(result.get(name)),
+                        "approval result field is not a full SHA: " + name)
+            require(full_sha(result.get("candidate")),
+                    "approval result field is not a full SHA: candidate")
+            require(isinstance(result.get("path"), str) and result["path"],
+                    "approval result has no receipt path")
             print("approved: " + result["path"])
             print("introduction: " + result["introduction"])
             print("approval: " + result["approval"])
             print("publication: " + result["publication"])
             # Auto-resolved durable outputs for the shadow consumer — never
-            # manual inputs. receipt path and plan revision come from the
-            # verified publication, not from dispatch fields.
+            # manual inputs. Receipt path, plan revision and candidate come from
+            # the verified publication, not from dispatch fields.
             print("receipt: " + result["path"])
-            print("plan: " + result["introduction"])
-            print("candidate: " + result["approval"])
+            print("plan: " + result["plan"])
+            print("candidate: " + result["candidate"])
             return
         else:
             missing = [n for n in ("revision", "receipt", "candidate", "plan")
