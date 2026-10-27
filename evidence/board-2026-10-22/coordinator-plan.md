@@ -346,3 +346,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 06:0xZ Tick: ci2b haengt am Boot (30min) -> Direktbefehl-Nudge; board STALE(6)=Root-Truemmer-Rauschen (plan selbst clean, remote cd4dbbe ok). stg2+w1d mit echten Worktrees.
 - 06:3xZ v3.5 f57b30ed GEPUST (Coord-Staging, FF-ok, PR#1129 head verified). stg2 rotiert. ci2b obsolet-stop. rv3/ornith Vorpruefung dispatched. CODEX-R3 wartet erste CI-Evidenz (ci-watch).
 - 06:5xZ CODEX-R3 gestartet auf f57b30ed (36ceda73, ROLLE REVIEW, Host-CI-Fails mitgeliefert). ci2b sauber obsolet-stop (8088b983) rotiert. Pool: w1d+rv3+codex.
+- 07:0xZ w1d END-CHANGES (rotiert): Akte-Tests 4x OK aber d1-Anforderung NEIN — 2 pre-existing pr-gate FAILs + innerer Runner-Fehler bleiben; deckt sich mit CI-fail pr-planner-tests auf #1129. Dossier board-2026-10-27/w1d.md. Input fuer CODEX-R3/Wave-4.
