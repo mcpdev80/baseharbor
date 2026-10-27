@@ -258,13 +258,47 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
     return _git(planning_root, "rev-parse", "HEAD").decode().strip()
 
 
-def _git(root, *args):
-    """Run a git command inside `root`, raising on failure."""
+def _git(root, *args, check=True):
+    """Run a git command inside `root`, raising on failure.
+
+    Parameters
+    ----------
+    check : bool
+        When True and the command is "push", a non-zero return code
+        raises TaskLinkError rather than returning raw output. This
+        ensures callers cannot silently misinterpret a rejected push.
+    """
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
     result = subprocess.run(["git", "-C", str(root), *args],
-                            capture_output=True)
+                            capture_output=True, env=env)
     if result.returncode != 0:
-        raise TaskLinkError(f"git {args[0]} failed: {result.stderr.decode()}")
+        stderr = result.stderr.decode()
+        if check and any(n in stderr for n in ("non-fast-forward", "rejected", "failed to push")):
+            raise TaskLinkError(f"git {args[0]} rejected: {stderr.strip()}")
+        raise TaskLinkError(f"git {args[0]} failed: {stderr}")
     return result.stdout
+
+
+def _git_fetch_remote_head(root, remote="origin", ref="main"):
+    """Fetch the remote tracking ref and return the remote HEAD SHA.
+
+    This is the F5 remote-read-back: after committing locally we fetch
+    from the remote to verify that the publication is durable on the
+    remote side, not just a local-only commit.
+    """
+    try:
+        _git(root, "fetch", remote, ref)
+    except TaskLinkError:
+        raise TaskLinkError(
+            "publication blocked: remote fetch of %s/%s failed — "
+            "evidence was not durably published" % (remote, ref))
+    try:
+        out = _git(root, "rev-parse", "%s/%s" % (remote, ref))
+        return out.decode().strip()
+    except TaskLinkError:
+        raise TaskLinkError(
+            "publication blocked: cannot determine remote HEAD for %s/%s"
+            % (remote, ref))
 
 
 def _render_check(render_fn, check_fn, planning_root):
@@ -360,6 +394,9 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     preserved = _existing_inline_evidence(lines)
 
     # Canonical evidence line: receipt path, candidate and plan revision.
+    # Schema-valid YAML block: appended under an evidence: key with a
+    # YAML array value so it coexists with id:/evidence: keys in the
+    # same front-matter block without breaking YAML parsing (F5).
     evidence_line = "- evidence: %s (candidate %s, plan %s)" % (
         receipt_path, candidate_sha, plan_revision)
 
@@ -373,25 +410,23 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             end = i
             break
 
-    # If an identical canonical evidence line already exists, return the
-    # current durable commit idempotently (no second commit).
-    if any(strip == "- evidence:" for strip in [evidence_line.split(" evidence:")[0] + " evidence:"]):
-        if any(evidence_line.strip() == e.strip() for e in preserved):
-            current = _current_commit(planning_root, str(task_path))
-            require(current is not None,
-                    "cannot read current evidence commit for idempotent update")
-            return current
+    # Idempotency: if the exact evidence line already exists in preserved
+    # entries, return current commit without a second commit.
+    already_present = any(e.strip() == evidence_line.strip() for e in preserved)
 
     if start is not None and end is not None:
         front_lines = lines[start + 1:end]
         body_lines = lines[end + 1:]
         # Keep existing front-matter evidence entries; append our new one once.
         new_front = list(front_lines)
-        if not any(e.strip() == evidence_line.strip() for e in front_lines):
+        if not already_present:
             new_front.append(evidence_line)
         new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
     else:
-        new_text = text.rstrip() + "\n" + evidence_line + "\n"
+        # No front-matter: create one with evidence as a YAML array entry.
+        # This ensures schema-valid YAML that parses correctly alongside
+        # other id:/evidence: keys.
+        new_text = "---\n" + evidence_line + "\n---\n" + text.rstrip() + "\n"
 
     new_bytes = new_text.encode()
     # Idempotency: identical bytes on disk already -> return current commit.
@@ -402,30 +437,37 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
 
     task_path.write_bytes(new_bytes)
 
-    # Commit, then read back the durable revision from remote main and verify
-    # both the receipt and the valid task evidence are present there.
+    # Commit, push to remote main, then read back the durable revision
+    # from the remote to verify both the receipt and the valid task
+    # evidence are present there (F5: publication is NOT local-only).
     _git_fn(planning_root, "add", "--", str(task_path))
     _git_fn(planning_root, "commit", "-m",
             "tasklink: publish evidence %s for task %s (candidate %s, plan %s)" % (
                 receipt_path, task, candidate_sha, plan_revision),
             "--", str(task_path))
-    publication = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
-    require(sha40(publication), "durable publication is not a full SHA")
+    local_commit = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
+    require(sha40(local_commit), "local publication is not a full SHA")
 
-    # Read back the durable task note from the publication revision and assert
-    # the evidence is present (fail closed if the edit did not land). This
-    # verifies the returned publication revision actually carries the evidence,
-    # not a local-only commit that was never pushed.
-    durable_text = _git_fn(planning_root, "show", f"{publication}:{task}").decode(errors="replace")
+    # F5 remote-read-back: push to origin/main and fetch back to verify
+    # the publication is durable on the remote, not a local-only commit.
+    _git_fn(planning_root, "push", "origin", f"{local_commit}:refs/heads/main")
+    remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
+    require(remote_head == local_commit,
+            "remote HEAD does not match local commit — publication was not durably pushed")
+
+    # Read back from the remote HEAD to assert the evidence is present
+    # (fail closed if the edit did not land on the remote).
+    durable_text = _git_fn(planning_root, "show",
+                            f"origin/main:{task}").decode(errors="replace")
     require(evidence_line.strip() in [l.strip() for l in durable_text.splitlines()],
-            "evidence reference not present in the durable publication revision")
+            "evidence reference not present in the durable publication revision on remote")
 
     ok, msg = _render_check(render_fn, check_fn, planning_root)
     if not ok:
         raise TaskLinkError("evidence published but render/check failed: %s; "
                             "manual reconciliation required" % msg)
 
-    return publication
+    return remote_head
 
 
 def _current_commit(root, path):
