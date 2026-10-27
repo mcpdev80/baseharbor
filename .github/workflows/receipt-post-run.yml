@@ -80,47 +80,48 @@ jobs:
       head_sha: ${{ steps.plan.outputs.head_sha }}
       candidate_sha: ${{ steps.plan.outputs.candidate_sha }}
       base_sha: ${{ steps.plan.outputs.base_sha }}
-      task: ${{ steps.plan.outputs.task }}
     steps:
       - name: Download trusted-pr-plan artifact
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
           ATTEMPT="${{ github.event.workflow_run.run_attempt }}"
-          echo "Downloading artifacts from run $RUN_ID attempt $ATTEMPT"
-          # Use gh to download the trusted-pr-plan artifact.
-          # We fetch artifacts from the producer run, not from PR code.
-          gh run download "$RUN_ID" -n trusted-pr-plan --pattern '*.zip' \
-            || gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/attempts/$ATTEMPT/artifacts" \
-              | jq -r '.[] | select(.name == "trusted-pr-plan") | .archive_download_url' \
-              | xargs -J% curl -L -o plan.zip % \
-              || echo "WARNING: trusted-pr-plan artifact not found"
-          ls -la *.zip 2>/dev/null || echo "No plan.zip found"
+          echo "Downloading trusted-pr-plan artifact from run $RUN_ID attempt $ATTEMPT"
+          # gh run download resolves the artifact by authenticated name from the
+          # producer run. It fails closed (non-zero) on any transport or
+          # missing-artifact error, so the workflow never continues without it.
+          gh run download "$RUN_ID" -n trusted-pr-plan --pattern '*.zip'
+          test -f plan.zip
 
       - name: Decode pr-plan and extract candidate_sha
         id: plan
         run: |
           set -euo pipefail
-          # Extract the JSON from the ZIP and read integration_sha as candidate.
-          if [ -f plan.zip ]; then
-            python3 -c 'import json, zipfile, sys; z=zipfile.ZipFile("plan.zip"); plan=json.loads(z.open("pr-plan.json").read()); z.close(); print("candidate_sha=" + plan.get("integration_sha", plan.get("head_sha", "unknown"))); print("base_sha=" + plan.get("target_base_sha", "unknown")); print("head_sha=" + plan.get("head_sha", "unknown")); print("workflow_id=" + plan.get("workflow_id", "unknown"))' > plan_vars.txt
-            # Source the extracted variables.
-            source plan_vars.txt
-          else
-            # Fallback: use the values from verify_producer.
-            # This should NOT happen in production — the artifact is mandatory.
-            echo "candidate_sha=${{ needs.verify_producer.outputs.head_sha }}"
-            echo "base_sha=${{ needs.verify_producer.outputs.base_sha }}"
-            echo "head_sha=${{ needs.verify_producer.outputs.head_sha }}"
-            echo "workflow_id=${{ needs.verify_producer.outputs.workflow_id }}"
-          fi
+          # Strictly parse the trusted-pr-plan JSON with Python and emit
+          # machine-readable outputs. No shell sourcing of artifact-derived
+          # strings and no fallback facts — the artifact is mandatory and any
+          # parse failure fails closed. The plan object is DATA here.
+          python3 - <<'PY'
+          import json, zipfile, sys
+          with zipfile.ZipFile("plan.zip") as z:
+              with z.open("pr-plan.json") as f:
+                  plan = json.loads(f.read())
+          out = {
+              "workflow_id": str(plan.get("workflow_id", "")),
+              "head_sha": str(plan.get("head_sha", "")),
+              "candidate_sha": str(plan.get("integration_sha", plan.get("head_sha", ""))),
+              "base_sha": str(plan.get("target_base_sha", "")),
+          }
+          print("\n".join(f"{k}={v}" for k, v in out.items()))
+          PY > plan.txt
+          workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
+          head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
+          candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
+          base_sha="$(grep '^base_sha=' plan.txt | cut -d= -f2-)"
+          echo "workflow_id=${workflow_id:-unknown}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${head_sha:-unknown}" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=${candidate_sha:-unknown}" >> "$GITHUB_OUTPUT"
           echo "base_sha=${base_sha:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${head_sha:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "workflow_id=${workflow_id:-unknown}" >> "$GITHUB_OUTPUT"
-          # The task is deterministically mapped from the PR.
-          # PR numbers are known; map to the current task.
-          echo "task=tasks/t-20261022-r27-evidence-publisher.md" >> "$GITHUB_OUTPUT"
           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha"
 
   # Step 3: Write plan fixture (tasklink) and publish the receipt.
@@ -140,7 +141,6 @@ jobs:
       HEAD_SHA: ${{ needs.extract_plan.outputs.head_sha }}
       CANDIDATE_SHA: ${{ needs.extract_plan.outputs.candidate_sha }}
       BASE_SHA: ${{ needs.extract_plan.outputs.base_sha }}
-      TASK: ${{ needs.extract_plan.outputs.task }}
     steps:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,18 +179,18 @@ jobs:
           echo "  head_sha=$HEAD_SHA"
           echo "  candidate_sha=$CANDIDATE_SHA"
           echo "  base_sha=$BASE_SHA"
-          echo "  task=$TASK"
-          # The tasklink script writes the bounded plan fixture.
-          # It uses the authenticated facts from the producer context.
-          # Neither plan.task alone nor caller-supplied refs are sufficient —
-          # the task is deterministically mapped from the trusted PR->task binding.
+          # The task link is auto-resolved by the shared PR->task resolver from
+          # the authenticated PR number — never a hardcoded task path. Passing
+          # --pr-number makes the resolver fail closed on missing/ambiguous
+          # forward binding, so plan.task is a real evidence link, not a guess.
+          echo "  pr_number=${{ needs.verify_producer.outputs.pr_number }}"
           python3 scripts/receipt_tasklink.py \
             --planning "$PLANNING_ROOT" \
             --workflow-id "$WORKFLOW_ID" \
             --head "$HEAD_SHA" \
             --candidate "$CANDIDATE_SHA" \
             --base "$BASE_SHA" \
-            --task "$TASK"
+            --pr-number "${{ needs.verify_producer.outputs.pr_number }}"
           echo "Plan fixture written. Verifying..."
           ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
 
@@ -234,7 +234,6 @@ jobs:
           echo "- **Head SHA:** ${{ needs.extract_plan.outputs.head_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Candidate SHA:** ${{ needs.extract_plan.outputs.candidate_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Base SHA:** ${{ needs.extract_plan.outputs.base_sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Task:** ${{ needs.extract_plan.outputs.task }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Conclusion:** ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ job.status }}" = "success" ]; then
             echo "- **Status:** ✅ Published" >> "$GITHUB_STEP_SUMMARY"

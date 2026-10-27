@@ -77,17 +77,61 @@ def _remote_head(root, branch: str) -> Optional[str]:
     return None
 
 
+def _current_remote_bytes(root, path: str) -> Optional[bytes]:
+    """Return the receipt bytes at the current remote HEAD, or None (absent)."""
+    try:
+        return git(root, "show", "origin/main:" + path)
+    except Exception:
+        return None
+
+
+def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
+    """Re-apply exactly our own receipt edit onto the fresh remote HEAD.
+
+    Preserves unrelated concurrent changes by fast-forwarding onto *head* and
+    committing identical bytes only when the prior receipt is still absent.
+    Returns True on a successful re-apply commit, False when a receipt already
+    exists on the fresh remote (caller must not overwrite it) — genuine
+    conflicts are left for the caller to block.
+    """
+    current = _current_remote_bytes(root, path)
+    if current is not None:
+        # A receipt already exists on the fresh remote — do not touch it.
+        return False
+    try:
+        git(root, "reset", "--hard", head)
+    except Exception:
+        return False
+    if _current_remote_bytes(root, path) is not None:
+        # An unrelated edit added its own receipt here; never overwrite it.
+        return False
+    if git(root, "status", "--porcelain").decode().strip():
+        # Preserve unrelated concurrent working-tree state; do not commit it.
+        return False
+    target = root / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("wb") as stream:
+        stream.write(raw)
+    git(root, "add", "--", path)
+    git(root, "commit", "-m", f"receipt: {GATE} record (re-applied)", "--", path)
+    return True
+
+
 def publish(root: Path, path: str, local_commit: str, *,
             dry_run: bool = False) -> Tuple[str, str, str]:
     """Publish a local receipt commit to the Planning remote via fast-forward push.
 
-    Implements bounded conflict re-read/reapply with idempotent retry:
+    Implements bounded re-apply with idempotent retry under an unrelated
+    concurrent edit:
       - Verify the remote is on the expected-head (fast-forward only).
-      - If an unrelated concurrent edit exists, re-read the remote state
-        and reapply exactly once (up to MAX_PUSH_RETRIES).
-      - If the retry produces an identical diff, return the existing commit
-        (idempotent — no second Commit).
-      - A genuine receipt conflict blocks and raises.
+      - On a non-fast-forward push rejection, re-read the fresh remote HEAD,
+        re-apply exactly our own receipt edit onto that HEAD (preserving the
+        unrelated concurrent change), and ordinary-push again (up to
+        MAX_PUSH_RETRIES).
+      - If the fresh remote already carries our own canonical receipt bytes,
+        return that commit idempotently (no second Commit).
+      - A genuine receipt conflict (durable receipt with different bytes, or a
+        receipt added by the unrelated edit) blocks and raises.
 
     Returns (path, introduction_commit, publication_commit) where:
       - introduction_commit is the commit that created the receipt file.
@@ -127,11 +171,17 @@ def publish(root: Path, path: str, local_commit: str, *,
         # we fall through to the bounded retry loop.
         pass
 
-    # Bounded re-read/re-APPLY of own changes under a parallel independent edit.
-    # We attempt an ordinary fast-forward push; on rejection we re-read the
-    # durable remote receipt and, if it is our own canonical embedding, return
-    # its commit idempotently. A receipt edit is never a second approval edit,
-    # so this path never mutates the candidate.
+    # Bounded re-apply of own changes under a parallel independent edit.
+    #
+    # We attempt an ordinary fast-forward push; on a non-fast-forward rejection
+    # we re-read the fresh remote HEAD, re-apply exactly our own receipt edit
+    # onto that HEAD (preserving the unrelated concurrent change), and ordinary-
+    # push again. This recovers when the receipt is still absent on the fresh
+    # remote even though the local commit was rejected by the unrelated edit.
+    #
+    # The same edit is never re-signed: re-application commits identical bytes.
+    # A genuine receipt conflict (the durable receipt exists with different
+    # bytes) blocks and raises.
     for attempt in range(1, MAX_PUSH_RETRIES + 1):
         rc, out, err = git_stderr(root, "push", "origin", f"{local_commit}:refs/heads/main")
         if rc == 0:
@@ -139,19 +189,41 @@ def publish(root: Path, path: str, local_commit: str, *,
         stderr = err.decode(errors="replace")
         if attempt >= MAX_PUSH_RETRIES or not _is_rejected_push(rc, stderr):
             raise ReceiptError(f"publication push failed: {stderr.strip()}")
-        # Non-fast-forward rejection — re-read the durable remote receipt.
+        # Non-fast-forward rejection — fresh remote diverged.
         try:
             git(root, "fetch", "origin", "main")
-            remote_raw = git(root, "show", "origin/main:" + path)
-            # The durable bytes must be valid, canonical, and exactly our own
-            # write — re-applied idempotently, not re-signed.
-            if remote_raw == raw:
-                _check_canonical(remote_raw)
-                remote_after_fetch = git(root, "rev-parse", "origin/main").decode().strip()
-                return path, _find_introduction(root, path, remote_after_fetch), remote_after_fetch
         except Exception:
-            pass
-        # Durable bytes differ or unreadable — genuine conflict. Block.
+            raise ReceiptError("publication failed: fetch after rejection")
+        remote_after_fetch = git(root, "rev-parse", "origin/main").decode().strip()
+        remote_bytes = _current_remote_bytes(root, path)
+        # Durable receipt exists on the fresh remote.
+        if remote_bytes is not None:
+            _check_canonical(remote_bytes)
+            if remote_bytes == raw:
+                # Identical canonical bytes — return idempotently.
+                after = git(root, "rev-parse", "origin/main").decode().strip()
+                return path, _find_introduction(root, path, after), after
+            # Genuine conflict: durable receipt differs. Block.
+            raise ReceiptError("conflicting receipt on remote; blocked")
+        # The receipt is still absent on the fresh remote: re-apply our own
+        # edit onto the fresh HEAD and ordinary-push.
+        if _reapply_onto(root, path, raw, head=remote_after_fetch):
+            rc2, out2, err2 = git_stderr(root, "push", "origin", f"HEAD:refs/heads/main")
+            if rc2 == 0:
+                reapplied = git(root, "rev-parse", "HEAD").decode().strip()
+                return path, _find_introduction(root, path, reapplied), reapplied
+            reapplied_stderr = err2.decode(errors="replace")
+            if not _is_rejected_push(rc2, reapplied_stderr):
+                raise ReceiptError(f"publication re-apply push failed: {reapplied_stderr.strip()}")
+            # Still diverged after re-apply (fast-forward exhausted): fall back to
+            # idempotent return only if the fresh remote now carries our own bytes.
+            remote_bytes2 = _current_remote_bytes(root, path)
+            if remote_bytes2 is not None and remote_bytes2 == raw:
+                _check_canonical(remote_bytes2)
+                after2 = git(root, "rev-parse", "origin/main").decode().strip()
+                return path, _find_introduction(root, path, after2), after2
+            raise ReceiptError("conflicting receipt on remote after re-apply; blocked")
+        # Receipt present on remote with different bytes — genuine conflict.
         raise ReceiptError("conflicting receipt on remote; blocked")
 
 

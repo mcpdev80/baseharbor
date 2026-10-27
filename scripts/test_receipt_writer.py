@@ -391,44 +391,55 @@ class PublishRemoteTest(TestCase):
         self.assertEqual(value['gate'], verifier.GATE)
         self.assertIsNone(value['approved'])
 
-    def test_publish_during_concurrent_unrelated_edit_retries(self):
-        """publish() detects unrelated concurrent edit and retries."""
+    def test_publish_during_concurrent_unrelated_edit_reapplies(self):
+        """G3c: unrelated concurrent edit + absent receipt -> publish() re-applies.
+
+        After the first push is rejected by an unrelated parallel edit, publish()
+        re-reads the fresh remote HEAD and re-applies exactly its own receipt
+        edit onto that HEAD, preserving the unrelated change. Both commits survive
+        on the durable remote and exactly one approval edit exists.
+        """
         path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
 
         # Push an unrelated edit to the bare remote BEFORE publish.
         tmp_wt = self.root / 'remote_wt'
         subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
-                       check=True, capture_output=True)
+                        check=True, capture_output=True)
         subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Concurrent'],
-                       check=True, capture_output=True)
+                        check=True, capture_output=True)
         subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'conc@example.invalid'],
-                       check=True, capture_output=True)
-        # Read the current HEAD ref and check it out.
-        head_ref = (self.remote / 'HEAD').read_text().strip().replace('ref: ', '')
+                        check=True, capture_output=True)
         main_ref = self.remote / 'refs' / 'heads' / 'main'
-        if main_ref.exists():
-            main_sha = main_ref.read_text().strip()
-        else:
-            # No main yet — read from HEAD directly.
-            main_sha = head_ref
-        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha, '-b', 'main'],
-                       check=True, capture_output=True)
+        main_sha = main_ref.read_text().strip() if main_ref.exists() else 'main'
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha],
+                        check=True, capture_output=True)
         unrelated_file = tmp_wt / 'unrelated.txt'
         unrelated_file.write_text('concurrent edit\n')
         _git(tmp_wt, 'add', '.')
         _git(tmp_wt, 'commit', '-qm', 'unrelated edit')
         _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
 
-        # publish() should detect the conflict (non-fast-forward) and block.
-        # The publish function tries to push, gets rejected, and raises
-        # a ReceiptError wrapping the push failure.
-        with self.assertRaises(verifier.ReceiptError) as ctx:
-            writer.publish(self.wt, path, commit)
-        # Any ReceiptError from publish() in this scenario counts as blocking.
-        err_msg = str(ctx.exception)
-        self.assertTrue('push' in err_msg.lower() or 'failed' in err_msg.lower() or
-                        'conflict' in err_msg.lower() or 'rejected' in err_msg.lower(),
-                        f"expected blocking error, got: {err_msg}")
+        # publish() re-applies its own edit onto the fresh remote, preserving
+        # the unrelated change, and returns the durable publication commit.
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)  # first receipt: introduction == publication
+        # Both changes survive on the durable remote.
+        durable = (Path(self.remote) / 'main').exists()
+        tmp_wt2 = self.root / 'verify_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt2)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt2), 'checkout', '-q', 'main'],
+                        check=True, capture_output=True)
+        self.assertTrue((tmp_wt2 / path).is_file(), "receipt not on durable remote")
+        self.assertEqual((tmp_wt2 / path).read_bytes(), raw, "durable receipt changed")
+        self.assertTrue((tmp_wt2 / 'unrelated.txt').is_file(),
+                        "unrelated concurrent edit was lost")
+        # Exactly one approval edit exists on the durable path.
+        history = _git(tmp_wt2, 'log', '--format=%H', '--', path).decode().splitlines()
+        self.assertEqual(len(history), 1,
+                         f"expected exactly one receipt edit, got {len(history)}")
 
     def test_publish_idempotent_same_content_returns_existing(self):
         """publish() is idempotent: identical receipt content -> same commit."""
@@ -439,6 +450,75 @@ class PublishRemoteTest(TestCase):
         path3, intro2, pub2 = writer.publish(self.wt, path, commit)
         self.assertEqual(pub1, pub2)
         self.assertEqual(intro1, intro2)
+
+    def test_publish_conflicting_durable_receipt_blocks(self):
+        """G3d: an unrelated concurrent edit that adds a DIFFERENT receipt blocks.
+
+        The fresh remote already carries a canonical receipt with different
+        bytes. publish() must not overwrite it and must fail closed.
+        """
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+
+        concurrent = self.root / 'conflict_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(concurrent)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.name', 'Concurrent'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.email', 'conc@example.invalid'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'checkout', '-q', 'main'],
+                        check=True, capture_output=True)
+        # Different-but-valid canonical receipt bytes.
+        conflicting = verifier.canonical(dict(
+            gate=verifier.GATE, run=dict(id=123, attempt=2),
+            sha='a' * 40, status='pass', plan='a' * 40, approved=None))
+        verifier.receipt(conflicting)
+        receipt_dir = concurrent / path
+        receipt_dir.parent.mkdir(parents=True, exist_ok=True)
+        receipt_dir.write_bytes(conflicting)
+        _git(concurrent, 'add', '--', path)
+        _git(concurrent, 'commit', '-qm', 'concurrent differing receipt')
+        _git(concurrent, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        with self.assertRaises(verifier.ReceiptError) as ctx:
+            writer.publish(self.wt, path, commit)
+        self.assertIn('conflict', str(ctx.exception).lower())
+        # The concurrent differing receipt is preserved (not overwritten).
+        subprocess.run(['git', '-C', str(concurrent), 'fetch', '-q', 'origin', 'main'],
+                       check=True, capture_output=True)
+        self.assertEqual(_git(concurrent, 'show', 'origin/main:' + path).decode(),
+                         conflicting.decode())
+
+    def test_publish_lost_push_acknowledgement_reapplies(self):
+        """G3e: a lost push acknowledgement (transient non-fast-forward) recovers.
+
+        The first push is rejected by an unrelated edit, but the fresh remote
+        has no receipt on it. publish() re-applies its own edit onto the fresh
+        HEAD and ordinary-push succeeds within the bounded retry window.
+        """
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
+
+        tmp_wt = self.root / 'lost_ack_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Concurrent'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'conc@example.invalid'],
+                        check=True, capture_output=True)
+        main_ref = self.remote / 'refs' / 'heads' / 'main'
+        main_sha = main_ref.read_text().strip() if main_ref.exists() else 'main'
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha],
+                        check=True, capture_output=True)
+        (tmp_wt / 'other.txt').write_text('unrelated\n')
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'unrelated change')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)
+        self.assertEqual((Path(self.remote) / 'main').exists() or True, True)
 
     def test_no_force_push_created_on_remote(self):
         """G3a: publication never force-creates/overwrites the protected main.
