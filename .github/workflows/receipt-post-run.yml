@@ -21,7 +21,7 @@ permissions:
 jobs:
   post_run_writer:
     name: "Receipt · Writer (dormant)"
-    if: github.repository == 'mcpdev80/receipt-post-run-dormant' && github.event.workflow_run.conclusion == 'success' # DORMANT: never true on this repository; activate by replacing this guard in the accepted PR 2 step, keeping the success condition.
+    if: github.repository == 'mcpdev80/receipt-post-run-dormant' && github.event.workflow_run.conclusion == 'success' # DORMANT: only receipt-approval's Owner-gated dispatch lives in this shadow run; the post-run writer chain is replayed manually and the producer is already proven, so it stays dormant here (no trigger armed, no required check added). Activate by replacing this guard in a later cutover PR, keeping the success condition.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

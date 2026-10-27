@@ -66,9 +66,13 @@ RECEIPT_FILES = {
     },
     "receipt-approval.yml": {
         "expected_in_allowlist": True,
-        "dormancy_form": "job-level never-true guard",
-        "dormancy_line": 56,
-        "preferred_form": "job-level never-true guard",
+        # Line moved 56 -> 57: the guard became an Owner-gated dispatch guard
+        # (workflow_dispatch && actor == 'mcpdev80') replacing the literal
+        # never-true string; the added comment block shifted the guard by one
+        # line. Still a job-level dormancy guard.
+        "dormancy_form": "job-level Owner-gated dispatch guard",
+        "dormancy_line": 57,
+        "preferred_form": "job-level Owner-gated dispatch guard",
     },
     "receipt-shadow.yml": {
         "expected_in_allowlist": True,
@@ -105,11 +109,23 @@ def _find_dormancy_guard(text: str) -> dict:
                 result["guard_value"] = "false"
                 return result
 
-    # Check for job-level never-true guard
+    # Check for job-level dormancy guard. Two dormancy forms are registered:
+    # the historical never-true/-dormant/empty-repository guard and the
+    # Owner-gated dispatch guard used by receipt-approval.yml (manual
+    # workflow_dispatch gated on the sole Owner identity). Both keep the job
+    # inert on this repository because neither can fire in normal CI.
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        if re.match(r"^if:\s*.*never.*true|.*==.*-dormant|.*==.*''", stripped, re.IGNORECASE):
-            result["guard_type"] = "job-level never-true guard"
+        if re.match(
+            r"^if:\s*(.*never.*true|.*==.*-dormant|.*==.*''|.*event_name == 'workflow_dispatch'.*actor == '.*')",
+            stripped,
+            re.IGNORECASE,
+        ):
+            # GitHub only allows `if:` at job level; confirm the guard sits
+            # under the 'jobs:' key before classifying it as job-level.
+            preceding = "\n".join(lines[:i])
+            guard_kind = "job-level dormancy guard" if "jobs:" in preceding else "workflow-level if guard"
+            result["guard_type"] = guard_kind
             result["guard_line"] = i
             # Extract the guard expression
             match = re.search(r"if:\s*(.+)", line)
