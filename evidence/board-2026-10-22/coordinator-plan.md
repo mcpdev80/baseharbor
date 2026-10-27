@@ -336,3 +336,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:3xZ g1x busy>40min DISZIPLIN-NUDGE (kein Dialog, 0 Commits) — bei Ausbleiben: rotieren+ornith fresh.
 - 03:4xZ cl1 DONE+rotiert (alle Liste-PRs enthalten/gecleannt). #1123 war Listenluecke von Coord -> c3f54c12 ancestor-verifiziert, als superseded geschlossen.
 - 03:5xZ g1x ROTATION (strike2, 0 push/0 evidence trotz Nudge; 127+/104- WIP bleibt im Worktree). w1b push 1d8237e9 (akte) sichtbar. d2 DONE rotiert.
+- 04:0xZ Tick: cl1 sauber (9 Paket-PRs superseded-close belegt); ci2/qwen dispatched (v34+=1d8237e9 Akte-Merge, PR#1125-refresh). g1y Step-0-push ausstehend.
