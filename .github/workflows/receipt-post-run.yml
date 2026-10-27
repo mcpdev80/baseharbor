@@ -103,17 +103,7 @@ jobs:
           set -euo pipefail
           # Extract the JSON from the ZIP and read integration_sha as candidate.
           if [ -f plan.zip ]; then
-            python3 -c "
-import json, zipfile, sys
-with zipfile.ZipFile('plan.zip') as z:
-    with z.open('pr-plan.json') as f:
-        plan = json.loads(f.read())
-    # integration_sha is the tested merge base / candidate.
-    print(f'candidate_sha={plan.get(\"integration_sha\", plan.get(\"head_sha\", \"unknown\"))}')
-    print(f'base_sha={plan.get(\"target_base_sha\", \"unknown\")}')
-    print(f'head_sha={plan.get(\"head_sha\", \"unknown\")}')
-    print(f'workflow_id={plan.get(\"workflow_id\", \"unknown\")}')
-" > plan_vars.txt
+            python3 -c 'import json, zipfile, sys; z=zipfile.ZipFile("plan.zip"); plan=json.loads(z.open("pr-plan.json").read()); z.close(); print("candidate_sha=" + plan.get("integration_sha", plan.get("head_sha", "unknown"))); print("base_sha=" + plan.get("target_base_sha", "unknown")); print("head_sha=" + plan.get("head_sha", "unknown")); print("workflow_id=" + plan.get("workflow_id", "unknown"))' > plan_vars.txt
             # Source the extracted variables.
             source plan_vars.txt
           else
