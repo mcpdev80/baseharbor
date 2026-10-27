@@ -6,11 +6,26 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
-from receipt_verifier import (GATE, ReceiptError, canonical, git, live, load_plan,
-                              path_for, receipt, require)
+from receipt_verifier import (GATE, ReceiptError, canonical, git, git_stderr, live,
+                              load_plan, path_for, receipt, require)
 
 MAX_PUSH_RETRIES = 3
 PUSH_RETRY_INTERVAL = 2  # seconds between conflict retries
+
+
+def _check_canonical(raw):
+    """Confirm durable bytes are a valid, canonical receipt (own embedding)."""
+    require(raw.endswith(b"\n"), "durable receipt bytes not canonical")
+    receipt(raw)
+
+
+def _is_rejected_push(rc: int, stderr: str) -> bool:
+    """True when a push return code is a non-fast-forward rejection rather than
+    a transport/API failure (which must always propagate)."""
+    if rc == 0:
+        return False
+    needle = "non-fast-forward" if rc == 128 else "rejected"
+    return needle in stderr or "failed to push" in stderr
 
 
 def commit_file(root, path, raw, *, expected=None) -> str:
@@ -92,16 +107,11 @@ def publish(root: Path, path: str, local_commit: str, *,
     remote_ref = _remote_head(root, "refs/heads/main")
     remote_commit = remote_ref if remote_ref else None
 
-    # For the first receipt, there is no remote yet — push via fast-forward.
+    # No remote main exists yet — publication must be an ordinary fast-forward
+    # push; force-creating the protected default branch is not permitted.
+    # Git failures MUST propagate; never swallow.
     if remote_commit is None:
-        # No remote main exists yet — force-push to create main.
-        # This handles the very first publication scenario.
-        # Git/API failures MUST propagate; never swallow.
-        try:
-            git(root, "push", "-f", "origin", f"{local_commit}:refs/heads/main")
-        except ReceiptError as exc:
-            raise ReceiptError(f"publication push failed (no remote main yet): {exc}") from exc
-        return path, local_commit, local_commit
+        raise ReceiptError("publication blocked: no remote main to fast-forward from")
 
     # Check if our local commit is already the remote head.
     if remote_commit == local_commit:
@@ -117,42 +127,32 @@ def publish(root: Path, path: str, local_commit: str, *,
         # we fall through to the bounded retry loop.
         pass
 
-    # We need to push. For a first-receipt scenario, the remote may have
-    # no main yet. For subsequent receipts, we do a fast-forward push.
-    # Bounded retry on conflict.
+    # Bounded re-read/re-APPLY of own changes under a parallel independent edit.
+    # We attempt an ordinary fast-forward push; on rejection we re-read the
+    # durable remote receipt and, if it is our own canonical embedding, return
+    # its commit idempotently. A receipt edit is never a second approval edit,
+    # so this path never mutates the candidate.
     for attempt in range(1, MAX_PUSH_RETRIES + 1):
-        try:
-            git(root, "push", "origin", f"{local_commit}:refs/heads/main")
+        rc, out, err = git_stderr(root, "push", "origin", f"{local_commit}:refs/heads/main")
+        if rc == 0:
             return path, _find_introduction(root, path, local_commit), local_commit
-        except ReceiptError as exc:
-            if attempt < MAX_PUSH_RETRIES:
-                # Check if it's a rejection (non-fast-forward).
-                stderr = exc.args[0] if exc.args else ""
-                if "non-fast-forward" in stderr or "failed to push" in stderr:
-                    # Bounded conflict re-read/reapply.
-                    # Re-read the remote, check if the content would be identical.
-                    try:
-                        # Fetch the latest remote state.
-                        git(root, "fetch", "origin", "main")
-                        # Check if our commit's receipt content matches the remote.
-                        remote_raw = git(root, "show", "origin/main:" + path)
-                        if remote_raw == raw:
-                            # Identical content on remote — idempotent retry.
-                            # Return the remote's existing commit.
-                            remote_after_fetch = git(root, "rev-parse",
-                                                     "origin/main").decode().strip()
-                            return path, _find_introduction(root, path,
-                                                            remote_after_fetch), remote_after_fetch
-                    except Exception:
-                        pass
-                    # Different content — genuine conflict. Block.
-                    raise ReceiptError("conflicting receipt on remote; blocked")
-                # Other error — re-raise.
-                raise
-            # Final attempt failed.
-            raise
-    # Should not reach here — all retries exhausted.
-    raise ReceiptError("publication failed after bounded retries")
+        stderr = err.decode(errors="replace")
+        if attempt >= MAX_PUSH_RETRIES or not _is_rejected_push(rc, stderr):
+            raise ReceiptError(f"publication push failed: {stderr.strip()}")
+        # Non-fast-forward rejection — re-read the durable remote receipt.
+        try:
+            git(root, "fetch", "origin", "main")
+            remote_raw = git(root, "show", "origin/main:" + path)
+            # The durable bytes must be valid, canonical, and exactly our own
+            # write — re-applied idempotently, not re-signed.
+            if remote_raw == raw:
+                _check_canonical(remote_raw)
+                remote_after_fetch = git(root, "rev-parse", "origin/main").decode().strip()
+                return path, _find_introduction(root, path, remote_after_fetch), remote_after_fetch
+        except Exception:
+            pass
+        # Durable bytes differ or unreadable — genuine conflict. Block.
+        raise ReceiptError("conflicting receipt on remote; blocked")
 
 
 def _find_introduction(root: Path, path: str, revision: str) -> str:

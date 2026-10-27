@@ -207,24 +207,29 @@ with zipfile.ZipFile('plan.zip') as z:
       - name: Publish receipt to Planning
         env:
           PLANNING_ROOT: ${{ github.workspace }}/planning
+          # run-id for the receipt is the authenticated workflow definition ID
+          # (workflow_id), never github.event.workflow_run.id.
+          RUN_ID: ${{ needs.extract_plan.outputs.workflow_id }}
+          # plan-revision is the tested candidate SHA from the trusted plan
+          # artifact, never a run.id substitute.
           PLAN_REVISION: ${{ needs.extract_plan.outputs.candidate_sha }}
         shell: bash
         run: |
           set -euo pipefail
           echo "Publishing receipt..."
-          echo "  run_id=$(echo $WORKFLOW_ID)"
+          echo "  run_id=$RUN_ID"
           echo "  attempt=1"
           echo "  plan_revision=$PLAN_REVISION"
           # The writer invokes the immutable controller Python.
           # It creates a canonical 6-field receipt, verifies it live,
           # and publishes via ordinary fast-forward push to Planning.
-          GITHUB_EVENT_NAME=workflow_run \
-          GITHUB_REPOSITORY=mcpdev80/baseharbor \
-          GITHUB_REF=refs/heads/main \
+          # Identity comes from the authenticated run context only; no
+          # GITHUB_* values are overridden — the writer's own context is the
+          # verification source (Owner review: remove all GITHUB_* overrides).
           python3 scripts/receipt_writer.py \
             --planning "$PLANNING_ROOT" \
             --plan "$PLAN_REVISION" \
-            --run "$WORKFLOW_ID" \
+            --run "$RUN_ID" \
             --attempt 1 \
             --publish
           echo "Receipt published. Verifying durable state..."

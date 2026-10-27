@@ -17,6 +17,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 
@@ -107,6 +108,14 @@ def git(root, *args):
     result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env)
     require(result.returncode == 0, "Git operation failed: " + args[0])
     return result.stdout
+
+
+def git_stderr(root, *args):
+    """Run a git command and return (returncode, stdout, stderr) without raising,
+    so callers can inspect a rejection's diagnostics (e.g. non-fast-forward)."""
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env)
+    return result.returncode, result.stdout, result.stderr
 
 
 def tree_entry(root, revision, path):
@@ -422,11 +431,20 @@ def publish_approval(planning, path, approval_commit):
     commit_file/write, so until W2's branch merges this call fails closed here
     instead of re-implementing push logic or exporting a patch (CODE-AUDIT F5).
     """
-    import receipt_writer
-    helper = getattr(receipt_writer, "publish", None)
+    import receipt_writer as _rw
+    helper = getattr(_rw, "publish", None)
     require(callable(helper),
             "publication blocked: W2 receipt_writer.publish interface missing (finding BF-W3-1)")
-    published = helper(planning, path, approval_commit)
+    try:
+        published = helper(planning, path, approval_commit)
+    except _rw.ReceiptError as exc:
+        # Any W2 publication failure (missing push helper, no durable remote
+        # main, rejected push) fails closed here with the BF-W3-1 context
+        # instead of leaking an unclassified error (CODE-AUDIT F5).
+        # Catch receipt_writer's own ReceiptError: when this file runs as
+        # __main__ (CLI subprocess) its ReceiptError is a distinct class from
+        # receipt_writer's, so a bare ReceiptError would miss it.
+        raise _rw.ReceiptError(f"publication blocked via BF-W3-1: {exc}") from exc
     require(isinstance(published, (tuple, list)) and len(published) == 3
             and all(isinstance(part, str) for part in published),
             "W2 publish returned no (path, introduction, publication) tuple")

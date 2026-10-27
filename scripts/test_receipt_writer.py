@@ -440,6 +440,65 @@ class PublishRemoteTest(TestCase):
         self.assertEqual(pub1, pub2)
         self.assertEqual(intro1, intro2)
 
+    def test_no_force_push_created_on_remote(self):
+        """G3a: publication never force-creates/overwrites the protected main.
+
+        The durable remote main must be the ordinary fast-forward push, not a
+        force-updated ref. We confirm the remote main equals the publication
+        commit and that no force-push path remains in the controller source.
+        """
+        import re
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        # The remote main is the ordinary push result.
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)
+        # No force-push may remain in the controller under this task's scope:
+        # detect a literal `push ... "-f"` / `-f origin` call.
+        writer_src = Path(__file__).resolve().parent / "receipt_writer.py"
+        src = writer_src.read_text()
+        self.assertNotRegex(src, r'"push"\s*,[^)]*["\']\-f', "force-push must be removed")
+        self.assertNotRegex(src, r'push.*-f\s+origin', "force-push must be removed")
+
+    def test_publish_parallel_edit_identical_reapplies_idempotent(self):
+        """G3b: parallel independent edit that leaves identical receipt bytes ->
+
+        publish() re-reads the durable remote receipt, confirms it is our own
+        canonical embedding, and returns its commit idempotently. The local
+        commit is rejected (non-fast-forward) but the durable receipt matches,
+        so we do NOT push and do NOT make a second approval edit.
+        """
+        import re
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
+
+        # A concurrent writer commits the identical receipt bytes first.
+        concurrent = self.root / 'concurrent_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(concurrent)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.name', 'Concurrent'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.email', 'conc@example.invalid'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        receipt_dir = concurrent / path
+        receipt_dir.parent.mkdir(parents=True, exist_ok=True)
+        receipt_dir.write_bytes(raw)
+        _git(concurrent, 'add', '--', path)
+        _git(concurrent, 'commit', '-qm', 'concurrent identical receipt')
+        _git(concurrent, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # publish() must accept the idempotent re-apply and return the durable
+        # commit that already lives on the remote (our own embedding).
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        # The local commit is NOT pushed — remote head differs from local HEAD.
+        self.assertNotEqual(self._head_remote(), commit)
+        # No force-push occurred: the durable receipt is still valid & canonical.
+        durable = (concurrent / path).read_bytes()
+        verifier.receipt(durable)
+
     def test_write_and_publish_returns_introduction_and_publication(self):
         """write_and_publish() returns correct introduction and publication commits."""
         path, intro, pub = writer.write_and_publish(self.wt, self._head_wt(), 123, 1, api=self._api)
