@@ -377,3 +377,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:4xZ rv5-Klaerung: Befund A betrifft v3.5-Basis (2x MappingTests in f57b30ed OK), akte2b/#1131 hat laengst eindeutige Namen (1188/3540 verifiziert) -> kein zusaetzlicher Auftrag; Suite-Wahrheit zeigt HOST-CI nach stg3.
 - 11:5xZ vb DONE-FINDINGS (3 Board-Luecken) rotiert; q2/qwen Board-Patch dispatched. stg3 letzte laufende Stage-Lane.
 - 12:0xZ Pool: stg3, q2, d4 busy (Board-Patch + CI-Wave-Analyse parallel).
+- 12:1xZ stg3: v3.6-Merge lokal eef4de3b (Conflicts geloest) -> Liefer-Nudge; q2 PLANSTALE-Nudge; d4 Dossier ausstehend (<15min).
