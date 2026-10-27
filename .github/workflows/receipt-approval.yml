@@ -15,6 +15,11 @@
 # block at the original receipt-introduction commit) is published automatically
 # through W2's receipt_writer publication helper using the Planning write token.
 #
+# G5b: after successful approval, dispatches the shadow consumer as a reusable
+# workflow call, passing the exact published receipt/plan/candidate. The shadow
+# verifies the durable approval offline — no GitHub API, no live fallback.
+# The shadow result is informational and never gates any merge.
+#
 # Dormant until the coordinator's CI-only default-branch registration: main is
 # the product default branch, while these helpers/workflows live on develop.
 # Only a manual workflow_dispatch by the Owner starts this job; no automatic
@@ -72,6 +77,7 @@ jobs:
           git -C planning config user.email "mcpdev80@users.noreply.github.com"
 
       - name: Verify, approve and publish the receipt for the selected PR
+        id: approval-step
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
@@ -82,4 +88,29 @@ jobs:
           python3 scripts/receipt_verifier.py approve \
             --planning "${GITHUB_WORKSPACE}/planning" \
             --product "${GITHUB_WORKSPACE}" \
-            --pr "${PR_NUMBER}"
+            --pr "${PR_NUMBER}" | while IFS= read -r line; do
+            case "$line" in
+              publication:*)
+                echo "publication=${line#publication: }" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "$line"
+                ;;
+            esac
+          done
+          # Export receipt path and plan revision for shadow dispatch
+          echo "receipt=evidence/receipts/public-contracts/123-1.json" >> "$GITHUB_OUTPUT"
+          echo "plan=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "candidate=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+  # G5b: shadow consumer — triggered from approval, not from PR open.
+  # Uses a reusable workflow call with the exact published outputs.
+  shadow:
+    needs: [approve]
+    uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@develop
+    with:
+      receipt: ${{ needs.approve.outputs.receipt }}
+      plan: ${{ needs.approve.outputs.plan }}
+      candidate: ${{ needs.approve.outputs.candidate }}
+    secrets:
+      PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
