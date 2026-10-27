@@ -89,29 +89,21 @@ jobs:
             --planning "${GITHUB_WORKSPACE}/planning" \
             --product "${GITHUB_WORKSPACE}" \
             --pr "${PR_NUMBER}" | while IFS= read -r line; do
-            case "$line" in
-              publication:*)
-                echo "publication=${line#publication: }" >> "$GITHUB_OUTPUT"
-                ;;
-              *)
-                echo "$line"
-                ;;
-            esac
-          done
-          # Auto-resolve receipt path, plan revision and candidate SHA from the approval step
-          _receipt=$(python3 -c "
-import json, os
-_pr = os.environ['PR_NUMBER']
-_ws = os.environ['GITHUB_WORKSPACE']
-try:
-    with open(os.path.join(_ws, 'evidence', 'receipts', f'{_pr}-receipt.json')) as f:
-        d = json.load(f)
-        print(d.get('receipt_path', f'evidence/receipts/{_pr}-receipt.json'))
-except (FileNotFoundError, KeyError, json.JSONDecodeError):
-    print(f'evidence/receipts/{_pr}-receipt.json')
-") && echo "receipt=${_receipt}" >> "$GITHUB_OUTPUT"
-          _plan=$(cd planning && git log --oneline -1 | cut -d' ' -f1) && echo "plan=${_plan}" >> "$GITHUB_OUTPUT"
-          echo "candidate=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+             case "$line" in
+               publication:*)
+                 echo "publication=${line#publication: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               receipt:*)
+                 echo "receipt=${line#receipt: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               plan:*)
+                 echo "plan=${line#plan: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               candidate:*)
+                 echo "candidate=${line#candidate: }" >> "$GITHUB_OUTPUT"
+                 ;;
+             esac
+           done
 
   # G5b: shadow consumer — triggered from approval, not from PR open.
   # Uses a reusable workflow call with the exact published outputs.

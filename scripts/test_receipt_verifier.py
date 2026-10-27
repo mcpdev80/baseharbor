@@ -142,7 +142,16 @@ class VerifierFixtureTest(unittest.TestCase):
             return self.plan_zip()
         prefix = f"repos/{verifier.REPOSITORY}"
         if path.startswith(prefix + "/pulls/"):
-            return copy.deepcopy(self.pull)
+            pull = copy.deepcopy(self.pull)
+            # The forward PR->task resolver needs a PR body referencing the bound
+            # task. Seed a deterministic "Closes #<issue>" closer so the hermetic
+            # API resolves the authoritative PR->task binding (F4).
+            if pull.get("body") is None:
+                pull["body"] = "Implements the pilot.\n\nCloses #%d\n" % (PR_NUMBER + 1)
+            return pull
+        if "/issues/" in path:
+            return {"number": PR_NUMBER + 1, "title": "receipt-pilot.md",
+                    "body": "tasks/receipt-pilot.md"}
         if path == prefix + f"/actions/runs/{APPROVAL_RUN}":
             return copy.deepcopy(self.approval_run)
         import re as _re
@@ -497,18 +506,19 @@ class AuthenticatedProofTest(VerifierFixtureTest):
         with self.assertRaisesRegex(verifier.ReceiptError, 'source claim mismatch'):
             self.approve(path, original, env=dict(self.owner_env, GITHUB_SHA='e' * 40))
 
-    def test_approve_accepts_transitional_develop_dispatch(self):
-        # Until the CI-only default-branch registration lands, the reviewed
-        # helper legitimately runs from develop. The proof must say so and the
-        # real ref claim must agree; this is policy, not identity spoofing.
+    def test_approve_rejects_untrusted_ref_dispatch(self):
+        # F7 source policy: only main is an authorized ref. An authenticated run
+        # whose real ref is develop (even with a matching ref claim) is rejected,
+        # not accepted. A transitional or otherwise untrusted ref is never an
+        # exception (CODE-AUDIT F7); the allowlist is ("main",).
         path, original = self.create()
         previous_branch = self.approval_run['head_branch']
         previous_ref = self.owner_env['GITHUB_REF']
         self.approval_run['head_branch'] = 'develop'
         self.owner_env['GITHUB_REF'] = 'refs/heads/develop'
         try:
-            approved = self.approve(path, original)
-            self.assertEqual(approved, self.head())
+            with self.assertRaisesRegex(verifier.ReceiptError, 'untrusted ref'):
+                self.approve(path, original)
         finally:
             self.approval_run['head_branch'] = previous_branch
             self.owner_env['GITHUB_REF'] = previous_ref
@@ -795,6 +805,8 @@ if path.endswith("/zip"):
     sys.stdout.buffer.write(open(FIX + "/plan.zip", "rb").read()); raise SystemExit(0)
 if path.startswith(REPO + "/pulls/"):
     out(json.load(open(FIX + "/pull.json")))
+if "/issues/" in path:
+    out(json.load(open(FIX + "/issue.json")))
 m = re.match(re.escape(REPO + "/actions/runs/") + r"([0-9]+)(?=$|[/?])", path)
 if m:
     run_id = int(m.group(1))
@@ -839,7 +851,17 @@ class ProductionPathCliTest(VerifierFixtureTest):
         json.dump(producer['id'], open(fix + '/producer_id.json', 'w'))
         json.dump(self.approval_run, open(fix + '/approval_run.json', 'w'))
         json.dump(self.approval_run['id'], open(fix + '/approval_id.json', 'w'))
+        # The forward PR->task resolver needs a PR body that references the bound
+        # task via a "Closes #<issue>" closer. Seed both so the hermetic fixture
+        # resolves deterministically (F4). TASK_PATH is "tasks/receipt-pilot.md";
+        # the issue title is the bare task stem and the body points to it.
+        body = "Implements the pilot.\n\nCloses #%d\n" % (PR_NUMBER + 1)
+        self.pull['body'] = body
         json.dump(self.pull, open(fix + '/pull.json', 'w'))
+        json.dump({"number": PR_NUMBER + 1,
+                   "title": "receipt-pilot.md",
+                   "body": TASK_PATH},
+                  open(fix + '/issue.json', 'w'))
         producer_job = copy.deepcopy(self.job)
         json.dump(dict(total_count=2, jobs=[producer_job, dict(
             producer_job, id=producer_job['id'] + 1, name='PR · Trusted Plan')]),
@@ -915,6 +937,10 @@ class ProductionPathCliTest(VerifierFixtureTest):
         self.assertIn('auto-resolved', result.stderr)
 
     def test_approve_cli_full_chain_fails_closed_on_missing_publish(self):
+        # The F4 fix makes the approval path resolve the forward PR->task binding
+        # through the shared tasklink resolver before publishing. With a fixture
+        # gh the resolution is hermetic; the chain then fails closed at the
+        # missing W2 publish interface (BF-W3-1) without a second edit or patch.
         path, original = self.create()
         self.write_gh_fixture()
         result = self.cli(['approve', '--planning', str(self.root), '--product',
