@@ -303,6 +303,41 @@ class ApproveIdentityTest(VerifierFixtureTest):
                 verifier.approve(self.root, original, path, self.candidate,
                                  self.plan_sha, api=self.api)
 
+    def test_approve_rejects_wrong_GITHUB_REF(self):
+        path, original = self.create()
+        with patch.dict(os.environ, dict(self.owner_env, GITHUB_REF='refs/heads/develop'), clear=True):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'Owner action'):
+                verifier.approve(self.root, original, path, self.candidate,
+                                 self.plan_sha, api=self.api)
+
+    def test_approve_rejects_wrong_EVENT_NAME(self):
+        path, original = self.create()
+        with patch.dict(os.environ, dict(self.owner_env, GITHUB_EVENT_NAME='push'), clear=True):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'Owner action'):
+                verifier.approve(self.root, original, path, self.candidate,
+                                 self.plan_sha, api=self.api)
+
+    def test_approve_rejects_wrong_REPOSITORY(self):
+        path, original = self.create()
+        with patch.dict(os.environ, dict(self.owner_env, GITHUB_REPOSITORY='other/repo'), clear=True):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'Owner action'):
+                verifier.approve(self.root, original, path, self.candidate,
+                                 self.plan_sha, api=self.api)
+
+    def test_approve_rejects_wrong_TRIGGERING_ACTOR(self):
+        path, original = self.create()
+        with patch.dict(os.environ, dict(self.owner_env, GITHUB_TRIGGERING_ACTOR='other'), clear=True):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'Owner action'):
+                verifier.approve(self.root, original, path, self.candidate,
+                                 self.plan_sha, api=self.api)
+
+    def test_approve_rejects_missing_env_var(self):
+        path, original = self.create()
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'Owner action'):
+                verifier.approve(self.root, original, path, self.candidate,
+                                 self.plan_sha, api=self.api)
+
     def test_approve_reverifies_live_before_edit(self):
         path, original = self.create()
         # Approve runs live verification again before any edit; with live
