@@ -54,11 +54,27 @@ jobs:
           # bounded plan fixture with the automatic task link BEFORE the
           # writer runs. This step is DORMANT behind the same never-true
           # guard; activation requires the separate PR2 commit.
+          # The PR number is derived deterministically from the authenticated
+          # workflow_run.base_ref (refs/pull/<num>/merge for PR events); this
+          # is passed as --pr-number so produce_plan_fixture() auto-resolves
+          # the task from the trusted PR->task binding. --task stays optional
+          # as a fallback when no PR context is available.
+          PR_NUMBER=""
+          BASE_REF="${{ github.event.workflow_run.base_ref }}"
+          if [[ "$BASE_REF" =~ refs/pull/([0-9]+)/merge ]]; then
+            PR_NUMBER="${BASH_REMATCH[1]}"
+          fi
+          TASK_ARG=""
+          if [ -n "$PR_NUMBER" ]; then
+            TASK_ARG="--pr-number $PR_NUMBER"
+          else
+            TASK_ARG="--task tasks/<task-id>.md"
+          fi
           echo "DORMANT: python3 scripts/receipt_tasklink.py \\" >> "$GITHUB_STEP_SUMMARY"
           echo "  --planning <planning-repo> \\" >> "$GITHUB_STEP_SUMMARY"
           echo "  --workflow-id $WORKFLOW_ID \\" >> "$GITHUB_STEP_SUMMARY"
           echo "  --head $HEAD_SHA \\" >> "$GITHUB_STEP_SUMMARY"
           echo "  --candidate $CANDIDATE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
           echo "  --base $BASE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
-          echo "  --task tasks/<task-id>.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "  $TASK_ARG" >> "$GITHUB_STEP_SUMMARY"
           echo "Dormant: requires separate PR2 activation."
