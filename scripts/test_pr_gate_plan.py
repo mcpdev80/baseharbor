@@ -1196,14 +1196,14 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
-                                  'ci-executor-verifier-tests'}, checks)
+                                  'ci-executor-verifier-tests',
+                                  'receipt-execution-tests'}, checks)
 
     def test_receipt_control_plane_test_script_maps_to_ci_class(self):
         for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
                      'scripts/test_receipt_chain.py',
                      'scripts/test_ci_workflow_policy_receipts.py',
-                     'scripts/test_receipt_tasklink.py',
-                     'scripts/test_pr_gate_plan_receipt_paths.py']:
+                     'scripts/test_receipt_tasklink.py']:
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -3537,7 +3537,7 @@ class SQLPreviewQualificationTests(unittest.TestCase):
                 assert_rejected(actual(dirty))
 
 
-class ReceiptControlPlaneMappingTests(unittest.TestCase):
+class ReceiptControlPlaneBootstrapTests(unittest.TestCase):
     """Bootstrap regressions: persistent receipt-class mappings (v0.4.27)."""
 
     def check_ids(self, result):
@@ -3578,12 +3578,41 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
         self.assertIn('receipt-execution-tests', runner.VALIDATIONS)
         emitted = {check['id'] for check in planner.CI_CHECKS}
         self.assertIn('receipt-execution-tests', emitted)
-        executed = runner.execute_validation(
-            'receipt-execution-tests', str(Path(__file__).resolve().parent.parent))
+        # R27-F2: one canonical implementation. The planner command must
+        # delegate to the trusted runner instead of a diverging glob.
+        command = next(row['command'] for row in planner.CI_CHECKS
+                       if row['id'] == 'receipt-execution-tests')
+        self.assertIn('pr-check-runner.py execute --check receipt-execution-tests',
+                      command)
+        # Registration exactness: the executed suite set is the mirror image of
+        # the registered receipt test scripts - never more, never fewer.
         self.assertEqual(
-            ['test_receipt_writer.py', 'test_receipt_verifier.py',
-             'test_receipt_chain.py', 'test_receipt_tasklink.py',
-             'test_ci_workflow_policy_receipts.py'], executed)
+            {module for module in runner.RECEIPT_EXECUTION_SUITES},
+            {path[len('scripts/'):-len('.py')]
+             for path in planner.RECEIPT_CONTROL_PLANE_TEST_SCRIPTS})
+        repo = Path(__file__).resolve().parent.parent
+        for path in planner.RECEIPT_CONTROL_PLANE_TEST_SCRIPTS:
+            self.assertTrue((repo / path).is_file(),
+                            'registered receipt suite does not exist: ' + path)
+        # The selection is the explicit module list, invoked without discover
+        # or a -p glob, so a renamed or dropped suite fails closed.
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured['argv'] = list(argv)
+            output = ''.join('test_x (%s.Cases.test_x) ... ok\n' % module
+                             for module in runner.RECEIPT_EXECUTION_SUITES)
+            return CompletedProcess(argv, 0, output + 'Ran 5 tests\nOK\n', '')
+        with patch.object(runner.subprocess, 'run', side_effect=fake_run):
+            executed = runner.execute_validation('receipt-execution-tests', str(repo))
+        self.assertNotIn('discover', captured['argv'])
+        self.assertNotIn('-p', captured['argv'])
+        for module in runner.RECEIPT_EXECUTION_SUITES:
+            self.assertIn(module, captured['argv'])
+        self.assertEqual([module + '.py' for module in
+                          runner.RECEIPT_EXECUTION_SUITES], executed)
 
 
 class RuntimeProjectionPathMappingTests(unittest.TestCase):
