@@ -366,3 +366,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:0xZ p1 DONE (5 Gap-Punkte, 2 Owner-Aktionen: Token+dispatch; Dossier board-2026-10-27/p1-pilot-prereq.md) rotiert. d3 flash: merge-tree v36-Prognose ueber 3 w4-Tips.
 - 10:1xZ Tick: w4a 75b30b32 END-DONE aber PR fehlt -> 2-Aktions-Finish; rv4/d3 noch arbeitend.
 - 10:2xZ d3 DONE (Dossier 8.4K, merge-Prognose v3.6), rotiert.
+- 10:3xZ rv4 CHANGES ohne ueberlebende Liste (read-only, Transcript leer) -> rotiert; Vorpruefung wird durch CI+CODEX-R4 ersetzt (kein Double-Work). b3/flash CardBoard v3.5/3.6.
