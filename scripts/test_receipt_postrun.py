@@ -76,7 +76,13 @@ GH_EXPR = {
 
 
 def _extract_run_block(role):
-    """Slice one run block and substitute GitHub runtime expressions."""
+    """Slice one run block and substitute GitHub runtime expressions.
+
+    The block is parsed out of the YAML first so that the block-scalar
+    indentation is stripped exactly as the real runner would deliver it to
+    bash: the Python heredoc body arrives at column 0.
+    """
+    import yaml  # local import: only this module needs it
     text = POST_RUN_YML.read_text()
     marker = {
         "download": "Download trusted-pr-plan artifact",
@@ -85,57 +91,20 @@ def _extract_run_block(role):
         "publish": "Publish receipt to Planning",
     }[role]
     idx = text.index(marker)
-    # The marker is a "- name:" line belonging to a step whose run: | block
-    # comes AFTER it. Walk forward from the marker to the next run: |.
-    start = text.index("run: |", idx)
-    body = text[start + len("run: |"):].splitlines()
-    # Drop leading blank lines before the run content.
-    while body and not body[0].strip():
-        body.pop(0)
-    # A run block ends at the next step ("- name:") at any indentation, which is
-    # the real YAML step boundary. Indented comments, YAML keys and blank lines
-    # are legitimate block content (heredocs, inline comments) and must be kept.
-    out = []
-    in_heredoc = False
-    for line in body:
-        # A run block ends at the next step ("- name:"). While inside a
-        # heredoc, every body line (even column-0 content) is literal.
-        if re.match(r"^[ \t]*- name:", line):
-            break
-        # A job/section boundary is a non-indented YAML key (e.g. the next
-        # `publish_receipt:` job). Inside a heredoc the body is indented, so it
-        # never trips this. Stop at the first truly column-0 non-PY line.
-        if not in_heredoc and line and not line[0] in (" ", "\t") and not line.strip().startswith("#"):
-            break
-        if line.strip() == "":
-            # Blank line: keep trailing blanks, but stop once the next real
-            # (non-blank, non-comment) line is a step or YAML key.
-            out.append(line)
-            continue
-        if line.strip().startswith("#"):
-            # A section comment (e.g. "Step 3: ...") marks a new job boundary;
-            # the decode run block does not own it. Stop before it.
-            stripped = line.strip()
-            if re.match(r"^#\s*Step \d+", stripped) or re.match(r"^[A-Za-z_]+:", stripped):
+    # Find the owning step's run: | block via the parsed YAML so indentation is
+    # already chomped to the runner's delivery form.
+    doc = yaml.safe_load(text)
+    run_text = None
+    for job in doc["jobs"].values():
+        for step in job["steps"]:
+            if marker in step.get("name", "") and step.get("run"):
+                run_text = step["run"]
                 break
-            out.append(line)
-            continue
-        if in_heredoc:
-            # Closing heredoc delimiter: bare ``PY`` or glued to a redirection
-            # (``PY > plan.txt``), as in the workflow itself.
-            if line.strip() in ("PY", "PY > plan.txt"):
-                out.append("PY")
-                in_heredoc = False
-            else:
-                out.append(line)
-            continue
-        out.append(line)
-        if "PY" in line and "<<'" in line:
-            in_heredoc = True
-    block = "\n".join(out)
-    # Trim trailing blank lines.
-    while block.endswith("\n"):
-        block = block[:-1]
+        if run_text is not None:
+            break
+    if run_text is None:
+        raise AssertionError("run block for %r not found" % role)
+    block = run_text
     for expr, val in GH_EXPR.items():
         block = block.replace(expr, val)
     return block

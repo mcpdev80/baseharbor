@@ -153,7 +153,7 @@ jobs:
               "base_sha": bs,
           }
           print("\n".join(f"{k}={v}" for k, v in out.items()))
-          PY > plan.txt
+          PY
           workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
