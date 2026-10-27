@@ -31,6 +31,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 	if err := ensureDesiredRuntimeValues(values, m); err != nil {
 		return err
 	}
+	if err := ensureNativeBackendCredentialValues(values, m); err != nil {
+		return err
+	}
 	if err := ensureNativeBackendEndpointValues(values, m); err != nil {
 		return err
 	}
