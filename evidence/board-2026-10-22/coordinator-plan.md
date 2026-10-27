@@ -341,3 +341,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 04:3xZ ROTATION: g1y strike2 (0 push, Step-0 ignoriert), w1b strike1-Loop (Deliverable PR#1127+akte ok, nur Endlos-Commentar). Neue frische Lanes folgen.
 - 04:35Z IRRUM KORRIGIERT: g1y HATTE geliefert (09c4f502 pushed, g1y.md da) - zu frueh rotiert; z1/flash FINISHER dispatched (Proofs ausfuehren + PR auf postrun-Branch). w1b bleibt rotiert (PR #1127 offen, Evidence fehlt -> wartet auf Staging-Lane).
 - 04:5xZ ci2=GHOST (Boot nie ausgefuehrt, kein Worktree) -> rotiert, ci2b mit BOOT-PFLICHT-Präfix (3-Tool-Nachweis sonst BOOTFAIL). v34 noch 839e5cc9 (Reconcile ausstehend), f1=09c4f502 stabil.
+- 05:2xZ z1 liefert: fa63b894 + PR #1128 (END fehlt noch). w1c BOOT-Repost, ci2b spinner-aktiv. v34 wartet Reconcile.
