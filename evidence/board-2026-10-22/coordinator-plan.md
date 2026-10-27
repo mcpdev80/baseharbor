@@ -402,3 +402,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:4xZ 3. Pilot-Dialog (Allow-always griff nicht) -> once gewaehrt UND tmp-ops/* in alle 3 Lane-Configs permanent eingetragen (Praxis-Konsequenz aus wiederholtem Dialog).
 - 16:5xZ bx2 DONE (PR #1139, 1c21bd1d) rotiert (evidence-file lost, PR=Quelle). rv7/ornith Source-Review; danach CODEX-MERGE (Owner-Freigabe --squash --admin vorhanden).
 - 17:0xZ Dialog wegen Config-at-boot: laufende p2-Lane kennt tmp-ops-Eintrag noch nicht (greift erst bei neuen Lanes) -> once. rv7 discovered ok.
+- 17:1xZ Dialog-Navi gelöst: RIGHT+Enter (Down wartoption-falsch!). Immer-noch 5. Pilot-Dialog -> Lane bleibt sensibel; Runbook notiert.

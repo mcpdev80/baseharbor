@@ -77,6 +77,8 @@ Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-2
    NIE in Evidence/Logs und ssh-Bedarf ist pro Auftrag in dessen Scope-Zeile zu
    benennen):
    `tmux -L codeman send-keys -t codeman-<id8> Enter` (Allow once).
+
+3b. Optionauswahl: Cursor startet auf 'Allow once'; Right = naechste Option (Highlight 48;5;215 pruefen, capture -e), Enter. Down/Up funktioniert in diesem Dialog NICHT. Allow always schreibt nur in die Lane-Config dieser Session.
 3. Danach Busy prüfen; Lane ggf. mit workspace-lokalen Paden weiterschicken.
 
 ## 5. Codex-Maintainer-Lane
