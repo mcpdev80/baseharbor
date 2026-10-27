@@ -392,3 +392,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 14:3xZ v37 CI fail (40596764382) -> d5/flash read-only Log-Analyse als R5-Input; r5i ohne push <15min.
 - 14:4xZ r5i 25min 0 push 0 Datei -> Plan-erzwing-Nudge (kein empty commit erlaubt).
 - 14:5xZ d5 DONE (d5-ci37.md Fail-Matrix) rotiert; Matrix an r5i weitergereicht.
+- 15:0xZ bx1/flash = Klasse-B Bootstrap-Slice auf develop (PR base develop). r5i hat r5i.md lokal, Push-Nudge.
