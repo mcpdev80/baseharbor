@@ -3,7 +3,7 @@
 ## Overview
 - **Lane ID**: f1 (qwen)
 - **Task**: Reproduce and fix BF-W2-1: publish() swallows git push errors
-- **Candidate SHA**: ad4d0f287d0e83bffde63bcff4bc1f1f3cedc49b
+- **Commit SHA**: 74b95e1428565c44f09b6b41f1c8bb813f20ea2b
 - **Branch**: work/r27-fix-pushswallow
 - **Test Function**: `test_publish_reports_push_failure`
 - **Status**: DONE
@@ -109,11 +109,18 @@ remote_commit = remote_ref if remote_ref else None
 - **Test in tree**: `worktrees/f1/scripts/test_receipt_writer.py::PublishRemoteTest::test_publish_reports_push_failure`
 - **SHA**: ad4d0f287d0e83bffde63bcff4bc1f1f3cedc49b
 
-## 7. Conclusion
+## 7. Self-Proof
+
+- **Branch visible via**: `git -C worktrees/f1 branch --show-current` → `work/r27-fix-pushswallow`
+- **Test in tree**: `worktrees/f1/scripts/test_receipt_writer.py::PublishRemoteTest::test_publish_reports_push_failure`
+- **Remote HEAD**: `74b95e1428565c44f09b6b41f1c8bb813f20ea2b refs/heads/work/r27-fix-pushswallow`
+- **Local == Remote**: `git rev-parse HEAD` == `git ls-remote origin work/r27-fix-pushswallow` → both `74b95e1428565c44f09b6b41f1c8bb813f20ea2b`
+
+## 8. Conclusion
 The bug where `publish()` swallowed git push errors has been fixed. The fix ensures that:
 1. Push errors are propagated with context
 2. No successful return occurs when push fails
 3. The local commit is not treated as published
 4. All existing tests continue to pass
 
-**END F1-DONE SHA=ad4d0f287d0e83bffde63bcff4bc1f1f3cedc49b**
+**END F1-DONE SHA=74b95e1428565c44f09b6b41f1c8bb813f20ea2b**
