@@ -330,3 +330,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:2xZ g1x(GHOST,root-repo-panning)+g2x rotiert; GHOST-Work partly in worktrees/g1-f1-fixture (post-run 127/104) = g1x Startpunkt. Skript-Disaster: evidence/**-Files fehlten nach Recovery (Index vs Platte) -> checkout -- evidence/ docs/ zurueck; Watcher Pid 1776121 neu. Pointer-Sends manuell (dispatch rc=4).
 - 01:5xZ b2 DONE (board cd4dbbe, clean). d1/flash read-only #1125-CI-Dossier (F2-Realitaet) dispatched.
 - 02:1xZ Owner-Corrective (publisher card 'Required correction', 3 Wiring-Fehler F1a-c) als BINDING ADDENDUM an g1x (aktueller Owner der W2-Dateien) zugestellt; g2x-Files ausgenommen.
+- 02:3xZ g2x DONE PR #1126 (dbe91e7b, F5+F4 tasklink/verifier) rotiert. g1x hat Owner-Addendum mit file:line Defektliste.
