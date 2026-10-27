@@ -352,3 +352,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:3xZ F8-Addenda committed (rv2 SHA-Korrektur). WAVE4 dispatched: w4a/ornith (F1b+F3+F5writer/tasklink+D3), w4b/qwen (F2 planner/Akte exakt), w4c/flash (F6+F4verifier).
 - 07:5xZ Owner-Klaerung Pilotform: 1 Gate public-contracts,全自动-Kette, Owner = nur Approved-Klick im PR (wie CODEMAN-START). Pool: rv3+w4abc busy, keine Pushes <15min.
 - 08:0xZ rv3 DONE(ACCEPT-Vorpruefung, SHA-Krit mit Caveat publiziert) rotiert; rv3.md relocated. Wave4 laeuft (0 pushes <18min).
+- 08:2xZ w4b: worktree VERNICHTET aber Branch 2e137e45 pushed (Vorarbeit gerettet) -> rotiert, w4b2 uebernimmt remote-basiert mit ls-remote-Guard. Owner-Befunde geprueft (Credentials-401 BESTAETIGT plain push origin; BASE_REF 11-Leerzeichen BESTAETIGT; verify_producer Name BESTAETIGT) -> Addendum an w4a folgt.
