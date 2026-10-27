@@ -77,6 +77,7 @@ jobs:
         with:
           repository: mcpdev80/baseharbor-plan
           path: planning
+          fetch-depth: 0
 
       - name: Resolve Planning revision for the receipt
         run: echo "PLANNING_REVISION=$(git -C planning rev-parse HEAD)" >> "$GITHUB_ENV"
