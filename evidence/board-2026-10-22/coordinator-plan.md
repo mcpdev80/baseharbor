@@ -349,3 +349,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:0xZ w1d END-CHANGES (rotiert): Akte-Tests 4x OK aber d1-Anforderung NEIN — 2 pre-existing pr-gate FAILs + innerer Runner-Fehler bleiben; deckt sich mit CI-fail pr-planner-tests auf #1129. Dossier board-2026-10-27/w1d.md. Input fuer CODEX-R3/Wave-4.
 - 07:1xZ Pool=rv3(codex parallel); w1d gone-ack; rv3 Detach-Worktree f57b30ed korrekt, Dossier folgt.
 - 07:2xZ CODEX-R3 = BLOCKED (F1-F6 PARTLY, F8 OPEN, F7 closed; D1/D2/D3 PARTLY). Verdict CODEX-REVIEW-f57b30ed48f1.md publiziert? nocht pruefen + planning push; wave4 nach rv3.
+- 07:3xZ F8-Addenda committed (rv2 SHA-Korrektur). WAVE4 dispatched: w4a/ornith (F1b+F3+F5writer/tasklink+D3), w4b/qwen (F2 planner/Akte exakt), w4c/flash (F6+F4verifier).
