@@ -86,6 +86,8 @@ jobs:
 
       - name: Approve the receipt
         run: |
+          echo "gh ver: $(gh --version | head -1)"
+          gh api repos/mcpdev80/baseharbor/actions/runs/40428162731 --jq .id || echo "GH-API-RC=$?"
           # GITHUB_* cannot be overridden via step env; set the protected-main
           # contract in-shell for the Owner-gated shadow dispatch (PR3 will run
           # this path from main proper).
