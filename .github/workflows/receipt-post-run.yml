@@ -226,41 +226,41 @@ jobs:
           PLANNING_ROOT: ${{ github.workspace }}/planning
         shell: bash
         run: |
-           set -euo pipefail
-           echo "Writing plan fixture with task link..."
-           echo "  workflow_id=$WORKFLOW_ID"
-           echo "  head_sha=$HEAD_SHA"
-           echo "  candidate_sha=$CANDIDATE_SHA"
-           echo "  base_sha=$BASE_SHA"
-           echo "  pr_number=$PR_NUMBER"
-           # The tasklink script writes the bounded plan fixture through the ONE
-           # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
-           # caller-supplied (--task); it is auto-resolved from the trusted PR
-           # via --pr-number. A caught resolver error fails closed — it is never
-           # an authorization to fall back to a hardcoded task (F4). The commit
-           # the tasklink returns is the real Planning plan revision the writer
-           # consumes as --plan (never the candidate SHA, never a run.id).
-           #
-           # The CLI emits diagnostics on stdout and returns the result commit
-           # as its final line; the plan revision is that last 40-hex line
-           # only — never parsed from arbitrary progress text (Owner
-           # correction 2026-10-27).
-           RESULT="$(python3 scripts/receipt_tasklink.py \
-             --planning "$PLANNING_ROOT" \
-             --workflow-id "$WORKFLOW_ID" \
-             --head "$HEAD_SHA" \
-             --candidate "$CANDIDATE_SHA" \
-             --base "$BASE_SHA" \
-             --pr-number "$PR_NUMBER")"
-           PLAN_COMMIT="$(printf '%s\n' "$RESULT" \
-             | grep -E '^[0-9a-f]{40}$' | tail -n 1)"
-           if [ -z "${PLAN_COMMIT}" ]; then
-             echo "tasklink did not return a valid plan commit SHA" >&2
-             exit 1
-           fi
-           echo "plan_revision=${PLAN_COMMIT}" >> "$GITHUB_OUTPUT"
-           echo "Plan fixture written at $PLAN_COMMIT. Verifying..."
-           ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
+          set -euo pipefail
+          echo "Writing plan fixture with task link..."
+          echo "  workflow_id=$WORKFLOW_ID"
+          echo "  head_sha=$HEAD_SHA"
+          echo "  candidate_sha=$CANDIDATE_SHA"
+          echo "  base_sha=$BASE_SHA"
+          echo "  pr_number=$PR_NUMBER"
+          # The tasklink script writes the bounded plan fixture through the ONE
+          # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
+          # caller-supplied (--task); it is auto-resolved from the trusted PR
+          # via --pr-number. A caught resolver error fails closed — it is never
+          # an authorization to fall back to a hardcoded task (F4). The commit
+          # the tasklink returns is the real Planning plan revision the writer
+          # consumes as --plan (never the candidate SHA, never a run.id).
+          #
+          # The CLI emits diagnostics on stdout and returns the result commit
+          # as its final line; the plan revision is that last 40-hex line
+          # only — never parsed from arbitrary progress text (Owner
+          # correction 2026-10-27).
+          RESULT="$(python3 scripts/receipt_tasklink.py \
+            --planning "$PLANNING_ROOT" \
+            --workflow-id "$WORKFLOW_ID" \
+            --head "$HEAD_SHA" \
+            --candidate "$CANDIDATE_SHA" \
+            --base "$BASE_SHA" \
+            --pr-number "$PR_NUMBER")"
+          PLAN_COMMIT="$(printf '%s\n' "$RESULT" \
+            | grep -E '^[0-9a-f]{40}$' | tail -n 1)"
+          if [ -z "${PLAN_COMMIT}" ]; then
+            echo "tasklink did not return a valid plan commit SHA" >&2
+            exit 1
+          fi
+          echo "plan_revision=${PLAN_COMMIT}" >> "$GITHUB_OUTPUT"
+          echo "Plan fixture written at $PLAN_COMMIT. Verifying..."
+          ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
 
       - name: Publish receipt to Planning
         env:
@@ -274,11 +274,11 @@ jobs:
           PLAN_REVISION: ${{ steps.plan_commit.outputs.plan_revision }}
         shell: bash
         run: |
-          set -euo pipefail
-          echo "Publishing receipt..."
-          echo "  run_id=$RUN_ID"
-          echo "  attempt=1"
-          echo "  plan_revision=$PLAN_REVISION"
+           set -euo pipefail
+           echo "Publishing receipt..."
+           echo "  run_id=$RUN_ID"
+           echo "  attempt=1"
+           echo "  plan_revision=$PLAN_REVISION"
            # The writer invokes the immutable controller Python.
            # It creates a canonical 6-field receipt, verifies it live WITH the
            # product checkout (producer-definition check at issuance), and
