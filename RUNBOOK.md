@@ -216,3 +216,6 @@ python3 <wt-shadow>/scripts/receipt_verifier.py retained --planning <plan> --rev
 - **Qwen-Lanes:** DONE/Datei-Erfindung (b1 heute: Geister-RUNBOOK-Commit, nichts auf Platte) — Disk-Artefakt-Check vor Abnahme ist Pflicht.
 ### Repair-Kurve der Approval-Kette (8 Runden -> naechstes Mal 1-2)
 #1097 Pins+env-Explizitheit · #1100 fetch-depth:0 · #1101 revision-Introducer · #1102 Resolve-env · #1103 GH_TOKEN · #1104 git-identity · #1105 Patch-Export (format-patch, upload warnt still). Alle gemergt 43ea0d0c..3431b22c-Aera.
+
+### Reminder-Ack Korrigendum (2026-10-27, zweitaegiger Betriebsfehler)
+`events-check.py --ack` ackt NUR events.log; die REMINDERS-Zaehler braucht `--reminders --ack` in EINEM Aufruf. Basics-Flag 'REMINDERS: n unread' war deshalb tagelang Pseudo-Spam (pos 235144->310863 nach Erstanwendung). Watchdog-Rauschen zusaendlich durch verwaiste watcher-state-Eintraege -> prune-watch.sh (cron */15).
