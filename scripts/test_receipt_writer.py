@@ -459,6 +459,91 @@ class PublishRemoteTest(TestCase):
         path2, intro, pub = writer.publish(self.wt, path, commit)
         self.assertNotEqual(self._head_remote(), remote_head_before)
 
+    def test_publish_reports_push_failure(self):
+        """BF-W2-1 fix: publish() MUST propagate git push errors, never return success.
+
+        Before fix: publish() swallowed ReceiptError from push() at line 100-101
+        and fell through to return success.
+        
+        After fix: publish() raises ReceiptError with context when push fails.
+        
+        This test creates a bare remote with a pre-receive hook that rejects pushes,
+        simulating a protected-branch or policy-rejection scenario.
+        """
+        import subprocess as sp
+        # Create a bare remote WITH a rejecting pre-receive hook.
+        self.temp2 = tempfile.TemporaryDirectory()
+        self.root2 = Path(self.temp2.name)
+        self.remote2 = self.root2 / 'planning.git'
+        self.remote2.mkdir()
+        sp.run(['git', 'init', '-q', '--bare', str(self.remote2)],
+               check=True, capture_output=True)
+        # Create a pre-receive hook that rejects all pushes.
+        hook = self.remote2 / 'hooks' / 'pre-receive'
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text('#!/bin/bash\nexit 1\n')
+        hook.chmod(0o755)
+        # Create a local working tree with a receipt.
+        self.wt2 = self.root2 / 'worktree'
+        sp.run(['git', 'clone', '-q', str(self.remote2), str(self.wt2)],
+               check=True, capture_output=True)
+        sp.run(['git', '-C', str(self.wt2), 'config', 'user.name', 'Wt'],
+               check=True, capture_output=True)
+        sp.run(['git', '-C', str(self.wt2), 'config', 'user.email', 'wt@example.invalid'],
+               check=True, capture_output=True)
+        # Create plan fixture.
+        plan_path = self.wt2 / verifier.PLAN_PATH
+        plan_path.parent.mkdir(parents=True)
+        plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                    head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+                    task='tasks/receipt-pilot.md')
+        plan_path.write_bytes(verifier.canonical(plan))
+        _git(self.wt2, 'add', '.')
+        _git(self.wt2, 'commit', '-qm', 'plan fixture')
+        # Write a receipt (this succeeds because write() doesn't push).
+        head_sha = _git(self.wt2, 'rev-parse', 'HEAD').decode().strip()
+        path, commit = writer.write(self.wt2, head_sha, 123, 1, api=self._api2)
+        # Now try to publish. The pre-receive hook will reject the push.
+        # After the fix, publish() must propagate the error.
+        # Before the fix, publish() would swallow the error and return success.
+        with self.assertRaises(verifier.ReceiptError) as ctx:
+            writer.publish(self.wt2, path, commit)
+        # Verify the error contains context about the push failure.
+        err_msg = str(ctx.exception)
+        self.assertTrue('push' in err_msg.lower() or 'failed' in err_msg.lower() or
+                        'blocked' in err_msg.lower() or 'error' in err_msg.lower() or
+                        'hook' in err_msg.lower(),
+                        f"expected push-error context, got: {err_msg}")
+
+    def _api2(self, path, *, binary=False):
+        """Fake API that passes all live checks."""
+        import copy
+        import io
+        import zipfile
+        run = dict(id=123, run_attempt=1,
+                   repository=dict(id=verifier.REPOSITORY_ID, full_name=verifier.REPOSITORY),
+                   workflow_id=17, path='.github/workflows/ci.yml', event='pull_request',
+                   head_sha='a' * 40, status='completed', conclusion='success')
+        job = dict(id=456, run_id=123, head_sha='a' * 40,
+                   name='PR · Public Contracts', status='completed', conclusion='success')
+        if binary:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as archive:
+                archive.writestr('pr-plan.json', verifier.canonical(dict(
+                    schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
+                    selected_gates=['integration/static/public-contracts'],
+                    head_sha='a' * 40, target_base_sha='b' * 40,
+                    integration_sha='c' * 40)))
+            return buffer.getvalue()
+        if '/artifacts?' in path:
+            return dict(total_count=1, artifacts=[dict(id=789, name='trusted-pr-plan',
+                expired=False, size_in_bytes=500,
+                workflow_run=dict(id=123, head_sha='a' * 40))])
+        if '/jobs?' in path:
+            producer = dict(job, id=457, name='PR · Trusted Plan')
+            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+        return copy.deepcopy(run)
+
 
 if __name__ == '__main__':
     unittest.main()

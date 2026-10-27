@@ -85,20 +85,23 @@ def publish(root: Path, path: str, local_commit: str, *,
     require(not git(root, "status", "--porcelain"), "clean Planning checkout required")
 
     # Determine the current remote HEAD.
+    # Read the local receipt content for idempotent retry comparison.
+    local_path = root / path
+    require(local_path.is_file(), f"receipt file missing: {path}")
+    raw = local_path.read_bytes()
     remote_ref = _remote_head(root, "refs/heads/main")
     remote_commit = remote_ref if remote_ref else None
 
-    # For the first receipt, there is no remote yet — just push.
-    # For subsequent receipts, the remote must be on main and fast-forwardable.
+    # For the first receipt, there is no remote yet — push via fast-forward.
     if remote_commit is None:
-        # No remote main exists yet — just force-push the commit.
-        # This should not happen after the first receipt is published,
-        # but handles the very first publication scenario.
+        # No remote main exists yet — force-push to create main.
+        # This handles the very first publication scenario.
+        # Git/API failures MUST propagate; never swallow.
         try:
             git(root, "push", "-f", "origin", f"{local_commit}:refs/heads/main")
-            return path, local_commit, local_commit
-        except ReceiptError:
-            pass
+        except ReceiptError as exc:
+            raise ReceiptError(f"publication push failed (no remote main yet): {exc}") from exc
+        return path, local_commit, local_commit
 
     # Check if our local commit is already the remote head.
     if remote_commit == local_commit:
