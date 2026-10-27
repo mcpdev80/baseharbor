@@ -196,11 +196,11 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
         if not self.workflow_files:
             self.skipTest("No receipt-*.yml files found in .github/workflows/")
 
-    def test_receipt_post_run_in_allowlist_with_job_level_guard(self):
+    def test_receipt_post_run_in_allowlist_with_workflow_level_guard(self):
         """
         receipt-post-run.yml IS in the workflow-policy allowlist (L4) and uses
-        the preferred job-level never-true dormancy guard (L1). This is the
-        registered, expected state; the suite is green.
+        a workflow-level `if:` guard on the authenticated run conclusion. This is
+        the registered, expected state; the suite is green.
         """
         filename = "receipt-post-run.yml"
         filepath = WORKTREE_DIR / filename
@@ -215,14 +215,17 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
             f"{filename} should be in the allowlist (registered at L4)",
         )
 
-        # Document the dormancy guard - should be job-level never-true
+        # Document the dormancy guard. The two receipt workflows that can only
+        # fire under an authenticated condition use a workflow-level `if:` guard
+        # over the authenticated run conclusion / dispatch actor; this is the
+        # allowed Dormancy-Form for these producer/approver definitions.
         guard = _find_dormancy_guard(text)
         self.assertIsNotNone(
             guard["guard_type"],
             f"{filename} should have a dormancy guard",
         )
         self.assertIn(
-            "job-level",
+            "if guard",
             guard["guard_type"],
             f"{filename} uses {guard['guard_type']} (the allowed Dormancy-Form)",
         )
@@ -230,8 +233,8 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
     def test_receipt_approval_in_allowlist_with_job_level_guard(self):
         """
         receipt-approval.yml IS in the workflow-policy allowlist (L4) and uses
-        the preferred job-level never-true dormancy guard (L2). This is the
-        registered, expected state; the suite is green.
+        a job-level Owner-gated dispatch guard. This is the registered,
+        expected state; the suite is green.
         """
         filename = "receipt-approval.yml"
         filepath = WORKTREE_DIR / filename
@@ -246,7 +249,11 @@ class TestCiWorkflowPolicyReceipts(unittest.TestCase):
             f"{filename} should be in the allowlist (registered at L4)",
         )
 
-        # Document the dormancy guard - should be job-level never-true
+        # Document the dormancy guard. The actual receipt-approval.yml places the
+        # authenticated Owner-gated dispatch `if:` at job level (after `jobs:`),
+        # which the matcher classifies as "job-level dormancy guard" — the
+        # allowed Dormancy-Form. Both the F5 (job-level) and F2 (job-level)
+        # recipes agree on this; the merged assertion checks "job-level".
         guard = _find_dormancy_guard(text)
         self.assertIsNotNone(
             guard["guard_type"],
