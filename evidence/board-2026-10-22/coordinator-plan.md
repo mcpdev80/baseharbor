@@ -367,3 +367,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:1xZ Tick: w4a 75b30b32 END-DONE aber PR fehlt -> 2-Aktions-Finish; rv4/d3 noch arbeitend.
 - 10:2xZ d3 DONE (Dossier 8.4K, merge-Prognose v3.6), rotiert.
 - 10:3xZ rv4 CHANGES ohne ueberlebende Liste (read-only, Transcript leer) -> rotiert; Vorpruefung wird durch CI+CODEX-R4 ersetzt (kein Double-Work). b3/flash CardBoard v3.5/3.6.
+- 10:4xZ Tick: w4a push 39bed489 (forward ok) aber PR fehlt -> 2nd finish-Nudge; rv5/ornith schmal (rv4-Negative A/B/C) als dritter Slot.
