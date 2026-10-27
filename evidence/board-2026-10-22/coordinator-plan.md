@@ -371,3 +371,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:5xZ rv5 Dialog: external_directory ~/tmp-ops/* (vorgesehen) -> Allow once erteilt, busy bestaetigt.
 - 11:0xZ w4a DONE (#1133, evidence-Datei fehlt -> PR-Body als Referenz, ehrlich dokumentiert) rotiert. stg3/ornith v3.6-Staging dispatched (d3-Reihenfolge).
 - 11:1xZ rv5 2. Dialog (rv5-scratch, scope-konform) Allow once; rv5 baut echten bare-remote Positivfall (gut).
+- 11:2xZ b3 DONE (f362855) rotiert; vb/flash Gegenpruefung Board-Commit; rv5+stg3 busy.
