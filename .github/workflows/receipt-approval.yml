@@ -1,0 +1,78 @@
+# Dormant Owner-approval consumption path for the public-contracts receipt pilot.
+#
+# PR2 proves the end-to-end flow: producer, writer, published receipt, live
+# verifier, and the sole Owner approval edit. This workflow stays disabled in
+# every PR until a maintainer explicitly enables it for the accepted consumption
+# path (PR3 cuts over only that path). Nothing here is active: the job-level
+# never-true guard skips the job, no trigger is armed, and no required check is
+# added. Existing workflows and required checks are unchanged.
+#
+# The approval is the single allowed edit that replaces `approved: null` in a
+# live-verified, unapproved receipt with the Owner identity, a UTC timestamp and
+# the receipt commit. The verifier checks GITHUB_ACTOR and
+# GITHUB_TRIGGERING_ACTOR, then re-runs the live GitHub witness once before any
+# write. Fork and contributor jobs receive no Planning write token; the job
+# runs only on protected source in a clean runner.
+#
+# Run manually (workflow_dispatch) on protected main:
+#
+#   python3 scripts/receipt_verifier.py approve \
+#     --planning <planning checkout> \
+#     --revision <full Planning commit with evidence/receipt-plans/public-contracts.json> \
+#     --receipt evidence/receipts/public-contracts/<run>-<attempt>.json \
+#     --candidate <full tested integration SHA> \
+#     --plan <full Planning revision>
+#
+# Exit code is nonzero when the receipt is blocked. The caller must publish the
+# local introduction/approval commit by an ordinary fast-forward push and check
+# its result before reporting publication or running the next stage.
+
+name: receipt-approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      receipt_path:
+        description: Receipt path relative to the Planning checkout
+        type: string
+        required: false
+      candidate_sha:
+        description: Full tested integration SHA the receipt must bind
+        type: string
+        required: false
+      plan_revision:
+        description: Full Planning revision carrying evidence/receipt-plans/public-contracts.json
+        type: string
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  approve:
+    # DORMANT: never runs on this repository. Activate by replacing this
+    # never-true guard in the accepted consumption path (PR3 cutover). Until
+    # then nothing runs, no trigger is armed and no required check is added.
+    if: github.repository == 'mcpdev80/receipt-approval-dormant'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@08d27766ec433536fcff6467a2d4a3e3aeb7542c # v5.6.0
+        with:
+          python-version: '3.x'
+
+      - name: Approve the receipt
+        run: |
+          python3 scripts/receipt_verifier.py approve \
+            --planning "$GITHUB_WORKSPACE" \
+            --revision "$GITHUB_SHA" \
+            --receipt "$RECEIPT_PATH" \
+            --candidate "$RECEIPT_CANDIDATE" \
+            --plan "$RECEIPT_PLAN"
+        env:
+          RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
+          RECEIPT_CANDIDATE: ${{ inputs.candidate_sha || '' }}
+          RECEIPT_PLAN: ${{ inputs.plan_revision || '' }}

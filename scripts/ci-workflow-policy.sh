@@ -15,6 +15,9 @@ expected=(
   podman-acceptance.yml
   pre-release-runtime-suite.yml
   pre-release.yml
+  receipt-approval.yml
+  receipt-post-run.yml
+  receipt-shadow.yml
   release.yml
   renovate.yml
   runtime-broker.yml

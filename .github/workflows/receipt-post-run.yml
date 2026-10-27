@@ -1,0 +1,64 @@
+name: "Receipt · Post-Run Writer"
+
+# DORMANT: PR2 content. Does NOT activate PR1 (work/r27-minimal-receipt).
+# Dormancy lives on the job-level never-true guard below (a workflow-level
+# "if" is not valid syntax). Manual activation requires a separate PR that
+# replaces that guard.
+
+on:
+  workflow_run:
+    workflows: ["CI · Source & Quality"]
+    types:
+      - completed
+  # Tag-trigger without activation: receipt-post-run.yml must be enabled
+  # in a dedicated PR before any automatic invocation is possible.
+  # tag: 'r27-*'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  post_run_writer:
+    name: "Receipt · Writer (dormant)"
+    if: github.repository == 'mcpdev80/receipt-post-run-dormant' && github.event.workflow_run.conclusion == 'success' # DORMANT: never true on this repository; activate by replacing this guard in the accepted PR 2 step, keeping the success condition.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.14'
+
+      - name: Automatic task-link (dormant)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          CANDIDATE_SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_SHA: ${{ github.event.workflow_run.base.sha || github.event.workflow_run.base_ref }}
+          WORKFLOW_ID: ${{ github.event.workflow_run.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The post-run writer invokes the tasklink producer to write the
+          # bounded plan fixture with the automatic task link BEFORE the
+          # writer runs. This step is DORMANT behind the same never-true
+          # guard; activation requires the separate PR2 commit.
+          echo "DORMANT: python3 scripts/receipt_tasklink.py \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --planning <planning-repo> \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --workflow-id $WORKFLOW_ID \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --head $HEAD_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --candidate $CANDIDATE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --base $BASE_SHA \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --task tasks/<task-id>.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "Dormant: requires separate PR2 activation."
