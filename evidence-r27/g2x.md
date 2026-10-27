@@ -16,3 +16,5 @@
 - Kein `git worktree remove`, kein `rm -rf`, kein `reset`, kein `checkout -b` im Root
 - Ordinary commit + FF push, kein force-push
 - DRAFT-PR erstellt, keine self-approval, keine merge
+
+END G2X-DONE 1126
