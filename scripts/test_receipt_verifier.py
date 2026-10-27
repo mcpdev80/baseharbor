@@ -24,6 +24,7 @@ import tempfile
 import unittest
 import zipfile
 from unittest.mock import patch
+import yaml
 import receipt_verifier as verifier
 import receipt_tasklink as tl
 import receipt_writer as writer
@@ -67,7 +68,30 @@ class VerifierFixtureTest(unittest.TestCase):
             GITHUB_ACTOR=verifier.OWNER, GITHUB_TRIGGERING_ACTOR=verifier.OWNER,
             GITHUB_EVENT_NAME='workflow_dispatch', GITHUB_REPOSITORY=verifier.REPOSITORY,
             GITHUB_REF='refs/heads/main', GITHUB_RUN_ID=str(APPROVAL_RUN),
-            GITHUB_SHA=self.head_sha)
+            GITHUB_SHA=self.head_sha,
+            # Presence-only fixture value for the writer credential gate; the
+            # verifier never consumes or prints it (addendum cc379b1-1).
+            PLANNING_RECEIPT_WRITE_TOKEN='fixture-token-not-a-secret')
+        # F5 fixture adaptation: the Planning repository gets a real temporary
+        # bare remote, so the card publication's push and read-back are genuine
+        # Git operations against durable storage — never an origin-less fixture
+        # error and never a network access.
+        self.planning_remote = Path(self.temp.name) / 'planning-origin.git'
+        subprocess.check_output(['git', 'init', '-q', '--bare', str(self.planning_remote)])
+        self.command('remote', 'add', 'origin', str(self.planning_remote))
+
+    def seed_remote_main(self):
+        """Create origin/main as an exact copy of the current local planning
+        history — the ordinary precondition for fast-forward publication
+        pushes. Tests that publish use this; tests that must fail closed
+        deliberately leave the remote empty."""
+        self.command('push', '-q', 'origin', 'HEAD:refs/heads/main')
+
+    def remote_main(self):
+        probe = subprocess.run(['git', 'ls-remote', str(self.planning_remote),
+                                'refs/heads/main'], capture_output=True, text=True)
+        fields = probe.stdout.split()
+        return fields[0] if fields else ''
 
     def _build_product(self):
         self._pcommand('init', '-q')
@@ -201,7 +225,17 @@ class VerifierFixtureTest(unittest.TestCase):
 
     def use_fake_publish(self):
         def publish(root, path, local_commit):
-            return path, local_commit, local_commit
+            # W2 interface: (path, introduction, publication) from durable
+            # history, so an already-published receipt returns the original
+            # introduction and the last receipt edit as publication — never a
+            # fresh pseudo-publication that would trigger a second card edit.
+            edits = subprocess.check_output(
+                ['git', '-C', str(root), 'log', '--full-history', '--format=%H',
+                 local_commit, '--', path], stderr=subprocess.PIPE
+            ).decode().split()
+            if not edits:
+                return path, local_commit, local_commit
+            return path, edits[-1], edits[0]
         patcher = patch.object(writer, 'publish', publish, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -754,13 +788,15 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
 
     def test_approve_pr_happy_path(self):
         path, original = self.create()
-        self.use_fake_publish()
+        self.seed_remote_main()
         result = self.approve_pr()
         self.assertEqual(result['path'], 'evidence/receipts/public-contracts/123-1.json')
         self.assertEqual(result['introduction'], original)
-        # G4b: publish_evidence() adds an extra commit to the task card,
-        # so publication is no longer HEAD. Check publication is valid SHA.
+        # The card publication adds one commit on top of the receipt approval
+        # edit; the returned publication is that final durable revision and it
+        # equals the pushed remote main — verified against the real bare remote.
         self.assertTrue(verifier.full_sha(result['publication']))
+        self.assertEqual(self.remote_main(), result['publication'])
         self.assertEqual(len(self.edits(path)), 2)
         with patch.object(verifier, 'github', side_effect=AssertionError('offline required')):
             verifier.retained(self.root, result['publication'], path, self.candidate,
@@ -824,13 +860,85 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
 
     def test_already_approved_is_idempotent_and_never_edits_twice(self):
         path, original = self.create()
-        self.use_fake_publish()
-        self.approve_pr()
+        self.seed_remote_main()
+        first = self.approve_pr()
         head_before = self.head()
+        self.assertEqual(first['publication'], head_before)
         again = self.approve_pr()
         self.assertEqual(again['publication'], head_before)
         self.assertEqual(self.head(), head_before)
+        self.assertEqual(self.remote_main(), head_before)
         self.assertEqual(len(self.edits(path)), 2)
+
+
+    def test_binding_accepts_block_list_and_quoted_entries(self):
+        # F4 verifier side: the backward mapping is Planning front-matter
+        # (schema), never the removed unquoted inline regex. Block lists and
+        # quoted entries must bind identically.
+        (self.root / TASK_PATH).write_bytes(
+            f"---\nid: receipt-pilot\nprs:\n- \"{PR_MARKER}\"\n---\npilot\n".encode())
+        self.command('add', '.')
+        self.command('commit', '-qm', 'block-list prs metadata')
+        plan2 = self.head()
+        self.run.update(id=777)
+        self.job.update(run_id=777)
+        path, _ = writer.write(self.root, plan2, 777, 1, api=self.api)
+        self.seed_remote_main()
+        result = self.approve_pr()
+        self.assertEqual(result['path'], path)
+
+    def test_binding_rejects_malformed_front_matter(self):
+        # A task note whose metadata does not parse is a hard block, never a
+        # loose-text fallback.
+        (self.root / 'tasks/broken-pilot.md').write_bytes(b"---\nprs: [\n---\nbody\n")
+        self.command('add', 'tasks/broken-pilot.md')
+        self.command('commit', '-qm', 'malformed front matter')
+        self.run.update(id=777)
+        self.job.update(run_id=777)
+        writer.write(self.root, self.head(), 777, 1, api=self.api)
+        with self.assertRaisesRegex(verifier.ReceiptError, 'invalid YAML'):
+            self.approve_pr()
+
+    def test_approval_blocks_before_push_without_write_credential(self):
+        # Addendum cc379b1-1: a missing write token fails closed BEFORE any
+        # push; the publication mechanism is never invoked and the remote is
+        # never touched; the message never echoes a credential value.
+        path, original = self.create()
+        self.seed_remote_main()
+        remote_before = self.remote_main()
+        calls = []
+        real = writer.publish
+
+        def spy(root, p, c):
+            calls.append((str(p), c))
+            return real(root, p, c)
+
+        env = {k: v for k, v in self.owner_env.items() if k != verifier.PUSH_CREDENTIAL_ENV}
+        with patch.dict(os.environ, env, clear=True), patch.object(writer, 'publish', spy):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'write credential') as caught:
+                verifier.approve_pr(self.root, self.product, PR_NUMBER,
+                                     api=self.api, pin=self.pin)
+        self.assertEqual(calls, [])
+        self.assertEqual(self.remote_main(), remote_before)
+        self.assertNotIn('fixture-token-not-a-secret', str(caught.exception))
+
+    def test_approval_pushes_only_through_writer_mechanism(self):
+        # Addendum cc379b1-1: both durable pushes of the approval chain (the
+        # receipt publication and the card publication) run through the single
+        # receipt_writer mechanism — the verifier invents no second push path.
+        path, original = self.create()
+        self.seed_remote_main()
+        calls = []
+        real = writer.publish
+
+        def spy(root, p, c):
+            calls.append(str(p))
+            return real(root, p, c)
+
+        with patch.object(writer, 'publish', spy):
+            result = self.approve_pr()
+        self.assertEqual(sorted(calls), sorted([path, TASK_PATH]))
+        self.assertEqual(self.remote_main(), result['publication'])
 
 
 class PublishInterfaceTest(VerifierFixtureTest):
@@ -849,27 +957,34 @@ class PublishInterfaceTest(VerifierFixtureTest):
 
     def test_retry_after_publish_failure_creates_no_second_edit(self):
         path, original = self.create()
+        self.seed_remote_main()
+        remote_before = self.remote_main()
         state = {'first': True}
+        real = writer.publish
 
         def publish(root, receipt_path, local_commit):
+            # Preserve the deliberate push failure; recover through the real
+            # writer mechanism (in-process auth, durable read-back) — never a
+            # silently skipped push.
             if state['first']:
                 state['first'] = False
                 raise verifier.ReceiptError('push rejected: expected-head mismatch')
-            return receipt_path, local_commit, local_commit
+            return real(root, receipt_path, local_commit)
 
-        patcher = patch.object(writer, 'publish', publish, create=True)
+        patcher = patch.object(writer, 'publish', publish)
         patcher.start()
         self.addCleanup(patcher.stop)
         with self.assertRaisesRegex(verifier.ReceiptError, 'expected-head'):
             self.approve_pr()
+        self.assertEqual(self.remote_main(), remote_before)
         result = self.approve_pr()
         self.assertEqual(len(self.edits(path)), 2)
-        # G4b: publish_evidence() adds an extra commit, so publication
-        # is no longer HEAD. Check publication is valid SHA instead.
+        self.assertEqual(self.remote_main(), result['publication'])
         self.assertTrue(verifier.full_sha(result['publication']))
 
 
 WORKFLOW = REPO_ROOT / ".github/workflows/receipt-approval.yml"
+SHADOW_WORKFLOW = REPO_ROOT / ".github/workflows/receipt-shadow.yml"
 
 
 class WorkflowContextRegressionTest(unittest.TestCase):
@@ -924,6 +1039,122 @@ class WorkflowContextRegressionTest(unittest.TestCase):
         source = Path(verifier.__file__).read_text()
         self.assertNotIn('refs/heads/main"', source)
         self.assertIn('POLICY_BRANCHES', source)
+
+    def test_approval_carries_publication_and_pins_immutable_source(self):
+        # R27-F6 output plumbing: the final durable publication is a declared
+        # job output, forwarded into the reusable call, and the reusable
+        # source is pinned to a reviewed immutable full SHA (never @develop).
+        doc = yaml.safe_load(WORKFLOW.read_text())
+        job = doc['jobs']['approve']
+        self.assertEqual(set(job['outputs']),
+                         {'receipt', 'plan', 'candidate', 'publication'})
+        shadow = doc['jobs']['shadow']
+        self.assertEqual(set(shadow['with']),
+                         {'receipt', 'plan', 'candidate', 'publication'})
+        self.assertEqual(shadow['with']['publication'],
+                         '${{ needs.approve.outputs.publication }}')
+        import re as _re
+        pinned = _re.fullmatch(
+            r"mcpdev80/baseharbor/\.github/workflows/receipt-shadow\.yml"
+            r"@([0-9a-f]{40})", shadow['uses'])
+        self.assertIsNotNone(pinned, 'reusable shadow call must be SHA-pinned')
+        self.assertNotRegex(WORKFLOW.read_text(),
+                            r'receipt-shadow\.yml@(develop|main|master)\b')
+
+    def test_approval_step_fails_explicitly_on_missing_outputs(self):
+        # Missing outputs are an explicit step failure, not silent skips.
+        step = next(s for s in self.job['steps'] if s.get('id') == 'approval-step')
+        self.assertIn('missing or not a full SHA', step['run'])
+        self.assertIn("for key in publication plan candidate", step['run'])
+
+
+class CliOutputContractTest(unittest.TestCase):
+    """R27-F6: the CLI must emit each RESULT field under its own name.
+
+    The reproduced defect was `plan: <introduction>` and
+    `candidate: <approval>` — so this executes main() with five deliberately
+    distinct values and requires the exact printed tuple.
+    """
+
+    RESULT = {'path': 'evidence/receipts/public-contracts/123-1.json',
+              'introduction': '1' * 40, 'approval': '2' * 40,
+              'publication': '9' * 40, 'plan': '4' * 40, 'candidate': '5' * 40}
+
+    def run_main(self, *, result=None, mode='approve'):
+        import contextlib
+        argv = ['receipt_verifier.py', mode, '--planning', '/dev/null',
+                '--product', '/dev/null', '--pr', '7']
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with patch.object(sys, 'argv', argv), \
+                patch.object(verifier, 'approve_pr',
+                             return_value=dict(self.RESULT if result is None
+                                               else result)), \
+                contextlib.redirect_stdout(stdout), \
+                contextlib.redirect_stderr(stderr):
+            try:
+                verifier.main()
+                code = 0
+            except SystemExit as exc:
+                code = exc.code
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def test_approve_emits_exact_field_tuple(self):
+        code, out, err = self.run_main()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out.splitlines(), [
+            'approved: ' + self.RESULT['path'],
+            'introduction: ' + '1' * 40,
+            'approval: ' + '2' * 40,
+            'publication: ' + '9' * 40,
+            'receipt: ' + self.RESULT['path'],
+            'plan: ' + '4' * 40,
+            'candidate: ' + '5' * 40,
+        ])
+
+    def test_missing_result_field_is_explicit_failure(self):
+        broken = dict(self.RESULT)
+        broken.pop('publication')
+        code, out, err = self.run_main(result=broken)
+        self.assertEqual(code, 1)
+        self.assertIn('publication', err)
+        self.assertNotIn('publication:', out)
+
+    def test_malformed_plan_field_is_explicit_failure(self):
+        broken = dict(self.RESULT, plan='deadbeef')
+        code, out, err = self.run_main(result=broken)
+        self.assertEqual(code, 1)
+        self.assertIn('plan', err)
+        self.assertNotIn('plan:', out)
+
+
+class ShadowWorkflowContractTest(unittest.TestCase):
+    def setUp(self):
+        self.doc = yaml.safe_load(SHADOW_WORKFLOW.read_text())
+
+    def test_only_workflow_call_trigger(self):
+        self.assertEqual(set(self.doc.get('on', self.doc.get(True))), {'workflow_call'})
+
+    def test_publication_is_required_input(self):
+        call = self.doc['on' if 'on' in self.doc else True]['workflow_call']['inputs']
+        self.assertEqual(set(call), {'receipt', 'plan', 'candidate', 'publication'})
+        self.assertTrue(all(spec['required'] for spec in call.values()))
+
+    def test_guard_never_skips_on_missing_inputs(self):
+        # R27-F6: the only job-level condition is the registered Owner-gated
+        # dispatch dormancy guard. It must not inspect inputs — missing or
+        # malformed outputs have to fail explicitly, never skip.
+        condition = self.doc['jobs']['receipt_shadow'].get('if', '')
+        self.assertNotIn('inputs.', condition)
+        self.assertIn("github.event_name == 'workflow_dispatch'", condition)
+        self.assertIn("github.actor == 'mcpdev80'", condition)
+
+    def test_consumes_publication_not_head(self):
+        step = self.doc['jobs']['receipt_shadow']['steps'][-1]
+        self.assertEqual(step['env'].get('PUBLICATION'), '${{ inputs.publication }}')
+        run = step['run']
+        self.assertIn('${PUBLICATION}^{commit}', run)
+        self.assertNotIn('rev-parse HEAD', run)
+        self.assertIn('final publication', run)
 
 
 FAKE_GH = '''#!/usr/bin/env python3
@@ -1135,6 +1366,79 @@ class ProductionPathCliTest(VerifierFixtureTest):
         # The card evidence reference is durable on the bare origin main.
         durable = self.command('show', 'origin/main:' + TASK_PATH).decode()
         self.assertIn('evidence:', durable)
+
+
+class ShadowConsumptionExecutionTest(VerifierFixtureTest):
+    """R27-F6: execute the shadow step's real shell block against a real
+    repository. The retained verification must consume exactly the final
+    durable publication — not the latest Planning HEAD — and missing or
+    malformed outputs must fail EXPLICITLY. The PATH never contains gh: the
+    retained path has no API fallback."""
+
+    def setUp(self):
+        super().setUp()
+        self.bin = Path(self.temp.name) / 'bin-offline'
+        self.bin.mkdir()
+        (self.bin / 'git').symlink_to(shutil.which('git'))
+        (self.bin / 'python3').symlink_to(sys.executable)
+        self.stage = Path(self.temp.name) / 'shadow-stage'
+        self.stage.mkdir()
+        (self.stage / 'scripts').symlink_to(REPO_ROOT / 'scripts')
+        (self.stage / 'planning').symlink_to(self.root)
+        self.summary = Path(self.temp.name) / 'summary.md'
+
+    def script(self):
+        doc = yaml.safe_load(SHADOW_WORKFLOW.read_text())
+        run = doc['jobs']['receipt_shadow']['steps'][-1]['run']
+        path = Path(self.temp.name) / 'shadow-step.sh'
+        path.write_text(run)
+        return path
+
+    def run_block(self, **values):
+        env = {'PATH': str(self.bin), 'GIT_NO_LAZY_FETCH': '1',
+               'GITHUB_STEP_SUMMARY': str(self.summary),
+               'RECEIPT': values.get('receipt', ''),
+               'PLAN': values.get('plan', self.plan_sha),
+               'CANDIDATE': values.get('candidate', self.candidate),
+               'PUBLICATION': values.get('publication', '')}
+        return subprocess.run([shutil.which('bash'), str(self.script())],
+                              cwd=str(self.stage), capture_output=True, text=True, env=env)
+
+    def publish_chain(self):
+        path, original = self.create()
+        self.seed_remote_main()
+        result = self.approve_pr()
+        return path, result
+
+    def test_consumes_exact_publication_after_head_moved(self):
+        path, result = self.publish_chain()
+        publication = result['publication']
+        # Planning main moves on and the working receipt bytes are tampered:
+        # consuming HEAD would fail, consuming the exact publication passes.
+        self.tamper(path)
+        self.assertNotEqual(self.head(), publication)
+        out = self.run_block(receipt=path, publication=publication)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn('checked: public-contracts', out.stdout)
+        self.assertIn(publication, self.summary.read_text())
+
+    def test_missing_publication_output_fails_explicitly(self):
+        path, result = self.publish_chain()
+        out = self.run_block(receipt=path, publication='')
+        self.assertEqual(out.returncode, 1)
+        self.assertIn('final publication output missing', out.stderr)
+
+    def test_publication_not_in_planning_history_fails(self):
+        path, result = self.publish_chain()
+        out = self.run_block(receipt=path, publication='a' * 40)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn('not in the protected Planning history', out.stderr)
+
+    def test_missing_receipt_output_fails_explicitly(self):
+        path, result = self.publish_chain()
+        out = self.run_block(receipt='', publication=result['publication'])
+        self.assertEqual(out.returncode, 1)
+        self.assertIn('receipt path output missing or malformed', out.stderr)
 
 
 if __name__ == '__main__':

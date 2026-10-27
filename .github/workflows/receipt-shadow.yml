@@ -13,14 +13,18 @@
 # PR-open job that waits for after-the-fact evidence.
 #
 # G5b: activation cutover — the approval job now dispatches this reusable
-# workflow with the exact published receipt/plan/candidate outputs.
+# workflow with the exact published receipt/plan/candidate/publication outputs.
 #
 # R27-F6 (shadow part): consumption is exclusively the verified approval-flow
-# results. The job-level guard fires only when all three approval outputs are
-# present, so nothing here runs before the publication is durable; empty or
-# manual run/SHA/path/plan values fail closed. The verifier code is checked
-# out at the authenticated run SHA (github.sha), never at an event-derived or
-# caller-chosen ref. The result never gates any merge (informational only).
+# results, including the EXACT final durable publication commit. There is no
+# job-level skip guard: a missing or malformed input fails this job explicitly
+# (required inputs plus step-level validation), so "no consumption because an
+# output was empty" can never masquerade as a successful chain. The retained
+# verification runs at exactly the publication revision — never at whatever
+# Planning main HEAD happens to be at execution time. The verifier code is
+# checked out at the authenticated run SHA (github.sha), never at an
+# event-derived or caller-chosen ref. The result never gates any merge
+# (informational only).
 
 name: "Receipt · Shadow Final Check"
 
@@ -39,6 +43,10 @@ on:
         description: Exact approved candidate SHA the receipt binds
         type: string
         required: true
+      publication:
+        description: Exact final durable publication commit (Planning commit containing the approved receipt and card evidence)
+        type: string
+        required: true
     secrets:
       PLANNING_RECEIPT_WRITE_TOKEN:
         required: false
@@ -49,11 +57,13 @@ permissions:
 jobs:
   receipt_shadow:
     name: PR · Receipt Shadow Consumption
-    # R27-F6: start only after verified publication — every value must be a
-    # present approval-flow output (needs.approve.outputs.* from the caller).
-    # With any output missing/empty this job never runs; it cannot be steered
-    # by manual run/SHA/path/plan inputs.
-    if: ${{ !(inputs.receipt == '' || inputs.plan == '' || inputs.candidate == '') }}
+    # R27-F6: the registered job-level Owner-gated dispatch dormancy guard is
+    # the ONLY job-level condition. It deliberately does NOT inspect the
+    # inputs: missing or malformed approval outputs fail this job EXPLICITLY
+    # (required-input enforcement at the call plus the step-level validation
+    # below), never by silently skipping — skipping would fake chain success.
+    # It cannot be steered by manual run/SHA/path/plan inputs either.
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -81,6 +91,7 @@ jobs:
           RECEIPT: ${{ inputs.receipt }}
           PLAN: ${{ inputs.plan }}
           CANDIDATE: ${{ inputs.candidate }}
+          PUBLICATION: ${{ inputs.publication }}
         shell: bash
         run: |
           set -euo pipefail
@@ -96,11 +107,18 @@ jobs:
             echo "approved candidate output missing or not a full SHA" >&2; exit 1; }
           [[ "$PLAN" =~ ^[0-9a-fA-F]{7,40}$ ]] || {
             echo "approved plan revision output missing or malformed" >&2; exit 1; }
+          # R27-F6: the final durable publication is a required approval-flow
+          # output; missing or malformed here is an explicit failure.
+          [[ "$PUBLICATION" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "final publication output missing or not a full SHA" >&2; exit 1; }
           # The approved plan revision must exist in the protected Planning
           # history: consumption starts only after the verified publication.
           plan_rev="$(git -C planning rev-parse --verify "${PLAN}^{commit}")" || {
             echo "approved plan revision is not in the protected Planning history" >&2; exit 1; }
-          revision="$(git -C planning rev-parse HEAD)"
+          # R27-F6: consume EXACTLY the final durable publication commit —
+          # never whatever Planning main HEAD happens to be at execution time.
+          revision="$(git -C planning rev-parse --verify "${PUBLICATION}^{commit}")" || {
+            echo "final publication is not in the protected Planning history" >&2; exit 1; }
           python3 scripts/receipt_verifier.py retained \
             --planning planning --revision "$revision" \
             --receipt "$RECEIPT" --candidate "$CANDIDATE" --plan "$plan_rev"
@@ -109,5 +127,5 @@ jobs:
             echo "- receipt: \`$RECEIPT\`"
             echo "- plan revision: \`$plan_rev\`"
             echo "- candidate: \`$CANDIDATE\`"
-            echo "- planning revision: \`$revision\`"
+            echo "- final publication: \`$revision\`"
           } >> "$GITHUB_STEP_SUMMARY"
