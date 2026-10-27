@@ -1,5 +1,6 @@
 package contracts_test
 
+// Shadow-run probe marker (v0.4.27 receipt chain): no semantic change.
 import (
 	"encoding/json"
 	"os"
