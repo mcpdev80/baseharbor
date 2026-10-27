@@ -333,3 +333,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 02:3xZ g2x DONE PR #1126 (dbe91e7b, F5+F4 tasklink/verifier) rotiert. g1x hat Owner-Addendum mit file:line Defektliste.
 - 02:5xZ d1 DONE: #1125 run 40543431543 Rollup SUCCESS; F2a/F2b (Codex) durch echten Log WIDERLEGT; realer Rest-Blocker = coverage-unresolved (unresolved classes im 27-File-Diff) + Trusted-Base-Planner-Ei-Huhn fuer pr-check-runner (Dossier evidence/board-2026-10-27/d1-ci1125.md). d1 rotiert.
 - 03:1xZ rv2 ACCEPT #1126 (Zwischen-Vorpruefung) rotiert; w1b/fragt qwen dispatched: Akte/record-Eintrag fuer v3.5 (coverage-unresolved laut d1).
+- 03:3xZ g1x busy>40min DISZIPLIN-NUDGE (kein Dialog, 0 Commits) — bei Ausbleiben: rotieren+ornith fresh.
