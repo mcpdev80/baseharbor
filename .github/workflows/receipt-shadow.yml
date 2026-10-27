@@ -20,7 +20,7 @@ permissions:
 jobs:
   receipt_shadow:
     name: PR · Receipt Shadow Consumption
-    if: github.repository == 'mcpdev80/receipt-shadow-dormant' # DORMANT: never true on this repository; activate by replacing this guard in the accepted PR 2 step.
+    if: github.repository == 'mcpdev80/receipt-shadow-dormant' # DORMANT: only the Owner-gated approval dispatch (receipt-approval.yml) lives in this shadow run; the shadow final check itself is replayed manually and the producer is already proven, so it stays dormant here (no trigger armed, no required check added). Activate by replacing this guard in a later cutover PR.
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

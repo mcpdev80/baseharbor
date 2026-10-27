@@ -66,9 +66,13 @@ RECEIPT_FILES = {
     },
     "receipt-approval.yml": {
         "expected_in_allowlist": True,
-        "dormancy_form": "job-level never-true guard",
-        "dormancy_line": 56,
-        "preferred_form": "job-level never-true guard",
+        # Line moved 56 -> 57: the guard became an Owner-gated dispatch guard
+        # (workflow_dispatch && actor == 'mcpdev80') replacing the literal
+        # never-true string; the added comment block shifted the guard by one
+        # line. Still a job-level dormancy guard.
+        "dormancy_form": "job-level Owner-gated dispatch guard",
+        "dormancy_line": 57,
+        "preferred_form": "job-level Owner-gated dispatch guard",
     },
     "receipt-shadow.yml": {
         "expected_in_allowlist": True,

@@ -50,10 +50,11 @@ permissions:
 
 jobs:
   approve:
-    # DORMANT: never runs on this repository. Activate by replacing this
-    # never-true guard in the accepted consumption path (PR3 cutover). Until
-    # then nothing runs, no trigger is armed and no required check is added.
-    if: github.repository == 'mcpdev80/receipt-approval-dormant'
+    # Owner-gated shadow dispatch: runs only on manual workflow_dispatch by the
+    # Owner (mcpdev80) so the approval consumption path activates without
+    # arming any other trigger or adding a required check. Chain replayed
+    # manually; producer already proven.
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
