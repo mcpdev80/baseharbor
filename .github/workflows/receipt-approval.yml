@@ -87,7 +87,13 @@ jobs:
           echo "plan HEAD: $(git -C planning rev-parse HEAD)"
           echo "ls-tree: $(git -C planning ls-tree HEAD -- "$RECEIPT_PATH" | wc -l)"
           echo "revision-var: $PLANNING_REVISION"
-          echo "receipt-path: $RECEIPT_PATH" 
+          echo "receipt-path: $RECEIPT_PATH"
+          python3 - <<'PY'
+import subprocess
+r = subprocess.run(["git", "-C", "planning", "ls-tree", "HEAD", "--", "evidence/receipts/public-contracts/40428162731-1.json"], capture_output=True)
+print("SUBPROC-rc", r.returncode, "OUT", r.stdout[:60], "ERR", r.stderr[:200])
+PY
+
           # GITHUB_* cannot be overridden via step env; set the protected-main
           # contract in-shell for the Owner-gated shadow dispatch (PR3 will run
           # this path from main proper).
