@@ -339,6 +339,7 @@ PROJECTION_REVIEWED_HEAD = 'b7b21dadfc2b4826d51be8a059328bcbdcad1a87'
 PROJECTION_REVIEWED_FILES = frozenset({
     'internal/application/runtime_native_binding_projection.go',
     'internal/application/runtime_environment.go',
+    'internal/application/runtime_placement_retention_test.go',
 })
 PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
