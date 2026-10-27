@@ -71,14 +71,7 @@ class VerifierFixtureTest(unittest.TestCase):
             GITHUB_SHA=self.head_sha,
             # Presence-only fixture value for the writer credential gate; the
             # verifier never consumes or prints it (addendum cc379b1-1).
-            PLANNING_RECEIPT_WRITE_TOKEN='fixture-token-not-a-secret')
-        # F5 fixture adaptation: the Planning repository gets a real temporary
-        # bare remote, so the card publication's push and read-back are genuine
-        # Git operations against durable storage — never an origin-less fixture
-        # error and never a network access.
-        self.planning_remote = Path(self.temp.name) / 'planning-origin.git'
-        subprocess.check_output(['git', 'init', '-q', '--bare', str(self.planning_remote)])
-        self.command('remote', 'add', 'origin', str(self.planning_remote))
+             PLANNING_RECEIPT_WRITE_TOKEN='fixture-token-not-a-secret')
 
     def seed_remote_main(self):
         """Create origin/main as an exact copy of the current local planning
@@ -128,18 +121,18 @@ class VerifierFixtureTest(unittest.TestCase):
         self.command('init', '-q')
         self.command('config', 'user.name', 'Receipt fixture')
         self.command('config', 'user.email', 'receipt@example.invalid')
-        self.plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
-                         head_sha=self.head_sha, candidate_sha=self.candidate,
-                         base_sha=self.base_sha, task=TASK_PATH)
         # A real bare "origin" remote so the F5 card publication in
         # publish_evidence() can push to origin/main and read the durable
         # revision back — the hermetic Planning repo must not publish into a
-        # repository without origin (CODE-AUDIT F5).
-        self.bare = Path(self.temp.name) / "planning.bare"
-        self.bare.mkdir()
-        subprocess.run(['git', 'init', '-q', '--bare', str(self.bare)],
-                       check=True, capture_output=True)
-        self.command('remote', 'add', 'origin', str(self.bare))
+        # repository without origin (CODE-AUDIT F5). Bound here, before the
+        # push below; setUp binds no second origin.
+        self.planning_remote = Path(self.temp.name) / 'planning-origin.git'
+        subprocess.check_output(['git', 'init', '-q', '--bare', str(self.planning_remote)])
+        self.command('remote', 'add', 'origin', str(self.planning_remote))
+
+        self.plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                         head_sha=self.head_sha, candidate_sha=self.candidate,
+                         base_sha=self.base_sha, task=TASK_PATH)
 
         path = self.root / verifier.PLAN_PATH
         path.parent.mkdir(parents=True)

@@ -1196,7 +1196,8 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
-                                  'ci-executor-verifier-tests'}, checks)
+                                  'ci-executor-verifier-tests',
+                                  'receipt-execution-tests'}, checks)
 
     def test_receipt_control_plane_test_script_maps_to_ci_class(self):
         for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
