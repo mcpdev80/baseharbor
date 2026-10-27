@@ -403,3 +403,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:5xZ bx2 DONE (PR #1139, 1c21bd1d) rotiert (evidence-file lost, PR=Quelle). rv7/ornith Source-Review; danach CODEX-MERGE (Owner-Freigabe --squash --admin vorhanden).
 - 17:0xZ Dialog wegen Config-at-boot: laufende p2-Lane kennt tmp-ops-Eintrag noch nicht (greift erst bei neuen Lanes) -> once. rv7 discovered ok.
 - 17:1xZ Dialog-Navi gelöst: RIGHT+Enter (Down wartoption-falsch!). Immer-noch 5. Pilot-Dialog -> Lane bleibt sensibel; Runbook notiert.
+- 17:2xZ p2 END P2-LOCAL = Nicht-Compliant Marker, kein Dossier/tmp-ops/pilot fundiert -> rotiert, Ersatz mit Runtime-Fix (tmp-ops jetzt gewhitelistet).
