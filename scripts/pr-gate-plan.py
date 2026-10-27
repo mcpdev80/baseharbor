@@ -327,6 +327,19 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+# Exact reviewed runtime native-binding projection of PR #1096 (b7b21dad): the
+# credential-material + host-port projection source of the switch-back retention
+# change. Its paired package regression runs under the existing source-contracts
+# check (go test ./internal/application/... ./contracts/...), which qualifies
+# this production file exactly like the receipt-pilot sources in the #1091
+# bootstrap (83d53e86). No new gate, no runner change: the exact reviewed
+# candidate resolves while every other internal/application/ source stays on
+# the conservative unresolved branch below.
+PROJECTION_REVIEWED_HEAD = 'b7b21dadfc2b4826d51be8a059328bcbdcad1a87'
+PROJECTION_REVIEWED_FILES = frozenset({
+    'internal/application/runtime_native_binding_projection.go',
+})
+PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
@@ -1334,6 +1347,11 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path in PROJECTION_REVIEWED_FILES:
+            area = 'application-projection-reviewed-path'
+            require(PROJECTION_CHECKS)
+            if path_status.get(path) != 'modified' and path_status.get(path) != 'added':
+                unresolved.append('runtime native binding projection source status requires exact reviewed candidate: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
