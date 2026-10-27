@@ -1,0 +1,7 @@
+pwd-PFLICHT. ROLLE: DOKU (nur RUNBOOK.md + eigene Evidence).
+Ergaenze RUNBOOK.md (Abschnitt der v0.4.27 Receipt-Kette, oder neuer Abschnitt 'Receipt-Kette Betrieb'):
+1. Exakter Schattenlauf-Ablauf (Producer PR mit contracts/** Aenderung, --ref develop dispatch, Inputs, patch -> git am, retained rc=0) - ein Code-Block, kopierbar.
+2. Bekannte Fallen: trusted-base planner (Mapping MUSS vorher in develop landen), gh 2.102 braucht GH_TOKEN im Step-env, GITHUB_* nicht per step-env ueberschreibbar (in-shell setzen), Planning-Klon depth/fetch-depth:0 + git identity, step-env RECEIPT_PATH auch im Resolve-Step.
+3. Kurve der 5 Approval-Repair-PRs (#1097-#1105) mit je 1 Zeile - damit naechste Aehnliche nicht dieselben 8 Runden braucht.
+KEIN Push auf baseharbor/plan - nur Root-Repo RUNBOOK.md committen.
+END B1-DONE / END B1-BLOCKED

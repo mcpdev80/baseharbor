@@ -1,4 +1,8 @@
-pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/tmp-ops/wt-b2sim 6e170894; git merge -q c1c7db7b (fetch worktrees/r2-ustrack). Nur/tmp-ops, KEIN Push, nichts am develop-Zweig.
-AUFGAB (PR2-CI-Vorabcheck, parallel zu W7 aber andere Datei-Menge): Der develop-Planner (Kopie von origin/develop) gegen den PR2-Diff (develop...HEAD dieses Merges) simulieren: coverage_status? unresolved-Liste? Welche Pfade (erwarte: scripts/receipt_tasklink.py, scripts/test_receipt_tasklink.py, .github/workflows/receipt-post-run.yml-Merge) brauchen Bootstrap-Abdeckung ueber W7s 3-Dateien-Set HINAUS?
-AUSLIEFERUNG: evidence/board-2026-10-26/b2-pr2-bootstrap-needs.md - exakte Menge der Pfade die der Bootstrap-Eintrag (develop-Kopie) abdecken MUSS, damit spaeter PR1 UND PR2 ohne dritte Schleife durchkommen + Hinweis ob W7s Scope dafuer erwoeteret werden muss (ja/nein + Begrundung). wt-b2sim danach entfernen.
+pwd-PFLICHT. ROLLE: AUDIT (read-only via gh api; Evidence only).
+Branch-/Merge-Schutz-Iststand dokumentieren fuer PR3-Entscheidungen:
+1. gh api repos/mcpdev80/baseharbor/rulesets --jq '.[]|{name:.name,enforcement,include:.conditions.ref_name,target:.target}' + je ruleset die active_checks (gh api repos/mcpdev80/baseharbor/rulesets/<id> --jq '.rules.conditions... required_status_checks' sinngemaess).
+2. Schutz für main und develop einzeln: welche Required Checks sind geordnet, welche Bypass-Rollen?
+3. baseharbor-plan Repo: protection? (falls leer: Bestaetigung 'unprotected' wie P4).
+4. Gap-Analyse 5 Zeilen: Was PR3 AENDERN muesste damit receipt-gate required wird OHNE neue Admin-Aktionen ausserhalb der genehmigten Pfade (keine Regeln selbst aendern - NUR dokumentieren).
+Evidence evidence/board-2026-10-27/b2-protection-audit.md.
 END B2-DONE / END B2-BLOCKED
