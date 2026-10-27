@@ -1,4 +1,4 @@
-# DORMANT minimal-receipts shadow consumer (W1, PR 2 preparation).
+# Reusable shadow consumer triggered by the approval job (G5b).
 #
 # Retained-only consumption of one published, Owner-approved receipt after the
 # approval publication is durable. This replaces the earlier PR-open,
@@ -12,11 +12,10 @@
 # trusted approval job (receipt-approval.yml) runs from protected main, not a
 # PR-open job that waits for after-the-fact evidence.
 #
-# Activation still needs a later cutover PR that (a) replaces the never-true
-# job guard, (b) arms the trigger from the approved approval job, and (c) passes
-# the exact published receipt/plan/candidate from the trusted approval job
-# outputs. Until then nothing here runs, no existing trigger or required check
-# is touched and the result never gates any merge.
+# G5b: activation cutover — the approval job now dispatches this reusable
+# workflow with the exact published receipt/plan/candidate outputs. The
+# never-true guard is removed; the shadow is no longer dormant for this
+# narrow path. The result never gates any merge (informational only).
 
 name: "Receipt · Shadow Final Check"
 
@@ -45,10 +44,6 @@ permissions:
 jobs:
   receipt_shadow:
     name: PR · Receipt Shadow Consumption
-    # DORMANT: never-true guard (references a non-existent repo). Replace with
-    # the approved approval-job dispatch in a later cutover PR. GitHub only
-    # allows `if:` at job level; a workflow-level guard is not valid syntax.
-    if: github.repository == 'mcpdev80/receipt-shadow-dormant'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

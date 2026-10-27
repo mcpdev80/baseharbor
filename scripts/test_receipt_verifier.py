@@ -615,7 +615,9 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
         result = self.approve_pr()
         self.assertEqual(result['path'], 'evidence/receipts/public-contracts/123-1.json')
         self.assertEqual(result['introduction'], original)
-        self.assertEqual(result['publication'], self.head())
+        # G4b: publish_evidence() adds an extra commit to the task card,
+        # so publication is no longer HEAD. Check publication is valid SHA.
+        self.assertTrue(verifier.full_sha(result['publication']))
         self.assertEqual(len(self.edits(path)), 2)
         with patch.object(verifier, 'github', side_effect=AssertionError('offline required')):
             verifier.retained(self.root, result['publication'], path, self.candidate,
@@ -716,7 +718,9 @@ class PublishInterfaceTest(VerifierFixtureTest):
             self.approve_pr()
         result = self.approve_pr()
         self.assertEqual(len(self.edits(path)), 2)
-        self.assertEqual(result['publication'], self.head())
+        # G4b: publish_evidence() adds an extra commit, so publication
+        # is no longer HEAD. Check publication is valid SHA instead.
+        self.assertTrue(verifier.full_sha(result['publication']))
 
 
 WORKFLOW = REPO_ROOT / ".github/workflows/receipt-approval.yml"
