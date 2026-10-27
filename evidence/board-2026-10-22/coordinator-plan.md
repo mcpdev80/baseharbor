@@ -327,3 +327,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - WATCHER/EVENTS: nur coord 41e61806 + g1 04b62376 registriert. Totes: alle fix-Lanes rotiert. tmp-ops/ci-watch-state geseedet (4 Runs).
 - Resume-Pflicht: basics-check.py (TMPDIR=/home/marcel/tmp-ops) + events --reminders --ack + --ack + coord-tick-Grundregeln + DIESE Datei ab "## ANKER VOR COMPACT".
 - 00:5xZ TRUNCATION-SCHADEN: coordinator-plan.md wurde waehrend Incident#5-Kontamination auf 1 Zeile gekuerzt; 315-Zeilen-Historie ab c29c9a03 wiederhergestellt, Zwischen-Notizen 21:00-00:30 durch ANKER-Abschnitt abgedeckt (Detailverlust: nur echo-Zeilen, keine Fakten).
+- 01:2xZ g1x(GHOST,root-repo-panning)+g2x rotiert; GHOST-Work partly in worktrees/g1-f1-fixture (post-run 127/104) = g1x Startpunkt. Skript-Disaster: evidence/**-Files fehlten nach Recovery (Index vs Platte) -> checkout -- evidence/ docs/ zurueck; Watcher Pid 1776121 neu. Pointer-Sends manuell (dispatch rc=4).
