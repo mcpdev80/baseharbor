@@ -369,3 +369,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:3xZ rv4 CHANGES ohne ueberlebende Liste (read-only, Transcript leer) -> rotiert; Vorpruefung wird durch CI+CODEX-R4 ersetzt (kein Double-Work). b3/flash CardBoard v3.5/3.6.
 - 10:4xZ Tick: w4a push 39bed489 (forward ok) aber PR fehlt -> 2nd finish-Nudge; rv5/ornith schmal (rv4-Negative A/B/C) als dritter Slot.
 - 10:5xZ rv5 Dialog: external_directory ~/tmp-ops/* (vorgesehen) -> Allow once erteilt, busy bestaetigt.
+- 11:0xZ w4a DONE (#1133, evidence-Datei fehlt -> PR-Body als Referenz, ehrlich dokumentiert) rotiert. stg3/ornith v3.6-Staging dispatched (d3-Reihenfolge).
