@@ -32,16 +32,13 @@ RECEIPT_DIR = "evidence/receipts/public-contracts"
 PRODUCT_WORKFLOW = ".github/workflows/ci.yml"
 APPROVAL_WORKFLOW = ".github/workflows/receipt-approval.yml"
 HELPER_SOURCE = "scripts/receipt_verifier.py"
-# The product default branch is main. Until the coordinator's CI-only
-# default-branch registration lands, the reviewed helper legitimately lives on
-# develop. This tuple is a policy allowlist cross-checked against the
-# authenticated run proof; it is never an identity substitute (CODE-AUDIT F4).
-# EXCEPTION (documented, non-eigenmächtig): develop is accepted as transitional
-# only. Once the coordinator publishes the CI-only default-branch registration,
-# develop must be removed from this tuple and the approval workflow pinned to
-# refs/heads/main. The test_approve_accepts_transitional_develop dispatch in
-# test_receipt_verifier covers both paths (main=stable, develop=transitional).
-POLICY_BRANCHES = ("main", "develop")
+# The product default branch is main. Only an authenticated run whose real ref
+# is main may issue trust (CODE-AUDIT F7). This tuple is a policy allowlist
+# cross-checked against the authenticated run proof; it is never an identity
+# substitute (CODE-AUDIT F4). No other ref is permitted; a transitional or
+# otherwise untrusted ref is rejected, not accepted (see
+# test_approve_rejects_untrusted_ref under TrustedSourceTest).
+POLICY_BRANCHES = ("main",)
 
 
 class ReceiptError(ValueError):
@@ -167,8 +164,9 @@ def witness_failure(result):
 
 def github(path, *, binary=False):
     require(path.startswith((f"repos/{REPOSITORY}/actions/runs/",
-                             f"repos/{REPOSITORY}/actions/artifacts/",
-                             f"repos/{REPOSITORY}/pulls/")), "unsupported API path")
+                              f"repos/{REPOSITORY}/actions/artifacts/",
+                              f"repos/{REPOSITORY}/pulls/",
+                              f"repos/{REPOSITORY}/issues/")), "unsupported API path")
     result = subprocess.run(["gh", "api", "--method", "GET", "-H",
                              f"X-GitHub-Api-Version: {API_VERSION}", path], capture_output=True)
     require(result.returncode == 0, "GitHub witness unavailable: " + witness_failure(result))
@@ -412,19 +410,21 @@ def resolve_evidence(planning, pull, api=None):
     return matches[0]
 
 
-def task_binding(planning, plan_revision, task, pr_number, _api=None):
+def task_binding(planning, plan_revision, task, pr_number, api=None):
     """Deterministic trusted PR-to-task mapping: exactly one Planning task note
-    lists this repository PR, and it must be the plan's task (CODE-AUDIT F9).
-    Uses the shared tasklink resolve_task_from_pr() for the forward PR→task
-    lookup; task notes provide the backward task→PR binding. Both must agree.
+    lists this repository PR, it must be the plan's task, and the forward PR→task
+    resolver must resolve the same task (CODE-AUDIT F4). Uses the single shared
+    tasklink resolve_task_from_pr() for the forward lookup; task notes provide the
+    backward task→PR binding. Both must agree.
+
+    A caught resolver error is NEVER authorization: any resolution failure blocks.
     """
     import receipt_tasklink
-    # Resolve the expected task from the PR body using the shared tasklink
-    # function. This is the single deterministic PR→task mapping (CODE-AUDIT F9).
-    try:
-        expected_task = receipt_tasklink.resolve_task_from_pr(pr_number, planning, _api)
-    except receipt_tasklink.TaskLinkError:
-        expected_task = None
+    # The forward PR→task resolver is authoritative. A caught resolver error is
+    # not a fall-through to success; it fails closed (CODE-AUDIT F4). An injected
+    # API makes the resolver hermetic (no real gh/network) for tests.
+    resolver_api = api if api is not None else _resolve_api
+    expected_task = receipt_tasklink.resolve_task_from_pr(pr_number, planning, resolver_api)
     names = git(planning, "ls-tree", "-r", "--name-only", plan_revision, "--",
                 "tasks/").decode(errors="replace").splitlines()
     bound = []
@@ -434,16 +434,18 @@ def task_binding(planning, plan_revision, task, pr_number, _api=None):
         match = re.search(rb"^prs:\s*\[([^\]]*)\]", front, re.MULTILINE)
         if match and any(item.strip() == marker for item in match.group(1).split(b",")):
             bound.append(name)
-    # When the PR body resolves to a task, the bound task note must match.
-    # When no task note claims the PR, block regardless of what the PR body says.
-    if not bound:
-        require(expected_task is None or task != expected_task,
-                "deterministic PR-to-task association missing or ambiguous")
-    else:
-        require(bound == [task], "deterministic PR-to-task association missing or ambiguous")
-        if expected_task is not None:
-            require(task == expected_task,
-                    "PR body task does not match task note claim")
+    # Exactly one task note must claim the PR, and it must be the plan's task.
+    # When the PR body resolves, that task must equal the bound task too.
+    require(bound == [task],
+            "deterministic PR-to-task association missing or ambiguous")
+    require(task == expected_task,
+            "PR-resolved task does not match the bound task note")
+
+
+def _resolve_api(path, **kwargs):
+    """Forward the caller's authenticated/injected API to the shared tasklink
+    resolver so no live GitHub call escapes under injected test APIs."""
+    return api(path, **kwargs)
 
 
 def publish_approval(planning, path, approval_commit, task=None, candidate_sha=None,
@@ -476,17 +478,14 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
     path_back, introduction, publication = published
     require(path_back == path and full_sha(introduction) and full_sha(publication),
             "publication returned no durable commit")
-    # G4b: automatic evidence-Aktualisierung — write evidence reference to
-    # the Planning task card via tasklink after successful W2 publish.
+    # Automatic evidence publication: write the immutable task evidence
+    # reference to the Planning task card via tasklink and propagate any
+    # failure (fail closed — CODE-AUDIT F5). A local-only card write must
+    # never report complete publication.
     if task is not None and candidate_sha is not None and plan_revision is not None:
-        try:
-            import receipt_tasklink
-            receipt_tasklink.publish_evidence(
-                planning, task, path, candidate_sha, plan_revision)
-        except (receipt_tasklink.TaskLinkError, OSError, TypeError):
-            # Evidence publication is best-effort: if the task card cannot
-            # be updated, the receipt is still durable. Log but don't block.
-            pass
+        import receipt_tasklink
+        receipt_tasklink.publish_evidence(
+            planning, task, path, candidate_sha, plan_revision)
     return publication
 
 
@@ -498,7 +497,7 @@ def approve_pr(planning, product, pr_number, api=None, pin=None):
     identity(api)
     pull = resolve_pull(pr_number, api)
     evidence = resolve_evidence(planning, pull, api)
-    task_binding(planning, evidence["plan_revision"], evidence["task"], pr_number)
+    task_binding(planning, evidence["plan_revision"], evidence["task"], pr_number, api)
     approval = approve(planning, evidence["revision"], evidence["path"], evidence["candidate"],
                        evidence["plan_revision"], api=api, product=product, pin=pin)
     published = publish_approval(planning, evidence["path"], approval,
@@ -508,7 +507,8 @@ def approve_pr(planning, product, pr_number, api=None, pin=None):
     retained(planning, published, evidence["path"], evidence["candidate"],
              evidence["plan_revision"])
     return {"path": evidence["path"], "introduction": evidence["revision"],
-            "approval": approval, "publication": published}
+            "approval": approval, "publication": published,
+            "plan": evidence["plan_revision"], "candidate": evidence["candidate"]}
 
 
 def main():
@@ -539,6 +539,12 @@ def main():
             print("introduction: " + result["introduction"])
             print("approval: " + result["approval"])
             print("publication: " + result["publication"])
+            # Auto-resolved durable outputs for the shadow consumer — never
+            # manual inputs. receipt path and plan revision come from the
+            # verified publication, not from dispatch fields.
+            print("receipt: " + result["path"])
+            print("plan: " + result["introduction"])
+            print("candidate: " + result["approval"])
             return
         else:
             missing = [n for n in ("revision", "receipt", "candidate", "plan")

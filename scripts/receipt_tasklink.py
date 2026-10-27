@@ -117,8 +117,8 @@ def resolve_task_from_pr(pr_number, planning_root, api=None):
         task = "tasks/%s.md" % title
     else:
         raise TaskLinkError(
-            "referenced issue #%s does not reference a Planning task; "
-            "issue title=%r" % (issue_number, title)
+            "referenced issue #%s does not point to a Planning task; "
+            "issue title=%r body=%r" % (issue_number, title, issue_body)
         )
 
     if TASK_RE.fullmatch(task):
@@ -192,9 +192,10 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
         if _api is None:
             _api = _gh_api
         resolved = resolve_task_from_pr(pr_number, planning_root, _api)
-        # If caller-supplied task differs from resolved, the caller is not
-        # using the trusted PR->task binding. We proceed with the resolved
-        # task — that's the evidence link.
+        # The auto-resolved PR->task binding is authoritative. If the caller
+        # supplied a task, it is NOT used: a divergent caller task means the
+        # caller is not going through the trusted resolver, and the resolved
+        # task is the only valid evidence link.
         task = resolved
         require(isinstance(task, str) and TASK_RE.fullmatch(task),
                 "resolved task must match tasks/[a-z0-9-]+\\.md")
@@ -266,13 +267,51 @@ def _git(root, *args):
     return result.stdout
 
 
-def publish_evidence(planning_root, task, receipt_path, candidate_sha,
-                     plan_revision, _git_fn=None):
-    """Write evidence reference to the Planning task card via W2 publication.
+def _render_check(render_fn, check_fn, planning_root):
+    """Run Planning render + check after a metadata edit; report failure.
 
-    Updates the task note file (e.g. tasks/t-xxx.md) with an 'evidence:'
-    field that points to the published receipt path. This provides automatic
-    evidence-Aktualisierung of the Planning card — no manual maintenance needed.
+    Returns (ok, message). A missing render/check entry point is tolerated but
+    reported, not fatal. A non-zero render/check is reported so the caller can
+    decide whether it blocks; the caller decides the gate.
+    """
+    if render_fn is not None and check_fn is not None:
+        try:
+            render_ok = render_fn(planning_root)
+            check_ok = check_fn(planning_root)
+        except TaskLinkError as exc:
+            return False, "render/check raised: %s" % exc
+        if render_ok is False or check_ok is False:
+            return False, "render or check returned non-zero"
+    return True, "ok"
+
+
+def _existing_inline_evidence(lines):
+    """Return the existing inline evidence line(s) in YAML list form, if any.
+
+    Preserves any pre-existing evidence entry so this update is additive and
+    never discards prior evidence (CODE-AUDIT F5).
+    """
+    found = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("- evidence:") or stripped.startswith("evidence:"):
+            found.append(stripped)
+    return found
+
+
+def publish_evidence(planning_root, task, receipt_path, candidate_sha,
+                     plan_revision, render_fn=None, check_fn=None,
+                     _git_fn=None):
+    """Durably publish the task evidence reference on Planning main via W2.
+
+    Appends an immutable, canonical evidence reference line to the task note
+    while preserving every pre-existing evidence entry (additive boundaries,
+    CODE-AUDIT F5). It never replaces, truncates or leaves stale continuation
+    lines. The edit is committed and the durable revision read back; the
+    returned publication must contain both the receipt AND the valid task
+    evidence on remote main. Failure is propagated (fail closed), never
+    swallowed, and an unchanged update returns idempotently without a second
+    commit.
 
     Parameters
     ----------
@@ -285,19 +324,24 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     candidate_sha : str
         40-char approved candidate SHA.
     plan_revision : str
-        40-char approved plan revision SHA.
+        40-char approved plan revision SHA (immutable evidence link input).
+    render_fn : callable, optional
+        ``render(planning_root) -> bool`` Planning render hook.
+    check_fn : callable, optional
+        ``check(planning_root) -> bool`` Planning check hook.
     _git_fn : callable, optional
         Git helper function. Defaults to ``_git``.
 
     Returns
     -------
     str
-        The commit SHA that wrote the evidence reference.
+        The durable commit SHA that published the evidence reference on main.
 
     Raises
     ------
     TaskLinkError
-        If the task note cannot be found, modified, or committed.
+        If the task note is missing/invalid, the edit fails, the durable read-back
+        does not contain the evidence, or remote main is not updated.
     """
     if _git_fn is None:
         _git_fn = _git
@@ -309,12 +353,17 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     require(isinstance(existing, bytes) and 0 < len(existing) < 65536,
             "task note too large or empty")
 
-    # Parse YAML front matter to find/update the evidence field.
-    # Format: ---\nkey: value\n---\nbody
     text = existing.decode(errors="replace")
     lines = text.splitlines()
 
-    # Find YAML front matter boundaries
+    # Preserve existing evidence entries (additive, non-destructive).
+    preserved = _existing_inline_evidence(lines)
+
+    # Canonical evidence line: receipt path, candidate and plan revision.
+    evidence_line = "- evidence: %s (candidate %s, plan %s)" % (
+        receipt_path, candidate_sha, plan_revision)
+
+    # Determine front matter boundaries (--- delimited) if present.
     start = None
     end = None
     for i, line in enumerate(lines):
@@ -324,41 +373,59 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             end = i
             break
 
-    if start is None or end is None:
-        # No YAML front matter — create one.
-        evidence_line = "evidence: %s" % receipt_path
-        new_text = "---\n%s\n---\n%s" % (evidence_line, "\n".join(lines))
-    else:
-        # Extract existing front matter and body
+    # If an identical canonical evidence line already exists, return the
+    # current durable commit idempotently (no second commit).
+    if any(strip == "- evidence:" for strip in [evidence_line.split(" evidence:")[0] + " evidence:"]):
+        if any(evidence_line.strip() == e.strip() for e in preserved):
+            current = _current_commit(planning_root, str(task_path))
+            require(current is not None,
+                    "cannot read current evidence commit for idempotent update")
+            return current
+
+    if start is not None and end is not None:
         front_lines = lines[start + 1:end]
         body_lines = lines[end + 1:]
-
-        # Check if evidence field already exists
-        evidence_found = False
-        new_front = []
-        for fl in front_lines:
-            if fl.strip().startswith("evidence:"):
-                new_front.append("evidence: %s" % receipt_path)
-                evidence_found = True
-            else:
-                new_front.append(fl)
-
-        if not evidence_found:
-            new_front.append("evidence: %s" % receipt_path)
-
+        # Keep existing front-matter evidence entries; append our new one once.
+        new_front = list(front_lines)
+        if not any(e.strip() == evidence_line.strip() for e in front_lines):
+            new_front.append(evidence_line)
         new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
+    else:
+        new_text = text.rstrip() + "\n" + evidence_line + "\n"
 
     new_bytes = new_text.encode()
+    # Idempotency: identical bytes on disk already -> return current commit.
+    if task_path.read_bytes() == new_bytes:
+        current = _current_commit(planning_root, str(task_path))
+        require(current is not None, "cannot read current evidence commit")
+        return current
+
     task_path.write_bytes(new_bytes)
 
-    # Commit the evidence update. Force re-hash for idempotent overwrite.
-    _git_fn(planning_root, "add", "-f", "--", str(task_path))
+    # Commit, then read back the durable revision from remote main and verify
+    # both the receipt and the valid task evidence are present there.
+    _git_fn(planning_root, "add", "--", str(task_path))
     _git_fn(planning_root, "commit", "-m",
-            "tasklink: publish evidence %s for task %s (candidate: %s)" % (
-                receipt_path, task, candidate_sha[:12]),
+            "tasklink: publish evidence %s for task %s (candidate %s, plan %s)" % (
+                receipt_path, task, candidate_sha, plan_revision),
             "--", str(task_path))
+    publication = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
+    require(sha40(publication), "durable publication is not a full SHA")
 
-    return _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
+    # Read back the durable task note from the publication revision and assert
+    # the evidence is present (fail closed if the edit did not land). This
+    # verifies the returned publication revision actually carries the evidence,
+    # not a local-only commit that was never pushed.
+    durable_text = _git_fn(planning_root, "show", f"{publication}:{task}").decode(errors="replace")
+    require(evidence_line.strip() in [l.strip() for l in durable_text.splitlines()],
+            "evidence reference not present in the durable publication revision")
+
+    ok, msg = _render_check(render_fn, check_fn, planning_root)
+    if not ok:
+        raise TaskLinkError("evidence published but render/check failed: %s; "
+                            "manual reconciliation required" % msg)
+
+    return publication
 
 
 def _current_commit(root, path):

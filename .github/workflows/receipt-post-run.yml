@@ -33,7 +33,6 @@ jobs:
       head_sha: ${{ steps.facts.outputs.head_sha }}
       candidate_sha: ${{ steps.facts.outputs.candidate_sha }}
       base_sha: ${{ steps.facts.outputs.base_sha }}
-      task: ${{ steps.facts.outputs.task }}
       pr_number: ${{ steps.facts.outputs.pr_number }}
     steps:
       - name: Extract authenticated facts from workflow_run
@@ -55,14 +54,13 @@ jobs:
           echo "base_sha=${{ github.event.workflow_run.base_sha }}" >> "$GITHUB_OUTPUT"
           # The PR number is extracted from the workflow_run base_ref.
           # For pull_request events, base_ref is refs/pull/<num>/merge.
-          BASE_REF="${{ github.event.workflow_run.base_ref }}"
-          if [[ "$BASE_REF" =~ refs/pull/([0-9]+)/merge ]]; then
-            echo "pr_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-          else
-            echo "pr_number=" >> "$GITHUB_OUTPUT"
-          fi
-          echo "task=tasks/t-20261022-r27-evidence-publisher.md" >> "$GITHUB_OUTPUT"
-          echo "Producer verified: workflow_id=$workflow_id head=$head_sha pr=$pr_number"
+           BASE_REF="${{ github.event.workflow_run.base_ref }}"
+           if [[ "$BASE_REF" =~ refs/pull/([0-9]+)/merge ]]; then
+             echo "pr_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+           else
+             echo "pr_number=" >> "$GITHUB_OUTPUT"
+           fi
+           echo "Producer verified: workflow_id=$workflow_id head=$head_sha pr=$pr_number"
 
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
   # extract candidate_sha/integration_sha, and determine the PR->task mapping.
@@ -120,9 +118,13 @@ jobs:
           base_sha="$(grep '^base_sha=' plan.txt | cut -d= -f2-)"
           echo "workflow_id=${workflow_id:-unknown}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${head_sha:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "candidate_sha=${candidate_sha:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "base_sha=${base_sha:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha"
+           echo "candidate_sha=${candidate_sha:-unknown}" >> "$GITHUB_OUTPUT"
+           echo "base_sha=${base_sha:-unknown}" >> "$GITHUB_OUTPUT"
+           # The task is deterministically mapped from the authenticated PR and
+           # resolved through the single authoritative PR->task resolver (F4).
+           # PR numbers are known; the resolver is authoritative — never a
+           # hardcoded task-path string fallback.
+           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha pr=$pr_number"
 
   # Step 3: Write plan fixture (tasklink) and publish the receipt.
   # This is the ONLY step with contents:write — and it runs the IMMUTABLE
@@ -141,6 +143,7 @@ jobs:
       HEAD_SHA: ${{ needs.extract_plan.outputs.head_sha }}
       CANDIDATE_SHA: ${{ needs.extract_plan.outputs.candidate_sha }}
       BASE_SHA: ${{ needs.extract_plan.outputs.base_sha }}
+      PR_NUMBER: ${{ needs.verify_producer.outputs.pr_number }}
     steps:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,18 +182,19 @@ jobs:
           echo "  head_sha=$HEAD_SHA"
           echo "  candidate_sha=$CANDIDATE_SHA"
           echo "  base_sha=$BASE_SHA"
-          # The task link is auto-resolved by the shared PR->task resolver from
-          # the authenticated PR number — never a hardcoded task path. Passing
-          # --pr-number makes the resolver fail closed on missing/ambiguous
-          # forward binding, so plan.task is a real evidence link, not a guess.
-          echo "  pr_number=${{ needs.verify_producer.outputs.pr_number }}"
+          echo "  pr_number=$PR_NUMBER"
+          # The tasklink script writes the bounded plan fixture through the ONE
+          # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
+          # caller-supplied (--task); it is auto-resolved from the trusted PR
+          # via --pr-number. A caught resolver error fails closed — it is never
+          # an authorization to fall back to a hardcoded task (F4).
           python3 scripts/receipt_tasklink.py \
             --planning "$PLANNING_ROOT" \
             --workflow-id "$WORKFLOW_ID" \
             --head "$HEAD_SHA" \
             --candidate "$CANDIDATE_SHA" \
             --base "$BASE_SHA" \
-            --pr-number "${{ needs.verify_producer.outputs.pr_number }}"
+            --pr-number "$PR_NUMBER"
           echo "Plan fixture written. Verifying..."
           ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
 
@@ -234,6 +238,7 @@ jobs:
           echo "- **Head SHA:** ${{ needs.extract_plan.outputs.head_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Candidate SHA:** ${{ needs.extract_plan.outputs.candidate_sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Base SHA:** ${{ needs.extract_plan.outputs.base_sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **PR Number:** ${{ needs.verify_producer.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Conclusion:** ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_STEP_SUMMARY"
           if [ "${{ job.status }}" = "success" ]; then
             echo "- **Status:** ✅ Published" >> "$GITHUB_STEP_SUMMARY"
