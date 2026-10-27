@@ -15,12 +15,6 @@ Contract enforced by load_plan(receipt_verifier.py:101-112):
   - 40-char full SHAs for head/candidate/base
   - task matches `tasks/[a-z0-9-]+\.md`
   - gate == GATE ("public-contracts"), repository == REPOSITORY
-
-Automatic task evidence publication: plan.task alone is NOT the update.
-The script derives the task from the trusted PR->task binding (e.g.
-"Closes #123" in the PR body), reads the actual Planning task metadata,
-and writes the plan fixture with the verified task reference. Missing
-or ambiguous PR->task mapping blocks the action.
 """
 import argparse
 import json
@@ -34,7 +28,6 @@ REPOSITORY = "mcpdev80/baseharbor"
 REPOSITORY_ID = 1360667669
 PLAN_PATH = "evidence/receipt-plans/public-contracts.json"
 TASK_RE = re.compile(r"tasks/[a-z0-9-]+\.md$", re.ASCII)
-# Pattern to match "Closes #123" or "Fixes #456" in PR body/commit messages.
 CLOSERE = re.compile(r"(?:closes|fixes|resolves)\s+#(\d+)", re.I)
 
 
@@ -51,22 +44,22 @@ def sha40(value):
     return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}", value) is not None
 
 
-def resolve_task_from_pr(pr_number: str, planning_root: Path,
-                         api: object = None) -> str:
-    """Resolve the automatic task-link from the PR number.
+def resolve_task_from_pr(pr_number, planning_root, api=None):
+    """Resolve the automatic task link from the PR number.
 
-    Reads the PR body via the GitHub API to find issue closers like
-    "Closes #123", then validates that the referenced issue references
-    a valid Planning task. Missing or ambiguous references block.
+    Reads the PR body via the GitHub API to find a single issue closer like
+    "Closes #123", then validates that the referenced issue points to a valid
+    Planning task. Missing or ambiguous references block.
 
     Parameters
     ----------
     pr_number : str
         The PR number (e.g. "1092").
     planning_root : Path
-        Path to the Planning repository (for validation).
+        Path to the Planning repository (validation context).
     api : callable, optional
-        API function for fetching PR data. Defaults to `_gh_api`.
+        API function returning a dict for a GitHub API path. Defaults to
+        ``_gh_api``.
 
     Returns
     -------
@@ -76,8 +69,8 @@ def resolve_task_from_pr(pr_number: str, planning_root: Path,
     Raises
     ------
     TaskLinkError
-        If no issue is referenced, or the reference is ambiguous,
-        or the referenced issue does not point to a valid task.
+        If no issue is referenced, the reference is ambiguous, or the
+        referenced issue does not point to a valid task.
     """
     if pr_number is None or pr_number == "":
         raise TaskLinkError("PR number is empty; cannot resolve task link")
@@ -85,82 +78,69 @@ def resolve_task_from_pr(pr_number: str, planning_root: Path,
     if api is None:
         api = _gh_api
 
-    # Fetch the PR body from GitHub.
     try:
-        pr_data = api(f"repos/{REPOSITORY}/pulls/{pr_number}")
+        pr_data = api("repos/%s/pulls/%s" % (REPOSITORY, pr_number))
     except TaskLinkError as exc:
-        raise TaskLinkError(f"failed to fetch PR #{pr_number}: {exc}") from exc
+        raise TaskLinkError("failed to fetch PR #%s: %s" % (pr_number, exc)) from exc
 
     body = pr_data.get("body") or ""
     closes = CLOSERE.findall(body)
 
     if not closes:
         raise TaskLinkError(
-            f"PR #{pr_number} body has no 'Closes/Fixes/Resolves #NNN' "
-            f"reference; task link cannot be auto-resolved"
+            "PR #%s body has no 'Closes/Fixes/Resolves #NNN' reference; "
+            "task link cannot be auto-resolved" % pr_number
         )
 
     if len(closes) > 1:
-        # Ambiguous: multiple issue references.
         raise TaskLinkError(
-            f"PR #{pr_number} has ambiguous issue references: {closes}; "
-            f"only a single Closes/Fixes reference is accepted"
+            "PR #%s has ambiguous issue references: %s; only a single "
+            "Closes/Fixes reference is accepted" % (pr_number, closes)
         )
 
     issue_number = closes[0]
-    # Fetch the issue to verify it references a Planning task.
     try:
-        issue_data = api(f"repos/{REPOSITORY}/issues/{issue_number}")
+        issue_data = api("repos/%s/issues/%s" % (REPOSITORY, issue_number))
     except TaskLinkError as exc:
         raise TaskLinkError(
-            f"referenced issue #{issue_number} not found: {exc}"
+            "referenced issue #%s not found: %s" % (issue_number, exc)
         ) from exc
 
-    # The issue body/title should reference a task. We accept either:
-    # - A task file reference in the issue body: "tasks/t-*.md"
-    # - An issue title starting with "t-": "t-20261022-r27-*"
     title = issue_data.get("title") or ""
     issue_body = issue_data.get("body") or ""
     combined = title + " " + issue_body
 
-    # Check for a task reference.
     task_match = re.search(r"tasks/([a-z0-9-]+\.md)", combined)
     if task_match:
-        task = f"tasks/{task_match.group(1)}"
+        task = "tasks/%s" % task_match.group(1)
+    elif title.startswith("t-") and re.fullmatch(r"t-[a-z0-9-]+", title):
+        task = "tasks/%s.md" % title
     else:
-        # Accept issue title format: "t-20261022-r27-pilot" -> task file.
-        if title.startswith("t-") and re.fullmatch(r"t-[a-z0-9-]+", title):
-            # Map the issue number to the canonical task file name.
-            # The task file is determined by the issue title convention.
-            task = f"tasks/{title}.md"
-        else:
-            raise TaskLinkError(
-                f"referenced issue #{issue_number} does not reference a "
-                f"Planning task; issue title={title!r}"
-            )
+        raise TaskLinkError(
+            "referenced issue #%s does not reference a Planning task; "
+            "issue title=%r" % (issue_number, title)
+        )
 
-    # Validate the task reference format.
     if TASK_RE.fullmatch(task):
         return task
-    else:
-        raise TaskLinkError(f"resolved task reference {task!r} is invalid")
+    raise TaskLinkError("resolved task reference %r is invalid" % task)
 
 
-def _gh_api(path: str) -> dict:
-    """Fetch data from the GitHub API using `gh` CLI."""
+def _gh_api(path):
+    """Fetch data from the GitHub API using the `gh` CLI."""
     token = os.environ.get("GITHUB_TOKEN", "")
     require(token, "GITHUB_TOKEN must be set")
-    url = f"https://api.github.com/{path}"
+    url = "https://api.github.com/%s" % path
     result = subprocess.run(
-        ["gh", "api", url, "-H", f"Authorization: token {token}",
+        ["gh", "api", url, "-H", "Authorization: token %s" % token,
          "-H", "Accept: application/vnd.github+json"],
-        capture_output=True, text=True
+        capture_output=True, text=True,
     )
-    require(result.returncode == 0, f"GitHub API request failed: {result.stderr}")
+    require(result.returncode == 0, "GitHub API request failed: %s" % result.stderr)
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise TaskLinkError(f"invalid JSON from GitHub API: {exc}") from exc
+        raise TaskLinkError("invalid JSON from GitHub API: %s" % exc) from exc
 
 
 def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
@@ -183,13 +163,13 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
     task : str
         Automatic task-link reference, e.g. "tasks/t-20261026-r27-pilot.md".
     pr_number : str, optional
-        The PR number that triggered the producer CI. If provided, the task
-        is auto-resolved from the trusted PR->task binding. Without it, the
-        task must be caller-supplied and will NOT produce a real evidence link.
+        The PR number that triggered the producer CI. If provided, the task is
+        auto-resolved from the trusted PR->task binding. Without it, the task
+        must be caller-supplied and will NOT produce a real evidence link.
     dry_run : bool
         If True, emit the fixture to stdout instead of committing.
     _api : callable, optional
-        API function for PR data resolution. Defaults to `_gh_api`.
+        API function for PR data resolution. Defaults to ``_gh_api``.
 
     Returns
     -------
@@ -208,26 +188,25 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
     require(isinstance(workflow_id, int) and workflow_id > 0,
             "workflow_id must be a positive integer")
 
-    # Auto-resolve task from PR if pr_number is provided.
     if pr_number is not None and pr_number != "":
         if _api is None:
             _api = _gh_api
         resolved = resolve_task_from_pr(pr_number, planning_root, _api)
-        # If caller-supplied task differs from resolved, the caller
-        # is not using the trusted PR->task binding.
-        # We proceed with the resolved task — that's the evidence link.
+        # If caller-supplied task differs from resolved, the caller is not
+        # using the trusted PR->task binding. We proceed with the resolved
+        # task — that's the evidence link.
         task = resolved
         require(isinstance(task, str) and TASK_RE.fullmatch(task),
                 "resolved task must match tasks/[a-z0-9-]+\\.md")
-        print(f"tasklink: auto-resolved task from PR #{pr_number}: {task}",
+        print("tasklink: auto-resolved task from PR %s: %s" % (pr_number, task),
               flush=True)
     else:
         # No PR number — task is caller-supplied but NOT auto-linked.
         # This means plan.task is set, but there is NO real evidence link.
         require(isinstance(task, str) and TASK_RE.fullmatch(task),
                 "task must be a valid task reference matching tasks/[a-z0-9-]+\\.md")
-        print(f"tasklink: no PR number; task is caller-supplied without "
-              f"auto-resolution — plan.task alone is NOT evidence publication",
+        print("tasklink: no PR number; task is caller-supplied without "
+              "auto-resolution — plan.task alone is NOT evidence publication",
               flush=True)
 
     plan = {
@@ -321,7 +300,6 @@ def main():
                         help="Print the fixture to stdout without committing")
     args = parser.parse_args()
 
-    # Validate: either --task is provided OR --pr-number is provided.
     if args.task is None and args.pr_number is None:
         parser.error("one of --task or --pr-number is required")
     if args.task is not None and args.pr_number is not None:
