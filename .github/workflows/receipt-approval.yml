@@ -80,6 +80,8 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve Planning revision for the receipt
+        env:
+          RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
         run: echo "PLANNING_REVISION=$(git -C planning log -n 1 --format=%H -- "$RECEIPT_PATH")" >> "$GITHUB_ENV"
 
       - name: Approve the receipt
