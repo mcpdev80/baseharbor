@@ -398,3 +398,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 15:5xZ CODEX-R5 = BLOCKED selbes PARTLY-Bild (publiziert 7835719, codex rotiert). Diagnose ENDLOSSCHLEIFE #2: Hosted-Beweise koennen auf nie-gemergedem Branch nicht closen -> Bootstrap #bx1 muss AUF develop + CODEX-MERGE, dann ein Hosted-Beweis-Lauf statt R6-Welle. Owner-Eskalation folgt.
 - 16:0xZ OWNER-SCHWENK autorisiert (A). bx1 ghost (0 commits) rotiert -> bx2/ornith medior-Mission (S1-S3).
 - 16:2xZ p2 Dialog tmp-ops/pilot/* (scope-konform) Allow once; Footer 'Build · Qwen Flash' = flash-Profil (qwen heisst 'Qwen 3.6 Laptop') -> Identitaet ok.
+- 16:3xZ p2 2. Dialog gleiches Pattern -> Allow ALWAYS fr tmp-ops/pilot/* (Pattern-scope, nach einmal-Repeat). Empfehlung an Owner: tmp-ops in external_directory-Liste der Configs (einmalig, globally sauber).
