@@ -361,3 +361,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:1xZ ci-watch.sh sauber neu geschrieben (Branch-Liste v35/w4x, jq headBranch-Fallthrough entfernt, syntax-ok, Manuell-Lauf seeded). w4a/w4c busy>40min ohne Dialog (Pane: spinner) - Deliverables teilweise schon pushed.
 - 09:2xZ Tick: #1131 (akte2b) + w4a 88a2f15a + w4b3 evidence-push laeuft; w4c 0-push -> Push-Pflicht-Nudge. Reminders 30 = Ghost-Pane b7bbe04f-Rauschen, gepreuselt.
 - 09:3xZ w4b3 DONE-PR 1131 (evidence 3dcc58c7 pushed, Dossier OK) rotiert. Warten: w4a, w4c.
+- 09:4xZ w4c DONE #1132 (418acbfd) rotiert. WAVE4=3 Pakete bereit (88a2f15a, 3dcc58c7, 418acbfd). naechster Schritt: v3.6-Staging wenn w4a final ist.
