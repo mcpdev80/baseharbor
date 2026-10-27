@@ -373,3 +373,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:1xZ rv5 2. Dialog (rv5-scratch, scope-konform) Allow once; rv5 baut echten bare-remote Positivfall (gut).
 - 11:2xZ b3 DONE (f362855) rotiert; vb/flash Gegenpruefung Board-Commit; rv5+stg3 busy.
 - 11:3xZ rv5 ACCEPT mit Wermutstropfen: 'Ran 129 FAILED (2f,3e)' imshadowed-Log-Abschnitt - Dossier kopiert nach board-2026-10-27/rv5-f2negatives.md, R4 muss echten Fail-Grund pruefen. rv5 rotiert.
+- 11:35Z RV5-BEFUND: A = KEIN eindeutiger Klassenname (Rezept nicht umgesetzt!), Suite rot (2f/3e). R4-Kerninput. Pool: stg3+vb.
