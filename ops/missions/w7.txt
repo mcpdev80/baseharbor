@@ -1,0 +1,9 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b w7/plansync /home/marcel/dev/baseharbor-ecosystem/worktrees/w7-plansync origin/develop. KEIN push.
+Kontext: 'PR · Trusted Plan' fuehrt scripts/pr-gate-plan.py aus dem TRUSTED BASE (develop) aus - PR1 (#1090, Kandidat 3a0df114) kann sein eigenes Mapping nicht aktivieren. Bootstrap-Vorbilder im develop-Planner: RUNTIME_STEP_CAP_REVIEWED_HEAD, DISPATCH_GATE_REF_REVIEWED_HEAD (exact-head+files-Eintraege fuer fruehere CI-Plan-Selbstaenderungen).
+SCHRITTE:
+1. Simuliere den Planner von develop gegen einen Diff, der genau die 3 L6-Dateien aendert (scripts/pr-gate-plan.py, scripts/test_pr_gate_plan.py, scripts/test_pr_gate_plan_receipt_paths.py): coverage_status? selected_gates? unresolved? (Hilfsmechanik wie in scripts/test_pr_gate_plan*.py / pr-diff-base.py Schnittstelle.)
+2. Falls unresolved/unknown: fuege den EXAKTEN Bootstrap-Eintrag (R27_PLANSYNC_REVIEWED_HEAD/_REVIEWED_FILES) nach Vorbild der Nachbarn hinzu - Head-SHA deines finalen w7-Commits (Self-Referenz so, wie die Praezedenz-Einträge es tun - deren Commit-Struktur per git log -S klären!) - damit PR-B (diff develop: nur diese 3+Plannerdatei) von develop's Planner qualifiziert wird.
+3. Ziel-Diff w7 = NUR diese Dateien (L6-Inhalt + ggf. Planner-Eintrag). PR1-Branch wird spaeter Wiedervereinigt; nichts an den 5 PR1-Core-Dateien aendern.
+4. Tests: python3 scripts/test_pr_gate_plan.py + neue Sync-Assertions fuer den Eintrag; alle Develop-Suiten die diese Datei beruehren bleiben gruen.
+EVIDENCE evidence/board-2026-10-26/w7-plansync.md mit SIMULATIONSVORBEFUND (Schritt 1 Ausgang), gewähltem Mechanismus, Self-Referenz-Aufloesung (welcher SHA im Eintrag steht und warum der Commit trotzdem passt), Testausgaben. EIN ordinary Commit.
+END W7-DONE / END W7-BLOCKED

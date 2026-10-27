@@ -1,0 +1,5 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b r2/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/r2-ustrack 6e170894 (L5-Zweig; fetch /home/marcel/dev/baseharbor-ecosystem/worktrees/l5-ustrack 6e170894 falls noetig). KEIN push, NICHTS was den PR1-Branch toucht.
+AUFGAB (PR2-Aktivierungs-Vorbereitung, dormant-Safe): P3R-Befund abarbeiten (evidence/board-2026-10-26/p3r-reviews-l5.md Abschnitt (3)): base_ref-als-BASE_SHA im post-run-Hook ersetzen durch ECHTE SHA-Auflösung des PR-base (github.event.workflow_run-Context: korrekte Felder + API-Auflosung mit fail-closed, exakt wie der Review-Vorschlag es beschreibt - bei Abweichung END R2-BLOCKED). Alles innerhalb der bestehenden dormant-Guard-Jobs; Receipt-Logik/Interfaces laut FREEZE unveraendert.
+TESTS: test_receipt_tasklink.py erweitern um base-Auflösung (fake API), alle 6 Receipt-Suiten gruen; py_compile; yml-Syntax sauber.
+EIN ordinary Commit "ci(pr2): resolve real base SHA for dormant task-link hook". Evidence evidence/board-2026-10-26/r2-basesha.md (## PLAN, file:line, Tests).
+END R2-DONE / END R2-BLOCKED

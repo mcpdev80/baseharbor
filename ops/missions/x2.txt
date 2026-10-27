@@ -1,0 +1,3 @@
+pwd-PFLICHT. ROLLE: unabhängige Verifikation PR1-Abnahme (read-only; nur Evidence schreiben). Gegenstand: ACCEPTANCE-PR1.md (baseharbor-plan, Commit 66fd8ed) vs. Wirklichkeit: (1) gh run 40419597576 conclusions pruefen (keine 'success' erfunden); (2) gh pr diff 1090 gegen FREEZE-Pfadliste + develop-Merge-Bestand e12bd1fd enthaelt writer/verifier/tests/docs unveraendert (hashen gegen ec82d476-Fassungen mit git diff --stat ec82d476..e12bd1fd -- scripts/receipt_*.py docs/development/minimal*); (3) T0/Deadline mathematisch UTC-korrekt (+72h); (4) Karten-Metadaten der 3 accepted-Karten konsistent (check laeuft).
+VERDICT evidence/board-2026-10-26/x2-verify-pr1.md: BESTANDEN oder Abweichungsliste. KEINE Produktdateien.
+END X2-DONE / END X2-BLOCKED

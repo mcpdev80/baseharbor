@@ -1,0 +1,4 @@
+ROLLE: REVIEW des Akzeptanz-DRAFTS (read-only; Evidence only). Gegenstand: evidence/board-2026-10-26/pr1-acceptance-DRAFT.md (Q9) gegen a2-pr1-acceptance-PREP.md, q8-merge-sim.md, r1/r3-Verdicts, decision 2026-10-26-minimal-receipts.md und den echten SHAs in baseharbor (git log 084b3abc..? / ec82d476..3a0df114 nachrechnen).
+PRUEFGENAU: (1) alle behaupteten Commits/SHAs existieren und Eltern stimmen; (2) Negative-Referenzen zeigen auf reale Testnamen (grep in den Scripts); (3) keine Claim die CI-Qualifikation ueberbietet (gruene Runtime-Gates koennen noch nicht behauptet werden - nur lokale Suiten + PR-B-Kette als Voraussetzung); (4) T0/Deadline-Felder korrekt auf WARTEND+AUSLOESER; (5) Nach-der-CI-Checkliste vollstaendig und in richtiger Reihenfolge (PR-B VOR PR1-Rerun).
+VERDICT evidence/board-2026-10-26/r4-reviews-draft.md: FREIGEBEN als Owner-Entscheidungsgrundlage oder KORRIGIERLISTE. ROLLE+UTC.
+END R4-REVIEW-DONE / END R4-BLOCKED

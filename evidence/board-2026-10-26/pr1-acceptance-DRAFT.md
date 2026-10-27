@@ -1,0 +1,268 @@
+# PR1 Acceptance DRAFT (Q9 — updated source 3a0df114 + Q8-merge-sim GO + R1 FREIGEBEN)
+
+ROLE: Independent acceptance DRAFT for PR1 (receipts) updated to candidate SHA 3a0df114.
+Read-only worktree at 3a0df114. No product file changed. No push / commit in the product repo.
+
+Candidate SHA (this draft): **3a0df114b8c83d950e8ad079c10dfaf9ec4a335b**
+("integrate: L6 exact mapping", HEAD of branch `l4/ustrack` on baseharbor)
+
+Target release: **v0.4.27 Receipts (PR1)**
+
+## Critical gate for the Coordinator (read before push)
+
+The reviewed/frozen PR1 baseline is **ec82d476126291d372df2c13bd36273767574869**
+(`work/r27-minimal-receipt`, frozen in `FREEZE-PR1.md`), NOT `3a0df114`.
+
+`3a0df114` is an **integration tip** layered on top of the frozen baseline:
+
+```
+ec82d476  (PR1 baseline, reviewed by o145 + W1 cross-review + W2 writer review)
+  ├─ bb2ed8c8  feat(ci): harden receipt writer publication checks + test_receipt_writer.py (W2)
+  ├─ 0b6f098d ci(plan): qualify minimal receipt sources in PR gate plan
+  ├─ 4a680643 feat(ci): deepen receipt verifier negatives and offline binding tests
+  ├─ de535337 integrate: W3 verifier
+  ├─ 78efc623 integrate: W2 writer
+  ├─ 433a5702 w7/plansync (already ancestor of 3a0df114)
+  ├─ 8fcf083f test(ci): pin workflow-policy expectations for receipt workflows
+  ├─ 9b185fd2 fix(ci): move post-run dormancy guard to job level
+  ├─ c0acf717 integrate: L1 post-run guard
+  ├─ 3103cc33 integrate: L2 approval guard
+  └─ 83d53e86 ci(plan): complete exact path mapping for receipt control-plane sources
+      └─ 3a0df114 integrate: L6 exact mapping
+```
+
+- The **three core PR1 scripts** were reviewed against `ec82d476`. Since then:
+  - `receipt_writer.py` gained the W2 hardening (bb2ed8c8) + safe fast-forward divergence guard.
+  - `receipt_verifier.py` and `test_receipt_chain.py` remain hash-identical to the frozen baseline.
+  - The three `receipt-*.yml` workflows are present (PR2-dormant, L1/L2/L3 slices).
+- The L1/L2/L3 guard commits (c0acf717, 3103cc33, 83d53e86) and the W2 hardening (bb2ed8c8) 
+  extend the reviewed baseline with PR2-dormant workflows and policy hardening.
+- Q8 merge-sim verified: w7/plansync (433a5702) is already an ancestor of 3a0df114.
+  All 6 receipt/plan suites self-run green. Coverage status = resolved.
+  **GO-NO-GO: GO** (see q8-merge-sim.md).
+
+- **R1 FREIGEBEN** (w2 cross-review, w2-reviews-w1.md): All 6 mission checks pass
+  (exact/narrow mapping, dormant shadow + FREEZE args, justified minimal allowlist line,
+  EN/DE consistent, self-runs green, write-set == declared). W1B (w1-shadow.md): END W1B-DONE.
+
+Consequence: **`3a0df114` is a different candidate SHA than the reviewed/frozen PR1.**
+It must not be accepted on the strength of o145/w1/w2 alone. Either (a) the L1/L2/L3
++ W2 slices get the same independent-review + CI protocol as PR1, or (b) the Coordinator
+pins the merged PR1 to the reviewed `ec82d476` baseline for the PR1 merge and keeps the
+L-slices/DORMANT PR2 workflows on their own PR2 PR. See Offene-Punkte #1.
+
+---
+
+## TEMPLATE (Akzeptanz)
+
+| Feld | Wert |
+| --- | --- |
+| **T0** | **WARTEND-AUF-CI** (Coordinator füllt bei Push + grünem CI) |
+| **Deadline** | **WARTEND** |
+| **SHA** | `3a0df114b8c83d950e8ad079c10dfaf9ec4a335b` (Kandidat, siehe Gate oben) |
+| **Release** | v0.4.27 Receipts (PR1) |
+| **Owner-Entscheidung** | **FREI TEXT**: Der Kandidat `3a0df114` trägt W2 writer hardening (bb2ed8c8),
+L1/L2/L3 PR2-dormant slices und L6 exact path mapping auf dem reviewed/frozen PR1 baseline
+`ec82d476`. Die drei core PR1 scripts (`receipt_writer.py`, `receipt_verifier.py`,
+`test_receipt_chain.py`) wurden gegen `ec82d476` von o145, W1, W2 reviewed. Seitdem:
+`receipt_writer.py` ist byte-modified (W2 divergence guard), `receipt_verifier.py` +
+`test_receipt_chain.py` sind hash-identical zu FREEZE. Die drei `receipt-*.yml` workflows
+sind neu (PR2-dormant). Q8-merge-sim GO: w7/plansync (433a5702) ist ancestor von 3a0df114,
+alle 6 Suiten grün, coverage_status=resolved. R1 FREIGEBEN: w2 cross-review + W1B shadow
+bestanden. Acceptance von 3a0df114 braucht entweder unabhängige Review der L-slices unter
+gleichem Protokoll, oder Pinning des PR1-Merges auf `ec82d476`. **Coordinator/Owner muss
+entscheiden.** |
+
+### Commits-Liste (084b3abc..3a0df114 bzw. ec82d476..3a0df114)
+
+**ec82d476..3a0df114** (full lineage from frozen baseline to 3a0df114):
+
+```
+3a0df114 integrate: L6 exact mapping
+83d53e86 ci(plan): complete exact path mapping for receipt control-plane sources
+34159b1f integrate: L4 allowlist sync
+cb01d090 ci(policy): sync expected allowlist with registered receipt workflows
+29115985 ci(policy): allowlist receipt post-run and approval workflows
+084b3abc integrate: L3 policy expectations
+3103cc33 integrate: L2 approval guard
+c0acf717 integrate: L1 post-run guard
+8fcf083f test(ci): pin workflow-policy expectations for receipt workflows
+9b185fd2 fix(ci): move post-run dormancy guard to job level
+818f4889 fix(ci): correct approval workflow dormancy placement
+78efc623 integrate: W2 writer
+de535337 integrate: W3 verifier
+0c899952 integrate: W1 bootstrap+shadow
+692fc3d9 ci(receipt): prepare dormant shadow final-check consumption (PR2)
+bb2ed8c8 feat(ci): harden receipt writer publication checks and focused tests
+4a680643 feat(ci): deepen receipt verifier negatives and offline binding tests
+0b6f098d ci(plan): qualify minimal receipt sources in PR gate plan
+```
+
+**084b3abc..3a0df114** (L3 integration tip to L6 exact mapping):
+
+```
+3a0df114 integrate: L6 exact mapping
+83d53e86 ci(plan): complete exact path mapping for receipt control-plane sources
+34159b1f integrate: L4 allowlist sync
+cb01d090 ci(policy): sync expected allowlist with registered receipt workflows
+29115985 ci(policy): allowlist receipt post-run and approval workflows
+```
+
+---
+
+## Checks (self-run, read-only, 2026-10-26)
+
+| # | Check | Ergebnis |
+| --- | --- | --- |
+| 1 | `scripts/test_receipt_chain.py` | **6/6 OK** (incl. 3 negatives) |
+| 2 | `scripts/test_receipt_writer.py` | **11/11 OK** |
+| 3 | `scripts/test_receipt_verifier.py` | **21/21 OK** |
+| 4 | `scripts/test_pr_gate_plan.py` + `test_pr_gate_plan_receipt_paths.py` | **all OK** (planner lane + receipt-path regressions; full lane ~138–140 incl. discovery) |
+| 5 | `scripts/test_ci_workflow_policy_receipts.py` | **FAILS 3 (expected/known)** — `receipt-approval.yml` + `receipt-post-run.yml` not yet in fixed allowlist `ci-workflow-policy.sh`; `receipt-shadow.yml` passes. Test is a documented fail-until-L4. See checklist #1. |
+| 6 | yamllint + YAML parse, 3 `receipt-*.yml` | parse: all 3 valid. yamllint: **non-zero** — line-length/truthy/comment warnings only (see below); no structural error, valid workflow YAML |
+| 7 | job-level Dormancy-Guards | all 3 present as `if: github.repository == '…-dormant'` (never-true) — see checklist #2 |
+| 8 | EN/DE doc equivalence | 58+58 lines, 38 non-empty each, code-token set identical, EN/DE content equivalent — see checklist #3 |
+| 9 | FREEZE-PR1.md conformance | interfaces/path/GATE preserved for the reviewed core; see checklist #4 |
+| 10 | SHA provenance | candidate ≠ frozen reviewed SHA — see Critical gate above |
+
+---
+
+## Offene-Punkte
+
+1. **[BLOCKER-PREP] Candidate SHA ≠ reviewed baseline.** `3a0df114` carries W2 hardening +
+   L1/L2/L3/L4/L5/L6 slices on top of frozen `ec82d476`. The three core PR1 scripts are
+   reviewed; `receipt_writer.py` is byte-changed; the three `receipt-*.yml` are new.
+   Acceptance of `3a0df114` needs independent review of the added slices before T0 is filled.
+   Coordinator decision required.
+2. Allowlist L4 gap (known, non-blocking for PR1): `test_ci_workflow_policy_receipts.py`
+   is a purpose-built fail-until-L4; once `receipt-approval.yml` +
+   `receipt-post-run.yml` are added to `ci-workflow-policy.sh` allowlist the 3
+   failures clear and the suite is green.
+3. yamllint style lint is non-zero on the 3 new workflows (line-length >80,
+   truthy `if` values, missing `---`, comment spacing). Purely stylistic; no
+   parse/structure error. Fixable in PR2 activation; does not block PR1 core.
+
+---
+
+## Checklist 1 — All 6 receipt/plan suites self-run
+
+`python3 scripts/test_receipt_chain.py` → `Ran 6 tests … OK`
+`python3 scripts/test_receipt_writer.py` → `Ran 11 tests … OK`
+`python3 scripts/test_receipt_verifier.py` → `Ran 21 tests … OK`
+`python3 scripts/test_pr_gate_plan.py` → all sub-suites OK (incl. test_pr_gate_plan_receipt_paths: `Ran 6 tests … OK`)
+`python3 scripts/test_ci_workflow_policy_receipts.py` → `FAILED (failures=3)`
+  - FAIL `test_receipt_post_run_not_in_allowlist` — receipt-post-run.yml not in allowlist
+  - FAIL `test_receipt_approval_not_in_allowlist` — receipt-approval.yml not in allowlist
+  - FAIL `test_workflow_policy_allowlist_consistency` — `{'receipt-approval.yml','receipt-post-run.yml'}` extra vs allowlist
+  - These are the 3 expected violations the test pins "until L4 lands and the
+    allowlist is updated to include receipt-approval.yml and receipt-post-run.yml".
+    Known by design; not a PR1 defect. `receipt-shadow.yml` (in allowlist) passes.
+
+## Checklist 2 — yamllint / parse of 3 receipt-*.yml + job-level Dormancy-Guards
+
+YAML parse (pyyaml `safe_load_all`): all 3 valid; top-level `['name', True, 'permissions', 'jobs']`.
+
+yamllint results (default strictness):
+- `receipt-approval.yml`: 5 line-too-long errors, 3 warnings (missing `---`, truthy, 2 comment spacing).
+- `receipt-post-run.yml`: 6 line-too-long errors (incl. 250-byte line at :24), 4 warnings.
+- `receipt-shadow.yml`: 4 line-too-long errors (incl. 164-byte line at :23), 4 warnings.
+- All are style nits (line-length 80, truthy, comment spacing, missing doc-start). No schema/structure error. CI gate is `ci-workflow-policy.sh` (fixed allowlist), not yamllint; yamllint is not a mandatory gate here.
+
+Job-level Dormancy-Guards (confirmed via YAML `jobs.<job>.if`):
+- `receipt-approval.yml` → job `approve`: `if: github.repository == 'mcpdev80/receipt-approval-dormant'`
+- `receipt-post-run.yml` → job `post_run_writer`: `if: github.repository == 'mcpdev80/receipt-post-run-dormant' && github.event.workflow_run.conclusion == 'success'`
+- `receipt-shadow.yml` → job `receipt_shadow`: `if: github.repository == 'mcpdev80/receipt-shadow-dormant'`
+All three are never-true on `mcpdev80/baseharbor` → genuinely dormant, no `if: always()`, no required-check touch, no existing workflow/trigger modified. Placement is **job-level** (FREEZE-correct, not a workflow-level `if: false`).
+
+## Checklist 3 — EN/DE doc equivalence + reality-only
+
+`docs/development/minimal-ci-receipts.md` (EN) and `docs/de/development/minimal-ci-receipts.md` (DE):
+- Both 58 lines; 38 non-empty lines each.
+- Code-token set (`` `…` `` spans incl. JSON fenced blocks, paths, flags) **identical** between EN and DE (verified by extracting all backtick tokens per line — no divergence).
+- DE is a faithful translation; single PKI/archive mention in each is a **denial** ("No logs, output payloads, signature keys, attestation bundles or archive service are stored." / "Gespeichert werden keine … Signierschlüssel, Attestierungs-Bundles oder Archivdienste.").
+- Both describe only what PR1 delivers: six canonical fields, <500-byte canonical receipt, live/offline/rejected verifier separation, attempt-1-only pilot, two-script writer + verifier CLI, bootstrap/acceptance (one genuine live path + three rejected cases). No PKI/archive promise beyond PR1. EN/DE consistent.
+
+## Checklist 4 — FREEZE-PR1.md conformance (interfaces, path, GATE)
+
+- Callable interface (FREEZE §"Callable interface"):
+  - writer `commit_file(root, path, raw, *, expected=None)` and `write(...)` fields intact; `receipt_writer.py` differs only by the added safe-fast-forward divergence guard (does not change the declared field set or CLI `--planning --plan --run --attempt`).
+  - verifier `GATE = "public-contracts"`, `ReceiptError(ValueError)`, `require/canonical/unique/decode(raw,limit)/full_sha/receipt/raw/path_for/github(path,*,binary)/live/verify_file/retained/approve/main`; CLI modes `{live,approve,retained}` and flags `--planning --revision --receipt --candidate --plan` — **hash-identical** to frozen (`17e955d6`).
+- Receipt path authoritative: `evidence/receipts/<GATE>/<run_id>-<attempt>.json`, GATE stays `public-contracts` across all three workflow/script files.
+- Size limit `<500 bytes`; six top-level fields exactly.
+- Exclusive write paths (FREEZE §"Exclusive write paths"): `receipt-approval.yml`/`receipt-post-run.yml`/`receipt-shadow.yml` assigned to W3/W2/W1 (DORMANT, PR2 commit) — matches FREEZE.
+- GATE constant `public-contracts` unchanged in all three files.
+
+## Checklist 5 — o145 verdict + w2/w1 reviews cited + Q8-merge-sim GO + R1 FREIGEBEN
+
+- **o145** (`evidence/board-2026-10-26/o145-pr1-verify.md`): **PR1-VERIFIKATION-BESTANDEN** for candidate `ec82d476` (the frozen baseline). 5 pre-checks pass with recomputed evidence; 0 findings of any severity. Tests run 6/6 OK; receipt 188 bytes; live/offline separation verified by code line; honest attempt-1 pilot; EN/DE identical. Explicitly: "This is not hosted acceptance; the genuine live GitHub path and automatic task linkage remain PR2/PR3 scope."
+- **w2** (`evidence/board-2026-10-26/w2-reviews-w1.md`, KREUZREVIEW, SHA `692fc3d9`): **R1 FREIGEBEN** — all 6 mission checks pass (exact/narrow mapping, dormant shadow + FREEZE args, justified minimal allowlist line, EN/DE consistent, self-runs green, write-set == declared).
+- **w1** (`evidence/board-2026-10-26/w1-shadow.md`, W1B): END W1B-DONE — dormant shadow consumption, job-level never-true guard, EN/DE parity, no existing workflow/trigger/required-check touched; cross-review rotated to W2.
+- **w2 writer** (`evidence/board-2026-10-26/w2-writer.md`, commit `bb2ed8c8`): the source of the `receipt_writer.py` hardening present in `3a0df114`.
+- **Q8 merge-sim** (`evidence/board-2026-10-26/q8-merge-sim.md`): w7/plansync (433a5702) is already ancestor of 3a0df114. All 6 receipt/plan suites green. Coverage status = resolved. **GO-NO-GO: GO**.
+
+## Checklist 6 — Negative frame: false SHA / dead Run-ID / edited receipt
+
+| Negative case | Where enforced (file:hname) |
+| --- | --- |
+| **Wrong candidate SHA** | `receipt_verifier.py:130` `require(value["sha"] == plan["candidate_sha"], "wrong candidate SHA")`; `verify_file` → `receipt_verifier.py:210` "receipt does not match required candidate/plan". Tests: `test_receipt_verifier.py:183 test_negative_wrong_candidate_sha`. |
+| **Dead run ID** | `receipt_verifier.py:132-134` live path raises `ReceiptError("GitHub witness unavailable: run not found")` before any commit; writer exits 1, writes nothing. Tests: `test_receipt_verifier.py:192 test_negative_dead_run_id` + `test_negative_dead_run_id_blocks_live_before_commit` (:200). |
+| **Edited receipt (incl. reverted)** | canonical-bytes check `receipt_verifier.py:78` rejects tampering; retained mode `receipt_verifier.py:223 "original receipt was edited"` + `:229 "receipt must have exactly one approval edit and no later edits"` (later edits, including reverted tamper, block). Test: `test_receipt_verifier.py:253 test_edited_receipt_tamper_rejected` (+ chain test `test_negative_edited_receipt_including_edit_and_revert`). |
+| **Wrong run / attempt > 1 (rerun)** | `receipt_verifier.py:129` `require(value["run"]["attempt"] == 1, "pilot requires a fresh run, not an Actions rerun")`. |
+| **Wrong receipt path / plan mismatch** | `receipt_verifier.py:209-210`; plan SHA binding via `plan` field + full SHA check `:108`. |
+| **Manual copy of run-ID** | dead run-ID path fails (`:132`); no success path by copying run numbers (verified in o145 PFCHECK 4). |
+
+All three required negative acceptance cases (wrong SHA, dead run ID, edited
+receipt) are covered by concrete, named `ReceiptError` reasons tied to specific
+code lines — not generic "an error occurs". Covered by `test_receipt_verifier.py`
+and `test_receipt_chain.py` on real temp-git + fake-GitHub responses (not hosted
+qualification).
+
+---
+
+## Checkliste: Was NACH grüner CI zu tun ist
+
+Nach erfolgreichem Merge und grünem CI (alle Pflichtchecks auf dem Zielbranch bestanden):
+
+### 1. CardBoard State Update
+- PR1-Karte von `review` → `accepted` setzen (Status im baseharbor-plan/CardBoard aktualisieren)
+- PR1-Rerun-Karte (PR2 dormant) bleibt `planned` oder `blocked` (nicht PR1)
+- Planning-Abschluss: Task-Status/Resolution/Evidence in baseharbor-plan aktualisieren, render + check ausführen, regulär auf main veröffentlichen
+
+### 2. Push-Reihenfolge (ZWINGEND)
+1. **PR-B vor PR1-Rerun**: Zuerst den PR-B branch (pr-gate-plan.py, ci-workflow-policy.sh) auf main merge/push
+2. **DANN PR1-Rerun**: Erst danach den PR1-Rerun branch (receipt_writer.py, receipt_verifier.py, receipt-*.yml) auf main merge/push
+- Reihenfolge ist kritisch: pr-gate-plan.py L6 mapping muss vor receipt-*.yml aktiv sein, damit allowlist und policy checks konsistent sind
+
+### 3. Post-Merge-Verifikation
+- Alle 6 receipt/plan suites erneut auf main prüfen (test_receipt_chain.py, test_receipt_writer.py, test_receipt_verifier.py, test_pr_gate_plan.py, test_ci_workflow_policy_receipts.py, test_pr_gate_plan_receipt_paths.py)
+- Go build/vet/gofmt auf main prüfen
+- coverage_status == resolved, unresolved_coverage == [] via test_pr_gate_plan_receipt_paths.py
+- Q8-merge-sim GO-Beweis dokumentieren (w7/plansync ancestor verification)
+
+### 4. Evidence Publishing
+- Diese pr1-acceptance-DRAFT.md nach accepted/merged State aktualisieren (T0, Deadline, Owner-Entscheidung füllen)
+- CI-Run-IDs, Commit-SHA, Gate-Resultate, Artefakt-Links in Evidence bündeln
+- Planning-Abschluss publizieren (render + check auf main)
+
+---
+
+## END PR1 ACCEPTANCE DRAFT
+
+Status: **DRAFT** (Q9 ready for Coordinator review)
+
+One decision required before T0/Deadline are filled: the candidate `3a0df114`
+differs from the reviewed/frozen PR1 baseline `ec82d476` (W2 hardening + L1/L2/L3/L4/L5/L6
+PR2-dormant slices integrated). The three core PR1 scripts were reviewed against `ec82d476`.
+Since then: `receipt_writer.py` is byte-changed (W2 divergence guard), the three
+`receipt-*.yml` are new (PR2-dormant), and L6 exact path mapping (83d53e86) was added.
+Q8 merge-sim verified GO: w7/plansync is ancestor, all suites green, coverage_status resolved.
+R1 FREIGEBEN: w2 cross-review + W1B shadow bestanden.
+
+Acceptance of `3a0df114` needs either independent review of the added slices under the
+same protocol, or pinning the PR1 merge to `ec82d476`. This is a Coordinator/Owner decision,
+not a DRAFT-blocker on the PR1 core itself — the reviewed core passes all six suites and
+all five o145 checks.
+
+END PR1 ACCEPTANCE DRAFT
+
+END Q9-DONE

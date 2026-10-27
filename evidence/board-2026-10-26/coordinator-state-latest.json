@@ -1,9 +1,9 @@
 {
- "at": 1793046858,
+ "at": 1793055247,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1793046860,
+   "observed_at": 1793055250,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1793046861,
+   "observed_at": 1793055251,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1793046861,
+   "observed_at": 1793055250,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1793046862,
+   "observed_at": 1793055251,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 19374,
-  "tmp_free_mb": 11973,
+  "mem_available_mb": 18106,
+  "tmp_free_mb": 11814,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -80,31 +80,40 @@
  },
  "lanes": [
   {
-   "id": "2a805e63-e398-4918-9495-2e1276f7671f",
+   "id": "9d92294c-513b-4538-bbd0-ba4dffac0775",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "l6",
+   "name": "b1rv",
    "self": false,
    "status": "busy"
   },
   {
-   "id": "05f31a7e-87a4-4065-a9b0-fb056d5d1782",
+   "id": "f6e3068b-0f74-44e6-95d9-fd9fdb3e6e10",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "p3",
+   "name": "b3",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "3f01e860-0f69-4512-a975-c9161eeba779",
+   "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "p2a",
    "self": false,
    "status": "busy"
   },
   {
    "id": "41e61806-074a-4472-91cf-b32fdab3b766",
-   "idle_s": 160,
+   "idle_s": 240,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
    "self": true,
-   "status": "idle"
+   "status": "busy"
   }
  ],
  "missions": {
@@ -1288,6 +1297,11 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o99.txt",
    "state": "dispatched"
   },
+  "q10": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/q10-appedit-spec.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q10.txt",
+   "state": "dispatched"
+  },
   "q101": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q101-planpub.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q101.txt",
@@ -1608,6 +1622,11 @@
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q59c.txt",
    "state": "dispatched"
   },
+  "q8": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q82-pinevidence.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q8.txt",
+   "state": "DONE"
+  },
   "q80": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q80.txt",
@@ -1671,6 +1690,11 @@
   "q89b": {
    "evidence": null,
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q89b.txt",
+   "state": "dispatched"
+  },
+  "q9": {
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/q91-precheck.md",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q9.txt",
    "state": "dispatched"
   },
   "q90": {

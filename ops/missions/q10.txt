@@ -1,0 +1,7 @@
+pwd-PFLICHT. ARBEITSORT NUR baseharbor-plan (Repo /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan; pull --ff-only origin main VOR allem; KEIN Push bis zum Schluss; KEINE Produkt-Commits).
+AUFGAB: PR2-Planungsseite vorbereiten, exakt nach p2-shadow-runbook.md + r3-reviews-pr2.md Bereitschaftsvermerk:
+1. Pilot-Karte tasks/t-20261026-r27-receipt-pilot.md NEU via python3 scripts/plan.py new --repo core --slug r27-receipt-pilot --title "CI: single receipt shadow-chain pilot (PR2)" --release v0.4.27 (Parameter ggf. korrigieren nach plan.py new --help) - Metadaten: depends_on contract-Karte, prs [], blocker "", FRISCH leer fuer Schattenlauf-Beweise.
+2. Verlinkung dokumentieren: scripts/receipt_tasklink.py erwartet laut Code ( Lies /home/marcel/dev/baseharbor-ecosystem/worktrees/r2-ustrack/scripts/receipt_tasklink.py) den Pfad 'tasks/receipt-pilot.md' ODER Task-Feld - pruefen und die Karten-/Dateinamen-Konvention AN den Code anpassen (nicht umgekehrt!), Befund mit file:line ins Evidence.
+3. PR2-Evidence-Ordner: evidence/r27-ci-replacement-2026-10-26/PR2-SHADOW-PREP.md (Ablauf aus Runbook, offene Schritte, Owner-Klick-Definition, Rollback aus p3-cutover-checklist.md).
+4. render + check (0 errors) + EIN Commit + push origin main.
+END Q10-DONE / END Q10-BLOCKED

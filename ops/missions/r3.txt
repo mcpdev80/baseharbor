@@ -1,0 +1,4 @@
+ROLLE: REVIEW (read-only; nur Evidence). Gegenstand: PR2-Zweig-Kette 6e170894 (L5 Tasklink) + c1c7db7b (R2 base-SHA) - Merge-Simulation in worktree: git -C baseharbor worktree add --detach /home/marcel/tmp-ops/wt-r3 6e170894; git merge -q c1c7db7b (fetch aus /home/marcel/dev/baseharbor-ecosystem/worktrees/r2-ustrack).
+PRUEFE: (1) Merge konfliktfrei? (2) receipt_tasklink + post-run-Hook konsistent (Interfaces laut FREEZE; dormant-Guard nach R2 noch never-true); (3) base_ref-Auflösung fail-closed und ohne neuen Service (Code lesen); (4) alle 6 Receipt-Suiten + py_compile + yaml-Parse; (5) Bereitschaftsvermerk fuer PR2-Schattenlauf gemäss p2-shadow-runbook.md Abschnitten 2+3 (welche Schritte nach PR1-Akzeptanz noch offen waeren - Liste).
+VERDICT evidence/board-2026-10-26/r3-reviews-pr2.md: FREIGEBEN-fuer-PR2-ERSTELLUNG oder REWORK+Rezept. ROLLE+UTC+SHAs. Raeume am Ende wt-r3 auf (git worktree remove).
+END R3-REVIEW-DONE / END R3-BLOCKED

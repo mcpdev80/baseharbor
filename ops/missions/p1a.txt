@@ -1,0 +1,7 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b p1a/adopt /home/marcel/dev/baseharbor-ecosystem/worktrees/p1a-adopt 3a0df114. KEIN push (Warten auf PR-B-Merge).
+AUFGAB (Adopt-Commit vorbereiten): Nach PR-B (#1091) Merge übernimmt develop die Klassen-Mappings; PR1 muss seine planner-seitigen Duplikate verlieren OHNE Force:
+1. git fetch origin develop (nach Merge - falls noch nicht gemergt: Arbeitszweig bleibt, Simulation mit 8f8e5547 als proxy-base).
+2. git checkout <develop-fassung> -- scripts/pr-gate-plan.py scripts/test_pr_gate_plan.py scripts/test_pr_gate_plan_receipt_paths.py
+3. Pruefe: PR1-Core-Suiten (6x receipt + tasklink NICHT - PR2) bleiben gruen; pr-diff-base/pr-gate-plan Simulation base=develop-proxy head=deinCommit integration=merge: coverage_status resolved?
+4. EIN ordinary Commit "ci: adopt develop receipt-class planner mappings". Evidence evidence/board-2026-10-26/p1a-adopt.md mit Simulationstabelle + exakter FF-Befehl fuer Coordinator.
+END P1A-DONE / END P1A-BLOCKED

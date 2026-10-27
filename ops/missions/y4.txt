@@ -1,0 +1,8 @@
+pwd-PFLICHT. ROLLE: DIAGNOSE+DESIGN (read-only Produkt, KEIN Produkt-/Plan-Push; evidence/board-2026-10-26/y4-* schreiben ist erlaubt).
+KONTEXT (coord-verified): #1077 war released, aber der CRED-RETENTION Fix (ensureNativeBackendCredentialValues + 3-Zeilen-Call in internal/application/runtime_environment.go, vorhanden in origin/pr1077) ist NICHT in develop. cmf23 fand C1/C2: switch-back restores native PostgreSQL credential material OHNE Provenance-Check + stale-impact-consent drift.
+AUFGAB auf HEUTIGEM origin/develop (fetch zuerst):
+1. Pfad-Verstaendnis: switch-back/retirement credential flow lokalisieren (control_plane_retirement.go, runtime_environment.go; wer ruft restore, wo fehlt provenance) - file:line Liste.
+2. Kleinstes Repro: go test -run gefiltert auf develop, das den Fehlerzustand zeigt (orphaned/stale credentials nach switch-back) ODER begruendet, warum develop-Test bereits gruen/faelschlich gruen.
+3. Design-Vorschlag: wie ensureNativeBackendCredentialValues + provenance auf develop-Stand PORTIEREN ohne die cmf23-Schwaechen (a) Provenance-Quelle waehlen (state vs. backend probe) mit Begruendung, (b) consent/impact contract beachten, (c) Testplan (Unit+integration docker) - als SPEC in y4-credential-port-spec.md, max 1 Seite.
+4. Schreibe y4-credential-port-spec.md + y4-scripts/ falls Repro-Skript noetig.
+END Y4-DONE / END Y4-BLOCKED

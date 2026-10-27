@@ -1,0 +1,7 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/tmp-ops/wt-x6 origin/develop. READ-ONLY; tmp-ops; KEIN push.
+AUFGAB Merge-Reisecheck PR1 #1090 gegen aktuellem develop (e12bd1fd ist nur 3 Commits hinter dem develop-Stand):
+1. git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor fetch origin work/r27-minimal-receipt; merge-base + git merge-tree (oder test-merge im Worktree) develop vs e12bd1fd: konfliktfrei?
+2. Falls konfliktfrei: Simulation base-copy-planner (develop-Kopie!) head=e12bd1fd integration=merge -> coverage_status erwartet resolved (PR1-align-Head enthaelt ja schon develop-Merge f954369b - pruefe Ahnenschaft).
+3. gh pr checks 1090 latest run state (gruen? seit Acceptance still gruen?).
+4. Kurzer Report evidence/board-2026-10-26/x6-merge-readiness.md: GO/NO-GO fuer #1090-Merge + was NOCH fehlt (nur Fakten).
+END X6-DONE / END X6-BLOCKED

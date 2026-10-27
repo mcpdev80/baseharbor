@@ -1,0 +1,4 @@
+ROLLE: REVIEW (read-only Produkt + PR-B #1091 Diff; Evidence only). Gegenstand: l7/ustrack @ 8f8e5547 (Parents d5467808/433a5702-Linie) = persistente RECEIPT_CONTROL_PLANE-Klassen im develop-Planner.
+PRUEFE: (1) Klassen-Mappings eng & vollstaendig fuer ALLE receipt-Pfade inkl. scripts/ci-workflow-policy.sh + die 3 ymls + tasklink; (2) keine Klasse ueeroeffnet fremde Pfade (Reversed-Check: welche NICHT-receipt-Paefe wuerden durch die neuen Zeilen falsch klassifiziert? Beweise mit Testfallen); (3) Parallelen zum Praezedenz 5be7dabd strukturell identisch? (4) python3 scripts/test_pr_gate_plan.py + alle receipt-Suiten; (5) Bestaetigung der Selbst-Qualifikation (coverage_status resolved gegen develop-Basis, Simulation nach Anleitung in evidence/board-2026-10-26/l7-final-bootstrap.md).
+VERDICT evidence/board-2026-10-26/b1rv-reviews-prb.md FREIGEBEN oder REWORK. ROLLE+UTC+SHA.
+END B1RV-DONE / END B1RV-BLOCKED

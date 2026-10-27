@@ -1,0 +1,4 @@
+ROLLE: REVIEW (read-only Produkt; Evidence only). PR2 #1092 finaler Stand (gh pr view 1092 head SHA selbst lesen; Branch x1/ustrack).
+PRUEFGENAU: (1) Diff gegen develop = ausschliesslich receipt-Steuerplane-Dateien (tasklink + test + post-run/approval/shadow Hooks) - keine Produkt-/Trigger-Aenderungen; (2) ALLE Workflow-Aenderungen dormant (job-level never-true Guards), KEIN neuer Trigger; (3) Skript-Suiten: test_receipt_tasklink, test_receipt_chain, test_pr_gate_plan, test_ci_workflow_policy_receipts - selbst ausfuehren; (4) base_ref->SHA-Loesung fail-closed (Code) und Credentials nur im trusted-Kontext; (5) PR-Body deckt Runbook-Schritte inkl. EINEM Owner-Dispatch ab; (6) Simulation base-copy-planner: resolved/unresolved=[]/broad=False gegen echten PR-Head.
+VERDICT evidence/board-2026-10-26/x4-reviews-pr2.md FREIGEBEN-fuer-MERGE-nach-gruenem-CI oder REWORK. ROLLE+UTC+SHA. tmp-Worktrees am Ende entfernen.
+END X4-DONE / END X4-BLOCKED

@@ -1,0 +1,10 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -q -b x5/align1092 /home/marcel/dev/baseharbor-ecosystem/worktrees/x5-align1092 origin/x1/ustrack; git merge -q --no-ff origin/develop -m "Merge develop (bootstrap eb617cf2) into PR2 head". KEIN force/amend.
+AUFGAB (PR2-Align nach PR1-Muster e12bd1fd):
+1. Merge-Konflikte in scripts/pr-gate-plan.py / scripts/test_pr_gate_plan.py -> develop-Fassung gewinnen lassen (git checkout origin/develop -- <datei>).
+2. scripts/test_pr_gate_plan_receipt_paths.py loeschen (git rm) - existiert in develop nicht mehr, enthaelt hier veraltete Attributnamen (Hauptursache Focused-Python/actionlint-Fail).
+3. .github/workflows/receipt-*.yml pruefen: actionlint-Fehler? (gh run view 40421649692 --log-failed fuer 'PR · Validation · ci-actionlint' + 'Workflow policy' lesen und BEHEBEN: workflow-level if-Verbote/Guards - dormant-Muster = job-level never-true Guard wie in develop-Version der Dateien, falls PR2-Versionen davon abweichen).
+4. Suiten: python3 scripts/test_receipt_tasklink.py scripts/test_pr_gate_plan.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_chain.py -> alle 0.
+5. Simulation base-copy-planner: base=origin/develop head=deinMergeCommit integration=merge(base,head): resolved + unresolved [] + broad_required False (SONST END X5-BLOCKED mit Logauszug der 3 roten Jobs).
+6. PUSH origin x5/align1092 + gh pr edit 1092 --repo mcpdev80/baseharbor --head x5/align1092 NICHT noetig wenn PR-Head umziehbar via push auf x1/ustrack: mache stattdessen: git push origin HEAD:refs/heads/x1/ustrack (ordinary FF - dein Merge-Commit ist Kind von x1-head, KEIN force).
+7. Evidence evidence/board-2026-10-26/x5-pr2-align.md (FF nachweisen: merge-base x1/head ist Ahn; Logfixe; Sim-Tabelle).
+END X5-DONE / END X5-BLOCKED

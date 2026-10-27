@@ -1,0 +1,10 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b b3b/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/b3b-ustrack 8f8e5547. KEIN push/force/amend/rebase.
+MIKRO-OPERATION (ein Commit, exakt so, nichts weiter):
+1. Nimm den kompletten Testinhalt von scripts/test_pr_gate_plan_receipt_paths.py (36-160) und fuehre die ECHT neuen Faelle in scripts/test_pr_gate_plan.py zusammen: eigene TestCase-Klasse, referenziert NUR planner.RECEIPT_CONTROL_PLANE_SCRIPTS/_TEST_SCRIPTS/_WORKFLOWS (keine lokalen Kopien der Mengen; PILOT_CHECK-Faelle auf den im Planner existierenden Check-Namen mappen - im Zweifel weglassen, keine erfundenen Checks).
+2. git rm scripts/test_pr_gate_plan_receipt_paths.py  (Datei war NIE in develop; durch Add+Delete bleibt sie im NET-Diff develop..HEAD unsichtbar - kein Rebase noetig!)
+3. BEIDE Simulationen mit dem PLANNER DER BASE-KOPIE (origin/develop@433a5702):
+   a) Selbstqualifikation: pr-diff-base.py base=433a5702 head=deinCommit integration=merge(433a5702,deinCommit) -> pr-gate-plan.py (aus 433a5702-Kopie!) -> coverage_status resolved + unresolved [] + broad_required false.
+   b) PR1-Adopt-Kette: base=433a5702, head=merge(deinCommit, 8bcdd527) [PR1 nach Adopt] integration=merge(base,head) -> dasselbe Ergebnis; falls der PR1-Core-Pfad (writer/verifier) unresolved bleibt, exakte reason-Zeile dokumentieren und END B3B-BLOCKED.
+4. python3 -m unittest scripts.test_pr_gate_plan -> OK.
+EVIDENCE evidence/board-2026-10-26/b3b-prb-final.md (Tabellen beider Sims, git diff --name-status origin/develop..HEAD). EIN Commit 'ci(plan): net-clean bootstrap into existing planner surface'.
+END B3B-DONE / END B3B-BLOCKED

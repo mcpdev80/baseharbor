@@ -1,0 +1,7 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/dev/baseharbor-ecosystem/worktrees/q8-sim 3a0df114. READ-ONLY Produkt.
+AUFGAB PRAE-VERIFIKATION der spaeteren Merge-Situation (nichts pushen/merken):
+1. Simuliere Merge von w7/plansync (Bootstrap-Eintrag, SHA via git -C worktrees/w7-plansync log -1 --format=%H; falls leer: BLOCKED-Vermerk) in 3a0df114 in einem WEGWERF-Checkout unter /home/marcel/tmp-ops: Konflikte? Falls Konflikt in pr-gate-plan.py: exakte Stelle + empfohlene Aufloesung (datei:zeile).
+2. In der Sauber-Merge-Simulation: ALLE Receipt-/Plan-/Policy-Suiten + go build ./... + vet + gofmt kurz; Ziel NEW=0 fuer Python-Suiten.
+3. Pruefe mit dem develop-Kopie-Planner (aus origin/develop) gegen den MERGE-SIM-Diff: coverage_status resolved? unresolved leer? - das ist der zentrale Beweis, dass die Kette PR-B->PR1 greift, BEVOR irgendetwas gepusht wird.
+4. Kurz-Report evidence/board-2026-10-26/q8-merge-sim.md (## PLAN, Konfliktbefund, Suite-Tabelle, Planner-Ergebnis, Go/No-Go fuer Integration).
+END Q8-DONE / END Q8-BLOCKED

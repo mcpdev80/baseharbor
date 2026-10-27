@@ -1,0 +1,9 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b b3/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/b3-ustrack 8f8e5547. KEIN force; normalerCommit NOCH nicht - erst Struktur pruefen.
+BEFUND: PR-B #1091 faellt im 'PR Selected Checks', weil die NEUE Datei scripts/test_pr_gate_plan_receipt_paths.py vom develop-Planner (trusted base, kann PR-Inhalt nicht kennen) als unknown/CI-specific unresolved gilt. Praezedenz 5be7dabd (#1043) qualifizierte sich SELBST nur, weil ALLE diff-Pfade in develop bereits bestehende Dateien waren.
+UMBAU (Ziel-Diff PR-B = NUR existierende Dateien):
+1. Inhalt von scripts/test_pr_gate_plan_receipt_paths.py in scripts/test_pr_gate_plan.py integrieren (eigene TestCase-Klasse, keine Duplikate bestehender Faelle - pruefen was schon abgedeckt ist, dann nur ECHT neue Cases).
+2. scripts/test_pr_gate_plan_receipt_paths.py loeschen (git rm) - der Pfad darf im PR-B-Diff nicht mehr als ADDED auftauchen.
+3. pr-gate-plan.py: falls dort eine RECEIPT_CONTROL_PLANE_SCRIPTS-Menge die *.py-Testdatei als eigene Klasse listet, auf test_pr_gate_plan.py-Normalisierung anpassen; receipt-Pfade (writer/verifier/tasklink/chain-test + ymls + ci-workflow-policy.sh) bleiben persistent gemappt.
+4. NACH jedem Zwischenstand Selbsttest wie der Coordinator: base=origin/develop, head=deinCommit, integration=merge(base,head): pr-diff-base.py + pr-gate-plan.py (BEIDE aus der BASE-Kopie = develop) -> coverage_status resolved fuer den PR-B-Diff SELBST. Zusaetzlich ADOPT-Varianten-Simulation: base=deinCommit head=8bcdd527 (PR1-Adopt) integration=merge -> resolved.
+5. EIN ordinary Commit 'ci(plan): collapse bootstrap into existing planner test surface'. Evidence evidence/board-2026-10-26/b3-prb-rework.md mit BEIDEN Simulationstabellen (base-Copy-Planner!) + diff --name-status develop..HEAD.
+Wenn Punkt 4 trotz allem unresolved bleibt: END B3-BLOCKED mit exakter reason-Zeile, sonst END B3-DONE.

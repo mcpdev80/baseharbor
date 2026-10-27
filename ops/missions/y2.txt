@@ -1,0 +1,7 @@
+pwd-PFLICHT. ROLLE: PLANNING. baseharbor-plan aktualisieren (render+check, regulaer auf main):
+1. Karten pruefen: contract/publisher/verifier sind accepted - jetzt closed setzen MIT Resolution 'merged via PR2 squash 9a630665; PR1 content byte-identisch in develop (git diff e12bd1fd..develop = nur PR2-Additionen)' + Evidence-Link auf ACCEPTANCE-PR1.md (Schema: resolution Feld + [x]).
+2. NEUE Karte t-20261027-r27-shadow-run (planned->claimed durch coordinator): Ziel EIN Schattenlauf (Producer CI run + writer + Owner-approve + tasklink + retained verify), Write-Set: evidence/receipts/** + Handoff; Abhaengigkeiten: PR1+PR2 merged (TRUE seit 9a630665); Deadline-Referenz 2026-10-29T23:35:50Z; Akzeptanz: alle 5 Kettenglieder in GitHub/Planning verifizierbar.
+3. NEUE Karte t-20261027-r27-cutover-pr3 (planned, blocked-by shadow-run): PR3-Cutover gemaess p3-cutover-checklist.md.
+4. t-20261022-r27-* Epic-Status konsistent; render + check + push.
+EVIDENCE-Pfade referenzieren (board-2026-10-26/*). KEINE Produkt-Sourcen anfassen.
+END Y2-DONE / END Y2-BLOCKED

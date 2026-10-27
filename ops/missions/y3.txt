@@ -1,0 +1,7 @@
+pwd-PFLICHT. ROLLE: DIAGNOSE (read-only Produkt; tmp-ops erlaubt; KEIN Produkt-/Plan-Push).
+KONTEXT: Review-Befunde cmf23 C1/C2 aus verworfenem #1077-Thread (develop-SHA a39e6bf5 nur in alten Branches, NICHT in develop): 'switch-back stellt Credentials wieder her OHNE Provenance-Check' + 'credential placement transitions stale-impact-consent drift'.
+1. git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor fetch origin 'refs/pull/1077/head:refs/remotes/origin/pr1077' 2>/dev/null || gh pr checkout 1077 --repo mcpdev80/baseharbor (tmp-Worktree /home/marcel/tmp-ops/wt-y3 -f origin/pr1077 falls vorhanden; sonst gh api repos/mcpdev80/baseharbor/pulls/1077 --jq .head.sha).
+2. Reproduce: test/VM-Exercise die den C1-Pfad zeigt (switch-back ohne Provenance) -kleinstes passendes Szenario (go test ./... gefiltert oder repro-Skript in evidence/board-2026-10-26/y3-scripts/).
+3. Status auf HEUTIGEM develop pruefen: ist der Pfad laengst anders/behoben? git log/ grep.
+4. Bewerte: eigener Fix-Kandidat (klein, regressionstest) ODER Karte noetig - Empfehlung mit file:line in evidence/board-2026-10-26/y3-c1c2-triage.md. NICHTS pushen.
+END Y3-DONE / END Y3-BLOCKED

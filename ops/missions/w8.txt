@@ -1,0 +1,10 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b w8/plansync /home/marcel/dev/baseharbor-ecosystem/worktrees/w8-plansync origin/develop. KEIN push.
+MISSION (wird von W7 uebernommen, Vorarbeit dort ist VERWORFEN): Bootstrap-Eintrag im develop-Planner damit spaetere Receipt-PRs (#1090-Zweitblock 3a0df114 UND PR2) den base-geklemmten 'PR · Trusted Plan' passieren.
+VORLAGEN (beide lesen, Mengen Vereinigung bilden):
+- evidence/board-2026-10-26/l6-mapping-complete.md (11-Pfade-Klassen, L6)
+- evidence/board-2026-10-26/b2-pr2-bootstrap-needs.md (3 PR2-Pfade: .github/workflows/receipt-post-run.yml modified, scripts/receipt_tasklink.py added, scripts/test_receipt_tasklink.py added)
+MECHANIK: Vorbild RUNTIME_STEP_CAP_REVIEWED_HEAD / DISPATCH_GATE_REF_REVIEWED_HEAD in scripts/pr-gate-plan.py - EXAKTE reviewed-head+exact-files-Eintraege (SELF-REFERENZ: wie deren Praezedenz-Commite das aufloesen - git log -S RUNTIME_STEP_CAP_REVIEWED_HEAD zeigt Muster; normalerweise zeigt der Eintrag auf den Commit, in dem er selbst landet: Loesung = commit, sha reinschreiben, zweiten commit? NEIN - Praezedenz exakt kopieren, NICHT raten; wenn Praezedenz 'merge in develop -> head==merge' Muster nutzt, w7-artige Simulation bestaetigt das).
+Wenn die PRADIGMA-Wahl zwischen 'reviewed-head entry' und 'dauerhafter Klassen-Mapping' steht: dauerhafte Klasse bevorzugen (receipt-Steuerungsebene Pfad-Prefixe -> bestehende CI/WIZARD/PYTEST-Check-Klassen), weil sie jeden spaeteren Receipt-PR ohne neuen Bootstrap deckt - Begrundung im Evidence.
+BELEG-PFLICHT (harte Abnahme, sonst BLOCKED): python3 scripts/pr-diff-base.py + pr-gate-plan.py SIMULATION fuer BEIDE Diff-Mengen (develop...3a0df114 und develop...PR2-Kopf c1c7db7b-Worktree-Merge) mit coverage_status resolved + unresolved leer; test_pr_gate_plan.py gruen; ein Commit 'ci(plan): bootstrap persistent receipt-class mappings'.
+EVIDENCE evidence/board-2026-10-26/w8-bootstrap.md (## PLAN; Simulationstabellen BEIDER Mengen).
+END W8-DONE / END W8-BLOCKED

@@ -1,0 +1,9 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b x1/ustrack /home/marcel/dev/baseharbor-ecosystem/worktrees/x1-ustrack a4da322a. KEIN push bis zum letzten Schritt; KEIN force.
+AUFGAB: PR2-Kopf gegen neuen develop (eb617cf2) net-clean machen, exakt nach dem PR1-Muster (Referenz: p1a-adopt Commit e12bd1fd / Commits f954369b+e12bd1fd):
+1. git merge --no-ff origin/develop (Konflikte in scripts/pr-gate-plan.py/test_pr_gate_plan.py? -> develop-Fassung gewinnen lassen: git checkout origin/develop -- <datei>; scripts/test_pr_gate_plan_receipt_paths.py per git rm entfernen wenn vorhanden).
+2. receipt_tasklink.py + test_receipt_tasklink.py bleiben als PR2-Inhalt (ADDED-Pfade - develop-Planner kennt sieJETZT in der CONTROL_PLANE-Klasse, also self-resolving; BELEGEN).
+3. SIMULATION: base=origin/develop, head=deinCommit, integration=merge(base,head) mit develop-Copy des Planners -> coverage_status resolved + unresolved [] + broad_required False.
+4. python3 scripts/test_receipt_tasklink.py + scripts/test_pr_gate_plan.py gruen.
+5. ERST NACH 3+4 grün: git push origin x1/ustrack UND gh pr create --repo mcpdev80/baseharbor --base develop --head x1/ustrack --title "ci(pr2): one shadow receipt chain (dormant until Owner approval)" --body "...": Body enthält Runbook-Schritte + den EINEN manuellen Owner-Dispatch-Schritt + Rollback.
+6. Evidence evidence/board-2026-10-26/x1-pr2-pr.md (PR-URL, Simulations-Tabelle).
+END X1-DONE / END X1-BLOCKED

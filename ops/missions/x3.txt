@@ -1,0 +1,3 @@
+pwd-PFLICHT. ROLLE: PR2-Schattenlauf-VORBEREITUNG (Plan only, nichts ausfuehren das schreibt; nur Evidence + ein Lese-Plan). Basis: p2-shadow-runbook.md + PR2-Diff (worktrees/x1-ustrack falls vorhanden, sonst a4da322a via baseharbor fetch).
+Erzeuge evidence/board-2026-10-26/x3-shadow-commandplan.md: exakte chronologische Befehlskette fuer EINEN echten Lauf (Commands, Args, erwartete Artefakte je Schritt, wo der Owner-Dispatch genau passiert, Timeout/Fail-Regeln), inkl. Praecheck-Liste (PR1 accepted ja/nein - Status: JA seit 2026-10-26T23:35Z, PR2 gemergt? noch OFFEN, geschuetzte Planning-Revision pinned?). Abbruchkriterien aus p2/p3-Dokumenten zitieren.
+END X3-DONE / END X3-BLOCKED

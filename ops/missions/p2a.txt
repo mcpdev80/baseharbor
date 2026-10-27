@@ -1,0 +1,4 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add -b p2a/branch /home/marcel/dev/baseharbor-ecosystem/worktrees/p2a-branch 3a0df114; git merge -q --no-ff c1c7db7b (fetch worktrees/r2-ustrack vorher) - PR2-Zweig = PR1-Kopf + tasklink-Hook-Commits. KEIN push.
+AUFGAB: PR2-Kopf vorbereiten UND Adopt-Simulation: (1) Merge 6e170894..c1c7db7b auf PR1-Basis konfliktfrei? (2) derselbe Adopt-Checkout der 3 Planner-Dateien wie in p1a (PR2 enthaelt sonst L6-Duplikate) + SIMULATION base=8f8e5547-head-proxy(falls develop noch nicht gemergt) gegen PR2-Kopf: coverage_status? (3) Nachweis dormant: 3 ymls with guards, keine Aktivierung. (4) Evidence evidence/board-2026-10-26/p2a-branch.md: finaler PR2-Head + FF-Befehl + offene Punkte (Owner-Klick Schritt laut p2-shadow-runbook).
+Ein Commit "merge: PR2 tasklink chain" + ggf. Adopt-Commit; KEIN push.
+END P2A-DONE / END P2A-BLOCKED

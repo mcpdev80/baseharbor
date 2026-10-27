@@ -1,0 +1,4 @@
+pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/dev/baseharbor-ecosystem/worktrees/q9-record 3a0df114. READ-ONLY Produkt; nur Evidence-Datei schreiben. KEIN push.
+AUFGAB: Akzeptanz-RECORD-DRAFT fuer PR1 (receipts) auf Basis a2-pr1-acceptance-PREP.md + QUELLE aktualisieren auf 3a0df114 + Q8-merge-sim GO-Beweis + R1 FREIGEBEN einarbeiten. Felder: SHA(3a0df114), Parents/Commits-Liste (git log 084b3abc..HEAD bzw. ec82d476..HEAD), 6 Negative-/Positiv-Nachweise mit datei:hname, T0=WARTEND-AUF-CI, Deadline=WARTEND, Owner-Entscheid=FREI TEXT, Rest wie Template. Zusaetzlich: exakte Checkliste was NACH gruener CI zu tun ist (Karten review->accepted, Push-Reihenfolge PR-B vor PR1-Rerun!).
+LIEFERGUT evidence/board-2026-10-26/pr1-acceptance-DRAFT.md.
+END Q9-DONE / END Q9-BLOCKED
