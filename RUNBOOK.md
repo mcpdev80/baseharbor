@@ -96,6 +96,13 @@ Soll-Prozess; hier steht das WIE inkl. verifizierter Kommandos. Stand: 2026-10-2
   `evidence/.../codex-merge-*.md` (UTC-Zeit, SHA before/after).
 - BLOCKED-Meldungen der Merge-Lane sind Input, kein Ende: Ursache lane-seitig beheben,
   dann PR-Nummer/Kopf nachliefern.
+- **END-Abnahme-Regel (Owner 2026-10-27):** Ein Lane-END plus Coordinator-Gegenprüfung
+  (Disk/CI/Dossier) ist IMMER nur Zwischenstand. Die Abnahme eines Kandidaten
+  (Karte review -> accepted) trifft CODEX-REVIEW am SHA-genauen Kandidaten inklusive
+  Evidence und Pflichtchecks; Lane-seitige Reviews (rv-Muster) sind Vorprüfung, nie
+  Abnahme. Merge erst nach Codex-ACCEPT über CODEX-MERGE. Historischer Anlass: rv1
+  meldete ACCEPT_WITH_NONBLOCKING auf #1111/ad4d0f28, das Owner-Audit fand am
+  selben Stand sechs echte Abnahmefehler (G1-G6).
 
 ## 6. Todo-/Fortschritts-Sicht
 
