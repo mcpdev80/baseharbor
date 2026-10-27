@@ -312,3 +312,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 05:1xZ Tick-Ruhe: Basics nur Pool-Flags (0/3, decision-gated). #1077 closed-superseded. TMPDIR-Flag = nicht-interaktive Shells lesen .bashrc nicht; tmux+profile gesetzt, kosmetisch.
 - 05:4xZ Watchdog busy>40min auf eigener Session = artefakt der waiting-on-owner Phases (Antwort erfolgt ja pro Turn; kein Haenger, kein offener Permission-Dialog).
 - 05:0xZ Betriebschleife ruhig: alle Lanes fertig/entfernt, Watcher-Liste = nur Coordinator (prune-watch Spalten-Bug gefixt: '='-Padding + leerer-Live-Schutz), Basics sauber bis PLAN-1-Step (PR3, wartet Owner).
+- 06:0xZ Ruheschleife bestaetigt (keine Events/Lanes, Watchdog-PLAN-Zaeler = PR3 wartet Owner).
