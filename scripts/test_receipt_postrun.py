@@ -62,6 +62,8 @@ FAKE_PLAN = {
 GH_EXPR = {
     "${{ github.event.workflow_run.id }}": str(RUN_ID),
     "${{ github.event.workflow_run.run_attempt }}": "1",
+    "${{ github.event.workflow_run.base_ref }}": "refs/pull/1124/merge",
+    "${{ needs.extract_plan.outputs.run_id }}": str(RUN_ID),
     "${{ github.repository }}": "mcpdev80/baseharbor",
     "${{ github.workspace }}": ".",
     "${{ github.event.workflow_run.workflow_id }}": str(FAKE_PLAN["workflow_id"]),

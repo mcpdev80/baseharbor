@@ -43,24 +43,27 @@ jobs:
           # NOT from run.id (which is the Workflow Run ID, not the
           # workflow definition ID). The producer's workflow_id identifies
           # the reviewed ci.yml definition.
-          echo "workflow_id=${{ github.event.workflow_run.workflow_id }}" >> "$GITHUB_OUTPUT"
+          WORKFLOW_ID="${{ github.event.workflow_run.workflow_id }}"
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          BASE_SHA="${{ github.event.workflow_run.base_sha }}"
+          echo "workflow_id=${WORKFLOW_ID}" >> "$GITHUB_OUTPUT"
           # head_sha: the commit that triggered the producer CI.
-          echo "head_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
           # candidate_sha and base_sha come from the producer's
           # trusted-pr-plan artifact (see verify_producer below).
           # We default to head_sha/base_ref here and refine in the
           # next step after artifact download.
-          echo "candidate_sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          echo "base_sha=${{ github.event.workflow_run.base_sha }}" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${BASE_SHA}" >> "$GITHUB_OUTPUT"
           # The PR number is extracted from the workflow_run base_ref.
           # For pull_request events, base_ref is refs/pull/<num>/merge.
            BASE_REF="${{ github.event.workflow_run.base_ref }}"
+           PR_NUMBER=""
            if [[ "$BASE_REF" =~ refs/pull/([0-9]+)/merge ]]; then
-             echo "pr_number=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
-           else
-             echo "pr_number=" >> "$GITHUB_OUTPUT"
+             PR_NUMBER="${BASH_REMATCH[1]}"
            fi
-           echo "Producer verified: workflow_id=$workflow_id head=$head_sha pr=$pr_number"
+           echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+           echo "Producer verified: workflow_id=${WORKFLOW_ID} head=${HEAD_SHA} pr=${PR_NUMBER}"
 
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
   # extract candidate_sha/integration_sha, and determine the PR->task mapping.
@@ -89,6 +92,13 @@ jobs:
           # distinct from the authenticated workflow run id (RUN_ID). Source it
           # directly; do not let the plan artifact invent it (Owner 2026-10-27).
           WORKFLOW_DEFINITION_ID="${{ github.event.workflow_run.workflow_id }}"
+          # Preserve the attempt-1 pilot restriction on the AUTHENTICATED run
+          # context: an Actions rerun (attempt != 1) is rejected explicitly and
+          # never relabelled as attempt 1 (Owner correction 2026-10-27, D1).
+          if [ "${ATTEMPT}" != "1" ]; then
+            echo "authenticated run_attempt ${ATTEMPT} is not 1; refusing non-attempt-1 producer run" >&2
+            exit 1
+          fi
           echo "Downloading trusted-pr-plan artifact from run $RUN_ID attempt $ATTEMPT (workflow_id=$WORKFLOW_DEFINITION_ID)"
           # gh run download resolves the artifact by authenticated name from the
           # producer run. It fails closed (non-zero) on any transport or
@@ -112,8 +122,8 @@ jobs:
           # sourcing of artifact-derived strings, no source/eval on any
           # artifact value, and no fallback facts. The heredoc redirects on
           # the Python invocation (Owner correction 2026-10-27, D3).
-           python3 - <<'PY' > plan.txt
-          import json, zipfile, sys, re
+           RUN_ID="${RUN_ID}" python3 - <<'PY' > plan.txt
+          import json, zipfile, sys, re, os
           with zipfile.ZipFile("plan.zip") as z:
               with z.open("pr-plan.json") as f:
                   plan = json.loads(f.read())
@@ -127,6 +137,11 @@ jobs:
           q_ok = is_pos_int(plan.get("run_id"))
           if not q_ok:
               sys.exit("missing or invalid run_id (positive int)")
+          authenticated_run_id = os.environ.get("RUN_ID", "")
+          if not (authenticated_run_id.isdigit() and int(authenticated_run_id) > 0):
+              sys.exit("authenticated RUN_ID is missing or not a positive integer")
+          if int(plan.get("run_id")) != int(authenticated_run_id):
+              sys.exit("artifact run_id %r does not match authenticated run id %s" % (plan.get("run_id"), authenticated_run_id))
           attempt = plan.get("attempt")
           q_ok = attempt == 1
           if not q_ok:
