@@ -72,9 +72,9 @@ R4 meldete F1–F6 PARTLY, F7 CLOSED, F8 OPEN. Gegen v36 (27507add) verifiziert:
 
 ## Push + DRAFT PR
 
-- commit + push origin HEAD:refs/heads/work/r27-integration-r5
-- DRAFT PR base work/r27-correction-v36, head work/r27-integration-r5
-- (to be recorded with final SHAs after push)
+- commit `1c8e7993` + push origin HEAD:refs/heads/work/r27-integration-r5 → remote `1c8e799366c04623b03f5d635efebe2ce221384e` (ls-remote verified).
+- DRAFT PR https://github.com/mcpdev80/baseharbor/pull/1137, base `work/r27-correction-v36`, head `work/r27-integration-r5`, isDraft=true, state=OPEN, mergeStateStatus=CLEAN.
+- CI-Beobachtung: PR #1137 erzeugt KEINEN CI-Run (`gh run list` leer, statusCheckRollup leer). Struktureller Grund (d5 R4-4): ci.yml `pull_request`-Trigger läuft nur auf develop/main; PRs auf Feature-Branch-Basis (`work/r27-correction-*`) triggern nie. Keine r5i-defect — analog #1131/#1132/#1133 in d5. Lokale Belege (Python 175/162 OK, go build/vet/subset) sind die r5i-Evidence; finale CI-Authentifizierung = Integrations-/Owner-Gate.
 
 ---
 
