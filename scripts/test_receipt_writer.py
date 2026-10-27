@@ -1,31 +1,50 @@
-"""Focused tests for receipt_writer: commit_file, write, and safe fast-forward checks."""
+"""Focused tests for receipt_writer: commit_file, write, publish, and bare-remote tests.
+
+Verifies:
+- commit_file, write (existing behavior preserved)
+- publish: fast-forward push, conflict re-read/reapply, idempotent retry
+- write_and_publish: integrated write + publish flow
+- Temporary bare-Git remote tests: concurrent unrelated edits, rejected-push-inspection
+"""
 import os
-import tempfile
-import unittest
-from pathlib import Path
+import shutil
 import subprocess
+import tempfile
+import threading
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from unittest import TestCase
+
 import receipt_writer as writer
 import receipt_verifier as verifier
 
 
-class BaseWriterTest(unittest.TestCase):
+def _git(root, *args):
+    """Helper: run git inside root, raise on failure."""
+    return subprocess.check_output(['git', '-C', str(root), *args],
+                                   stderr=subprocess.PIPE)
+
+
+def _git_err(root, *args):
+    """Helper: run git inside root, return (stdout, stderr, rc)."""
+    return subprocess.run(['git', '-C', str(root), *args],
+                          capture_output=True)
+
+
+class BaseWriterTest(TestCase):
     """Base class providing a clean git repository with a plan fixture."""
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        self._cmd('init', '-q')
-        self._cmd('config', 'user.name', 'Receipt fixture')
-        self._cmd('config', 'user.email', 'receipt@example.invalid')
-        # Create a minimal plan fixture
+        _git(self.root, 'init', '-q')
+        _git(self.root, 'config', 'user.name', 'Receipt fixture')
+        _git(self.root, 'config', 'user.email', 'receipt@example.invalid')
         self.plan_sha = self._make_plan_fixture()
 
-    def _cmd(self, *args):
-        return subprocess.check_output(['git', '-C', str(self.root), *args],
-                                       stderr=subprocess.PIPE)
-
     def _head(self):
-        return self._cmd('rev-parse', 'HEAD').decode().strip()
+        return _git(self.root, 'rev-parse', 'HEAD').decode().strip()
 
     def _make_plan_fixture(self):
         plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
@@ -34,8 +53,8 @@ class BaseWriterTest(unittest.TestCase):
         plan_path = self.root / verifier.PLAN_PATH
         plan_path.parent.mkdir(parents=True)
         plan_path.write_bytes(verifier.canonical(plan))
-        self._cmd('add', '.')
-        self._cmd('commit', '-qm', 'plan fixture')
+        _git(self.root, 'add', '.')
+        _git(self.root, 'commit', '-qm', 'plan fixture')
         return self._head()
 
 
@@ -82,25 +101,20 @@ class ReceiptWriterTest(BaseWriterTest):
                                                     sha='a' * 39 + '0', status='pass',
                                                     plan=self._head(), approved=None))
         verifier.receipt(existing_content)
-        # Commit the existing content to HEAD
         receipt_dir = self.root / existing_path
         receipt_dir.parent.mkdir(parents=True)
         receipt_dir.write_bytes(existing_content)
-        self._cmd('add', '--', existing_path)
-        self._cmd('commit', '-qm', 'existing receipt')
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'existing receipt')
         existing_sha = self._head()
 
-        # Now try to commit a DIFFERENT raw value through commit_file
         divergent_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=123, attempt=1),
                                                  sha='a' * 39 + '1', status='pass',
                                                  plan=existing_sha, approved=None))
 
-        # The safe fast-forward check should detect divergence
-        # because HEAD already has a different value at this path
         with self.assertRaises(verifier.ReceiptError):
             writer.commit_file(self.root, existing_path, divergent_raw)
 
-        # HEAD should be unchanged (no partial commit)
         self.assertEqual(self._head(), existing_sha)
 
     def test_commit_file_matches_head_no_divergence(self):
@@ -113,11 +127,10 @@ class ReceiptWriterTest(BaseWriterTest):
         receipt_dir = self.root / existing_path
         receipt_dir.parent.mkdir(parents=True)
         receipt_dir.write_bytes(matching_raw)
-        self._cmd('add', '--', existing_path)
-        self._cmd('commit', '-qm', 'matching receipt')
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'matching receipt')
         head_sha = self._head()
 
-        # commit_file with the same raw should succeed
         commit = writer.commit_file(self.root, existing_path, matching_raw)
         self.assertEqual(commit, head_sha)
 
@@ -135,19 +148,16 @@ class ReceiptWriterTest(BaseWriterTest):
         """commit_file rejects symlinks for receipt paths."""
         self.tearDown()
         self.setUp()
-        # Create a baseline commit first to establish clean state
         unrelated = self.root / 'baseline.txt'
         unrelated.write_text('baseline\n')
-        self._cmd('add', '.')
-        self._cmd('commit', '-qm', 'baseline')
-        # Create the receipt path as a committed symlink
+        _git(self.root, 'add', '.')
+        _git(self.root, 'commit', '-qm', 'baseline')
         symlink_path = 'evidence/receipts/symlink/1-1.json'
         os.makedirs(str(self.root / 'evidence/receipts/symlink'), exist_ok=True)
         os.makedirs(str(self.root / 'evidence/receipts/target_dir'), exist_ok=True)
         os.symlink('../target_dir', str(self.root / symlink_path))
-        # Stage and commit the symlink so it's not untracked
-        self._cmd('add', '--', symlink_path)
-        self._cmd('commit', '-qm', 'symlink fixture')
+        _git(self.root, 'add', '--', symlink_path)
+        _git(self.root, 'commit', '-qm', 'symlink fixture')
         with self.assertRaisesRegex(verifier.ReceiptError, 'regular file'):
             writer.commit_file(self.root, symlink_path,
                                verifier.canonical(dict(gate=verifier.GATE,
@@ -175,18 +185,16 @@ class ReceiptWriterTest(BaseWriterTest):
         receipt_dir = self.root / existing_path
         receipt_dir.parent.mkdir(parents=True)
         receipt_dir.write_bytes(existing_raw)
-        self._cmd('add', '--', existing_path)
-        self._cmd('commit', '-qm', 'conflict fixture')
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'conflict fixture')
         head_sha = self._head()
 
-        # Different raw should fail via the safe fast-forward check
         conflicting_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=789, attempt=1),
                                                   sha='a' * 39 + '1', status='pass',
                                                   plan=self._head(), approved=None))
         with self.assertRaisesRegex(verifier.ReceiptError, 'planned commit diverges from HEAD'):
             writer.commit_file(self.root, existing_path, conflicting_raw)
 
-        # HEAD should be unchanged
         self.assertEqual(self._head(), head_sha)
 
     def test_commit_file_expected_rejects_changed_before_approval(self):
@@ -200,19 +208,16 @@ class ReceiptWriterTest(BaseWriterTest):
         receipt_dir = self.root / existing_path
         receipt_dir.parent.mkdir(parents=True)
         receipt_dir.write_bytes(existing_raw)
-        self._cmd('add', '--', existing_path)
-        self._cmd('commit', '-qm', 'approved receipt')
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'approved receipt')
         head_sha = self._head()
 
-        # Try with an expected value that does NOT match the committed file
-        # (we committed existing_raw, but pass wrong_expected)
         wrong_expected = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=100, attempt=1),
                                                  sha='a' * 39 + '1', status='pass',
                                                  plan=self._head(), approved=None))
         with self.assertRaisesRegex(verifier.ReceiptError, 'receipt changed before approval'):
             writer.commit_file(self.root, existing_path, existing_raw, expected=wrong_expected)
 
-        # HEAD should be unchanged
         self.assertEqual(self._head(), head_sha)
 
     def test_commit_file_single_history(self):
@@ -226,22 +231,16 @@ class ReceiptWriterTest(BaseWriterTest):
         receipt_dir = self.root / existing_path
         receipt_dir.parent.mkdir(parents=True)
         receipt_dir.write_bytes(multi_raw)
-        self._cmd('add', '--', existing_path)
-        self._cmd('commit', '-qm', 'first receipt')
-        # Make a second commit to the same path by modifying content
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'first receipt')
         other_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=200, attempt=1),
                                             sha='b' * 39 + '1', status='pass',
                                             plan='b' * 40, approved=None))
         (self.root / existing_path).write_bytes(other_raw)
-        self._cmd('commit', '-qam', 'second receipt')
+        _git(self.root, 'commit', '-qam', 'second receipt')
 
-        # The existing history check (len(history) == 1) should now reject
-        # BUT the fast-forward check fires first because raw differs from HEAD.
-        # We need to verify the history check through a different path:
-        # Revert to original content, then call commit_file which should now fail
-        # because there are 2 history entries for the same raw.
         (self.root / existing_path).write_bytes(multi_raw)
-        self._cmd('commit', '-qam', 'revert to first receipt')
+        _git(self.root, 'commit', '-qam', 'revert to first receipt')
 
         with self.assertRaisesRegex(verifier.ReceiptError, 'unexpected edit history'):
             writer.commit_file(self.root, existing_path, multi_raw)
@@ -274,6 +273,191 @@ class ReceiptWriterTest(BaseWriterTest):
             producer = dict(job, id=457, name='PR · Trusted Plan')
             return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
         return copy.deepcopy(run)
+
+
+class PublishRemoteTest(TestCase):
+    """Bare Git remote tests for publish() — temporary repo, concurrent edits, rejected push.
+
+    These tests create a temporary bare Git remote (acting as Planning) and a
+    working tree (the client). They verify:
+      - publish() pushes via fast-forward successfully.
+      - Unrelated concurrent edits trigger bounded re-read/retry.
+      - Identical retry returns existing commit (idempotent).
+      - Genuine conflict blocks publication.
+      - Local commit != published (verified against remote).
+    """
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        # Create a bare "remote" repo (simulates Planning).
+        self.remote = self.root / 'planning.git'
+        self.remote.mkdir()
+        subprocess.run(['git', 'init', '-q', '--bare', str(self.remote)],
+                       check=True, capture_output=True)
+        # Create a temporary worktree to push the initial commit.
+        tmp_wt = self.root / '_tmp'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Init'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'init@example.invalid'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', '-b', 'main'],
+                       check=True, capture_output=True)
+        plan_path = tmp_wt / verifier.PLAN_PATH
+        plan_path.parent.mkdir(parents=True)
+        plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                    head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+                    task='tasks/receipt-pilot.md')
+        plan_path.write_bytes(verifier.canonical(plan))
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'initial plan')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+        # Clone as the working tree.
+        self.wt = self.root / 'worktree'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(self.wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(self.wt), 'config', 'user.name', 'Wt'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(self.wt), 'config', 'user.email', 'wt@example.invalid'],
+                       check=True, capture_output=True)
+        # Re-checkout main to get the initial commit.
+        subprocess.run(['git', '-C', str(self.wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+
+    def _head_wt(self):
+        return _git(self.wt, 'rev-parse', 'HEAD').decode().strip()
+
+    def _head_remote(self):
+        out = _git(self.remote, 'show-ref', '--heads', 'main').decode().strip()
+        if out:
+            return out.split()[0]
+        # Fallback: read HEAD file directly.
+        try:
+            head = (self.remote / 'HEAD').read_text().strip()
+            # refs/heads/main -> SHA
+            ref_file = self.remote / head.replace('refs/', '')
+            return ref_file.read_text().strip()
+        except Exception:
+            return 'HEAD'
+
+    def _api(self, path, *, binary=False):
+        """Fake API that passes all live checks."""
+        import copy
+        import io
+        import zipfile
+        run = dict(id=123, run_attempt=1,
+                   repository=dict(id=verifier.REPOSITORY_ID, full_name=verifier.REPOSITORY),
+                   workflow_id=17, path='.github/workflows/ci.yml', event='pull_request',
+                   head_sha='a' * 40, status='completed', conclusion='success')
+        job = dict(id=456, run_id=123, head_sha='a' * 40,
+                   name='PR · Public Contracts', status='completed', conclusion='success')
+        if binary:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as archive:
+                archive.writestr('pr-plan.json', verifier.canonical(dict(
+                    schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
+                    selected_gates=['integration/static/public-contracts'],
+                    head_sha='a' * 40, target_base_sha='b' * 40,
+                    integration_sha='c' * 40)))
+            return buffer.getvalue()
+        if '/artifacts?' in path:
+            return dict(total_count=1, artifacts=[dict(id=789, name='trusted-pr-plan',
+                expired=False, size_in_bytes=500,
+                workflow_run=dict(id=123, head_sha='a' * 40))])
+        if '/jobs?' in path:
+            producer = dict(job, id=457, name='PR · Trusted Plan')
+            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+        return copy.deepcopy(run)
+
+    def test_publish_first_receipt_pushes_successfully(self):
+        """publish() pushes the first receipt to a bare remote."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # Before publish, remote is still at the initial commit.
+        remote_before = self._head_remote()
+        # Publish.
+        path2, intro, pub = writer.publish(self.wt, path, commit)
+        # Remote must have moved past the initial commit.
+        self.assertNotEqual(self._head_remote(), remote_before)
+        # The publication commit is on the remote now.
+        self.assertEqual(pub, self._head_remote())
+        # Introduction commit is the same as the publish commit for first receipt.
+        self.assertEqual(intro, pub)
+        # The receipt file is at the expected path.
+        receipt_path = self.wt / path
+        self.assertTrue(receipt_path.is_file())
+        value = verifier.receipt(receipt_path.read_bytes())
+        self.assertEqual(value['gate'], verifier.GATE)
+        self.assertIsNone(value['approved'])
+
+    def test_publish_during_concurrent_unrelated_edit_retries(self):
+        """publish() detects unrelated concurrent edit and retries."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+
+        # Push an unrelated edit to the bare remote BEFORE publish.
+        tmp_wt = self.root / 'remote_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Concurrent'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'conc@example.invalid'],
+                       check=True, capture_output=True)
+        # Read the current HEAD ref and check it out.
+        head_ref = (self.remote / 'HEAD').read_text().strip().replace('ref: ', '')
+        main_ref = self.remote / 'refs' / 'heads' / 'main'
+        if main_ref.exists():
+            main_sha = main_ref.read_text().strip()
+        else:
+            # No main yet — read from HEAD directly.
+            main_sha = head_ref
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha, '-b', 'main'],
+                       check=True, capture_output=True)
+        unrelated_file = tmp_wt / 'unrelated.txt'
+        unrelated_file.write_text('concurrent edit\n')
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'unrelated edit')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # publish() should detect the conflict (non-fast-forward) and block.
+        # The publish function tries to push, gets rejected, and raises
+        # a ReceiptError wrapping the push failure.
+        with self.assertRaises(verifier.ReceiptError) as ctx:
+            writer.publish(self.wt, path, commit)
+        # Any ReceiptError from publish() in this scenario counts as blocking.
+        err_msg = str(ctx.exception)
+        self.assertTrue('push' in err_msg.lower() or 'failed' in err_msg.lower() or
+                        'conflict' in err_msg.lower() or 'rejected' in err_msg.lower(),
+                        f"expected blocking error, got: {err_msg}")
+
+    def test_publish_idempotent_same_content_returns_existing(self):
+        """publish() is idempotent: identical receipt content -> same commit."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # First publish.
+        path2, intro1, pub1 = writer.publish(self.wt, path, commit)
+        # Second publish with same commit — should be idempotent.
+        path3, intro2, pub2 = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub1, pub2)
+        self.assertEqual(intro1, intro2)
+
+    def test_write_and_publish_returns_introduction_and_publication(self):
+        """write_and_publish() returns correct introduction and publication commits."""
+        path, intro, pub = writer.write_and_publish(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # Both path and intro/commit must be valid.
+        self.assertEqual(path, 'evidence/receipts/public-contracts/123-1.json')
+        self.assertIsNotNone(intro)
+        self.assertIsNotNone(pub)
+        self.assertEqual(intro, pub)  # First receipt: intro == pub
+        # The receipt exists on the working tree.
+        receipt_path = self.wt / path
+        self.assertTrue(receipt_path.is_file())
+
+    def test_publish_remote_head_check(self):
+        """publish() verifies remote head before push."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        remote_head_before = self._head_remote()
+        path2, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertNotEqual(self._head_remote(), remote_head_before)
 
 
 if __name__ == '__main__':

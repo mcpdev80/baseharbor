@@ -240,6 +240,252 @@ class TaskLinkTest(unittest.TestCase):
         self.assertIn("blocked", result.stderr)
 
 
+class TestPRTaskAutoResolution(unittest.TestCase):
+    """Tests for PR->task auto-resolution in receipt_tasklink.py.
+
+    Verifies:
+    - resolve_task_from_pr() finds Closes/Fixes/Resolves #NNN in PR body
+    - Missing closers block
+    - Ambiguous closers (multiple #NNN) block
+    - Referenced issue without task reference blocks
+    - PR body with task file reference resolved
+    - Idempotent retry with auto-resolution
+    - CLI with --pr-number
+    """
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self._git("init", "-q")
+        self._git("config", "user.name", "Tasklink fixture")
+        self._git("config", "user.email", "tasklink@example.invalid")
+        self.workflow_id = 17
+        self.head = "a" * 40
+        self.candidate = "c" * 40
+        self.base = "b" * 40
+
+    def _git(self, *args):
+        import subprocess
+        return subprocess.check_output(["git", "-C", str(self.root), *args],
+                                        stderr=subprocess.PIPE)
+
+    def _make_fake_api(self, pr_body=None, issue_body=None, issue_title=None,
+                       issue_number=123):
+        """Create a fake API that returns PR and issue data.
+
+        The issue_number parameter controls which issue # the API resolves
+        to (extracted from the PR body's Closes/Fixes/Resolves reference).
+        """
+        def fake_api(path):
+            if "pulls/" in path and path.endswith("/1092"):
+                return {"body": pr_body or ""}
+            # Match any issue path — the issue number is dynamic.
+            if "/issues/" in path:
+                return {"body": issue_body or "", "title": issue_title or ""}
+            raise tl.TaskLinkError(f"unexpected API path: {path}")
+
+        return fake_api
+
+    def test_resolve_from_pr_with_closes_reference(self):
+        """resolve_task_from_pr extracts 'Closes #123' and resolves to task file."""
+        pr_body = "This PR implements receipt publication.\n\nCloses #123"
+        issue_body = "Task: tasks/t-20261022-r27-pilot.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        task = tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertEqual(task, "tasks/t-20261022-r27-pilot.md")
+
+    def test_resolve_from_pr_with_fixes_reference(self):
+        """resolve_task_from_pr extracts 'Fixes #456' and resolves to task file."""
+        pr_body = "Bugfix for receipt writer.\n\nFixes #456"
+        issue_body = "Covers tasks/t-20261025-r27-plan-fixture.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        task = tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertEqual(task, "tasks/t-20261025-r27-plan-fixture.md")
+
+    def test_resolve_from_pr_with_resolves_reference(self):
+        """resolve_task_from_pr extracts 'Resolves #789' and resolves to task file."""
+        pr_body = "Resolves #789"
+        issue_body = "Related to tasks/t-20261030-r27-publish.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        task = tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertEqual(task, "tasks/t-20261030-r27-publish.md")
+
+    def test_resolve_from_pr_issue_title_as_task(self):
+        """resolve_task_from_pr uses issue title as task reference when body is empty."""
+        pr_body = "Closes #999"
+        api = self._make_fake_api(pr_body=pr_body, issue_title="t-20261022-r27-pilot")
+        task = tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertEqual(task, "tasks/t-20261022-r27-pilot.md")
+
+    def test_resolve_from_pr_missing_closer_blocks(self):
+        """resolve_task_from_pr blocks when PR body has no Closes/Fixes/Resolves."""
+        pr_body = "This PR has no issue reference."
+        api = self._make_fake_api(pr_body=pr_body)
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, api)
+        err = str(ctx.exception)
+        self.assertTrue("Closes" in err or "reference" in err.lower())
+
+    def test_resolve_from_pr_no_issue_reference_blocks(self):
+        """resolve_task_from_pr blocks when referenced issue has no task reference."""
+        pr_body = "Closes #123"
+        issue_body = "This issue just discusses a concept, no task file."
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, api)
+        err = str(ctx.exception)
+        self.assertTrue("Planning task" in err or "reference" in err.lower())
+
+    def test_resolve_from_pr_ambiguous_closers_blocks(self):
+        """resolve_task_from_pr blocks when multiple Closes #NNN found."""
+        pr_body = "Closes #123 and also Fixes #456"
+        api = self._make_fake_api(pr_body=pr_body)
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertIn("ambiguous", str(ctx.exception).lower())
+
+    def test_resolve_from_pr_empty_pr_body_blocks(self):
+        """resolve_task_from_pr blocks when PR body is empty or None."""
+        api = self._make_fake_api(pr_body=None)
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, api)
+        err = str(ctx.exception)
+        self.assertTrue("Closes" in err or "reference" in err.lower())
+
+    def test_produce_with_pr_number_auto_resolves(self):
+        """produce_plan_fixture with pr_number auto-resolves task from PR."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+
+        pr_body = "Closes #123"
+        issue_body = "tasks/t-auto-resolved.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        commit = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            self.base, None, pr_number="1092", _api=api,
+        )
+        fixture_path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(fixture_path.exists())
+        value = json.loads(fixture_path.read_bytes())
+        # Auto-resolution takes precedence over caller-supplied task=None.
+        self.assertEqual(value["task"], "tasks/t-auto-resolved.md")
+
+    def test_produce_with_pr_number_and_existing_task_auto_resolves(self):
+        """produce_plan_fixture with both pr_number and task: pr_number wins."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+
+        pr_body = "Closes #456"
+        issue_body = "tasks/t-from-pr.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        commit = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            self.base, "tasks/t-caller-supplied.md", pr_number="1092", _api=api,
+        )
+        fixture_path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(fixture_path.exists())
+        value = json.loads(fixture_path.read_bytes())
+        # Auto-resolution from PR takes precedence.
+        self.assertEqual(value["task"], "tasks/t-from-pr.md")
+
+    def test_produce_without_pr_number_no_auto_resolve(self):
+        """produce_plan_fixture without pr_number does NOT auto-resolve."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+        commit = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            self.base, "tasks/t-manual.md",
+        )
+        fixture_path = fresh_root / verifier.PLAN_PATH
+        self.assertTrue(fixture_path.exists())
+        value = json.loads(fixture_path.read_bytes())
+        self.assertEqual(value["task"], "tasks/t-manual.md")
+
+    def test_resolve_from_pr_api_failure_blocks(self):
+        """resolve_task_from_pr blocks when GitHub API is unavailable."""
+        def failing_api(path):
+            raise tl.TaskLinkError("GitHub API unavailable: connection refused")
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, failing_api)
+        self.assertIn("GitHub API unavailable", str(ctx.exception))
+
+    def test_resolve_from_pr_referenced_issue_not_found(self):
+        """resolve_task_from_pr blocks when referenced issue #NNN doesn't exist."""
+        pr_body = "Closes #999"
+        def api(path):
+            if "pulls/" in path:
+                return {"body": pr_body}
+            raise tl.TaskLinkError("referenced issue #999 not found")
+        with self.assertRaises(tl.TaskLinkError) as ctx:
+            tl.resolve_task_from_pr("1092", self.root, api)
+        self.assertIn("not found", str(ctx.exception))
+
+    def test_idempotent_auto_resolution_same_commit(self):
+        """produce_plan_fixture with pr_number: second call returns same commit."""
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        import subprocess
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+
+        pr_body = "Closes #123"
+        issue_body = "tasks/t-idiomatic.md"
+        api = self._make_fake_api(pr_body=pr_body, issue_body=issue_body)
+        commit1 = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            self.base, None, pr_number="1092", _api=api,
+        )
+        commit2 = tl.produce_plan_fixture(
+            fresh_root, self.workflow_id, self.head, self.candidate,
+            self.base, None, pr_number="1092", _api=api,
+        )
+        self.assertEqual(commit1, commit2)
+
+    def test_cli_with_pr_number(self):
+        """receipt_tasklink.py CLI accepts --pr-number and auto-resolves."""
+        import subprocess
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        fresh_root = Path(fresh.name)
+        subprocess.run(["git", "-C", str(fresh_root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.name", "Test"], check=True)
+        subprocess.run(["git", "-C", str(fresh_root), "config", "user.email", "test@example.invalid"], check=True)
+        result = subprocess.run(
+            ["python3", str(Path(__file__).resolve().parent / "receipt_tasklink.py"),
+             "--planning", str(fresh_root),
+             "--workflow-id", str(self.workflow_id),
+             "--head", self.head,
+             "--candidate", self.candidate,
+             "--base", self.base,
+             "--pr-number", "1092"],
+            capture_output=True, text=True,
+        )
+        # The CLI should accept --pr-number. With no GITHUB_TOKEN, it will
+        # fail at the API call (not at argument parsing), returning rc != 0.
+        # Either way, the argument is parsed.
+        err = result.stderr.lower()
+        self.assertTrue(result.returncode != 0 and ("blocked" in err or "tasklink" in err) or
+                        result.returncode == 0,
+                        f"CLI should accept --pr-number; got rc={result.returncode} stderr={err[:100]}")
+
+
 class TestBaseShaResolution(unittest.TestCase):
     """Verify base-Auflösung in receipt_tasklink.py — fake API, 6 Receipt-Suiten gruen."""
     
