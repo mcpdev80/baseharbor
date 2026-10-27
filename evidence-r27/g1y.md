@@ -55,3 +55,45 @@ OK
 - WIP-Commits + push erledigt (211c687a). D1/D2/D3 implementiert + lokal per 5 Tests beweist.
 - NOCH NICHT: gesamter F1-Kontext (andere F1-F8-Punkte = nicht dieser Scope), external review, Codex-Schlussabnahme, DRAFT-PR merged, CI.
 - Ende: END G1Y-<pr|blocked>
+
+## z1-Finish (2026-10-27, lane z1/flash)
+
+Klassifikation g1y-Beweislog: BEWIESEN = decode-Block-Ausfuehrung, Writer-Funktion
+(bare remote, run!=workflow, plan==Tasklink-Commit), 5/5 Suite. NUR BEHAUPT =
+verify_producer-Block (nie ausgefuehrt), attempt-Gate auf authentifiziertem
+run_attempt (fehlte), artifact-run_id-Bindung (fehlte), tasklink/publish-Block als
+Bash-Ausfuehrung (nur funktional/ textuell belegt). actionlint nicht ausgefuehrt.
+
+### Fixes (nur .github/workflows/receipt-post-run.yml + scripts/test_receipt_postrun.py)
+
+1. D3: verify_producer echo`te `$workflow_id/$head_sha/$pr_number` unter set -u ohne
+   Zuweisung -> "unbound variable", Step tot. Jetzt: Variablen-Zuweisung zuerst.
+2. D1: download-Step prueft jetzt authentifiziertes `run_attempt == 1` (exit 1 +
+   Meldung), artefakt-selbstgemeldetes attempt allein relabelt keinen Rerun mehr.
+3. D1/D3: decoder bindet artifact-`run_id` an authentifizierten RUN_ID (env-Praefix
+   auf der python3-Heredoc-Invocation, kein source/eval).
+
+### Proof-Zusammenfassung (Befehl -> Ergebnis)
+
+- `python3 scripts/test_receipt_postrun.py` -> `Ran 5 tests ... OK` (pos: run_id=
+  40541797478 != workflow_id=17, receipt.plan==plan-Commit, bare-remote main
+  reachbar; neg: missing artifact rc!=0 ohne exports; foreign repo fail-closed).
+- verify_producer-Block ausgefuehrt (bash -euo pipefail, GH-Exprs substituiert)
+  -> rc=0, outputs workflow_id/head/candidate/base/pr korrekt.
+- download-Block mit attempt=2 ausgefuehrt -> rc=1, stderr "authenticated
+  run_attempt 2 is not 1; refusing non-attempt-1 producer run" (Gate vor writer).
+- yaml.safe_load + bash -n auf allen 6 resolved run-Blocks -> OK (actionlint auf
+  dem Host nicht installiert; Ersatz wie vorgesehen).
+- Decode-Python-Body ast.parse -> OK; git diff 839e5cc9..HEAD触及 nur erlaubte
+  Dateien + evidence-r27/.
+- D2-Wiring: step `plan_commit` exportiert `plan_revision` (grep letzte 40-hex
+  Zeile), publish `--plan "$PLAN_REVISION"`/`--run "$RUN_ID"` -- textuell +
+  funktional belegt; Bash-Ausfuehrung des tasklink-Blocks mit echtem gh-API ist
+  Host-Pilot-Vorbehalt (shadow-run), hier nicht als ausgefuehrt behauptet.
+
+### Abschluss
+
+- Commit 2968a5de, FF-Push auf refs/heads/work/r27-fix-f1-postrun (ls-remote vor
+  Push == 09c4f502, danach == 2968a5de). Draft-PR #1128 -> base
+  work/r27-correction-v34.
+- Ende: END Z1-DONE mcpdev80/baseharbor#1128
