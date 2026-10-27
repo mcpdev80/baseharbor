@@ -37,6 +37,18 @@ on:
         description: Contributor PR number whose published receipt is approved
         type: string
         required: true
+      receipt:
+        description: Exact published receipt path relative to the Planning checkout
+        type: string
+        required: false
+      plan:
+        description: Exact approved plan revision (full Planning commit SHA)
+        type: string
+        required: false
+      candidate:
+        description: Exact approved candidate SHA the receipt binds
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -109,8 +121,8 @@ jobs:
     needs: [approve]
     uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@develop
     with:
-      receipt: ${{ needs.approve.outputs.receipt }}
-      plan: ${{ needs.approve.outputs.plan }}
-      candidate: ${{ needs.approve.outputs.candidate }}
+      receipt: ${{ inputs.receipt }}
+      plan: ${{ inputs.plan }}
+      candidate: ${{ inputs.candidate }}
     secrets:
       PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
