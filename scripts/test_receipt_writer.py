@@ -580,6 +580,57 @@ class PublishRemoteTest(TestCase):
         durable = (concurrent / path).read_bytes()
         verifier.receipt(durable)
 
+    def test_publish_receipt_preserves_plan_ancestry_and_unrelated_edit(self):
+        """F3: a fresh unpublished plan fixture on main plus a receipt racing an
+        unrelated concurrent edit must retain BOTH the plan ancestry and the
+        unrelated edit. publish() re-applies only its own receipt edit onto the
+        fresh remote HEAD, never discarding an unrelated concurrent change or
+        the referenced plan commit.
+        """
+        # Seed the bare remote main with an unrelated edit (a plan fixture that
+        # an unrelated writer added), so the receipt's fast-forward push is a
+        # non-fast-forward and must trigger the re-apply path.
+        unrelated_wt = self.root / 'unrelated_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(unrelated_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.name', 'Unrelated'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.email',
+                        'unrelated@example.invalid'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        plan_parent = Path(unrelated_wt) / Path(verifier.PLAN_PATH).parent
+        plan_parent.mkdir(parents=True, exist_ok=True)
+        unrelated_plan = verifier.canonical(dict(
+            gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+            head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+            task='tasks/unrelated-pilot.md'))
+        (unrelated_wt / verifier.PLAN_PATH).write_bytes(unrelated_plan)
+        _git(unrelated_wt, 'add', verifier.PLAN_PATH)
+        _git(unrelated_wt, 'commit', '-qm', 'unrelated plan fixture')
+        _git(unrelated_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # Now publish the receipt from the client working tree.
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        _, intro, pub = writer.publish(self.wt, path, commit)
+
+        # The unrelated plan fixture AND the published receipt both survive on
+        # the durable remote main.
+        remote_wt = self.root / 'verify_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(remote_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(remote_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        self.assertTrue((remote_wt / verifier.PLAN_PATH).is_file(),
+                        "unrelated plan fixture was lost on receipt retry")
+        self.assertEqual((remote_wt / verifier.PLAN_PATH).read_bytes(),
+                         unrelated_plan, "unrelated plan fixture was overwritten")
+        self.assertTrue((remote_wt / path).is_file(), "receipt not durable")
+        # Exactly one receipt edit exists (our own), no force-push rewrite.
+        history = _git(remote_wt, 'log', '--format=%H', '--', path).decode().splitlines()
+        self.assertEqual(len(history), 1,
+                         "expected exactly one receipt edit, got %d" % len(history))
+
     def test_write_and_publish_returns_introduction_and_publication(self):
         """write_and_publish() returns correct introduction and publication commits."""
         path, intro, pub = writer.write_and_publish(self.wt, self._head_wt(), 123, 1, api=self._api)

@@ -319,6 +319,16 @@ def _render_check(render_fn, check_fn, planning_root):
     return True, "ok"
 
 
+def _front_matter_has_mapping_keys(front_lines):
+    """True when front-matter lines already contain mapping keys (id:, prs:).
+
+    A bare list item appended at the top level alongside such keys is invalid
+    YAML, so evidence entries must be nested under an `evidence:` key instead.
+    """
+    return any(re.fullmatch(r"[a-z_][a-z0-9_]*:.*", ln) for ln in front_lines
+               if ln.strip())
+
+
 def _existing_inline_evidence(lines):
     """Return the existing inline evidence line(s) in YAML list form, if any.
 
@@ -383,6 +393,12 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     task_path = Path(planning_root) / task
     require(task_path.exists(), "task note missing for evidence publication: %s" % task)
 
+    # F5: validate the immutable reference inputs before any export. A malformed
+    # candidate SHA must fail closed and leave the remote unchanged — string
+    # presence alone is insufficient.
+    require(sha40(candidate_sha), "candidate_sha must be a 40-char hex SHA")
+    require(sha40(plan_revision), "plan_revision must be a 40-char hex SHA")
+
     existing = task_path.read_bytes()
     require(isinstance(existing, bytes) and 0 < len(existing) < 65536,
             "task note too large or empty")
@@ -417,11 +433,36 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     if start is not None and end is not None:
         front_lines = lines[start + 1:end]
         body_lines = lines[end + 1:]
-        # Keep existing front-matter evidence entries; append our new one once.
         new_front = list(front_lines)
-        if not already_present:
+        if already_present:
+            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
+        elif _front_matter_has_mapping_keys(front_lines):
+            # Front-matter already holds mapping keys (id:, prs:). A bare list
+            # item at the top level would break YAML parsing, so nest the entry
+            # under an `evidence:` key. Preserve any existing evidence entries
+            # under the same key (additive, non-destructive, CODE-AUDIT F5).
+            existing_evidence = []
+            pending = None
+            for line in new_front:
+                if re.fullmatch(r"[a-z_]+:.*", line):
+                    if pending == "evidence":
+                        existing_evidence.append(
+                            line[2:] if line.startswith("  ") else line)
+                    pending = line.split(":", 1)[0].strip()
+                elif pending == "evidence":
+                    existing_evidence.append(
+                        line[2:] if line.startswith("  ") else line)
+            kept = [ln for ln in new_front if not ln.startswith("  ")]
+            if existing_evidence:
+                kept.append("evidence:")
+            else:
+                kept.append("evidence:")
+            kept.append("  " + evidence_line)
+            new_text = "---\n" + "\n".join(kept) + "\n---\n" + "\n".join(body_lines)
+        else:
+            # No mapping keys yet: the bare list item is valid on its own.
             new_front.append(evidence_line)
-        new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
+            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
     else:
         # No front-matter: create one with evidence as a YAML array entry.
         # This ensures schema-valid YAML that parses correctly alongside
