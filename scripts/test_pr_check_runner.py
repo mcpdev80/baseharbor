@@ -215,6 +215,24 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION"', workflow)
         self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
 
+    def test_actual_workflow_route_receipt_execution_uses_trusted_base(self):
+        # R27-F2: receipt suites must be selected by the trusted base runner in
+        # both places they execute: the validation matrix case and the focused
+        # job. A candidate-owned pr-check-runner.py must never define its own
+        # receipt discovery.
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github' / 'workflows' / 'ci.yml').read_text()
+        start = workflow.index('            receipt-execution-tests)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
+        self.assertIn('--check "$VALIDATION"', fragment)
+        self.assertIn('git show "${{ github.event.pull_request.base.sha }}:'
+                      'scripts/pr-check-runner.py"', workflow)
+        self.assertNotIn(
+            'python3 scripts/pr-check-runner.py execute --check '
+            'receipt-execution-tests', workflow)
+
     def test_both_required_families_execute_or_block(self):
         from subprocess import CompletedProcess
         from unittest.mock import patch
