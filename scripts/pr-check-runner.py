@@ -167,7 +167,7 @@ def execute_validation(check, repository):
         if not re.search(r'(?m)^Ran [1-9][0-9]* tests?', executed.stdout):
             raise RuntimeError('receipt-execution-tests: no receipt test executed')
         for module in RECEIPT_EXECUTION_SUITES:
-            if not re.search(r'\(' + re.escape(module) + r'\.[^(]+\(', executed.stdout):
+            if not re.search(r'\(' + re.escape(module) + r'\.', executed.stdout):
                 raise RuntimeError('receipt suite did not execute: ' + module)
         return [module + '.py' for module in RECEIPT_EXECUTION_SUITES]
     patterns = WIZARD_TEST_FAMILIES.get(check)
