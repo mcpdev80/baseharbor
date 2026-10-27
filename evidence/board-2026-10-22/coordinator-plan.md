@@ -276,9 +276,9 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [x] 3. W1 Mapping (0b6f098d) + Shadow (692fc3d9) + W2 Writer (bb2ed8c8) + W3 Verifier (4a680643)
 - [x] 4. Reviews W2/W3 Slice FREIGEBEN; A2 Abnahme-PREP; P2 Shadow-Runbook; L4 Allowlist (2 Commits)
 - [x] 5. L6: exaktes Voll-Mapping im Trusted Plan (busy)
-- [ ] 6. FF-Push 3a0df114 done -> CI 'PR Selected Checks' gruen ausstehend
-- [ ] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
-- [ ] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick)
+- [x] 6. FF-Push 3a0df114 done -> CI 'PR Selected Checks' gruen ausstehend (2026-10-27 done)
+- [x] 7. PR1-Akzeptanz: Acceptance-Record T0+T0+72h UTC; Karten accepted
+- [x] 8. PR2: Schattenkette (base_ref->SHA-Auflösung als Aktivierungs-Auflage; Owner-Approval-Klick) (Kette komplett, SHADOW-RUN-RECORD.md)
 - [ ] 9. PR3: Cutover nach Skeleton-Akzeptanz + Owner-Go
 - 01:3xZ Befund: Trusted Plan laeuft pr-gate-plan.py aus develop-Kopie -> PR-interne Mappings (L6) wirken nicht im eigenen Run; Shadow-Workflow correctly skipped (dormant-Beweis). Bootstrap-PR noetig analog RUNTIME_STEP_CAP/DISPATCH_GATE_REF. W7 flash f0cfd27b dispatched (Simulation + exakter Bootstrap-Eintrag, nur 3+1 Dateien). PR1 #1090 bleibt bis dahin auf 3a0df114.
 - 02:2xZ OWNER-KRITIK am Tick ignoriert -> korrigiert: R1 (ornith 021d5147) Review L4+L6-Block; R2 (qwen a32dd920) base_ref->SHA-Auflösung auf L5-Zweig (PR2 dormant-safe). Pool=3 busy (W7,R1,R2).
