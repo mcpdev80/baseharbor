@@ -78,37 +78,79 @@ jobs:
       head_sha: ${{ steps.plan.outputs.head_sha }}
       candidate_sha: ${{ steps.plan.outputs.candidate_sha }}
       base_sha: ${{ steps.plan.outputs.base_sha }}
+      run_id: ${{ steps.plan.outputs.run_id }}
     steps:
       - name: Download trusted-pr-plan artifact
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
           ATTEMPT="${{ github.event.workflow_run.run_attempt }}"
-          echo "Downloading trusted-pr-plan artifact from run $RUN_ID attempt $ATTEMPT"
+          # The workflow-definition id is an authenticated Actions API field,
+          # distinct from the authenticated workflow run id (RUN_ID). Source it
+          # directly; do not let the plan artifact invent it (Owner 2026-10-27).
+          WORKFLOW_DEFINITION_ID="${{ github.event.workflow_run.workflow_id }}"
+          echo "Downloading trusted-pr-plan artifact from run $RUN_ID attempt $ATTEMPT (workflow_id=$WORKFLOW_DEFINITION_ID)"
           # gh run download resolves the artifact by authenticated name from the
           # producer run. It fails closed (non-zero) on any transport or
           # missing-artifact error, so the workflow never continues without it.
           gh run download "$RUN_ID" -n trusted-pr-plan --pattern '*.zip'
           test -f plan.zip
+          echo "workflow_definition_id=$WORKFLOW_DEFINITION_ID" >> "$GITHUB_OUTPUT"
 
       - name: Decode pr-plan and extract candidate_sha
         id: plan
         run: |
           set -euo pipefail
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          # The workflow-definition id is an authenticated Actions API field,
+          # distinct from the authenticated workflow run id. Source it directly
+          # and bind it against the producer run's workflow_id (Owner 2026-10-27,
+          # D1: run identity separated from workflow-definition identity).
+          WORKFLOW_DEFINITION_ID="${{ github.event.workflow_run.workflow_id }}"
           # Strictly parse the trusted-pr-plan JSON with Python and emit
-          # machine-readable outputs. No shell sourcing of artifact-derived
-          # strings and no fallback facts — the artifact is mandatory and any
-          # parse failure fails closed. The plan object is DATA here.
-          python3 - <<'PY'
-          import json, zipfile, sys
+          # machine-readable outputs. The plan object is DATA here: no shell
+          # sourcing of artifact-derived strings, no source/eval on any
+          # artifact value, and no fallback facts. The heredoc redirects on
+          # the Python invocation (Owner correction 2026-10-27, D3).
+           python3 - <<'PY' > plan.txt
+          import json, zipfile, sys, re
           with zipfile.ZipFile("plan.zip") as z:
               with z.open("pr-plan.json") as f:
                   plan = json.loads(f.read())
+          def is40hex(v):
+              return isinstance(v, str) and re.fullmatch(r"[0-9a-f]{40}", v) is not None
+          def is_pos_int(v):
+              return isinstance(v, int) and v > 0
+          # run_id is the authenticated workflow run id (distinct from the
+          # workflow definition id). attempt must be 1; an Actions rerun is
+          # not relabelled as attempt 1.
+          q_ok = is_pos_int(plan.get("run_id"))
+          if not q_ok:
+              sys.exit("missing or invalid run_id (positive int)")
+          attempt = plan.get("attempt")
+          q_ok = attempt == 1
+          if not q_ok:
+              sys.exit("source attempt is not 1 (attempt=%r); not a pilot attempt 1" % (attempt,))
+          hs = plan.get("head_sha")
+          isha = plan.get("integration_sha")
+          bs = plan.get("target_base_sha")
+          q_ok = is40hex(hs)
+          if not q_ok:
+              sys.exit("missing or malformed head_sha (need 40 lowercase hex)")
+          q_ok = bool(isha)
+          if not q_ok:
+              sys.exit("missing required integration_sha")
+          q_ok = is40hex(isha)
+          if not q_ok:
+              sys.exit("missing or malformed integration_sha (need 40 lowercase hex)")
+          q_ok = is40hex(bs)
+          if not q_ok:
+              sys.exit("missing or malformed target_base_sha (need 40 lowercase hex)")
           out = {
-              "workflow_id": str(plan.get("workflow_id", "")),
-              "head_sha": str(plan.get("head_sha", "")),
-              "candidate_sha": str(plan.get("integration_sha", plan.get("head_sha", ""))),
-              "base_sha": str(plan.get("target_base_sha", "")),
+              "workflow_id": str(int(plan.get("workflow_id", 0))),
+              "head_sha": hs,
+              "candidate_sha": isha,
+              "base_sha": bs,
           }
           print("\n".join(f"{k}={v}" for k, v in out.items()))
           PY > plan.txt
@@ -116,15 +158,18 @@ jobs:
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
           base_sha="$(grep '^base_sha=' plan.txt | cut -d= -f2-)"
-          echo "workflow_id=${workflow_id:-unknown}" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${head_sha:-unknown}" >> "$GITHUB_OUTPUT"
-           echo "candidate_sha=${candidate_sha:-unknown}" >> "$GITHUB_OUTPUT"
-           echo "base_sha=${base_sha:-unknown}" >> "$GITHUB_OUTPUT"
-           # The task is deterministically mapped from the authenticated PR and
-           # resolved through the single authoritative PR->task resolver (F4).
-           # PR numbers are known; the resolver is authoritative — never a
-           # hardcoded task-path string fallback.
-           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha pr=$pr_number"
+          # Bind the artifact workflow_id to the authenticated Actions API value;
+          # they must be equal, so a spoofed/absent definition id fails closed.
+          if [ "${workflow_id}" != "${WORKFLOW_DEFINITION_ID}" ]; then
+              echo "artifact workflow_id ${workflow_id} != authenticated ${WORKFLOW_DEFINITION_ID}" >&2
+              exit 1
+          fi
+          echo "workflow_id=${workflow_id}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+          echo "candidate_sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
+           echo "run_id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha run=$RUN_ID wf_id=${workflow_id}"
 
   # Step 3: Write plan fixture (tasklink) and publish the receipt.
   # This is the ONLY step with contents:write — and it runs the IMMUTABLE
@@ -148,11 +193,12 @@ jobs:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # CRITICAL: We check out the immutable reviewed CI repo (develop),
-          # NOT the PR head. This prevents PR-controlled code from running
-          # in the credential-bearing controller. The controller scripts are
+          # CRITICAL: We check out the immutable reviewed CI controller scripts
+          # by their full reviewed commit SHA — NOT mutable develop and NOT the
+          # PR head. Pinning the exact SHA prevents PR-controlled code from
+          # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: develop
+          ref: 839e5cc9fa9b3da3908ee65f26596c2b3dfaaca7
           fetch-depth: 0
           persist-credentials: false
 
@@ -172,41 +218,57 @@ jobs:
           python-version: '3.14'
 
       - name: Automatic task-link (plan fixture)
+        id: plan_commit
         env:
           PLANNING_ROOT: ${{ github.workspace }}/planning
         shell: bash
         run: |
-          set -euo pipefail
-          echo "Writing plan fixture with task link..."
-          echo "  workflow_id=$WORKFLOW_ID"
-          echo "  head_sha=$HEAD_SHA"
-          echo "  candidate_sha=$CANDIDATE_SHA"
-          echo "  base_sha=$BASE_SHA"
-          echo "  pr_number=$PR_NUMBER"
-          # The tasklink script writes the bounded plan fixture through the ONE
-          # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
-          # caller-supplied (--task); it is auto-resolved from the trusted PR
-          # via --pr-number. A caught resolver error fails closed — it is never
-          # an authorization to fall back to a hardcoded task (F4).
-          python3 scripts/receipt_tasklink.py \
-            --planning "$PLANNING_ROOT" \
-            --workflow-id "$WORKFLOW_ID" \
-            --head "$HEAD_SHA" \
-            --candidate "$CANDIDATE_SHA" \
-            --base "$BASE_SHA" \
-            --pr-number "$PR_NUMBER"
-          echo "Plan fixture written. Verifying..."
-          ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
+           set -euo pipefail
+           echo "Writing plan fixture with task link..."
+           echo "  workflow_id=$WORKFLOW_ID"
+           echo "  head_sha=$HEAD_SHA"
+           echo "  candidate_sha=$CANDIDATE_SHA"
+           echo "  base_sha=$BASE_SHA"
+           echo "  pr_number=$PR_NUMBER"
+           # The tasklink script writes the bounded plan fixture through the ONE
+           # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
+           # caller-supplied (--task); it is auto-resolved from the trusted PR
+           # via --pr-number. A caught resolver error fails closed — it is never
+           # an authorization to fall back to a hardcoded task (F4). The commit
+           # the tasklink returns is the real Planning plan revision the writer
+           # consumes as --plan (never the candidate SHA, never a run.id).
+           #
+           # The CLI emits diagnostics on stdout and returns the result commit
+           # as its final line; the plan revision is that last 40-hex line
+           # only — never parsed from arbitrary progress text (Owner
+           # correction 2026-10-27).
+           RESULT="$(python3 scripts/receipt_tasklink.py \
+             --planning "$PLANNING_ROOT" \
+             --workflow-id "$WORKFLOW_ID" \
+             --head "$HEAD_SHA" \
+             --candidate "$CANDIDATE_SHA" \
+             --base "$BASE_SHA" \
+             --pr-number "$PR_NUMBER")"
+           PLAN_COMMIT="$(printf '%s\n' "$RESULT" \
+             | grep -E '^[0-9a-f]{40}$' | tail -n 1)"
+           if [ -z "${PLAN_COMMIT}" ]; then
+             echo "tasklink did not return a valid plan commit SHA" >&2
+             exit 1
+           fi
+           echo "plan_revision=${PLAN_COMMIT}" >> "$GITHUB_OUTPUT"
+           echo "Plan fixture written at $PLAN_COMMIT. Verifying..."
+           ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
 
       - name: Publish receipt to Planning
         env:
           PLANNING_ROOT: ${{ github.workspace }}/planning
-          # run-id for the receipt is the authenticated workflow definition ID
-          # (workflow_id), never github.event.workflow_run.id.
-          RUN_ID: ${{ needs.extract_plan.outputs.workflow_id }}
-          # plan-revision is the tested candidate SHA from the trusted plan
-          # artifact, never a run.id substitute.
-          PLAN_REVISION: ${{ needs.extract_plan.outputs.candidate_sha }}
+          # run-id for the receipt is the authenticated workflow RUN (the
+          # live workflow run id), never the workflow definition id
+          # (workflow_id). load_plan() requires a Planning commit, never the
+          # tested candidate SHA — the writer's --plan is the plan fixture's
+          # Planning commit below.
+          RUN_ID: ${{ needs.extract_plan.outputs.run_id }}
+          PLAN_REVISION: ${{ steps.plan_commit.outputs.plan_revision }}
         shell: bash
         run: |
           set -euo pipefail
