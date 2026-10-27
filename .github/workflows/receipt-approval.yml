@@ -23,9 +23,16 @@
 #     --candidate <full tested integration SHA> \
 #     --plan <full Planning revision>
 #
-# Exit code is nonzero when the receipt is blocked. The caller must publish the
-# local introduction/approval commit by an ordinary fast-forward push and check
-# its result before reporting publication or running the next stage.
+# Exit code is nonzero when the receipt is blocked.
+#
+# The workflow runs inside the baseharbor checkout but the receipt and plan live
+# in the Planning repo, so it re-checks Planning read-only under planning/ and
+# points --planning there. The verifier approves in place and writes one commit
+# inside the Planning clone; because this workflow cannot push Planning without a
+# write token, it stops after emitting planning/approve-<run>-<attempt>.patch as
+# an artifact. The Owner applies it to their own Planning clone with `git am`
+# (or a later PAT-backed refactor pushes it) and publishes by an ordinary
+# fast-forward push.
 
 name: receipt-approval
 
@@ -61,15 +68,28 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@08d27766ec433536fcff6467a2d4a3e3aeb7542c # v5.6.0
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.x'
 
+      - name: Checkout Planning
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          path: planning
+          fetch-depth: 0
+
+      - name: Resolve Planning revision for the receipt
+        run: echo "PLANNING_REVISION=$(git -C planning log -n 1 --format=%H -- "$RECEIPT_PATH")" >> "$GITHUB_ENV"
+
       - name: Approve the receipt
         run: |
-          python3 scripts/receipt_verifier.py approve \
-            --planning "$GITHUB_WORKSPACE" \
-            --revision "$GITHUB_SHA" \
+          # GITHUB_* cannot be overridden via step env; set the protected-main
+          # contract in-shell for the Owner-gated shadow dispatch (PR3 will run
+          # this path from main proper).
+          GITHUB_REF=refs/heads/main python3 scripts/receipt_verifier.py approve \
+            --planning "$GITHUB_WORKSPACE/planning" \
+            --revision "$PLANNING_REVISION" \
             --receipt "$RECEIPT_PATH" \
             --candidate "$RECEIPT_CANDIDATE" \
             --plan "$RECEIPT_PLAN"
@@ -77,3 +97,16 @@ jobs:
           RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
           RECEIPT_CANDIDATE: ${{ inputs.candidate_sha || '' }}
           RECEIPT_PLAN: ${{ inputs.plan_revision || '' }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: refs/heads/main
+
+      - name: Upload approve-commit patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: approve-commit-patch
+          path: planning/approve-*.patch
+          if-no-files-found: warn
+          retention-days: 1
