@@ -80,7 +80,13 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve Planning revision for the receipt
-        run: echo "PLANNING_REVISION=$(git -C planning log -n 1 --format=%H -- "$RECEIPT_PATH")" >> "$GITHUB_ENV"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
+        run: |
+          git -C planning config user.name "mcpdev80"
+          git -C planning config user.email "mcpdev80@users.noreply.github.com"
+          echo "PLANNING_REVISION=$(git -C planning log -n 1 --format=%H -- "$RECEIPT_PATH")" >> "$GITHUB_ENV"
 
       - name: Approve the receipt
         run: |
@@ -94,6 +100,7 @@ jobs:
             --candidate "$RECEIPT_CANDIDATE" \
             --plan "$RECEIPT_PLAN"
         env:
+          GH_TOKEN: ${{ github.token }}
           RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
           RECEIPT_CANDIDATE: ${{ inputs.candidate_sha || '' }}
           RECEIPT_PLAN: ${{ inputs.plan_revision || '' }}
@@ -102,6 +109,9 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF: refs/heads/main
+
+      - name: Emit approval commit patch
+        run: git -C planning format-patch -1 HEAD --stdout > planning/approve-shadow.patch
 
       - name: Upload approve-commit patch
         uses: actions/upload-artifact@v4
