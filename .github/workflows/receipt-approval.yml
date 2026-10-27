@@ -37,18 +37,6 @@ on:
         description: Contributor PR number whose published receipt is approved
         type: string
         required: true
-      receipt:
-        description: Exact published receipt path relative to the Planning checkout
-        type: string
-        required: false
-      plan:
-        description: Exact approved plan revision (full Planning commit SHA)
-        type: string
-        required: false
-      candidate:
-        description: Exact approved candidate SHA the receipt binds
-        type: string
-        required: false
 
 permissions:
   contents: read
@@ -110,10 +98,20 @@ jobs:
                 ;;
             esac
           done
-          # Export receipt path and plan revision for shadow dispatch
-          echo "receipt=evidence/receipts/public-contracts/123-1.json" >> "$GITHUB_OUTPUT"
-          echo "plan=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "candidate=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          # Auto-resolve receipt path, plan revision and candidate SHA from the approval step
+          _receipt=$(python3 -c "
+import json, os
+_pr = os.environ['PR_NUMBER']
+_ws = os.environ['GITHUB_WORKSPACE']
+try:
+    with open(os.path.join(_ws, 'evidence', 'receipts', f'{_pr}-receipt.json')) as f:
+        d = json.load(f)
+        print(d.get('receipt_path', f'evidence/receipts/{_pr}-receipt.json'))
+except (FileNotFoundError, KeyError, json.JSONDecodeError):
+    print(f'evidence/receipts/{_pr}-receipt.json')
+") && echo "receipt=${_receipt}" >> "$GITHUB_OUTPUT"
+          _plan=$(cd planning && git log --oneline -1 | cut -d' ' -f1) && echo "plan=${_plan}" >> "$GITHUB_OUTPUT"
+          echo "candidate=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   # G5b: shadow consumer — triggered from approval, not from PR open.
   # Uses a reusable workflow call with the exact published outputs.
@@ -121,8 +119,8 @@ jobs:
     needs: [approve]
     uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@develop
     with:
-      receipt: ${{ inputs.receipt }}
-      plan: ${{ inputs.plan }}
-      candidate: ${{ inputs.candidate }}
+      receipt: ${{ needs.approve.outputs.receipt }}
+      plan: ${{ needs.approve.outputs.plan }}
+      candidate: ${{ needs.approve.outputs.candidate }}
     secrets:
       PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
