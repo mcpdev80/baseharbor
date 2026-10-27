@@ -384,3 +384,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:0xZ v3.6 PUSHED 27507addc4ef PR#1134 (stg3 fertig, rotiert). codex-r27v4 + w5/ornith (Failliste+d4-Punkte, 0/0-Pflicht) dispatched; ci-watch beobachtet v36 bereits.
 - 13:1xZ Tick: v36 Run 40593744319 FAIL (erwartet, R4-Input). codex-R4 schreibt Verdict gerade in planning-Arbeitsbaum (CODEX-REVIEW-27507add.md uncommitted - nicht anfassen). w5 in Repro-Phase. Pool haltbar 2+codex.
 - 13:3xZ CODEX-R4 = BLOCKED (verdict CODEX-REVIEW-27507add.md, Push-Nudge gesendet). R5-Welle nach Publish.
+- 13:4xZ R4 publiziert 66ed4a4, codex rotiert. Nach w5-END: EINZE Integration-Lane (alle Rest-F-Blocks als Sammelrezept), dann R5. Poolbegruendung: w5-Schreibsatz = scripts+workflows.
