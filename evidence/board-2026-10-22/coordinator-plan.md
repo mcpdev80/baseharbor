@@ -376,3 +376,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:35Z RV5-BEFUND: A = KEIN eindeutiger Klassenname (Rezept nicht umgesetzt!), Suite rot (2f/3e). R4-Kerninput. Pool: stg3+vb.
 - 11:4xZ rv5-Klaerung: Befund A betrifft v3.5-Basis (2x MappingTests in f57b30ed OK), akte2b/#1131 hat laengst eindeutige Namen (1188/3540 verifiziert) -> kein zusaetzlicher Auftrag; Suite-Wahrheit zeigt HOST-CI nach stg3.
 - 11:5xZ vb DONE-FINDINGS (3 Board-Luecken) rotiert; q2/qwen Board-Patch dispatched. stg3 letzte laufende Stage-Lane.
+- 12:0xZ Pool: stg3, q2, d4 busy (Board-Patch + CI-Wave-Analyse parallel).
