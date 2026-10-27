@@ -83,6 +83,11 @@ jobs:
 
       - name: Approve the receipt
         run: |
+          git --version
+          echo "plan HEAD: $(git -C planning rev-parse HEAD)"
+          echo "ls-tree: $(git -C planning ls-tree HEAD -- "$RECEIPT_PATH" | wc -l)"
+          echo "revision-var: $PLANNING_REVISION"
+          echo "receipt-path: $RECEIPT_PATH" 
           # GITHUB_* cannot be overridden via step env; set the protected-main
           # contract in-shell for the Owner-gated shadow dispatch (PR3 will run
           # this path from main proper).
