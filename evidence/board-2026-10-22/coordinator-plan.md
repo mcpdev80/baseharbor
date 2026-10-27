@@ -394,3 +394,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 14:5xZ d5 DONE (d5-ci37.md Fail-Matrix) rotiert; Matrix an r5i weitergereicht.
 - 15:0xZ bx1/flash = Klasse-B Bootstrap-Slice auf develop (PR base develop). r5i hat r5i.md lokal, Push-Nudge.
 - 15:1xZ r5i DONE (#1137, 8d12fbb4) rotiert; stg5/qwen v3.8-Staging dispatched. bx1 laeuft.
+- 15:3xZ v3.8 cb7d8213 PR#1138 verifiziert, stg5 rotiert. CODEX-R5 laeuft (cbe5fa71). bx1 noch busy.
