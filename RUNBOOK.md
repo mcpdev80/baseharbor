@@ -184,3 +184,35 @@ Vor Schritt 1 jede Session die BETRIEBSREGELN im coordinator-plan.md lesen
 ohne Scheinauftraege, Lane-Rotation statt Kontext-Wiederverwendung, keine
 langen Waits/Sleeps, Zustellbeweis per Pane, Evidence-Pflicht, Ressourcen-
 und Root-Git-Regeln, 26-FENCE, Planning-Publikation erst bei check=0.
+
+## 12. Receipt-Kette Betrieb (v0.4.27 Schattenlauf, Stand 2026-10-27)
+
+### Schattenlauf-Ablauf (kopierbar, EIN Lauf)
+```bash
+# 0) Producer: PR mit contracts/**-Aenderung (sonst wird 'PR · Public Contracts' SKIPPED)
+gh run list --repo mcpdev80/baseharbor --branch <probe> --workflow "CI · Source & Quality" --limit 1
+gh run download <RUN_ID> -n trusted-pr-plan -D <tmp>   # integration_sha = candidate
+# 1) Fixture (Plan-Repositorium, von develop-Kopie):
+python3 <wt-shadow>/scripts/receipt_tasklink.py --planning <plan> --workflow-id 352609139 \
+  --head <40hex> --candidate <40hex-integration> --base <40hex> --task tasks/<card>.md
+# 2) Receipt (veroeffentlicht nach planning main):
+GITHUB_EVENT_NAME=workflow_run GITHUB_REPOSITORY=mcpdev80/baseharbor GITHUB_REF=refs/heads/main \
+  python3 <wt-shadow>/scripts/receipt_writer.py --planning <plan> --plan <FIXTURE> --run <RUN_ID> --attempt 1
+# 3) Approval GEHOSTET (Owner-Direktive, Actor mcpdev80):
+gh workflow run .github/workflows/receipt-approval.yml -R mcpdev80/baseharbor --ref develop \
+  -f receipt_path=evidence/receipts/public-contracts/<RUN_ID>-1.json -f candidate_sha=<40hex> -f plan_revision=<FIXTURE>
+gh run download <DISPATCH_RUN> -n approve-commit-patch -D <tmp>
+cd <plan> && git am <tmp>/approve-shadow.patch && git push origin HEAD:main
+# 4) Retained-Check:
+python3 <wt-shadow>/scripts/receipt_verifier.py retained --planning <plan> --revision <plan-tip-40hex> \
+  --receipt evidence/receipts/public-contracts/<RUN_ID>-1.json --candidate <40hex> --plan <FIXTURE>
+```
+
+### Bekannte Fallen (jeweils live bewiesen 2026-10-27)
+- **Trusted-Base-Planner:** pr-gate-plan.py laeuft im CI aus der develop-Kopie — Qualifizierungs-/Mapping-Aenderungen MUESSEN vorher in develop landen (PR-B/#1106-Muster); PR-interne Mappings qualifizieren den eigenen PR nicht.
+- **gh 2.102 auf Runnern:** braucht `GH_TOKEN: ${{ github.token }}` im Step-env (rc=4 sonst); GITHUB_*-Variablen sind per step-env NICHT ueberschreibbar → Contract-Werte in-shell setzen (`GITHUB_REF=refs/heads/main python3 ...`), PR3 entfernt den Hack durch echtes main.
+- **Planning-Klon im Approval-Job:** `fetch-depth: 0` (plan_revision zeigt auf aelteren Introducer-Commit) + git user.name/email setzen (commit_file braucht Autor) + --revision = `git log -n1 --format=%H -- <receipt-path>`, NICHT clone-HEAD ('introduce a new path'-Kontrakt).
+- **Resolve-/Approve-Steps:** step-level env ist NICHT job-global — RECEIPT_PATH etc. in jedem betroffenen Step duplizieren.
+- **Qwen-Lanes:** DONE/Datei-Erfindung (b1 heute: Geister-RUNBOOK-Commit, nichts auf Platte) — Disk-Artefakt-Check vor Abnahme ist Pflicht.
+### Repair-Kurve der Approval-Kette (8 Runden -> naechstes Mal 1-2)
+#1097 Pins+env-Explizitheit · #1100 fetch-depth:0 · #1101 revision-Introducer · #1102 Resolve-env · #1103 GH_TOKEN · #1104 git-identity · #1105 Patch-Export (format-patch, upload warnt still). Alle gemergt 43ea0d0c..3431b22c-Aera.
