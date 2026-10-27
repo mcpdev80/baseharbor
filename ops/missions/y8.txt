@@ -1,0 +1,6 @@
+pwd-PFLICHT. ROLLE: PLANNING (baseharbor-plan nur tasks/+render; pull --rebase vor push, KONFLIKT->END Y8-BLOCKED).
+1. python3 scripts/plan.py new --id t-20261027-r27-credential-retention --title 'Implement native credential retention + provenance (supersedes #1077 debt)' --status planned --release v0.4.27 --repo baseharbor --area application --write-set internal/application/** --acceptance 'go test ./internal/application/ -run SwitchBack ALLE green; ensureNativeBackendCredentialValues mit Provenance-Quelle (begruendet, state ODER backend probe); Regressionstest fuer stale-impact-consent drift; Reviews+CI gemaess Repo-Regeln' --depends 'none' --evidence 'evidence/board-2026-10-26/y4.md' --sources 'baseharbor#1077' --prs 'baseharbor#1077'
+(Feldnamen ggf. an plan.py show eines Bestandsbeispiels anpassen - erst 'python3 scripts/plan.py new --help'.)
+2. In der neuen Karte: Kontextblock cmf23 C1/C2 (P1, Quelle: Review auf a39e6bf5, Retention fehlt auf develop - 2-Satz-Zusammenfassung, keine SHA-Listen).
+3. render + check + push origin main.
+END Y8-DONE / END Y8-BLOCKED

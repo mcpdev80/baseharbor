@@ -1,0 +1,9 @@
+pwd-PFLICHT. ROLLE: WORKER baseharbor t-20261027-r27-credential-retention (Claim PFLICHTIG zuerst!):
+1. CLAIM BEREITS GESETZT (plan main c98a978, owner z3-lane) - ueberspringen.
+2. git -C baseharbor worktree add -q -b z3/credential-retention /home/marcel/tmp-ops/wt-z3 origin/develop.
+3. SPEC: card lesen (plan.py show) + evidence/board-2026-10-26/y4.md. ZIEL: go test ./internal/application/ -run SwitchBack ALLE green; Referenz-Code existiert NUR im PR-Zweig: git fetch origin 'refs/pull/1077/head:refs/remotes/origin/pr1077'; zeilenweise portieren (ensureNativeBackendCredentialValues + Call runtime_environment.go + runtime_native_binding_projection.go-Anteile), ABER mit cmf23-Provenance-Haertung: Restore nur wenn Provenanz belegt (state marker oder Backend-Probe - beides im Repo lokalisieren, Begruendung im Code-Kommentar), sonst blockieren statt silent restore; stale-impact-consent-Pfad analog.
+4. Regressionstest NEU: switch-back mit fremden/orphaned credential material bleibt unveraendert + explizit-provenientes wird restored. Tests lokal: go test ./internal/application/ -run 'Credential|SwitchBack' (komplettes Paket am Ende).
+5. DCO-free Repo-Konventionen: gofmt -l leer, go vet ./internal/application/. COMMIT 'fix(credentials): port switch-back retention with provenance gate' + PUSH origin z3/credential-retention + gh pr create --base develop (Body: card-id, y4-spec, cmf23 C1/C2 Resolution, Test-Namen).
+6. Evidence evidence/board-2026-10-26/z3-credential-retention.md: port-Diff-Umriss, Provenanz-Entscheidung + Belegdateien, local test outputs, PR-URL.
+Stop-Kriterium: wenn interne Architecture (state store vs. backend probe) keine saubere Loesung ohne Design-Frage zulaesst -> END Z3-BLOCKED mit 5-Zeilen-Analyse statt halbfertigem PR.
+END Z3-DONE / END Z3-BLOCKED

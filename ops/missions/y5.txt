@@ -1,0 +1,10 @@
+pwd-PFLICHT. READ-ONLY+tmp-ops. ROLLE: KETTEN-DRILL (Shadowlauf Generalprobe, Schritt 1-2 lokal simuliert, KEIN Push, KEIN Planning-Commit!).
+Worktree: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/tmp-ops/wt-y5 origin/develop (fetch vorab).
+Planning-CLONE (temporaer!): git clone /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan /home/marcel/tmp-ops/plan-y5.
+DRILL-SCHNITT (use fake-but-live? NEIN - live-Aufrufe nur LESENDE GitHub-APIs erlaubt, GH_TOKEN gesetzt):
+1. receipt_writer.py --help + receipt_verifier.py --help: CLI-Freiheit vs. FREEZE-Spezifikation vergleiche (flags dokumentieren).
+2. Unit-Drill: python3 scripts/test_receipt_chain.py (develop-Version) - rote Tests? Ausgabe in Evidence.
+3. Offline-Funktionscheck: in wt-y5 python3 -c Snippet: canonical receipt bytes <500 + schema strict (import receipt_writer, interne Funktionen) - dokumentiere Ergebnis.
+4. Schema-Realitaet: pruefe receipt_verifier approve-mode erfordert GITHUB_ACTOR - welche env-Werte muesste der Owner-Dispatch-Run setzen (aus develop-Workflow-Datei belegen, NICHT ausdenken).
+5. RISK-LISTE: was kann beim echten Schritt-1 writer-run gegen echten run_id scheitern (dirty planning? clone-push? attempt-Kollision?) mit Dateiverweis.
+EVIDENCE evidence/board-2026-10-26/y5-chain-drill.md. END Y5-DONE / END Y5-BLOCKED

@@ -1,0 +1,6 @@
+pwd-PFLICHT. EINZIGE AKTION (Owner-Erlaubnis liegt vor, coord-entschieden):
+1. cat inputs aus: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor show origin/develop:.github/workflows/receipt-approval.yml | sed -n '/workflow_dispatch/,/^  jobs/p' (exakte Input-Namen + required + default).
+2. EIN dispatch: gh workflow dispatch --repo mcpdev80/baseharbor .github/workflows/receipt-approval.yml [-f name=value je Input: run_id=40428162731 attempt=1 receipt=evidence/receipts/public-contracts/40428162731-1.json plan=5ecabc17797aaf21a454cb83fab20e4ddc49eb7c candidate=12f3c97ee9b593833aad5de223451e2e9d4f6dd3 - NUR die Felder die die Datei als Inputs definiert!]. KEIN --ref wenn default main; sonst main.
+3. Belege: gh run list --workflow receipt-approval.yml --event workflow_dispatch -1 (ID, status, conclusion), Jobs via gh run view --json jobs (name/status/conclusion). Wenn job SKIPPED (dormant Guard): exakte if-Zeile zitieren + END Y9-DONE (skipped ist gueltiges Schatten-Ergebnis, dokumentiere). Wenn Approve-Commit in /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan landet: fetch origin, log --oneline -1 -- evidence/receipts/, NICHTS self-committen.
+4. Evidence evidence/board-2026-10-26/y9-approve-dispatch.md: inputs-block, command, run facts, plan-fetch Ergebnis.
+END Y9-DONE / END Y9-BLOCKED

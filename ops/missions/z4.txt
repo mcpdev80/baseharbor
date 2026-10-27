@@ -1,0 +1,5 @@
+pwd-PFLICHT. ROLLE: PLANNING-UPDATE shadow-run-Karte (klein, saeuber):
+1. cd baseharbor-plan; pull --rebase origin main.
+2. tasks/t-20261027-r27-shadow-run.md: status auf active (falls nicht), Abschnitt '## Status 2026-10-27' mit: Producer run 40428162731 SUCCESS gate 'PR · Public Contracts' (PR #1094 head bd342b91, base 9a630665), fixture 5ecabc1, receipt 06f25dcf, verifier live rc=0, approval-dispatch 40431294924 FAILED (dead pin + cross-repo gap) -> Aktivierung #1095 gemergt (c11f0531), Reparatur laeuft als z2/PR. Beweispfade evidence/board-2026-10-26/* belegen.
+3. Deadline 2026-10-29T23:35:50Z als Hinweis-Zeile ergaenzen. render + check + push.
+END Z4-DONE / END Z4-BLOCKED

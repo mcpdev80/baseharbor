@@ -56,12 +56,20 @@ Merged-Commit-Referenz: PR2 squash merge auf develop
 
 ## STEP 5: render + check + push auf main
 
-- render: OK
-- check: OK (alle Karten konsistent)
-- push auf main: vorbereitet
+- render: OK (0 errors)
+- check: OK (0 errors, 6 warnings — alle warnings sind bekannte nicht-blockierende Abhängigkeiten)
+- push auf main: 31f96ba erfolgreich auf origin/main gepusht
 
 ---
 
 ## Y2-DONE
+
+Alle y2.txt Schritte ausgeführt:
+- STEP 0: Evidence erstellt
+- STEP 1: publisher/verifier auf closed/superseded gesetzt
+- STEP 2: t-20261027-r27-shadow-run card erstellt
+- STEP 3: t-20261027-r27-cutover-pr3 card erstellt
+- STEP 4: render + check durchlaufen (0 errors)
+- STEP 5: auf main gepusht (31f96ba)
 
 END Y2-DONE / END Y2-BLOCKED

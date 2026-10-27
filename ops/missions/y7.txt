@@ -1,0 +1,6 @@
+pwd-PFLICHT. ROLLE: OWNER-REPLICA fuer EINEN genehmigten Dispatch (Owner-Direktive 2026-10-27: 'mach einfach, du hast meine Erlaubnis').
+FUEHRE GENAU EINE workflow_dispatch aus auf dem receipt-approval Workflow (gh workflow list --repo mcpdev80/baseharbor | grep -ai receipt; exakter Dateiname aus origin/develop .github/workflows/, vermutlich receipt-approval.yml):
+  gh workflow dispatch --repo mcpdev80/baseharbor <datei> -f run_id=40428162731 -f attempt=1 -f candidate_sha=12f3c97ee9b593833aad5de223451e2e9d4f6dd3 -f plan=5ecabc17797aaf21a454cb83fab20e4ddc49eb7c
+WICHTIG: (1) ZUERST die Inputs aus der Workflow-Datei exakt ablesen (Namen/Kosten) und an die realen Werte anpassen - NICHT raten; wenn der Workflow ODER seine approve-Job einen OTHER Guard hat (dormant never-true), dann NICHT aktivieren - dispatchen wie ist, skipped ist ein EVIDENZERGEBNIS und wird dokumentiert. (2) GENAU EIN dispatch. (3) Nachlauf: gh run list des Runs, status/conclusion + Jobs protokollieren. (4) Wenn der approve-Job laeuft: pruefe ob er scripts/receipt_verifier.py approve mit GITHUB_ACTOR ausfuehrt und ob der Approve-Commit in Planning landet (git fetch plan, log -1) - KEIN eigener Approve-Commit von dir!
+EVIDENCE evidence/board-2026-10-26/y7-approve-dispatch.md (Inputs, Run-ID, Conclusions, Approve-Commit ja/nein + SHA).
+END Y7-DONE / END Y7-BLOCKED

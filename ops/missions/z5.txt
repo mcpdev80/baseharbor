@@ -1,0 +1,4 @@
+ROLLE: REVIEW (read-only Produkt; tmp-Worktree erlaubt). PR #1096 baseharbor (head via gh pr view 1096 headRefOid).
+GENAU PRUEFEN: (1) Diff gegen develop = nur internal/application/** (3 Dateien); (2) portierter ensureNativeBackendCredentialValues-Code vs. origin/pr1077 Referenz (git fetch origin 'refs/pull/1077/head:refs/remotes/origin/pr1077'; diff die Funktion) - dokumentiere Abweichungen; (3) PROVENANCE-GATE: Restore nur bei belegter Provenienz - Code-Pfad + Test 'orphaned credential bleibt unveraendert' existiert und testet ECHT (tmp-Worktree: go test ./internal/application/ -run 'Credential|SwitchBack' -count=1 ausfuehren, Ergebnis); (4) stale-impact-consent Behandlung gem. cmf23 C2; (5) go vet + gofmt -l clean.
+VERDICT evidence/board-2026-10-26/z5-reviews-1096.md: FREIGEBEN-fuer-MERGE-nach-gruenem-CI oder REWORK (Befunde file:line). ROLLE+UTC+SHA. tmp-Worktree am Ende loeschen.
+END Z5-DONE / END Z5-BLOCKED
