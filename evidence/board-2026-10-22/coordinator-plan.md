@@ -378,3 +378,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:5xZ vb DONE-FINDINGS (3 Board-Luecken) rotiert; q2/qwen Board-Patch dispatched. stg3 letzte laufende Stage-Lane.
 - 12:0xZ Pool: stg3, q2, d4 busy (Board-Patch + CI-Wave-Analyse parallel).
 - 12:1xZ stg3: v3.6-Merge lokal eef4de3b (Conflicts geloest) -> Liefer-Nudge; q2 PLANSTALE-Nudge; d4 Dossier ausstehend (<15min).
+- 12:3xZ q2 DONE (b057bb89) rotiert. R4-Mission vorbereitet (Platzhalter bis STG3-DONE). Pool 1/3 begruendet (Schreibsatz = v36-Tip ausstehend).
