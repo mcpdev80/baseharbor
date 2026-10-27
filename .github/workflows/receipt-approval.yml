@@ -1,122 +1,85 @@
-# Dormant Owner-approval consumption path for the public-contracts receipt pilot.
+# Owner-approval path for the public-contracts receipt pilot.
 #
-# PR2 proves the end-to-end flow: producer, writer, published receipt, live
-# verifier, and the sole Owner approval edit. This workflow stays disabled in
-# every PR until a maintainer explicitly enables it for the accepted consumption
-# path (PR3 cuts over only that path). Nothing here is active: the job-level
-# never-true guard skips the job, no trigger is armed, and no required check is
-# added. Existing workflows and required checks are unchanged.
+# Identity policy (CODE-AUDIT F4/F5): this job receives NO caller-set GITHUB_*
+# overrides and exports NO patch. The runner's own context supplies claims; the
+# verifier proves them against the authenticated workflow-run object via the API
+# and against the reviewed pinned helper source. The job gate uses github.actor
+# and github.triggering_actor CONTEXT values, which GitHub evaluates before any
+# step runs; a step-level env string can never substitute for identity. Wrong
+# actor, triggering actor, event, repository, ref or producer workflow
+# definition fails closed inside receipt_verifier.identity()/live().
 #
-# The approval is the single allowed edit that replaces `approved: null` in a
-# live-verified, unapproved receipt with the Owner identity, a UTC timestamp and
-# the receipt commit. The verifier checks GITHUB_ACTOR and
-# GITHUB_TRIGGERING_ACTOR, then re-runs the live GitHub witness once before any
-# write. Fork and contributor jobs receive no Planning write token; the job
-# runs only on protected source in a clean runner.
+# The human provides exactly one thing: the contributor PR number. The receipt
+# path, candidate SHA, plan revision and task association are auto-resolved from
+# that reference; they are never manual inputs. The sole allowed edit (approved
+# block at the original receipt-introduction commit) is published automatically
+# through W2's receipt_writer publication helper using the Planning write token.
 #
-# Run manually (workflow_dispatch) on protected main:
-#
-#   python3 scripts/receipt_verifier.py approve \
-#     --planning <planning checkout> \
-#     --revision <full Planning commit with evidence/receipt-plans/public-contracts.json> \
-#     --receipt evidence/receipts/public-contracts/<run>-<attempt>.json \
-#     --candidate <full tested integration SHA> \
-#     --plan <full Planning revision>
-#
-# Exit code is nonzero when the receipt is blocked.
-#
-# The workflow runs inside the baseharbor checkout but the receipt and plan live
-# in the Planning repo, so it re-checks Planning read-only under planning/ and
-# points --planning there. The verifier approves in place and writes one commit
-# inside the Planning clone; because this workflow cannot push Planning without a
-# write token, it stops after emitting planning/approve-<run>-<attempt>.patch as
-# an artifact. The Owner applies it to their own Planning clone with `git am`
-# (or a later PAT-backed refactor pushes it) and publishes by an ordinary
-# fast-forward push.
+# Dormant until the coordinator's CI-only default-branch registration: main is
+# the product default branch, while these helpers/workflows live on develop.
+# Only a manual workflow_dispatch by the Owner starts this job; no automatic
+# trigger is armed and no required check is added. TRUSTED_SOURCE below is the
+# immutable reviewed commit and is updated by the coordinator at final
+# integration; while it is empty the verifier fails closed (tested pinned
+# source unavailable), which is the honest pre-registration state.
 
 name: receipt-approval
 
 on:
   workflow_dispatch:
     inputs:
-      receipt_path:
-        description: Receipt path relative to the Planning checkout
+      pr_number:
+        description: Contributor PR number whose published receipt is approved
         type: string
-        required: false
-      candidate_sha:
-        description: Full tested integration SHA the receipt must bind
-        type: string
-        required: false
-      plan_revision:
-        description: Full Planning revision carrying evidence/receipt-plans/public-contracts.json
-        type: string
-        required: false
+        required: true
 
 permissions:
-  contents: write
+  contents: read
+  actions: read
 
 jobs:
   approve:
-    # Owner-gated shadow dispatch: runs only on manual workflow_dispatch by the
-    # Owner (mcpdev80) so the approval consumption path activates without
-    # arming any other trigger or adding a required check. Chain replayed
-    # manually; producer already proven.
-    if: github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80'
+    # Owner-only decision. Context-based gate: evaluated by GitHub, not by any
+    # step, so it cannot be forged through job or step env.
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80' &&
+      github.triggering_actor == 'mcpdev80'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
+      - name: Checkout (full history; identity is the authenticated run head)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.x'
 
-      - name: Checkout Planning
+      - name: Checkout Planning (protected main, full history)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: mcpdev80/baseharbor-plan
           path: planning
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Resolve Planning revision for the receipt
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
+      - name: Configure Planning commit identity
         run: |
           git -C planning config user.name "mcpdev80"
           git -C planning config user.email "mcpdev80@users.noreply.github.com"
-          echo "PLANNING_REVISION=$(git -C planning log -n 1 --format=%H -- "$RECEIPT_PATH")" >> "$GITHUB_ENV"
 
-      - name: Approve the receipt
-        run: |
-          # GITHUB_* cannot be overridden via step env; set the protected-main
-          # contract in-shell for the Owner-gated shadow dispatch (PR3 will run
-          # this path from main proper).
-          GITHUB_REF=refs/heads/main python3 scripts/receipt_verifier.py approve \
-            --planning "$GITHUB_WORKSPACE/planning" \
-            --revision "$PLANNING_REVISION" \
-            --receipt "$RECEIPT_PATH" \
-            --candidate "$RECEIPT_CANDIDATE" \
-            --plan "$RECEIPT_PLAN"
+      - name: Verify, approve and publish the receipt for the selected PR
         env:
           GH_TOKEN: ${{ github.token }}
-          RECEIPT_PATH: ${{ inputs.receipt_path || 'evidence/receipts/public-contracts/123-1.json' }}
-          RECEIPT_CANDIDATE: ${{ inputs.candidate_sha || '' }}
-          RECEIPT_PLAN: ${{ inputs.plan_revision || '' }}
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_REF: refs/heads/main
-
-      - name: Emit approval commit patch
-        run: git -C planning format-patch -1 HEAD --stdout > planning/approve-shadow.patch
-
-      - name: Upload approve-commit patch
-        uses: actions/upload-artifact@v4
-        with:
-          name: approve-commit-patch
-          path: planning/approve-*.patch
-          if-no-files-found: warn
-          retention-days: 1
+          PR_NUMBER: ${{ inputs.pr_number }}
+          TRUSTED_SOURCE: ''
+          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/receipt_verifier.py approve \
+            --planning "${GITHUB_WORKSPACE}/planning" \
+            --product "${GITHUB_WORKSPACE}" \
+            --pr "${PR_NUMBER}"

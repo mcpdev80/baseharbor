@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Live GitHub verification and retained Git-history verification for one pilot gate."""
+"""Live GitHub verification and retained Git-history verification for one pilot gate.
+
+Approval identity (CODE-AUDIT-2026-10-27 F4/F5): the runner's GITHUB_* values are
+claims only. The proof is the authenticated workflow-run object retrieved through
+the API plus the pinned reviewed source. A caller-set environment string can
+never stand in for identity, and a wrong actor, triggering actor, event,
+repository, ref or producer workflow definition fails closed. Approval evidence
+auto-resolves from the contributor PR reference; receipt path, candidate SHA and
+plan revision are derived, never manual input. The sole approval edit publishes
+through W2's receipt_writer interface; nothing here exports a patch.
+"""
 import argparse
 import datetime as dt
 import io
@@ -17,6 +27,15 @@ OWNER = "mcpdev80"
 API_VERSION = "2026-03-10"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 PLAN_PATH = "evidence/receipt-plans/public-contracts.json"
+RECEIPT_DIR = "evidence/receipts/public-contracts"
+PRODUCT_WORKFLOW = ".github/workflows/ci.yml"
+APPROVAL_WORKFLOW = ".github/workflows/receipt-approval.yml"
+HELPER_SOURCE = "scripts/receipt_verifier.py"
+# The product default branch is main. Until the coordinator's CI-only
+# default-branch registration lands, the reviewed helper legitimately lives on
+# develop. This tuple is a policy allowlist cross-checked against the
+# authenticated run proof; it is never an identity substitute (CODE-AUDIT F4).
+POLICY_BRANCHES = ("main", "develop")
 
 
 class ReceiptError(ValueError):
@@ -84,18 +103,31 @@ def path_for(value):
 
 
 def git(root, *args):
-    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True)
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env)
     require(result.returncode == 0, "Git operation failed: " + args[0])
     return result.stdout
 
 
-def blob(root, revision, path):
+def tree_entry(root, revision, path):
     require(full_sha(revision), "full Git revision required")
     entry = git(root, "ls-tree", revision, "--", path).decode().split()
     require(len(entry) == 4 and entry[0:2] == ["100644", "blob"] and entry[3] == path,
             "regular committed file required")
-    require(int(git(root, "cat-file", "-s", entry[2])) < 4096, "committed file too large")
-    return git(root, "show", f"{revision}:{path}")
+    return entry[2]
+
+
+def blob(root, revision, path):
+    oid = tree_entry(root, revision, path)
+    require(int(git(root, "cat-file", "-s", oid)) < 4096, "committed file too large")
+    return git(root, "show", oid)
+
+
+def source_blob(root, revision, path, limit=262_144):
+    """Blob read for reviewed workflow/helper source files (not receipts)."""
+    oid = tree_entry(root, revision, path)
+    require(int(git(root, "cat-file", "-s", oid)) < limit, "reviewed source file too large")
+    return git(root, "show", oid)
 
 
 def load_plan(root, revision):
@@ -112,19 +144,87 @@ def load_plan(root, revision):
     return plan
 
 
+def witness_failure(result):
+    """Classify a failed witness call. A transport failure is never reported as
+    proof of a missing run; only an explicit HTTP 404 is (CODEMAN-START section 5)."""
+    text = result.stderr.decode(errors="replace").lower()
+    return "run or resource not found" if "404" in text else "witness transport failure"
+
+
 def github(path, *, binary=False):
     require(path.startswith((f"repos/{REPOSITORY}/actions/runs/",
-                             f"repos/{REPOSITORY}/actions/artifacts/")), "unsupported API path")
+                             f"repos/{REPOSITORY}/actions/artifacts/",
+                             f"repos/{REPOSITORY}/pulls/")), "unsupported API path")
     result = subprocess.run(["gh", "api", "--method", "GET", "-H",
                              f"X-GitHub-Api-Version: {API_VERSION}", path], capture_output=True)
-    require(result.returncode == 0, "GitHub witness unavailable")
+    require(result.returncode == 0, "GitHub witness unavailable: " + witness_failure(result))
     if binary:
         require(0 < len(result.stdout) <= 65536, "plan ZIP too large")
         return result.stdout
     return decode(result.stdout, 2_000_000)
 
 
-def live(value, plan, api=github):
+def identity(api=None):
+    """Genuine Owner/ref validation: environment claims are cross-checked against
+    the authenticated run object. No caller-set string substitutes for identity."""
+    if api is None:
+        api = github
+    claim = "authenticated Owner action on the protected default branch required"
+    require(os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch", claim)
+    require(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY, claim)
+    require(os.environ.get("GITHUB_ACTOR") == OWNER
+            and os.environ.get("GITHUB_TRIGGERING_ACTOR") == OWNER, claim)
+    run_id = os.environ.get("GITHUB_RUN_ID") or ""
+    require(re.fullmatch(r"[0-9]+", run_id) is not None, claim)
+    run = api(f"repos/{REPOSITORY}/actions/runs/{int(run_id)}")
+    require(isinstance(run, dict), claim)
+    require(run.get("id") == int(run_id), claim + ": run identity mismatch")
+    require(run.get("event") == "workflow_dispatch", claim + ": event proof mismatch")
+    require(run.get("path") == APPROVAL_WORKFLOW, claim + ": workflow definition proof mismatch")
+    repository = run.get("repository") or {}
+    require(repository.get("id") == REPOSITORY_ID
+            and repository.get("full_name") == REPOSITORY, claim + ": repository proof mismatch")
+    branch = run.get("head_branch")
+    require(isinstance(branch, str) and branch in POLICY_BRANCHES, claim + ": untrusted ref")
+    require(os.environ.get("GITHUB_REF") == "refs/heads/" + branch, claim + ": ref claim mismatch")
+    head = run.get("head_sha")
+    require(full_sha(head) and head == os.environ.get("GITHUB_SHA"),
+            claim + ": source claim mismatch")
+    actor = run.get("actor")
+    if actor is not None:
+        login = actor.get("login") if isinstance(actor, dict) else actor
+        require(login == OWNER, claim + ": actor proof mismatch")
+    return run
+
+
+def producer_identity(product, plan):
+    """Narrow pilot eligibility rule (CODE-AUDIT F8): the producer's ci.yml bytes
+    must equal the reviewed protected-base definition. A workflow-changing PR,
+    including any fork, cannot issue trust through matching job names."""
+    head_definition = source_blob(product, plan["head_sha"], PRODUCT_WORKFLOW)
+    base_definition = source_blob(product, plan["base_sha"], PRODUCT_WORKFLOW)
+    require(head_definition == base_definition,
+            "producer workflow definition differs from reviewed protected base")
+
+
+def pinned_source(product, revision):
+    """Honest trusted-source check: the running verifier and the approval
+    workflow bytes must equal the reviewed pinned definition; the executing
+    checkout is the authenticated run head."""
+    require(full_sha(revision or ""), "reviewed helper source pin must be a full SHA")
+    require(source_blob(product, revision, HELPER_SOURCE)
+            == Path(__file__).resolve().read_bytes(),
+            "running verifier differs from reviewed pinned source")
+    source = os.environ.get("GITHUB_SHA") or ""
+    require(full_sha(source), "authenticated source SHA required")
+    require(source_blob(product, revision, APPROVAL_WORKFLOW)
+            == source_blob(product, source, APPROVAL_WORKFLOW),
+            "running approval workflow differs from reviewed pinned definition")
+
+
+def live(value, plan, api=None, product=None):
+    if api is None:
+        api = github
     require(value["approved"] is None, "already approved; use retained verification")
     require(value["run"]["attempt"] == 1, "pilot requires a fresh run, not an Actions rerun")
     require(value["sha"] == plan["candidate_sha"], "wrong candidate SHA")
@@ -201,6 +301,8 @@ def live(value, plan, api=github):
             and witnessed.get("head_sha") == plan["head_sha"]
             and witnessed.get("target_base_sha") == plan["base_sha"]
             and witnessed.get("integration_sha") == value["sha"], "producer plan/source mismatch")
+    if product is not None:
+        producer_identity(product, plan)
 
 
 def verify_file(root, revision, path, candidate, plan_revision):
@@ -231,45 +333,164 @@ def retained(root, revision, path, candidate, plan_revision):
     return value
 
 
-def approve(root, revision, path, candidate, plan_revision, api=None):
-    require(os.environ.get("GITHUB_ACTOR") == OWNER
-            and os.environ.get("GITHUB_TRIGGERING_ACTOR") == OWNER
-            and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
-            and os.environ.get("GITHUB_REPOSITORY") == REPOSITORY
-            and os.environ.get("GITHUB_REF") == "refs/heads/main",
-            "authenticated Owner action on protected main required")
+def approve(root, revision, path, candidate, plan_revision, api=None, *, product=None, pin=None):
+    """Re-verify live, then create the single allowed approval edit at the
+    original introduction commit. Idempotent when already approved and retained-
+    verified; never a second edit."""
+    if api is None:
+        api = github
+    identity(api)
+    require(product is not None, "reviewed product checkout required for approval")
+    pinned_source(product, pin)
     raw, value, plan = verify_file(root, revision, path, candidate, plan_revision)
-    git(root, "merge-base", "--is-ancestor", revision,
-        git(root, "rev-parse", "HEAD").decode().strip())
+    head = git(root, "rev-parse", "HEAD").decode().strip()
+    git(root, "merge-base", "--is-ancestor", revision, head)
     require(git(root, "log", "--full-history", "--format=%H", revision, "--", path)
             .splitlines() == [revision.encode()], "receipt commit must introduce a new path")
-    live(value, plan, **({"api": api} if api is not None else {}))
-    from receipt_writer import commit_file
+    blob(root, plan_revision, plan["task"])
+    if receipt(blob(root, head, path))["approved"] is not None:
+        retained(root, head, path, candidate, plan_revision)
+        return head
+    live(value, plan, api=api, product=product)
     value["approved"] = {"by": OWNER, "at": dt.datetime.now(dt.timezone.utc)
                          .strftime("%Y-%m-%dT%H:%M:%SZ"), "receipt_commit": revision}
     updated = canonical(value)
     receipt(updated)
+    from receipt_writer import commit_file
     return commit_file(root, path, updated, expected=raw)
+
+
+def resolve_pull(pr_number, api=None):
+    """The human selects the contributor PR; its authenticated head/base tuple is
+    the binding. Branch names are never used (CODEMAN-START section 4)."""
+    if api is None:
+        api = github
+    pr = api(f"repos/{REPOSITORY}/pulls/{pr_number}")
+    require(isinstance(pr, dict) and pr.get("number") == pr_number
+            and pr.get("state") == "open", "contributor PR reference is stale or closed")
+    head, base = pr.get("head") or {}, pr.get("base") or {}
+    require((base.get("repo") or {}).get("full_name") == REPOSITORY,
+            "PR base repository is not the protected repository")
+    require(full_sha(head.get("sha")) and full_sha(base.get("sha")), "PR source tuple incomplete")
+    return {"number": pr_number, "head_sha": head["sha"], "base_sha": base["sha"]}
+
+
+def resolve_evidence(planning, pull, api=None):
+    """Find exactly one published receipt whose plan is bound to this PR tuple."""
+    if api is None:
+        api = github
+    head = git(planning, "rev-parse", "HEAD").decode().strip()
+    listing = git(planning, "ls-tree", "-r", "--name-only", head, "--", RECEIPT_DIR).decode()
+    matches = []
+    for entry in listing.splitlines():
+        value = receipt(blob(planning, head, entry))
+        plan = load_plan(planning, value["plan"])
+        if (plan["head_sha"] == pull["head_sha"] and plan["base_sha"] == pull["base_sha"]
+                and plan["candidate_sha"] == value["sha"]):
+            introduction = git(planning, "log", "--full-history", "--reverse", "--format=%H",
+                               value["plan"] + ".." + head, "--", entry).decode().splitlines()
+            require(introduction, "receipt is not reachable in Planning history: " + entry)
+            matches.append({"path": entry, "revision": introduction[0],
+                            "candidate": value["sha"], "plan_revision": value["plan"],
+                            "approved": value["approved"] is not None, "task": plan["task"]})
+    require(len(matches) == 1,
+            "PR-to-receipt binding missing or ambiguous; approve nothing and re-resolve")
+    return matches[0]
+
+
+def task_binding(planning, plan_revision, task, pr_number):
+    """Deterministic trusted PR-to-task mapping: exactly one Planning task note
+    lists this repository PR, and it must be the plan's task (CODE-AUDIT F9)."""
+    marker = f"{REPOSITORY}#{pr_number}".encode()
+    names = git(planning, "ls-tree", "-r", "--name-only", plan_revision, "--",
+                "tasks/").decode(errors="replace").splitlines()
+    bound = []
+    for name in names:
+        front = git(planning, "show", f"{plan_revision}:{name}")
+        match = re.search(rb"^prs:\s*\[([^\]]*)\]", front, re.MULTILINE)
+        if match and any(item.strip() == marker for item in match.group(1).split(b",")):
+            bound.append(name)
+    require(bound == [task], "deterministic PR-to-task association missing or ambiguous")
+
+
+def publish_approval(planning, path, approval_commit):
+    """Publish the sole approval edit through W2's idempotent publication helper.
+
+    Interface: receipt_writer.publish(root, path, local_commit) ->
+    (path, introduction_commit, publication_commit) as present on W2's branch.
+    Finding BF-W3-1: the frozen develop base this PR is built on exposes only
+    commit_file/write, so until W2's branch merges this call fails closed here
+    instead of re-implementing push logic or exporting a patch (CODE-AUDIT F5).
+    """
+    import receipt_writer
+    helper = getattr(receipt_writer, "publish", None)
+    require(callable(helper),
+            "publication blocked: W2 receipt_writer.publish interface missing (finding BF-W3-1)")
+    published = helper(planning, path, approval_commit)
+    require(isinstance(published, (tuple, list)) and len(published) == 3
+            and all(isinstance(part, str) for part in published),
+            "W2 publish returned no (path, introduction, publication) tuple")
+    path_back, introduction, publication = published
+    require(path_back == path and full_sha(introduction) and full_sha(publication),
+            "publication returned no durable commit")
+    return publication
+
+
+def approve_pr(planning, product, pr_number, api=None, pin=None):
+    """Owner decision path: only the PR number is input; everything else resolves,
+    re-verifies live, edits once, publishes and reads the durable approval back."""
+    if api is None:
+        api = github
+    identity(api)
+    pull = resolve_pull(pr_number, api)
+    evidence = resolve_evidence(planning, pull, api)
+    task_binding(planning, evidence["plan_revision"], evidence["task"], pr_number)
+    approval = approve(planning, evidence["revision"], evidence["path"], evidence["candidate"],
+                       evidence["plan_revision"], api=api, product=product, pin=pin)
+    published = publish_approval(planning, evidence["path"], approval)
+    retained(planning, published, evidence["path"], evidence["candidate"],
+             evidence["plan_revision"])
+    return {"path": evidence["path"], "introduction": evidence["revision"],
+            "approval": approval, "publication": published}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("live", "approve", "retained"))
     parser.add_argument("--planning", type=Path, required=True)
-    parser.add_argument("--revision", required=True)
-    parser.add_argument("--receipt", required=True)
-    parser.add_argument("--candidate", required=True)
-    parser.add_argument("--plan", required=True)
+    parser.add_argument("--product", type=Path)
+    parser.add_argument("--pin", default=os.environ.get("TRUSTED_SOURCE", ""))
+    parser.add_argument("--pr", type=int)
+    parser.add_argument("--revision")
+    parser.add_argument("--receipt")
+    parser.add_argument("--candidate")
+    parser.add_argument("--plan")
     args = parser.parse_args()
     try:
         if args.mode == "retained":
+            missing = [n for n in ("revision", "receipt", "candidate", "plan")
+                       if getattr(args, n) in (None, "")]
+            if missing:
+                parser.exit(2, "missing arguments: " + ", ".join("--" + n for n in missing) + "\n")
             retained(args.planning, args.revision, args.receipt, args.candidate, args.plan)
         elif args.mode == "approve":
-            approve(args.planning, args.revision, args.receipt, args.candidate, args.plan)
+            if args.pr is None or args.product is None:
+                parser.exit(2, "approve requires --pr and --product; receipt path, candidate "
+                               "SHA and plan revision are auto-resolved, never manual input\n")
+            result = approve_pr(args.planning, args.product, args.pr, pin=args.pin)
+            print("approved: " + result["path"])
+            print("introduction: " + result["introduction"])
+            print("approval: " + result["approval"])
+            print("publication: " + result["publication"])
+            return
         else:
+            missing = [n for n in ("revision", "receipt", "candidate", "plan")
+                       if getattr(args, n) in (None, "")]
+            if missing:
+                parser.exit(2, "missing arguments: " + ", ".join("--" + n for n in missing) + "\n")
             _, value, plan = verify_file(args.planning, args.revision, args.receipt,
                                          args.candidate, args.plan)
-            live(value, plan)
+            live(value, plan, product=args.product)
         print("checked: " + GATE)
     except (ReceiptError, OSError, TypeError) as exc:
         parser.exit(1, "receipt blocked: " + str(exc) + "\n")
