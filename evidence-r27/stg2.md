@@ -62,3 +62,4 @@
 - v3.5 PR #1129 now awaiting hosted CI + CODEX-R3 (shadow-run card blocker).
 
 END STG2-DONE f57b30ed48f19e62452ab793801a02ccd2658414 https://github.com/mcpdev80/baseharbor/pull/1129
+END STG2-DONE f57b30ed https://github.com/mcpdev80/baseharbor/pull/1129
