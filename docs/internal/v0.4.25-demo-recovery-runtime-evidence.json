@@ -1,0 +1,1522 @@
+{
+  "schema": "baseharbor.demo-recovery-runtime-evidence/v1",
+  "release": "0.4.25",
+  "date": "2026-10-14",
+  "pre_release_ready": false,
+  "source": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "tree": "a5831b12582439e859045b5801ba594c69a6aec4",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a"
+  },
+  "source_qualification": {
+    "source": {
+      "commit": "afed3a5a3160506464b859e2e138ac540dc779c3",
+      "tree": "a5831b12582439e859045b5801ba594c69a6aec4",
+      "working_tree_changes": false
+    },
+    "jobs": 4,
+    "seconds": 65.045,
+    "race_packages": [
+      "./cmd/baha",
+      "./internal/identityprovider"
+    ],
+    "checks": [
+      {
+        "name": "cli-build",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.512,
+        "log": "cli-build.log"
+      },
+      {
+        "name": "docs-audit",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 0.302,
+        "log": "docs-audit.log"
+      },
+      {
+        "name": "docs-de",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.011,
+        "log": "docs-de.log"
+      },
+      {
+        "name": "docs-en",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 2.111,
+        "log": "docs-en.log"
+      },
+      {
+        "name": "go-race",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 50.301,
+        "log": "go-race.log"
+      },
+      {
+        "name": "go-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 64.651,
+        "log": "go-tests.log"
+      },
+      {
+        "name": "go-vet",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 17.338,
+        "log": "go-vet.log"
+      },
+      {
+        "name": "readability",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.515,
+        "log": "readability.log"
+      },
+      {
+        "name": "script-tests",
+        "status": "pass",
+        "exit_code": 0,
+        "seconds": 3.209,
+        "log": "script-tests.log"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "source_assertions": [
+    "Deterministic, guided and human/JSON quick reinitialization reuse the original canonical application ID with matching retained deployment authority.",
+    "Real conflicting canonical repository/deployment IDs fail before source writes; rejected conflict preserves original owner bytes.",
+    "Existing deployment identity and applied intent remain unchanged during source reinitialization.",
+    "Broker raw-null dependency observations are enriched from each existing/pending deployment intent without changing shared production observer/resolver code.",
+    "Client-supplied machine authoring identity remains rejected by existing MCP authority tests."
+  ],
+  "prior_source_attempts": [
+    {
+      "result": "failed",
+      "source_tree": "f3a50c5d9d3b094758ebc53baed9cae2926740e1",
+      "reason": "Removing preview IDs too early broke footprint-only provider previews; retained the preview IDs and discard only at CLI persistence. New quick fixture also incorrectly expected unchanged intent bytes after capability edits."
+    },
+    {
+      "result": "failed",
+      "source_tree": "052c413739d7e38835a79421de0518faac880811",
+      "reason": "New quick command fixture declared an applied SQL consumer without its provider registry, causing missing-dependency. Corrected fixture to use actual workload-only retained intent. Source production correction unchanged."
+    }
+  ],
+  "native_attempts": [
+    {
+      "run_id": 38476485276,
+      "core": "495d770518ebcde8a9591f901bfabe4a7243dcd2",
+      "demo": "8cceb6850c80b62e739fd043c0d8b6d88298aa4f",
+      "result": "failure",
+      "finding": "Historical Caddy runtime was running; SQL module unverifiable made aggregate retirement incomplete. Raw broker dependency field was null, not a proven lifecycle-snapshot defect."
+    },
+    {
+      "run_id": 38526701723,
+      "core": "ac5f183d7b179332b14fa231fdf0290025021bb3",
+      "demo": "79aa5757ea71d84aab3043bb14c9eeb38d56260e",
+      "result": "failure",
+      "jobs": [
+        {
+          "id": 115728641469,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115728641162,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11876346669,
+          "digest": "sha256:1ba533194c823fc0ec0c385d1cc4bcc74c3f6766cb6488eda0f7b5dc44b0c3e6",
+          "name": "demo-v024-docker-38526701723"
+        },
+        {
+          "id": 11875828726,
+          "digest": "sha256:ffe4c984226b8e0ae46b1b8c32d362fec48c98f4373dc27c8c0696e48f41d0f4",
+          "name": "demo-v024-podman-38526701723"
+        }
+      ],
+      "finding": "Full job logs show guided application READY and successful actual retirement before conflicting-application-ID rejection during reinitialization on BOTH engines. Neither actual backup/restore nor cleanup is accepted as PASS."
+    },
+    {
+      "run_id": 38528084560,
+      "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+      "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+      "result": "failure",
+      "finding": "Both complete logs show successful guided READY, retained-identity reinitialization, exact mixed topology, repeated up and encrypted backup creation. Retirement then fails because the logical shared SQL module has no own containers when reusing canonical Core SQL. Actual Core SQL, Caddy and broker are running. Neither engine reached restore; both fixture cleanups completed.",
+      "jobs": [
+        {
+          "id": 115733111979,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115733111739,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11876893568,
+          "name": "demo-v024-docker-38528084560",
+          "digest": "sha256:ed346ef897109c5e641382b5bfd002d49be27cf5b515497f0bba973d8945a743"
+        },
+        {
+          "id": 11876823665,
+          "name": "demo-v024-podman-38528084560",
+          "digest": "sha256:f26d56781f15752fee0ad6844cb7f112bb31126219894e79696e7cb8a7868e7c"
+        }
+      ]
+    },
+    {
+      "run_id": 38529755851,
+      "core": "ac7ecfa734c425eefdd786e08c234fead692bf57",
+      "demo": "f77e8aefca9f4c94a66ef4ab253902648186dda2",
+      "result": "failure",
+      "finding": "Both engines pass actual encrypted backup and provider retirement, then reject portable source against canonical archive YAML before restore because the authored source has no system ID. Both cleanup scripts explicitly report incomplete before their generic final complete line; neither cleanup nor restore is accepted.",
+      "jobs": [
+        {
+          "id": 115738535003,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115738535286,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11878495379,
+          "name": "demo-v024-docker-38529755851",
+          "digest": "sha256:95a826ab75464e05c8f8f1c8c2bd3b7b9965409c37334840ad54967c5301a3fd"
+        },
+        {
+          "id": 11878216133,
+          "name": "demo-v024-podman-38529755851",
+          "digest": "sha256:80935eb2ebefae0a4ac4ac0d6127007b7858672e2882a1ae9445aac6750d1d5c"
+        }
+      ]
+    },
+    {
+      "run_id": 38532739294,
+      "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+      "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
+      "result": "failure",
+      "finding": "Both full job logs fail before restore acknowledgement with stale-impact-consent: archive Manifest lacked the private retained backend-placement projection. Encrypted backup and runtime retirement passed; cleanup incomplete.",
+      "jobs": [
+        {
+          "id": 115748216104,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115748215783,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11879116243,
+          "name": "demo-v024-podman-38532739294",
+          "digest": "sha256:41b2017b81ad041cbba4463844eeca75300bda8296434fd65424bfd44dcc91fe"
+        },
+        {
+          "id": 11878887287,
+          "name": "demo-v024-docker-38532739294",
+          "digest": "sha256:27b235c9c0b98fdf3118332c9f84026de60cd4fa0f152fba5a082a5f6b2e7b4e"
+        }
+      ]
+    },
+    {
+      "run_id": 38535581949,
+      "core": "83b484bb4352a4400ac73b6458b74fb4a326c571",
+      "demo": "2337c90723366a39de9b84a285e7f3dd98b48613",
+      "result": "failure",
+      "finding": "Both engines pass restore consequence admission, then manager service-PKI authentication fails because prior retirement removed openbao-admin. Docker reports service not running; Podman reports no such container. No confirmed Caddy defect. Both fixture cleanups explicitly incomplete; generic final complete line is not acceptance.",
+      "jobs": [
+        {
+          "id": 115757538648,
+          "runtime": "docker",
+          "conclusion": "failure"
+        },
+        {
+          "id": 115757538981,
+          "runtime": "podman",
+          "conclusion": "failure"
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11880451530,
+          "name": "demo-v024-docker-38535581949",
+          "digest": "sha256:50c8dce40700db22917b4ff2a8d8c989c5b0c516e5cbe33d89f0546b3e68e13c"
+        },
+        {
+          "id": 11880416504,
+          "name": "demo-v024-podman-38535581949",
+          "digest": "sha256:08f112c61101093fcc922fce3cc3813cd098f1d5a420ba83449b86ae8cb7ef4f"
+        }
+      ]
+    },
+    {
+      "run_id": 38537360901,
+      "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+      "demo": "2b8e4d8901209915c78932510bf1a915e1d08c7c",
+      "result": "failure",
+      "finding": "Docker completes real recovery and cleanup; Podman reaches broker/PKI reactivation but fails stop of already-retired broker Quadlet unit. Positive Docker evidence remains bounded to exact aa0/2b8 sources.",
+      "jobs": [
+        {
+          "id": 115763393738,
+          "runtime": "docker",
+          "conclusion": "success",
+          "assertions": [
+            "Actual HTTPS SQL original rows, authenticated S3 original content, workload-owned original file, original managed APP_SECRET delivery, log history and typed recovery contributors verified by exact test source.",
+            "Original application AND deployment identities match private pre-backup capture; private secret digest is not public.",
+            "doctor READY, native topology and final owned cleanup success verified in full logs."
+          ],
+          "artifact_zip_sha256_verified": true
+        },
+        {
+          "id": 115763393416,
+          "runtime": "podman",
+          "conclusion": "failure",
+          "finding": "Restore reset stops missing bh-demo-podman-demo-dev-broker.service; cleanup explicitly incomplete."
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11881471453,
+          "name": "demo-v024-docker-38537360901",
+          "digest": "sha256:3d6e4891ab1e76247e2b9cacf1d1739774ffe99eb4ec02ac1859c3e5389f1562"
+        },
+        {
+          "id": 11881352689,
+          "name": "demo-v024-podman-38537360901",
+          "digest": "sha256:aec39bdebac70c9021c85bb2191a16e4147ff6fc8d0b81835c69ca53ee8d53de"
+        }
+      ]
+    },
+    {
+      "run_id": 38540646699,
+      "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+      "demo": "a0da5d858339275eb94382d567052a815da17a20",
+      "result": "failure",
+      "mode": "retained",
+      "finding": "Docker exact public recovery and cleanup receipt success verified. Podman reset still called legacy stop; own wiring mistake corrected only in follow-up.",
+      "jobs": [
+        {
+          "id": 115774249512,
+          "runtime": "docker",
+          "result": "success",
+          "artifact_id": 11883190332,
+          "artifact_digest": "sha256:43eed9affa655e56067124367afa3338cf5e20a203e0c332eed80dea4d9a61ab",
+          "zip_sha256_and_receipt_source_verified": true,
+          "receipt": {
+            "schema": "baseharbor.demo-recovery-result/v1",
+            "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+            "demo": "a0da5d858339275eb94382d567052a815da17a20",
+            "runtime": "docker",
+            "result": "success",
+            "run_id": "38540646699",
+            "run_attempt": "1",
+            "verified": {
+              "encrypted_backup": true,
+              "restore_doctor_ready": true,
+              "sql_original_rows_at_least_two": true,
+              "s3_original_content": true,
+              "workload_original_file": true,
+              "original_application_and_deployment_identity": true,
+              "original_managed_secret_delivery": true,
+              "log_history": true,
+              "recovery_contributors": true,
+              "shared_sql_isolation": true,
+              "native_topology": true
+            },
+            "cleanup": "success",
+            "pre_release_ready": false
+          }
+        },
+        {
+          "id": 115774249043,
+          "runtime": "podman",
+          "result": "failure",
+          "artifact_id": 11882857616,
+          "finding": "Same absent broker Quadlet unit error:93a mistakenly wired selected stop into backup, not reset. Native failure exposed missing reset-path coverage; cannot qualify Podman restore."
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Source checks are not actual consumer recovery or all-provider handoff acceptance.",
+    "Historical scoped results are not one final immutable ecosystem approval.",
+    "Current Console/Connector journeys and Session 1 handoff remain prerequisites to final matrix/audit."
+  ],
+  "demo_static_compatibility": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+    "binary_sha256": "ca8d1910a3064f5498f9cacbcb82c593509fe9d232e062deeebc7d1964c6f32b",
+    "checks": [
+      {
+        "gate": "config-matrix",
+        "exit_code": 0,
+        "seconds": 1.198,
+        "log_sha256": "ed744b7832064d4c0f29cdbccfa8fa1a607d798727f68dfbba70b8c6d14df651"
+      },
+      {
+        "gate": "init",
+        "exit_code": 0,
+        "seconds": 0.236,
+        "log_sha256": "789efdea62920bf35ab492c80c7b961ad9454c30598f5730c965515d5d74c814"
+      },
+      {
+        "gate": "mcp",
+        "exit_code": 0,
+        "seconds": 0.073,
+        "log_sha256": "409a337933f1deb430ca46c3f6ffcb6201842bc421a2da009bb7734a761f178a"
+      },
+      {
+        "gate": "agent",
+        "exit_code": 0,
+        "seconds": 0.022,
+        "log_sha256": "66e9d6d018466225e39c7eec7d22344e3b0fab435fbb730488c54e5d839307e4"
+      },
+      {
+        "gate": "shell-ux",
+        "exit_code": 0,
+        "seconds": 0.168,
+        "log_sha256": "50eaba8ae957226672d416ced78d0ba72594be68b127d075972f4c0e22dcb8e8"
+      }
+    ],
+    "native_acceptance": false
+  },
+  "console_source_checks": {
+    "source": "6af13ca33db45840146ab56beedb10dd0bff36af",
+    "aligned_candidate": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+    "candidate_only_change": true,
+    "contracts": {
+      "pass": 62,
+      "fail": 0,
+      "skip": 0
+    },
+    "architecture": "pass",
+    "typecheck": "pass",
+    "lint": "pass",
+    "production_build": "pass",
+    "canonical_contract_artifacts": {
+      "count": 6,
+      "byte_equal_to_core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+      "digests_verified": true
+    },
+    "candidate_and_receipt_negative_tests": {
+      "pass": 5,
+      "fail": 0
+    },
+    "tooling_recovery": "Initial Turbopack build rejected external node_modules symlink; copied unchanged dependencies with identical package-lock digest into isolated checkout and build passed."
+  },
+  "connector_source_checks": {
+    "source": "b270583d58ea513e79817bd518123cf5f8fa4f3e",
+    "go_suite": "pass",
+    "go_vet": "pass",
+    "receipt_negative_tests": {
+      "pass": 4,
+      "fail": 0
+    },
+    "native_acceptance": false
+  },
+  "shared_sql_alias_correction": {
+    "core": "ac7ecfa734c425eefdd786e08c234fead692bf57",
+    "tree": "1b65b4dc4ad7624204914f385e2106b27913cfe5",
+    "coordination_comments": [
+      6163307943,
+      6163343924,
+      6163392720
+    ],
+    "implementation": "Observe actual canonical Core SQL before projecting the shared logical backend. Only the exact retained CoreSQL Files reference with protected canonical inventory and measured matching physical owner fact can supply availability to a containerless alias. Its extra container count stays zero.",
+    "assertions": [
+      "Foreign Target, project/resource project, Compose/env paths, HA/network reference and damaged canonical definitions cannot supply alias state.",
+      "Missing/unknown/unmeasured native facts and running-with-zero/negative process counts remain unverifiable.",
+      "Actual stopped-owned SQL remains stopped-owned; no new native runtime or persistent owner is created."
+    ],
+    "focused_checks": {
+      "negative_race_regressions": "pass",
+      "full_cmd_application_runtime_races": "pass",
+      "affected_go_vet": "pass",
+      "readability": "pass",
+      "diff_check": "pass"
+    },
+    "full_source_qualification": {
+      "source": {
+        "commit": "3dd029a3566fde233fe87021945a72effce2ffe5",
+        "tree": "7c7e593fc5b93442d1d8611135dd4d2ce347b5b3",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 62.344,
+      "race_packages": [
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.906,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.306,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.903,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.913,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 47.743,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 61.851,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.088,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.112,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.212,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    }
+  },
+  "provisional_joint_matrix": {
+    "core": "bc413bcb7092fb322ad76b27ac97f1a3be09c84b",
+    "demo": "a894f23998ac1d289f14d0c921a292905bb75b1a",
+    "console": "a03c8753ad4cfbb810d2968d53ff9577cac0712b",
+    "connector": "c000bb1a02b0393c14774ceb2ede9c9a1b62b921",
+    "run_id": 38528836411,
+    "result": "failure",
+    "canonical_pin_resolver": "pass after supplying scripts module path; initial local harness import path was missing",
+    "final_all_provider_matrix": false,
+    "bounded_results": {
+      "podman": "success",
+      "docker": "failure at aggregate cleanup"
+    },
+    "receipt": "docs/internal/v0.4.25-authenticated-joint-runtime-evidence.json"
+  },
+  "restore_source_correction": {
+    "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+    "tree": "78b989167a71e94ff346976d2d0047b37eb1dff8",
+    "scope": "Reconcile the validated archive original application identity with every existing source/deployment owner before exact desired-state comparison. Reuse existing common source workload resolution; read-only preflight never persists another identity.",
+    "assertions": [
+      "Selected and registered portable source, and source whose canonical identity owner was lost, match the validated original archive identity.",
+      "Actual foreign canonical identity and changed desired requirements are rejected before source/runtime mutation.",
+      "Source and canonical-owner bytes remain unchanged in preflight."
+    ],
+    "initial_regression": "Selected, registered and fresh-source fixtures failed before correction for the same intended-state comparison as both native engines.",
+    "source_snapshot": {
+      "source": {
+        "commit": "af19d0a94d579bd5efbd31d03793f65050947630",
+        "tree": "c21cb01f41950419b2dc1352a0c17d2c2a331241",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 67.653,
+      "race_packages": [
+        "./cmd/baha"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.609,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.306,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.915,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.207,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 52.763,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 67.195,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 19.799,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "fail",
+          "exit_code": 1,
+          "seconds": 3.42,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.315,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "final_layout_correction": "Snapshot full Go, CLI races, vet/build, EN/DE builds, docs audit and script tests passed; readability failed at app_backup_restore.go 804 lines. Source/Target preflight was moved without semantic change into application_restore_source.go. Removed its now-unused import.",
+    "final_checks": {
+      "focused_restore_identity_and_consent_races": "pass",
+      "full_cli_races_after_layout_move": "pass",
+      "cli_vet_after_layout_move": "pass",
+      "cli_build_after_layout_move": "pass",
+      "readability_after_layout_move": "pass",
+      "diff_check": "pass"
+    }
+  },
+  "docker_joint_retry": {
+    "run_id": 38532924343,
+    "core": "8475919c4dc669e7595361fff0f83fefd55b474d",
+    "demo": "0122123d29cddcca0d73adacbc340fcaad93ae6c",
+    "console": "efd067ad9cd696ae01addc7e4c83fe381e885faa",
+    "connector": "edd37d8ebdeeddcff8e45c8c130fa722ca5fbcfd",
+    "result": "failure",
+    "scope": "Only failed Docker row selected. Fixed-label/code/result-count diagnostics retain no arbitrary stdout/stderr, secret values, paths or command arguments. No mutation replay.",
+    "source_checks": {
+      "console_contracts": 63,
+      "architecture_typecheck_lint": "pass",
+      "connector_receipt_negatives": 4,
+      "single_both_runtime_YAML_selection": "pass",
+      "actionlint": "v1.7.12 pass"
+    },
+    "job_id": 115748866406,
+    "finding": "Timed out waiting for Sign out after real issuer form submission, before any completed browser step; recorded network empty because old observer watched only main page. Does not diagnose previous cleanup failure.",
+    "artifact": {
+      "id": 11879491999,
+      "digest": "sha256:8b2d0bd6efb186a0734211c0c1b0c1d0b8122347778e0628aa6f7fb71fe46588"
+    }
+  },
+  "current_recovery_correction": {
+    "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+    "tree": "aba372deb3775029bbbbe39c2a4e7de05c148d6c",
+    "source_qualification": {
+      "source": {
+        "commit": "ad559dd1e6d40b34e5666ec2e10b04ba8fc217ee",
+        "tree": "aba372deb3775029bbbbe39c2a4e7de05c148d6c",
+        "working_tree_changes": false
+      },
+      "jobs": 4,
+      "seconds": 63.603,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/identityprovider",
+        "./internal/telemetry",
+        "./internal/application"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 17.822,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.402,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.206,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 1.923,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 48.6,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 63.003,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.924,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.52,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.408,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "scope": [
+      "Original archive identity reconciled with every surviving owner without preflight writes.",
+      "Unallocated deployment proposal does not change fresh recovery plan ID.",
+      "Two current confirmations and separate data deletion consent required; source/placement/archive/material/owner drift revalidated immediately before identity mutation.",
+      "Existing canonical Store initializes original ID; pending deployment survives interruption/retry.",
+      "Unsupported provider execution rejected after concrete consequences/acknowledgements before mutation.",
+      "Normal selective broker/Secrets activation precedes retained manager PKI login."
+    ],
+    "native_result": "Docker success; Podman failure at stopping already-retired broker; subsequent correction is source-qualified below.",
+    "fresh_lost_owner_native_recovery": "not yet qualified",
+    "preserved_failed_source_attempts": [
+      {
+        "source": {
+          "commit": "51f22de019d0ecd4a659cd6b1475b2f73fcd9580",
+          "tree": "85affe3a80d2b00ee6d6a61066bd32fc538fbe2e",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 65.7,
+        "race_packages": [
+          "./cmd/baha",
+          "./internal/identityprovider"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 17.285,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.307,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.012,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.911,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 49.304,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 65.264,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 16.68,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.115,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.416,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      },
+      {
+        "source": {
+          "commit": "7f79c8e3f8b0d4e8da0fffa2035f6e6eaaca3062",
+          "tree": "864509319f15f0f904a512fc5b85e5460831ca61",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 68.724,
+        "race_packages": [
+          "./cmd/baha",
+          "./internal/identityprovider",
+          "./internal/telemetry",
+          "./internal/application"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 22.051,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.406,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.005,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 2.647,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 54.197,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 68.237,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 20.868,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "fail",
+            "exit_code": 1,
+            "seconds": 3.915,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.532,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      }
+    ]
+  },
+  "current_joint_retry": {
+    "run_id": 38537532469,
+    "core": "aa0bb3d09aa7fbd05bbde6760499ed087a61ceb8",
+    "demo": "2b8e4d8901209915c78932510bf1a915e1d08c7c",
+    "console": "59098d859e9917bd9168df0c55e3b71d8eea4f60",
+    "connector": "00fe0b21759ce5bb7ad7993e0d6a121cf4f8082c",
+    "result": "failure",
+    "scope": "Docker-only required joint journey; bounded popup form/callback/closed flags and main+popup static path/status observations omit queries, headers, callback codes and token bytes.",
+    "finding": "Real browser login and complete remote HTTP journey pass. Aggregate installation cleanup fails with fixed diagnostics stale-impact-consent, REMOVED=1 FAILED=1 and later SKIPPED/DEFERRED; current remainder correction addresses this independently reproduced two-child transition.",
+    "job_id": 115764034024
+  },
+  "installation_sibling_source_review": {
+    "result": "corrected and source-qualified; native multi-child joint qualification in progress",
+    "test": "installation_sibling_scope_test.go published in93a37602",
+    "finding": "Old parent consent remains invalid after first child. Current explicit remainder plus two new stages and separate data consent admits unchanged second child. No ImpactPlanID binding removed or automatic grant issued."
+  },
+  "current_remainder_and_restore_correction": {
+    "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+    "tree": "d1dc8bb1a51bf012e6a2607e50d1410bc34bb25d",
+    "source_qualification": {
+      "source": {
+        "commit": "f333eae3443b881d8adaab0b809bf50d915843e7",
+        "tree": "d1dc8bb1a51bf012e6a2607e50d1410bc34bb25d",
+        "working_tree_changes": true
+      },
+      "jobs": 4,
+      "seconds": 64.244,
+      "race_packages": [
+        "./cmd/baha",
+        "./internal/application",
+        "./internal/identityprovider",
+        "./internal/telemetry"
+      ],
+      "checks": [
+        {
+          "name": "cli-build",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 16.595,
+          "log": "cli-build.log"
+        },
+        {
+          "name": "docs-audit",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 0.302,
+          "log": "docs-audit.log"
+        },
+        {
+          "name": "docs-de",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.108,
+          "log": "docs-de.log"
+        },
+        {
+          "name": "docs-en",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 2.111,
+          "log": "docs-en.log"
+        },
+        {
+          "name": "go-race",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 49.761,
+          "log": "go-race.log"
+        },
+        {
+          "name": "go-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 63.787,
+          "log": "go-tests.log"
+        },
+        {
+          "name": "go-vet",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 15.997,
+          "log": "go-vet.log"
+        },
+        {
+          "name": "readability",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.514,
+          "log": "readability.log"
+        },
+        {
+          "name": "script-tests",
+          "status": "pass",
+          "exit_code": 0,
+          "seconds": 3.413,
+          "log": "script-tests.log"
+        }
+      ],
+      "native_runtime_qualified": false,
+      "pre_release_ready": false
+    },
+    "prior_passing_source_snapshots": [
+      {
+        "source": {
+          "commit": "81d4374b288b391474e03c61638dad5950ce6d7c",
+          "tree": "6c1dff8ed4e563badc7bfe8f866e1ed6c92b5b98",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 62.301,
+        "race_packages": [
+          "./cmd/baha"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 16.797,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.302,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.707,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.905,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 48.137,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 61.869,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 16.302,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.112,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.02,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      },
+      {
+        "source": {
+          "commit": "f333eae3443b881d8adaab0b809bf50d915843e7",
+          "tree": "888f2a4d04b036d04f7478d6aeac5077393e250a",
+          "working_tree_changes": true
+        },
+        "jobs": 4,
+        "seconds": 64.658,
+        "race_packages": [
+          "./cmd/baha"
+        ],
+        "checks": [
+          {
+            "name": "cli-build",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 17.812,
+            "log": "cli-build.log"
+          },
+          {
+            "name": "docs-audit",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 0.306,
+            "log": "docs-audit.log"
+          },
+          {
+            "name": "docs-de",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.808,
+            "log": "docs-de.log"
+          },
+          {
+            "name": "docs-en",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 1.809,
+            "log": "docs-en.log"
+          },
+          {
+            "name": "go-race",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 51.934,
+            "log": "go-race.log"
+          },
+          {
+            "name": "go-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 64.288,
+            "log": "go-tests.log"
+          },
+          {
+            "name": "go-vet",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 17.379,
+            "log": "go-vet.log"
+          },
+          {
+            "name": "readability",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.315,
+            "log": "readability.log"
+          },
+          {
+            "name": "script-tests",
+            "status": "pass",
+            "exit_code": 0,
+            "seconds": 3.412,
+            "log": "script-tests.log"
+          }
+        ],
+        "native_runtime_qualified": false,
+        "pre_release_ready": false
+      }
+    ],
+    "assertions": [
+      "Completed installation child does not silently refresh stale sibling consent. Fresh displayed remainder requires two current acknowledgements and separate data consent; current inventory revalidated after prompting.",
+      "Broker-only selected-service stop verifies canonical ownership, observed absence/running state and unchanged siblings. Foreign ownership, replica, public owner and real stop failure reject.",
+      "External OTLP receiver/authorization/anonymous changes invalidate restore consent for retained and fresh delivery owners; public plan JSON contains no authorization bytes."
+    ],
+    "red_external_restore_regression": "Receiver/header/anonymous inputs all retained the same restore plan ID before correction; reproduced in application_restore_external_receiver_test.go."
+  },
+  "fresh_owner_native_attempts": [
+    {
+      "run_id": 38541975235,
+      "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+      "demo": "47a34baa71afc3cff006645ab25f5756ba045ab6",
+      "result": "success",
+      "mode": "fresh-owner",
+      "finding": "Both actual native jobs complete separately consented full-reset, exact canonical fixture-owner loss and real restore over newer SQL/file writes. Original application identity, new deployment owner, original managed secret and authored source bytes verified privately; owned cleanup succeeds.",
+      "jobs": [
+        {
+          "id": 115779726899,
+          "runtime": "docker",
+          "result": "success",
+          "receipt": {
+            "schema": "baseharbor.demo-recovery-result/v1",
+            "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+            "demo": "47a34baa71afc3cff006645ab25f5756ba045ab6",
+            "runtime": "docker",
+            "result": "success",
+            "run_id": "38541975235",
+            "recovery_mode": "fresh-owner",
+            "run_attempt": "1",
+            "verified": {
+              "encrypted_backup": true,
+              "restore_doctor_ready": true,
+              "sql_original_rows_at_least_two": true,
+              "sql_row_count_matches_archive": true,
+              "s3_original_content": true,
+              "workload_original_file": true,
+              "newer_sql_and_file_writes_replaced_from_archive": true,
+              "original_application_identity": true,
+              "deployment_identity_matches_recovery_mode": true,
+              "unchanged_authored_source": true,
+              "original_managed_secret_delivery": true,
+              "log_history": true,
+              "recovery_contributors": true,
+              "shared_sql_isolation": true,
+              "native_topology": true
+            },
+            "cleanup": "success",
+            "pre_release_ready": false
+          }
+        },
+        {
+          "id": 115779726475,
+          "runtime": "podman",
+          "result": "success",
+          "receipt": {
+            "schema": "baseharbor.demo-recovery-result/v1",
+            "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+            "demo": "47a34baa71afc3cff006645ab25f5756ba045ab6",
+            "runtime": "podman",
+            "result": "success",
+            "run_id": "38541975235",
+            "recovery_mode": "fresh-owner",
+            "run_attempt": "1",
+            "verified": {
+              "encrypted_backup": true,
+              "restore_doctor_ready": true,
+              "sql_original_rows_at_least_two": true,
+              "sql_row_count_matches_archive": true,
+              "s3_original_content": true,
+              "workload_original_file": true,
+              "newer_sql_and_file_writes_replaced_from_archive": true,
+              "original_application_identity": true,
+              "deployment_identity_matches_recovery_mode": true,
+              "unchanged_authored_source": true,
+              "original_managed_secret_delivery": true,
+              "log_history": true,
+              "recovery_contributors": true,
+              "shared_sql_isolation": true,
+              "native_topology": true
+            },
+            "cleanup": "success",
+            "pre_release_ready": false
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 11882949048,
+          "name": "demo-v024-docker-38541975235",
+          "digest": "sha256:cb63df1a3080b544739508522cf25513bdfc4163ab7959312269cb511363f057",
+          "downloaded_and_zip_sha256_and_sources_verified": true
+        },
+        {
+          "id": 11882874510,
+          "name": "demo-v024-podman-38541975235",
+          "digest": "sha256:3beca7cc7f4e8746b0f108e69b3d58d418eec2f4d316870cb935c4996e84e932",
+          "downloaded_and_zip_sha256_and_sources_verified": true
+        }
+      ]
+    }
+  ],
+  "current_joint_retry_after_remainder": {
+    "run_id": 38540793754,
+    "source": {
+      "core": "93a376023b58f015f9d56fc69146eb34a2e204f8",
+      "demo": "a0da5d858339275eb94382d567052a815da17a20",
+      "console": "04c3553441f109925f882c141a6da3d3b288a6ba",
+      "connector": "3c672d8249772cb44f4e4d75edcdf12ec764e691"
+    },
+    "result": "failure",
+    "runtimes": [
+      "docker",
+      "podman"
+    ],
+    "final_ecosystem_matrix": false,
+    "finding": "Podman full current authenticated matrix succeeds; Docker typed current remainder refusal due one SKIPPED row. See joint receipt."
+  },
+  "reset_wiring_followup": {
+    "finding": "93a source helper was tested but call replacement matched backup instead of resetRestoreTarget. Preserve both failed native Podman attempts.",
+    "correction": "Backup returned to original stop call; actual resetRestoreTarget now uses selected owned broker stop. Functional TestRestoreResetUsesObservedBrokerAbsenceBeforeDestructivePhase reproduces old missing-unit error before correction and passes afterwards, before owned destructive phase.",
+    "source_result": "Targeted CLI race PASS; final complete source qualification and native affected retry pending.",
+    "native_result": "not yet qualified"
+  },
+  "installation_discovery_followup": {
+    "scope": "Display and bind actual unregistered local deployment-state diagnostics in installation impact before consent, without inventing native owner or suppressing unknown inventory.",
+    "fixture_boundary": "Only exact unchanged previously displayed unregistered-deployment-state diagnostics can accompany verified remainder progress. FAILED/DEFERRED and other SKIPPED mutations remain refusal. Exact original Docker skipped classification is still not assumed."
+  },
+  "retained_reset_wiring_native_followup": {
+    "source": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "tree": "ed600514b795b6990f70813977e81aece520adec",
+    "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+    "run_id": 38545162417,
+    "run_attempt": 1,
+    "jobs": [
+      {
+        "runtime": "podman",
+        "id": 115789291681,
+        "result": "success",
+        "artifact": {
+          "id": 11884891505,
+          "digest": "sha256:920bcc0b390806604799f8be36fbfe8b12a99d1e6b502a9b7091991dbfec77fa",
+          "zip_sha256_verified": true,
+          "source_binding_verified": true
+        },
+        "public_receipt": {
+          "schema": "baseharbor.demo-recovery-result/v1",
+          "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+          "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+          "runtime": "podman",
+          "result": "success",
+          "run_id": "38545162417",
+          "recovery_mode": "retained",
+          "run_attempt": "1",
+          "verified": {
+            "encrypted_backup": true,
+            "restore_doctor_ready": true,
+            "sql_original_rows_at_least_two": true,
+            "sql_row_count_matches_archive": true,
+            "s3_original_content": true,
+            "workload_original_file": true,
+            "newer_sql_and_file_writes_replaced_from_archive": true,
+            "original_application_identity": true,
+            "deployment_identity_matches_recovery_mode": true,
+            "unchanged_authored_source": true,
+            "original_managed_secret_delivery": true,
+            "log_history": true,
+            "recovery_contributors": true,
+            "shared_sql_isolation": true,
+            "native_topology": true
+          },
+          "cleanup": "success",
+          "pre_release_ready": false
+        }
+      },
+      {
+        "runtime": "docker",
+        "id": 115789291286,
+        "result": "success",
+        "artifact": {
+          "id": 11885200482,
+          "digest": "sha256:9e27c4d43455819a0942bab14bb660de66c9be298bb171d601a15eb87072d072",
+          "zip_sha256_verified": true,
+          "source_binding_verified": true
+        },
+        "public_receipt": {
+          "schema": "baseharbor.demo-recovery-result/v1",
+          "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+          "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+          "runtime": "docker",
+          "result": "success",
+          "run_id": "38545162417",
+          "recovery_mode": "retained",
+          "run_attempt": "1",
+          "verified": {
+            "encrypted_backup": true,
+            "restore_doctor_ready": true,
+            "sql_original_rows_at_least_two": true,
+            "sql_row_count_matches_archive": true,
+            "s3_original_content": true,
+            "workload_original_file": true,
+            "newer_sql_and_file_writes_replaced_from_archive": true,
+            "original_application_identity": true,
+            "deployment_identity_matches_recovery_mode": true,
+            "unchanged_authored_source": true,
+            "original_managed_secret_delivery": true,
+            "log_history": true,
+            "recovery_contributors": true,
+            "shared_sql_isolation": true,
+            "native_topology": true
+          },
+          "cleanup": "success",
+          "pre_release_ready": false
+        }
+      }
+    ],
+    "scope": "Actual retained reset path; every consumer flag is asserted against native workload/API data and cleanup. Earlier failed reset wiring remains preserved; final ecosystem qualification remains pending.",
+    "result": "success"
+  },
+  "current_source_static_compatibility": {
+    "core": "45fd3e2cf39161d48e185af23b5f0683ae74c367",
+    "core_tree": "ed600514b795b6990f70813977e81aece520adec",
+    "demo": "01e98f389b08a58579b8af80c663ddc2045ce7a3",
+    "binary_sha256": "67de172cdb9655d6fd671abcb167519f6ea33a244a1b558d6146cc4f6c504e62",
+    "checks": [
+      {
+        "gate": "config-matrix",
+        "status": "pass"
+      },
+      {
+        "gate": "init",
+        "status": "pass"
+      },
+      {
+        "gate": "mcp",
+        "status": "pass"
+      },
+      {
+        "gate": "agent",
+        "status": "pass"
+      },
+      {
+        "gate": "shell-ux",
+        "status": "pass"
+      }
+    ],
+    "native_runtime_qualified": false,
+    "pre_release_ready": false
+  },
+  "retained_completed_initializer_followup": {
+    "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+    "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+    "run": 38557521398,
+    "attempt": 1,
+    "recovery_mode": "retained",
+    "verification": "Both actual ZIP SHA256 values, exact Core/Demo/runtime/run/attempt and all15 assertion booleans independently checked. results.tsv has PASS only; three native topology snapshots inspected, including actual broker/executor prerequisites and successful exited PostgreSQL initializer.",
+    "native_result": "success",
+    "pre_release_ready": false,
+    "docker": {
+      "job": 115830238728,
+      "artifact": 11891157458,
+      "zip_sha256": "f3401652c7734d7d6e3046da841b5f67ebbf538c8fbc58d7b12de111fcd7708d",
+      "receipt": {
+        "schema": "baseharbor.demo-recovery-result/v1",
+        "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+        "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+        "runtime": "docker",
+        "result": "success",
+        "run_id": "38557521398",
+        "recovery_mode": "retained",
+        "run_attempt": "1",
+        "verified": {
+          "encrypted_backup": true,
+          "restore_doctor_ready": true,
+          "sql_original_rows_at_least_two": true,
+          "sql_row_count_matches_archive": true,
+          "s3_original_content": true,
+          "workload_original_file": true,
+          "newer_sql_and_file_writes_replaced_from_archive": true,
+          "original_application_identity": true,
+          "deployment_identity_matches_recovery_mode": true,
+          "unchanged_authored_source": true,
+          "original_managed_secret_delivery": true,
+          "log_history": true,
+          "recovery_contributors": true,
+          "shared_sql_isolation": true,
+          "native_topology": true
+        },
+        "cleanup": "success",
+        "pre_release_ready": false
+      }
+    },
+    "podman": {
+      "job": 115830239069,
+      "artifact": 11891217078,
+      "zip_sha256": "5ab11520062e8be4d3dd68665619ecb66e72b3a64afb398502add7dd3e594988",
+      "receipt": {
+        "schema": "baseharbor.demo-recovery-result/v1",
+        "core": "5ec1b38df90b290dc40fb6f26f18534cf19f0337",
+        "demo": "d691f68307cbcb8333cdd33aa1af1a92ab41a69e",
+        "runtime": "podman",
+        "result": "success",
+        "run_id": "38557521398",
+        "recovery_mode": "retained",
+        "run_attempt": "1",
+        "verified": {
+          "encrypted_backup": true,
+          "restore_doctor_ready": true,
+          "sql_original_rows_at_least_two": true,
+          "sql_row_count_matches_archive": true,
+          "s3_original_content": true,
+          "workload_original_file": true,
+          "newer_sql_and_file_writes_replaced_from_archive": true,
+          "original_application_identity": true,
+          "deployment_identity_matches_recovery_mode": true,
+          "unchanged_authored_source": true,
+          "original_managed_secret_delivery": true,
+          "log_history": true,
+          "recovery_contributors": true,
+          "shared_sql_isolation": true,
+          "native_topology": true
+        },
+        "cleanup": "success",
+        "pre_release_ready": false
+      }
+    }
+  }
+}
