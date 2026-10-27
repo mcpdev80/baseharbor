@@ -380,3 +380,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:1xZ stg3: v3.6-Merge lokal eef4de3b (Conflicts geloest) -> Liefer-Nudge; q2 PLANSTALE-Nudge; d4 Dossier ausstehend (<15min).
 - 12:3xZ q2 DONE (b057bb89) rotiert. R4-Mission vorbereitet (Platzhalter bis STG3-DONE). Pool 1/3 begruendet (Schreibsatz = v36-Tip ausstehend).
 - 12:4xZ stg3 triert Tests selbst (Scope drift) -> SCOPE-CORRECTION: commit-red+deliver, Fail-Liste = Wave-5-Input.
+- 12:5xZ stg3 premature-END erwischt (kein push/PR): Liefervollzug befohlen; Rule: END nur mit ls-remote+PR-Wahrheit.
