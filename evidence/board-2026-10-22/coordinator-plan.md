@@ -396,3 +396,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 15:1xZ r5i DONE (#1137, 8d12fbb4) rotiert; stg5/qwen v3.8-Staging dispatched. bx1 laeuft.
 - 15:3xZ v3.8 cb7d8213 PR#1138 verifiziert, stg5 rotiert. CODEX-R5 laeuft (cbe5fa71). bx1 noch busy.
 - 15:5xZ CODEX-R5 = BLOCKED selbes PARTLY-Bild (publiziert 7835719, codex rotiert). Diagnose ENDLOSSCHLEIFE #2: Hosted-Beweise koennen auf nie-gemergedem Branch nicht closen -> Bootstrap #bx1 muss AUF develop + CODEX-MERGE, dann ein Hosted-Beweis-Lauf statt R6-Welle. Owner-Eskalation folgt.
+- 16:0xZ OWNER-SCHWENK autorisiert (A). bx1 ghost (0 commits) rotiert -> bx2/ornith medior-Mission (S1-S3).
