@@ -365,3 +365,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:5xZ Tick: w4a auf 88a2f15a stabil (>20min) -> checkpoint-push Nudge; rv4 deckt #1131/#1132-Review ab (Reminder beantwortet). p1/rv4 busy ok.
 - 10:0xZ p1 DONE (5 Gap-Punkte, 2 Owner-Aktionen: Token+dispatch; Dossier board-2026-10-27/p1-pilot-prereq.md) rotiert. d3 flash: merge-tree v36-Prognose ueber 3 w4-Tips.
 - 10:1xZ Tick: w4a 75b30b32 END-DONE aber PR fehlt -> 2-Aktions-Finish; rv4/d3 noch arbeitend.
+- 10:2xZ d3 DONE (Dossier 8.4K, merge-Prognose v3.6), rotiert.
