@@ -335,3 +335,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:1xZ rv2 ACCEPT #1126 (Zwischen-Vorpruefung) rotiert; w1b/fragt qwen dispatched: Akte/record-Eintrag fuer v3.5 (coverage-unresolved laut d1).
 - 03:3xZ g1x busy>40min DISZIPLIN-NUDGE (kein Dialog, 0 Commits) — bei Ausbleiben: rotieren+ornith fresh.
 - 03:4xZ cl1 DONE+rotiert (alle Liste-PRs enthalten/gecleannt). #1123 war Listenluecke von Coord -> c3f54c12 ancestor-verifiziert, als superseded geschlossen.
+- 03:5xZ g1x ROTATION (strike2, 0 push/0 evidence trotz Nudge; 127+/104- WIP bleibt im Worktree). w1b push 1d8237e9 (akte) sichtbar. d2 DONE rotiert.
