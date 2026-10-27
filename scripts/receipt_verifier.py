@@ -418,13 +418,15 @@ def task_binding(planning, plan_revision, task, pr_number, api=None):
     backward task→PR binding. Both must agree.
 
     A caught resolver error is NEVER authorization: any resolution failure blocks.
+    The api parameter is ALWAYS forwarded to resolve_task_from_pr — when None
+    the resolver uses _gh_api, never falls through to a string-based lookup.
     """
     import receipt_tasklink
     # The forward PR→task resolver is authoritative. A caught resolver error is
     # not a fall-through to success; it fails closed (CODE-AUDIT F4). An injected
     # API makes the resolver hermetic (no real gh/network) for tests.
-    resolver_api = api if api is not None else _resolve_api
-    expected_task = receipt_tasklink.resolve_task_from_pr(pr_number, planning, resolver_api)
+    # FIX: Always pass api through — no undefined _resolve-api fallback.
+    expected_task = receipt_tasklink.resolve_task_from_pr(pr_number, planning, api)
     names = git(planning, "ls-tree", "-r", "--name-only", plan_revision, "--",
                 "tasks/").decode(errors="replace").splitlines()
     bound = []
@@ -442,10 +444,10 @@ def task_binding(planning, plan_revision, task, pr_number, api=None):
             "PR-resolved task does not match the bound task note")
 
 
-def _resolve_api(path, **kwargs):
-    """Forward the caller's authenticated/injected API to the shared tasklink
-    resolver so no live GitHub call escapes under injected test APIs."""
-    return api(path, **kwargs)
+# _resolve_api removed: F4 fix — api is now passed directly to
+# resolve_task_from_pr() by task_binding(), eliminating the undefined
+# intermediate function. The resolver either uses the injected api
+# or falls back to _gh_api — no string-based lookup exists.
 
 
 def publish_approval(planning, path, approval_commit, task=None, candidate_sha=None,
