@@ -370,3 +370,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:4xZ Tick: w4a push 39bed489 (forward ok) aber PR fehlt -> 2nd finish-Nudge; rv5/ornith schmal (rv4-Negative A/B/C) als dritter Slot.
 - 10:5xZ rv5 Dialog: external_directory ~/tmp-ops/* (vorgesehen) -> Allow once erteilt, busy bestaetigt.
 - 11:0xZ w4a DONE (#1133, evidence-Datei fehlt -> PR-Body als Referenz, ehrlich dokumentiert) rotiert. stg3/ornith v3.6-Staging dispatched (d3-Reihenfolge).
+- 11:1xZ rv5 2. Dialog (rv5-scratch, scope-konform) Allow once; rv5 baut echten bare-remote Positivfall (gut).
