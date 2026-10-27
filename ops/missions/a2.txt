@@ -1,5 +1,6 @@
-pwd-PFLICHT. WORKTREE: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add --detach /home/marcel/dev/baseharbor-ecosystem/worktrees/a2-accept 084b3abc. READ-ONLY am Produkt (nur Evidence-Datei schreiben).
-ROLLE: Unabhaengige Abnahme-VORBEREITUNG fuer PR1-Kandidaten 084b3abc (v0.4.27 Receipts).
-CHECKLISTE abarbeiten und dokumentieren: (1) alle 6 Receipt-/Plan-Testsuiten selbst ausfuehren (chain, writer, verifier, test_pr_gate_plan, test_pr_gate_plan_receipt_paths, test_ci_workflow_policy_receipts - letzte erwartet NOCH allowlist-FAIL bis L4 landet: als known vermerken); (2) yamllint/parse-Check der 3 receipt-*.yml + job-level Dormancy-Guards bestaetigen; (3) Doku-Paar EN/DE deckungsgleich + beschreibt nur gelieferte Realitaet; (4) FREEZE-PR1.md-Konformitaet (Interfaces, Pfad, GATE); (5) o145-Urteil + w2/w1-Reviews zitieren; (6) NEGATIVE-RAHMEN festhalten: falsche SHA / tote Run-ID / editierte Receipt - bereits durch Tests abgedeckt? welche (datei:hname)?
-LIEFERGUT: evidence/board-2026-10-26/a2-pr1-acceptance-PREP.md mit Akzeptanz-TEMPLATE (Felder T0=LEER, Deadline=LEER, SHA=084b3abc, Checks, Offene-Punkte-Liste) - Coordinator fuellt T0 bei Push+CI-Gruen.
+pwd-PFLICHT. ROLLE: VERIFIKATION (read-only). End-to-End Stand von develop HEAD (3431b22c+) fuer die Receipt-Kette:
+1. tmp-Worktree origin/develop;Suiten: test_receipt_chain.py test_pr_gate_plan.py test_ci_workflow_policy_receipts.py test_receipt_tasklink.py + bash scripts/ci-workflow-policy.sh - Ausgaben kurz.
+2. receipt_verifier.py retained gegen echtes planning 8411672 nochmal (rc muss 0 sein) - independent Re-Check des RECORD.
+3. writer Idempotenz-Check dry: zweite writer-Ausfuehrung mit gleichem content Wuerde bestehenden commit zurueckgeben (Code-Review commit_file expected=None Pfad) - verifiziere dass KEIN dritter receipt-commit existiert (planning log -- evidence/receipts/ | wc -l).
+4. Ergebnis evidence/board-2026-10-27/a2-chain-verify.md: Tabelle Glied|Prüfung|Ergebnis, Abweichungen = klare Befunde.
 END A2-DONE / END A2-BLOCKED

@@ -1,0 +1,6 @@
+pwd-PFLICHT. ROLLE: HYGIENE (nur eigene Operationen). Aufraeumen nach dem Shadowlauf:
+1. Probe PR #1094 (y6/shadow-contract-probe) schliessen mit Kommentar 'producer witness retained in run 40428162731; source change not needed' + Branch loeschen (--delete-branch via gh pr close).
+2. worktrees liste: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree list | grep -aE 'wt-(d40|pr1int|squash|z[0-9]|x[0-9]|p2|f6)' ; NUR die ohne laufenden Prozess/pruefen via 'git -C <wt> status --porcelain' leer ODER rein evidente = WORKTREE REMOVE (data retention: evidence files already copied to board dirs - pruefe kurz ob y*/z* evidence committet ist, sonst SKIP + notiere).
+3. /home/marcel/tmp-ops verwaiste Sim-Dirs mt-*, wt-sim*, plan-probe*, appatch behalten bis PR3 fertig - NICHT loeschen, nur inventarisieren in evidence/board-2026-10-27/a1-hygiene.md.
+4. Pruefe: existieren fuer JEDE y*/z*-Mission Disk-Artefakte? (Liste Mission-Datei ops/missions/*.txt vs. evidence/board-2026-10-2*/x*|y*|z*). Lücken = BEFUNDE (ghost-writes) mit Lane-Namen.
+END A1-DONE / END A1-BLOCKED

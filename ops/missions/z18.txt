@@ -1,0 +1,6 @@
+pwd-PFLICHT. ROLLE: PLAN (read-only, Evidence only). Erstelle den AKTUELLEN PR3-Cutover-Plan:
+1. Lies baseharbor-plan/evidence/r27-ci-replacement-2026-10-26/ (ALLE Dateien incl. p3-cutover-checklist.md) + decision + diese neuen Realitäten: develop=577aac4a; shadow complete (RECORD: evidence/board-2026-10-26/SHADOW-RUN-RECORD.md); approval workflow laeuft NUR mit --ref develop + in-shell GITHUB_REF=main hack; retained/live/approve Modi bewiesen; #1096 kurz vor merge.
+2. gh api repos/mcpdev80/baseharbor/rulesets --jq '.[].name' + branch protection main/develop lesen: Was muss sich aendern damit PR3 (receipts als Pflicht-Gate statt Legacy-Matrix) ohne Regel-Bypass geht?
+3. Zielbild PR3 (max 1 Seite pro Abschnitt): (a) which workflows become mandatory, (b) receipt-gate job placement in ci.yml WITHOUT self-qualification (trusted-plan bootstrap beachten), (c) rollout order + rollback, (d) offene Owner-Entscheidungen (Liste, je 1 Zeile).
+4. Bewerte Deadline-Risiko 2026-10-29T23:35:50Z realistisch (Skeleton IST akzeptiert -> Regel: Infra-Ausbau darf weiter, kein Abbruch).
+EVIDENCE evidence/board-2026-10-26/z18-pr3-plan.md. END Z18-DONE / END Z18-BLOCKED

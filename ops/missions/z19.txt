@@ -1,0 +1,6 @@
+pwd-PFLICHT. ROLLE: PLANNING (render+check+push; pull --rebase first).
+1. tasks/t-20261027-r27-shadow-run.md: status accepted + resolution 'shadow chain complete, see evidence/board-2026-10-26/SHADOW-RUN-RECORD.md (root repo)' + [x]; Tags #status/accepted #view/active->entsprechend Schema.
+2. tasks/t-20261027-r27-credential-retention.md: owner bleibt z3-lane, status review->accepted? NEIN - status review (PR #1096 war merged 3431b22c => accepted + closed nach Merge): resolution 'merged squash 3431b22c', evidence board-2026-10-26/z3-credential-retention.md + z5/z7/z18 notes.
+3. tasks/t-20261027-r27-cutover-pr3.md: status claimed (owner coordinator), depends -> satisfied, Evidence-Link auf SHADOW-RUN-RECORD + z18-pr3-plan.md (falls vorhanden).
+4. render + check + push origin main.
+END Z19-DONE / END Z19-BLOCKED
