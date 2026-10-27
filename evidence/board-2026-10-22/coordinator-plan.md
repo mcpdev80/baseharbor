@@ -356,3 +356,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 08:3xZ Card-Addendum publiziert cc379b1 (rc=0). w4a+ w4c- Auftrags-Ergaenzungen gesendet (Writer-Reuse im Approval-Pfad).
 - 08:4xZ Tick: wave4 alle 3 busy, 0 pushes <20min (w4a seit 07:3x = 70min! naechster Nudge faellig), akte2b/outputs2/recovery leer, dd400742-Staleintrag aus watcher-state entfernt.
 - 08:5xZ w4b2 BOOTFAIL-ghost (qwen) rotiert; w4b3/qwen mit TOOL-1-first Mission.
+- 09:0xZ Tick: w4a=7df405f2 pushed (Nudge wirkte), w4b3 bootet sauber (9e7f00ec pushed), w4c noch 0 pushes. v35-CI bleibt fail (Input fuer R4).
