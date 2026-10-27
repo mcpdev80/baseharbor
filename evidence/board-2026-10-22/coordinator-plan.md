@@ -353,3 +353,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:5xZ Owner-Klaerung Pilotform: 1 Gate public-contracts,全自动-Kette, Owner = nur Approved-Klick im PR (wie CODEMAN-START). Pool: rv3+w4abc busy, keine Pushes <15min.
 - 08:0xZ rv3 DONE(ACCEPT-Vorpruefung, SHA-Krit mit Caveat publiziert) rotiert; rv3.md relocated. Wave4 laeuft (0 pushes <18min).
 - 08:2xZ w4b: worktree VERNICHTET aber Branch 2e137e45 pushed (Vorarbeit gerettet) -> rotiert, w4b2 uebernimmt remote-basiert mit ls-remote-Guard. Owner-Befunde geprueft (Credentials-401 BESTAETIGT plain push origin; BASE_REF 11-Leerzeichen BESTAETIGT; verify_producer Name BESTAETIGT) -> Addendum an w4a folgt.
+- 08:3xZ Card-Addendum publiziert cc379b1 (rc=0). w4a+ w4c- Auftrags-Ergaenzungen gesendet (Writer-Reuse im Approval-Pfad).
