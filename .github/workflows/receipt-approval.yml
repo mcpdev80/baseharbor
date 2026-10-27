@@ -105,6 +105,11 @@ jobs:
              esac
            done
 
+    outputs:
+      receipt: ${{ steps.approval-step.outputs.receipt }}
+      plan: ${{ steps.approval-step.outputs.plan }}
+      candidate: ${{ steps.approval-step.outputs.candidate }}
+
   # G5b: shadow consumer — triggered from approval, not from PR open.
   # Uses a reusable workflow call with the exact published outputs.
   shadow:
