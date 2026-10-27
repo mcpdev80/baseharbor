@@ -329,3 +329,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:5xZ TRUNCATION-SCHADEN: coordinator-plan.md wurde waehrend Incident#5-Kontamination auf 1 Zeile gekuerzt; 315-Zeilen-Historie ab c29c9a03 wiederhergestellt, Zwischen-Notizen 21:00-00:30 durch ANKER-Abschnitt abgedeckt (Detailverlust: nur echo-Zeilen, keine Fakten).
 - 01:2xZ g1x(GHOST,root-repo-panning)+g2x rotiert; GHOST-Work partly in worktrees/g1-f1-fixture (post-run 127/104) = g1x Startpunkt. Skript-Disaster: evidence/**-Files fehlten nach Recovery (Index vs Platte) -> checkout -- evidence/ docs/ zurueck; Watcher Pid 1776121 neu. Pointer-Sends manuell (dispatch rc=4).
 - 01:5xZ b2 DONE (board cd4dbbe, clean). d1/flash read-only #1125-CI-Dossier (F2-Realitaet) dispatched.
+- 02:1xZ Owner-Corrective (publisher card 'Required correction', 3 Wiring-Fehler F1a-c) als BINDING ADDENDUM an g1x (aktueller Owner der W2-Dateien) zugestellt; g2x-Files ausgenommen.
