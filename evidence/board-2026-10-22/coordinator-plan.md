@@ -363,3 +363,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:3xZ w4b3 DONE-PR 1131 (evidence 3dcc58c7 pushed, Dossier OK) rotiert. Warten: w4a, w4c.
 - 09:4xZ w4c DONE #1132 (418acbfd) rotiert. WAVE4=3 Pakete bereit (88a2f15a, 3dcc58c7, 418acbfd). naechster Schritt: v3.6-Staging wenn w4a final ist.
 - 09:5xZ Tick: w4a auf 88a2f15a stabil (>20min) -> checkpoint-push Nudge; rv4 deckt #1131/#1132-Review ab (Reminder beantwortet). p1/rv4 busy ok.
+- 10:0xZ p1 DONE (5 Gap-Punkte, 2 Owner-Aktionen: Token+dispatch; Dossier board-2026-10-27/p1-pilot-prereq.md) rotiert. d3 flash: merge-tree v36-Prognose ueber 3 w4-Tips.
