@@ -387,3 +387,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:4xZ R4 publiziert 66ed4a4, codex rotiert. Nach w5-END: EINZE Integration-Lane (alle Rest-F-Blocks als Sammelrezept), dann R5. Poolbegruendung: w5-Schreibsatz = scripts+workflows.
 - 13:5xZ w5 DONE pushed cdddf21d (96d87064 suites-align + evidence), PR-Check laeuft, rotiert. R4-copy in Root fuer Sammelrezept.
 - 14:0xZ w5 = PR #1135 (cdddf21d) fertig rotiert. NEUE STRATEGIE: r5i = SAMMEL-Lane fuer alle R4-Restblocks (kein 3er-Wave mehr) + stg4 v3.7-Staging parallel (andere Branch, disjunkt).
+- 14:1xZ Tick: stg4/r5i booten (Tip noch <8min), b4/flash Card-Refresh R4 + v37/#1135 gesellt (Grundregel 3).
