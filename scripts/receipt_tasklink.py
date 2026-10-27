@@ -213,12 +213,12 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
         if _api is None:
             _api = _gh_api
         resolved = resolve_task_from_pr(pr_number, planning_root, _api)
-        require(isinstance(task, str) and TASK_RE.fullmatch(task),
-                "resolved task must match tasks/[a-z0-9-]+\\.md")
         # If caller-supplied task differs from resolved, the caller
         # is not using the trusted PR->task binding.
         # We proceed with the resolved task — that's the evidence link.
         task = resolved
+        require(isinstance(task, str) and TASK_RE.fullmatch(task),
+                "resolved task must match tasks/[a-z0-9-]+\\.md")
         print(f"tasklink: auto-resolved task from PR #{pr_number}: {task}",
               flush=True)
     else:
