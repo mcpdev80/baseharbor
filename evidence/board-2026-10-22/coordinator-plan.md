@@ -647,3 +647,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:4xZ Owner-Auftrag: ci-wait.sh <run-id> gebaut (reiner HTTP-Run-Check -> events.log Weckzeile), Selbsttest ok, laeuft fuer #1175 CI (40772952370).
 - 21:5xZ ROOTCAUSE Wake: events.log erwartet Epoch-Praefix (log_queue-Format); meine Datum-Zeilen waren 'preserved-malformed' -> Zaehler blind. ci-wait auf date +%s umgestellt, 23 Altzeilen entfernt.
 - 22:2xZ Fix A PR created (Desk: injiziert OK / ohne rot, echte API 40774441060 attempt=1). Contract-Test-Note folgt ins Dossier.
+- 22:3xZ #1177 (Fix A) PR + watcher auf run 40775930748.
