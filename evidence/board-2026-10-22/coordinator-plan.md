@@ -481,3 +481,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:2xZ OWNER STOP: alle Lanes gestoppt/rotiert (cmx5 entfernt), NICHTS laeuft; develop+PR unveraendert; keine Wiederaufnahme ohne neue Freigabe.
 - 12:4xZ Owner-Handreichung: Ruleset 25223521 'develop - required checks' (Disable- oder Bypass-Admin-Pfad erklaert). Stop weiterhin aktiv bis neues GO.
 - 13:0xZ Tick unter STOP: acks, keine Aktionen (Owner-Stop vorrangig).
+- 13:1xZ MERGE-BESTAETIGT: develop de568356 (#1142 squash, 2 Files, Owner-GUI-Merge). Bootstrap auf develop, Klasse-B-Loch laut mx1-Diagnose jetzt gestopft.
