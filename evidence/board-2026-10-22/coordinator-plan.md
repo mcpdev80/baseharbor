@@ -598,3 +598,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:5xZ Owner um Bypass 'Repository admin' im mandatory-checks-Ruleset gebeten (Register-Lawine als Umweg verworfen; qpp/reg1 Missionen gestoppt, nichts davon gemergt).
 - 17:5xZ-18:0xZ DURCHGEZOGEN (Owner-Override, rules aus): #1147 Q' admin-merged (dev b53632aa, H-Inhalt in develop), #1150 register-unpoison merged (dev 109ada8d, 2x40-Blocker dropped), #1138 closed-as-superseded (Payload==develop). Abweichung vom Ein-Kandidaten-PR dokumentiert: Kette endet auf develop. NOCH AUSSTEHEND: R7-Verdict (CODEX auf develop@109ada8d) + ShadowRun + Owner soll Rules re-activaten.
 - 18:1xZ codex-r27v8 (R7) dispatched auf develop@109ada8d.
+- 18:3xZ Owner-Direktive: Kandidaten-PR auf 4f0ce579 geoeffnet. Steps: CI-gruen-Zeuge -> Pin-Commit -> Kann-jeder-Check -> ShadowRun -> 3 Negativtests. Deadline 23:35Z.
