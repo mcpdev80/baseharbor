@@ -555,3 +555,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 08:4xZ qx-Worktree leer, q4 Deadline+Konkretheit.
 - 08:5xZ q4 30min ohne Artefakt — Plan B: Coord-Transport gem. Rezept (dokumentiert).
 - 09:0xZ q5-spec.md geschrieben (Muster #1091), q5/ornith dispatched (2-File-Write-Set, SPEC-punktweise).
+- 09:2xZ Tick: q5 busy 0 Commits (15min).
