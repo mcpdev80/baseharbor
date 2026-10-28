@@ -438,3 +438,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:3xZ rv7c rotiert (Doppel-Review-Verletzung durch meinen Fehler beim Prune-Check). rv8 ist offizieller #1142-Reviewer.
 - 22:5xZ rv8 ACCEPT ueberprueft (K1 scope ok, K2 help_rc=0+unittest OK, K4 Commit-Titel=registry nur). nt1 committed. cmx/flash merge #1142 -> develop dispatched.
 - 23:2xZ cmx/flash DEAD (2x accepted, 0 Aktionen) rotiert -> cmx2/qwen mit erstem Befehl=merge.
+- 23:4xZ cmx2/qwen tote Zustellung (Banner-Idle, 0 Aktionen, wie cmx/flash) -> cmx3/ornith.
