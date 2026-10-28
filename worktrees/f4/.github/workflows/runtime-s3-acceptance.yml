@@ -1,0 +1,293 @@
+name: runtime-s3-acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: develop
+permissions:
+  contents: read
+
+jobs:
+  runtime-s3:
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    env:
+      BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:runtime-s3-acceptance
+    steps:
+      - name: Checkout requested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build BaseHarbor
+        run: |
+          set -euo pipefail
+          go build -o /tmp/baha ./cmd/baha
+          docker build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" -f deploy/control-plane/Dockerfile .
+
+      - name: Verify real runtime S3 provisioning
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workdir="$(mktemp -d)"
+          export XDG_CONFIG_HOME="$workdir/xdg-config"
+          export XDG_DATA_HOME="$workdir/xdg-data"
+          export BASEHARBOR_TARGET=ci
+          recovery="$workdir/openbao-recovery.json"
+          /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
+
+          cleanup() {
+            status=$?
+            trap - EXIT
+            set +e
+
+            if [ "$status" -ne 0 ]; then
+              echo "=== runtime acceptance diagnostics ==="
+              docker ps -a
+
+              for id in $(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci); do
+                echo "=== runtime executor logs: $id ==="
+                docker logs "$id"
+              done
+
+              for id in $(docker ps -aq --filter label=com.docker.compose.service=broker); do
+                echo "=== runtime broker logs: $id ==="
+                docker logs "$id"
+              done
+            fi
+
+            docker ps -q | xargs -r docker unpause >/dev/null 2>&1
+            cd "$workdir" >/dev/null 2>&1 || true
+            /tmp/baha destroy --yes >/dev/null 2>&1 || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
+          /tmp/baha openbao bootstrap --recovery-file "$recovery"
+          /tmp/baha openbao status | grep -q "AppRole login succeeded"
+
+          mkdir -p "$workdir/app-a"
+          cd "$workdir/app-a"
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: runtime-s3-a
+            environment: dev
+          workload:
+            compose: compose.yaml
+            services:
+              - api
+          runtime:
+            permissions:
+              - capability: object-storage.s3/v1
+                services:
+                  - api
+                operations:
+                  - runtime.create
+                  - runtime.get
+                  - runtime.delete
+          EOF
+          cat > compose.yaml <<'EOF'
+          services:
+            api:
+              image: curlimages/curl:8.16.0
+              entrypoint: ["sh", "-c"]
+              command: ["sleep 3600"]
+          EOF
+
+          /tmp/baha app apply | tee /tmp/runtime-s3-a-apply.out
+          grep -q "application and requested infrastructure verified" /tmp/runtime-s3-a-apply.out
+
+          app_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-ci-runtime-s3-a-dev --filter label=com.docker.compose.service=api)"
+          broker_a="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-ci-runtime-s3-a-dev --filter label=com.docker.compose.service=broker)"
+          executor="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci --filter label=com.docker.compose.service=executor)"
+          test -n "$app_a"
+          test -n "$broker_a"
+          test -n "$executor"
+
+          call_a() {
+            docker exec "$app_a" sh -ec '
+              token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
+              curl --fail-with-body --silent --show-error --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token" "$@"
+            ' sh "$@"
+          }
+
+          docker pause "$executor" >/dev/null
+
+          create="$(call_a             -H 'Content-Type: application/json'             -H 'Idempotency-Key: runtime-s3-create-1'             -X POST             --data '{"capability":"object-storage.s3/v1","name":"runtime-assets"}'             https://baseharbor-runtime:8443/runtime/v1/resources)"
+          printf '%s\n' "$create"
+          printf '%s' "$create" | grep -q '"state":"pending"'
+          operation_id="$(printf '%s' "$create" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+          test -n "$operation_id"
+
+          running_seen=false
+          for _ in $(seq 1 30); do
+            state="$(call_a "https://baseharbor-runtime:8443/runtime/v1/operations/$operation_id")"
+            if printf '%s' "$state" | grep -q '"state":"running"'; then
+              running_seen=true
+              break
+            fi
+            sleep 0.2
+          done
+          test "$running_seen" = true
+
+          docker restart "$broker_a" >/dev/null
+          docker unpause "$executor" >/dev/null
+
+          resource_id=""
+          for _ in $(seq 1 60); do
+            set +e
+            state="$(call_a "https://baseharbor-runtime:8443/runtime/v1/operations/$operation_id" 2>/dev/null)"
+            rc=$?
+            set -e
+            if [ "$rc" -eq 0 ] && printf '%s' "$state" | grep -q '"state":"succeeded"'; then
+              resource_id="$(printf '%s' "$state" | sed -n 's/.*"resource_id":"\([^"]*\)".*/\1/p')"
+              break
+            fi
+            sleep 0.5
+          done
+          test -n "$resource_id"
+
+          replay="$(call_a             -H 'Content-Type: application/json'             -H 'Idempotency-Key: runtime-s3-create-1'             -X POST             --data '{"capability":"object-storage.s3/v1","name":"runtime-assets"}'             https://baseharbor-runtime:8443/runtime/v1/resources)"
+          replay_id="$(printf '%s' "$replay" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+          test "$replay_id" = "$operation_id"
+
+          resource="$(call_a "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          printf '%s' "$resource" | grep -q '"state":"ready"'
+
+          binding="$(call_a "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id/binding")"
+          endpoint="$(printf '%s' "$binding" | sed -n 's/.*"endpoint":"\([^"]*\)".*/\1/p')"
+          bucket="$(printf '%s' "$binding" | sed -n 's/.*"bucket":"\([^"]*\)".*/\1/p')"
+          access="$(printf '%s' "$binding" | sed -n 's/.*"access_key_id":"\([^"]*\)".*/\1/p')"
+          secret="$(printf '%s' "$binding" | sed -n 's/.*"secret_access_key":"\([^"]*\)".*/\1/p')"
+          test -n "$endpoint"
+          test -n "$bucket"
+          test -n "$access"
+          test -n "$secret"
+
+          docker exec             -e S3_ENDPOINT="$endpoint"             -e S3_BUCKET="$bucket"             -e S3_ACCESS="$access"             -e S3_SECRET="$secret"             "$app_a" sh -ec '
+              printf "%s" "runtime-s3-acceptance" >/tmp/probe
+              curl --fail --silent --show-error                 --aws-sigv4 "aws:amz:us-east-1:s3"                 --user "$S3_ACCESS:$S3_SECRET"                 --upload-file /tmp/probe                 "$S3_ENDPOINT/$S3_BUCKET/runtime-probe"
+              got="$(curl --fail --silent --show-error                 --aws-sigv4 "aws:amz:us-east-1:s3"                 --user "$S3_ACCESS:$S3_SECRET"                 "$S3_ENDPOINT/$S3_BUCKET/runtime-probe")"
+              test "$got" = "runtime-s3-acceptance"
+            '
+
+          provider_dir="$XDG_DATA_HOME/baseharbor/targets/ci/providers/seaweedfs"
+          listed="$(printf 's3.bucket.list\n' | docker compose             --project-name baseharbor-object-storage-ci             --file "$provider_dir/compose.yaml"             --env-file "$provider_dir/runtime.env"             exec -T seaweedfs weed shell)"
+          test "$(printf '%s\n' "$listed" | grep -c "$bucket")" -eq 1
+
+          mkdir -p "$workdir/app-b"
+          cd "$workdir/app-b"
+          cat > baseharbor.yaml <<'EOF'
+          version: 1
+          app:
+            name: runtime-s3-b
+            environment: dev
+          workload:
+            compose: compose.yaml
+            services:
+              - api
+          runtime:
+            permissions:
+              - capability: object-storage.s3/v1
+                services:
+                  - api
+                operations:
+                  - runtime.create
+                  - runtime.get
+                  - runtime.delete
+          EOF
+          cat > compose.yaml <<'EOF'
+          services:
+            api:
+              image: curlimages/curl:8.16.0
+              entrypoint: ["sh", "-c"]
+              command: ["sleep 3600"]
+          EOF
+
+          /tmp/baha app apply | tee /tmp/runtime-s3-b-apply.out
+          app_b="$(docker ps -q --filter label=com.docker.compose.project=baseharbor-workload-ci-runtime-s3-b-dev --filter label=com.docker.compose.service=api)"
+          test -n "$app_b"
+
+          runtime_call_b() {
+            output="$1"
+            shift
+            set +e
+            status="$(docker exec "$app_b" sh -ec '
+              output="$1"
+              shift
+              token="$(cat "$BASEHARBOR_RUNTIME_TOKEN_FILE")"
+              curl --silent --show-error --output "$output" --write-out "%{http_code}"                 --cacert "$BASEHARBOR_RUNTIME_CA_FILE"                 --cert "$BASEHARBOR_RUNTIME_CLIENT_CERT_FILE"                 --key "$BASEHARBOR_RUNTIME_CLIENT_KEY_FILE"                 -H "Authorization: Bearer $token"                 "$@"
+            ' sh "$output" "$@")"
+            rc=$?
+            set -e
+            printf 'status=%s rc=%s body=' "$status" "$rc" >&2
+            docker exec "$app_b" cat "$output" >&2 2>/dev/null || true
+            printf '\n' >&2
+            test "$rc" -eq 0
+            printf '%s' "$status"
+          }
+
+          echo "=== app-b broker reachability ==="
+          ready_status="$(runtime_call_b /tmp/ready.out https://baseharbor-runtime:8443/readyz)"
+          printf 'ready_status=%s\n' "$ready_status"
+          test "$ready_status" = "200"
+
+          echo "=== cross-app GET ==="
+          cross_status="$(runtime_call_b /tmp/cross.out "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          printf 'cross_status=%s\n' "$cross_status"
+          test "$cross_status" = "404"
+
+          echo "=== cross-app binding ==="
+          cross_binding_status="$(runtime_call_b /tmp/cross-binding.out "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id/binding")"
+          printf 'cross_binding_status=%s\n' "$cross_binding_status"
+          test "$cross_binding_status" = "404"
+
+          echo "=== cross-app delete ==="
+          cross_delete_status="$(runtime_call_b /tmp/cross-delete.out             -H "Idempotency-Key: cross-app-delete"             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          printf 'cross_delete_status=%s\n' "$cross_delete_status"
+          test "$cross_delete_status" = "404"
+
+          cd "$workdir/app-a"
+          docker exec             -e S3_ENDPOINT="$endpoint"             -e S3_BUCKET="$bucket"             -e S3_ACCESS="$access"             -e S3_SECRET="$secret"             "$app_a" sh -ec '
+              curl --fail --silent --show-error                 --aws-sigv4 "aws:amz:us-east-1:s3"                 --user "$S3_ACCESS:$S3_SECRET"                 -X DELETE                 "$S3_ENDPOINT/$S3_BUCKET/runtime-probe"
+            '
+
+          delete="$(call_a             -H 'Idempotency-Key: runtime-s3-delete-1'             -X DELETE             "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id")"
+          delete_operation="$(printf '%s' "$delete" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
+          test -n "$delete_operation"
+
+          deleted=false
+          for _ in $(seq 1 60); do
+            state="$(call_a "https://baseharbor-runtime:8443/runtime/v1/operations/$delete_operation")"
+            if printf '%s' "$state" | grep -q '"state":"succeeded"'; then
+              deleted=true
+              break
+            fi
+            sleep 0.5
+          done
+          test "$deleted" = true
+
+          set +e
+          call_a "https://baseharbor-runtime:8443/runtime/v1/resources/$resource_id" >/tmp/deleted-resource.out 2>&1
+          deleted_rc=$?
+          set -e
+          test "$deleted_rc" -ne 0
+
+          /tmp/baha app destroy --yes
+          cd "$workdir/app-b"
+          /tmp/baha app destroy --yes
+          cd "$workdir"
+          /tmp/baha destroy --yes
+
+          test -z "$(docker ps -aq --filter label=com.docker.compose.project=baseharbor-runtime-executor-ci)"
+          test ! -e "$XDG_DATA_HOME/baseharbor/targets/ci/runtime-executor"

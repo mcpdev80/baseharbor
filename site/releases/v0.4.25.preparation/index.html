@@ -1,0 +1,4632 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Secure, modular, self-hosted backend infrastructure for independent applications.">
+      
+      
+      
+        <link rel="canonical" href="https://mcpdev80.github.io/baseharbor/releases/v0.4.25.preparation/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="/baseharbor/" hreflang="en">
+        
+          <link rel="alternate" href="/baseharbor/de/" hreflang="de">
+        
+      
+      
+      <link rel="icon" href="../../brand/baseharbor.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>v0.4.25 preparation evidence checkpoint - BaseHarbor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../brand/brand-tokens.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/baseharbor-docs.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#v0425-preparation-evidence-checkpoint" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="BaseHarbor" class="md-header__button md-logo" aria-label="BaseHarbor" data-md-component="logo">
+      
+  <img src="../../brand/baseharbor-master-lockup.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            BaseHarbor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              v0.4.25 preparation evidence checkpoint
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/baseharbor/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="/baseharbor/de/" hreflang="de" class="md-select__link">
+              Deutsch
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mcpdev80/baseharbor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mcpdev80/baseharbor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="BaseHarbor" class="md-nav__button md-logo" aria-label="BaseHarbor" data-md-component="logo">
+      
+  <img src="../../brand/baseharbor-master-lockup.png" alt="logo">
+
+    </a>
+    BaseHarbor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mcpdev80/baseharbor" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mcpdev80/baseharbor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting Started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    First application
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/homelab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Homelab
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/core-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core resources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI orientation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/human-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Human CLI workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Applications
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Applications
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/application-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/applications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/application-needs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Create and edit needs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/environments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environments
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup & restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/dynamic-application-secrets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamic application secrets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Targets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Targets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/targets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Target concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/targets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Target commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/developer-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer access
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Providers
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Providers
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/external-providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    External / BYO providers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/postgres/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PostgreSQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/durable-key-value/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Durable key-value
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/document-database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Document database
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/object-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/secrets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secrets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workspaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace & development commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Stacks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development Stacks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/backstage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backstage integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization / Platform Configuration
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Organization / Platform Configuration
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/organization-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts & distribution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/organization-resolution-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution & independent policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/organization-policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organization & policy commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security / Trust
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security / Trust
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/security-trust/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security & trust commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/extension-artifact-trust-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extension artifact trust
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Operations
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Operations
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation / Agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Automation / Agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/automation-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP / agent interface
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli-machine-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI / machine coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/machine-operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine operation recipes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/machine-interface-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine Interface v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/machine-http-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protected Machine HTTP v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/runtime-explorer-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Explorer v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/public-contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public contracts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/platform-support/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platform support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/command-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complete command index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/global-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Global options
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/shell-ux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shell & UX
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/manifest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manifest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/application-secret-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application secret API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/authentication-and-api-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentication & API errors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup & restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/postgresql-and-migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PostgreSQL & migrations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compose runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-resource-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Resource API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-secret-broker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime secret broker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/secrets-and-openbao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secrets & OpenBao
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/runtime-provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/runtime-provider-conformance-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Provider Conformance v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/provider-conformance-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public provider conformance v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/delivery-provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivery Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    System architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/workload-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workload sources
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Developer
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../DEVELOPMENT_GUIDELINES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development guidelines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../STYLE_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Documentation style
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/v0.4.23-release-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release requirements
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/pre-release-readiness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-release readiness
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_14_7" id="__nav_14_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Specifications
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_14_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Specifications
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/application-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/development-extension-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Extension v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/reconciliation-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/machine-interface-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine Interface v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/machine-http-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protected Machine HTTP v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/runtime-explorer-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Explorer v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/audit-evidence-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit & Evidence v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/security-invariants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security invariants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/input-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/control-plane-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Control-plane runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/application-runtime-broker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Runtime Broker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/application-runtime-identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application runtime identity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/runtime-secret-broker-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime broker security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/standards-first/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards-first contracts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../spec/standards-matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#final-release-integration-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final release integration — 15 October
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Final release integration — 15 October">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#narrow-follow-up-repairs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Narrow follow-up repairs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#current-repair-qualification-14-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Current repair qualification — 14 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repair-retry-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Repair retry — 15 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-retirement-retry-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Recovery retirement retry — 15 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shared-provider-convergence-retry-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Shared-provider convergence retry — 15 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retired-metrics-route-retry-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retired metrics route retry — 15 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#required-metrics-startup-guard-15-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required metrics startup guard — 15 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closure-boundary-on-14-october" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closure boundary on 14 October
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#last-authenticated-diagnostic-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Last authenticated diagnostic matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#local-source-qualification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local source qualification
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#independently-verified-native-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Independently verified native results
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#final-acceptance-still-required" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Final acceptance still required
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="v0425-preparation-evidence-checkpoint">v0.4.25 preparation evidence checkpoint</h1>
+<p>Recorded 2026-10-15. <strong>Not pre-release-ready.</strong> This checkpoint preserves
+bounded preparation evidence; it is not complete pre-release approval or a
+final immutable ecosystem matrix. Development integration is complete; main
+promotion, tagging, release and production Pages publication remain open.</p>
+<h2 id="final-release-integration-15-october">Final release integration — 15 October</h2>
+<p>The user now authorizes development integration and release promotion; tag
+creation remains with the user. PR #881 is merged into the release branch, then
+PR #905 integrates that exact product tree into develop. The development commit
+is 84183b99194ba179101ba65dc663877e797ad97e; its tree is identical to tested
+Core ba664d398f65b9aa47882556bd27f9412cc0773d. Existing published commits remain
+on the release branch. Main and the previous development baseline have identical
+trees despite their divergent squash history; promotion must preserve the tested
+snapshot and main's existing history.</p>
+<p>Docker <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38715423224">38715423224</a>
+and Podman <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38719385981">38719385981</a>
+pass real backup, archive restoration, original Identity/authored source/secret
+delivery and actual fixture cleanup. Both Coreless gates and both full reference
+Journeys pass in <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38723551348">38723551348</a>.
+Both Coreless manifests contain ten executed native checks. Original ZIP digests
+and exact source/run/attempt bindings are independently verified. These six proofs
+were verified reuse origins before the follow-up repairs below; they do not
+constitute complete release approval for the repaired source.</p>
+<p>The twenty earlier origins remain historical, with their outcomes unchanged:
+38575480235, 38578200173, 38581635648, 38592039003, 38594100537,
+38603519414, 38603766182, 38607415566, 38619239165, 38634676648,
+38642797305, 38644896400, 38650783203, 38652359801, 38656694532,
+38663203019, 38667644345, 38702898144, 38708284306 and 38712377373.
+All-attempt job pagination and the unchanged execution-copy filter show 59
+historical latest-green gates and six latest-red gates before these repairs.
+All six reds now pass. The unchanged input verifier finds no unchanged inputs
+among those 59 older green gates; this is not a claim those tests failed.
+The earlier one-of-65 display counted only a single supplied new origin and
+was not overall project progress.</p>
+<p>Freeze the final acyclic consumer bindings, qualify their actual joint runtime,
+and collect the remaining required gates with these compatible origins. The
+release workflow requires authenticated complete coverage and release-approved.json
+before tag publication. No approval is inferred from selected or skipped jobs.</p>
+<h3 id="narrow-follow-up-repairs">Narrow follow-up repairs</h3>
+<p>The Podman metrics workload fixture now uses the selected runtime for both
+creation and removal, with a fully qualified image. The Podman-only metrics
+retry <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38735449034">38735449034</a>
+passes actual two-application metric reads over verified mTLS and refuses
+missing client identity. Its original ZIP SHA256 is
+<code>17c45ae7fa58337c4389d12ac49c3f35d8ed4523f9dce9bb6ba84d449b8ac65f</code>.</p>
+<p>The diagnostic Podman browser/Connector retry
+<a href="https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/38734970207">38734970207</a>
+passes the complete native journey and owned cleanup, including fresh-context
+login, token expiry, production rotation, terminal and logs. Authentication
+code, timeouts and security assertions are unchanged. This successful retry
+does not establish the cause of the preceding login timeout. Its authenticated
+source-bound manifest ZIP SHA256 is
+<code>6bcc6abe880f05c64cf95f01af6d6ba56bc3e09c0d9a0d82f7f74f7fd6f0c9d1</code>.</p>
+<p>The earlier backend-placement run
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38733194372">38733194372</a>
+fails on both engines after successful SQL placement round trips: subsequent
+last-shared-consumer withdrawal cannot verify the retained application runtime.
+The regression reproduces locally for PostgreSQL and Valkey. Core
+<code>c3ca8d9e2500d55f2a680d68b99fc9b3e197a1df</code> preserves the original intent and
+placement in the existing bounded protected owner history. Current ownership,
+canonical-file, consent and separate data-deletion checks remain unchanged.
+CLI package tests, affected race tests, vet and readability pass. Only the
+affected Docker/Podman placement qualification is repeated in
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38737266443">38737266443</a>.
+Both engines pass all PostgreSQL/Valkey placement round trips, last-consumer
+withdrawal and re-add with original authenticated data and credentials retained.
+Actual fixture cleanup passes. Original ZIP SHA256 values are
+<code>8fc3fc04d4601ef7a9d2f807131aedb1da9cd8adf6b6850777c1d9604887f8a3</code>
+(Docker) and
+<code>41976969527f32e8f79e7425dd12dd3b3c767726ca936603714ff769b308e987</code>
+(Podman).</p>
+<p>These repairs change execution inputs. The unchanged release input verifier
+finds 65 changed fingerprints against the prior Core <code>4d9d847f</code>; earlier green
+results remain historical rather than current release approval. Final consumer
+pins and authenticated complete release coverage still require reconciliation.</p>
+<h2 id="current-repair-qualification-14-october">Current repair qualification — 14 October</h2>
+<p>One leading session now owns both previous work packages. The earlier closure
+boundary below is historical; targeted repairs and qualification have resumed.
+No complete pre-release approval, merge, tag or publication is authorized.</p>
+<p>The projection repair is published as Core <code>e68c6f43bea698f2446c5f62b9380ec6c8c8e456</code>.
+It preserves independently managed Identity CA, credential and discovery material
+and the directory mounted by running workloads. Redirected, foreign-owned or
+externally writable projection directories fail before backend cleanup.
+Original issuer, TLS, secret and consequence-consent checks remain in effect.
+The preservation regression fails on <code>be982079</code> and passes with the repair;
+local package tests, affected race tests, vet and source readability pass.</p>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38642797305">Targeted run 38642797305</a>
+passes Source and Runtime Image. Its downloaded, SHA256-verified scheduling
+artifact <code>11931512996</code> selects exactly Docker/Podman Identity and Security.
+All four native gates and cleanup pass. Original ZIP hashes, exact manifests
+and completed consumer logs are verified; this remains four scoped proofs. The
+unchanged verifier proves all 65 fingerprints differ from the preceding source;
+old greens remain historical until current compatible evidence is verified.</p>
+<p>Both earlier Journeys on <code>be982079</code> / Demo <code>d58ccab0</code> fail Identity, Security
+and the recovery gate; their other 14 groups and cleanup pass. The original
+missing receiver file is <code>/run/baseharbor/service-bindings/identity/ca.crt</code>.
+Recovery fails during the first recovery <code>up</code>, before archive creation or restore:
+Docker reports gateway route timeouts; Podman reports HTTP 502. <code>backup.pass</code>
+is the password file, not a successful backup receipt. Gateway cause and actual
+backup/restore acceptance remain open. Original failure artifacts are retained.
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38644896400">Journey retry 38644896400</a>
+selects only the two failed Journeys on the unchanged repaired product matrix.
+Both Journeys now pass 16 of 17 groups, including Identity and Security;
+cleanup succeeds. The first recovery start still reports HTTP 502 before backup
+or restore. Original ZIP <code>11933507233</code>, SHA256
+<code>05419eb839a3878cef393e20a6ff51c910e49134fbe96e2d09a7c3bfe18cb1a8</code>,
+has the exact repaired source bindings and a failure outcome. Failure-time
+diagnostics are being retained before a later full-destroy can remove them.
+The Podman original ZIP is <code>11933597851</code>, SHA256
+<code>037add8396e358e5b6f3b5f5c938057aba72699b953a06a323a5c89202fa0b9c</code>;
+its sole failed group and first-up HTTP 502 match Docker. Both failed manifests
+are correctly rejected by the unchanged reuse verifier.</p>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38652359801">Targeted recovery run 38652359801</a>
+passes Source and Runtime Image on Core <code>d07e94f3</code> / Demo <code>495fc8ba</code>.
+Both recovery gates reproduce HTTP 502 before backup; cleanup succeeds.
+The completed Docker and Podman gateway logs identify stale shared pgAdmin and
+cache UI routes whose upstream services are absent after the acknowledged
+all-management-UI to recovery transition. Docker diagnostic ZIP <code>11935928931</code>,
+SHA256 <code>d99190cb178437849c4c2c86435e18e2a5fcb5487b05120cccd27bf5d7cbf39a</code>,
+is downloaded and verified. The narrow correction retires those route owners
+only when the protected canonical shared backend inventory no longer contains
+the corresponding UI service. Active sibling consumers retain their routes;
+missing, modified or symlinked provider owners and mismatched route authority
+remain errors. TLS and consent are unchanged. Native verification of this
+correction and actual archive/restore acceptance remain pending.</p>
+<p>The pending source repair selects Go 1.26.9 through the existing setup-go
+toolchain contract. The language floor remains Go 1.25. Source vulnerability
+analysis with govulncheck v1.8.0 reports zero symbol-reachable advisories on the
+patched toolchain; module-only x/crypto findings remain classified, not erased.
+A new opt-in native OTLP handoff fixture requires actual Protobuf acceptance
+from the workload by an independently owned mTLS receiver, current-plan negative
+consent cases, unchanged protected material and managed return. Its local DNS
+plumbing and producer checks pass; native Docker/Podman acceptance is pending.
+The first retry <code>38650783203</code> stops in evidence selection before any native job:
+new origin IDs were incorrectly appended after the JSON array. The correction
+retains all origins in that array; the strict collector remains unchanged.
+The OTLP authored fixture also now uses canonical block components and signals.
+A failing-before/passing-after regression exercises the exact source-only
+initialization, generated identity and unchanged authored intent. No native
+handoff result is claimed for the preceding fixture.</p>
+<p>Both Coreless jobs in that run retain seven passing native checks, then fail the
+new OTLP fixture before application initialization. Original Docker ZIP
+<code>11936411749</code> (SHA256 <code>3813ca8bc23163419a4fbeb4fccf04cbb184c08cdccea22650fd9dbe5313ef95</code>)
+and Podman ZIP <code>11936264356</code> (SHA256
+<code>742e65f50aab94427372d88168d71417d7c27ad4810d6a67fe9999c8765b840c</code>)
+are downloaded and verified. The exact local Python/mTLS readiness regression
+reveals that the fixture's bare credential path violates the existing resource
+URI contract. Using <code>file://</code> passes that same test; registration now validates
+before native fixture startup and readiness retains its last diagnostic.
+The production credential/trust validator is unchanged. Overall Coreless and
+actual managed/registered/managed native consumer acceptance remain open.</p>
+<h2 id="repair-retry-15-october">Repair retry — 15 October</h2>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38656694532">Run 38656694532</a>
+on Core <code>1efb0baf</code> / Demo <code>48c746e1</code> passes Source with actual Go 1.26.9 and
+Runtime Image. Both Backup gates now pass canonical routes on initial and
+repeated recovery starts, qualifying the preceding scoped gateway correction.
+They subsequently fail with <code>ownership_ambiguous</code> during consumer inventory,
+before archive creation or restore. Both cleanup results pass. Original diagnostic
+ZIPs <code>11937184505</code> (Docker, SHA256
+<code>d1b1676ea11dcb536c09d4183c38cef70facbe7f022d56eaf73629da27a6ef95</code>)
+and <code>11938705346</code> (Podman, SHA256
+<code>e911e42adf8b5954988dbb4b806dd85b4172ba07fff328bef759fa7088490137</code>)
+are downloaded, hashed and exact-source checked. The upload previously omitted
+protected failure-time diagnostics; it now preserves them alongside bounded,
+redacted read-only plan/status output. A public allowlisted inventory-stage code
+exposes no private cause or secret/native output. The Backup cause remains open.</p>
+<p>Both Coreless jobs reach receiver mTLS readiness and actual workload export,
+then fail the new managed-to-registered OTLP transition. Original Docker ZIP
+<code>11938452628</code>, SHA256
+<code>fe0a3f93741408d26be901a6b8a4601231e9357d9fa82de469f590be24afef13</code>,
+and Podman ZIP <code>11938472075</code>, SHA256
+<code>485f296504005438b914dcf4b986e573532186c49694cd7561f6664c0eff4168</code>,
+are downloaded and verified. Missing success manifests remain failures.
+An authoritative external reference with a known local dependency boundary
+incorrectly made the common consumer union incomplete. The narrow correction
+keeps external physical state and quantities unknown and always preserves the
+foreign provider, while allowing verified own unused modules to retire.
+Unknown own ownership, missing external facts/dependencies and incomplete
+consumer inventory still prohibit retirement. The valid regression fails on
+published <code>1efb0baf</code> and passes with the correction; full Go tests/vet and affected
+application/CLI races pass. A separate opt-in two-engine native gate checks this
+handoff without repeating preceding Coreless checks. Full Coreless acceptance
+and actual Backup/Restore remain pending; only Backup's two red gates are selected
+for the next recovery diagnostic. All earlier origins and failed attempts remain
+preserved. No final matrix, complete pre-release approval or promotion is claimed.</p>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38662903797">Focused native OTLP run 38662903797</a>
+on Core <code>38cd9fa6</code> confirms the repaired common union is complete on both engines,
+but still fails apply: managed Tempo preflight runs despite the selected external
+OTLP transport. The corrected orchestration follows that transport for managed
+storage, issuer requirements, retained trace-backend preparation and topology
+observations. Authored trace signals, external TLS/material checks and managed
+return remain mandatory. The exact valid registered-source regression reproduces
+the native Tempo error before the correction and passes afterward. No foreign
+trace storage or query adapter is invented. The small native workflow initially
+used Go 1.25 with automatic toolchain selection disabled; it now explicitly uses
+and asserts Go 1.26.9. Original failed Docker ZIP <code>11939373778</code>, SHA256
+<code>516489e8c51d815462eb500ef995f11020da2aa4089e494fca8d259481b928f0</code>,
+and Podman ZIP <code>11939897227</code>, SHA256
+<code>be5fb139b1fdfd49361e9ba98dcb96a4b2ceec53be060bfcfcd3cdc3ea5be7b4</code>,
+are downloaded, hashed and exact source/tree/outcome checked. The complete native
+handoff, Backup/Restore and final ecosystem qualification remain pending.</p>
+<p>Native Docker handoff passes on Core <code>71514123</code>, run
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38663951349">38663951349</a>,
+original ZIP <code>11939583855</code>, SHA256
+<code>cd4226058b1ced090810ef49a801eecd05eaebd5537178f542e7a756eedf8e57</code>.
+Podman initially fails actual registered-workload export. A bounded secret-free
+consumer diagnostic identifies DNS <code>gaierror</code>, original ZIP <code>11939574692</code>, SHA256
+<code>129fd98ffd0d383aed754063c87468d99ab9772b4d2590fbb27ba194dfa2e2c4</code>.
+A valid source regression reproduces loss of the authored receiver network when
+Podman merges short-list and long-map Compose attachments. The narrow service-
+attachment merge preserves both connections and explicit <code>!override</code>; unrelated
+network declarations retain their validation. Full Go/vet, Podman races and CLI
+races pass. Native Podman retry on Core <code>23e6db07</code>, run
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38666054526">38666054526</a>,
+passes the complete actual managed/registered/managed handoff and owned cleanup.
+Original ZIP <code>11942165307</code>, SHA256
+<code>b46950665e50addfe3fd9bd84ad68738963409a0a3e84b5db434b901ffe8531a</code>,
+is downloaded and exact-source/tree/Go 1.26.9/no-failure/no-skip checked, including
+actual workload Protobuf, original protected PKI, current-confirmation negatives
+and foreign receiver preservation. These are bounded proofs on distinct sources,
+not the final common-matrix Coreless receipt.</p>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38663203019">Backup diagnostic 38663203019</a>
+on Core <code>38cd9fa6</code> passes Source and Image, then fails both native gates with
+<code>inventory_stage=native-backend-retirement</code>; cleanup passes. Protected failure-
+time plan/status is now actually retained. Docker ZIP <code>11940850994</code>, SHA256
+<code>9f64e9dad7a553b518cabe9592eae39f31c01a1841b7d1f250f8683f01ba41b2</code>,
+and Podman ZIP <code>11940547828</code>, SHA256
+<code>42cd4178c1f4d46a34376a02cacd76fcde8ae9d4d83b6e03d4b2c284a4c9adda</code>,
+are downloaded and verified: active consumer footprint is complete, but the
+common union preserves unverifiable Prometheus. A valid local regression first
+verifies the original canonical Prometheus definition, then reproduces its
+rejection after an independent provider withdraws its discovery source. Protected
+original renderer inputs are now retained within the existing provider owner;
+read-only inventory neither rediscovers nor rewrites them. Legacy owners still
+require an exact match with live canonical inputs. Changed definitions, redirected
+or readable private input files, foreign project/scope and ambiguous sources
+remain errors. Original runtime/authentication files remain unchanged. This is
+source qualification; actual Backup/Restore and all final-matrix gates remain
+pending. No archive or restore success is inferred from route or cleanup success.</p>
+<h2 id="recovery-retirement-retry-15-october">Recovery retirement retry — 15 October</h2>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38667644345">Run 38667644345</a>
+on Core <code>44b2f189</code> / Demo <code>731f15b9</code> passes Source and Runtime Image. Both native
+engines write the encrypted backup archive; neither proves restore. Docker then
+fails selected MongoDB retirement verification; its fixture cleanup also reports
+incomplete removal, despite the outer runtime reset succeeding. Podman reaches
+the archive after approximately 17 minutes and hits the 20-minute gate limit
+during retirement. Its interrupted cleanup is not a verified consumer result.
+Original failure ZIPs <code>11943530288</code> and <code>11943761164</code> have SHA256
+<code>ea39bce9b5951ab32aba7bdd32e7fc5ccad900693324f7c417a2c4ac2a1afa55</code>
+and <code>06b07bb112aba8d22be0275065804051a34a1e5933b7f102c6e6a10766674eb4</code>.
+Both downloaded failure manifests bind the exact matrix and remain failure.
+The scheduling artifact selects exactly the two recovery gates, defers 63 and
+sets <code>release_approved=false</code>.</p>
+<p>A local regression reproduces the owner loss: retire the original native
+backends, reactivate a smaller workload, then retire again. Replacing the latest
+retired intent discards the original backend resources while their retained
+provider offers still need physical inspection. The existing protected deployment
+record now preserves replaced retired intents and their original backend
+placements. These are recovery owners, not active consumers or another registry.
+Read-only native and broker inventory includes them; invalid, foreign and
+unbounded histories remain errors. Native absence still needs measured runtime
+inspection. TLS, material ownership and current two-stage/data-deletion consent
+are unchanged. Only the backup/restore gate receives a 40-minute runtime budget;
+other gate limits remain unchanged. Actual restore and final-matrix acceptance
+remain open until the targeted retry completes.</p>
+<h2 id="shared-provider-convergence-retry-15-october">Shared-provider convergence retry — 15 October</h2>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38702898144">Run 38702898144</a>
+on Core <code>a22120ad</code> / Demo <code>cdf66283</code> passes Source and Runtime Image with
+Go 1.26.9. Both engines write the encrypted archive and pass the previous
+MongoDB retirement point. Both then fail <code>runtime_retirement_unverified</code> for
+<code>opentelemetry-collector/shared</code>; neither reaches restore. Both fixture cleanups
+report three unresolved results and preserve state. Successful outer reset does
+not establish fixture cleanup. The exact scheduling receipt selects two gates,
+defers 63 and retains <code>release_approved=false</code>.</p>
+<p>Original Docker atomic-failure ZIP <code>11958605691</code> has SHA256
+<code>887d91fbce53dc2d58973f0f7dd2f21e78faaa4e301b6a53944ef7f5d57143ba</code>;
+Podman ZIP <code>11958069980</code> has SHA256
+<code>5e76138a04b6cbb4f65f6ae5ec07e069b358dfd79af6634b579a32f19443833d</code>.
+Both are downloaded and verified, together with both failure manifests and
+early runtime diagnostics. These remain failed evidence, not reusable greens.</p>
+<p>The early native inventory shows the retained Collector and Prometheus running
+although the current complete plan selects their retirement without a new
+binding release. A broker-only dependency start loses its control-plane-only
+selection and resumes retained shared modules. Retirement then skips those
+modules because their bindings were released earlier. Two local regressions
+reproduce both defects before correction and pass afterward. Dependency startup
+now preserves its selection through fresh and existing Core paths; explicit
+platform resume retains its behavior. Existing standalone adapters also converge
+older unbound modules in the acknowledged complete plan. Actual unreleased
+bindings, required dependencies, foreign ownership, wrong Target/protocol and
+incomplete inventory reject retirement; canonical ownership and native absence
+verification remain mandatory. Protected material and volumes are retained.
+Current consequence confirmation and independent data-deletion consent remain
+unchanged. Native restore and cleanup qualification are still pending.</p>
+<p>The existing auxiliary runtime workflow also stops pre-setting
+<code>GOTOOLCHAIN=local</code> before setup-go reads <code>go.mod</code>: the pinned setup action would
+otherwise choose the language floor instead of the preferred patched toolchain.
+It still sets local execution after installation. No release gate is removed.</p>
+<h2 id="retired-metrics-route-retry-15-october">Retired metrics route retry — 15 October</h2>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38708284306">Run 38708284306</a>
+on Core <code>3232a766</code> / Demo <code>3cb6f5a0</code> passes Source and Runtime Image with
+Go 1.26.9. Both recovery workloads become ready, but canonical gateway
+verification fails before backup or restore. Both actual fixture cleanups now
+complete. Early Caddy logs on both engines identify <code>prometheus-access</code> DNS
+failure: the unused provider is stopped while its retained <code>shared/prometheus</code>
+route still points at that absent upstream. The final timeout lists other
+hosts too; those timeout strings alone do not establish their independent cause.</p>
+<p>Original Docker diagnostic ZIP <code>11960028878</code>, SHA256
+<code>cb39c81738847be45fe0049c7fcd4f78bd644786b28ef087ce3ff0b377e0f7ef</code>,
+and Podman ZIP <code>11960726793</code>, SHA256
+<code>38f0a31ae321195d0ef12edd7e16000a3e2a1cea8013b33024b7620070936ffc</code>,
+are downloaded and verified with both original atomic-failure archives and
+exact-source failure manifests. No archive or restore success is claimed.</p>
+<p>The route correction withdraws only the shared Prometheus route selected by a
+complete current Target plan for unused owned-provider retirement. It checks
+actual bindings, required dependencies and retained canonical provider files;
+host, upstream, network, path and TLS trust authority must match exactly.
+Active sibling/management dependencies preserve their route. Restart uses the
+existing read-only retirement planner when no apply plan is present. The route
+joins the existing grouped reconciliation before normal gateway verification;
+verification, redirect authority, TLS and consequence consent are unchanged.
+The valid canonical-fixture regression first reproduces the missing withdrawal,
+then passes with negative consumer/authority cases. Native acceptance remains
+pending. The separate new-binding negative fixture initially registered while
+metrics collection was disabled; its corrected setup explicitly verifies a real
+new binding before requiring rejection. That failed fixture is not acceptance.</p>
+<h2 id="required-metrics-startup-guard-15-october">Required metrics startup guard — 15 October</h2>
+<p><a href="https://github.com/mcpdev80/baseharbor/actions/runs/38712377373">Run 38712377373</a>
+on Core <code>61c1d00a</code> / Demo <code>f0818b6c</code> passes Source and Runtime Image, then both
+engines fail the initial guided startup before recovery: the new route helper
+requires complete inventory even when Prometheus is still required and no route
+removal is selected. This is a repair regression, not evidence against the
+original gateway diagnosis. Both actual fixture cleanups complete. Neither
+backup nor restore is reached.</p>
+<p>Docker diagnostic ZIP <code>11962220587</code> has SHA256
+<code>85313679ffce93adfbda877a93a11ee291152912f45e092218698db8ee94e5e5</code>;
+Podman ZIP <code>11961614597</code> has SHA256
+<code>ac824dc09ca95b7b2840fd722f8d4c49f76acf01f5bd788f39e6e0320560ee16</code>.
+Original atomic-failure archives and exact-source failure manifests are retained
+alongside the early diagnostics. Their outcomes remain failure.</p>
+<p>The correction checks the strict complete/Target/protocol guard only after an
+unused owned Prometheus route is actually selected for retirement. Active,
+required or newly starting providers retain their routes without that unrelated
+removal admission. Actual removal still requires the same complete plan, binding,
+canonical-owner and exact route-authority checks. A regression fails on the
+published source for incomplete-but-required inventory, then passes with the
+narrow guard move; incomplete selected retirement still rejects.</p>
+<p>Further repair retries use the existing trusted Targeted Atomic Gate workflow
+for the individual runtime and backup/restore gate, without repeating the full
+Source/Contracts/Docs preamble. Local affected checks remain required. No
+execution workflow or evidence verifier is changed to enable this narrower path.</p>
+<h2 id="closure-boundary-on-14-october">Closure boundary on 14 October</h2>
+<p>The currently checked Session 2 source is Core
+<code>971742dc80ce1593368142d50246bd7d12e0c0bc</code>; all nine local checks pass.
+Remote consent precedes technical execution admission; restore binds current
+registered OTLP material even without prior delivery. Session 1 delivered the final material/Tempo correction as Core
+<code>0f06f3ad84181ac1f3d828d8e0c24386274e0cf4</code>; all nine local source checks
+pass, with existing commits preserved. At the user's explicit boundary, no new native runs,
+complete 65-gate sweep or quality/toolchain expansion follow here. The final
+common consumer matrix and affected metrics/mTLS evidence remain pending.
+Earlier bounded green receipts are not overall acceptance. The
+<a href="https://github.com/mcpdev80/baseharbor/blob/work/v0.4.25-contract-minimal-core/docs/internal/release-audits/v0.4.25.md">internal audit</a> records current source
+boundaries, failed attempts and open diagnostic findings.</p>
+<h2 id="last-authenticated-diagnostic-matrix">Last authenticated diagnostic matrix</h2>
+<table>
+<thead>
+<tr>
+<th>Repository</th>
+<th>Exact commit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core</td>
+<td><code>af5fc9bcc48f4efa962149fac61cfcf77aa4e48d</code></td>
+</tr>
+<tr>
+<td>Demo</td>
+<td><code>6977221a074c84436a55ea3078e2b2e002e3bda9</code></td>
+</tr>
+<tr>
+<td>Console</td>
+<td><code>cef4df809eb3f6de0acc5acf3cf658e299f69de0</code></td>
+</tr>
+<tr>
+<td>Node Connector</td>
+<td><code>c9f0b441383353647f84ee56b477e11dee2525bf</code></td>
+</tr>
+</tbody>
+</table>
+<p><a href="https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/38549430253">Docker-only joint retry 38549430253</a>
+is fully verified SUCCESS: job <code>115803535185</code>, attempt 1. All 16 authenticated
+qualifications and 23 browser steps pass, including original-data remote
+reactivation, Node revocation and cleanup. Its Console fixture independently
+checks native container, volume and network absence for the selected local
+Target and local data absence before emitting cleanup proof. Manifest artifact
+<code>11887081782</code>, SHA256
+<code>463dee7542267a7be593642748dcb8486c9f9e66cdc914587cd88b6f5a6de5c2</code>,
+and browser artifact <code>11886264478</code>, SHA256
+<code>8e5eb47374f9b2942106c9a08b2057d1cd4b569842f33814cfb7dfc6d9b8d008</code>,
+are downloaded and exact-source verified.</p>
+<p>The production change only classifies an existing unknown-target discovery
+warning. It never guesses the runtime or grants resource ownership. Current-plan
+consent still requires Achtung, two confirmations and separate data-deletion
+consent. Only identical prior/current discovery rows can cross a bounded
+installation child-progress confirmation; arbitrary skipped, failed and deferred
+mutations remain failures.</p>
+<h2 id="local-source-qualification">Local source qualification</h2>
+<p>Core source tree <code>b3b8f1e3c9006ef54b3cd94cc668144db00666a0</code> matches the
+published Core commit exactly. All nine independent snapshot checks passed:</p>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cli-build</td>
+<td>PASS (19.723 seconds)</td>
+</tr>
+<tr>
+<td>docs-audit</td>
+<td>PASS (0.406 seconds)</td>
+</tr>
+<tr>
+<td>docs-de</td>
+<td>PASS (2.208 seconds)</td>
+</tr>
+<tr>
+<td>docs-en</td>
+<td>PASS (2.008 seconds)</td>
+</tr>
+<tr>
+<td>go-race</td>
+<td>PASS (53.875 seconds)</td>
+</tr>
+<tr>
+<td>go-tests</td>
+<td>PASS (65.509 seconds)</td>
+</tr>
+<tr>
+<td>go-vet</td>
+<td>PASS (18.915 seconds)</td>
+</tr>
+<tr>
+<td>readability</td>
+<td>PASS (3.211 seconds)</td>
+</tr>
+<tr>
+<td>script-tests</td>
+<td>PASS (3.112 seconds)</td>
+</tr>
+</tbody>
+</table>
+<p>The local snapshot receipt is <code>baseharbor-local-qualification-193wh8rd/result.json</code>.
+The snapshot's local commit label is not the API publication commit; the exact
+Git tree equality is the attribution. The affected CLI race package is
+<code>./cmd/baha</code>. A failing-before/passing-after regression verifies typed unknown
+Target discovery, current-plan invalidation, no inferred engine or deployment
+owner, and retained state preservation. Console's 64 contracts, architecture,
+typecheck, lint, fixture consent negatives and candidate pin tests pass. Demo's
+four consent negative cases pass. These source checks do not qualify native
+consumer execution.</p>
+<h2 id="independently-verified-native-results">Independently verified native results</h2>
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Exact sources and verified result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Retained Demo recovery</td>
+<td>Core <code>45fd3e2cf39161d48e185af23b5f0683ae74c367</code>, Demo <code>01e98f389b08a58579b8af80c663ddc2045ce7a3</code>; <a href="https://github.com/mcpdev80/baseharbor-demo/actions/runs/38545162417">38545162417</a>, attempt 1: Docker <code>115789291286</code> and Podman <code>115789291681</code> SUCCESS. Both ZIP SHA256/source bindings and all 15 consumer assertion booleans verified. Exact SQL snapshot and original file replace newer writes; original App/deployment identity, secret, authored source, S3, logs, shared isolation and cleanup verified.</td>
+</tr>
+<tr>
+<td>Installation destruction</td>
+<td>Same Core45fd; <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38545001466">38545001466</a>, attempt 1: Docker <code>115788755727</code>, Podman <code>115788756200</code> SUCCESS. Both ZIP SHA256 and source.txt verified. Actual in-use-volume failure preserves foreign holder and protected retry owner; fresh confirmed retry completes after fixture-owned holder release. This native fixture has one child.</td>
+</tr>
+<tr>
+<td>Fresh owner recovery</td>
+<td>Core <code>93a376023b58f015f9d56fc69146eb34a2e204f8</code>, Demo <code>47a34baa71afc3cff006645ab25f5756ba045ab6</code>; <a href="https://github.com/mcpdev80/baseharbor-demo/actions/runs/38541975235">38541975235</a>: both engines SUCCESS, source-bound ZIPs and all 15 assertions verified. Original App identity/secret/source and a new deployment owner are verified after actual full reset and exact fixture-owner loss.</td>
+</tr>
+<tr>
+<td>Authenticated Podman joint journey</td>
+<td>Core <code>93a376023b58f015f9d56fc69146eb34a2e204f8</code>, Demo <code>a0da5d858339275eb94382d567052a815da17a20</code>, Console <code>04c3553441f109925f882c141a6da3d3b288a6ba</code>, Connector <code>3c672d8249772cb44f4e4d75edcdf12ec764e691</code>; <a href="https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/38540793754">38540793754</a>, job <code>115774807778</code>, attempt 1: SUCCESS. Authenticated manifest/browser ZIP hashes and exact sources verified; all 16 qualifications and 22 browser steps, remote reactivation, Node revocation and owned cleanup verified.</td>
+</tr>
+</tbody>
+</table>
+<p>These differing source matrices are separate bounded proofs. They cannot be
+combined into final ecosystem acceptance. Original failures, including the own
+backup/reset wiring mistake, remain in the internal receipts.</p>
+<p>Latest completed Docker joint attempt
+<a href="https://github.com/mcpdev80/baseharbor-node-connector/actions/runs/38545785816">38545785816</a>
+failed on Core45fd/Demo01e98/Console22ed/Connector2727 after successful remote
+HTTP lifecycle. Its actual fixed diagnostic is SKIPPED/runtime-provider, not an
+unregistered-deployment-state diagnostic. The old fixture correctly refused it.
+Browser artifact <code>11885081810</code>, SHA256
+<code>0c51c47f2fecc0f9d58db09dea9811bd7122819683d02f9a3003fc066be094f3</code>,
+was downloaded and verified. Its process-cleanup success does not qualify the
+failed Core cleanup or whole journey.</p>
+<h2 id="final-acceptance-still-required">Final acceptance still required</h2>
+<p>The affected retained Demo recovery rerun with the completed-initializer observer
+is now independently verified on both engines: Core
+<code>5ec1b38df90b290dc40fb6f26f18534cf19f0337</code>, Demo
+<code>d691f68307cbcb8333cdd33aa1af1a92ab41a69e</code>,
+<a href="https://github.com/mcpdev80/baseharbor-demo/actions/runs/38557521398">38557521398</a>,
+attempt 1. Both downloaded ZIP hashes/source bindings, all 15 consumer assertions,
+three native topology snapshots and cleanup pass. The broker/executor dependencies
+are actually present; this run establishes no Caddy defect. This source pair is
+separate from the provisional authenticated joint matrix above.</p>
+<p>Managed Identity observer retry38556997835 passes retained S3 objects and original
+collector/Tempo trace data on both engines but fails return-to-shared user setup
+and installation cleanup. Session 1 corrects the fixture to reuse the original
+user/session. Cleanup correction
+<code>a09185ca48f37a4c0bb5a1bb0dea5474e74aa50a</code> passes all nine local checks on
+exact tree <code>0230112566dff5f3b2bc1395ea79ba1b2fa7d869</code>: the aggregate now
+hashes canonical child authority without rehashing displayed certificate
+countdowns. The regression fails before and passes after; actual owner/material
+or resource changes still require renewed consent. The integrated native retry
+on <code>40bfa96268a57ca74853f22ba6f949ffd7ff057d</code>,
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38559693713">38559693713</a>,
+now passes both engines with actual Shared → Application → Shared transitions,
+original user/session refresh and zero-container cleanup; both ZIPs are hash/source
+verified. The affected installation requalification on
+<code>4e0c66344af29f67990c77d6d623dddef1582497</code>,
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38560008601">38560008601</a>,
+also passes both engines with source-bound downloaded receipts: real in-use-volume
+failure preserves the foreign holder and retry owner, then a freshly confirmed
+retry verifies owned native data/configuration/owner absence. This installation
+fixture has one child. Earlier failed receipts remain in the internal evidence;
+the final common multi-child authenticated matrix remains required.</p>
+<p>The sole required gate inventory remains <code>scripts/release-requirements.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Family</th>
+<th style="text-align: right;">Required gates</th>
+<th>Final matrix status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>atomic</td>
+<td style="text-align: right;">41</td>
+<td>Pending final source qualification</td>
+</tr>
+<tr>
+<td>adoption</td>
+<td style="text-align: right;">4</td>
+<td>Pending final source qualification</td>
+</tr>
+<tr>
+<td>ha</td>
+<td style="text-align: right;">8</td>
+<td>Pending final source qualification</td>
+</tr>
+<tr>
+<td>journey</td>
+<td style="text-align: right;">2</td>
+<td>Pending final source qualification</td>
+</tr>
+<tr>
+<td>integration</td>
+<td style="text-align: right;">10</td>
+<td>Pending final source qualification</td>
+</tr>
+</tbody>
+</table>
+<p>Session 1's OIDC source <code>e53349729c58a8c9d3cf33cc67b9f3b503c5a3c4</code> is integrated.
+Its native run <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38549744124">38549744124</a>
+fails on both engines at final consumer withdrawal: fixture admission reports
+<code>identity requirements need services.identity enabled</code> (Docker <code>115804515884</code>,
+Podman <code>115804516219</code>). Earlier source/destination JWT/JWKS assertions complete, but the final foreign
+issuer-after-withdrawal assertion is not reached. Both jobs verify producer cleanup.
+The fixture-only correction <code>553d1dfafadfd0c8dbd2aeec81673f19842cbfe4</code> is
+integrated; native retry <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38550489196">38550489196</a>
+passes on both engines. Both ZIP hashes, exact commit/tree and complete
+token/JWKS/cleanup assertions are independently verified. This is bounded service-
+account proof, not browser-session or whole-provider acceptance. Session 1 owns that
+fixture correction and the still-open full provider package. Restore integrates
+the original-manifest OIDC hook and private selected-material revision, including
+fresh material without an applied binding. Its eight source cases fail before
+the real caller is wired and pass afterward; changed issuer/reference, client,
+credential or valid CA bundle invalidates old consent without delivery/registry
+mutation or confidential output. The initial CA test accidentally used identical
+httptest default certificates; the corrected fixture changes the actual bundle.
+These local tests are not native OIDC recovery/token/session acceptance.</p>
+<p>Integrate Session 1's complete all-provider/material/authentication handoff and
+actual token/JWKS consumer proof before final freeze. Then reconcile exact
+consumer pins and verify affected required gates through the existing evidence
+verifier. No historical success is automatically reused, no unknown result is
+converted to success, and the complete pre-release orchestrator stays unstarted.</p>
+<p>Both strict EN/DE candidate builds, documentation architecture audit, Pages
+workflow actionlint and rendered home → release index → v0.4.25 navigation have
+passed for the scoped documentation update. Actual production Pages deployment
+and final complete pre-release approval are later, separately authorized steps.</p>
+<p>Independent review on Core802 found three reproducible failures: changing or
+removing the selected credential file, or changing the valid CA bundle after
+Bind still let Verify succeed. Session 1 corrected these on
+<code>500c58f2f35befe2c1672c196c1e99ad64ad7842</code>; the review cases now pass.
+Its native OIDC run <a href="https://github.com/mcpdev80/baseharbor/actions/runs/38553470305">38553470305</a>
+passes on both engines with downloaded ZIP hashes and exact source/tree verified.
+The same run's Core-less jobs fail despite successful RabbitMQ and MongoDB
+lifecycle subsets. Managed Identity retry
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38554306181">38554306181</a>
+on <code>9865590e21d4f95d16323ad4a224bdde9d18c2e5</code> also fails on both engines after
+its first shared-placement OAuth/PKCE/JWT/refresh assertions pass. Session 1's
+completed-init observer correction is published as
+<code>5ec1b38df90b290dc40fb6f26f18534cf19f0337</code>; its native follow-up
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38556997835">38556997835</a>
+has completed with the bounded standalone successes and managed Identity
+failures described above. No Caddy defect is established.</p>
+<p>Further route review produced
+<code>b547956296d51f5d571986baa170cd876b6a21f3</code>, exact tree
+<code>20dd25a5e1a3d86105a66325a3b09751b0c8ac13</code>. All nine isolated local checks
+pass, including races in CLI, application, Identity and protected material reads.
+Ten route-drift cases, two issuer-environment cases and three discovery-snapshot
+cases pass; a fresh read-only driver and distinct endpoint hosts remain valid.
+The native affected OIDC follow-up is
+<a href="https://github.com/mcpdev80/baseharbor/actions/runs/38556636146">38556636146</a>;
+both native jobs pass. Downloaded ZIP hashes, exact source/tree, actual consumer
+assertions and owned producer cleanup are independently verified. The source receipt is
+<code>docs/internal/v0.4.25-oidc-route-verification-evidence.json</code>. Current CLI/stdio
+compatibility with Demo697 passes all five static suites. None of these local
+checks replaces native browser/session/remote handoff or the final common matrix.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.sections", "navigation.path", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

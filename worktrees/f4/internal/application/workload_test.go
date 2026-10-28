@@ -1,0 +1,341 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
+)
+
+func TestWorkloadManifestRoundTrip(t *testing.T) {
+	m := New("mailflow", "prod", true, true, false)
+	m = WithWorkloadComponents(m, "api", "worker", "web")
+	parsed, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(WorkloadComponentNames(parsed), ",") != "api,web,worker" {
+		t.Fatalf("unexpected workload components %#v", parsed.Workload.Components)
+	}
+}
+
+func TestResolveWorkloadComposeSourceCannotEscapeRepository(t *testing.T) {
+	root := t.TempDir()
+	if _, err := ResolveWorkloadComposeSource(root, "../compose.yaml"); err == nil {
+		t.Fatal("expected escaping repository source path to be rejected")
+	}
+}
+
+func TestResolveWorkloadComposeDetectsUnambiguousConvention(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "docker-compose.yml")
+	if err := os.WriteFile(path, []byte("services:\n  api:\n    image: alpine\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resolved, found, err := ResolveWorkloadCompose(root)
+	if err != nil || !found {
+		t.Fatalf("resolve workload compose: found=%v err=%v", found, err)
+	}
+	if resolved != path {
+		t.Fatalf("got %q want %q", resolved, path)
+	}
+}
+
+func TestResolveWorkloadComposeFailsClosedWhenAmbiguous(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"compose.yaml", "docker-compose.yml"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("services:\n  api:\n    image: alpine\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, err := ResolveWorkloadCompose(root)
+	if !errors.Is(err, ErrWorkloadComposeAmbiguous) {
+		t.Fatalf("expected ambiguity error, got %v", err)
+	}
+}
+
+func TestManagedBackendsShadowConventionalComposeServices(t *testing.T) {
+	m := New("mailflow", "production", true, true, false)
+	available := []string{"edge", "postgres", "redis", "api", "worker", "web"}
+	selected, err := selectWorkloadServices(m, available, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(selected, ",")
+	want := "api,edge,web,worker"
+	if got != want {
+		t.Fatalf("selected services=%q want %q", got, want)
+	}
+}
+
+func TestExplicitWorkloadServicesOverrideAutomaticShadowing(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	selected, err := selectWorkloadServices(m, []string{"postgres", "api"}, []string{"postgres"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(selected, ",") != "postgres" {
+		t.Fatalf("explicit workload selection was changed: %#v", selected)
+	}
+}
+
+func TestMaterializeWorkloadUsesContainerDNSAndPreservesHostContract(t *testing.T) {
+	useApplicationScopedDataProviders(t)
+	root := t.TempDir()
+	composePath := filepath.Join(root, "docker-compose.yml")
+	if err := os.WriteFile(composePath, []byte("services:\n  api:\n    image: alpine\n    networks:\n      - app-internal\nnetworks:\n  app-internal:\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store := Store{Root: filepath.Join(root, ".baseharbor", "apps")}
+	m := New("demo", "dev", true, true, false)
+	m = WithWorkloadComponents(m, "api")
+	files, err := EnsureRuntime(context.Background(), serviceissuer.New(t), store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostEnv, err := os.ReadFile(files.ApplicationEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(hostEnv), "@127.0.0.1:") {
+		t.Fatalf("host application contract is not loopback-only:\n%s", hostEnv)
+	}
+	workload, found, err := MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize workload: found=%v err=%v", found, err)
+	}
+	override, err := os.ReadFile(workload.Override)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(override)
+	for _, want := range []string{"@postgres:5432/", "@valkey-access:6379/0", "DATABASE_CA_FILE", "REDIS_CA_FILE", "baseharbor-backend", ApplicationBackendNetworkName(m)} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("override missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "127.0.0.1") {
+		t.Fatalf("container override leaked host loopback endpoint:\n%s", text)
+	}
+	if info, err := os.Stat(workload.Override); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("workload override must be owner-only: info=%v err=%v", info, err)
+	}
+}
+
+func TestIdentityOnlyWorkloadProjectsOIDCEnvironment(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Services.Identity = true
+	m = WithWorkloadComponents(m, "api")
+	runtime := RuntimeFiles{
+		Dir:      filepath.Join(t.TempDir(), "runtime"),
+		Bindings: filepath.Join(t.TempDir(), "bindings"),
+	}
+	values := map[string]string{
+		"IDENTITY_CONTAINER_ISSUER": "https://identity:8443/realms/bh-demo-dev",
+		"IDENTITY_CLIENT_ID":        "baseharbor-demo-dev",
+		"IDENTITY_CLIENT_SECRET":    "secret",
+		"IDENTITY_CA_FILE":          filepath.Join(runtime.Dir, "identity-ca.pem"),
+	}
+
+	got, err := workloadOverrideYAMLForFiles(m, []string{"api"}, values, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"OIDC_ISSUER: " + strconv.Quote(values["IDENTITY_CONTAINER_ISSUER"]),
+		"OIDC_CLIENT_ID: " + strconv.Quote(values["IDENTITY_CLIENT_ID"]),
+		"OIDC_CLIENT_SECRET_FILE: " + strconv.Quote(IdentityWorkloadClientSecretFile),
+		"OIDC_CA_FILE: " + strconv.Quote("/run/baseharbor/service-bindings/identity/ca.crt"),
+		"SERVICE_BINDING_ROOT: " + strconv.Quote(workloadServiceBindingRoot),
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("identity-only workload override missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestWorkloadOverrideProjectsStandardServiceBindingRoot(t *testing.T) {
+	m := New("demo", "dev", true, true, false)
+	runtime := RuntimeFiles{Dir: filepath.Join(t.TempDir(), "runtime")}
+	values := map[string]string{
+		"POSTGRES_DB":          "demo_dev",
+		"POSTGRES_USER":        "baseharbor",
+		"POSTGRES_PASSWORD":    "secret",
+		"POSTGRES_TLS_CA_FILE": filepath.Join(runtime.Dir, "postgres-ca.pem"),
+		"VALKEY_PASSWORD":      "secret",
+		"VALKEY_TLS_CA_FILE":   filepath.Join(runtime.Dir, "valkey-ca.pem"),
+	}
+	got, err := workloadOverrideYAMLForFiles(m, []string{"api"}, values, runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "SERVICE_BINDING_ROOT: "+strconv.Quote(workloadServiceBindingRoot)) {
+		t.Fatalf("override missing SERVICE_BINDING_ROOT:\n%s", got)
+	}
+	wantMount := workloadServiceBindingProjectionDir(runtime) + ":" + workloadServiceBindingRoot + ":ro"
+	if !strings.Contains(got, strconv.Quote(wantMount)) {
+		t.Fatalf("override missing service binding mount %q:\n%s", wantMount, got)
+	}
+}
+
+func TestWorkloadOverrideAttachesOnlyExposedServicesToExposureNetwork(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m.Workload = WorkloadConfig{Components: []string{"api", "web"}}
+	m.Exposures = []HTTPExposureRequirement{{Name: "public", Service: "web", Port: 8080, Protocol: "http"}}
+	got, err := workloadOverrideYAML(m, []string{"api", "web"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "name: "+ApplicationExposureNetworkName(m)) {
+		t.Fatalf("override missing stable exposure network:\n%s", got)
+	}
+	web := got[strings.Index(got, "  web:"):]
+	if !strings.Contains(web, "baseharbor-exposure:") || !strings.Contains(web, `aliases:
+          - "web"`) {
+		t.Fatalf("exposed service missing stable exposure DNS alias:\n%s", got)
+	}
+	apiStart := strings.Index(got, "  api:")
+	webStart := strings.Index(got, "  web:")
+	if apiStart < 0 || webStart < 0 || apiStart >= webStart {
+		t.Fatalf("unexpected service order:\n%s", got)
+	}
+	api := got[apiStart:webStart]
+	if strings.Contains(api, "baseharbor-exposure") {
+		t.Fatalf("non-exposed service joined exposure network:\n%s", got)
+	}
+}
+
+func TestRuntimeOnlyWorkloadAttachesAuthorizedServiceToBrokerAndS3Networks(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api", "worker")
+	m = WithRuntimePermission(m, "object-storage.s3/v1", []string{"api"}, "runtime.create", "runtime.get", "runtime.delete")
+
+	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"baseharbor-backend:", "baseharbor-object-storage:", "external: true", "name: " + ApplicationBackendNetworkName(m)} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("runtime-only workload override missing %q:\n%s", want, got)
+		}
+	}
+	apiStart := strings.Index(got, "  api:")
+	workerStart := strings.Index(got, "  worker:")
+	if apiStart < 0 || workerStart < 0 || apiStart >= workerStart {
+		t.Fatalf("unexpected service ordering:\n%s", got)
+	}
+	api := got[apiStart:workerStart]
+	worker := got[workerStart:]
+	if networksStart := strings.Index(worker, "networks:\n"); networksStart >= 0 {
+		worker = worker[:networksStart]
+	}
+	if !strings.Contains(api, "- baseharbor-object-storage") {
+		t.Fatalf("authorized service missing runtime S3 network:\n%s", got)
+	}
+	if strings.Contains(worker, "baseharbor-object-storage") {
+		t.Fatalf("unauthorized service joined runtime S3 network:\n%s", got)
+	}
+}
+
+func TestMetricsNetworkAttachesOnlyDeclaredSourceServices(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "true")
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api", "worker")
+	m = WithMetricsSource(m, "application", "api", 8080, "/metrics")
+
+	got, err := workloadOverrideYAML(m, []string{"api", "worker"}, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	apiStart := strings.Index(got, "  api:")
+	workerStart := strings.Index(got, "  worker:")
+	if apiStart < 0 || workerStart < 0 || apiStart >= workerStart {
+		t.Fatalf("unexpected service order:\n%s", got)
+	}
+	api := got[apiStart:workerStart]
+	worker := got[workerStart:]
+	if networksStart := strings.Index(worker, "networks:\n"); networksStart >= 0 {
+		worker = worker[:networksStart]
+	}
+	if !strings.Contains(api, "baseharbor-metrics:") || !strings.Contains(api, MetricsTargetAlias(m, "api")) {
+		t.Fatalf("metrics source service missing network/alias:\n%s", got)
+	}
+	if strings.Contains(worker, "baseharbor-metrics:") {
+		t.Fatalf("non-source service joined metrics network:\n%s", got)
+	}
+	if !strings.Contains(got, "name: "+strconv.Quote(MetricsProviderNetworkName(m))) {
+		t.Fatalf("isolated metrics network definition missing:\n%s", got)
+	}
+}
+
+func TestMetricsCollectionPolicyDefaultsToDevOnly(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "")
+	dev := New("demo", "dev", true, false, false)
+	enabled, err := MetricsCollectionEnabled(dev)
+	if err != nil || !enabled {
+		t.Fatalf("dev metrics enabled=%v err=%v", enabled, err)
+	}
+	prod := dev
+	prod.Environment = "production"
+	enabled, err = MetricsCollectionEnabled(prod)
+	if err != nil || enabled {
+		t.Fatalf("production metrics enabled=%v err=%v", enabled, err)
+	}
+	t.Setenv(MetricsEnabledEnv, "true")
+	enabled, err = MetricsCollectionEnabled(prod)
+	if err != nil || !enabled {
+		t.Fatalf("explicit production metrics enabled=%v err=%v", enabled, err)
+	}
+}
+
+func TestUnusedMetricsPlacementPolicyDoesNotAffectWorkload(t *testing.T) {
+	t.Setenv(ProviderScopeEnv(capability.ProviderPrometheus), "external")
+	t.Setenv(ProviderExternalReferenceEnv(capability.ProviderPrometheus), "metrics-prod")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("unused metrics provider policy affected workload: %v", err)
+	}
+	if strings.Contains(got, "baseharbor-metrics") {
+		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
+	}
+}
+
+func TestMalformedMetricsPolicyDoesNotAffectWorkloadWithoutMetricsIntent(t *testing.T) {
+	t.Setenv(MetricsEnabledEnv, "not-a-bool")
+	t.Setenv(MetricsCollectSourcesEnv, "not-a-source-class")
+
+	m := New("demo", "dev", false, false, false)
+	m.Services.SQL = false
+	m = WithWorkloadComponents(m, "api")
+
+	got, err := workloadOverrideYAML(m, []string{"api"}, map[string]string{})
+	if err != nil {
+		t.Fatalf("malformed unused metrics policy affected workload: %v", err)
+	}
+	if strings.Contains(got, "baseharbor-metrics") {
+		t.Fatalf("workload without metrics intent received metrics wiring:\n%s", got)
+	}
+}
+
+func TestSelectWorkloadServicesRejectsReservedInternalNamespace(t *testing.T) {
+	m := New("demo", "dev", false, false, false)
+	_, err := selectWorkloadServices(m, []string{"api", "baseharbor-internal-runtime-broker"}, nil)
+	if err == nil || !strings.Contains(err.Error(), "reserved BaseHarbor internal service namespace") {
+		t.Fatalf("expected reserved service namespace error, got %v", err)
+	}
+}

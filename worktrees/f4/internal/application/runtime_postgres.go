@@ -1,0 +1,517 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+)
+
+var ErrUnsupportedService = errors.New("application contains services that are not yet supported by apply")
+
+type RuntimeFiles struct {
+	Dir             string
+	Compose         string
+	Env             string
+	ApplicationEnv  string
+	Bindings        string
+	Project         string
+	ResourceProject string
+	Namespace       string
+}
+
+func RuntimeProjectName(m Manifest) string {
+	return "baseharbor-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeProjectNameForStore(store Store, m Manifest) string {
+	namespace := strings.TrimSpace(strings.ReplaceAll(store.Namespace, ".", "-"))
+	if namespace == "" {
+		return RuntimeProjectName(m)
+	}
+	return "baseharbor-" + namespace + "-" + m.Name + "-" + m.Environment
+}
+
+func RuntimeComposeProjectNameForStore(store Store, m Manifest) string {
+	return bhruntime.ApplicationProjectName(store.Namespace, m.Name, m.Environment)
+}
+
+func CheckSupportedRuntimeServices(m Manifest) error {
+	if err := validateProviderAvailabilityIntent(m); err != nil {
+		return err
+	}
+	if len(SQLInstanceNames(m)) > 0 && !UsesSharedPostgreSQL(m) && ComponentHA(m, "sql") {
+		return fmt.Errorf("%w: application-scoped PostgreSQL is single-instance; select native shared placement for HA", ErrUnsupportedService)
+	}
+	if !HasManagedRuntimeServices(m) {
+		if m.Services.Secrets && !HasExplicitWorkload(m) {
+			return fmt.Errorf("%w: managed secrets currently require PostgreSQL or Valkey so the application has a materialized runtime", ErrUnsupportedService)
+		}
+		if HasObjectStorage(m) || HasExplicitWorkload(m) {
+			return nil
+		}
+		return fmt.Errorf("%w: no supported runtime service or explicit Compose workload is enabled", ErrUnsupportedService)
+	}
+	return nil
+}
+
+func RuntimeFilesFor(store Store, m Manifest) RuntimeFiles {
+	dir := filepath.Join(store.Root, m.Name, "runtime")
+	return RuntimeFiles{
+		Dir:             dir,
+		Compose:         filepath.Join(dir, "compose.yaml"),
+		Env:             filepath.Join(dir, "runtime.env"),
+		ApplicationEnv:  filepath.Join(dir, "application.env"),
+		Bindings:        filepath.Join(dir, "bindings"),
+		Project:         RuntimeComposeProjectNameForStore(store, m),
+		ResourceProject: RuntimeProjectNameForStore(store, m),
+		Namespace:       strings.TrimSpace(store.Namespace),
+	}
+}
+
+func EnsureRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
+	if err := m.Validate(); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := CheckSupportedRuntimeServices(m); err != nil {
+		return RuntimeFiles{}, err
+	}
+
+	files := RuntimeFilesFor(store, m)
+	if err := CheckRuntimeTopology(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := os.MkdirAll(files.Dir, 0o700); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("create application runtime directory: %w", err)
+	}
+	if err := ensureRuntimeEnv(files.Env, m); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := ensureMongoDBInitFiles(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := ensureRabbitMQHAConfigFiles(files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := EnsureBackendServiceAccess(ctx, issuer, files, m); err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := EnsureApplicationManagementUIs(ctx, issuer, files, m); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile application management UIs: %w", err)
+	}
+
+	compose, err := RuntimeComposeYAMLForProject(m, files.ResourceProject)
+	if err != nil {
+		return RuntimeFiles{}, err
+	}
+	if err := os.WriteFile(files.Compose, []byte(compose), 0o600); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("write application compose file: %w", err)
+	}
+	if err := reconcileManagedRuntimeObservability(m, files.Project); err != nil {
+		return RuntimeFiles{}, fmt.Errorf("reconcile managed runtime observability: %w", err)
+	}
+	if HasSharedBackends(m) {
+		files.ApplicationEnv = filepath.Join(files.Dir, "application.env")
+		files.Bindings = filepath.Join(files.Dir, "bindings")
+		return files, nil
+	}
+	contract, err := EnsureRuntimeContract(m, files)
+	if err != nil {
+		return RuntimeFiles{}, err
+	}
+	files.ApplicationEnv = contract.Env
+	files.Bindings = contract.BindingsDir
+	return files, nil
+}
+
+// EnsurePostgresRuntime is kept for callers from the first runtime milestone.
+func EnsurePostgresRuntime(ctx context.Context, issuer serviceaccess.Issuer, store Store, m Manifest) (RuntimeFiles, error) {
+	return EnsureRuntime(ctx, issuer, store, m)
+}
+
+type BackendProbeKind string
+
+const (
+	BackendProbeSQLSelectOne         BackendProbeKind = "sql.select-one"
+	BackendProbeSQLConsumerInventory BackendProbeKind = "sql.consumer-inventory"
+	BackendProbeCachePing            BackendProbeKind = "cache.ping"
+	BackendProbeDurableKeyValueRW    BackendProbeKind = "database.key-value.write-read"
+)
+
+type BackendProbe struct {
+	Kind     BackendProbeKind
+	Instance string
+	Database string
+}
+
+type BackendProbeExecutor interface {
+	ProbeBackend(context.Context, BackendProbe) (string, error)
+}
+
+// The native file/project mechanics remain in the existing local realization
+// adapter; semantic probes also accept independently owned remote services.
+func NewRuntimeBackendProbeExecutor(runtime RuntimeProjectExecutor, files RuntimeFiles) RuntimeBackendProbeExecutor {
+	executor := RuntimeBackendProbeExecutor{files: files}
+	if runtime != nil {
+		executor.local = func(ctx context.Context, service string, argv ...string) (string, error) {
+			return runtime.ExecProject(ctx, files.Project, files.Compose, files.Env, service, argv...)
+		}
+	}
+	return executor
+}
+
+// SQLConsumerInventory reports a real credential-bound query, not a proposed
+// binding. User-object and large-object counts describe only the selected DB.
+type SQLConsumerInventory struct {
+	Consumer string
+	Instance string
+	Empty    bool
+	Evidence string
+}
+
+func ObserveSQLConsumerInventory(ctx context.Context, executor BackendProbeExecutor, files RuntimeFiles, m Manifest, instance string) (SQLConsumerInventory, error) {
+	var result SQLConsumerInventory
+	if executor == nil || UsesSharedPostgreSQL(m) {
+		return result, errors.New("application-scoped SQL probe executor required")
+	}
+	values, err := readRuntimeEnv(files.Env)
+	if err != nil {
+		return result, err
+	}
+	wantUser, wantDB := values[postgresRuntimeKey(instance, "USER")], values[postgresRuntimeKey(instance, "DB")]
+	if wantUser == "" || wantDB == "" || wantDB != postgresDatabaseName(m, instance) {
+		return result, errors.New("SQL consumer identity/database inventory unavailable")
+	}
+	out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeSQLConsumerInventory, Instance: instance, Database: wantDB})
+	if err != nil {
+		return result, errors.New("protected SQL consumer inventory query failed")
+	}
+	fields := strings.Split(strings.TrimSpace(out), "|")
+	if len(fields) != 4 || fields[0] != wantUser || fields[1] != wantDB {
+		return result, errors.New("SQL consumer identity or database differs from protected runtime owner")
+	}
+	objects, err1 := strconv.ParseUint(fields[2], 10, 64)
+	largeObjects, err2 := strconv.ParseUint(fields[3], 10, 64)
+	if err1 != nil || err2 != nil {
+		return result, errors.New("SQL consumer catalog inventory could not be verified")
+	}
+	result.Consumer = "application/" + m.ApplicationID + "/" + m.Environment
+	result.Instance = instance
+	result.Empty = objects == 0 && largeObjects == 0
+	result.Evidence = "native TLS-verified SELECT with protected application-scoped SQL user/database, system catalog object and large-object inventory"
+	return result, nil
+}
+
+func VerifyPostgresProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
+	if UsesSharedPostgreSQL(m) {
+		return nil
+	}
+	if executor == nil {
+		return errors.New("postgres verification executor is required")
+	}
+	for _, instance := range SQLInstanceNames(m) {
+		out, err := executor.ProbeBackend(ctx, BackendProbe{
+			Kind: BackendProbeSQLSelectOne, Instance: instance, Database: postgresDatabaseName(m, instance),
+		})
+		if err != nil {
+			return fmt.Errorf("verify postgres instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "1" {
+			return fmt.Errorf("verify postgres instance %s: unexpected query result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+func VerifyPostgresRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	return VerifyPostgresProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+}
+
+func VerifyValkeyProvider(ctx context.Context, executor BackendProbeExecutor, m Manifest) error {
+	if UsesSharedValkey(m) {
+		return nil
+	}
+	if executor == nil {
+		return errors.New("valkey verification executor is required")
+	}
+	for _, instance := range CacheInstanceNames(m) {
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	for _, instance := range KeyValueInstanceNames(m) {
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "durable" {
+			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+func VerifyValkeyRuntime(ctx context.Context, runtime bhruntime.RuntimeProvider, m Manifest, files RuntimeFiles) error {
+	if UsesSharedValkey(m) {
+		return VerifyValkeyProvider(ctx, NewRuntimeBackendProbeExecutor(runtime, files), m)
+	}
+	executor := NewRuntimeBackendProbeExecutor(runtime, files)
+	for _, instance := range CacheInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, false); err != nil {
+				return fmt.Errorf("verify Valkey HA cache instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeCachePing, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify valkey cache instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "PONG" {
+			return fmt.Errorf("verify valkey cache instance %s: unexpected PING result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	for _, instance := range KeyValueInstanceNames(m) {
+		if valkeyMemberCount(m, instance) > 1 {
+			if err := verifyValkeyStableEndpoint(ctx, m, files, instance, true); err != nil {
+				return fmt.Errorf("verify durable Valkey HA instance %s: %w", instance, err)
+			}
+			continue
+		}
+		out, err := executor.ProbeBackend(ctx, BackendProbe{Kind: BackendProbeDurableKeyValueRW, Instance: instance})
+		if err != nil {
+			return fmt.Errorf("verify durable valkey instance %s: %w", instance, err)
+		}
+		if strings.TrimSpace(out) != "durable" {
+			return fmt.Errorf("verify durable valkey instance %s: unexpected write/read result %q", instance, strings.TrimSpace(out))
+		}
+	}
+	return nil
+}
+
+func RuntimeComposeYAML(m Manifest) (string, error) {
+	return RuntimeComposeYAMLForProject(m, RuntimeProjectName(m))
+}
+
+func RuntimeComposeYAMLForProject(m Manifest, resourceProject string) (string, error) {
+	if err := CheckSupportedRuntimeServices(m); err != nil {
+		return "", err
+	}
+	if !HasManagedRuntimeServices(m) {
+		return "services: {}\n", nil
+	}
+	sqlInstances := SQLInstanceNames(m)
+	cacheInstances := ValkeyInstanceNames(m)
+	rabbitInstances := RabbitMQInstanceNames(m)
+	mongoInstances := DocumentDatabaseInstanceNames(m)
+	if UsesSharedPostgreSQL(m) {
+		sqlInstances = nil
+	}
+	if UsesSharedValkey(m) {
+		cacheInstances = nil
+	}
+	if len(sqlInstances) == 0 && len(cacheInstances) == 0 && len(rabbitInstances) == 0 && len(mongoInstances) == 0 {
+		return "services: {}\n", nil
+	}
+	var b strings.Builder
+	b.WriteString("services:\n")
+	for _, instance := range sqlInstances {
+		writePostgresComposeService(&b, instance)
+	}
+	for _, instance := range cacheInstances {
+		writeValkeyHAComposeServices(&b, m, instance)
+		b.WriteString(valkeyGatewayCompose(m, instance))
+	}
+	for _, instance := range rabbitInstances {
+		writeRabbitMQComposeService(&b, m, instance)
+		b.WriteString(rabbitmqGatewayCompose(m, instance))
+		if m.Services.MessagingManagementUI {
+			writeRabbitMQUIComposeService(&b, m, instance)
+		}
+	}
+	for _, instance := range mongoInstances {
+		writeMongoDBComposeService(&b, m, instance)
+		if m.Services.DocumentDatabaseManagementUI {
+			writeMongoDBUIComposeServices(&b, m, instance)
+		}
+	}
+	if m.Services.SQLManagementUI && !UsesSharedPostgreSQL(m) {
+		writePostgresUIComposeService(&b, m)
+	}
+	if (m.Services.CacheManagementUI || m.Services.KeyValueManagementUI) && !UsesSharedValkey(m) {
+		writeCacheUIComposeServices(&b, m)
+	}
+	b.WriteString("\nvolumes:\n")
+	for _, instance := range sqlInstances {
+		service := runtimeServiceName("postgres", instance)
+		fmt.Fprintf(&b, "  %s-data:\n    name: %s_%s-data\n", service, resourceProject, service)
+	}
+	for _, instance := range cacheInstances {
+		for ordinal := 0; ordinal < valkeyMemberCount(m, instance); ordinal++ {
+			volume := valkeyMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
+	}
+	for _, instance := range rabbitInstances {
+		for ordinal := 0; ordinal < rabbitmqMemberCount(m); ordinal++ {
+			volume := rabbitmqMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
+	}
+	for _, instance := range mongoInstances {
+		for ordinal := 0; ordinal < mongodbMemberCount(m, instance); ordinal++ {
+			volume := mongodbMemberVolumeName(instance, ordinal)
+			fmt.Fprintf(&b, "  %s:\n    name: %s_%s\n", volume, resourceProject, volume)
+		}
+	}
+	b.WriteString("\nnetworks:\n  default:\n")
+	fmt.Fprintf(&b, "    name: %s\n", ApplicationBackendNetworkNameForProject(resourceProject))
+	for _, instance := range cacheInstances {
+		if valkeyMemberCount(m, instance) > 1 {
+			fmt.Fprintf(&b, "  %s-ha:\n    internal: true\n", valkeyMemberServiceName(instance, 0))
+		}
+	}
+	return b.String(), nil
+}
+
+func writePostgresComposeService(b *strings.Builder, instance string) {
+	service := runtimeServiceName("postgres", instance)
+	dbKey := postgresRuntimeKey(instance, "DB")
+	userKey := postgresRuntimeKey(instance, "USER")
+	passwordKey := postgresRuntimeKey(instance, "PASSWORD")
+	portKey := postgresRuntimeKey(instance, "HOST_PORT")
+	tlsRoot := "./" + filepath.ToSlash(filepath.Join("providers", "postgresql", instance, "runtime"))
+	fmt.Fprintf(b, `  %s:
+    image: docker.io/library/postgres:18-alpine
+    restart: unless-stopped
+    user: "70:70"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        cp /run/baseharbor/tls-source/server-key.pem /tmp/server-key.pem
+        chmod 0600 /tmp/server-key.pem
+        exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/baseharbor/tls-source/server-cert.pem -c ssl_key_file=/tmp/server-key.pem -c hba_file=/run/baseharbor/tls-source/pg_hba.conf
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/run/postgresql:rw,noexec,nosuid,nodev
+    environment:
+      POSTGRES_DB: ${%s}
+      POSTGRES_USER: ${%s}
+      POSTGRES_PASSWORD: ${%s}
+    ports:
+      - "127.0.0.1:${%s}:5432"
+    volumes:
+      - %s-data:/var/lib/postgresql
+      - ./bindings/postgres/%s/ca.pem:/run/baseharbor/tls/ca.pem:ro
+      - "%s/server-cert.pem:/run/baseharbor/tls-source/server-cert.pem:ro"
+      - "%s/server-key.pem:/run/baseharbor/tls-source/server-key.pem:ro"
+      - "%s/pg_hba.conf:/run/baseharbor/tls-source/pg_hba.conf:ro"
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=\"$${POSTGRES_PASSWORD}\" psql \"host=127.0.0.1 port=5432 user=$${POSTGRES_USER} dbname=$${POSTGRES_DB} sslmode=verify-ca sslrootcert=/run/baseharbor/tls/ca.pem\" -tAc 'SELECT 1' | grep -q '^1$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+`, service, dbKey, userKey, passwordKey, portKey, service, instance, tlsRoot, tlsRoot, tlsRoot)
+}
+
+func writePostgresUIComposeService(b *strings.Builder, m Manifest) {
+	b.WriteString(`  postgres-ui:
+    image: ` + PostgresUIImage + `
+    restart: unless-stopped
+    user: "5050:5050"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${` + PostgresUIEmailEnv + `}
+      PGADMIN_DEFAULT_PASSWORD_FILE: /run/baseharbor/password
+      PGADMIN_ENABLE_TLS: "True"
+      PGADMIN_LISTEN_PORT: "8443"
+      PGADMIN_SERVER_JSON_FILE: /run/baseharbor/servers.json
+      PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+      PGADMIN_DISABLE_POSTFIX: "True"
+      PGADMIN_CUSTOM_CONFIG_DISTRO_FILE: /var/lib/pgadmin/config_distro.py
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+      PGPASS_FILE: /run/baseharbor/pgpass
+    ports:
+      - "127.0.0.1:${` + PostgresUIHostPortEnv + `}:8443"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /var/lib/pgadmin:rw,noexec,nosuid,nodev,mode=1777
+    volumes:
+      - ./providers/management-ui/postgres/password:/run/baseharbor/password:ro
+      - ./providers/management-ui/postgres/servers.json:/run/baseharbor/servers.json:ro
+      - ./providers/management-ui/postgres/pgpass:/run/baseharbor/pgpass:ro
+      - ./providers/management-ui/postgres/server.cert:/certs/server.cert:ro
+      - ./providers/management-ui/postgres/server.key:/certs/server.key:ro
+`)
+	for _, instance := range SQLInstanceNames(m) {
+		token := envInstanceToken(instance)
+		fmt.Fprintf(b, "      - ./providers/management-ui/postgres/postgres-%s.ca.pem:/run/baseharbor/postgres-%s.ca.pem:ro\n", token, token)
+	}
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "pgadmin"))
+}
+
+func writeCacheUIComposeServices(b *strings.Builder, m Manifest) {
+	b.WriteString(`  cache-ui:
+    image: ` + CacheUIImage + `
+    restart: unless-stopped
+    user: "redis"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      HTTP_USER: ${` + CacheUIUserEnv + `}
+      HTTP_PASSWORD_FILE: /run/baseharbor/http-password
+      NOSAVE: "true"
+      NO_LOG_DATA: "true"
+      NODE_ENV: production
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+    volumes:
+      - ./providers/management-ui/cache/http-password:/run/baseharbor/http-password:ro
+      - ./providers/management-ui/cache/local.json:/redis-commander/config/local.json:ro
+      - ./providers/management-ui/cache/local-production.json:/redis-commander/config/local-production.json:ro
+
+  cache-ui-access:
+    image: ` + UIProxyImage + `
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - cat /usr/bin/caddy > /run/baseharbor/caddy && chmod 0755 /run/baseharbor/caddy && exec /run/baseharbor/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev
+      - /run/baseharbor:rw,exec,nosuid,nodev,mode=1777
+      - /data:rw,noexec,nosuid,nodev,mode=1777
+      - /config:rw,noexec,nosuid,nodev,mode=1777
+    ports:
+      - "127.0.0.1:${` + CacheUIHostPortEnv + `}:8443"
+    volumes:
+      - ./providers/management-ui/cache/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./providers/management-ui/cache/server.pem:/certs/server.pem:ro
+      - ./providers/management-ui/cache/server-key.pem:/certs/server-key.pem:ro
+
+`)
+	fmt.Fprintf(b, "    networks:\n      default:\n        aliases:\n          - %q\n\n", devaccess.ApplicationAlias(m.Name, "cache"))
+}

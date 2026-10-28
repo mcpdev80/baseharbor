@@ -1,0 +1,331 @@
+name: "Runtime · Podman Core"
+
+run-name: "Runtime · Podman Core · ${{ inputs.ref || github.ref_name }}"
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref or commit SHA to test
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to test
+        required: false
+        default: release/v0.4.21
+        type: string
+  push:
+    branches:
+      - 'runtime-validation/podman/**'
+
+concurrency:
+  group: ${{ github.workflow }}-podman-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  podman-quadlet:
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout requested ref
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve tested commit
+        id: tested_ref
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Verify Podman Quadlet runner
+        id: verify_runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          verify_unit_dir="$RUNNER_TEMP/podman-core-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/tmp/podman-quadlet-generator.txt
+
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+          # Make any accidental fallback to the external Podman Compose provider
+          # fail immediately. The Podman acceptance must be Quadlet-only.
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Build BaseHarbor
+        id: build
+        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
+
+      - name: Verify Podman runtime detection
+        id: runtime_detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          $RUNNER_TEMP/baha doctor | tee /tmp/podman-doctor.txt
+          grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +quadlet' /tmp/podman-doctor.txt
+          grep -q '^READY$' /tmp/podman-doctor.txt
+
+      - name: Verify application lifecycle on Podman Quadlet
+        id: lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnose_quadlet() {
+            echo "::group::Quadlet diagnostics"
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+            systemctl --user --failed --no-pager || true
+            systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            systemctl --user status bh-podman-ci-shared-postgres.service --no-pager -l || true
+            systemctl --user status bh-podman-ci-shared-openbao.service --no-pager -l || true
+            systemctl --user status baseharbor-podman-ci-dev-postgres.service --no-pager -l || true
+            systemctl --user status baseharbor-podman-ci-dev-valkey.service --no-pager -l || true
+            journalctl --user -u bh-podman-ci-shared-postgres.service -n 120 --no-pager || true
+            journalctl --user -u bh-podman-ci-shared-openbao.service -n 120 --no-pager || true
+            journalctl --user -u baseharbor-podman-ci-dev-postgres.service -n 80 --no-pager || true
+            journalctl --user -u baseharbor-podman-ci-dev-valkey.service -n 80 --no-pager || true
+            podman ps -a || true
+            podman logs bh-podman-ci-shared-postgres 2>&1 || true
+            podman logs bh-podman-ci-shared-openbao 2>&1 || true
+            unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+            if [ -d "$unit_dir" ]; then
+              find "$unit_dir" -maxdepth 1 -type f -name 'baseharbor-*' -printf '%f\n' | sort || true
+            fi
+            echo "::endgroup::"
+          }
+          trap diagnose_quadlet ERR
+
+          workdir="$(mktemp -d)"
+          printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
+          cd "$workdir"
+
+          recovery="$workdir/openbao-recovery.json"
+          $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
+          $RUNNER_TEMP/baha up --control-plane-only --yes
+          $RUNNER_TEMP/baha openbao bootstrap --recovery-file "$recovery"
+          $RUNNER_TEMP/baha openbao status | grep -q "AppRole login succeeded"
+
+          $RUNNER_TEMP/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
+          $RUNNER_TEMP/baha app plan podman-ci | tee /tmp/podman-plan.txt
+          grep -q "ensure database.sql:default" /tmp/podman-plan.txt
+          grep -q "ensure cache.key-value:default" /tmp/podman-plan.txt
+
+          $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
+          # Take the impact ID from a fresh, read-only plan immediately before
+          # apply; generic --yes cannot authorize provider consequences.
+          apply_plan_file="$(mktemp)"
+          chmod 600 "$apply_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$apply_plan_file"
+          apply_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$apply_plan_file")"
+          rm -f "$apply_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$apply_consent" timeout 180s \
+            $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          unset apply_consent
+
+          $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
+          grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
+          grep -q "semantic Valkey verification passed" /tmp/podman-status.txt
+
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
+          grep -q '^READY$' /tmp/podman-app-doctor.txt
+
+          down_plan_file="$(mktemp)"
+          chmod 600 "$down_plan_file"
+          if $RUNNER_TEMP/baha --no-input app down podman-ci > "$down_plan_file" 2>/tmp/podman-down-plan-error.txt; then
+            echo "app down unexpectedly succeeded without typed provider consent" >&2
+            exit 1
+          fi
+          down_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" scope-output "$down_plan_file")"
+          rm -f "$down_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$down_consent" \
+            $RUNNER_TEMP/baha app down podman-ci | tee /tmp/podman-down.txt
+          unset down_consent
+
+          up_plan_file="$(mktemp)"
+          chmod 600 "$up_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$up_plan_file"
+          up_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$up_plan_file")"
+          rm -f "$up_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" \
+            $RUNNER_TEMP/baha app up podman-ci | tee /tmp/podman-up.txt
+          unset up_consent
+
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
+          grep -q '^READY$' /tmp/podman-resume-doctor.txt
+
+          destroy_plan_file="$(mktemp)"
+          chmod 600 "$destroy_plan_file"
+          $RUNNER_TEMP/baha app destroy podman-ci -o json > "$destroy_plan_file"
+          destroy_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" impact "$destroy_plan_file")"
+          rm -f "$destroy_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$destroy_consent" \
+            $RUNNER_TEMP/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+          unset destroy_consent
+
+      - name: Reset runtime state before integration tests
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Run runtime integration tests serially
+        id: runtime_integration
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          diagnose_quadlet_integration() {
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+            echo "::group::Quadlet runtime integration diagnostics"
+            systemctl --user --failed --no-pager || true
+            systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            for unit in $(systemctl --user list-units 'baseharbor*' --all --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+              [ -n "$unit" ] || continue
+              systemctl --user status "$unit" --no-pager -l || true
+              journalctl --user -u "$unit" -n 80 --no-pager || true
+            done
+            podman ps -a || true
+            echo "::endgroup::"
+          }
+
+          run_integration_test() {
+            bash scripts/ci-runtime-reset.sh podman
+            $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
+            if ! "$@"; then
+              diagnose_quadlet_integration
+              return 1
+            fi
+          }
+
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryWorkflowRealLifecycle -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadOnlyLifecycleInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryBuildWorkloadRebuildsSourceChangesInCI -count=1 -v
+          run_integration_test go test -p 1 ./internal/application -run TestMultiInstanceComposeLifecycleInCI -count=1 -v
+
+      - name: Verify control-plane recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Cleanup Podman runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Generate Podman evidence
+        if: always()
+        shell: bash
+        env:
+          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          rows="$RUNNER_TEMP/podman-evidence.tsv"
+          cat >"$rows" <<EOF
+          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
+          Go setup	${{ steps.setup_go.outcome }}	Persistent runner; remote Go cache disabled
+          Workflow syntax	${{ steps.workflow_syntax.outcome }}	actionlint validates all GitHub Actions workflows
+          Runner reset	${{ steps.reset.outcome }}	Podman state reset before validation
+          Podman runner	${{ steps.verify_runner.outcome }}	podman info and Quadlet generator available; Compose provider blocked
+          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
+          Runtime detection	${{ steps.runtime_detection.outcome }}	Doctor detects Podman and Quadlet and reports READY
+          Application lifecycle	${{ steps.lifecycle.outcome }}	create, plan, preflight, apply, status, doctor, down/up, destroy
+          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Quadlet lifecycle integration
+          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
+          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
+          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
+          EOF
+          cat >>"$rows" <<EOF
+          Cleanup	${{ steps.cleanup.outcome }}	Persistent Podman runner returned to clean state
+          EOF
+          mkdir -p "$RUNNER_TEMP/podman-evidence/logs"
+          cp /tmp/podman-*.txt "$RUNNER_TEMP/podman-evidence/logs/" 2>/dev/null || true
+          bash scripts/ci-evidence.sh \
+            "$RUNNER_TEMP/podman-evidence" \
+            "BaseHarbor Podman Runtime Evidence" \
+            "podman-runtime-acceptance" \
+            "$EVIDENCE_REF" \
+            "${{ steps.tested_ref.outputs.sha || github.sha }}" \
+            "$rows"
+
+      - name: Upload Podman evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: podman-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/podman-evidence
+          if-no-files-found: error
+          retention-days: 30

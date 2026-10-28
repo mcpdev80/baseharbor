@@ -1,0 +1,240 @@
+# Targets und Bereitstellungsziele
+
+BaseHarbor trennt **wo** eine Anwendung betrieben wird von **was** sie benötigt und **welche Umgebung** ausgewählt ist.
+
+Eine konkrete Bereitstellungsidentität ist:
+
+```text
+target + application + environment
+```
+
+Beispiele:
+
+```text
+docker-dev / demo     / dev
+podman-dev / demo     / dev
+laptop-k3s / demo     / dev
+prod-ocp   / mailflow / prod
+```
+
+## Das Target-Modell
+
+Ein BaseHarbor Target ist ein benanntes Deployment-Ziel.
+
+```text
+Target
+├── Runtime Provider
+├── Runtime Access Reference
+└── Target Scope
+```
+
+Die Begriffe bleiben getrennt:
+
+```text
+Target
+  where BaseHarbor operates
+
+Runtime Provider
+  which runtime implementation realizes workloads
+
+Access
+  how BaseHarbor reaches/authenticates to that runtime
+
+Scope
+  which logical area inside that runtime is selected
+```
+
+Ein Target-Name trägt keine Runtime-Semantik. Ein Target bedeutet weder automatisch lokal/entfernt noch Docker/Podman/Kubernetes/OpenShift.
+
+K3s, k3d, kind, minikube, MicroK8s und aehnliche Distributionen sind Kubernetes-Targets und keine eigenen BaseHarbor Runtime Provider.
+
+Beispiele:
+
+```text
+Target              Provider      Access          Scope
+------------------------------------------------------------
+docker-dev          docker        local-docker    default
+podman-dev          podman        local-podman    default
+laptop-k3s          kubernetes    laptop-k3s      dev
+homelab-k3s         kubernetes    homelab         dev
+homelab-k3s-test    kubernetes    homelab         test
+customer-prod       openshift     customer-a      project-x
+```
+
+Mehrere Targets dürfen dieselbe Zugriffsdefinition verwenden und unterschiedliche Bereiche wählen.
+
+## Repository und installierter BaseHarbor-Zustand
+
+Das Repository bleibt die maßgebliche Quelle für die portable Anwendungsanforderung:
+
+```text
+baseharbor.yaml
+envs/<environment>/baseharbor.yaml
+```
+
+Das aktuelle Verzeichnis darf beim Erkennen von Anwendung und Umgebung helfen, aber niemals festlegen, welche Bereitstellungen die installierte BaseHarbor-Instanz kennt.
+
+## Konfiguration und Target-Zustand
+
+Die Benutzerkonfiguration ist global:
+
+```text
+cwd may answer "which application do I mean?"
+cwd must not answer "which applications does BaseHarbor know?"
+```
+
+Sie enthaelt Target-Definitionen, Zugriffsdefinitionen, Vorgaben und Prompt-Präferenzen. Auch Target-eigene Provider-Lifecycle-Referenzen koennen hier liegen; fuer managed OpenBao speichert der optionale Eintrag `target.openbao.recovery-file` nur den absoluten Pfad zur vom Betreiber verwahrten Wiederherstellungsdatei, niemals das Recovery-Material selbst.
+
+Veränderlicher Runtime-/Bereitstellungszustand ist Target-bezogen:
+
+```text
+$XDG_CONFIG_HOME/baseharbor/config.yaml
+~/.config/baseharbor/config.yaml
+```
+
+Damit koennen Docker-, Podman- und lokale Kubernetes/K3s-Targets unabhaengig parallel existieren, ohne versehentlich denselben BaseHarbor-State zu teilen. Gemeinsam genutzte Provider gehören zum Target-/Provider-Lebenszyklus und nicht zu einer einzelnen Anwendung. Insbesondere duerfen Löschen oder Umbenennen einer Anwendung weder die Target-weite OpenBao-Recovery-Referenz noch die gemeinsam genutzte OpenBao-Provider-Instanz entfernen.
+
+Ein lokales K3s/Kubernetes-Target ist kein Sonderfall: es ist ein Kubernetes-Target, dessen Access-Definition einen lokalen Cluster erreicht.
+
+## Target-Auswahl
+
+Das effektive Target wird so aufgelöst:
+
+```text
+$XDG_DATA_HOME/baseharbor/targets/<target>/
+~/.local/share/baseharbor/targets/<target>/
+```
+
+Anwendung und Umgebung bleiben unabhängige Achsen.
+
+## Shell-Aktivierung und Prompt-Anzeige
+
+Targets können nur für die aktuelle Shell ähnlich wie eine Python-Umgebung aktiviert werden. Verschiedene Terminals koennen dadurch gleichzeitig unterschiedliche Targets verwenden.
+
+Die optionale Prompt-Anzeige macht das Target sichtbar, bevor ein baha-Befehl eingegeben wird:
+
+```text
+~/.local/share/baseharbor/
+└── targets/
+    ├── docker-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    ├── podman-dev/
+    │   ├── runtime/
+    │   ├── provider-registry.json
+    │   └── deployments/
+    └── laptop-k3s/
+        ├── runtime/
+        ├── provider-registry.json
+        └── deployments/
+```
+
+Darstellung, Position, Farben und Barrierefreiheit sind konfigurierbar. Produktion darf niemals nur über Farbe erkennbar sein.
+
+## Lifecycle und Sicherheit
+
+Ein Wechsel des aktiven/Standard-Targets verschiebt oder benennt bestehende Deployments niemals um.
+
+Ein Target mit registrierten Deployments oder BaseHarbor-eigenen Runtime-Ressourcen darf nicht implizit geloescht werden.
+
+Mutierende/destruktive Operationen zeigen die volle effektive Identitaet:
+
+```text
+application workload   <app>.<dev-domain>
+application UI         <app>-<service>.<dev-domain>
+shared provider UI     <service>.<dev-domain>
+external               provider-owned URL
+```
+
+`baha app list` liest Target-/Global-State statt repository-lokalen Zustand. `baha app list --all-targets` liefert die installationsweite Sicht.
+
+CLI, JSON und MCP verwenden dieselbe Target-/Bereitstellungsidentität.
+
+Diese v0.4.15-Foundation wird in Issue #408 umgesetzt und bildet die Grundlage fuer #396 sowie spaetere Kubernetes-/OpenShift-Runtimes.
+
+
+## Frei definierbare Prompt-Beschriftung
+
+Die Prompt-Anzeige ist reine Darstellung und darf vom eigentlichen Target-Namen abweichen.
+
+Beispiel:
+
+```text
+explicit --target
+        ↓
+activated BASEHARBOR_TARGET
+        ↓
+configured default target
+        ↓
+first-run/local target selection
+```
+
+Die Beschriftung ist nur ein visueller Alias. Sie verändert weder Target-Identität noch Bereitstellungsschlüssel, Besitz noch Target-Auflösung.
+
+Der Wizard erlaubt deshalb neben Presets auch:
+
+- freie Prompt-Beschriftung;
+- frei waehlbare Farbe;
+- Position vor oder hinter dem Pfad beziehungsweise als rechter Prompt, wenn unterstützt;
+- Live-Vorschau der exakten Darstellung.
+
+Produktion bleibt standardmäßig auch ohne Farberkennung eindeutig sichtbar.
+
+## Tenant-Zuordnung für Connector-Einschreibung
+
+Die vertrauenswürdige Core-Konfiguration eines Connector-Targets benötigt
+`tenant-id` als kanonische Tenant-UUID. Die Access-Definition verwendet
+`provider: baseharbor-node-connector` und als `reference` die stabile Node-ID.
+Nur eine aufgelöste Editor-Mitgliedschaft desselben Tenants darf eine
+Einschreibungsberechtigung erstellen; Runtime und Zuordnung stammen aus Core.
+Ein nicht zugeordnetes oder fremdes Target wird abgewiesen.
+
+Die CA wird an ein ausdrücklich ausgewähltes lokales Core-Target gebunden.
+HTTPS-Einschreibung allein belegt noch keine ausführbare Remote-Verbindung.
+Der optionale öffentliche
+[BaseHarbor Node Connector](https://github.com/mcpdev80/baseharbor-node-connector)
+implementiert diesen outbound-initiierten Target-Access-Transport für entfernte
+Nicht-Kubernetes-Hosts. Er ist weder Control Plane noch Runtime Provider und
+öffnet keinen unauthentifizierten eingehenden Management-Port.
+
+Connector-eigene Tests und CI begründen allein noch keinen BaseHarbor-Supportstatus.
+Live-Zulassung, Erneuerung, Widerruf und Docker-/Podman-Support erfordern gepinnte
+Core -> Connector -> Runtime-Evidenz. Details stehen im
+[Target-Access-Vertrag](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/spec/target-access-v1.md)
+und in der englischen
+[Plattform-Supportmatrix](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/reference/platform-support.md).
+
+
+## Weitere unveränderte technische Beispiele
+
+```bash
+eval "$(baha target activate docker-dev)"
+baha target -o json
+baha config prompt
+source <(baha shell-init bash)
+```
+
+```text
+[homelab] ~/projects/demo $
+[prod-ocp PROD] ~/projects/mailflow $
+```
+
+```text
+target + application + environment
+```
+
+```text
+Target: laptop-docker-12
+Prompt label: ld12
+Color: soft green
+
+[ld12] ~/projects/demo $
+```
+
+
+Technische Kennungen: `baha.localhost`, `auth.<domain>`, `auth-admin.<domain>`, `secrets.<domain>`, `metrics.<domain>`, `baha shell-init zsh`, `baha shell-init fish`.
+
+## Isoliertes State-Verzeichnis
+
+`BASEHARBOR_STATE_DIR` ist der autoritative Datenstamm der isolierten Installation. Target-, Deployment-, Provider- und TLS-State liegen darunter; die Target-Konfiguration liegt darin unter `config/config.yaml`. Organisationsauswahl und Konfigurationscache liegen unter `config/organization/` und `cache/organization/`; geschützte Operator-Sessions liegen unter `cache/sessions/`. Eine fremde Installation kann dadurch weder das isolierte Target verändern noch ihren Login bereitstellen. Der Override hat Vorrang vor XDG-Daten- und Konfigurationspfaden. Ein isolierter Test kann dadurch die Target-Auswahl der normalen Benutzerinstallation weder entdecken noch überschreiben. Recovery-Material des Operators liegt im benachbarten `<state-root>-recovery/<target>/` und überlebt das Löschen des Installations-State. Explizite Recovery-Pfade bleiben unverändert. Verwende ein eigenes absolutes Verzeichnis und niemals den State einer fremden Installation.

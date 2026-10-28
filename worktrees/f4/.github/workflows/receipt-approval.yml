@@ -1,0 +1,93 @@
+# Owner-approval path for the public-contracts receipt pilot.
+#
+# Identity policy (CODE-AUDIT F4/F5): this job receives NO caller-set GITHUB_*
+# overrides and exports NO patch. The runner's own context supplies claims; the
+# verifier proves them against the authenticated workflow-run object via the API
+# and against the reviewed pinned helper source. The job gate uses github.actor
+# and github.triggering_actor CONTEXT values, which GitHub evaluates before any
+# step runs; a step-level env string can never substitute for identity. Wrong
+# actor, triggering actor, event, repository, ref or producer workflow
+# definition fails closed inside receipt_verifier.identity()/live().
+#
+# The human provides exactly one thing: the contributor PR number. The receipt
+# path, candidate SHA, plan revision and task association are auto-resolved from
+# that reference; they are never manual inputs. The sole allowed edit (approved
+# block at the original receipt-introduction commit) is published automatically
+# through W2's receipt_writer publication helper using the Planning write token.
+#
+# After successful approval publication, this job triggers the shadow consumer
+# (receipt-shadow.yml) via a reusable workflow_call. The shadow verifies the
+# approved receipt offline against Planning history — never calls the GitHub API.
+# No automatic trigger or required check is armed; the result never gates any
+# merge. TRUSTED_SOURCE below is the immutable reviewed commit; while empty the
+# verifier fails closed (tested pinned source unavailable).
+
+name: receipt-approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Contributor PR number whose published receipt is approved
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  approve:
+    # Owner-only decision. Context-based gate: evaluated by GitHub, not by any
+    # step, so it cannot be forged through job or step env.
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80' &&
+      github.triggering_actor == 'mcpdev80'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history; identity is the authenticated run head)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.x'
+
+      - name: Checkout Planning (protected main, full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          path: planning
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure Planning commit identity
+        run: |
+          git -C planning config user.name "mcpdev80"
+          git -C planning config user.email "mcpdev80@users.noreply.github.com"
+
+      - name: Verify, approve and publish the receipt for the selected PR
+        id: approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          TRUSTED_SOURCE: ''
+          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/receipt_verifier.py approve \
+            --planning "${GITHUB_WORKSPACE}/planning" \
+            --product "${GITHUB_WORKSPACE}" \
+            --pr "${PR_NUMBER}"
+
+      - name: Run the shadow consumer on the approved receipt
+        if: success()
+        uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@main
+        with:
+          receipt: evidence/receipts/public-contracts/123-1.json
+          plan: ${{ steps.approval.outputs.plan }}
+          candidate: ${{ steps.approval.outputs.candidate }}

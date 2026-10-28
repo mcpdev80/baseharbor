@@ -1,0 +1,90 @@
+# Minimal-receipts shadow consumer (W1, connected from receipt-approval).
+#
+# Retained-only consumption of one published, Owner-approved receipt after the
+# approval publication is durable. This replaces the earlier PR-open,
+# live-fallback design that consumed evidence before it existed: the consumer
+# now reads exactly the approved receipt path, plan revision and candidate that
+# the trusted approval job published, verifies them offline against the full
+# protected Planning history, and never calls the GitHub API for a live fallback.
+#
+# The producer workflow that triggers publication is asynchronous and cannot be
+# awaited by the producer; the shadow is therefore a reusable workflow that the
+# trusted approval job (receipt-approval.yml) runs from protected main, not a
+# PR-open job that waits for after-the-fact evidence.
+#
+# Connected from receipt-approval.yml via reusable workflow_call; the approval
+# job passes the exact published receipt/plan/candidate as inputs.
+
+name: "Receipt · Shadow Final Check"
+
+on:
+  workflow_call:
+    inputs:
+      receipt:
+        description: Exact published receipt path relative to the Planning checkout
+        type: string
+        required: true
+      plan:
+        description: Exact approved plan revision (full Planning commit SHA)
+        type: string
+        required: true
+      candidate:
+        description: Exact approved candidate SHA the receipt binds
+        type: string
+        required: true
+    secrets:
+      PLANNING_RECEIPT_WRITE_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  receipt_shadow:
+    name: PR · Receipt Shadow Consumption
+    # Connected from receipt-approval.yml via workflow_call; the approval
+    # job passes the exact published receipt/plan/candidate as inputs.
+    # No automatic trigger or required check is armed; the result never
+    # gates any merge.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out the verifier from the trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch protected Planning history read-only (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          ref: main
+          path: planning
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify this candidate's published receipt with the frozen interface
+        env:
+          RECEIPT: ${{ inputs.receipt }}
+          PLAN: ${{ inputs.plan }}
+          CANDIDATE: ${{ inputs.candidate }}
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The candidate is the exact published candidate the Owner approved,
+          # never the PR head: a live fallback to any apparently-green candidate
+          # is not trusted. Retained verification uses no GitHub API.
+          revision="$(git -C planning rev-parse HEAD)"
+          python3 scripts/receipt_verifier.py retained \
+            --planning planning --revision "$revision" \
+            --receipt "$RECEIPT" --candidate "$CANDIDATE" --plan "$PLAN"
+          {
+            echo "## Receipt shadow consumption (informational, never required)"
+            echo "- receipt: \`$RECEIPT\`"
+            echo "- plan revision: \`$PLAN\`"
+            echo "- candidate: \`$CANDIDATE\`"
+            echo "- planning revision: \`$revision\`"
+          } >> "$GITHUB_STEP_SUMMARY"

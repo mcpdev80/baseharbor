@@ -1,0 +1,131 @@
+package main
+
+import (
+	"context"
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"io"
+	"strings"
+	"time"
+)
+
+type machineControlPlaneUpInput struct {
+	MachineRole  coreinstallation.MachineRole `json:"machine_role,omitempty"`
+	HA           bool                         `json:"ha,omitempty"`
+	Target       string                       `json:"target,omitempty"`
+	PostgresPort int                          `json:"postgres_port,omitempty"`
+	OpenBaoPort  int                          `json:"openbao_port,omitempty"`
+	RecoveryFile string                       `json:"recovery_file,omitempty"`
+}
+type machineControlPlaneDestroyInput struct {
+	DeleteData            bool                               `json:"delete_data,omitempty"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+	Target                string                             `json:"target,omitempty"`
+	Approval              bool                               `json:"approval"`
+}
+type machineControlPlaneStopInput struct {
+	Target                string                             `json:"target,omitempty"`
+	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+}
+
+func registerMCPControlPlaneTools(server *mcp.Server) {
+	mcp.AddTool(server, machineMCPTool("control-plane.status", "Inspect selected target control-plane readiness and HA satisfaction.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
+		ctx, cancel := context.WithTimeout(withTargetOverride(ctx, input.Target), 30*time.Second)
+		defer cancel()
+		result, err := inspectControlPlane(ctx)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, machineMCPTool("control-plane.doctor", "Inspect control-plane prerequisites without returning runtime console or credentials.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
+		result, err := inspectControlPlaneDoctor(withTargetOverride(ctx, input.Target))
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, machineMCPTool("control-plane.up", "Initialize or converge the selected target control plane through shared lifecycle and memory preflight.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneUpInput) (*mcp.CallToolResult, any, error) {
+		ctx, cancel := context.WithTimeout(machineNoninteractiveContext(withTargetOverride(ctx, input.Target)), 15*time.Minute)
+		defer cancel()
+		opts := runtimeUpOptions{MachineRole: input.MachineRole, HA: input.HA, Yes: true, ControlPlaneOnly: true, PostgresPort: input.PostgresPort, OpenBaoPort: input.OpenBaoPort, RecoveryFile: input.RecoveryFile}
+		if err := runtimeUpGuided(ctx, strings.NewReader(""), io.Discard, opts); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := inspectControlPlane(ctx)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := requireControlPlaneReady(result); err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	mcp.AddTool(server, machineMCPTool("control-plane.stop", "Stop selected owned Core services after current impact acknowledgement; retain other providers, workloads and recovery resources.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneStopInput) (*mcp.CallToolResult, any, error) {
+		ctx = withProviderChangeConsent(machineNoninteractiveContext(withTargetOverride(ctx, input.Target)), input.ProviderChangeConsent)
+		result, err := runtimeDownWithResult(ctx, io.Discard)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+	for _, action := range []string{"repair"} {
+		mcp.AddTool(server, machineMCPTool("control-plane."+action, "Operate the selected owned control plane through existing lifecycle; preserve persistent data.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
+			ctx, cancel := context.WithTimeout(withTargetOverride(ctx, input.Target), 3*time.Minute)
+			defer cancel()
+			var err error
+			err = repairExistingControlPlaneRuntime(ctx, io.Discard)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			result, err := inspectControlPlane(ctx)
+			if err != nil {
+				return machineMCPFailure(err)
+			}
+			if action == "repair" {
+				if err := requireControlPlaneReady(result); err != nil {
+					return machineMCPFailure(err)
+				}
+			}
+			return nil, result, nil
+		})
+	}
+	mcp.AddTool(server, machineMCPTool("installation.destroy", "Remove all owned BaseHarbor installation resources after explicit approval and authorization of every registered deployment; preserve external application source/data.", true), func(ctx context.Context, req *mcp.CallToolRequest, input struct {
+		Approval              bool                               `json:"approval"`
+		ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+	}) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "installation.destroy", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := applicationlifecycle.RequireApproval("installation.destroy", input.Approval); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+		ctx, cancel := machineLifecycleContext(ctx)
+		defer cancel()
+		ctx, report := withDestroyReport(ctx, true)
+		if err := destroyInstallation(ctx, true, io.Discard, io.Discard); err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, report, nil
+	})
+
+	mcp.AddTool(server, machineMCPTool("control-plane.destroy", "Remove canonical owned Core containers after approval and two current-plan acknowledgements, including explicitly chosen active-consumer outages. Preserve persistent data and consumer owners unless delete_data selects owned Core volumes with separate deletion consent.", true), func(ctx context.Context, req *mcp.CallToolRequest, input machineControlPlaneDestroyInput) (*mcp.CallToolResult, any, error) {
+		ctx = withTargetOverride(ctx, input.Target)
+		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
+		ctx = withSelectedCoreDataDeletion(ctx, input.DeleteData)
+		if err := authorizeCurrentMCPContext(ctx, "control-plane.destroy", "", "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		if err := applicationlifecycle.RequireApproval("control-plane.destroy", input.Approval); err != nil {
+			return machineMCPFailure(err)
+		}
+		ctx, report := withDestroyReport(ctx, false)
+		if err := destroyControlPlane(ctx, true, io.Discard); err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, report, nil
+	})
+}

@@ -1,7 +1,3 @@
-# Core-921 CI binding qualification (#1056)
-
-Owner-authorized immutable source inventory for the exact #1056 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -24,10 +20,6 @@ Owner-authorized immutable source inventory for the exact #1056 candidate. This 
   ]
 }
 ```
-
-## OpenBao retry CI source qualification (#1060)
-
-Independent source review by /root/independent_review approves the exact integrated source below. The four-file tree preserves accepted policy #1064 and the corrected #1060 executor/workflow route. Review: full net source diff, preservation of both regression matrices, 15 focused integrity and execution tests passed. Coordinator complete planner suite: 121 tests passed. This target-side record authorizes only that immutable source and the listed checks; final mandatory CI and native evidence remain separate.
 
 ```json
 {
@@ -55,10 +47,6 @@ Independent source review by /root/independent_review approves the exact integra
 }
 ```
 
-## Canonical pins metadata qualification (#1056)
-
-Independent source review by /root/independent_review approves the exact four-file source below. It removes the rejected bootstrap fallback and validates metadata through the canonical graph, pins resolver and private-origin owners extracted from the trusted base. The complete 150-test coordinator selection passed; the independent reviewer additionally passed eight targeted execution, source-binding and fail-closed tests. Final required CI remains mandatory after trusted-target integration.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -85,10 +73,6 @@ Independent source review by /root/independent_review approves the exact four-fi
 }
 ```
 
-## Unbound Core SQL retirement regression CI qualification
-
-Owner-authorized exact CI source qualification; no independent review is claimed. This three-file source adds one mandatory executable regression/safety profile and an exact immutable binding for product source `938adee78ec2d10536f1834829facd8d9b1bec09`. It reuses the existing trusted executor and source/ancestry checks; missing, skipped and failed test families remain blocking. All144 planner/runner tests, existing nested utility checks, the six actual Go regression/safety families and workflow policy pass locally. Native acceptance of the corrected product remains pending. Only the authenticated target copy of this record authorizes CI; candidate-owned copies cannot qualify themselves.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -111,11 +95,6 @@ Owner-authorized exact CI source qualification; no independent review is claimed
   ]
 }
 ```
-
-
-## Input-equivalent release evidence reuse CI qualification
-
-Owner-authorized qualification of exact source; no independent-review claim. This three-file CI source binds only the two-file collector/regression candidate `c7e629c2876772493edc037769f1643c45c92fe8` to the existing planner, workflow-policy and executable verifier suites. The existing real-Git authority mutation matrix covers clean target integration and rejects missing/extra/status-altered files, changed anchors, unreviewed followups and injected merge trees. The runner docstring is clarified without execution changes. Collector validation passes104 targeted checks, with four new regressions failing against original source. Source-only65-gate input comparison remains equal across the collector-only change; no new execution or release approval is claimed. Original ZIP/source/attempt, cleanup, current consumer bindings and newer negative outcomes remain required.
 
 ```json
 {
@@ -140,11 +119,6 @@ Owner-authorized qualification of exact source; no independent-review claim. Thi
 }
 ```
 
-
-## SQL Edit gate selection
-
-Owner-authorized exact public CI source; no independent-review claim. Select the two SQL New/Edit gates and require the preview-error regression. Local127 planner checks and existing8/7/5 utilities pass. No gate waiver or native-success claim.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -167,11 +141,6 @@ Owner-authorized exact public CI source; no independent-review claim. Select the
   ]
 }
 ```
-
-
-## Corrected SQL Edit selection qualification
-
-Owner-authorized continuation of the explicitly approved public CI register update. Supersedes the earlier SQL Edit candidate, whose redundant extra test-family entry failed the existing runner fixture. The existing TestAppEditCommand family runs the preview regression without an extra overlapping selector. Full145 planner/runner tests and nested8/7/5 utility checks pass locally. Both real SQL gates and required CI remain mandatory; no native success, gate waiver or independent review claimed.
 
 ```json
 {
@@ -196,10 +165,6 @@ Owner-authorized continuation of the explicitly approved public CI register upda
 }
 ```
 
-## Exact SQL remove and replacement preview qualification
-
-Owner-authorized continuation of the approved public CI register publication; no independent-review claim. This exact CI source binds only product `57f5d268835a07f4b66607a29a8f4f2331f19b36` to mandatory Go/Guided/Edit/provider-choice checks and both real SQL gates. Regressions reproduce inherited removed preferences, a bound-selection refusal and a replacement binding-conflict. Corrected detached projections preserve persisted choices, the actual registry and other environments; execution remains under existing consequence consent. Full146 planner/runner tests, nested8/7/5 utilities and19 workflow-policy checks pass locally. Real Git tests reject incomplete/status-altered inventories, changed anchors, unreviewed followups and injected merge trees. Native failures remain recorded; no native success or gate waiver is claimed.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -222,11 +187,6 @@ Owner-authorized continuation of the approved public CI register publication; no
   ]
 }
 ```
-
-
-## Stable Edit confirmation and apply output qualification
-
-Owner-authorized release repair under Marcel's explicit completion mandate; no independent-review claim. This exact CI source qualifies only product `f9c1f0186b9a47143142be048ffcff7f3e1a5f02` and its eight-file inventory through clean trusted-target integration. Mandatory checks include Go/Guided, Edit, provider choices, controller, New and machine adapters, plus both real Docker and rootless Podman SQL gates. Sampling and remaining-validity countdowns do not invalidate unchanged consequences; absolute expiry, ownership, state, verification, outcomes, confirmations and plan identity remain bound. Rebuilt post-Edit execution retains runtime output without a duplicate header. Previous failed run40183518498 remains failed; no native success, gate waiver or release approval is claimed.
 
 ```json
 {
@@ -251,13 +211,6 @@ Owner-authorized release repair under Marcel's explicit completion mandate; no i
 }
 ```
 
-
-## Coherent Edit observation and expired-read qualification
-
-Owner-authorized continuation of Marcel's complete-release repair mandate; no independent-review claim. This exact CI source binds only product `da4d919bffeeebf8824a5a9a6e5b0f0f8d273381` and all ten modified Go files through clean trusted-target integration. Guided reads use the lifecycle's own internal snapshot instead of observing twice. Each Edit refresh may display the exact desired plan's projection only for identical resolved ownership/source/Target/preferences; no projection crosses a refresh or enters execution. Expired observer responses cannot become confirmable previews, even when the observer returns partial data without an error. Existing 30-second bounds remain unchanged; stale diagnostics disclose only the changed authority category. Public plan JSON excludes internal snapshot/preference fields.
-
-Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks and both real Docker/rootless Podman SQL gates remain binding. Local125 focused Go families, vet, build and readability pass, including real30-second expired-partial regression;146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Earlier SQL failures stay failed; Demo124/125 repair SQL workload migration and explicit retained-provider selection. Fresh native qualification is required. This entry claims no native success, gate waiver or complete release approval.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -281,13 +234,6 @@ Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks a
 }
 ```
 
-
-## Current source snapshot and authored-intent qualification
-
-Owner-authorized complete-release repair; no independent-review claim. Supersedes the earlier pending CI candidate after a realistic authored-source regression exposed a remaining cache miss. This exact CI source binds only product `d26a69c88e6a42ee3de5c0b9fb1aef8ff73d851d` and the same complete ten-file inventory through clean trusted-target merges. The current read's snapshot supplies provider choices within that single refresh. A desired plan supplies its preview only when the fresh actual source/owner/Target still match exactly, system-owned application identity and canonical authored intent agree, and explicit provider preferences match. Internal runtime placement projections remain bound through the actual source, rather than being confused with portable authored intent. New preview/confirmation scopes and execution validations always read afresh.
-
-All existing source, expiry, ownership, consequence, consent and Target-lock protections remain. The30-second bound is unchanged; expired partial observations are rejected. Source regressions exercise the real default Read/Choices and Plan/Preview authorities, parsed authored source, changed placement/intent/owner/Target and new/cancelled scopes. Local126 Go families, vet/build/readability,146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Both real SQL gates and mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks remain required. No native failure is converted to success and no complete release approval is claimed.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -309,4 +255,8 @@ All existing source, expiry, ownership, consequence, consent and Target-lock pro
     "ci-executor-verifier-tests"
   ]
 }
+```
+
+```json
+{"file_hashes":{"scripts/pr-check-runner.py":"c8de577f0ce52d694c736b1fc9599e05fcf03a3e7a87554fcbcec4f79a192f3c","scripts/pr-gate-plan.py":"17f6992ebc51a1b509be5ca5561c882de58786885d6e8fce7a32ed8c5bbd3cfc","scripts/test_pr_gate_plan.py":"bf7ea3af0a12ba52838f8aee9601fb75b34a5955e3f8d79107295383f2cd1d39"},"files":{"scripts/pr-check-runner.py":"modified","scripts/pr-gate-plan.py":"modified","scripts/test_pr_gate_plan.py":"modified"},"repository":"mcpdev80/baseharbor","required_checks":["pr-planner-tests","ci-policy","ci-executor-verifier-tests","receipt-execution-tests"],"reviewed_head":"e7f632c4b8f7454ddebdb0371f0b9545ec60b498","target_branch":"develop"}
 ```

@@ -1,0 +1,4910 @@
+
+<!doctype html>
+<html lang="de" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Sichere, modulare, selbst gehostete Backend-Infrastruktur für unabhängige Anwendungen.">
+      
+      
+      
+        <link rel="canonical" href="https://mcpdev80.github.io/baseharbor/de/spec/capability-first-v0425/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="/baseharbor/" hreflang="en">
+        
+          <link rel="alternate" href="/baseharbor/de/" hreflang="de">
+        
+      
+      
+      <link rel="icon" href="../../../brand/baseharbor.ico">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Capability-first Application-Verträge (v0.4.25) - BaseHarbor</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+    
+    
+      <link rel="stylesheet" href="../../../brand/brand-tokens.css">
+    
+      <link rel="stylesheet" href="../../../stylesheets/baseharbor-docs.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#capability-first-application-vertrage-v0425" class="md-skip">
+          Zum Inhalt
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Kopfzeile">
+    <a href="../.." title="BaseHarbor" class="md-header__button md-logo" aria-label="BaseHarbor" data-md-component="logo">
+      
+  <img src="../../../brand/baseharbor-master-lockup.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            BaseHarbor
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Capability-first Application-Verträge (v0.4.25)
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Zum dunklen Modus wechseln"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Zum dunklen Modus wechseln" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Zum hellen Modus wechseln"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Zum hellen Modus wechseln" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Sprache wechseln">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="/baseharbor/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="/baseharbor/de/" hreflang="de" class="md-select__link">
+              Deutsch
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Suche" placeholder="Suche" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Suche">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Zurücksetzen" aria-label="Zurücksetzen" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Suche wird initialisiert
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mcpdev80/baseharbor" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mcpdev80/baseharbor
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="BaseHarbor" class="md-nav__button md-logo" aria-label="BaseHarbor" data-md-component="logo">
+      
+  <img src="../../../brand/baseharbor-master-lockup.png" alt="logo">
+
+    </a>
+    BaseHarbor
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mcpdev80/baseharbor" title="Zum Repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    mcpdev80/baseharbor
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Einstieg
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Einstieg
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Erste Application
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/homelab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Homelab
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/core-resources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core-Ressourcen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI-Überblick
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/human-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Menschliche CLI-Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Applications
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Applications
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/application-contract/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Contract
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/applications/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application-Befehle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/application-needs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bedarf erstellen und ändern
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Core-Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/environments/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Umgebungen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/backup-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup und Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/dynamic-application-secrets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dynamische Application-Secrets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Targets
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Targets
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/targets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Target-Konzepte
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/targets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Target-Befehle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/developer-access/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer-Zugriff
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Provider
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider-Modell
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider-Befehle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/external-providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Externe/BYO-Provider
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/postgres/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PostgreSQL
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/durable-key-value/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dauerhafter Key-Value-Speicher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/document-database/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dokumentdatenbank
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/messaging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Messaging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/object-storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objektspeicher
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/secrets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secrets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/observability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspaces
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Workspaces
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/development/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workspace und Development
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Stacks
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Development Stacks
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/backstage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backstage-Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisation und Plattform
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Organisation und Plattform
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/organization-configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Konzepte und Verteilung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../organization-resolution-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution & independent policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/organization-policy/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Organisation und Policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security und Trust
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Security und Trust
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sicherheitsmodell
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/authentication/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentifizierung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/security-trust/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security-/Trust-Befehle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../extension-artifact-trust-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extension artifact trust
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Betrieb
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Betrieb
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fehlerbehebung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Fehler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation und Agents
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Automation und Agents
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/automation-agents/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Automation-Befehle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/mcp/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MCP- und Agent-Schnittstelle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli-machine-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI-/Maschinen-Abdeckung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/machine-operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Maschinenoperationen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-interface-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine Interface v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-http-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protected Machine HTTP v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runtime-explorer-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Explorer v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_12" >
+        
+          
+          <label class="md-nav__link" for="__nav_12" id="__nav_12_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Referenz
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_12_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_12">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Referenz
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/public-contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public contracts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/platform-support/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plattformunterstützung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/command-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Complete command index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/global-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Globale Optionen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../cli/shell-ux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Shell und Bedienung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/manifest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Manifest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/application-secret-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application secret API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/authentication-and-api-errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Authentifizierung und API-Fehler
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/backup-and-restore/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Backup und Restore
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/postgresql-and-migrations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PostgreSQL und Migrationen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-compose/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Lokale Control-Plane-Runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-resource-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Resource API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/runtime-secret-broker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Secret Broker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/secrets-and-openbao/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secrets und OpenBao
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runtime-provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runtime-provider-conformance-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Provider Conformance v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../provider-conformance-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Public provider conformance v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../delivery-provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Delivery Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_13" >
+        
+          
+          <label class="md-nav__link" for="__nav_13" id="__nav_13_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architektur
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_13_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_13">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architektur
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Systemarchitektur
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/workload-sources/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workload-Quellen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14" >
+        
+          
+          <label class="md-nav__link" for="__nav_14" id="__nav_14_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entwicklung
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_14_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Entwicklung
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/mcpdev80/baseharbor/blob/develop/CONTRIBUTING.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Mitwirken (EN)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../DEVELOPMENT_GUIDELINES/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Entwicklungsrichtlinien
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../STYLE_GUIDE/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Doku-Stil
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/v0.4.23-release-requirements/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release-Anforderungen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../development/pre-release-readiness/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pre-Release-Bereitschaft
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architekturentscheidungen
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_14_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_14_7" id="__nav_14_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spezifikationen
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_14_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_14_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Spezifikationen
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Überblick
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../application-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../provider-contract-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Provider Contract v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../development-extension-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development Extension v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reconciliation-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reconciliation v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-interface-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Machine Interface v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../machine-http-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Protected Machine HTTP v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runtime-explorer-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime Explorer v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../audit-evidence-v1/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Audit & Evidence v1
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../security-invariants/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security invariants
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../input-resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Eingabeauflösung
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../control-plane-runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Control-plane runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../application-runtime-broker/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application Runtime Broker
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../application-runtime-identity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application runtime identity
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../runtime-secret-broker-security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Runtime broker security
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../standards-first/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards-first-Verträge
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../standards-matrix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Standards matrix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_15" >
+        
+          
+          <label class="md-nav__link" for="__nav_15" id="__nav_15_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Projekt
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_15_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_15">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Projekt
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release Notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/releases/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release-Referenz
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Inhaltsverzeichnis">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Inhaltsverzeichnis
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#autorenformat-und-systemeigene-identitat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Autorenformat und systemeigene Identität
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provider-auflosung-und-footprint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider-Auflösung und Footprint
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Provider-Auflösung und Footprint">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wechsel-der-nativen-backend-platzierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wechsel der nativen Backend-Platzierung
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#target-verbraucherunion-und-hinzufugenentfernenreaktivieren" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provider-wechsel-folgen-und-entwicklerentscheidung" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provider-Wechsel: Folgen und Entwicklerentscheidung
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Provider-Wechsel: Folgen und Entwicklerentscheidung">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#globale-registrierungsanderungen-uber-mehrere-targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Globale Registrierungsänderungen über mehrere Targets
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#bestehende-ancillary-realisierungen" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bestehende Ancillary-Realisierungen
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abdeckung-ausgelieferter-provider" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abdeckung ausgelieferter Provider
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#abgeleitete-verbraucheraktionen-und-lifecycle-abdeckung" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abgeleitete Verbraucheraktionen und Lifecycle-Abdeckung
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#777-portabler-connection-profile-transport-nur-vertrag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        #777 portabler Connection-Profile-Transport (nur Vertrag)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#host-platform-grenze-nur-vertrag" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host-Platform-Grenze (nur Vertrag)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#lokale-workload-autorisierung" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lokale Workload-Autorisierung
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Lokale Workload-Autorisierung">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#frische-ausfuhrungsabhangigkeiten-und-credential-zustellung" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frische Ausführungsabhängigkeiten und Credential-Zustellung
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#teilautoritat-beim-installationsabbau" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Teilautorität beim Installationsabbau
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="capability-first-application-vertrage-v0425">Capability-first Application-Verträge (v0.4.25)</h1>
+<p>Verbindlicher Scope: <a href="https://github.com/mcpdev80/baseharbor/issues/872">#872</a>,
+korrigiert am 2026-10-11. Er ersetzt das feste SQL/Secrets/Identity-Paket,
+Entwickler-IDs und die vertagte Entfernung früherer Planung und Abnahme.
+Bestehende Sicherheit, Ownership, HA und Recovery bleiben verbindlich.</p>
+<h2 id="autorenformat-und-systemeigene-identitat">Autorenformat und systemeigene Identität</h2>
+<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="nt">app</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp</span>
+<span class="w">  </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dev</span>
+</code></pre></div>
+<p>Services sind optional und niemals implizit. SQL ist <code>services.sql: true</code> unter
+<code>services</code>; ausführliche Anforderungen und benannte Instanzen nutzen die vorhandene
+Grammatik. Keine <code>provider:</code>-Sektion, kein weiterer Parser, keine Pflicht-Zusatzdatei.</p>
+<p>Entwickler setzen NIEMALS Application-IDs. <code>ParseYAML</code> lehnt jedes <code>app.id</code>, auch
+leere Werte, vor Änderungen ab. Das Feld entfernen und die Anwendung explizit
+initialisieren. Keine ID-Frage, kein ID-Flag, keine Konvertierung alter Autoren-IDs.
+<code>ParseCanonicalYAML</code> nutzt denselben Parser mit Freigabe für interne Datensätze;
+nur bestehende systemeigene Store-/Backup-Adapter verwenden diesen Zugang.
+<code>YAML</code> serialisiert interne Records, <code>AuthoredYAML</code> lässt die ID für Entwickler-
+Ausgaben weg. Interne IDs und Machine-Ausgaben bleiben gültig und werden beim
+Lesen niemals neu erzeugt.</p>
+<p>MCP <code>app.create</code> und <code>app.adopt</code> nehmen dasselbe typisierte Intent ohne
+<code>ApplicationID</code> entgegen. Ihre Eingabeschemas stammen aus den kanonischen
+Manifest-Typen, lassen das systemeigene Feld weg und lehnen mitgelieferte Werte
+vor Änderungen ab. <code>Version</code>, <code>Name</code> und <code>Environment</code> sind Pflichtfelder;
+weggelassene Anforderungssektionen erhalten leere Standardwerte. Ausführbare
+Anforderungen und Quellauswahl werden weiterhin geprüft. Autorisierung erfolgt
+vor dem Speichern der Identität; Ergebnisse enthalten die tatsächlich erzeugte
+kanonische ID. Wiederholte Adoption überschreibt keine Autorenquelle. Nach einer
+unterbrochenen Adoption liefert ein erhaltener kanonischer Owner beim Wiederholen
+dieselbe ID.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Identität und Schreibverhalten</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Parse / inspect / plan</td>
+<td>Keine Vergabe oder Speicherung; nur bestehende autoritative Claims auflösen</td>
+</tr>
+<tr>
+<td>Explizite Initialisierung / Registrierung</td>
+<td>Einmal erzeugen, wenn wirklich neu; im bestehenden kanonischen Store speichern</td>
+</tr>
+<tr>
+<td>Wiederholung / Neustart / Bearbeitung / anderes Target</td>
+<td>Dieselbe systemeigene Identität verwenden</td>
+</tr>
+<tr>
+<td>Widersprüchliche oder fehlende registrierte Identität</td>
+<td>Vor Änderungen abbrechen; autoritativen State wiederherstellen, keine Ersatz-ID</td>
+</tr>
+<tr>
+<td>Gleichzeitige Initialisierung</td>
+<td>Store.Create-Gewinner übernehmen oder unvollständigen State zum sicheren Wiederholen melden</td>
+</tr>
+<tr>
+<td>Entwickler-<code>app.id</code></td>
+<td>Verständlich ablehnen; Autoren-Datei und vorhandene Benutzerdaten erhalten</td>
+</tr>
+</tbody>
+</table>
+<p><code>ResolveIdentity</code> ist rein. <code>Store.InitializeIdentity</code> nutzt den bestehenden
+kanonischen Owner <code>.baseharbor/apps/&lt;name&gt;/baseharbor.yaml</code>. Deployment-Records
+projizieren diese Identität. Adapter gleichen Repository-/Source-Ownership ab,
+nicht App-Namen fremder Repositories. Lesende Adapter rufen Create,
+InitializeIdentity oder Sync niemals auf. Keine parallele Identity-Registry,
+automatische Migration oder Löschung vorhandener Daten.</p>
+<h2 id="provider-auflosung-und-footprint">Provider-Auflösung und Footprint</h2>
+<p>Application Contract beschreibt Bedarf. Bestehende Target-/Deployment-Bindings
+beschreiben Provider und Platzierung. <code>ProviderPreference</code> wählt optional
+<code>InstanceID</code> oder <code>ProviderKind</code>; beide müssen zusammenpassen. Leer bedeutet
+Automatic. Die Auswahl verwendet tatsächlich registrierte Capability-Angebote,
+keine fest codierte Provider-Liste. Kompatible Bindings bleiben stabil; expliziter
+Widerspruch ist ein typisierter Konflikt. Unterschiedliche Targets können denselben
+portablen Bedarf unterschiedlich realisieren.</p>
+<p><code>ResolveFootprint</code> liest <code>capability.Registry</code> v2 und Facts vorhandener Pläne/
+Observer eines Targets. Facts enthalten tatsächliche Dependency-Instanz-IDs:
+null bedeutet unbekannt, [] verifiziert keine. Keine schreibende Discovery,
+neue Registry, Scheduler oder zweiter Resolver. Fremde Targets/Ressourcen,
+Zyklen, fehlende Dependencies und inkompatible/mehrdeutige Auswahl scheitern klar.
+Automatic ohne verfügbare Deklaration bleibt unaufgelöst und autorisiert keine
+Provisionierung. Eine verifiziert ausgewählte Instanz ist strukturell vollständig,
+auch wenn das Binding erst in der bestehenden Apply-Transaktion gespeichert wird.</p>
+<p>Adapter für Runtime-Berechtigungen/Consumption liefern verifizierte
+<code>DependencyRoots</code> vorhandener Pläne an denselben Resolver. Nil bedeutet bei
+dieser Absicht unvollständig; [] beweist keine zusätzliche Provider-Realisierung,
+nicht den Wegfall von Sicherheitsanforderungen. Jeder ConsumerIntent liefert
+eigene Roots; Verifikation wird nicht zwischen Verbrauchern übernommen.
+Unbekannte Roots autorisieren keinen Core-losen Eingriff.</p>
+<p>Keine Capability impliziert das alte Core-Paket. SQL, Cache, Secrets, Identity
+und HTTPS wählen nur ihre Realisierung und echte erklärte Dependencies. Identity
+kann SQL benötigen. HTTPS benötigt nicht automatisch Identity oder OpenBao.
+Separat aktivierte Management-/Console-Dienste liefern ihre tatsächlichen
+Sicherheitsanforderungen als eigene Verbraucher; TLS/OIDC/mTLS/Autorisierung/HA/
+Recovery werden nicht abgeschwächt. Das bestehende <code>core</code>-Ausgabefeld klassifiziert
+eine echte Deklaration und fordert kein Paket an.</p>
+<p>Der gemeinsame Read-only-Befund heißt <code>baseharbor.footprint/v1</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Feld</th>
+<th>Bedeutung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>requirements</td>
+<td>Bedarf, vorhandenes Binding oder requested/unbound, ausgewählte Instanz/State</td>
+</tr>
+<tr>
+<td>existing / additional</td>
+<td>Bestehende/shared/gestoppte Ressourcen gegen deklarierte neu benötigte Ressourcen</td>
+</tr>
+<tr>
+<td>dependencies</td>
+<td>Gewählte Dependency-IDs; null ist unverifizierbar, [] verifiziert keine</td>
+</tr>
+<tr>
+<td>unused</td>
+<td>Informations-IDs außerhalb dieses Bedarfs ohne Bindings; niemals Entfernungsfreigabe</td>
+</tr>
+<tr>
+<td>scope / ownership / shared / consumers</td>
+<td>Bestehende Ownership und Binding-Anzahl; keine erfundenen App-Zahlen</td>
+</tr>
+<tr>
+<td>memory_bytes / containers</td>
+<td>measured/estimated/unknown; Werte benötigen nichtnegative Menge und Herkunft</td>
+</tr>
+<tr>
+<td>core / complete</td>
+<td>Tatsächlich erklärter Bedarf und strukturelle Sicherheit; unvollständig verbietet unsichere Änderungen</td>
+</tr>
+</tbody>
+</table>
+<p>Unbekannte Messwerte sind bei strukturell vollständiger Auflösung zulässig.
+Schätzungen kommen aus Provider-Nachweisen, niemals erfundenen RAM-/Container-
+Versprechen oder Summen.</p>
+<h3 id="wechsel-der-nativen-backend-platzierung">Wechsel der nativen Backend-Platzierung</h3>
+<p>Die bestehende Operator-Platzierung kann eigene PostgreSQL-/Valkey-Realisierungen
+über normales <code>app apply</code> zwischen Shared- und Application-Scope wechseln.
+Der gewünschte Footprint meldet das Ziel als requested/unbound, bis verifiziertes
+Apply sein Binding veröffentlicht. Der konkrete Folgenplan benennt ursprünglichen
+und gewünschten Owner. Zieldaten sind unabhängig: Vorhandene Inhalte werden
+nicht automatisch kopiert. Ursprüngliche Volumes, geschützte Zugangsdaten und
+Registry-Owner bleiben erhalten; der Rückwechsel verwendet ihren Speicher erneut.
+Ungeprüfter Zugriff oder Materialerhalt bleibt teilweise und verlangt die
+aktuellen Bestätigungen.</p>
+<p>Ausgeführte und ausstehende Backend-Platzierungen sind Realisierungsmetadaten im
+bestehenden Deployment-<code>GeneratedState</code>, keine Autorenabsicht oder weitere
+Registry. Das lesende kanonische Runtime-Inventar nutzt diese Owner-Projektion.
+Geänderte Operator-Policy schreibt damit beim Retry nicht die vorherige
+Realisierung um. Ein unterbrochenes Deployment schützt ursprünglichen und
+gewünschten Provider in derselben Target-Verbraucherunion, auch wenn eine andere
+App inzwischen eine andere Policy nutzt. Erst tatsächliche Prüfung des Ziels
+und Workloads sowie Konvergenz der alten Runtime erlauben das neue Binding und
+das Entfernen der ausstehenden Projektion. Andere Verbraucher behalten Shared-
+Runtime. Bei Aufteilung einer Shared-Quelle auf benannte Ziele erscheinen alle
+Zielfolgen; kein einzelnes Ziel wird als Ersatz für alle behauptet.</p>
+<p>Dieser native Platzierungswechsel implementiert keine Migration von
+Datenbankinhalten, OpenBao-/Identity-Materialübergabe oder nicht unterstützte
+Adapter für externe Provider.</p>
+<p>Die automatische Auswahl behält die gewählte Deployment-Platzierung nach dem
+Entfernen eines einmaligen Operator-Overrides, auch beim Deaktivieren und erneuten
+Aktivieren einer Capability. Explizite Operator-Policy fordert einen neuen Wechsel
+an; die Ausführung hält diese Auswahl fest und prüft sie gegen den bestätigten
+Plan. Die native PostgreSQL-Prüfung verwendet die erhaltene Container-Rolle und
+Datenbank. Natives Valkey projiziert seinen Default-Benutzer mit dem erhaltenen
+Passwort; die geschützte Shared-ACL-Identität bleibt für den Rückwechsel erhalten.
+Dieser Benutzerwechsel ist eine explizite Planfolge, kein Zurücksetzen der
+Zugangsdaten.</p>
+<h2 id="target-verbraucherunion-und-hinzufugenentfernenreaktivieren">Target-Verbraucherunion und Hinzufügen/Entfernen/Reaktivieren</h2>
+<p>App-<code>--full-reset</code> und Remote-App-Zerstörung bestätigen einen aggregierten
+<code>baseharbor.provider-impact-scope/v1</code> des ausgewählten Deployments. Der enthaltene
+Providerplan allein erlaubt kein Löschen seines geschützten Zustands. Beide
+aktuellen Bestätigungen sind erforderlich; Full Reset verlangt zusätzlich die
+separate Datenlöschungszustimmung. Geänderte Veröffentlichungs-/Recovery-Owner
+machen diese Zustimmung ungültig. Ungeprüftes Remote-Material und dessen Zugriff
+bleiben explizit teilweise. Standard-Remote-Zerstörung behält Veröffentlichung,
+Zugangsdaten und Deployment-Owner, gibt Referenzen erst nach geprüfter
+Containerentfernung frei und nutzt die geschützte stillgelegte Absicht zur
+expliziten Reaktivierung. Erhaltene Dateien beweisen weder unauthentifizierten
+Zugriff noch eine funktionierende Materialübergabe.</p>
+<p><code>ResolveProviderPlan(snapshot, consumers, inventoryComplete)</code> delegiert jeden
+aktiven Verbraucher an <code>ResolveFootprint</code> und vereinigt seine gesamte Dependency-
+Closure. <code>ConsumerIntent</code> projiziert einen bestehenden App- oder unabhängigen
+Management-Owner: Key, Active, Manifest, Preferences, DependencyRoots. Inaktive Einträge behalten
+die Identität und geben Bindings frei. Der Aufrufer beweist die vollständige
+Target-Inventarisierung aus bestehenden autoritativen Ownern. Nicht zugeordnete
+Bindings oder unverifizierbare Facts machen den Plan unvollständig. Automatische
+Konvergenz erhält dann Ressourcen; absichtliche Änderungen nutzen die konkrete
+Folgenanalyse und Bestätigung unten.</p>
+<p>Bei einer unterbrochenen bestehenden Bereitstellung darf
+<code>ConsumerIntent.RetainedIntents</code> kanonische angewendete/ausstehende Manifeste unter
+DERSELBEN aktiven systemeigenen App-ID und Umgebung projizieren. Jedes nutzt das
+bestehende <code>ResolveFootprint</code> und relevante ausdrückliche Präferenzen; Anforderungen
+und Provider-/Dependency-Closure werden zu einem Verbraucher zusammengeführt.
+Erhaltene Capability-Bindings werden nicht freigegeben, nur weil das gewünschte
+Manifest sie nicht mehr anfordert. Runtime-Roots allein erhalten diese Bindings
+nicht. Der Adapter liefert die beobachtete Dependency-Root-Union aller kanonischen
+Projektionen einschließlich Runtime-Berechtigungen/Consumption. Abweichende oder
+fehlende Owner sowie inaktive erhaltene Projektionen sind ungültig; unbekannte
+erhaltene Anforderungen machen das Inventar unvollständig. Erst der verifizierte
+Lifecycle-Abschluss entfernt die erhaltene Projektion und erlaubt die normale
+Konvergenz nach dem letzten Verbraucher. Keine neue Identität, gespeicherte
+Manifest-Authority oder Provider-Auflösung wird eingeführt.</p>
+<p><code>baseharbor.provider-plan/v1</code> enthält Verbraucher-Footprints, benötigte Provider-
+IDs, freizugebende Bindings und Änderungen mit Ownership-/Evidenznachweis:</p>
+<table>
+<thead>
+<tr>
+<th>Aktion</th>
+<th>Bedeutung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>add</td>
+<td>Ausgewählte neu benötigte Realisierung materialisieren</td>
+</tr>
+<tr>
+<td>reuse</td>
+<td>Von App, Management-Verbraucher oder Dependency benötigte Realisierung erhalten</td>
+</tr>
+<tr>
+<td>restart</td>
+<td>Benötigte eigene gestoppte Runtime reaktivieren</td>
+</tr>
+<tr>
+<td>stop</td>
+<td>Eigene laufende Runtime nach Freigabe durch den letzten Verbraucher stoppen</td>
+</tr>
+<tr>
+<td>remove-runtime</td>
+<td>Unnötige eigene gestoppte Runtime entfernen; persistente Daten erhalten</td>
+</tr>
+<tr>
+<td>preserve</td>
+<td>External/BYO, fremd/unverifizierbar oder unvollständiges Inventar; niemals implizit löschen</td>
+</tr>
+</tbody>
+</table>
+<p>Alle Änderungen tragen <code>PreserveData=true</code>. Pläne erlauben keinen direkten
+Runtime-Eingriff. Session 2 verwendet sie im bestehenden
+plan -&gt; preflight -&gt; confirm -&gt; apply -&gt; verify. Daten-/Recovery-Elemente einzeln
+mit Grund erhalten; Löschung benötigt explizite destruktive Zustimmung und
+Ownership-Nachweis. Automatische Konvergenz erhält weiterhin verwendete Shared-
+Ressourcen; absichtliche eigene Entfernung nennt sämtliche betroffenen Verbraucher.
+Fremde/externe Infrastruktur wird niemals gelöscht. Wiederholtes Apply, unterbrochener Retry und Deaktivieren/
+Reaktivieren konvergieren idempotent. Capability-Entfernung gehört zu v0.4.25.</p>
+<p>Human-CLI, JSON und MCP verwenden dieselben Domain-Ergebnisse und vorhandene
+Machine-Fehler-/Exit-/Autorisierungszuordnung. ResolutionError bleibt typisiert.
+Fixtures: <code>internal/application/testdata/v0425-resolution.json</code>; Union-Invarianten:
+<code>internal/application/provider_union_test.go</code>. Vollständiger Provider-/Capability-
+Wizard: v0.4.26. #777-Profile-/Host-Verträge unten bleiben reine Spezifikation.</p>
+<h2 id="provider-wechsel-folgen-und-entwicklerentscheidung">Provider-Wechsel: Folgen und Entwicklerentscheidung</h2>
+<p>Entwickler dürfen Funktionen hinzufügen, ändern, ersetzen, deaktivieren und
+entfernen, auch ohne Fortführung oder mit vollständiger Löschung. Fehlende
+Alternativen sind offengelegte Folgen, kein dauerhaftes Verbot. Alternativlose,
+unbekannte oder destruktive Ergebnisse zeigen <strong>Achtung</strong> und benötigen <strong>zwei
+unabhängige ausdrückliche Bestätigungen des konkreten aktuellen Plans</strong>.
+Datenlöschung benötigt zusätzlich die bestehende getrennte destruktive Freigabe.
+Normale Apply-Zustimmung bestätigt weder beide Stufen noch implizit Datenlöschung.</p>
+<p><code>DescribeProviderChanges(snapshot, union, requests, observation)</code> ergänzt dieselbe
+aufgelöste Verbraucherunion. Keine zweite Provider-Auflösung und keine Änderungen
+am State. Adapter direkter Provider-Operationen und App-/Target-Lifecycles
+projizieren ihre Aufträge in diese API. <code>ProviderPlan.Impact</code> trägt das optionale
+gemeinsame Ergebnis <code>baseharbor.provider-impact/v1</code>; CLI, JSON/MCP und späterer
+Wizard verwenden es unverändert. Ausführung erfolgt durch bestehende
+plan/preflight/confirmation/apply/verify-Autoritäten.</p>
+<table>
+<thead>
+<tr>
+<th>Domain-Ergebnis</th>
+<th>Verbindliche Bedeutung</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>before / after</td>
+<td>Tatsächlicher Provider-Typ/Instanz, Target, Scope/Owner, Orte und sichere Zugriffs-/Security-Referenzen; vorgeschlagenes After ist kein Ausführungsnachweis</td>
+</tr>
+<tr>
+<td>dependencies / dependents / functions</td>
+<td>Betroffene Apps und unabhängige Management-/Console-Verbraucher; transitiver Dependency-Pfad, notwendiger/optionaler Bedarf, verlorene/geänderte/erhaltene Funktion und beobachtetes Ablauf-/Validierungsverhalten</td>
+</tr>
+<tr>
+<td>scenario</td>
+<td>Capability nicht mehr benötigt; Provider trotz verbleibendem Bedarf entfernt; Ersatz; Provider weiterhin von anderem Verbraucher verwendet; ungenutzter Provider</td>
+</tr>
+<tr>
+<td>materials</td>
+<td>Einzelnes aktuelles Material und Ort, Recovery-Referenzen, geplantes retained/transferred/deleted/revoked/expired/invalidated/nonrecoverable/unknown-Ergebnis und Ziel/Zugriff</td>
+</tr>
+<tr>
+<td>prerequisites</td>
+<td>Konkrete Übergabe, Rebind oder adapterspezifische Verifikation, Unterstützung/Nachweis und Folge fehlender Verifikation; kein erfundener Fallback</td>
+</tr>
+<tr>
+<td>effects</td>
+<td>Tatsächlich relevante Vorher-/Nachher-Änderungen bei Verfügbarkeit, Konsistenz, Dauerhaftigkeit, Aufbewahrung, Protokoll, Policy/TLS/HA, Zustellung, Routing, Wiederverbindung oder Recovery aus dem Adapter</td>
+</tr>
+<tr>
+<td>complete</td>
+<td>Vollständigkeit des Wissens; false benötigt Achtung/zwei Bestätigungen und verbietet die informierte Entscheidung nicht</td>
+</tr>
+<tr>
+<td>plan_id / revision</td>
+<td>Deterministischer Hash aus Folgen, relevantem Binding-/Ownership-/Dependency-State und Revision bestehender Owner; wesentliche Änderungen entwerten alte Zustimmung</td>
+</tr>
+<tr>
+<td>confirmations_required / destructive</td>
+<td>Eine normale Stufe oder zwei für alternativlose/unbekannte/destruktive Folgen; explizite Datenlöschung bleibt getrennt</td>
+</tr>
+</tbody>
+</table>
+<p><code>ProviderPlan.ConsumerActivity</code> enthält auch explizit inaktive Verbraucher aus
+denselben Intents; vergangene Runtime-Nutzung wird nicht als aktueller Bedarf
+interpretiert. Nur Mengen-Messrauschen entwertet unveränderte Folgen nicht.</p>
+<p><code>ProviderImpactObservation</code> projiziert bestehende Installation-, Deployment-,
+Runtime-, Registry-, Credential-, Zertifikats- und Recovery-Owner nur vorübergehend.
+<code>IntegrationDescriptor.ChangeContract()</code> beschreibt Funktionen, Material- und
+Betriebsinventar des ausgelieferten Providers. <code>ReferenceIntegrations()</code> iterieren;
+keine zweite Provider-Registry oder feste Produkt-Warnliste. Unbekannte Extension-
+Verträge und fehlende Beobachtungen bleiben sichtbar unbekannt. Sie werden niemals
+pauschal als sicher oder erfolgreich fortgeführt dargestellt.</p>
+<p>Verbraucherspezifische <code>Continuations</code> beweisen unterstützten Ersatz und
+verifiziertes Rebind. Ein laufender kompatibler Ersatz allein genügt nicht.
+Sichere Übergabe/Zugriff verifizieren, bevor Fortführung behauptet oder die alte
+Realisierung entfernt wird. Ohne Übergabe darf der Entwickler stattdessen den
+Funktionsverlust zweimal bestätigen und die Entfernung ausführen. Erhaltener,
+nicht zugänglicher Speicher ist Recovery, keine Secret-Auslieferung, Token-Vergabe
+oder Zertifikatserneuerung. Keine Secrets in Klartext-Manifeste, Repositories,
+Logs oder erfundene Ersatzspeicher schreiben. Absichtliches Entfernen benötigter
+Authentifizierung zeigt betroffenen Dienst/Zugriff als nicht verfügbar; es
+aktiviert niemals stillschweigend unauthentifiziertes Management.</p>
+<p>Nur tatsächliche OpenBao-Nutzung erzeugt Folgen für Secret-Policies, dynamische
+Credentials oder PKI. Lease-Ablauf/Widerruf und Downstream-Gültigkeit benötigen
+Nachweise; exportierte Credentials beweisen keine Fortführung. Aktuelle Token-/
+Zertifikatsgültigkeit unterscheidet sich von künftiger Vergabe, Erneuerung,
+JWKS-Refresh, Sessions und Widerruf. Beobachtete Offline-Validierung mit Ablauf
+kann geänderte statt sofort nicht verfügbare Validierung bedeuten. Keine pauschal
+sofort ungültigen Tokens/Zertifikate erfinden. Caches, Jobs, Sessions, Queues und
+Telemetriepuffer sind nicht automatisch entbehrlich. Unbekannte Aufbewahrung/Orte
+bleiben unbekannt. Erhaltenes Material bleibt am tatsächlichen Ort; gelöschtes
+Material bedeutet <strong>kein Ziel; Löschung</strong>. Bestehende Owner beweisen Ownership und
+autorisierte Referenzen. Zwei Bestätigungen geben keine Rechte auf fremde externe
+Ressourcen.</p>
+<p>Mehrere Änderungen bilden einen Gesamtplan. Entfernung einer Dependency des
+Ersatzproviders entwertet seine Fortführung; SQL-Stop nennt abhängige Identity-/
+Broker-Funktionen. Verbraucherbezogenes Unbind erhält die Runtime anderer
+Verbraucher und nennt den verlorenen Zugriff. Automatische Konvergenz nach dem
+letzten Verbraucher erhält Daten; explizite vollständige Löschung inventarisiert
+vor Zustimmung jedes betroffene Element.</p>
+<p><code>ValidateProviderChangeConsent</code> prüft beide Stufen, aktuellen Plan-Hash und getrennte
+Löschfreigabe. Bestehende interaktive/nichtinteraktive Autoritätsadapter erheben die
+Bestätigungen; der interaktive Adapter fragt nach den erforderlichen
+Planbestätigungen gesondert nach der Datenlöschung. Ablehnung oder EOF erteilen
+keine Löschfreigabe. Maschinenzustimmung setzt <code>delete_data</code> unabhängig.
+Keine zusätzlichen CLI-Flags oder unabhängige Frontend-Policy.
+Unmittelbar vor Änderungen aus aktuellen autoritativen Beobachtungen neu planen.
+Veraltete Pläne erneut anzeigen und bestätigen. Technisch nicht unterstützte
+Übergabe ehrlich melden, niemals als erfolgreiche Verlagerung darstellen.</p>
+<p><code>RecordProviderChangeResult</code> übernimmt tatsächliche verifizierte Ausführungs-
+ergebnisse, meldet complete/partial/failed, echte Endorte und ausstehende Schritte.
+Betroffene Funktionen benötigen eigene Verbraucher-/Root-/Funktionsverifikation
+und Nachweise; ein Runtime-Stop allein beweist keine Login-/Lease-/PKI-Folgen.
+Vorgeschlagenes After niemals als erledigt übernehmen. Fehlendes Material,
+abweichende Behandlung oder fehlender Recovery-Nachweis bleibt Teilfehler.
+<code>PendingProviderChanges</code> behält den ursprünglichen Verbraucherscope und liefert
+nur unerledigte Operationen/Materialaktionen an den bestehenden idempotenten
+Replan-/Retry-Lifecycle. Kein Scheduler, kein neuer State-Owner. Unterbrochene
+Übergabe, Rollback/Wiederverbindung und irreversible Folgen bleiben sichtbar.</p>
+<h3 id="globale-registrierungsanderungen-uber-mehrere-targets">Globale Registrierungsänderungen über mehrere Targets</h3>
+<p>Eine globale External-Provider-Registrierung verwendet ihren bestehenden
+Registrierungsowner, keinen erfundenen Runtime-Target. <code>ComposeProviderImpactScope</code>
+führt unveränderte <code>ProviderImpactPlan</code>-Ergebnisse aller beobachteten Targets zusammen.
+Der Adapter inventarisiert konfigurierte und erhaltene Target-States, angewandte
+und unterbrochene Deployment-Bindings sowie unabhängige Management-Verbraucher,
+bevor er den Umfang als vollständig ausweist. Diese Projektion führt keine neue
+Auflösung durch und erzeugt keinen weiteren State-Owner.</p>
+<p>Die gemeinsame PlanID bindet Registrierungsowner/-Revision, sämtliche Target-Pläne
+und deren tatsächliche Folgen. Eine einzelne Target-Bestätigung autorisiert nicht
+den gesamten Umfang; geänderte Registrierung, Target-Mitgliedschaft, Bindings oder
+Folgen benötigen neue Zustimmung. Countdown-Messwerte allein entwerten unveränderte
+absolute Gültigkeiten nicht. Unbekannter/unvollständiger oder destruktiver Umfang
+zeigt <strong>Achtung</strong> und verwendet dieselben zwei Bestätigungen sowie die gesonderte
+Löschzustimmung wie Änderungen eines einzelnen Targets.</p>
+<p><code>RecordProviderImpactScopeResult</code> prüft die Ausführung jedes Targets über die
+bestehende Ergebnisautorität. Das Löschen des Registrierungseintrags allein belegt
+keine Verbraucherkonfiguration oder vollständigen Erfolg auf allen Targets.
+Fehlende/unbekannte Owner- oder Target-Nachweise bleiben teilweise; erhaltene
+Registrierung/Ownership ermöglicht neue Planung und Wiederaufnahme. Externe
+Infrastruktur, Daten und Credentials bleiben außerhalb der lokalen
+Registrierungsentfernungsautorität. Der Runtime-/Transportadapter muss jede
+gewählte Operation weiterhin beobachten, autorisieren, erneut prüfen, ausführen
+und verifizieren.</p>
+<h3 id="bestehende-ancillary-realisierungen">Bestehende Ancillary-Realisierungen</h3>
+<p><code>ResolutionSnapshot.Ancillary</code> beobachtet bestehende Gateway-/Sidecar-Realisierungen
+aus Runtime-/Routenownern. <code>ProviderFact.Ancillary</code> und <code>OwnerReference</code> kennzeichnen
+sie; <code>ProviderFootprint</code> und Impact-Realisierungen erhalten diese Unterscheidung.
+Das ist ein vorübergehendes Inventar neben der bestehenden Registry, keine zweite
+Registrierung oder State-Autorität. Ancillary-<code>Provider.Capabilities</code> ist leer:
+Automatic bietet sie nicht als App-Provider an; explizite Capability-Auswahl ist
+inkompatibel. Dieselbe Dependency-Closure übernimmt ihre tatsächlichen IDs nur aus
+verifizierten Provider-Dependencies oder Verbraucherroots. Dieselbe Union erfasst
+Shared-Nutzer, eigene Entfernung, unbekannten State und Folgen. Kein verpflichtendes
+Sidecar-/Core-Paket.</p>
+<p>Ein Target-eigener Shared-Gateway verwendet seinen tatsächlichen bestehenden
+Installation-/Routenowner ohne erfundene Application-UUID. Er behauptet keine
+allgemeine Shared-Platzierung der auswählbaren Caddy-Integration. App-Sidecars
+behalten ihre tatsächliche systemeigene App-ID. Der native Executor verwendet
+Shared-Scope und seinen einzigen bestehenden Target-Projektowner
+(<code>RuntimeExecutorDependency</code>); alle App-/Management-Roots referenzieren dieselbe
+physische ID. Er gehört nie einer einzelnen App und wird nicht über getrennte
+App-Aliase mehrfach gezählt. Der Broker je App verwendet Application-Scope.</p>
+<p>Gewöhnliche deklarierte Workload-Komponenten erhalten eigene Ancillary-Metadaten
+<code>runtime-workload</code> (<code>RuntimeWorkloadDependency</code>), auch bei Apps ohne Capabilities.
+Sie sind keine privilegierten Executor und keine auswählbaren Capability-Provider.
+Tatsächlicher Betrieb/Zugriff, laufende Arbeit, Konfiguration und Volume-Folgen
+benötigen Beobachtungen; ein passendes Projektlabel autorisiert keine undeklarierte
+Komponente. Broker-/Executor-Metadaten
+beschreiben tatsächliche Autorisierungs-/Credential-, Ausführungs-/Steuerungs- und
+In-flight-Folgen; Nutzung benötigt weiterhin Beobachtungen.</p>
+<h3 id="abdeckung-ausgelieferter-provider">Abdeckung ausgelieferter Provider</h3>
+<p>Die Tabelle inventarisiert die deklarative Abdeckung. Adapter liefern
+<strong>tatsächliche</strong> Daten-/Zugriffsorte und Nutzung; Materialarten sind mögliche
+Inventarkategorien, keine Behauptung, dass jede Instanz alles enthält.
+Runtime-Einstiegspunkte und native Abnahme gehören zu den konsumierenden
+Lifecycle-Tests. Bestehende runtime-broker/runtime-executor-Sidecars besitzen ausschließlich
+Ancillary-Folgenmetadaten, keine auswählbare Capability-Integration. Unbekannte
+Extensions bleiben unbekannt.</p>
+<table>
+<thead>
+<tr>
+<th>Registrierter Provider</th>
+<th>Relevante Funktionen/Materialinventar</th>
+<th>Autorität für Orte/Zugriff und konkrete Folgen</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL</td>
+<td>Transaktionen/Abfragen; Datenbank, Schemas, WAL, Credentials, Backups</td>
+<td>Bestehende Datenbank-/Runtime-/Recovery-Owner; Transaktionen, Konsistenz, Dauerhaftigkeit, Reconnect und Recovery</td>
+</tr>
+<tr>
+<td>Valkey</td>
+<td>Cache/durable KV, tatsächliche Sessions/Jobs; Snapshots/AOF</td>
+<td>Bestehende Runtime-/Daten-Owner; Ablauf/Eviction, Dauerhaftigkeit und relevanter flüchtiger Verlust</td>
+</tr>
+<tr>
+<td>OpenBao</td>
+<td>Tatsächliche Secret-/Policy-, Lease-/PKI-Nutzung; Secrets, Schlüssel/Zertifikate, Recovery</td>
+<td>Bestehende Credential-/OpenBao-/PKI-Owner und gewählter Backing Store; sichere Auslieferung, Erneuerung, Widerruf und Ablauf</td>
+</tr>
+<tr>
+<td>Caddy</td>
+<td>HTTP-Routing und tatsächliche TLS-/Erneuerungsnutzung; Routen/Konfiguration, Schlüssel/Zertifikate</td>
+<td>Bestehende Exposure-/PKI-/Runtime-Owner; DNS/Routen, HTTPS-Verfügbarkeit und künftige Erneuerung</td>
+</tr>
+<tr>
+<td>SeaweedFS</td>
+<td>Objektlesen/-schreiben; Objekte/Dateien, Metadaten, Credentials, Backups</td>
+<td>Bestehende S3-/Runtime-/Recovery-Owner; Dauerhaftigkeit, S3-Kompatibilität, Rechte und Aufbewahrung</td>
+</tr>
+<tr>
+<td>OpenTelemetry Collector</td>
+<td>Empfang/Weiterleitung; tatsächliche Puffer/Konfiguration</td>
+<td>Bestehende Telemetrie-/Runtime-Owner; Zustellungslücken, Pufferverlust, Routing und Aufbewahrung</td>
+</tr>
+<tr>
+<td>External OTLP</td>
+<td>Tatsächlicher Empfang/Weiterleitung und registrierte Referenzen</td>
+<td>Externer Registrierungs-/Zugriffsowner; nur Unbind-/Rebind-Folgen, keine Löschung fremder Infrastruktur</td>
+</tr>
+<tr>
+<td>Prometheus</td>
+<td>Ingest/Query und tatsächliche Regeln; Metriken, WAL, Konfiguration</td>
+<td>Bestehende Metrik-/Runtime-/Daten-Owner; Scrape-Lücken, Aufbewahrung, Abfragezugriff und Recovery</td>
+</tr>
+<tr>
+<td>Loki</td>
+<td>Ingest/Query; Logs, WAL/Index, Konfiguration</td>
+<td>Bestehende Log-/Runtime-/Storage-Owner; Zustellungslücken, Aufbewahrung und Abfragezugriff</td>
+</tr>
+<tr>
+<td>Tempo</td>
+<td>Ingest/Query; Traces, WAL/Index, Konfiguration</td>
+<td>Bestehende Trace-/Runtime-/Storage-Owner; Zustellungslücken, Aufbewahrung und Abfragezugriff</td>
+</tr>
+<tr>
+<td>Keycloak</td>
+<td>Tatsächliches Login/SSO, Vergabe/Validierung/JWKS, Sessions/Refresh; Benutzer/Realms/Clients/Signierschlüssel/Tokens</td>
+<td>Bestehende Identity-/Datenbank-/Zugriffsowner; Login/Refresh, gecachte Gültigkeit und authentifizierte Management-Verfügbarkeit</td>
+</tr>
+<tr>
+<td>External OIDC</td>
+<td>Tatsächliche OIDC-Verbraucher und registrierte Referenzen</td>
+<td>Externer Registrierungs-/Zugriffsowner; lokale Binding-Entfernung, keine Löschung fremder Benutzer/Realms</td>
+</tr>
+<tr>
+<td>RabbitMQ</td>
+<td>Tatsächliche Queue-/PubSub-/Stream-Nutzung; Nachrichten/In-flight, Offsets/Topologie/Credentials</td>
+<td>Bestehende Messaging-/Runtime-/Storage-Owner; Reihenfolge, Acknowledgements, Zustellung, Dauerhaftigkeit und Reconnect</td>
+</tr>
+<tr>
+<td>Ancillary Runtime-Broker</td>
+<td>Tatsächliche Autorisierung/Credentials/Policy; Konfiguration, Zertifikate/Recovery</td>
+<td>Bestehende Broker-/Runtime-/Credential-Owner; Autorisierung, Erneuerung, TLS und Verfügbarkeit</td>
+</tr>
+<tr>
+<td>Ancillary Runtime-Workload</td>
+<td>Tatsächlicher Komponentenbetrieb/-zugriff; In-flight/Konfiguration und Volumes</td>
+<td>Bestehender App-/Deployment-Owner; Ausfall/Reconnect und beobachteter Materialerhalt, keine privilegierte Executor-Autorität</td>
+</tr>
+<tr>
+<td>Ancillary Runtime-Executor</td>
+<td>Tatsächliches Execute/Observe/Control; In-flight/Konfiguration, Zertifikate/Credentials</td>
+<td>Bestehende Executor-/Runtime-Owner; In-flight-Arbeit, Autorisierung/TLS und Reconnect</td>
+</tr>
+<tr>
+<td>MongoDB</td>
+<td>Lesen/Schreiben/Transaktionen; Dokumente/Indizes/Oplog, Credentials/Backups</td>
+<td>Bestehende Document-/Runtime-/Storage-/Recovery-Owner; Konsistenz, Dauerhaftigkeit, Protokoll und Reconnect</td>
+</tr>
+</tbody>
+</table>
+<p>Fixtures: <code>internal/application/testdata/v0425-provider-impact.json</code> und
+<code>v0425-provider-impact-consent.json</code>. Domain-Tests umfassen jeden registrierten
+Provider, negative Ownership/unbekannten State, Provider-Kaskaden und zwei Apps/
+Console, Ersatzverifikation, gemeinsame Dependency-Entfernung, begrenzten Retry,
+tatsächliche finale und teilweise Ergebnisse. Offline-Schemas prüfen identische
+Machine-Ergebnisse und lehnen Secret-Inhalte sowie einstufige unbekannte/
+destruktive Bestätigung ab. Vollständiger Capability-/Provider-Wizard: v0.4.26.</p>
+<h3 id="abgeleitete-verbraucheraktionen-und-lifecycle-abdeckung">Abgeleitete Verbraucheraktionen und Lifecycle-Abdeckung</h3>
+<p>Die Lifecycle-Matrix prüft <strong>alle deklarierten Funktionen und Materialarten</strong>
+aller vierzehn Referenzintegrationen für Hinzufügen/Reaktivieren/Update, Stoppen,
+Zerstören, Runtime-Entfernung, Deaktivieren/Entbinden, Neubinden und Ersetzen.
+Fremde Runtime-Mutationen werden mangels Ressourcenberechtigung zurückgewiesen;
+ein bewusst gewählter lokaler Zugriffsverlust bleibt möglich. Deklarationstests
+ersetzen keine native Ausführungsabnahme.</p>
+<p><code>ProviderImpactObservation.ConsumerActions</code> bildet unterstützte Operationen des
+bestehenden Verbraucheradapters ab. <code>ProviderChangeRequest.ConsumerActions</code> wählt
+deren IDs ausdrücklich aus. Jede Aktion benennt Verbraucher/Wurzel/Funktion,
+tatsächliche Modi, gewähltes Funktionsergebnis, Abhängigkeiten, Credential-Referenzen
+und Standorte sowie Credential-Owner, Synchronisierung und Rotation vorher/nachher.
+Ein nicht ausgewählter lokaler Authentifizierungsmodus wird niemals zum Fallback.
+Nicht unterstützte oder ungeprüfte Aktionen bleiben unbekannt und dürfen explizit
+akzeptiert werden; sie werden niemals als funktionierend gemeldet.
+Abhängigkeiten gewählter Aktionen werden im bestehenden transitiven Providergraphen
+auf dem tatsächlichen Target geprüft. Gestoppte, entfernte, fremde, unbeobachtete
+oder zyklische Voraussetzungen sowie unbekannte Abhängigkeitsketten machen die
+Fortsetzung unbekannt, auch wenn der direkt benannte Provider läuft. Aggregierte
+Änderungen dürfen keine Fortsetzung über eine unterbrochene Abhängigkeit behaupten.
+Ersatzprovider nutzen dieselbe Prüfung für ihre gesamte Abhängigkeitskette.
+Jeder Knoten muss auf dem gewählten Target registriert oder kanonisch ergänzend,
+als laufend beobachtet, unterstützt und mit Realisierungsevidenz geprüft sein.
+Ein laufender Fakt ohne diese Beobachtung reicht nicht. Geplantes Hinzufügen
+oder Reaktivieren beweist keine ausgeführte Verfügbarkeit. Nach tatsächlicher
+Wiederherstellung werden die Beobachtung und die Planbestätigung erneuert.
+Ungeprüfter Ersatz bleibt teilweise und darf mit den erforderlichen Bestätigungen
+weiterhin bewusst akzeptiert werden.
+Credential-Referenzen bleiben gleich, sofern ihre Änderung nicht ausdrücklich
+gewählt wurde. Adapter prüfen zusätzlich, dass erhaltene <strong>Werte</strong> und tatsächlich
+bestehende Synchronisierung konsistent bleiben; dieses reine Ergebnis liest oder
+erzeugt keine Passwörter. OIDC-Ownership ist von nativen Datenbank-/Service-Zugangsdaten
+getrennt. Prometheus nutzt beispielsweise bestehende <code>devaccess</code>-Zugangsdaten und
+native Basic-Authentifizierung; SeaweedFS erhält native Admin-Referenzen beim
+bestehenden geschützten Runtime-Owner. Identity-Entfernung setzt diese nicht zurück.</p>
+<p><code>ObservedAt</code> und tatsächliche <code>ValidUntil</code>/<code>ExpiresAt</code> ergeben
+<code>remaining_validity_seconds</code> für Token, Zertifikate und Leases. Fehlende aktuelle
+Gültigkeitsevidenz bleibt unbekannt; abgelaufene Offline-Validierung ist nicht
+verfügbar. Erhaltene Zertifikatsdateien bedeuten weder unbegrenztes TLS noch künftige
+Erneuerung.</p>
+<p>Geschützte X.509-Dateien liefern <code>valid_from</code> und <code>expires_at</code> aus den geparsten
+Zertifikaten. Bei Bundles gelten der späteste Beginn und das früheste Ablaufdatum
+aller Zertifikate, auch wenn zuerst ein Schlüsselblock steht. Die aktuelle
+Beobachtung unterscheidet noch nicht gültiges, innerhalb des Zeitfensters
+liegendes und abgelaufenes Material. Dies belegt nur die Zeitgrenzen; Trust-Kette,
+Widerruf, Endpunktzugriff und künftige Erneuerung benötigen tatsächliche Prüfungen.
+Schlüsselinhalte und Zertifikats-Subjects werden nicht ausgegeben.
+Der Zustimmungs-Digest ignoriert nur den laufenden Restgültigkeits-Countdown;
+absolute Ablaufzeit, tatsächlich abgelaufene/gültige Folgen und geändertes Material
+erfordern weiterhin neue Zustimmung.
+<code>ProviderMaterial.Retention</code> prüft getrennt das Überleben von Stoppen
+und Runtime-Entfernung für bedeutsamen flüchtigen Zustand: Cache, Sessions, Jobs,
+Queues/Nachrichten, laufende Arbeit, Telemetriepuffer, Leases und Token. Ein Volume
+allein reicht nicht; nachgewiesener Verlust ist einzeln nicht wiederherstellbar und
+benötigt destruktive Zustimmung.</p>
+<p>Tatsächliche Ausführungsergebnisse müssen jede betroffene Funktion, ausgewählte
+Verbraucheraktion und betriebliche Auswirkung belegen. Fehlende Umkonfiguration
+oder abweichende Owner, Credential-Referenzen, Synchronisierung, Rotation oder
+Garantien bleiben teilweise/fehlgeschlagen. Wiederholung erhält gewählte Aktionen
+und holt Zustimmung zum aktuellen Plan ein.
+Ein Materialschritt gilt bei Wiederholung erst als erledigt, wenn geprüfte
+Disposition, Endstandort, Zustellungs-/Zugriffsreferenzen und erhaltene
+Recovery-Referenzen übereinstimmen; das richtige Ziel allein verdeckt keine
+unvollständige sichere Übergabe.
+Abschlussbelege und Wiederholungsausschluss verwenden dieselben Materialprüfungen.
+Eine unbekannte Materialdisposition bleibt unerledigt, auch wenn der Adapter diese
+Unsicherheit bestätigt; die Zustimmung zur Änderung belegt keinen Materialabschluss.
+Bei unvollständigem maßgeblichem Inventar bleibt das Gesamtergebnis teilweise,
+auch wenn keine bekannte Operation mehr offen ist. Geprüfte Einzelschritte bleiben
+ausgeführt und werden nicht wiederholt; der bestehende Lebenszyklus muss das
+unbekannte Inventar neu beobachten und planen, bevor er den Gesamtabschluss belegt.
+Recovery-Referenzen folgen ausdrücklich gewählten eigenen Backup-Übergaben oder
+-Löschungen im aggregierten Plan. Eine vollständige eigene Löschung darf inventarisierte
+Backups mit destruktiver Zustimmung einschließen; nicht gewählte oder fremde
+Recovery-Ressourcen bleiben geschützt.</p>
+<table>
+<thead>
+<tr>
+<th>Provider und bestehende Implementierungsautorität</th>
+<th>Erforderliche providerspezifische Analyse/Aktionen bei Hinzufügen/Ändern/Entfernen</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PostgreSQL — <code>application/runtime_postgres.go</code>, <code>shared_postgres_*</code></td>
+<td>Tatsächliche SQL-Verbraucher und Identity-/Backing-Store-Abhängige; Bereitstellung/Binding und Zugriff prüfen; Version/Protokoll/Transaktionen/WAL/Backup-Konsistenz; abhängige Verbraucher nach gewähltem Restore/Ersatz neu verbinden; erhaltene Datenbank von verlorenem Endpunkt unterscheiden</td>
+</tr>
+<tr>
+<td>Valkey — <code>application/shared_core_valkey.go</code>, <code>valkey_stable_verify.go</code>, <code>valkey_ha*</code>, <code>valkey_credential_rotation*</code></td>
+<td>Persistenz/AOF/Snapshot gegenüber Cache-/Session-/Job-Semantik; Zugriff und tatsächliche Ablaufzeiten prüfen; Clients neu binden, Credentials erhalten; In-Memory-Sessions/Jobs nicht als erhaltenes Volume behandeln</td>
+</tr>
+<tr>
+<td>OpenBao — <code>openbao/managed_credentials.go</code>, <code>service_pki*</code>, <code>runtime_pki*</code>, dynamische App-Secret-Operationen</td>
+<td>Tatsächliche KV-/Policy-/Lease-/PKI-Verbraucher und SQL-Backing erfassen; gewählte sichere Zustellungsübergabe mit Berechtigungs-/Verschlüsselungsprüfung; Credentials bewusst erhalten/widerrufen; Zertifikats-/Schlüsselstandorte, Restgültigkeit, Erneuerungs-/Widerrufsabhängigkeiten; gewählte Verbraucher vor Abbau umkonfigurieren</td>
+</tr>
+<tr>
+<td>Keycloak — <code>identityprovider/keycloak_files.go</code>, <code>keycloak_driver.go</code>, <code>application/identity_binding.go</code></td>
+<td>Tatsächliche Shared-SQL-/Gateway-/OIDC-Verbraucher; Realm-/Client-/Schlüssel-/Session-Inventar; unterstützte Login-Umkonfiguration und Zugriff prüfen; Offline-Token-Gültigkeit von JWKS/Refresh/Ausstellung trennen; separat verwaltete native Service-Credentials erhalten</td>
+</tr>
+<tr>
+<td>External OIDC — externe Realisierung in <code>identityprovider</code> und bestehender Registrierungs-/Binding-Owner</td>
+<td>Issuer/Discovery/Client-Kompatibilität und gewählte Verbrauchermodi prüfen; nur lokale Bindings entfernen; keine Berechtigung über fremde Konten, Sessions oder Signaturschlüssel</td>
+</tr>
+<tr>
+<td>Caddy — <code>devgateway/render.go</code>, App-Exposure-/PKI-Owner</td>
+<td>Tatsächliche App-/Shared-Routen-Verbraucher, DNS/Endpunkte, Zertifikats-/Schlüsselreferenzen und Renewal-Owner; gewählte Routen/TLS/Auth-Zugriffe prüfen; erhaltene Gültigkeit von Provider-Erneuerung trennen; andere Routen erhalten</td>
+</tr>
+<tr>
+<td>SeaweedFS — <code>objectstorage/admin_credentials.go</code>, <code>pki_rotation.go</code>, Provider-Realisierung</td>
+<td>Tatsächliche Objekte/Dateien/Metadaten und S3-Verbraucher; Konsistenz/Dauerhaftigkeit/Berechtigungen und gewählte Übergabe; native Admin-/Client-Credentials erhalten; TLS-Reload, Endpunkt-Neubindung und Objektzugriff prüfen</td>
+</tr>
+<tr>
+<td>RabbitMQ — <code>application/rabbitmq_credentials.go</code>, <code>rabbitmq_ha*</code>, Credential-Rotation/-Prüfung</td>
+<td>Tatsächliche Queues/Streams/Topologie, Offsets, unbestätigte Nachrichten und Jobs; Reihenfolge/Zustellung/Bestätigung sowie dauerhafter/flüchtiger Zustand; getrennte App-/Admin-Konten erhalten; nach Änderung neu verbinden und Publish/Consume prüfen</td>
+</tr>
+<tr>
+<td>MongoDB — <code>application/mongodb_runtime.go</code>, <code>mongodb_ha*</code>, Credential-Rotation/-Prüfung</td>
+<td>Tatsächliche Dokumente/Indizes/Oplog und Clients; Protokoll/Transaktionen/Konsistenz/Dauerhaftigkeit; Credentials erhalten, Clients neu binden und Lesen/Schreiben sowie gewählte Wiederherstellung prüfen</td>
+</tr>
+<tr>
+<td>OTel Collector — Realisierung in <code>telemetry</code>, App-Telemetrie-Binding und PKI-Reload</td>
+<td>Tatsächliche Empfangs-/Weiterleitungsziele, Puffer und TLS-Referenzen; Zustellungslücken/Rückstau oder unwiederbringliche Pufferverluste; Routing konfigurieren und prüfen, bevor Downstream-Zustellung behauptet wird</td>
+</tr>
+<tr>
+<td>External OTLP — registrierter Endpunkt und Telemetrie-Binding-Owner</td>
+<td>Protokoll/TLS/Auth und gewählter Weiterleitungsendpunkt; Neubindung/Zustellung prüfen; Lücken benennen; keine Mutation/Löschung fremder Puffer/Stores</td>
+</tr>
+<tr>
+<td>Prometheus — <code>metrics/prometheus_files.go</code>, <code>prometheus_shared.go</code>, Topologie-/Recovery-Owner</td>
+<td>Tatsächliche Scrape-/Query-/Rule-Verbraucher, TSDB/WAL und Aufbewahrung; native Basic-Auth-Credentials unabhängig von Identity erhalten; Konfiguration/Auth/Query-Zugriff prüfen; Scrape-Lücken und verlorene Alerts benennen</td>
+</tr>
+<tr>
+<td>Loki — <code>logs/render.go</code>, Topologie-/PKI-Reload-Owner</td>
+<td>Tatsächliche Log-Zustellungs-/Query-Verbraucher, Store/Index/WAL, Labels/Protokoll/Aufbewahrung; Writer/Reader neu binden, Zugriff/TLS prüfen; Log-Lücken und erhaltene, aber unzugängliche Historie benennen</td>
+</tr>
+<tr>
+<td>Tempo — <code>traces/tempo_ha.go</code>, Topologie-/PKI-Reload-Owner</td>
+<td>Tatsächliche Trace-Ingest-/Query-Verbraucher, Puffer/Store/Index/Aufbewahrung; Zustellungs-/Query-Routen neu binden und TLS/Zugriff prüfen; Sampling-/Zustellungslücken von gelöschter Historie trennen</td>
+</tr>
+<tr>
+<td>Begleitende Broker/Executor — <code>runtimebroker/compose_render.go</code>, bestehende Executor-/Runtime-Owner</td>
+<td>Tatsächliche Policy-/Service-Credential-/Zertifikats- und laufende Control-/Work-Verbraucher; Auth-/Ablauf-/Renewal-Abhängigkeiten; gewählte Wiederverbindung/Control-Operation prüfen; Sidecars nicht als neue Capability-Angebote registrieren</td>
+</tr>
+</tbody>
+</table>
+<p>Derselbe Abhängigkeitsgraph trägt Datenbank-, Gateway-, Secret-/PKI- und
+Authentifizierungsänderungen zu allen tatsächlichen direkten und transitiven
+Verbrauchern. Abhängigkeiten gewählter Übergänge werden gegen aggregierte Änderungen
+geprüft: Die Entfernung einer Abhängigkeit des neuen Modus darf nicht als
+funktionierende Fortsetzung erscheinen. Runtime-Mutationspfadinventar und native
+Nachweise dieser Aktionen gehören zur Abnahmeverantwortung von Session 2.</p>
+<h2 id="777-portabler-connection-profile-transport-nur-vertrag">#777 portabler Connection-Profile-Transport (nur Vertrag)</h2>
+<p>Dies ist eine Import-/Export-Transporthülle für die spätere #777-Implementierung,
+<strong>kein</strong> Ersatz für <code>development.StackProfile</code> (development/v1), Target-Config,
+Access-Store oder Provider-Registry. Diese Spezifikation liefert weder
+Implementierung noch Dateierzeugung oder Onboarding-Oberfläche.</p>
+<table>
+<thead>
+<tr>
+<th>Feld der Hülle</th>
+<th>Vertrag</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>version</td>
+<td>Exakt <code>baseharbor.connection-profile/v1</code>; unbekannte Version ablehnen</td>
+</tr>
+<tr>
+<td>name</td>
+<td>Anzeigename; niemals Identität oder Berechtigungsnachweis</td>
+</tr>
+<tr>
+<td>core.installation_id / core.url</td>
+<td>Bestehende Core-UUID und HTTPS-Management-Endpunkt; Serveridentität prüfen</td>
+</tr>
+<tr>
+<td>trust.ca_pem / trust.sha256</td>
+<td>Ein öffentliches PEM-CA-Zertifikat und sein DER-SHA-256-Fingerprint; Übereinstimmung prüfen und unabhängige autorisierte Trust-Entscheidung verlangen</td>
+</tr>
+<tr>
+<td>targets</td>
+<td>Portable Deskriptoren: name, tenant_id, runtime_provider, scope; bestehende Target-Semantik erhalten</td>
+</tr>
+<tr>
+<td>access</td>
+<td>OIDC issuer, client_id und scopes; kein importierter Berechtigungsnachweis</td>
+</tr>
+<tr>
+<td>expires_at</td>
+<td>Optionale Transportablaufzeit; abgelaufenes Enrollment-Material ablehnen</td>
+</tr>
+<tr>
+<td>extensions</td>
+<td>Namespaced optionale spätere Felder; keine Änderung bestehender Pflichtsemantik</td>
+</tr>
+</tbody>
+</table>
+<p>Der Transport beschreibt Core, Trust und gewählte Targets. Er enthält weder
+App-Absicht noch Provider-Credentials oder einen neuen autoritativen State.
+Targets referenzieren gegebenenfalls einen Core; Profile sind keine Targets und
+führen dev/prod-Installationen nicht zusammen. Core-loser Lokalbetrieb benötigt
+keinen Profile-Import.</p>
+<p>Passwörter, private Schlüssel, Refresh-/Access-Tokens, AppRole-Secrets,
+Recovery-Material, lokale Sockets/Engine-Kontexte, Checkout-Pfade und State-Roots
+ausschließen. Auth-/Enrollment-Artefakte werden nach explizitem Login/Enrollment
+in vorhandenen geschützten Access-Ownern gespeichert. Deskriptor-Import darf keine
+Rolle erteilen, fremde Deployments übernehmen, beliebige Endpunkte aktivieren
+oder Ressourcen starten. Importierter öffentlicher Trust autorisiert einen
+Server nicht selbst. Vor Schreiben bestehender Config-/Access-Owner Core-UUID,
+HTTPS, Issuer, Tenant und gewähltes Target prüfen.</p>
+<p>Import: parse -&gt; validate -&gt; Referenzen/Konflikte auflösen -&gt; Diff zeigen -&gt;
+explizite Autorisierung -&gt; bestehende Owner-Transaktion -&gt; verifizieren. Gleiche
+Identität/Inhalte sind idempotent; gleicher Alias mit anderer Identität ist ein
+Konflikt. Teiländerungen zurückrollen oder als unvollständig mit Recovery-Aktion
+anzeigen, niemals Erfolg melden. Export ist lesend und erhält portable Identität
+ohne Secrets/lokale Felder. Host-lokale Werte nach Import in bestehender lokaler
+Config auflösen. Die spätere Implementierung benötigt Schema-/Transaktions-
+Konformität gegen diese Semantik.</p>
+<h2 id="host-platform-grenze-nur-vertrag">Host-Platform-Grenze (nur Vertrag)</h2>
+<p>Die semantische Grenze <code>baseharbor.host-platform/v1</code> ist Adapter-Capability-
+Verhandlung, keine neue Runtime, Registry, Scheduler oder Multi-OS-Implementierung.</p>
+<table>
+<thead>
+<tr>
+<th>Verantwortung</th>
+<th>Grenze</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plattform-/Feature-Erkennung</td>
+<td>Host-Facts und supported/unsupported/unverifiable mit Nachweis</td>
+</tr>
+<tr>
+<td>Engine-Auswahl</td>
+<td>Tatsächlicher Endpoint, Kontext und rootless/rootful; kein stiller privilegierter Fallback</td>
+</tr>
+<tr>
+<td>Lokale Pfade / Source-Zugriff</td>
+<td>Host-lokale Zuordnung außerhalb Manifest/Profile; deterministischer Fehler bei fehlender Source</td>
+</tr>
+<tr>
+<td>Credential-/Trust-Zugriff</td>
+<td>Bestehender geschützter Owner und explizite Trust-Änderungen; keine automatische Sicherheitsabschwächung</td>
+</tr>
+<tr>
+<td>Browser / PTY / Shell</td>
+<td>Tatsächliche Unterstützung oder typisierte Nichtverfügbarkeit; Non-TTY/EOF/Cancel erhalten</td>
+</tr>
+<tr>
+<td>Runtime-Ausführung</td>
+<td>Bestehender RuntimeProvider verantwortet Lifecycle und Provider-Verifikation</td>
+</tr>
+<tr>
+<td>Enrollment / Remote-Autorität</td>
+<td>Bestehende Core-/Node-Autorität und mTLS; lokaler Host-Adapter erzeugt keine Remote-Autorität</td>
+</tr>
+</tbody>
+</table>
+<p>Linux-, WSL2- und Darwin-Implementierungen folgen später. Adapter melden echte
+Unterstützung, statt Erfolg nicht unterstützter Operationen vorzutäuschen.
+Host-Pfade, Sockets und Plattform-Defaults verändern weder ApplicationID,
+Capability-Absicht, Target-Ownership, Footprint-Evidenz noch Machine-Fehler.
+Kein Host-Probing mit dauerhaften Effekten aus Inspektion/Footprint.</p>
+<p>Normative Offline-Schemas: <code>contracts/footprint/v1/footprint.schema.json</code> und <code>contracts/connection-profile/v1/profile.schema.json</code>. Profile-Shape-Validierung beweist weder gültiges CA-Material, Fingerprint-Übereinstimmung, Ablaufzeit, eindeutige Tenants noch Autorisierung; spätere Importer müssen diese Semantik prüfen und nur geprüfte nicht geheime Extensions zulassen.</p>
+<h2 id="lokale-workload-autorisierung">Lokale Workload-Autorisierung</h2>
+<p>Die portable Umgebung <code>test</code> oder <code>prod</code> fordert allein kein Operator-OIDC an.
+Eine tatsächliche lokale CLI-/JSON- oder stdio-Ausführung kann nach Prüfung
+<code>local-runtime</code>-Autorität für genau eine App-Operation auf einem Target und in
+einer Umgebung verwenden. Der Adapter beobachtet die ausgewählte lokale
+Docker-Engine samt Binding oder die native rootless Linux-Podman-<code>info</code>-Auswahl.
+Diese Autorität ist Ausführungskontext, kein OIDC-Principal, portabler Input oder
+zusätzlicher Identity-Owner.</p>
+<p>Explizite gespeicherte beziehungsweise über die Umgebung gesetzte Operator-
+OIDC-Policy, eine unabhängig angeforderte Management-Installation einschließlich
+eines gültigen partiellen Owners, Tenant-Scope, Remote und HTTP behalten ihre
+bestehende Authentifizierung. HTTP entfernt geerbte lokale Autorität. Unklarer
+Engine-/Owner-State wird nicht als lokaler Nachweis ausgegeben. Autorisierte
+App-Operationen dürfen echte Provider-Abhängigkeiten materialisieren; explizite
+Management-Befehle behalten ihre eigene Autorisierung. Lokale Autorität erteilt
+keine Provider-Änderungsbestätigung und keinen Consent zur Datenlöschung. Die
+zwei Bestätigungen des aktuellen Plans bleiben getrennt.</p>
+<p>Domain-/Adapter-Negativtests prüfen die Implementierung. Tatsächliche lokale
+Produktions-CLI- und stdio-Runtime-Abnahme auf dem Kandidaten bleibt erforderlich.</p>
+<p><code>ProviderScopeOwner.destructive</code> markiert die endgültige Löschung des gemeinsamen
+Owners selbst, einschließlich Installationskonfiguration und State ohne vorhandenen
+Provider-Teilplan. Das Feld fließt in die Scope-Revision ein und erfordert separate
+<code>delete_data</code>-Zustimmung zusätzlich zu beiden aktuellen Planbestätigungen. Ohne
+dieses optionale Feld bleibt die bestehende nicht destruktive Owner-Semantik erhalten.</p>
+<h3 id="frische-ausfuhrungsabhangigkeiten-und-credential-zustellung">Frische Ausführungsabhängigkeiten und Credential-Zustellung</h3>
+<p><code>ProviderImpact.ContinuationDependencies</code> bindet den ausgewählten Ersatz und
+Verbraucheraktionen an den bestehenden Target-Graphen einschließlich transitiver
+Ancillary-Owner. <code>ProviderExecutionOutcome.ContinuationDependencies</code> liefert nach
+der Ausführung frische Beobachtungen derselben Identitäten und Kanten. Fehlende,
+gestoppte, nicht unterstützte, ungeprüfte, fremde oder geänderte Owner/Kanten dürfen
+nicht als abgeschlossene Fortsetzung gemeldet werden.
+<code>ObserveProviderContinuationDependencies</code> liest bestehende Registry-/Ancillary-
+Fakten und Beobachtungen; es plant keine Wiederherstellung und erzeugt keinen
+zusätzlichen Zustandsowner. Ein geänderter Graph verlangt neue Planung/Bestätigung.
+Fehlgeschlagene Ergebnisnachweise bleiben sichtbar und für den Retry offen.</p>
+<p>Native Providerbeobachtungen verlangen, dass alle ausgewählten kanonischen
+Container vorhanden und laufend sind; bei vorhandenem Healthcheck muss dessen
+Status gesund sein. Ein laufender HA-Member qualifiziert nicht das gesamte
+angegebene Modul. Diese Beobachtung belegt nur Prozess-/Health-Inventar, kein
+Quorum, keinen authentifizierten Zugriff, keine Datenkontinuität und keine
+Vollständigkeit unbekannter Sidecars.</p>
+<p>Kanonische Recovery-Helfer mit eigenem Profil bleiben im vollständigen
+Eigentumsinventar, sind aber keine dauerhaft benötigten Prozesse. Einmalige
+Voraussetzungen mit <code>service_completed_successfully</code> und <code>restart: no</code> benötigen
+einen tatsächlichen erfolgreichen Abschluss statt eines laufenden Zustands.
+Docker prüft den eigenen beendeten Container; Quadlet kann diesen Nachweis nach
+dem Entfernen des Containers in seiner aktuellen kanonischen systemd-Unit
+bewahren. Fehlende, fehlgeschlagene, fremde, veraltete oder überschriebene
+Abschlussnachweise lassen die Verfügbarkeit ungeprüft. Die Beobachtung startet
+oder repariert keine Aufgabe; die vollständige Lifecycle-Ressourcenauswahl bleibt
+erhalten.</p>
+<p>Normales Reapply darf fehlende Zugangsdaten einer vorhandenen geschützten
+nativen Credential-Gruppe nicht neu erzeugen. SQL, Valkey, RabbitMQ, MongoDB und
+S3, ihre unabhängigen logischen Instanzen sowie unterstützte Management-Zugänge
+werden vor der Erzeugung initialer Werte geprüft. Vorhandene Runtime-Deklarationen,
+Binding-Materialien oder erhaltene Gruppenschlüssel unterscheiden die Fortsetzung
+von einer neuen unabhängigen Gruppe. Unvollständiges erhaltenes Material benötigt
+Wiederherstellung über seinen ursprünglichen Owner; das fehlgeschlagene Reapply
+lässt den Owner unverändert und gibt keine Secret-Werte in Diagnosen aus. Neue
+unabhängige Instanzen und bewusstes Entfernen von Fähigkeiten bleiben möglich.
+Dieser Schutz belegt keine Live-Authentifizierung, migriert keine Daten und
+stellt keinen Ersatz-Authentifizierungsmodus bereit.</p>
+<p>External-OIDC-Reapply ohne erneut gesetzte Secret-/CA-Eingaben übernimmt geschütztes
+Material ausschließlich für denselben Provider, Issuer und Client. Es generiert
+keine Credentials neu, reicht sie nicht an eine andere Autorität weiter und macht
+aus einem vertraulichen Client nicht stillschweigend einen öffentlichen Client.
+Eine andere Autorität benötigt ausdrückliches Ersatzmaterial, wenn vertrauliche
+Credentials/Trust erhalten sind. Nicht unterstützte Credential-/Trust-Entfernung
+bleibt eine konkrete technische Grenze; ein Public-Client- oder System-Trust-
+Fallback wird nicht als implementiert behauptet.</p>
+<p>Die Identity-Binding-Verifikation vergleicht Client-/Credential-/Trust-Projektionen
+auf Host und Workload mit den Runtime- und Application-Umgebungsreferenzen.
+Abweichungen oder veraltete Referenzen schlagen ohne Secret-Werte in Fehlern fehl.
+Dies belegt konsistente Zustellung, kein Benutzerlogin, keine Token-/Refresh-
+Gültigkeit, Revocation oder zukünftige Erneuerung. Tatsächliche Zugriffsprüfungen
+bleiben getrennte Anforderungen.</p>
+<h2 id="teilautoritat-beim-installationsabbau">Teilautorität beim Installationsabbau</h2>
+<p>Der Installations-Folgenplan enthält jeden ausgewählten App-Reset-Teilplan. Die gemeinsamen Bestätigungen und die separate Datenentscheidung delegieren nur an genau diese destruktiven App-Deployment-Teilpläne nach erneuter Prüfung. Sie autorisieren keine andere Operation, keinen geänderten Owner, keinen nicht angezeigten oder unbekannten Teilplan. Die gemeinsame Revision verwendet fachliche Teilplan-IDs statt laufender Verbrauchsmessungen. Ein fehlgeschlagener Teilplan erhält das betroffene Target und den geschützten Retry-Owner; untere Fallback- oder Target-Cleanup-Pfade dürfen diese Teilautorität nicht umgehen. Native Ausführungsfehler bleiben Teilfehler und benötigen vor einem Retry einen frisch beobachteten Plan und neue Bestätigungen.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Zurück zum Seitenanfang
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.instant", "navigation.sections", "navigation.path", "navigation.top", "toc.follow", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "In Zwischenablage kopiert", "clipboard.copy": "In Zwischenablage kopieren", "search.result.more.one": "1 weiteres Suchergebnis auf dieser Seite", "search.result.more.other": "# weitere Suchergebnisse auf dieser Seite", "search.result.none": "Keine Suchergebnisse", "search.result.one": "1 Suchergebnis", "search.result.other": "# Suchergebnisse", "search.result.placeholder": "Suchbegriff eingeben", "search.result.term.missing": "Es fehlt", "select.version": "Version ausw\u00e4hlen"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
