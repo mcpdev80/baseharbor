@@ -622,3 +622,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:0xZ ROOT-INKIDENZ (Selbstbefund): Coord-Notiz-Commit landete auf root master (Klon-Falle §14) — zurueckgesetzt, NIE gepusht. Plan main=5b8047f5.
 - 23:2xZ PROMOTION DRIN (main 364db5d4). Post-Run Workflow registriert+aktiv; workflow_run-Fail = korrektes fail-closed (gefailter CI-Run). PreFlight laeuft, Klickblock folgt.
 - preflight artefakt-abort: gh-auth check lokal (Coord-Shell). Klickblock:
+- 23:3xZ SHADOW-BUHNE BEREIT: main=364db5d4 registriert, Post-Run aktiv, #1161 (probe) CLEAN+gruen. Klickblock uebergeben.
