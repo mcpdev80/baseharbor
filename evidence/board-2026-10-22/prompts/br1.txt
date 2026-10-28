@@ -1,0 +1,11 @@
+TOOL 1: cd /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan; git fetch origin; git status --porcelain | wc -l; echo rc=$?. rc!=0 oder dirty -> END BR1-BOOTFAIL.
+LANE br1 (ornith) - CARD BOARD AKTUALISIERUNG (R27-Kette):
+1) python3 scripts/plan.py list | grep -aiE "r27|receipt|ci-binding" (IDs notieren)
+2) Fuer genau diese Karten die METADATEN setzen (nicht generierte Dateien editieren):
+   - R27-Hauptkarte: status=review, pr=https://github.com/mcpdev80/baseharbor/pull/1151, sha=4f0ce579, blocker-Hinweis "awaiting owner approve #1154 (native qualification)".
+   - Sub-Karten F1x/F5z/F8 (falls vorhanden): status=review, pr #1140/#1144, resolution-Kurztext.
+   - Karten fuer #1142/#1146/#1147/#1152: falls existing -> status=accepted (gemergt), resolution mit Merge-SHA.
+3) python3 scripts/render.py && python3 scripts/plan.py check -> beide rc=0
+4) commit -m "plan(r27): board currency - candidates, merged chain, qualification blocker" && git push origin HEAD:refs/heads/work/r27-board-br1 (NICHT main!)
+5) ls-remote bestaetigen. END 'END BR1-DONE <branch> <n-cards>' oder 'END BR1-BLOCKED <schritt> <rc>'.
+Verboten: main-push, product repo, force.

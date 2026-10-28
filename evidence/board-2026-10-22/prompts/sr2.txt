@@ -1,0 +1,7 @@
+TOOL 1: cd /home/marcel/tmp-ops/shadow; ls shadow-run.sh; echo rc=$?. rc!=0 -> END SR2-BOOTFAIL (Coord-Log pflegen).
+LANE sr2 (qwen) - SHADOW-RUN DREHBUCH-HAERTUNG (NUR Doku/Skript im tmp-ops, KEIN Git-Repo):
+1) Lies shadow-run.sh + /home/marcel/tmp-ops/pilot/dl/run-pilot.sh; pruefe gegen develop (git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor ls-remote origin refs/heads/develop | cut -c1-10).
+2) Erzeuge /home/marcel/tmp-ops/shadow/shadow-runbook.md: (a) Exakte Owner-Klickliste (1 PR erlauben, Post-Run-Receipt, Approval), (b) Kommandos der 3 Negativtests mit ihren rc-Erwartungen, (c) Preflight-Checkliste mit 'Kann-jeder'-Pruefung: keine Tokens selbst gesetzt, ENV vom System, run_id/attempt aus API. (d) Zeitplan bis 23:35Z.
+3) Fuehre NUR die Read-only-Preflight-Schritte selbst aus und notiere deren rc. NICHTS launchen, das echte Runs erzeugt!
+4) Am Ende: echo "END SR2-DONE <develop-sha>" bzw. 'END SR2-BLOCKED <grund>'.
+Verboten: git commit anywhere, product repo, echte shadow PRs, secrets loggen.
