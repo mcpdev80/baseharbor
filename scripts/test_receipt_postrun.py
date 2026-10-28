@@ -482,6 +482,143 @@ class F1NegativeMissingArtifact(unittest.TestCase):
         self.assertNotIn("candidate_sha=", out)
 
 
+class F3RetryRecoveryTest(unittest.TestCase):
+    """F3: publish() must preserve unrelated concurrent edits and its own
+    receipt through a bounded non-fast-forward push rejection."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.bare = self.root / "planning.bare"
+        self.bare.mkdir()
+        _run(["git", "init", "--bare", "-q", str(self.bare)])
+        self.planning = self.root / "planning"
+        self.planning.mkdir()
+        self._init_planning(self.planning)
+        self.plan_commit = self._git(self.planning, "rev-parse", "HEAD").decode().strip()
+        self.api = FakeApi()
+        with zipfile.ZipFile(self.root / "plan.zip", "w") as z:
+            z.writestr("pr-plan.json", json.dumps(FAKE_PLAN))
+
+    def _init_planning(self, root: Path):
+        _run(["git", "init", "-q", str(root)])
+        _run(["git", "-C", root, "config", "user.name", "F3 fixture"])
+        _run(["git", "-C", root, "config", "user.email", "f3@example.invalid"])
+        task = root / "tasks" / "t-20261022-r27-evidence-pilot.md"
+        task.parent.mkdir(parents=True, exist_ok=True)
+        task.write_text("---\nid: t-20261022-r27-evidence-pilot\n---\nr27 evidence pilot\n")
+        fixture = root / receipt_tasklink.PLAN_PATH
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        plan_obj = {
+            "gate": "public-contracts",
+            "repository": "mcpdev80/baseharbor",
+            "workflow_id": FAKE_PLAN["workflow_id"],
+            "head_sha": FAKE_PLAN["head_sha"],
+            "candidate_sha": FAKE_PLAN["integration_sha"],
+            "base_sha": FAKE_PLAN["target_base_sha"],
+            "task": "tasks/t-20261022-r27-evidence-pilot.md",
+        }
+        fixture.write_bytes((json.dumps(plan_obj, sort_keys=True,
+                                        separators=(",", ":")) + "\n").encode())
+        _run(["git", "-C", root, "add", "-A"])
+        _run(["git", "-C", root, "commit", "-qm", "initial planning"])
+        _run(["git", "-C", root, "branch", "-M", "main"])
+        _run(["git", "-C", root, "remote", "add", "origin", str(self.bare)])
+        _run(["git", "-C", root, "push", "-q", "origin", "main"])
+
+    def _git(self, root, *args):
+        return subprocess.check_output(["git", "-C", str(root), *args])
+
+    def _receipt_raw(self, run_id):
+        value = {"gate": "public-contracts",
+                 "run": {"id": run_id, "attempt": 1},
+                 "sha": "c" * 40, "status": "pass",
+                 "plan": "a" * 40, "approved": None}
+        return receipt_verifier.canonical(value)
+
+    def _author_other(self, root):
+        _run(["git", "-C", root, "config", "user.name", "concurrent"])
+        _run(["git", "-C", root, "config", "user.email", "other@example.invalid"])
+
+    def test_unrelated_edit_is_preserved_and_own_receipt_reapplied(self):
+        # 1. Unrelated concurrent edit published to remote main.
+        self._author_other(self.bare)
+        unrelated = self.root / "unrelated.txt"
+        unrelated.write_text("side change\n")
+        _run(["git", "-C", self.bare, "add", "-A"])
+        _run(["git", "-C", self.bare, "commit", "-qm", "unrelated side edit"])
+        _run(["git", "-C", self.bare, "push", "-q", "origin", "main"])
+
+        # 2. A second Planning working tree that is behind the unrelated edit
+        #    but carries an un-published local receipt commit for run 7.
+        behind = self.root / "behind"
+        _run(["git", "clone", "-q", str(self.bare), str(behind)])
+        _run(["git", "-C", behind, "config", "user.name", "producer"])
+        _run(["git", "-C", behind, "config", "user.email", "producer@example.invalid"])
+        plan_commit = self._git(self.planning, "rev-parse", "HEAD").decode().strip()
+        raw = self._receipt_raw(7)
+        path = "evidence/receipts/public-contracts/7-1.json"
+        target = behind / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        _run(["git", "-C", behind, "add", "--", path])
+        local_commit = self._git(behind, "commit", "-q", "-m", "receipt: public-contracts record",
+                                 "--", path).decode().strip()
+
+        env = dict(os.environ, GITHUB_EVENT_NAME="workflow_run",
+                   GITHUB_REPOSITORY="mcpdev80/baseharbor",
+                   GITHUB_REF="refs/heads/main")
+        with F1PositiveRun._env(env):
+            rpath, intro, pub = receipt_writer.publish(
+                behind, path, local_commit)
+
+        remote_main = self._git(self.bare, "rev-parse", "main").decode().strip()
+        # The unrelated edit must survive on the remote...
+        side = self._git(self.bare, "show", f"{remote_main}:unrelated.txt").decode()
+        self.assertEqual(side, "side change\n")
+        # ...and our own receipt must be durable on the remote at the re-applied
+        # commit, introduced by the first commit that added the path.
+        remote_raw = self._git(self.bare, "show", f"{remote_main}:{path}").encode()
+        self.assertEqual(receipt_verifier.receipt(remote_raw)["run"]["id"], 7)
+        self.assertEqual(intro, local_commit)
+        self.assertEqual(pub, remote_main)
+
+    def test_genuine_conflict_blocks(self):
+        # Remote already carries a durable receipt at the SAME path for a
+        # different run; publishing a different receipt there must block.
+        self._author_other(self.bare)
+        other_raw = self._receipt_raw(999)
+        conflict_path = "evidence/receipts/public-contracts/7-1.json"
+        _run(["git", "-C", self.bare, "checkout", "-q", "main"])
+        target = self.bare / conflict_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(other_raw)
+        _run(["git", "-C", self.bare, "add", "--", conflict_path])
+        _run(["git", "-C", self.bare, "commit", "-qm", "receipt: public-contracts record"])
+
+        behind = self.root / "behind2"
+        _run(["git", "clone", "-q", str(self.bare), str(behind)])
+        _run(["git", "-C", behind, "config", "user.name", "producer"])
+        _run(["git", "-C", behind, "config", "user.email", "producer@example.invalid"])
+        plan_commit = self._git(self.planning, "rev-parse", "HEAD").decode().strip()
+        raw = self._receipt_raw(7)
+        path = "evidence/receipts/public-contracts/7-1.json"
+        target = behind / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        _run(["git", "-C", behind, "add", "--", path])
+        local_commit = self._git(behind, "commit", "-q", "-m", "receipt: public-contracts record",
+                                 "--", path).decode().strip()
+
+        env = dict(os.environ, GITHUB_EVENT_NAME="workflow_run",
+                   GITHUB_REPOSITORY="mcpdev80/baseharbor",
+                   GITHUB_REF="refs/heads/main")
+        with F1PositiveRun._env(env):
+            with self.assertRaises(receipt_verifier.ReceiptError):
+                receipt_writer.publish(behind, path, local_commit)
+
+
 class F1NegativeForeignRepo(unittest.TestCase):
     """A foreign producer repository must block issuance."""
 
