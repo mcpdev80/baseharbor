@@ -468,3 +468,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:0xZ Tick: Gateway-blip#2 (recovered). mx1/ornith dispatched: localer develop+candidate-Merge mit Klassifier-Simulation (Klasse-B Heilung local beweisen, kein push).
 - 07:1xZ Tick: mx1 busy (Dossier ausstehend), #1142 OPEN, acks clean.
 - 07:4xZ mx1 gelandet (END-Keyword fehlte, Dossier+Merge real): conflict-free, 175 OK, Sim-Antwort s. Dossier-Zeilen.
+- 08:3xZ Ruhe; Blip#3 recovered. Kein Aenderungsbedarf.
