@@ -448,3 +448,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:2xZ rv9 DONE-ohne-Datei (Worktree weg), rc-Zeilen aus Transcript: s. naechste Zeile dieses Logs.
 - 01:3xZ SUBSTANZ-GEWISS: 94f35d02 lokal test_receipt*(170 OK)+test_ci_workflow*(OK)+test_pr_gate_plan*(OK) — Coord-Readonly, Worktree zurueck. rv9 verbal = de facto bestaetigt.
 - 01:4xZ Tick: Watch-Reminder-Müll von 5 toten panes entfernt; acks sauber; Block (1142-Ruleset) beim Owner, kein Scheinauftrag.
+- 01:5xZ Tick: pool-empty geblockt; ci38b/flash dispatched (CI-Dossier 94f35d02 A/B-Klassifikation + gruen-wiederverwendbar-Liste).
