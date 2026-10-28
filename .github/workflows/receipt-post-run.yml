@@ -129,13 +129,20 @@ jobs:
           # artifact-derived strings, no source/eval on any artifact value, and
           # no fallback facts. The heredoc redirects on the Python invocation
           # (Owner correction 2026-10-27, D3).
-          RUN_ID="${RUN_ID}" PR_NUMBER="${PR_NUMBER}" python3 - <<'PY' > plan.txt
+          RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" python3 - <<'PY' > plan.txt
           import json, zipfile, sys, os
           import receipt_verifier as rv
           with zipfile.ZipFile("plan.zip") as z:
               with z.open("pr-plan.json") as f:
                   plan = json.loads(f.read())
-          out = rv.extract_facts(plan, artifact_size=500)
+          # Authoritative run/workflow ids come from the authenticated Actions
+          # context (env), not from the producer plan; extract_facts forwards the
+          # supplied values (never the plan's own spoofed id) and derives the
+          # artifact size from the real downloaded file, never a fake constant.
+          ARTIFACT_SIZE = rv.artifact_size_from_path("plan.zip")
+          out = rv.extract_facts(plan, artifact_size=ARTIFACT_SIZE,
+                                 run_id=int(os.environ["RUN_ID"]),
+                                 workflow_id=int(os.environ["WORKFLOW_DEFINITION_ID"]))
           print("workflow_id=%s" % out["workflow_id"])
           print("head_sha=%s" % out["head_sha"])
           print("candidate_sha=%s" % out["candidate_sha"])
@@ -190,7 +197,7 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-           ref: 94f35d0293f8e237895afe84ae7aa9b26722ffed
+          ref: 94f35d0293f8e237895afe84ae7aa9b26722ffed
           fetch-depth: 0
           persist-credentials: false
 
