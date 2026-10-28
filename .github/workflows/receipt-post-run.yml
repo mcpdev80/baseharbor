@@ -123,6 +123,8 @@ jobs:
 
       - name: Decode pr-plan and extract candidate_sha
         id: plan
+        env:
+          PYTHONPATH: ${{ github.workspace }}/scripts
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
