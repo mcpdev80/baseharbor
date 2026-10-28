@@ -222,13 +222,24 @@ def publish(root: Path, path: str, local_commit: str, *,
         return path, _find_introduction(root, path, local_commit), local_commit
 
     # Verify fast-forward: the remote must be an ancestor of local_commit.
+    local_adds_new_file = _introduces_path(root, local_commit, path)
     try:
         git(root, "merge-base", "--is-ancestor", remote_commit, local_commit)
         # Remote is an ancestor but not yet at our commit — push it.
     except Exception:
         # Not a fast-forward — the remote has diverged.
-        # This should not happen in normal operation; if it does,
-        # we fall through to the bounded retry loop.
+        #
+        # A modification of an existing durable receipt (an Owner approval, a
+        # card publication edit) can only be valid against its exact
+        # predecessor. On divergence the authoritative base has moved: block
+        # (CODE-AUDIT F3b) rather than fall into the bounded re-apply that a
+        # fresh-receipt issue relies on, since that re-apply would drop the
+        # edit and re-emit stale base bytes.
+        if not local_adds_new_file:
+            raise ReceiptError(
+                "publication blocked: remote main diverged from the edited receipt "
+                "before its exact predecessor")
+        # A fresh receipt may still be recovered through the bounded re-apply.
         pass
 
     # Bounded re-apply of own changes under a parallel independent edit.
@@ -288,45 +299,11 @@ def publish(root: Path, path: str, local_commit: str, *,
         raise ReceiptError("conflicting receipt on remote; blocked")
 
 
-def publish_approval_edit(root: Path, path: str, approval_commit: str, *,
-                          expected_base: bytes) -> str:
-    """Publish a single approval edit that modifies an existing durable receipt.
-
-    Unlike :func:`publish` (which issues a fresh receipt), an approval edit
-    only ever *rewrites the same path with the approved bytes on top of its own
-    introduction commit*. This must never reset the working tree to the remote
-    HEAD — doing so would drop the approval edit and re-emit the unapproved
-    base bytes. Instead it pushes the exact ``approval_commit`` and, on a
-    non-fast-forward rejection, refuses to clobber the divergent remote: the
-    Owner's single approval edit is only valid against its exact predecessor.
-
-    Returns the durable publication revision. Git/API failures raise.
-    """
-    require(not git(root, "status", "--porcelain"), "clean Planning checkout required")
-    require(git(root, "rev-parse", "--verify", "refs/heads/main"), "no remote main to approve against")
-    # The approval edit must sit directly on top of the receipt introduction:
-    # its parent must be the commit that introduced the path, and the working
-    # tree file must still hold the exact unapproved base bytes.
-    parent = git(root, "rev-parse", "--verify", f"{approval_commit}^").decode().strip()
+def _introduces_path(root: Path, commit: str, path: str) -> bool:
+    """True when *commit* adds *path* (its parent has no such file)."""
     introduced = git(root, "log", "--diff-filter=A", "--format=%H", "-n", "1",
-                     approval_commit, "--", path).decode().split()
-    require(len(introduced) == 1 and full_sha(introduced[0]),
-            "approval edit must introduce the receipt path")
-    require(parent == introduced[0],
-            "approval edit is not on top of the receipt introduction")
-    local_base = (root / path).read_bytes()
-    require(local_base == expected_base,
-            "receipt changed before approval; re-resolve and re-verify live")
-    # Push the exact approval commit; a non-fast-forward rejection blocks
-    # (the Owner approval is only valid against its exact predecessor).
-    rc, _, err = _push_authed(
-        root, ("push", "origin", f"{approval_commit}:refs/heads/main"))
-    if rc != 0:
-        stderr = _scrub_secret(err.decode(errors="replace"))
-        raise ReceiptError(f"publication push failed: {stderr.strip()}")
-    durable = git(root, "rev-parse", "--verify", "refs/heads/main").decode().strip()
-    require(full_sha(durable), "approved receipt not durable on remote")
-    return durable
+                     commit, "--", path).decode().split()
+    return len(introduced) == 1 and full_sha(introduced[0]) == commit
 
 
 def _find_introduction(root: Path, path: str, revision: str) -> str:
