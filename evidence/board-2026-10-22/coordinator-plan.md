@@ -510,3 +510,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 20:4xZ Tick: Taktbefehle an beide Lanes (f345c Fix-Identifikation, f8z3 Start-Ausgabe).
 - 20:5xZ F8 DONE via Coord-Transport PR (f8z3 Root-Fall). PR#? s. ls-remote f8z4.
 - 21:1xZ stg8/flash dispatched: #1143+#1144 als Commits auf Kandidaten-Branch (ein Kandidaten-Regel).
+- 21:3xZ Tick: stg8 20min ohne Artefakt -> Befehl 1 (Statusabfrage).
