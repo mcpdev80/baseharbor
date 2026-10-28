@@ -653,3 +653,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:2xZ C2-rebind #1180 (register an e7f632c4, 3 script_files blobs). Warten: 1180 gruen -> merge -> 1178 sync -> gruen -> merge -> Promotion -> Producer.
 - 00:5xZ Cause 7: script_files sind im HEUTIGEN Classifier terminal (allow-list leer, Register-Guard #1154) -> C2 strukturell nicht mergebar ohne A/B/C. Meldung raus.
 - 00:5xZ D-Entscheid umgesetzt: Cause-7 + Follow-ups im Dossier, #1178 geparkt. RUHEPUNKT erreicht.
+- 01:0xZ Tick: Ruhepunkt bestaetigt, keine erlaubte Arbeit (D-Entscheid), acks gequenzt.
