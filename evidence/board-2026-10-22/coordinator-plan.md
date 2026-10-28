@@ -608,3 +608,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:2xZ Tick: #1154 green/CLEAN (Owner-OK ausstehend). Lanes: br1/ornith (Board), sr2/qwen (Shadow-Runbook, read-only).
 - 21:3xZ sr2 FALSE-END (runbook fehlte) -> coord-transport shadow-runbook.md geschrieben, lane rm. nt2-Dossier existiert in evidence/board-2026-10-27.
 - 21:5xZ br1 DELIVERED (a99e537) aber auf lokalem main committet statt branch -> coord: reset+merge --no-ff, main gepusht.
+- 22:1xZ Owner-Vollmacht erteilt. Kette: #1154 gemergt (7d8f3fdc). #1151 zurueck auf 4f0ce579 (Merge-Commits liessen Inventar schrumpfen - Strukturerkenntnis). Neuer Suite-Lauf via review_requested.
