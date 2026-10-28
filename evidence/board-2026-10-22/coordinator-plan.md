@@ -496,3 +496,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:0xZ f345z/ornith dispatched (F3+F4+F5, 6 Schritte, Schritt-0-Pflicht+60s-Nudge Muster).
 - 17:2xZ f345z stumm -> f345z2 mit Ein-Befehl-Schritt0 (Atom-Befehl statt Prosa).
 - 17:3xZ Coord setzte Step0 (1d9dc534, Nur-Scaffold) — Lanes liefern seit 4x nicht; f345b/ornith auf vorhandener Branch dispatched.
+- 17:5xZ f345b silent-boot: Coord setzte worktree, sendete arbeitsbefehl ohne boot.
