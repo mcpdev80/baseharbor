@@ -235,10 +235,17 @@ def publish(root: Path, path: str, local_commit: str, *,
         # (CODE-AUDIT F3b) rather than fall into the bounded re-apply that a
         # fresh-receipt issue relies on, since that re-apply would drop the
         # edit and re-emit stale base bytes.
-        if not local_adds_new_file:
+        #
+        # This only applies when the diverged remote already carries an
+        # existing durable receipt at *path* (an edit, an approval). When the
+        # receipt is still absent on the fresh remote — a lost-push ack, a
+        # parallel identical edit, or an unfetched divergence — the bounded
+        # re-apply below preserves the unrelated change and re-emits our own
+        # bytes, so we fall through instead of blocking.
+        if not local_adds_new_file and _current_remote_bytes(root, path) is not None:
             raise ReceiptError(
-                "publication blocked: remote main diverged from the edited receipt "
-                "before its exact predecessor")
+                "publication blocked: receipt edit on a diverged remote "
+                "(conflict with the exact predecessor)")
         # A fresh receipt may still be recovered through the bounded re-apply.
         pass
 
@@ -300,9 +307,17 @@ def publish(root: Path, path: str, local_commit: str, *,
 
 
 def _introduces_path(root: Path, commit: str, path: str) -> bool:
-    """True when *commit* adds *path* (its parent has no such file)."""
-    introduced = git(root, "log", "--diff-filter=A", "--format=%H", "-n", "1",
-                     commit, "--", path).decode().split()
+    """True when *commit* adds *path* (its parent has no such file).
+
+    An unknown *commit* revision (exit 128, e.g. an unreached local ref)
+    means *path* is not introduced here, so the fast-forward check can fall
+    through to the bounded re-apply that a fresh-receipt issue relies on.
+    """
+    try:
+        introduced = git(root, "log", "--diff-filter=A", "--format=%H", "-n", "1",
+                         commit, "--", path).decode().split()
+    except Exception:
+        return False
     return len(introduced) == 1 and full_sha(introduced[0]) == commit
 
 
