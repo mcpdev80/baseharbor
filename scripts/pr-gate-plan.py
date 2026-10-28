@@ -901,7 +901,8 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     break
             else:
                 return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                        if record['files'] == workflow_files else CI_CHECKS)
+                        if record['files'] in (workflow_files, pinbump_files)
+                        else CI_CHECKS)
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
     return None
