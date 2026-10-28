@@ -185,12 +185,9 @@ jobs:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # CRITICAL: We check out the immutable reviewed CI controller scripts
-          # by their full reviewed commit SHA — NOT mutable develop and NOT the
-          # PR head. Pinning the exact SHA prevents PR-controlled code from
-          # running in the credential-bearing controller; the scripts are
-          # reviewed, protected, and identical across all invocations.
-          ref: 839e5cc9fa9b3da3908ee65f26596c2b3dfaaca7
+          # Token ist auf baseharbor-plan beschraenkt; der Job fuehrt nur
+          # gepinnten Controller-Code, kein PR-Code.
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -200,7 +197,7 @@ jobs:
           repository: mcpdev80/baseharbor-plan
           ref: main
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
           path: planning
           token: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
 
@@ -208,9 +205,9 @@ jobs:
         run: |
           set -euo pipefail
           # Bounded ephemeral identity for the single bounded push: the
-          # Planning write token provides authorization and this step sets a
-          # purpose-bound committer. No long-lived secret is logged or
-          # exported beyond the checkout's own token scope.
+          # Planning write token provides authorization, credentials are
+          # persisted by the preceding checkout (persist-credentials: true)
+          # and this step sets a purpose-bound committer.
           git -C planning config user.name "codeman-runtime"
           git -C planning config user.email "codeman-runtime@users.noreply.github.com"
           git -C planning fetch origin main --quiet || true
