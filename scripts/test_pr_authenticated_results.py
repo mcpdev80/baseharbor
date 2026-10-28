@@ -45,7 +45,7 @@ class AuthenticatedResultsTests(unittest.TestCase):
                           '> "$RUNNER_TEMP/pr-authenticated-results.py"'], origin)
         self.assertIn('EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}', final)
         self.assertIn('ref: ${{ github.event.pull_request.base.sha }}', final)
-        self.assertIn('git show c6db56c4ac077dbc496134cb0871c8e996a593fe:'
+        self.assertIn('git show f4b173d3b07959bd671727800e9c982d19894be4:'
                       'scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"', final)
 
     def test_actual_complete_job_results(self):
