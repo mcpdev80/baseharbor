@@ -92,7 +92,10 @@ jobs:
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
-          ATTEMPT="${{ github.event.workflow_run.run_attempt }}"
+          # D1 principle: authenticated (Actions API) beats asserted (webhook
+          # payload, which omits run_attempt). One API call against the
+          # authenticated RUN_ID resolves the real attempt.
+          ATTEMPT="$(gh api repos/mcpdev80/baseharbor/actions/runs/$RUN_ID --jq .run_attempt)"
           # The workflow-definition id is an authenticated Actions API field,
           # distinct from the authenticated workflow run id (RUN_ID). Source it
           # directly; do not let the plan artifact invent it (Owner 2026-10-27).
