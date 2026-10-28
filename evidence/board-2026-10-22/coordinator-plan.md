@@ -529,3 +529,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:0xZ fx3=fx2 Dirty-Irrtum korrigiert; Coord-Repro: 6 fail real; fx4/ornith mit exakten 3 Fehlerklassen dispatched.
 - 03:2xZ Tick: acks, fx4 busy ohne push (~15min) — naechster Tick: Deadline-Befehl.
 - 03:3xZ fx4: (a) lokal OK (5+/2-) -> Commit-Push-Befehl.
+- 03:4xZ Tick: fx4 busy (Push-Befehl in Arbeit); acks ok; Kette wartet auf (a) Commit.
