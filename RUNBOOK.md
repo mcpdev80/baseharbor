@@ -229,3 +229,6 @@ python3 <wt-shadow>/scripts/receipt_verifier.py retained --planning <plan> --rev
 ### Reminder-Ack Korrigendum (2026-10-27, zweitaegiger Betriebsfehler)
 `events-check.py --ack` ackt NUR events.log; die REMINDERS-Zaehler braucht `--reminders --ack` in EINEM Aufruf. Basics-Flag 'REMINDERS: n unread' war deshalb tagelang Pseudo-Spam (pos 235144->310863 nach Erstanwendung). Watchdog-Rauschen zusaendlich durch verwaiste watcher-state-Eintraege -> prune-watch.sh (cron */15).
 Vor jedem gehosteten Lauf (Shadow-Run) die Kann-jeder-Schritt-Zeile in die Evidence: jede Auth/PIN/ENV-Quelle benennen; Lane-gesetzte Prüfeingänge = Lauf ungültig. Controller-Pin immer = reviewed SHA des einen Kandidaten (Commit auf dem Kandidaten, nie Lane-ENV). Draft-PR-Merges: erst `gh pr ready <n>`, dann merge — GitHub weist squash --admin auf Drafts still ab (cmx-Serie 28.10.).
+
+## 13. Lane-Boot-Stille durch Worktree-Registratur (Befund 2026-10-28)
+Vor jedem Spawn: `git -C baseharbor worktree prune` (Prüfumgebung) und `worktree list | wc -l` notieren. >60 Eintraege oder Zielbranch 'already used' = Lane endet kommentarlos nach accepted-Toast. Altlaener-Entfernung nur physisch-existing; Registtureintrag ist das Gefahrdungspotential, nicht das Verzeichnis.
