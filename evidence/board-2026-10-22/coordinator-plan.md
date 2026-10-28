@@ -615,3 +615,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - [ZEITBERICHTIGT 16:15Z] Kernkette VOLLZOGEN (develop=f4b173d3, H+R/Q/Q'/R'/Tuple, 13 PRs gemergt/geschlossen, Register sauber). R7 final (rv12) laeuft. Frist 23:35Z NICHT gerissen: lokale Z-Angaben waren +7,5h falsch (Uhrquelle watcher-API-Log, nicht Env). Rest: ShadowRun (Owner-Klicks) + Negativtests + publish — ohne Zeitdruck.
 - 23:4xZ rv11 busy aber Evidence/PLAN-Datei fehlt -> Nudge gesendet (Schritt-0-Pflicht).
 - 00:0xZ Owner-Korrektur: 8f8e554 war LOKALER develop-Branch (10-26, Phantom). branch -f develop=origin/develop, r7c deleted. rv12/R7-final dispatched.
+- 16:3xZ R7-ACCEPT (rv12, Dossier R7-ACCEPT-rv12.md). PreFlight laeuft, dann Owner-Klicks Runbook A.
