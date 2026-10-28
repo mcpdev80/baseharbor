@@ -636,3 +636,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:4xZ Desk-Test-Pflicht ubernommen: #1169 (redirect ohne --silent, 759B-Zeuge im Commit). Warten auf GREEN dann Owner-Merge, dann Promotion.
 - 00:1xZ Promotion #1170 (tree==develop d71ae78e, 0 Konflikte). Watcher laeuft.
 - 00:4xZ Producer 40762534677 laeuft, chain4-Monitor detached.
+- 20:2xZ CHAIN: Producer success, ARTIFACT trusted-pr-plan da. Writer-Phase laeuft (Monitor).
