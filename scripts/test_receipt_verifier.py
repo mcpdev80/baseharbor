@@ -1372,6 +1372,19 @@ class ProductionPathCliTest(VerifierFixtureTest):
         after = self.command('rev-parse', 'origin/main').decode().strip()
         self.assertEqual(before, after, "failed validation must not advance remote main")
 
+    def test_publish_evidence_render_check_blocks_before_push(self):
+        """F5a: a failing render/check precedes publication and must leave
+        remote main exactly where it was (no durable broken state)."""
+        path, original = self.create()
+        self.approve(path, original)
+        before = self.command('rev-parse', 'origin/main').decode().strip()
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                self.root, TASK_PATH, path, self.candidate, self.plan_sha,
+                render_fn=lambda root: False, check_fn=lambda root: False)
+        after = self.command('rev-parse', 'origin/main').decode().strip()
+        self.assertEqual(before, after, "failing render/check must not advance remote main")
+
     def test_approve_cli_full_chain_publishes_card_durably(self):
         # The F1/F5 recipe lands a real receipt_writer.publish(); the CLI
         # approve chain resolves the forward PR->task binding through the shared
