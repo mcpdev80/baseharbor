@@ -478,6 +478,14 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
 
     task_path.write_bytes(new_bytes)
 
+    # F5: mandatory render/check and generated staging must PRECEDE
+    # publication. A non-zero render/check blocks before any commit or push so
+    # a broken Planning state is never made durable on main (CODE-AUDIT F5).
+    ok, msg = _render_check(render_fn, check_fn, planning_root)
+    if not ok:
+        raise TaskLinkError("render/check before evidence publication failed: %s; "
+                            "manual reconciliation required" % msg)
+
     # Commit, push to remote main, then read back the durable revision
     # from the remote to verify both the receipt and the valid task
     # evidence are present there (F5: publication is NOT local-only).
@@ -502,11 +510,6 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
                             f"origin/main:{task}").decode(errors="replace")
     require(evidence_line.strip() in [l.strip() for l in durable_text.splitlines()],
             "evidence reference not present in the durable publication revision on remote")
-
-    ok, msg = _render_check(render_fn, check_fn, planning_root)
-    if not ok:
-        raise TaskLinkError("evidence published but render/check failed: %s; "
-                            "manual reconciliation required" % msg)
 
     return remote_head
 

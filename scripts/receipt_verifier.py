@@ -526,6 +526,42 @@ def resolve_evidence(planning, pull, api=None):
     return matches[0]
 
 
+def _unique_front_matter_pairs(pairs):
+    """YAML object_pairs_hook: reject duplicate keys in a task note's front
+    matter, matching the strict Planning schema parser (CODE-AUDIT F4).
+
+    ``yaml.safe_load`` silently keeps the last of duplicate keys, so a task
+    note that declares the same PR marker twice would bind ambiguously without
+    this guard.
+    """
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "duplicate key in task note front matter: " + str(key))
+        result[key] = value
+    return result
+
+
+def _coerce_unique_prs(parsed):
+    """Reject duplicate PR markers in a task note's ``prs`` list.
+
+    A task note that lists the same repository PR marker twice binds
+    ambiguously; the strict Planning schema parser rejects this, so must this
+    resolver (CODE-AUDIT F4). Only the ``prs`` key is constrained.
+    """
+    if not isinstance(parsed, dict):
+        return parsed
+    entries = parsed.get("prs")
+    if entries is None:
+        return parsed
+    require(isinstance(entries, list), "invalid prs metadata in task note")
+    seen = []
+    for entry in entries:
+        key = str(entry).strip()
+        require(key not in seen, "duplicate PR marker in task note front matter: " + key)
+        seen.append(key)
+    return parsed
+
+
 def front_matter(text):
     """Parse the YAML front matter of a Planning task note (CODE-AUDIT F4).
 
@@ -544,12 +580,10 @@ def front_matter(text):
         if lines[i].strip() == "---":
             try:
                 meta = yaml.safe_load("\n".join(lines[1:i]))
+                meta = _coerce_unique_prs(meta)
             except yaml.YAMLError as exc:
                 raise ReceiptError("task note front matter is invalid YAML") from exc
-            if meta is None:
-                return {}
-            require(isinstance(meta, dict), "task note front matter must be a mapping")
-            return meta
+            return meta or {}
     raise ReceiptError("task note front matter block is unterminated")
 
 

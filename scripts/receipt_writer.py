@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple
 
-from receipt_verifier import (GATE, ReceiptError, canonical, git, git_stderr, live,
+from receipt_verifier import (GATE, ReceiptError, canonical, full_sha, git, git_stderr, live,
                               load_plan, path_for, receipt, require)
 
 MAX_PUSH_RETRIES = 3
@@ -133,6 +133,20 @@ def _scrub_secret(text: str) -> str:
     return redacted
 
 
+def _reset_to(root, head: str) -> bool:
+    """Point the working tree at *head* and return True; return False only when
+    the reset itself fails.
+
+    The caller verifies afterwards that the resulting HEAD still fast-forwards
+    the remote, so an unconditional hard reset here is safe and never raises.
+    """
+    try:
+        git(root, "reset", "--hard", head)
+    except Exception:
+        return False
+    return True
+
+
 def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
     """Re-apply exactly our own receipt edit onto the fresh remote HEAD.
 
@@ -146,9 +160,7 @@ def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
     if current is not None:
         # A receipt already exists on the fresh remote — do not touch it.
         return False
-    try:
-        git(root, "reset", "--hard", head)
-    except Exception:
+    if not _reset_to(root, head):
         return False
     if _current_remote_bytes(root, path) is not None:
         # An unrelated edit added its own receipt here; never overwrite it.
@@ -210,13 +222,24 @@ def publish(root: Path, path: str, local_commit: str, *,
         return path, _find_introduction(root, path, local_commit), local_commit
 
     # Verify fast-forward: the remote must be an ancestor of local_commit.
+    local_adds_new_file = _introduces_path(root, local_commit, path)
     try:
         git(root, "merge-base", "--is-ancestor", remote_commit, local_commit)
         # Remote is an ancestor but not yet at our commit — push it.
     except Exception:
         # Not a fast-forward — the remote has diverged.
-        # This should not happen in normal operation; if it does,
-        # we fall through to the bounded retry loop.
+        #
+        # A modification of an existing durable receipt (an Owner approval, a
+        # card publication edit) can only be valid against its exact
+        # predecessor. On divergence the authoritative base has moved: block
+        # (CODE-AUDIT F3b) rather than fall into the bounded re-apply that a
+        # fresh-receipt issue relies on, since that re-apply would drop the
+        # edit and re-emit stale base bytes.
+        if not local_adds_new_file:
+            raise ReceiptError(
+                "publication blocked: remote main diverged from the edited receipt "
+                "before its exact predecessor")
+        # A fresh receipt may still be recovered through the bounded re-apply.
         pass
 
     # Bounded re-apply of own changes under a parallel independent edit.
@@ -274,6 +297,13 @@ def publish(root: Path, path: str, local_commit: str, *,
             raise ReceiptError("conflicting receipt on remote after re-apply; blocked")
         # Receipt present on remote with different bytes — genuine conflict.
         raise ReceiptError("conflicting receipt on remote; blocked")
+
+
+def _introduces_path(root: Path, commit: str, path: str) -> bool:
+    """True when *commit* adds *path* (its parent has no such file)."""
+    introduced = git(root, "log", "--diff-filter=A", "--format=%H", "-n", "1",
+                     commit, "--", path).decode().split()
+    return len(introduced) == 1 and full_sha(introduced[0]) == commit
 
 
 def _find_introduction(root: Path, path: str, revision: str) -> str:
