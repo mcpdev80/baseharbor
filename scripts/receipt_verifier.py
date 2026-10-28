@@ -141,17 +141,13 @@ def extract_facts(producer_plan, *, artifact_size, run_id=None, attempt=None, wo
     integration_sha = _sha40("integration_sha")
     base_sha = _sha40("target_base_sha")
 
+    run_id = producer_plan.get("run_id")
     require(run_id is not None and type(run_id) is int and run_id > 0,
             "run_id must be a positive integer")
+    attempt = producer_plan.get("attempt")
     require(attempt is not None and type(attempt) is int and attempt == 1,
             "attempt must be the integer 1 (pilot restriction)")
-    require(workflow_id is not None and type(workflow_id) is int and workflow_id > 0,
-            "workflow_id must be a positive integer")
-
-    require(run_id is not None and type(run_id) is int and run_id > 0,
-            "run_id must be a positive integer")
-    require(attempt is not None and type(attempt) is int and attempt == 1,
-            "attempt must be the integer 1 (pilot restriction)")
+    workflow_id = producer_plan.get("workflow_id")
     require(workflow_id is not None and type(workflow_id) is int and workflow_id > 0,
             "workflow_id must be a positive integer")
 

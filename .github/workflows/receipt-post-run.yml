@@ -185,9 +185,12 @@ jobs:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Token ist auf baseharbor-plan beschraenkt; der Job fuehrt nur
-          # gepinnten Controller-Code, kein PR-Code.
-          ref: main
+          # CRITICAL: We check out the immutable reviewed CI controller scripts
+          # by their full reviewed commit SHA — NOT mutable develop and NOT the
+          # PR head. Pinning the exact SHA prevents PR-controlled code from
+          # running in the credential-bearing controller; the scripts are
+          # reviewed, protected, and identical across all invocations.
+          ref: 839e5cc9fa9b3da3908ee65f26596c2b3dfaaca7
           fetch-depth: 0
           persist-credentials: false
 
