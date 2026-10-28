@@ -581,3 +581,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:0xZ BLOCKER-LOESUNG: #1147 Selected-Checks fails (eigene 38 paths, base-planner kennt H-Inventar nicht als DICH-diff) -> R' Register-PR (docs-only) created. Danach #1147-recheck.
 - 16:1xZ R' gemergt (dev 64f2edf7). Selected-Checks von #1147 rerun gegen neue Base.
 - 16:2xZ Fehler korrigiert: Rerun nutzt alten merge-ref -> Q'-Branch mit develop(R')-Merge neu gepusht (frischer Base-Ansatz).
+- 16:3xZ Q' tip dd977617 (re-sync), CI laeuft gegen R'-Base.
