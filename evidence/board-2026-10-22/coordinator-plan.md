@@ -627,3 +627,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 19:4xZ Owner-Kritik Sleep-Polling berechtigt -> abgekoppelter chain-monitor (detached) + ci-watch-Branch-Registrierung; Probe #1162 laeuft.
 - 20:4xZ Fix-Freigabe erhalten (workflow_run laeuft mit main-Version! — korrekt). pfix/ornith dispatched. Kette: PR->Merge->Promotion->Probe#3.
 - 20:5xZ pfix-BASE-ERROR (#1163 geschlossen) -> coord-transport fix2: zip-Endpoint-Lösung, Tests grün, PR created.
+- 21:0xZ #1164 PR created; detached watcher auf Gruen-Status (tmp-ops/shadow/pr1164-watch.md). pfix released.
