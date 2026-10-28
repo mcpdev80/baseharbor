@@ -1,0 +1,11 @@
+# Q5 SPEC — zielseitige SHA-Inventarbindung im Planner (Muster PR #1091/#1106)
+Datei: scripts/pr-gate-plan.py (Branch work/r27-ci-bootstrap-qx, Basis e60c4a28 auf develop-Baum de568356)
+1. Nach Zeile ~655 (Konstantenblock vor trusted_binding_checks:737) einfügen:
+   RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'  # 40-stellig, finale H-SHA (siehe unten 'SHA-Beschaffung')
+   RECEIPT_CANDIDATE_REVIEWED_FILES = {<39 Pfad-Status Paare aus git diff --name-status origin/develop...4f0ce579 — 'M'->'modified','A'->'added'>}
+2. In trusted_binding_checks (Zeilen 785-788): zulässige files-Mengen erweitern um exakt RECEIPT_CANDIDATE_REVIEWED_FILES (Vergleich wie bisher: dict == dict), ohne die bestehende 3er/4er-Logik zu ändern; required_checks fuer diesen Record = CI_CHECKS + WORKFLOW_SYNTAX_CHECKS.
+3. records-Loop (:834ff): der neue Record-Typ muss wie die bestehenden über core752_reviewed_merge_chain(target_base, head, reviewed_head) lauffähig sein — PRÜFE: head_sha des geladenen Candidates muss reviewed_head sein; andernfalls greift die Ancestry-Regel (reviewed_head ist Ancestor von head via first-parent) — implementiere analog #1091 Muster (sed -n '760,830p' auf git show d95a987f:scripts/pr-gate-plan.py).
+4. SHA-Beschaffung (Pflicht vor Commit): finaler Kandidaten-Tip = aktuelle work/r27-correction-v38 Spitze NACH fx4-Integration; hole via git ls-remote origin refs/heads/work/r27-correction-v38; trage die 40-stellige SHA ein (kein Platzhalter!).
+5. tests/test_pr_gate_plan.py: +2 Tests — positiv (exaktes Inventar + richtiger head → resolved) und negativ (ein Pfad fehlt/zusätzlich → None/fail-closed), Fixture-Muster wie TrustedBindingActivationTests.
+6. Ablauf: pro Datei 1 Commit 'q5: <datei> — zielseitige Kandidaten-Bindung' + push origin HEAD:refs/heads/work/r27-ci-bootstrap-qx + ls-remote rc posten; cd scripts && python3 -m unittest test_pr_gate_plan -q -> OK + discover -p 'test_pr_check*' -> OK; gh pr create --base develop --head work/r27-ci-bootstrap-qx --draft --title 'ci: target-side receipt candidate binding (Q)' --body 'CODEX-R7 Decision C Schritt Q, SPEC evidence/board-2026-10-27/q5-spec.md'.
+END 'END Q5-DONE <pr>' / 'END Q5-BLOCKED <rc+stelle>'. force/dispatch/develop-direct-push/root-git/worktree-remove verboten.
