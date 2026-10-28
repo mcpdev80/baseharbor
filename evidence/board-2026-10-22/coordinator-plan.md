@@ -541,3 +541,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 06:1xZ Tick: qb1 busy, kein Branch — naechster Tick Deadline.
 - 06:2xZ qb1 ohne Artefakte nach 15min -> Status/Deadline-Befehl.
 - 06:3xZ Q sichtbar: c5e8d221 pushed, Commits folgen.
+- 06:4xZ Anmerkung: Q-Branch enthaeltCoord-Kommentar-Commits (Root-Repo-Leichen aus frueheren Ops) — Inhalt qb1: 1 Commit; Bereinigung spaeter per Squash-Merge.
