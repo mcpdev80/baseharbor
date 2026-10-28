@@ -521,3 +521,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:3xZ f345b bei 5 Commits (F4 gelandet), q1 bei Arbeit; acks ok.
 - 23:5xZ f345c Deadline-Befehl (F5 wip push), q1 letzter Versuch vor Rotation.
 - 00:1xZ Register-Wall Befund + Owner-Votum -> codex-r27v7 (Spec-Entscheidung) dispatched.
+- 00:3xZ f345c DONE-8-Commits (END-BLOCKED nur Final-Run); vf1/flash verifiziert Serien-Tests.
