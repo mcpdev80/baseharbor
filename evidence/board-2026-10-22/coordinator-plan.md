@@ -624,3 +624,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - preflight artefakt-abort: gh-auth check lokal (Coord-Shell). Klickblock:
 - 23:3xZ SHADOW-BUHNE BEREIT: main=364db5d4 registriert, Post-Run aktiv, #1161 (probe) CLEAN+gruen. Klickblock uebergeben.
 - 23:5xZ Tick: #1161 weiter Owner. Reminder-Flut (9684) eingedammt: toter pane_watch 822bdd4f entfernt, log gerotiert.
+- 19:4xZ Owner-Kritik Sleep-Polling berechtigt -> abgekoppelter chain-monitor (detached) + ci-watch-Branch-Registrierung; Probe #1162 laeuft.
