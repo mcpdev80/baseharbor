@@ -600,3 +600,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 18:1xZ codex-r27v8 (R7) dispatched auf develop@109ada8d.
 - 18:3xZ Owner-Direktive: Kandidaten-PR auf 4f0ce579 geoeffnet. Steps: CI-gruen-Zeuge -> Pin-Commit -> Kann-jeder-Check -> ShadowRun -> 3 Negativtests. Deadline 23:35Z.
 - 19:0xZ Owner-Arbeitsauftrag: Diagnose fertig (Klassifikations-Weil verworfen, 20 Test-Fails als Beweis). Registration-PR created. Warten: Owner-Review+Freigabe, dann Pin-Commit (Owner) auf #1151.
+- 19:1xZ #1152 steht (6/7 green). Owner-Review-Phase; codex-R7-Lane entfernt (wird nach finaler SHA neu dispatched).
