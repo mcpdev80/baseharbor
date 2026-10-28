@@ -658,12 +658,37 @@ PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
     'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
     'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+    'evidence-r27/ci1-repair.md',
+    'evidence-r27/cy1.md',
+    'evidence-r27/cy3.md',
+    'evidence-r27/f1-fix.md',
+    'evidence-r27/f1x.md',
+    'evidence-r27/f1z2.md',
+    'evidence-r27/f345b.md',
+    'evidence-r27/f3b-fix.md',
+    'evidence-r27/f8-corrective.md',
+    'evidence-r27/g1x.md',
+    'evidence-r27/g1y.md',
+    'evidence-r27/g2x.md',
+    'evidence-r27/r5i.md',
+    'evidence-r27/s2-v3staging.md',
+    'evidence-r27/w1.md',
+    'evidence-r27/w3.md',
+    'evidence-r27/w4b3.md',
+    'evidence-r27/w4c.md',
+    'evidence-r27/w5.md',
+    'evidence-r27/x1-fix.md',
+    'evidence/g1/evidence-r27/g1.md',
+    'scripts/pr-check-runner.py',
+
 })
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
     'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
     'scripts/test_receipt_tasklink.py',
     'scripts/test_receipt_postrun.py',
+
+
 })
 RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
 RECEIPT_CANDIDATE_REVIEWED_FILES = {
@@ -712,6 +737,8 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-approval.yml',
     '.github/workflows/receipt-post-run.yml',
     '.github/workflows/receipt-shadow.yml',
+    '.github/workflows/ci.yml',
+
 })
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
