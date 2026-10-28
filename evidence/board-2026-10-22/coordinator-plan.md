@@ -532,3 +532,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:4xZ Tick: fx4 busy (Push-Befehl in Arbeit); acks ok; Kette wartet auf (a) Commit.
 - 04:1xZ Eigenzeug fx4: 5 Errors = :242 Guard greift in Reapply-Faellen; Rezept-Befehl gesendet.
 - 04:2xZ fx4 SUITE GREEN (175 OK @ e7fbee8e); H neu gefroren auf Kandidat, fx4 rotiert.
+- 04:3xZ H re-frozen: fx4 green (175 OK) auf Kandidat, neuer Tip s. ls-remote.
