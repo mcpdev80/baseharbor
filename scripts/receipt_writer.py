@@ -236,9 +236,12 @@ def publish(root: Path, path: str, local_commit: str, *,
         # fresh-receipt issue relies on, since that re-apply would drop the
         # edit and re-emit stale base bytes.
         if not local_adds_new_file:
+            # Editing an existing durable receipt on a diverged remote is a
+            # receipt conflict (CODE-AUDIT F3b): the authoritative base has
+            # moved and re-emitting stale base bytes would drop the edit.
             raise ReceiptError(
-                "publication blocked: remote main diverged from the edited receipt "
-                "before its exact predecessor")
+                "publication blocked: receipt edit on a diverged remote "
+                "(conflict with the exact predecessor)")
         # A fresh receipt may still be recovered through the bounded re-apply.
         pass
 
