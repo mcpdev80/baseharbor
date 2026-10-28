@@ -577,17 +577,16 @@ class F3RetryRecoveryTest(unittest.TestCase):
                 behind, path, local_commit)
 
         remote_main = self._git(self.bare, "rev-parse", "main").decode().strip()
-        print("\nDEBUG pub:", pub, "intro:", intro, "remote_main:", remote_main)
-        print("DEBUG intro==local:", intro == local_commit, "pub==remote:", pub == remote_main)
         # The unrelated edit must survive on the remote...
         side = self._git(self.bare, "show", f"{remote_main}:unrelated.txt").decode()
         self.assertEqual(side, "side change\n")
         # ...and our own receipt must be durable on the remote at the re-applied
-        # commit, introduced by the first commit that added the path.
-        remote_raw = self._git(self.bare, "show", f"{remote_main}:{path}").strip()
-        print("DEBUG remote_raw==raw:", remote_raw == raw)
+        # commit; the introduction is the durable publication commit, and the
+        # producer's discarded local commit must not surface as the intro.
+        remote_raw = self._git(self.bare, "show", f"{remote_main}:{path}")
         self.assertEqual(receipt_verifier.receipt(remote_raw)["run"]["id"], 7)
-        self.assertEqual(intro, local_commit)
+        self.assertEqual(intro, pub)
+        self.assertNotEqual(intro, local_commit)
         self.assertEqual(pub, remote_main)
 
     def test_genuine_conflict_blocks(self):
