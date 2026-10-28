@@ -433,3 +433,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:3xZ sr1 DONE (shadow-run.sh + PreFlight checklist) rotiert; Doku evidence/board-2026-10-27/sr1-shadow-plan.md.
 - 21:5xZ stg6 DONE trotz Ghost-Flag: 94f35d02 = EIN Kandidat (#1138) mit pcx+f1x Commits; #1140/#1141 integrated geschlossen. doc1 laeuft.
 - 22:0xZ doc1 DONE: planning PR#11 gemergt (Index-Dossier), rotiert.
+- 22:1xZ rv7c zu langsam (kein PLAN-Write) -> rv8/flash Hard-Cap-Review dispatched; rv7c laeuft weiter (bei doppeltem Urteil: ersterer zaehlt); prune+pull done.
