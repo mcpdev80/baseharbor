@@ -55,7 +55,11 @@ Evidence: automatisch und reproduzierbar
 - Kandidaten nach Commit-SHA und – wo gefordert – Dateihashes fixieren. Ein nur lesendes Review darf den Kandidaten nicht verändern; vor/nach dem Review verifizieren. Session-ID, Modell, Backend, Zeit und wörtliches Urteil sichern.
 - Befunde aus Reviewer-Sandboxen gegen einen neutralen Produktionspfad verifizieren, bevor Produktänderungen daraus folgen. Dokumentierte, ausdrücklich nicht-blockierende Randbefunde erzwingen keine Korrekturrunde.
 - Task-Evidence und relevante Handoff-Pfade dauerhaft referenzieren. Temporäre Hilfs-, Repro- und Notizskripte nur im vorgesehenen evidence/.../scripts/-Pfad speichern, nicht ungeplant im Produkt-Branch.
+- Behauptungen nur mit Zeugen: ein API-Fakt, ein Commit oder ein gehosteter Run belegt den Status. Ein END/Urteil ohne geschriebene Evidence-Datei und ohne ls-remote-Ausgabe im Transcript ist wertlos und löst Nachlieferung oder Rotation aus (Owner-Direktive 2026-10-28).
 CI- und Review-Effizienz
+- Es gibt genau einen Integrationskandidaten pro Kette; Integration ist ein Commit auf diesem Kandidaten, kein zusätzlicher PR. Veraltete Staging-PRs und integrierte Drafts werden nach Ancestry-Nachweis geschlossen (Owner-Direktive 2026-10-28).
+- Vor jedem gehosteten Lauf einen Kann-jeder-Schritt-Check dokumentieren: Auth-Tokens, Pins und ENV kommen vom System/Owner, niemals von der ausführenden Lane selbst gesetzt; jede Lane, die ihren Prüfeingang selbst setzt, hat nichts erfüllt.
+- Fixes treffen genau den gemeldeten Fehler; Umbauten drumherum sind ein begründeter Vorschlag, kein stiller Mitnahme-PR (Scope-Verletzungen wie #1139 werden geschlossen, nicht nachträglich breit reviewed).
 - Kleinste passende Gates zuerst; bestehende grüne Evidenz für denselben unveränderten Commit und dieselbe Testkonfiguration wiederverwenden.
 - Vor einem Push Änderungen möglichst vollständig bündeln und die benötigten lokalen Checks ausführen. Nicht pro kleiner Korrektur unnötig eine neue volle CI-Matrix auslösen.
 - Docker- und Podman-Gates bei Bedarf parallel dispatchen, niemals serialisiert abwarten (Owner-Direktive 2026-10-22); Concurrency-Gruppen, die Parallelität blockieren, sind als Befund mit file:line zu dokumentieren.
