@@ -421,3 +421,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - MODELL-HOST: Gateway 10 Modelle, ping ok (flash 467ms/ornith 388ms/qwen-laptop 881ms); Codex = gpt-6.1-terra-Login-Weg.
 - RESUME: basics-check.py (TMPDIR=/home/marcel/tmp-ops) -> events --reminders --ack + --ack -> agent list + THIS FILE ab ANKER -> rv7/f1x Disk-Check -> cmx1139/f1x-Nachfolge je nach END.
 - 18:3xZ f1x DONE #1140 (c6a03c6a) rotiert. rv7 75min -> Ultimatum-Urteilsbefehl.
+- 18:5xZ rv7 VOLLER GHOST (85min, kein worktree/END) rotiert -> rv7b flash fresh.
