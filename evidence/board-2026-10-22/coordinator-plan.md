@@ -452,3 +452,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 02:0xZ ci38b DONE (END-Marker fehlerhaft 'DONE3', Dossier voll). Lane rotiert, committed.
 - 02:1xZ nt1-Leiche entfernt (war als letzter 'busy' gemeldet,gone seit 21:5x). Reminder-Zyklus sauber.
 - 02:4xZ fx1 DONE (END-Keyword fehlte, Dossier 3/3 Sektionen) committed, rotiert.
+- 03:1xZ Tick: bz1/qwen dispatched (R6-Belegsetz-Dossier, planning-only, keine Scheinauftraege weiter).
