@@ -534,3 +534,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 04:2xZ fx4 SUITE GREEN (175 OK @ e7fbee8e); H neu gefroren auf Kandidat, fx4 rotiert.
 - 04:3xZ H re-frozen: fx4 green (175 OK) auf Kandidat, neuer Tip s. ls-remote.
 - 05:1xZ Tick: CI 0 fail/1 pending (nur noch Selected-Checks-Aggregator).
+- 05:2xZ fx5/flash dispatched: fx4-Worktree-Rest committen/pushen + Finish.
