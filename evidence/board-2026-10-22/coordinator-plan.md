@@ -565,3 +565,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:0xZ R PR #1145 live (d10da149). q2/q3-Bereinigung done. Sequenz: qrv ACCEPT -> Q-Merge -> R-CI -> R-Merge -> #1138 rerun.
 - 11:2xZ qrv auf falschem Baum (Remote-Ref-Laufzeitrennen) -> Korrekturbefehl.
 - 11:4xZ qrv auf korrektem Tip, schreibt noch nicht — 15min-Marke naechster Tick.
+- 12:0xZ Q PR created (ACCEPT review committed on qx). Sequenz laeuft.
