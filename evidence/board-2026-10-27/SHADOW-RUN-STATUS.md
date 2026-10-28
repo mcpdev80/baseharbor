@@ -9,3 +9,8 @@
   43 Tests rc=0 (Zeuge this file + unittest OK oben).
 - NÄCHSTER TRIGGER: main-Promotion des v0.4.27-Zyklus (Release-Freigabe separat!) ->
   Workflow registriert -> Runbook A (4 Owner-Klicks) in ~15 min durchfuehrbar.
+
+## Prozess-Note (Owner 2026-10-28)
+Wenn der Controller (receipt_verifier.py u.a.) ein neues Modul erhaelt, muss der
+Writer-Pin in receipt-post-run.yml im selben reviewed Change mitwandern — sonst
+importiert der Writer Code, den sein Pin nicht kennt (heute: 94f35d02 < Modul).
