@@ -495,3 +495,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:5xZ f1z2 DONE PR#1143 (P1 pin 40-char korrekt validiert, P2 extract). Ornith-Liefermuster = small-steps funktioniert.
 - 17:0xZ f345z/ornith dispatched (F3+F4+F5, 6 Schritte, Schritt-0-Pflicht+60s-Nudge Muster).
 - 17:2xZ f345z stumm -> f345z2 mit Ein-Befehl-Schritt0 (Atom-Befehl statt Prosa).
+- 17:3xZ Coord setzte Step0 (1d9dc534, Nur-Scaffold) — Lanes liefern seit 4x nicht; f345b/ornith auf vorhandener Branch dispatched.
