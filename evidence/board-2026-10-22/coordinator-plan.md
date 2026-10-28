@@ -458,3 +458,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:5xZ LATENCY: Gateway-blip erklaert bz1-Falschlieferung (Spawn ins Off-Netz). Regel konform: LANE-Starts nur bei basics-latency-frei.
 - 04:0xZ bz2 END-DONE ohne Commit/Branch/Datei = FALSE-END (2. Fall). Pool-Integritaet pruefen (gateway ok?), Mission bz3 auf ornith.
 - 04:3xZ Tick: gx1/ornith dispatched (root-hygiene Dossier, nur Doku). bz3 ohne push seit 10min — beobachtet.
+- 04:4xZ bz3 skeleton pushed (c9b46b66) — korrekt schrittweise.
