@@ -455,7 +455,10 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
           python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
-          python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
+          python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > "$RUNNER_TEMP/pr-plan.core.json"
+          # Producer contract: extract_facts requires plan['attempt']; the
+          # authenticated run attempt is injected here at artifact creation.
+          jq -c --argjson attempt '${{ github.run_attempt }}' '. + {attempt: $attempt}' "$RUNNER_TEMP/pr-plan.core.json" > pr-plan.json
           # Run the check-runner from the same trusted base checkout as the
           # planner, so a validation id emitted by the planner is always an id
           # the runner whitelist accepts. The base is pinned to base.sha with
