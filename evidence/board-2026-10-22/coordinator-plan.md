@@ -549,3 +549,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:4xZ qb2 15min ohne Push -> Statusbefehl.
 - 07:5xZ qb3/ornith dispatched (Worktree PRE-MOUNTED durch Coord — letzter Stiller-Blocker entfernt).
 - 08:0xZ q3-Branch pushed (e60c4a28, 1 Commit bisher).
+- 08:1xZ qb3 step0-fertig, B fehlt -> Arbeitsbefehl mit erstem grep.
