@@ -671,3 +671,22 @@ class F1NegativeForeignRepo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class DownloadInvocationTests(unittest.TestCase):
+    """Root cause 2026-10-28: the writer must fetch the producer artifact
+    through the GitHub artifacts zip endpoint, never via a non-existent
+    'gh download artifact' subcommand."""
+
+    WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
+
+    def test_no_invented_gh_subcommand(self):
+        text = self.WORKFLOW.read_text()
+        self.assertNotIn("gh download artifact", text)
+        self.assertIn("actions/artifacts/", text)
+        self.assertIn("/zip", text)
+
+    def test_plan_zip_shape_still_expected(self):
+        text = self.WORKFLOW.read_text()
+        self.assertIn("plan.zip", text)
+        self.assertIn("zipfile.ZipFile(\"plan.zip\")", text)
