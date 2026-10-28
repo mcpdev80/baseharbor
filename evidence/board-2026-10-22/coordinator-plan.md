@@ -485,3 +485,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:2xZ Owner-GO -> stg7/flash: develop in Kandidaten mergen (sync statt rerun-insel), danach neue PR-CI-Laeufe.
 - 13:4xZ stg7 DONE e0dd318b pushed (END-Keyword abgeschnitten 'STG7-D', ls-remote-Zeuge). Bootstrap im Kandidaten; neue CI laeuft.
 - 14:0xZ pc2/qwen dispatched: Pin-Commit (839e5cc9 -> Kandidaten-tip) auf branch, PR-Trigger fuer gruenes Selected-Checks Gate.
+- 14:2xZ pc2 DONE 74580b97 (pin :193->94f35d02, 1 Datei). Korrektur: mein earlierer 'reviewed=tip'-Vermerk — Mission sah content-tip vor, passt.
