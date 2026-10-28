@@ -652,6 +652,12 @@ jobs:
           python3 scripts/test_ecosystem_release_pins.py
           python3 scripts/test_pre_release_resume.py
           python3 scripts/test_targeted_gate_ref.py
+          # R27-F2: execute the receipt control-plane suites with the TRUSTED
+          # base-runner selecting the exact registered modules; candidate code
+          # must not define its own receipt discovery.
+          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
+          git show "${{ github.event.pull_request.base.sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
+          python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
@@ -724,6 +730,14 @@ jobs:
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
             ci-executor-verifier-tests)
               PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py ;;
+            receipt-execution-tests)
+              # R27-F2: the planner registers this check in every receipt-class
+              # plan; without an exact case it fell through to the fail-closed
+              # exit-2 default. Run the trusted base-owner selection exactly.
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
             openbao-package-tests)
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"

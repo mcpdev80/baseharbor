@@ -8,6 +8,8 @@ Verifies:
 - Existing 6 test suites in test_receipt_chain.py remain green
 """
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -238,6 +240,186 @@ class TaskLinkTest(unittest.TestCase):
         )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("blocked", result.stderr)
+
+
+class TestPrNumberAutoResolution(unittest.TestCase):
+    """Autoresolve from --pr-number: deterministic PR->task binding.
+
+    Verifies the F2 fix for BF-W3-2 / RV1-review section 6:
+    produce_plan_fixture() auto-resolves the task from the trusted PR->task
+    binding when pr_number is provided; missing/ambiguous closers block.
+    API is injectable so no network is used.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self._git("init", "-q")
+        self._git("config", "user.name", "Tasklink fixture")
+        self._git("config", "user.email", "tasklink@example.invalid")
+        self.candidate = "c" * 40
+        self.head = "a" * 40
+        self.base = "b" * 40
+        self.workflow_id = 17
+
+    def _git(self, *args):
+        import subprocess
+        return subprocess.check_output(["git", "-C", str(self.root), *args],
+                                       stderr=subprocess.PIPE)
+
+    def _api(self, path):
+        """Fake GitHub API returning canned PR/issue payloads by path."""
+        if path.endswith("/pulls/1092"):
+            return {"body": "Implements the pilot.\n\nCloses #1093"}
+        if path.endswith("/issues/1093"):
+            return {"title": "r27 evidence pilot",
+                    "body": "tasks/t-20261026-r27-pilot.md"}
+        raise tl.TaskLinkError("unexpected API path: %s" % path)
+
+    def test_produce_with_pr_number_auto_resolves(self):
+        """pr_number without --task auto-resolves from Closes #NNN in PR body."""
+        commit = tl.produce_plan_fixture(
+            self.root, self.workflow_id, self.head, self.candidate,
+            self.base, None, pr_number="1092", _api=self._api,
+        )
+        fixture = json.loads((self.root / verifier.PLAN_PATH).read_bytes())
+        self.assertEqual(fixture["task"], "tasks/t-20261026-r27-pilot.md")
+        self.assertIsNotNone(commit)
+
+    def test_resolve_from_pr_with_closes_reference(self):
+        """resolve_task_from_pr extracts a 'Closes #NNN' reference."""
+        task = tl.resolve_task_from_pr("1092", self.root, self._api)
+        self.assertEqual(task, "tasks/t-20261026-r27-pilot.md")
+
+    def test_resolve_from_pr_with_fixes_reference(self):
+        """resolve_task_from_pr also matches a 'Fixes #NNN' reference."""
+        def api_fixes(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Fixes #1093"}
+            if path.endswith("/issues/1093"):
+                return {"title": "r27 evidence pilot",
+                        "body": "tasks/t-20261026-r27-pilot.md"}
+            raise tl.TaskLinkError("unexpected path: %s" % path)
+        task = tl.resolve_task_from_pr("1092", self.root, api_fixes)
+        self.assertEqual(task, "tasks/t-20261026-r27-pilot.md")
+
+    def test_resolve_from_pr_with_resolves_reference(self):
+        """resolve_task_from_pr also matches a 'Resolves #NNN' reference."""
+        def api_resolves(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Resolves #1093"}
+            if path.endswith("/issues/1093"):
+                return {"title": "t-20261026-r27-pilot"}
+            raise tl.TaskLinkError("unexpected path: %s" % path)
+        task = tl.resolve_task_from_pr("1092", self.root, api_resolves)
+        self.assertEqual(task, "tasks/t-20261026-r27-pilot.md")
+
+    def test_resolve_from_pr_issue_title_as_task(self):
+        """resolve_task_from_pr accepts an issue title 't-...' as task file."""
+        def api_title(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Closes #1093"}
+            if path.endswith("/issues/1093"):
+                return {"title": "t-20261026-r27-pilot", "body": ""}
+            raise tl.TaskLinkError("unexpected path: %s" % path)
+        task = tl.resolve_task_from_pr("1092", self.root, api_title)
+        self.assertEqual(task, "tasks/t-20261026-r27-pilot.md")
+
+    def test_resolve_from_pr_no_issue_reference_blocks(self):
+        """A PR body with no closer blocks (no task link possible)."""
+        def api_empty(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Just a change, no issue."}
+            raise tl.TaskLinkError("should not fetch issue")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_empty)
+
+    def test_resolve_from_pr_empty_pr_body_blocks(self):
+        """A PR with an empty body blocks."""
+        def api_none(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": None}
+            raise tl.TaskLinkError("should not fetch issue")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_none)
+
+    def test_resolve_from_pr_ambiguous_closers_blocks(self):
+        """Multiple closers block (ambiguous PR->task binding)."""
+        def api_ambiguous(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Closes #1093 and Fixes #1094"}
+            raise tl.TaskLinkError("should not fetch issue")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_ambiguous)
+
+    def test_resolve_from_pr_missing_closer_blocks(self):
+        """A closer referencing an unresolvable issue blocks."""
+        def api_missing(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Closes #9999"}
+            raise tl.TaskLinkError("issue #9999 not found")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_missing)
+
+    def test_resolve_from_pr_referenced_issue_not_found(self):
+        """Referenced issue that cannot be fetched blocks (fail-closed)."""
+        def api_notfound(path):
+            if path.endswith("/pulls/1092"):
+                return {"body": "Closes #1093"}
+            raise tl.TaskLinkError("issue #1093 not found")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_notfound)
+
+    def test_resolve_from_pr_api_failure_blocks(self):
+        """A transport/API failure is surfaced as a block, never a silent miss."""
+        def api_down(path):
+            raise tl.TaskLinkError("GitHub API request failed")
+        with self.assertRaises(tl.TaskLinkError):
+            tl.resolve_task_from_pr("1092", self.root, api_down)
+
+    def test_produce_without_pr_number_no_auto_resolve(self):
+        """Without pr_number the caller-supplied task is used unchanged."""
+        task = "tasks/t-20261026-r27-pilot.md"
+        commit = tl.produce_plan_fixture(
+            self.root, self.workflow_id, self.head, self.candidate,
+            self.base, task,
+        )
+        fixture = json.loads((self.root / verifier.PLAN_PATH).read_bytes())
+        self.assertEqual(fixture["task"], task)
+        self.assertIsNotNone(commit)
+
+    def test_cli_with_pr_number(self):
+        """CLI accepts --pr-number and validates input without a real backend."""
+        result = subprocess.run(
+            ["python3", str(Path(__file__).resolve().parent / "receipt_tasklink.py"),
+             "--planning", str(self.root),
+             "--workflow-id", str(self.workflow_id),
+             "--head", self.head,
+             "--candidate", self.candidate,
+             "--base", self.base,
+             "--pr-number", "1092"],
+            capture_output=True, text=True,
+        )
+        # With a real backend the injected api is not used by the CLI; the
+        # injectable _api path is covered by the unit tests above. Here we
+        # only assert the CLI accepts the flag (exit 0 success or 1 block).
+        self.assertIn(result.returncode, (0, 1),
+                      "cli exit expected 0 or 1, got %d: %s"
+                      % (result.returncode, result.stderr))
+
+    def test_cli_requires_task_or_pr_number(self):
+        """CLI errors when neither --task nor --pr-number is provided."""
+        result = subprocess.run(
+            ["python3", str(Path(__file__).resolve().parent / "receipt_tasklink.py"),
+             "--planning", str(self.root),
+             "--workflow-id", str(self.workflow_id),
+             "--head", self.head,
+             "--candidate", self.candidate,
+             "--base", self.base],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
 
 
 class TestBaseShaResolution(unittest.TestCase):

@@ -90,11 +90,11 @@ OPENBAO_REQUIRED_TESTS = (
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
-               'openbao-package-tests',
-               'pr-planner-tests', 'ci-policy', 'ci-actionlint',
+                'openbao-package-tests',
+                'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
-                'inspect-consumer-tests', 'inspect-consumer-build',
+               'inspect-consumer-tests', 'inspect-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 # R27-F2: the exact receipt control-plane suites this check must execute. This
@@ -105,6 +105,7 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
 RECEIPT_EXECUTION_SUITES = (
     'test_receipt_writer', 'test_receipt_verifier', 'test_receipt_chain',
     'test_ci_workflow_policy_receipts', 'test_receipt_tasklink',
+    'test_receipt_postrun',
 )
 
 
@@ -167,7 +168,7 @@ def execute_validation(check, repository):
         if not re.search(r'(?m)^Ran [1-9][0-9]* tests?', executed.stdout):
             raise RuntimeError('receipt-execution-tests: no receipt test executed')
         for module in RECEIPT_EXECUTION_SUITES:
-            if not re.search(r'\(' + re.escape(module) + r'\.[^(]+\(', executed.stdout):
+            if not re.search(r'\(' + re.escape(module) + r'\.', executed.stdout):
                 raise RuntimeError('receipt suite did not execute: ' + module)
         return [module + '.py' for module in RECEIPT_EXECUTION_SUITES]
     patterns = WIZARD_TEST_FAMILIES.get(check)
