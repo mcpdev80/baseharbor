@@ -623,24 +623,22 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
     push is attempted, and no token value ever enters a message or log.
     """
     import receipt_writer
-    helper = getattr(receipt_writer, "publish", None)
+    helper = getattr(receipt_writer, "publish_approval_edit", None)
     if helper is None or not callable(helper):
         require(False,
-                "publication blocked: W2 receipt_writer.publish interface missing (finding BF-W3-1)")
+                "publication blocked: W2 receipt_writer.publish_approval_edit interface missing (finding BF-W3-1)")
     require(os.environ.get(PUSH_CREDENTIAL_ENV, "") != "",
             "publication blocked: Planning write credential " + PUSH_CREDENTIAL_ENV
             + " is not configured; failing closed before any push")
+    # The approval edit must modify exactly the unapproved base bytes that were
+    # verified live; any other local content means the working tree diverged.
+    base_bytes = git(planning, "show", f"{approval_commit}^:{path}")
     try:
-        published = helper(planning, path, approval_commit)
+        publication = helper(planning, path, approval_commit, expected_base=base_bytes)
     except Exception as exc:
-        err_msg = "publication blocked: W2 publish failed (%s; finding BF-W3-1)" % exc
+        err_msg = "publication blocked: W2 publish_approval_edit failed (%s; finding BF-W3-1)" % exc
         raise ReceiptError(err_msg) from exc
-    require(isinstance(published, (tuple, list)) and len(published) == 3
-            and all(isinstance(part, str) for part in published),
-            "W2 publish returned no (path, introduction, publication) tuple")
-    path_back, introduction, publication = published
-    require(path_back == path and full_sha(introduction) and full_sha(publication),
-            "publication returned no durable commit")
+    require(full_sha(publication), "publication returned no durable commit")
     # Automatic evidence publication (CODEX-REVIEW F5 verifier side): the card
     # edit goes through tasklink and its durable publication SHA is captured and
     # returned — never the older receipt publication alone. Failures propagate
