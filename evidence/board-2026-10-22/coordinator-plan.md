@@ -476,3 +476,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:5xZ Tick: Reminder-Quelle = Watchdog-Ticker (keine echten Findings), ack-Quench ok; PLAN refresh; #1142 unveraendert.
 - 11:0xZ Reminder-Spam-Quelle bereinigt (pane:a4a49e5e Alt-Eintrag im State).
 - 11:2xZ OWNER-FREIGABE 'Erlaubnis erteilt mach' dokumentiert -> cmx4/ornith fuehrt 1142-Merge aus.
+- 12:0xZ Owner-Votum: gh-api Regel-Opp. cmx4 rotiert, cmx5 dispatched (export->disable->merge->restore->check, volles Log).
