@@ -620,3 +620,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:1xZ Negativtests LIVE 43/43 OK auf f4b173d3; ShadowRun blockiert bis main-Promotion (SHADOW-RUN-STATUS.md); R7-ACCEPT Dossier rv12 uebernommen.
 - 23:0xZ ROOT-INKIDENZ behoben: Coord-Commit rutschte auf root master (clone-Falle §14) -> reset auf origin/master, NIE gepusht. Plan-Notes regulär gepusht.
 - 23:0xZ ROOT-INKIDENZ (Selbstbefund): Coord-Notiz-Commit landete auf root master (Klon-Falle §14) — zurueckgesetzt, NIE gepusht. Plan main=5b8047f5.
+- 23:2xZ PROMOTION DRIN (main 364db5d4). Post-Run Workflow registriert+aktiv; workflow_run-Fail = korrektes fail-closed (gefailter CI-Run). PreFlight laeuft, Klickblock folgt.
