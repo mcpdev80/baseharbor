@@ -570,3 +570,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:3xZ Tick: qr3 busy; q5-Rest nach Root-Repo-Irrtum wieder auf Kurs (qx = echter develop-Nachfahre d94d051e, ls-remote e60c4a28 war alt? NEIN: qx tip = d94d051e ✓). Review ausstehend.
 - 12:5xZ Tick: Pool leer (Approve ausstehend), acks ok.
 - 13:0xZ Tick: board-sync e53d83a verifiziert, Approve-Bottleneck dokumentiert.
+- 13:3xZ Q-Branch synced mit develop (R drin! 7896416c), tip 4f14d07e gepusht; #1146 wartet CI ab.
