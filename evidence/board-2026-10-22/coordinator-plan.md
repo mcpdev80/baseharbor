@@ -404,3 +404,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:0xZ Dialog wegen Config-at-boot: laufende p2-Lane kennt tmp-ops-Eintrag noch nicht (greift erst bei neuen Lanes) -> once. rv7 discovered ok.
 - 17:1xZ Dialog-Navi gelöst: RIGHT+Enter (Down wartoption-falsch!). Immer-noch 5. Pilot-Dialog -> Lane bleibt sensibel; Runbook notiert.
 - 17:2xZ p2 END P2-LOCAL = Nicht-Compliant Marker, kein Dossier/tmp-ops/pilot fundiert -> rotiert, Ersatz mit Runtime-Fix (tmp-ops jetzt gewhitelistet).
+- 17:4xZ p2b DONE (Dossier da, rotiert): LOCAL-SMOKE BROCHT an F1-Rest (verifier run_id!=int, facts.env fehlt) -> Klasse-A-Beweis fehlt weiter. rv7 offen.
