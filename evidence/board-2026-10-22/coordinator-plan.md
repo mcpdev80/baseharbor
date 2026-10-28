@@ -616,3 +616,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:4xZ rv11 busy aber Evidence/PLAN-Datei fehlt -> Nudge gesendet (Schritt-0-Pflicht).
 - 00:0xZ Owner-Korrektur: 8f8e554 war LOKALER develop-Branch (10-26, Phantom). branch -f develop=origin/develop, r7c deleted. rv12/R7-final dispatched.
 - 16:3xZ R7-ACCEPT (rv12, Dossier R7-ACCEPT-rv12.md). PreFlight laeuft, dann Owner-Klicks Runbook A.
+- 16:5xZ PreFlight: Sicherheits-Gates OK (Pin/Ancestry) ABER receipt-post-run.yml auf GitHub UNREGISTERED (default branch=main, Datei nur auf develop). Shadow-Run braucht main-Promotion ODER Owner-Aktivierung. Owner-Entscheid noetig.
