@@ -490,3 +490,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 14:5xZ pf2 DONE 5b81490ce pushed, rotiert; CI-Lauf laeuft; naechster Halt: Selected-Checks gruen -> R6 Codex.
 - 15:0xZ R6 Verdict BLOCKED (F1/F3/F4/F5/F8 OPEN, F7 CLOSED, F2 PARTLY; plus neuer Fund: PIN 20-Char kein Prefix!). f6all/ornith dispatched (alle Produkt-Rezepte, F2/F6-bindings zurueckgestellt).
 - 15:4xZ f6all STUCK (0 commits nach 35min trotz Druck) rotiert -> f6all2/flash mit Sichtbarkeit-zuerst Klausel.
+- 16:1xZ f6all2 stumm 20min (kein worktree) -> Schritt-fuer-Schritt-Ultimatum.
