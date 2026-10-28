@@ -644,3 +644,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:4xZ Root-Cause 3 gemeldet (attempt-Feld im Webhook-Payload nicht vorhanden) — API-Lösung vorgeschlagen, Freigabe offen.
 - 22:0xZ ATTEMPT-API-Fix PR created (Desk-Test Zeuge run_attempt=1).
 - 22:1xZ kette5 armed (1175 attempt-api -> promotion -> producer -> receipt). Diff: 1 Zuweisung +3 Kommentare, Desk-Zeuge run_attempt=1.
+- 21:4xZ Owner-Auftrag: ci-wait.sh <run-id> gebaut (reiner HTTP-Run-Check -> events.log Weckzeile), Selbsttest ok, laeuft fuer #1175 CI (40772952370).
