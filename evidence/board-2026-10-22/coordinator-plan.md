@@ -633,3 +633,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:0xZ Token-Luecke Owner-Befund uebernommen: PR #1166 (3 env-Zeilen). #1165 wird NACH Merge geschlossen/ersetzt (Reihenfolge!). Probe 1162 bleibt offen.
 - 22:3xZ #1167 Promotion (tree==develop fc230f9c, beide post-run-Fixes drin). Watcher laeuft.
 - 23:0xZ Probe #3 = #1168 launched, chain-1168.md watcher laeuft.
+- 23:4xZ Desk-Test-Pflicht ubernommen: #1169 (redirect ohne --silent, 759B-Zeuge im Commit). Warten auf GREEN dann Owner-Merge, dann Promotion.
