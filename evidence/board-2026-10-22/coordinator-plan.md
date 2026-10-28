@@ -456,3 +456,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:3xZ bz1 END-DONE gemeldet, aber branch leer (ls-remote ohne Fund) -> False-END-Verdacht, Transcript nach ls-remote-Zeile pruefen naechsten Tick.
 - 03:4xZ bz1 FALSE-END bestaetigt (kein branch/PR/worktree) — qwen-Streichliste #2. bz2/flash dispatched.
 - 03:5xZ LATENCY: Gateway-blip erklaert bz1-Falschlieferung (Spawn ins Off-Netz). Regel konform: LANE-Starts nur bei basics-latency-frei.
+- 04:0xZ bz2 END-DONE ohne Commit/Branch/Datei = FALSE-END (2. Fall). Pool-Integritaet pruefen (gateway ok?), Mission bz3 auf ornith.
