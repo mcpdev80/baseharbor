@@ -562,3 +562,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:2xZ qrv/flash: Q-Review dispatched (SPEC + Register-Entscheidung als Massstab).
 - 10:4xZ ROOT-FIX: baseharbor/clone pf2-fix war gefroren — R via baseharbor fetch (korrekt).
 - 10:5xZ R PR created via baseharbor-clone.qx-Branch verifiziert (develop-Ancestry, kein Root-Muell).
+- 11:0xZ R PR #1145 live (d10da149). q2/q3-Bereinigung done. Sequenz: qrv ACCEPT -> Q-Merge -> R-CI -> R-Merge -> #1138 rerun.
