@@ -513,3 +513,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:3xZ Tick: stg8 20min ohne Artefakt -> Befehl 1 (Statusabfrage).
 - 21:5xZ stg8 DEAD (25min, kein Artefakt) rotiert; Coord-Transport-Merge #1143+#1144 auf Kandidat (Integration, kein Produktcode).
 - 22:0xZ Kandidat-TIP 3f79468478aa (stg8-Transport merges #1143+#1144), PRs geschlossen.
+- 22:2xZ nq1/qwen dispatched (Qualifikations-Mechanismus-Analyse, read-only).
