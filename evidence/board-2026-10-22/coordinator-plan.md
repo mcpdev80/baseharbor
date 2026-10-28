@@ -665,3 +665,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - QUELLEN: Dossiers evidence/board-2026-10-27/{SHADOW-RUN-STATUS.md,R7-ACCEPT-rv12.md}; tmp-ops/{shadow/kette*.md,ci-wait.sh,mission-*.txt}; register-Blöcke docs/internal/ci-binding-qualifications.md auf develop.
 - RESUME-TRIGGER: Owner sagt "Weg C heute" oder Tick mit neuer Freigabe. Dann: Karte->Claim->PR(40 Pfade)->#1145-Muster-Register->Promotion->Producer->Receipt->Teil-2-Protokoll (Owner-Review VOR Approval!).
 - Fristen: keine laufende Deadline (23:35Z-Deadline am 28.10. verstrich ohne Receipt; GrundCause-7 dokumentiert; keine vorgetaeuschte Akzeptanz, kein Bypass — Owner-Protokoll eingehalten).
+- 01:2xZ Tick: still D-Ruhe, acks gequenzt, Pool wartet.
