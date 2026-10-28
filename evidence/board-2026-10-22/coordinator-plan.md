@@ -584,3 +584,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:3xZ Q' tip dd977617 (re-sync), CI laeuft gegen R'-Base.
 - 16:4xZ Root-cause Fail: register band alten ec2e517f; R'' PR created an dd977617.
 - 16:5xZ qpp/flash dispatched: planner allowed-set widen auf candidate_files (Wurzel-Fix).
+- 17:1xZ qpp SILENT rotiert -> qpp2/ornith.
