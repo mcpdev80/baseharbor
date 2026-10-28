@@ -557,3 +557,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:0xZ q5-spec.md geschrieben (Muster #1091), q5/ornith dispatched (2-File-Write-Set, SPEC-punktweise).
 - 09:2xZ Tick: q5 busy 0 Commits (15min).
 - 09:3xZ q5 Statusbefehl (Blip-Korrektur).
+- 09:4xZ q5 Edit-Injection: Konstanten-Block aus /tmp/opencode/q5_block.py (41 Zeilen, konkrete Position).
