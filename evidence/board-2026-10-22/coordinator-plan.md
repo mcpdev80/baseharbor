@@ -640,3 +640,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:0xZ Variante A gemergt via Kette: #1171 (checkout vor import, desk-getestet), detached full-chain monitor 2924108 ubernimmt Merge->Promotion->Producer->Receipt. Dossier-Note: Writer-Pin wandert mit neuem Modul im selben reviewed change.
 - 21:0xZ Kette2 armed: PR #1173 (1 env-Zeile PYTHONPATH, root-cwd-Desk-Test bestanden), Vollmacht-Monitor laeuft (kette2.md + events.log).
 - 21:0xZ kette2-Bug aufgeklart (grep -ao ohne Quotes -> Predicate leer, merge nie versucht). 1173 manuell gemergt, kette3 laeuft korrekt.
+- 21:2xZ kette4 armed (realer Producer-Lauf 40769743375 nach echtem probe3-Sync). kette2/3-Bug-Historie dokumentiert.
