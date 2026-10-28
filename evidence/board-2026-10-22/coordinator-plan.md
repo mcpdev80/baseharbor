@@ -638,3 +638,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:4xZ Producer 40762534677 laeuft, chain4-Monitor detached.
 - 20:2xZ CHAIN: Producer success, ARTIFACT trusted-pr-plan da. Writer-Phase laeuft (Monitor).
 - 21:0xZ Variante A gemergt via Kette: #1171 (checkout vor import, desk-getestet), detached full-chain monitor 2924108 ubernimmt Merge->Promotion->Producer->Receipt. Dossier-Note: Writer-Pin wandert mit neuem Modul im selben reviewed change.
+- 21:0xZ Kette2 armed: PR #1173 (1 env-Zeile PYTHONPATH, root-cwd-Desk-Test bestanden), Vollmacht-Monitor laeuft (kette2.md + events.log).
