@@ -1,0 +1,144 @@
+# Owner-approval path for the public-contracts receipt pilot.
+#
+# Identity policy (CODE-AUDIT F4/F5): this job receives NO caller-set GITHUB_*
+# overrides and exports NO patch. The runner's own context supplies claims; the
+# verifier proves them against the authenticated workflow-run object via the API
+# and against the reviewed pinned helper source. The job gate uses github.actor
+# and github.triggering_actor CONTEXT values, which GitHub evaluates before any
+# step runs; a step-level env string can never substitute for identity. Wrong
+# actor, triggering actor, event, repository, ref or producer workflow
+# definition fails closed inside receipt_verifier.identity()/live().
+#
+# The human provides exactly one thing: the contributor PR number. The receipt
+# path, candidate SHA, plan revision and task association are auto-resolved from
+# that reference; they are never manual inputs. The sole allowed edit (approved
+# block at the original receipt-introduction commit) is published automatically
+# through W2's receipt_writer publication helper using the Planning write token.
+#
+# G5b / R27-F6: after successful approval, dispatches the shadow consumer as a
+# reusable workflow call, passing the exact published receipt/plan/candidate
+# and the FINAL durable publication commit. A missing or malformed output is an
+# explicit step failure here — never an empty string that lets the consumer
+# silently skip. The shadow verifies the durable approval offline — no GitHub
+# API, no live fallback. The shadow result is informational and never gates any
+# merge.
+#
+# Dormant until the coordinator's CI-only default-branch registration: main is
+# the product default branch, while these helpers/workflows live on develop.
+# Only a manual workflow_dispatch by the Owner starts this job; no automatic
+# trigger is armed and no required check is added. TRUSTED_SOURCE below is the
+# immutable reviewed commit and is updated by the coordinator at final
+# integration; while it is empty the verifier fails closed (tested pinned
+# source unavailable), which is the honest pre-registration state.
+
+name: receipt-approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Contributor PR number whose published receipt is approved
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  approve:
+    # Owner-only decision. Context-based gate: evaluated by GitHub, not by any
+    # step, so it cannot be forged through job or step env. Single-line form
+    # so the registered job-level dormancy-guard policy can detect it.
+    if: github.event_name == 'workflow_dispatch' && github.actor == 'mcpdev80' && github.triggering_actor == 'mcpdev80'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (full history; identity is the authenticated run head)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.x'
+
+      - name: Checkout Planning (protected main, full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          path: planning
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure Planning commit identity
+        run: |
+          git -C planning config user.name "mcpdev80"
+          git -C planning config user.email "mcpdev80@users.noreply.github.com"
+
+      - name: Verify, approve and publish the receipt for the selected PR
+        id: approval-step
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          TRUSTED_SOURCE: ''
+          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/receipt_verifier.py approve \
+            --planning "${GITHUB_WORKSPACE}/planning" \
+            --product "${GITHUB_WORKSPACE}" \
+            --pr "${PR_NUMBER}" | while IFS= read -r line; do
+             case "$line" in
+               publication:*)
+                 echo "publication=${line#publication: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               receipt:*)
+                 echo "receipt=${line#receipt: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               plan:*)
+                 echo "plan=${line#plan: }" >> "$GITHUB_OUTPUT"
+                 ;;
+               candidate:*)
+                 echo "candidate=${line#candidate: }" >> "$GITHUB_OUTPUT"
+                 ;;
+             esac
+            done
+          # R27-F6: a missing or malformed output is an EXPLICIT failure of
+          # this step. Empty values must never travel downstream to be skipped
+          # by a consumer guard.
+          out_value() { sed -n "s/^$1=//p" "$GITHUB_OUTPUT" | tail -n1; }
+          for key in publication plan candidate; do
+            value="$(out_value "$key")"
+            [[ "$value" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "approval output '$key' missing or not a full SHA" >&2; exit 1; }
+          done
+          [ -n "$(out_value receipt)" ] || {
+            echo "approval output 'receipt' missing" >&2; exit 1; }
+
+    outputs:
+      receipt: ${{ steps.approval-step.outputs.receipt }}
+      plan: ${{ steps.approval-step.outputs.plan }}
+      candidate: ${{ steps.approval-step.outputs.candidate }}
+      publication: ${{ steps.approval-step.outputs.publication }}
+
+  # G5b/R27-F6: shadow consumer — triggered from approval, not from PR open.
+  # Reusable workflow call with the exact published outputs including the final
+  # durable publication. R27-F6: the reusable source is a reviewed immutable
+  # full SHA — a mutable branch ref (@develop) would let the executed shadow
+  # code diverge from the reviewed candidate. The coordinator updates this pin
+  # to the final integrated reviewed head at registration; while the pin does
+  # not yet carry the integrated shadow code the chain fails closed, which is
+  # the honest pre-registration state (same policy as TRUSTED_SOURCE above).
+  shadow:
+    needs: [approve]
+    uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@f57b30ed48f19e62452ab793801a02ccd2658414
+    with:
+      receipt: ${{ needs.approve.outputs.receipt }}
+      plan: ${{ needs.approve.outputs.plan }}
+      candidate: ${{ needs.approve.outputs.candidate }}
+      publication: ${{ needs.approve.outputs.publication }}
+    secrets:
+      PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}

@@ -1,7 +1,3 @@
-# Core-921 CI binding qualification (#1056)
-
-Owner-authorized immutable source inventory for the exact #1056 candidate. This does not waive required checks or claim independent review. Only the authenticated `develop` copy is trusted. Any candidate edit invalidates this record.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -24,10 +20,6 @@ Owner-authorized immutable source inventory for the exact #1056 candidate. This 
   ]
 }
 ```
-
-## OpenBao retry CI source qualification (#1060)
-
-Independent source review by /root/independent_review approves the exact integrated source below. The four-file tree preserves accepted policy #1064 and the corrected #1060 executor/workflow route. Review: full net source diff, preservation of both regression matrices, 15 focused integrity and execution tests passed. Coordinator complete planner suite: 121 tests passed. This target-side record authorizes only that immutable source and the listed checks; final mandatory CI and native evidence remain separate.
 
 ```json
 {
@@ -55,10 +47,6 @@ Independent source review by /root/independent_review approves the exact integra
 }
 ```
 
-## Canonical pins metadata qualification (#1056)
-
-Independent source review by /root/independent_review approves the exact four-file source below. It removes the rejected bootstrap fallback and validates metadata through the canonical graph, pins resolver and private-origin owners extracted from the trusted base. The complete 150-test coordinator selection passed; the independent reviewer additionally passed eight targeted execution, source-binding and fail-closed tests. Final required CI remains mandatory after trusted-target integration.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -85,10 +73,6 @@ Independent source review by /root/independent_review approves the exact four-fi
 }
 ```
 
-## Unbound Core SQL retirement regression CI qualification
-
-Owner-authorized exact CI source qualification; no independent review is claimed. This three-file source adds one mandatory executable regression/safety profile and an exact immutable binding for product source `938adee78ec2d10536f1834829facd8d9b1bec09`. It reuses the existing trusted executor and source/ancestry checks; missing, skipped and failed test families remain blocking. All144 planner/runner tests, existing nested utility checks, the six actual Go regression/safety families and workflow policy pass locally. Native acceptance of the corrected product remains pending. Only the authenticated target copy of this record authorizes CI; candidate-owned copies cannot qualify themselves.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -111,11 +95,6 @@ Owner-authorized exact CI source qualification; no independent review is claimed
   ]
 }
 ```
-
-
-## Input-equivalent release evidence reuse CI qualification
-
-Owner-authorized qualification of exact source; no independent-review claim. This three-file CI source binds only the two-file collector/regression candidate `c7e629c2876772493edc037769f1643c45c92fe8` to the existing planner, workflow-policy and executable verifier suites. The existing real-Git authority mutation matrix covers clean target integration and rejects missing/extra/status-altered files, changed anchors, unreviewed followups and injected merge trees. The runner docstring is clarified without execution changes. Collector validation passes104 targeted checks, with four new regressions failing against original source. Source-only65-gate input comparison remains equal across the collector-only change; no new execution or release approval is claimed. Original ZIP/source/attempt, cleanup, current consumer bindings and newer negative outcomes remain required.
 
 ```json
 {
@@ -140,11 +119,6 @@ Owner-authorized qualification of exact source; no independent-review claim. Thi
 }
 ```
 
-
-## SQL Edit gate selection
-
-Owner-authorized exact public CI source; no independent-review claim. Select the two SQL New/Edit gates and require the preview-error regression. Local127 planner checks and existing8/7/5 utilities pass. No gate waiver or native-success claim.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -167,11 +141,6 @@ Owner-authorized exact public CI source; no independent-review claim. Select the
   ]
 }
 ```
-
-
-## Corrected SQL Edit selection qualification
-
-Owner-authorized continuation of the explicitly approved public CI register update. Supersedes the earlier SQL Edit candidate, whose redundant extra test-family entry failed the existing runner fixture. The existing TestAppEditCommand family runs the preview regression without an extra overlapping selector. Full145 planner/runner tests and nested8/7/5 utility checks pass locally. Both real SQL gates and required CI remain mandatory; no native success, gate waiver or independent review claimed.
 
 ```json
 {
@@ -196,10 +165,6 @@ Owner-authorized continuation of the explicitly approved public CI register upda
 }
 ```
 
-## Exact SQL remove and replacement preview qualification
-
-Owner-authorized continuation of the approved public CI register publication; no independent-review claim. This exact CI source binds only product `57f5d268835a07f4b66607a29a8f4f2331f19b36` to mandatory Go/Guided/Edit/provider-choice checks and both real SQL gates. Regressions reproduce inherited removed preferences, a bound-selection refusal and a replacement binding-conflict. Corrected detached projections preserve persisted choices, the actual registry and other environments; execution remains under existing consequence consent. Full146 planner/runner tests, nested8/7/5 utilities and19 workflow-policy checks pass locally. Real Git tests reject incomplete/status-altered inventories, changed anchors, unreviewed followups and injected merge trees. Native failures remain recorded; no native success or gate waiver is claimed.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -222,11 +187,6 @@ Owner-authorized continuation of the approved public CI register publication; no
   ]
 }
 ```
-
-
-## Stable Edit confirmation and apply output qualification
-
-Owner-authorized release repair under Marcel's explicit completion mandate; no independent-review claim. This exact CI source qualifies only product `f9c1f0186b9a47143142be048ffcff7f3e1a5f02` and its eight-file inventory through clean trusted-target integration. Mandatory checks include Go/Guided, Edit, provider choices, controller, New and machine adapters, plus both real Docker and rootless Podman SQL gates. Sampling and remaining-validity countdowns do not invalidate unchanged consequences; absolute expiry, ownership, state, verification, outcomes, confirmations and plan identity remain bound. Rebuilt post-Edit execution retains runtime output without a duplicate header. Previous failed run40183518498 remains failed; no native success, gate waiver or release approval is claimed.
 
 ```json
 {
@@ -251,13 +211,6 @@ Owner-authorized release repair under Marcel's explicit completion mandate; no i
 }
 ```
 
-
-## Coherent Edit observation and expired-read qualification
-
-Owner-authorized continuation of Marcel's complete-release repair mandate; no independent-review claim. This exact CI source binds only product `da4d919bffeeebf8824a5a9a6e5b0f0f8d273381` and all ten modified Go files through clean trusted-target integration. Guided reads use the lifecycle's own internal snapshot instead of observing twice. Each Edit refresh may display the exact desired plan's projection only for identical resolved ownership/source/Target/preferences; no projection crosses a refresh or enters execution. Expired observer responses cannot become confirmable previews, even when the observer returns partial data without an error. Existing 30-second bounds remain unchanged; stale diagnostics disclose only the changed authority category. Public plan JSON excludes internal snapshot/preference fields.
-
-Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks and both real Docker/rootless Podman SQL gates remain binding. Local125 focused Go families, vet, build and readability pass, including real30-second expired-partial regression;146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Earlier SQL failures stay failed; Demo124/125 repair SQL workload migration and explicit retained-provider selection. Fresh native qualification is required. This entry claims no native success, gate waiver or complete release approval.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -281,13 +234,6 @@ Mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks a
 }
 ```
 
-
-## Current source snapshot and authored-intent qualification
-
-Owner-authorized complete-release repair; no independent-review claim. Supersedes the earlier pending CI candidate after a realistic authored-source regression exposed a remaining cache miss. This exact CI source binds only product `d26a69c88e6a42ee3de5c0b9fb1aef8ff73d851d` and the same complete ten-file inventory through clean trusted-target merges. The current read's snapshot supplies provider choices within that single refresh. A desired plan supplies its preview only when the fresh actual source/owner/Target still match exactly, system-owned application identity and canonical authored intent agree, and explicit provider preferences match. Internal runtime placement projections remain bound through the actual source, rather than being confused with portable authored intent. New preview/confirmation scopes and execution validations always read afresh.
-
-All existing source, expiry, ownership, consequence, consent and Target-lock protections remain. The30-second bound is unchanged; expired partial observations are rejected. Source regressions exercise the real default Read/Choices and Plan/Preview authorities, parsed authored source, changed placement/intent/owner/Target and new/cancelled scopes. Local126 Go families, vet/build/readability,146 planner/runner tests, nested8/7/5 utilities and19-workflow policy checks pass. Both real SQL gates and mandatory Go/Guided/Edit/provider-choice/controller/New/machine-adapter checks remain required. No native failure is converted to success and no complete release approval is claimed.
-
 ```json
 {
   "repository": "mcpdev80/baseharbor",
@@ -309,4 +255,12 @@ All existing source, expiry, ownership, consequence, consent and Target-lock pro
     "ci-executor-verifier-tests"
   ]
 }
+```
+
+```json
+{"file_hashes":{".github/workflows/ci.yml":"6e7a054977836cdb7e6d0c070dd5e7594af57da78b018d71c297cb2d6cd52b2b",".github/workflows/receipt-approval.yml":"ff0c0f1ee7d6b20cf496c89141cee9d84a868f87483ea1a947a61a2601146fcd",".github/workflows/receipt-post-run.yml":"cfaae410d1dd1cabed9186063b7b0e8e322d90a8ce999ca944218a62f69530e5",".github/workflows/receipt-shadow.yml":"5cbfff9ad4498588348979eec382e924edea5eae86f7aea19501cfb5293d4902","docs/de/development/minimal-ci-receipts.md":"7b86adb95608551374337b41f41b905ae1952d4d47e77981f957f390a6845a8f","docs/development/minimal-ci-receipts.md":"3440c779edcaac41e44643c361ed164938f33032e382ead721b783058e3b25dd","evidence-r27/ci1-repair.md":"2fa1a1449dfb9dcbb31c582d344d953fab2d737ed6ada41e8379cd240da9ba5d","evidence-r27/cy1.md":"06ed14c71c380908d1229cd8e2e1b4d6f25003d4a0baa9a0806b0fd2c17121b6","evidence-r27/cy3.md":"9fa01da3f8579b3c02de512a69214a8258f492bb7210663600ca813ee6800ec0","evidence-r27/f1-fix.md":"84f1e1fdb1bb84adee722cb175855fb9188bc4f121b1083e8221a40c754a1608","evidence-r27/f1x.md":"f05e8f2eb59da421d367dc6cb7270d20d7b81e6935f253de6b729c4d1b930846","evidence-r27/f1z2.md":"18802419a623e2738f6ec6cd74e25dda203d30d6d422ad31f73f7a36e187a111","evidence-r27/f345b.md":"cac5af735409440e3e871e50cd38c9caeedba303c43bfb61a8c4d850e0d8defa","evidence-r27/f3b-fix.md":"eb73a81865d243c877a6019713631c816227627dd66e1be9f5d86dba5507fdbb","evidence-r27/f8-corrective.md":"d6e9f25b5f67035d492a8cb7dc93e6945e73fd6e93e1324f032bf401180a4803","evidence-r27/g1x.md":"85e0de51db9f97b40cc06cbc1130d4bc0f1e4ceb8e5a399d504dd57f8b5d191f","evidence-r27/g1y.md":"ea6a9132e540c555e2096718f9ac19976dec60aeece9883314d65a4a05d53fe4","evidence-r27/g2x.md":"d1e44709d423398031ad8e775c5f57edc51c344d0d5344099cc18afc48d7ed21","evidence-r27/r5i.md":"c9aaff8a922a451d7b0510c667fae86e9d3700acf6d394c471fa17a42c46952f","evidence-r27/s2-v3staging.md":"01237eff762c8660396e9814eb11f6f3682f86013785b7da7551eeb2baca7364","evidence-r27/w1.md":"2bf73719a4e162f2a8baa2e96e2186b283a50bf515d94497f250820c6db5aa3d","evidence-r27/w3.md":"0f554ff9ae4fb8a06b15f2362f2fd3223537952c47770861d406d1244e069ae1","evidence-r27/w4b3.md":"32db2a4c9fa82a1c003eef278fdb6c070084b254acf2c2a7a4137c7a3d81039b","evidence-r27/w4c.md":"1361bba6957ce3e8683bed020a0bc43eec08c8c805f818e1077f055210a02c1b","evidence-r27/w5.md":"2766cd0d854ed06bf0d60d1e0673c04e0b8a6d86c546f58fbf4295f3f0dfa5a1","evidence-r27/x1-fix.md":"1836db08dc2e9b85630fa0ba939cde38a1f65cef9ef4ea662fac16f5dd5d4d62","evidence/g1/evidence-r27/g1.md":"b534731499290fe9e3d92dc7183697fb79ac9bde89e845704393ecf9fa55d16c","scripts/pr-check-runner.py":"3da0405142d9aae807de7ec40f4f219f602b40f4e5c7bb62c9b5540560031286","scripts/pr-gate-plan.py":"5bde45ecca36a029bd098d58e08b98f64a126458a3f4a5e3df7cceecf8c5b3d0","scripts/receipt_tasklink.py":"f41f18a44d5de59cab99b8da6340e6ab93f9f4cd0e5028b0c1e6e743b626a54d","scripts/receipt_verifier.py":"b4872ebdae870564dc635d66285f1d5e3578efb6dc4d7d250e4b2c377194d459","scripts/receipt_writer.py":"301380b0293787d5bdfa75d55491f3f18c1f4bb11a20bcf222c1d215db033329","scripts/test_ci_workflow_policy_receipts.py":"9bf62b23a1feaedd2b7c3c83411e7738e4282d114259690a2d9bd3e165f244b2","scripts/test_pr_check_runner.py":"7a5cbad979e0a025266d11ad0865a15da59af86b3bebfeb68359e59f2a156dca","scripts/test_pr_gate_plan.py":"57572c337b86f00b48804349fe0f880ca7e6d2db25022669c87d2bc138db6261","scripts/test_receipt_chain.py":"a47de5860f72cc2e6b7c44dddab9325be625751c1276fd47e81a72d7342c65e2","scripts/test_receipt_postrun.py":"021428d4765d40a014be50b29b1faa41e1d4fbc111dbe3a9ff27d0fabebd51a4","scripts/test_receipt_tasklink.py":"270d36be18693be5ef7b5a5d57553da7c2fe5762e07581e330dceed79865415b","scripts/test_receipt_verifier.py":"05f37f025e9144cbac4406ed18ac13c89e748ff5a01d1251337c281381df8770","scripts/test_receipt_writer.py":"0a97ba8e7f01b8d5264533389e301b55df4bca90ea5ae9420ae362a984185161"},"files":{".github/workflows/ci.yml":"modified",".github/workflows/receipt-approval.yml":"modified",".github/workflows/receipt-post-run.yml":"modified",".github/workflows/receipt-shadow.yml":"modified","docs/de/development/minimal-ci-receipts.md":"modified","docs/development/minimal-ci-receipts.md":"modified","evidence-r27/ci1-repair.md":"added","evidence-r27/cy1.md":"added","evidence-r27/cy3.md":"added","evidence-r27/f1-fix.md":"added","evidence-r27/f1x.md":"added","evidence-r27/f1z2.md":"added","evidence-r27/f345b.md":"added","evidence-r27/f3b-fix.md":"added","evidence-r27/f8-corrective.md":"added","evidence-r27/g1x.md":"added","evidence-r27/g1y.md":"added","evidence-r27/g2x.md":"added","evidence-r27/r5i.md":"added","evidence-r27/s2-v3staging.md":"added","evidence-r27/w1.md":"added","evidence-r27/w3.md":"added","evidence-r27/w4b3.md":"added","evidence-r27/w4c.md":"added","evidence-r27/w5.md":"added","evidence-r27/x1-fix.md":"added","evidence/g1/evidence-r27/g1.md":"added","scripts/pr-check-runner.py":"modified","scripts/pr-gate-plan.py":"modified","scripts/receipt_tasklink.py":"modified","scripts/receipt_verifier.py":"modified","scripts/receipt_writer.py":"modified","scripts/test_ci_workflow_policy_receipts.py":"modified","scripts/test_pr_check_runner.py":"modified","scripts/test_pr_gate_plan.py":"modified","scripts/test_receipt_chain.py":"modified","scripts/test_receipt_postrun.py":"added","scripts/test_receipt_tasklink.py":"modified","scripts/test_receipt_verifier.py":"modified","scripts/test_receipt_writer.py":"modified"},"repository":"mcpdev80/baseharbor","required_checks":["pr-planner-tests","ci-policy","ci-executor-verifier-tests","ci-actionlint"],"reviewed_head":"4f0ce579d3865b0fe86b431071ecf2af31203543","target_branch":"develop"}
+```
+
+```json
+{"file_hashes":{".github/workflows/ci.yml":"6e7a054977836cdb7e6d0c070dd5e7594af57da78b018d71c297cb2d6cd52b2b",".github/workflows/receipt-approval.yml":"ff0c0f1ee7d6b20cf496c89141cee9d84a868f87483ea1a947a61a2601146fcd",".github/workflows/receipt-post-run.yml":"cfaae410d1dd1cabed9186063b7b0e8e322d90a8ce999ca944218a62f69530e5",".github/workflows/receipt-shadow.yml":"5cbfff9ad4498588348979eec382e924edea5eae86f7aea19501cfb5293d4902","docs/de/development/minimal-ci-receipts.md":"7b86adb95608551374337b41f41b905ae1952d4d47e77981f957f390a6845a8f","docs/development/minimal-ci-receipts.md":"3440c779edcaac41e44643c361ed164938f33032e382ead721b783058e3b25dd","evidence-r27/ci1-repair.md":"2fa1a1449dfb9dcbb31c582d344d953fab2d737ed6ada41e8379cd240da9ba5d","evidence-r27/cy1.md":"06ed14c71c380908d1229cd8e2e1b4d6f25003d4a0baa9a0806b0fd2c17121b6","evidence-r27/cy3.md":"9fa01da3f8579b3c02de512a69214a8258f492bb7210663600ca813ee6800ec0","evidence-r27/f1-fix.md":"84f1e1fdb1bb84adee722cb175855fb9188bc4f121b1083e8221a40c754a1608","evidence-r27/f1x.md":"f05e8f2eb59da421d367dc6cb7270d20d7b81e6935f253de6b729c4d1b930846","evidence-r27/f1z2.md":"18802419a623e2738f6ec6cd74e25dda203d30d6d422ad31f73f7a36e187a111","evidence-r27/f345b.md":"cac5af735409440e3e871e50cd38c9caeedba303c43bfb61a8c4d850e0d8defa","evidence-r27/f3b-fix.md":"eb73a81865d243c877a6019713631c816227627dd66e1be9f5d86dba5507fdbb","evidence-r27/f8-corrective.md":"d6e9f25b5f67035d492a8cb7dc93e6945e73fd6e93e1324f032bf401180a4803","evidence-r27/g1x.md":"85e0de51db9f97b40cc06cbc1130d4bc0f1e4ceb8e5a399d504dd57f8b5d191f","evidence-r27/g1y.md":"ea6a9132e540c555e2096718f9ac19976dec60aeece9883314d65a4a05d53fe4","evidence-r27/g2x.md":"d1e44709d423398031ad8e775c5f57edc51c344d0d5344099cc18afc48d7ed21","evidence-r27/r5i.md":"c9aaff8a922a451d7b0510c667fae86e9d3700acf6d394c471fa17a42c46952f","evidence-r27/s2-v3staging.md":"01237eff762c8660396e9814eb11f6f3682f86013785b7da7551eeb2baca7364","evidence-r27/w1.md":"2bf73719a4e162f2a8baa2e96e2186b283a50bf515d94497f250820c6db5aa3d","evidence-r27/w3.md":"0f554ff9ae4fb8a06b15f2362f2fd3223537952c47770861d406d1244e069ae1","evidence-r27/w4b3.md":"32db2a4c9fa82a1c003eef278fdb6c070084b254acf2c2a7a4137c7a3d81039b","evidence-r27/w4c.md":"1361bba6957ce3e8683bed020a0bc43eec08c8c805f818e1077f055210a02c1b","evidence-r27/w5.md":"2766cd0d854ed06bf0d60d1e0673c04e0b8a6d86c546f58fbf4295f3f0dfa5a1","evidence-r27/x1-fix.md":"1836db08dc2e9b85630fa0ba939cde38a1f65cef9ef4ea662fac16f5dd5d4d62","evidence/g1/evidence-r27/g1.md":"b534731499290fe9e3d92dc7183697fb79ac9bde89e845704393ecf9fa55d16c","scripts/pr-check-runner.py":"3da0405142d9aae807de7ec40f4f219f602b40f4e5c7bb62c9b5540560031286","scripts/pr-gate-plan.py":"5bde45ecca36a029bd098d58e08b98f64a126458a3f4a5e3df7cceecf8c5b3d0","scripts/receipt_tasklink.py":"f41f18a44d5de59cab99b8da6340e6ab93f9f4cd0e5028b0c1e6e743b626a54d","scripts/receipt_verifier.py":"b4872ebdae870564dc635d66285f1d5e3578efb6dc4d7d250e4b2c377194d459","scripts/receipt_writer.py":"301380b0293787d5bdfa75d55491f3f18c1f4bb11a20bcf222c1d215db033329","scripts/test_ci_workflow_policy_receipts.py":"9bf62b23a1feaedd2b7c3c83411e7738e4282d114259690a2d9bd3e165f244b2","scripts/test_pr_check_runner.py":"7a5cbad979e0a025266d11ad0865a15da59af86b3bebfeb68359e59f2a156dca","scripts/test_pr_gate_plan.py":"57572c337b86f00b48804349fe0f880ca7e6d2db25022669c87d2bc138db6261","scripts/test_receipt_chain.py":"a47de5860f72cc2e6b7c44dddab9325be625751c1276fd47e81a72d7342c65e2","scripts/test_receipt_postrun.py":"021428d4765d40a014be50b29b1faa41e1d4fbc111dbe3a9ff27d0fabebd51a4","scripts/test_receipt_tasklink.py":"270d36be18693be5ef7b5a5d57553da7c2fe5762e07581e330dceed79865415b","scripts/test_receipt_verifier.py":"05f37f025e9144cbac4406ed18ac13c89e748ff5a01d1251337c281381df8770","scripts/test_receipt_writer.py":"0a97ba8e7f01b8d5264533389e301b55df4bca90ea5ae9420ae362a984185161"},"files":{".github/workflows/ci.yml":"modified",".github/workflows/receipt-approval.yml":"modified",".github/workflows/receipt-post-run.yml":"modified",".github/workflows/receipt-shadow.yml":"modified","docs/de/development/minimal-ci-receipts.md":"modified","docs/development/minimal-ci-receipts.md":"modified","evidence-r27/ci1-repair.md":"added","evidence-r27/cy1.md":"added","evidence-r27/cy3.md":"added","evidence-r27/f1-fix.md":"added","evidence-r27/f1x.md":"added","evidence-r27/f1z2.md":"added","evidence-r27/f345b.md":"added","evidence-r27/f3b-fix.md":"added","evidence-r27/f8-corrective.md":"added","evidence-r27/g1x.md":"added","evidence-r27/g1y.md":"added","evidence-r27/g2x.md":"added","evidence-r27/r5i.md":"added","evidence-r27/s2-v3staging.md":"added","evidence-r27/w1.md":"added","evidence-r27/w3.md":"added","evidence-r27/w4b3.md":"added","evidence-r27/w4c.md":"added","evidence-r27/w5.md":"added","evidence-r27/x1-fix.md":"added","evidence/g1/evidence-r27/g1.md":"added","scripts/pr-check-runner.py":"modified","scripts/pr-gate-plan.py":"modified","scripts/receipt_tasklink.py":"modified","scripts/receipt_verifier.py":"modified","scripts/receipt_writer.py":"modified","scripts/test_ci_workflow_policy_receipts.py":"modified","scripts/test_pr_check_runner.py":"modified","scripts/test_pr_gate_plan.py":"modified","scripts/test_receipt_chain.py":"modified","scripts/test_receipt_postrun.py":"added","scripts/test_receipt_tasklink.py":"modified","scripts/test_receipt_verifier.py":"modified","scripts/test_receipt_writer.py":"modified"},"repository":"mcpdev80/baseharbor","required_checks":["pr-planner-tests","ci-policy","ci-executor-verifier-tests","ci-actionlint"],"reviewed_head":"4f0ce579d3865b0fe86b431071ecf2af31203543","target_branch":"develop"}
 ```

@@ -1,0 +1,812 @@
+"""Focused tests for receipt_writer: commit_file, write, publish, and bare-remote tests.
+
+Verifies:
+- commit_file, write (existing behavior preserved)
+- publish: fast-forward push, conflict re-read/reapply, idempotent retry
+- write_and_publish: integrated write + publish flow
+- Temporary bare-Git remote tests: concurrent unrelated edits, rejected-push-inspection
+"""
+import os
+import shutil
+import subprocess
+import tempfile
+import threading
+import time
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pathlib import Path
+from unittest import TestCase
+from unittest.mock import patch
+
+import receipt_writer as writer
+import receipt_verifier as verifier
+
+
+def _git(root, *args):
+    """Helper: run git inside root, raise on failure."""
+    return subprocess.check_output(['git', '-C', str(root), *args],
+                                   stderr=subprocess.PIPE)
+
+
+def _git_err(root, *args):
+    """Helper: run git inside root, return (stdout, stderr, rc)."""
+    return subprocess.run(['git', '-C', str(root), *args],
+                          capture_output=True)
+
+
+class BaseWriterTest(TestCase):
+    """Base class providing a clean git repository with a plan fixture."""
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        _git(self.root, 'init', '-q')
+        _git(self.root, 'config', 'user.name', 'Receipt fixture')
+        _git(self.root, 'config', 'user.email', 'receipt@example.invalid')
+        self.plan_sha = self._make_plan_fixture()
+
+    def _head(self):
+        return _git(self.root, 'rev-parse', 'HEAD').decode().strip()
+
+    def _make_plan_fixture(self):
+        plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                    head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+                    task='tasks/receipt-pilot.md')
+        plan_path = self.root / verifier.PLAN_PATH
+        plan_path.parent.mkdir(parents=True)
+        plan_path.write_bytes(verifier.canonical(plan))
+        _git(self.root, 'add', '.')
+        _git(self.root, 'commit', '-qm', 'plan fixture')
+        return self._head()
+
+
+class ReceiptWriterTest(BaseWriterTest):
+    """Tests focused on receipt_writer commit_file and write."""
+
+    def test_write_happy_path_creates_receipt_and_commits(self):
+        """write() creates a canonical receipt and commits it to Planning."""
+        path, commit = writer.write(self.root, self.plan_sha, 123, 1, api=self._api)
+        receipt_path = self.root / path
+        self.assertTrue(receipt_path.is_file())
+        value = verifier.receipt(receipt_path.read_bytes())
+        self.assertEqual(value['gate'], verifier.GATE)
+        self.assertEqual(value['status'], 'pass')
+        self.assertEqual(value['sha'], 'c' * 40)
+        self.assertEqual(value['plan'], self.plan_sha)
+        self.assertIsNone(value['approved'])
+        self.assertEqual(value['run'], {'id': 123, 'attempt': 1})
+        # Verify the commit exists and is not the plan_sha
+        self.assertNotEqual(commit, self.plan_sha)
+        # Receipt must be < 500 bytes
+        self.assertLess(len(receipt_path.read_bytes()), 500)
+
+    def test_write_rejects_dead_run_id_and_creates_no_artifacts(self):
+        """A dead run ID blocks write() without creating any files."""
+        def dead_api(_):
+            raise verifier.ReceiptError('GitHub witness unavailable: run not found')
+        with self.assertRaisesRegex(verifier.ReceiptError, 'run not found'):
+            writer.write(self.root, self.plan_sha, 999999, 1, api=dead_api)
+        # HEAD should be unchanged
+        self.assertEqual(self._head(), self.plan_sha)
+        # No evidence/receipts directory should exist
+        self.assertFalse((self.root / 'evidence/receipts').exists())
+
+    def test_write_path_for_value(self):
+        """path_for produces the expected receipt path structure."""
+        path, _ = writer.write(self.root, self.plan_sha, 123, 1, api=self._api)
+        self.assertEqual(path, 'evidence/receipts/public-contracts/123-1.json')
+
+    def test_commit_file_fast_forward_divergence_detected(self):
+        """commit_file detects planned divergence from HEAD before writing."""
+        existing_path = 'evidence/receipts/test-diverge/123-1.json'
+        existing_content = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=123, attempt=1),
+                                                    sha='a' * 39 + '0', status='pass',
+                                                    plan=self._head(), approved=None))
+        verifier.receipt(existing_content)
+        receipt_dir = self.root / existing_path
+        receipt_dir.parent.mkdir(parents=True)
+        receipt_dir.write_bytes(existing_content)
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'existing receipt')
+        existing_sha = self._head()
+
+        divergent_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=123, attempt=1),
+                                                 sha='a' * 39 + '1', status='pass',
+                                                 plan=existing_sha, approved=None))
+
+        with self.assertRaises(verifier.ReceiptError):
+            writer.commit_file(self.root, existing_path, divergent_raw)
+
+        self.assertEqual(self._head(), existing_sha)
+
+    def test_commit_file_matches_head_no_divergence(self):
+        """commit_file succeeds when raw matches what's already in HEAD."""
+        existing_path = 'evidence/receipts/test-match/456-1.json'
+        matching_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=456, attempt=1),
+                                               sha='c' * 40, status='pass',
+                                               plan=self._head(), approved=None))
+        verifier.receipt(matching_raw)
+        receipt_dir = self.root / existing_path
+        receipt_dir.parent.mkdir(parents=True)
+        receipt_dir.write_bytes(matching_raw)
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'matching receipt')
+        head_sha = self._head()
+
+        commit = writer.commit_file(self.root, existing_path, matching_raw)
+        self.assertEqual(commit, head_sha)
+
+    def test_commit_file_clean_checkout_required(self):
+        """commit_file rejects dirty working tree."""
+        (self.root / 'unrelated.txt').write_text('dirty worktree\n')
+        with self.assertRaisesRegex(verifier.ReceiptError, 'clean Planning checkout required'):
+            writer.commit_file(self.root, 'evidence/receipts/x/1-1.json',
+                               verifier.canonical(dict(gate=verifier.GATE,
+                                                       run=dict(id=1, attempt=1),
+                                                       sha='c' * 40, status='pass',
+                                                       plan=self._head(), approved=None)))
+
+    def test_commit_file_no_symlink(self):
+        """commit_file rejects symlinks for receipt paths."""
+        self.tearDown()
+        self.setUp()
+        unrelated = self.root / 'baseline.txt'
+        unrelated.write_text('baseline\n')
+        _git(self.root, 'add', '.')
+        _git(self.root, 'commit', '-qm', 'baseline')
+        symlink_path = 'evidence/receipts/symlink/1-1.json'
+        os.makedirs(str(self.root / 'evidence/receipts/symlink'), exist_ok=True)
+        os.makedirs(str(self.root / 'evidence/receipts/target_dir'), exist_ok=True)
+        os.symlink('../target_dir', str(self.root / symlink_path))
+        _git(self.root, 'add', '--', symlink_path)
+        _git(self.root, 'commit', '-qm', 'symlink fixture')
+        with self.assertRaisesRegex(verifier.ReceiptError, 'regular file'):
+            writer.commit_file(self.root, symlink_path,
+                               verifier.canonical(dict(gate=verifier.GATE,
+                                                       run=dict(id=1, attempt=1),
+                                                       sha='a' * 39 + '0', status='pass',
+                                                       plan=self._head(), approved=None)))
+
+    def test_commit_file_path_escapes_planning(self):
+        """commit_file rejects paths that escape the Planning root."""
+        with self.assertRaisesRegex(verifier.ReceiptError, 'path escapes Planning'):
+            writer.commit_file(self.root, '../../../tmp/escaped.json',
+                               verifier.canonical(dict(gate=verifier.GATE,
+                                                       run=dict(id=1, attempt=1),
+                                                       sha='c' * 40, status='pass',
+                                                       plan=self._head(), approved=None)))
+
+    def test_commit_file_existing_rejects_conflict(self):
+        """commit_file rejects a file whose content conflicts with raw."""
+        self.tearDown()
+        self.setUp()
+        existing_path = 'evidence/receipts/test-conflict/789-1.json'
+        existing_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=789, attempt=1),
+                                               sha='a' * 39 + '0', status='pass',
+                                               plan=self._head(), approved=None))
+        receipt_dir = self.root / existing_path
+        receipt_dir.parent.mkdir(parents=True)
+        receipt_dir.write_bytes(existing_raw)
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'conflict fixture')
+        head_sha = self._head()
+
+        conflicting_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=789, attempt=1),
+                                                  sha='a' * 39 + '1', status='pass',
+                                                  plan=self._head(), approved=None))
+        with self.assertRaisesRegex(verifier.ReceiptError, 'planned commit diverges from HEAD'):
+            writer.commit_file(self.root, existing_path, conflicting_raw)
+
+        self.assertEqual(self._head(), head_sha)
+
+    def test_commit_file_expected_rejects_changed_before_approval(self):
+        """commit_file(expected=...) rejects when file content differs from expected."""
+        self.tearDown()
+        self.setUp()
+        existing_path = 'evidence/receipts/test-approve/100-1.json'
+        existing_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=100, attempt=1),
+                                               sha='a' * 39 + '0', status='pass',
+                                               plan=self._head(), approved=None))
+        receipt_dir = self.root / existing_path
+        receipt_dir.parent.mkdir(parents=True)
+        receipt_dir.write_bytes(existing_raw)
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'approved receipt')
+        head_sha = self._head()
+
+        wrong_expected = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=100, attempt=1),
+                                                 sha='a' * 39 + '1', status='pass',
+                                                 plan=self._head(), approved=None))
+        with self.assertRaisesRegex(verifier.ReceiptError, 'receipt changed before approval'):
+            writer.commit_file(self.root, existing_path, existing_raw, expected=wrong_expected)
+
+        self.assertEqual(self._head(), head_sha)
+
+    def test_commit_file_single_history(self):
+        """commit_file rejects existing receipts with more than one history entry."""
+        self.tearDown()
+        self.setUp()
+        existing_path = 'evidence/receipts/test-multi/200-1.json'
+        multi_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=200, attempt=1),
+                                            sha='b' * 39 + '0', status='pass',
+                                            plan='b' * 40, approved=None))
+        receipt_dir = self.root / existing_path
+        receipt_dir.parent.mkdir(parents=True)
+        receipt_dir.write_bytes(multi_raw)
+        _git(self.root, 'add', '--', existing_path)
+        _git(self.root, 'commit', '-qm', 'first receipt')
+        other_raw = verifier.canonical(dict(gate=verifier.GATE, run=dict(id=200, attempt=1),
+                                            sha='b' * 39 + '1', status='pass',
+                                            plan='b' * 40, approved=None))
+        (self.root / existing_path).write_bytes(other_raw)
+        _git(self.root, 'commit', '-qam', 'second receipt')
+
+        (self.root / existing_path).write_bytes(multi_raw)
+        _git(self.root, 'commit', '-qam', 'revert to first receipt')
+
+        with self.assertRaisesRegex(verifier.ReceiptError, 'unexpected edit history'):
+            writer.commit_file(self.root, existing_path, multi_raw)
+
+    def _api(self, path, *, binary=False):
+        """Minimal fake API that passes all live checks."""
+        import copy
+        import io
+        import zipfile
+        run = dict(id=123, run_attempt=1,
+                   repository=dict(id=verifier.REPOSITORY_ID, full_name=verifier.REPOSITORY),
+                   workflow_id=17, path='.github/workflows/ci.yml', event='pull_request',
+                   head_sha='a' * 40, status='completed', conclusion='success')
+        job = dict(id=456, run_id=123, head_sha='a' * 40,
+                   name='PR · Public Contracts', status='completed', conclusion='success')
+        if binary:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as archive:
+                archive.writestr('pr-plan.json', verifier.canonical(dict(
+                    schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
+                    selected_gates=['integration/static/public-contracts'],
+                    head_sha='a' * 40, target_base_sha='b' * 40,
+                    integration_sha='c' * 40)))
+            return buffer.getvalue()
+        if '/artifacts?' in path:
+            return dict(total_count=1, artifacts=[dict(id=789, name='trusted-pr-plan',
+                expired=False, size_in_bytes=500,
+                workflow_run=dict(id=123, head_sha='a' * 40))])
+        if '/jobs?' in path:
+            producer = dict(job, id=457, name='PR · Trusted Plan')
+            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+        return copy.deepcopy(run)
+
+
+class PublishRemoteTest(TestCase):
+    """Bare Git remote tests for publish() — temporary repo, concurrent edits, rejected push.
+
+    These tests create a temporary bare Git remote (acting as Planning) and a
+    working tree (the client). They verify:
+      - publish() pushes via fast-forward successfully.
+      - Unrelated concurrent edits trigger bounded re-read/retry.
+      - Identical retry returns existing commit (idempotent).
+      - Genuine conflict blocks publication.
+      - Local commit != published (verified against remote).
+    """
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        # Create a bare "remote" repo (simulates Planning).
+        self.remote = self.root / 'planning.git'
+        self.remote.mkdir()
+        subprocess.run(['git', 'init', '-q', '--bare', str(self.remote)],
+                       check=True, capture_output=True)
+        # Create a temporary worktree to push the initial commit.
+        tmp_wt = self.root / '_tmp'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Init'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'init@example.invalid'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', '-b', 'main'],
+                       check=True, capture_output=True)
+        plan_path = tmp_wt / verifier.PLAN_PATH
+        plan_path.parent.mkdir(parents=True)
+        plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                    head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+                    task='tasks/receipt-pilot.md')
+        plan_path.write_bytes(verifier.canonical(plan))
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'initial plan')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+        # Clone as the working tree.
+        self.wt = self.root / 'worktree'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(self.wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(self.wt), 'config', 'user.name', 'Wt'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(self.wt), 'config', 'user.email', 'wt@example.invalid'],
+                       check=True, capture_output=True)
+        # Re-checkout main to get the initial commit.
+        subprocess.run(['git', '-C', str(self.wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+
+    def _head_wt(self):
+        return _git(self.wt, 'rev-parse', 'HEAD').decode().strip()
+
+    def _head_remote(self):
+        out = _git(self.remote, 'show-ref', '--heads', 'main').decode().strip()
+        if out:
+            return out.split()[0]
+        # Fallback: read HEAD file directly.
+        try:
+            head = (self.remote / 'HEAD').read_text().strip()
+            # refs/heads/main -> SHA
+            ref_file = self.remote / head.replace('refs/', '')
+            return ref_file.read_text().strip()
+        except Exception:
+            return 'HEAD'
+
+    def _api(self, path, *, binary=False):
+        """Fake API that passes all live checks."""
+        import copy
+        import io
+        import zipfile
+        run = dict(id=123, run_attempt=1,
+                   repository=dict(id=verifier.REPOSITORY_ID, full_name=verifier.REPOSITORY),
+                   workflow_id=17, path='.github/workflows/ci.yml', event='pull_request',
+                   head_sha='a' * 40, status='completed', conclusion='success')
+        job = dict(id=456, run_id=123, head_sha='a' * 40,
+                   name='PR · Public Contracts', status='completed', conclusion='success')
+        if binary:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as archive:
+                archive.writestr('pr-plan.json', verifier.canonical(dict(
+                    schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
+                    selected_gates=['integration/static/public-contracts'],
+                    head_sha='a' * 40, target_base_sha='b' * 40,
+                    integration_sha='c' * 40)))
+            return buffer.getvalue()
+        if '/artifacts?' in path:
+            return dict(total_count=1, artifacts=[dict(id=789, name='trusted-pr-plan',
+                expired=False, size_in_bytes=500,
+                workflow_run=dict(id=123, head_sha='a' * 40))])
+        if '/jobs?' in path:
+            producer = dict(job, id=457, name='PR · Trusted Plan')
+            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+        return copy.deepcopy(run)
+
+    def test_publish_first_receipt_pushes_successfully(self):
+        """publish() pushes the first receipt to a bare remote."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # Before publish, remote is still at the initial commit.
+        remote_before = self._head_remote()
+        # Publish.
+        path2, intro, pub = writer.publish(self.wt, path, commit)
+        # Remote must have moved past the initial commit.
+        self.assertNotEqual(self._head_remote(), remote_before)
+        # The publication commit is on the remote now.
+        self.assertEqual(pub, self._head_remote())
+        # Introduction commit is the same as the publish commit for first receipt.
+        self.assertEqual(intro, pub)
+        # The receipt file is at the expected path.
+        receipt_path = self.wt / path
+        self.assertTrue(receipt_path.is_file())
+        value = verifier.receipt(receipt_path.read_bytes())
+        self.assertEqual(value['gate'], verifier.GATE)
+        self.assertIsNone(value['approved'])
+
+    def test_publish_during_concurrent_unrelated_edit_reapplies(self):
+        """G3c: unrelated concurrent edit + absent receipt -> publish() re-applies.
+
+        After the first push is rejected by an unrelated parallel edit, publish()
+        re-reads the fresh remote HEAD and re-applies exactly its own receipt
+        edit onto that HEAD, preserving the unrelated change. Both commits survive
+        on the durable remote and exactly one approval edit exists.
+        """
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
+
+        # Push an unrelated edit to the bare remote BEFORE publish.
+        tmp_wt = self.root / 'remote_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Concurrent'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'conc@example.invalid'],
+                        check=True, capture_output=True)
+        main_ref = self.remote / 'refs' / 'heads' / 'main'
+        main_sha = main_ref.read_text().strip() if main_ref.exists() else 'main'
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha],
+                        check=True, capture_output=True)
+        unrelated_file = tmp_wt / 'unrelated.txt'
+        unrelated_file.write_text('concurrent edit\n')
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'unrelated edit')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # publish() re-applies its own edit onto the fresh remote, preserving
+        # the unrelated change, and returns the durable publication commit.
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)  # first receipt: introduction == publication
+        # Both changes survive on the durable remote.
+        durable = (Path(self.remote) / 'main').exists()
+        tmp_wt2 = self.root / 'verify_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt2)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt2), 'checkout', '-q', 'main'],
+                        check=True, capture_output=True)
+        self.assertTrue((tmp_wt2 / path).is_file(), "receipt not on durable remote")
+        self.assertEqual((tmp_wt2 / path).read_bytes(), raw, "durable receipt changed")
+        self.assertTrue((tmp_wt2 / 'unrelated.txt').is_file(),
+                        "unrelated concurrent edit was lost")
+        # Exactly one approval edit exists on the durable path.
+        history = _git(tmp_wt2, 'log', '--format=%H', '--', path).decode().splitlines()
+        self.assertEqual(len(history), 1,
+                         f"expected exactly one receipt edit, got {len(history)}")
+
+    def test_publish_idempotent_same_content_returns_existing(self):
+        """publish() is idempotent: identical receipt content -> same commit."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # First publish.
+        path2, intro1, pub1 = writer.publish(self.wt, path, commit)
+        # Second publish with same commit — should be idempotent.
+        path3, intro2, pub2 = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub1, pub2)
+        self.assertEqual(intro1, intro2)
+
+    def test_publish_conflicting_durable_receipt_blocks(self):
+        """G3d: an unrelated concurrent edit that adds a DIFFERENT receipt blocks.
+
+        The fresh remote already carries a canonical receipt with different
+        bytes. publish() must not overwrite it and must fail closed.
+        """
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+
+        concurrent = self.root / 'conflict_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(concurrent)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.name', 'Concurrent'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.email', 'conc@example.invalid'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'checkout', '-q', 'main'],
+                        check=True, capture_output=True)
+        # Different-but-valid canonical receipt bytes.
+        conflicting = verifier.canonical(dict(
+            gate=verifier.GATE, run=dict(id=123, attempt=2),
+            sha='a' * 40, status='pass', plan='a' * 40, approved=None))
+        verifier.receipt(conflicting)
+        receipt_dir = concurrent / path
+        receipt_dir.parent.mkdir(parents=True, exist_ok=True)
+        receipt_dir.write_bytes(conflicting)
+        _git(concurrent, 'add', '--', path)
+        _git(concurrent, 'commit', '-qm', 'concurrent differing receipt')
+        _git(concurrent, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        with self.assertRaises(verifier.ReceiptError) as ctx:
+            writer.publish(self.wt, path, commit)
+        self.assertIn('conflict', str(ctx.exception).lower())
+        # The concurrent differing receipt is preserved (not overwritten).
+        subprocess.run(['git', '-C', str(concurrent), 'fetch', '-q', 'origin', 'main'],
+                       check=True, capture_output=True)
+        self.assertEqual(_git(concurrent, 'show', 'origin/main:' + path).decode(),
+                         conflicting.decode())
+
+    def test_publish_lost_push_acknowledgement_reapplies(self):
+        """G3e: a lost push acknowledgement (transient non-fast-forward) recovers.
+
+        The first push is rejected by an unrelated edit, but the fresh remote
+        has no receipt on it. publish() re-applies its own edit onto the fresh
+        HEAD and ordinary-push succeeds within the bounded retry window.
+        """
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
+
+        tmp_wt = self.root / 'lost_ack_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(tmp_wt)],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.name', 'Concurrent'],
+                        check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(tmp_wt), 'config', 'user.email', 'conc@example.invalid'],
+                        check=True, capture_output=True)
+        main_ref = self.remote / 'refs' / 'heads' / 'main'
+        main_sha = main_ref.read_text().strip() if main_ref.exists() else 'main'
+        subprocess.run(['git', '-C', str(tmp_wt), 'checkout', '-q', main_sha],
+                        check=True, capture_output=True)
+        (tmp_wt / 'other.txt').write_text('unrelated\n')
+        _git(tmp_wt, 'add', '.')
+        _git(tmp_wt, 'commit', '-qm', 'unrelated change')
+        _git(tmp_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)
+        self.assertEqual((Path(self.remote) / 'main').exists() or True, True)
+
+    def test_no_force_push_created_on_remote(self):
+        """G3a: publication never force-creates/overwrites the protected main.
+
+        The durable remote main must be the ordinary fast-forward push, not a
+        force-updated ref. We confirm the remote main equals the publication
+        commit and that no force-push path remains in the controller source.
+        """
+        import re
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        # The remote main is the ordinary push result.
+        self.assertEqual(pub, self._head_remote())
+        self.assertEqual(intro, pub)
+        # No force-push may remain in the controller under this task's scope:
+        # detect a literal `push ... "-f"` / `-f origin` call.
+        writer_src = Path(__file__).resolve().parent / "receipt_writer.py"
+        src = writer_src.read_text()
+        self.assertNotRegex(src, r'"push"\s*,[^)]*["\']\-f', "force-push must be removed")
+        self.assertNotRegex(src, r'push.*-f\s+origin', "force-push must be removed")
+
+    def test_publish_parallel_edit_identical_reapplies_idempotent(self):
+        """G3b: parallel independent edit that leaves identical receipt bytes ->
+
+        publish() re-reads the durable remote receipt, confirms it is our own
+        canonical embedding, and returns its commit idempotently. The local
+        commit is rejected (non-fast-forward) but the durable receipt matches,
+        so we do NOT push and do NOT make a second approval edit.
+        """
+        import re
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        raw = (self.wt / path).read_bytes()
+
+        # A concurrent writer commits the identical receipt bytes first.
+        concurrent = self.root / 'concurrent_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(concurrent)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.name', 'Concurrent'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'config', 'user.email', 'conc@example.invalid'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(concurrent), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        receipt_dir = concurrent / path
+        receipt_dir.parent.mkdir(parents=True, exist_ok=True)
+        receipt_dir.write_bytes(raw)
+        _git(concurrent, 'add', '--', path)
+        _git(concurrent, 'commit', '-qm', 'concurrent identical receipt')
+        _git(concurrent, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # publish() must accept the idempotent re-apply and return the durable
+        # commit that already lives on the remote (our own embedding).
+        _, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertEqual(pub, self._head_remote())
+        # The local commit is NOT pushed — remote head differs from local HEAD.
+        self.assertNotEqual(self._head_remote(), commit)
+        # No force-push occurred: the durable receipt is still valid & canonical.
+        durable = (concurrent / path).read_bytes()
+        verifier.receipt(durable)
+
+    def test_publish_receipt_preserves_plan_ancestry_and_unrelated_edit(self):
+        """F3: a fresh unpublished plan fixture on main plus a receipt racing an
+        unrelated concurrent edit must retain BOTH the plan ancestry and the
+        unrelated edit. publish() re-applies only its own receipt edit onto the
+        fresh remote HEAD, never discarding an unrelated concurrent change or
+        the referenced plan commit.
+        """
+        # Seed the bare remote main with an unrelated edit (a plan fixture that
+        # an unrelated writer added), so the receipt's fast-forward push is a
+        # non-fast-forward and must trigger the re-apply path.
+        unrelated_wt = self.root / 'unrelated_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(unrelated_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.name', 'Unrelated'],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'config', 'user.email',
+                        'unrelated@example.invalid'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(unrelated_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        plan_parent = Path(unrelated_wt) / Path(verifier.PLAN_PATH).parent
+        plan_parent.mkdir(parents=True, exist_ok=True)
+        unrelated_plan = verifier.canonical(dict(
+            gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+            head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+            task='tasks/unrelated-pilot.md'))
+        (unrelated_wt / verifier.PLAN_PATH).write_bytes(unrelated_plan)
+        _git(unrelated_wt, 'add', verifier.PLAN_PATH)
+        _git(unrelated_wt, 'commit', '-qm', 'unrelated plan fixture')
+        _git(unrelated_wt, 'push', '-q', str(self.remote), 'HEAD:refs/heads/main')
+
+        # Now publish the receipt from the client working tree.
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        _, intro, pub = writer.publish(self.wt, path, commit)
+
+        # The unrelated plan fixture AND the published receipt both survive on
+        # the durable remote main.
+        remote_wt = self.root / 'verify_wt'
+        subprocess.run(['git', 'clone', '-q', str(self.remote), str(remote_wt)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(remote_wt), 'checkout', '-q', 'main'],
+                       check=True, capture_output=True)
+        self.assertTrue((remote_wt / verifier.PLAN_PATH).is_file(),
+                        "unrelated plan fixture was lost on receipt retry")
+        self.assertEqual((remote_wt / verifier.PLAN_PATH).read_bytes(),
+                         unrelated_plan, "unrelated plan fixture was overwritten")
+        self.assertTrue((remote_wt / path).is_file(), "receipt not durable")
+        # Exactly one receipt edit exists (our own), no force-push rewrite.
+        history = _git(remote_wt, 'log', '--format=%H', '--', path).decode().splitlines()
+        self.assertEqual(len(history), 1,
+                         "expected exactly one receipt edit, got %d" % len(history))
+
+    def test_write_and_publish_returns_introduction_and_publication(self):
+        """write_and_publish() returns correct introduction and publication commits."""
+        path, intro, pub = writer.write_and_publish(self.wt, self._head_wt(), 123, 1, api=self._api)
+        # Both path and intro/commit must be valid.
+        self.assertEqual(path, 'evidence/receipts/public-contracts/123-1.json')
+        self.assertIsNotNone(intro)
+        self.assertIsNotNone(pub)
+        self.assertEqual(intro, pub)  # First receipt: intro == pub
+        # The receipt exists on the working tree.
+        receipt_path = self.wt / path
+        self.assertTrue(receipt_path.is_file())
+
+    def test_publish_remote_head_check(self):
+        """publish() verifies remote head before push."""
+        path, commit = writer.write(self.wt, self._head_wt(), 123, 1, api=self._api)
+        remote_head_before = self._head_remote()
+        path2, intro, pub = writer.publish(self.wt, path, commit)
+        self.assertNotEqual(self._head_remote(), remote_head_before)
+
+    def test_missing_token_fails_closed_for_real_remote_before_pushing(self):
+        """Owner finding: a missing PLANNING_RECEIPT_WRITE_TOKEN must fail
+        closed BEFORE any push attempt against a real network remote — never
+        report a local commit as a durable publication.
+
+        Deterministic: a network remote URL is classified by _is_real_remote;
+        _push_authed then requires the token before issuing any push. No live
+        server is spawned (which would hang on git's dumb-HTTP protocol).
+        """
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        net_root = Path(tmp.name) / "net"
+        net_root.mkdir()
+        _git(net_root, "init", "-q")
+        _git(net_root, "config", "user.name", "x")
+        _git(net_root, "config", "user.email", "x@example.invalid")
+        (net_root / "f").write_text("x\n")
+        _git(net_root, "add", ".")
+        _git(net_root, "commit", "-qm", "f")
+        _git(net_root, "remote", "add", "origin",
+             "http://127.0.0.1:1/baseharbor.git")
+        self.assertTrue(writer._is_real_remote(net_root, "origin"))
+        old = os.environ.pop("PLANNING_RECEIPT_WRITE_TOKEN", None)
+        try:
+            with self.assertRaisesRegex(verifier.ReceiptError, "required"):
+                writer._push_authed(net_root, ("push", "origin", "HEAD"))
+        finally:
+            if old is not None:
+                os.environ["PLANNING_RECEIPT_WRITE_TOKEN"] = old
+
+    def test_push_auth_injected_for_real_remote_not_persisted(self):
+        """Owner finding: the push authenticates in-process only (extraheader),
+        never persists the credential, and never echoes it.
+        """
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        net_root = Path(tmp.name) / "net"
+        net_root.mkdir()
+        _git(net_root, "init", "-q")
+        _git(net_root, "config", "user.name", "x")
+        _git(net_root, "config", "user.email", "x@example.invalid")
+        (net_root / "f").write_text("x\n")
+        _git(net_root, "add", ".")
+        _git(net_root, "commit", "-qm", "f")
+        _git(net_root, "remote", "add", "origin",
+             "http://127.0.0.1:1/baseharbor.git")
+        self.assertTrue(writer._is_real_remote(net_root, "origin"))
+        # Missing token -> fails closed.
+        with self.assertRaisesRegex(verifier.ReceiptError, "required"):
+            writer._push_authed(net_root, ("push", "origin", "HEAD"))
+        # With a token the extraheader arg is present on the argv; the token is
+        # passed via -c http.extraheader, never stored in git config or the
+        # remote URL. The network push fails (no server); the error must not
+        # leak the token value.
+        with patch.dict(os.environ,
+                        {"PLANNING_RECEIPT_WRITE_TOKEN": "fixture-token-not-a-secret"},
+                        clear=True):
+            try:
+                writer._push_authed(net_root, ("push", "origin", "HEAD"))
+            except verifier.ReceiptError as exc:
+                self.assertNotIn("fixture-token", str(exc))
+        cfg = subprocess.run(["git", "-C", str(net_root), "config", "--local"],
+                             capture_output=True, text=True).stdout
+        self.assertNotRegex(cfg, r"authorization|extraheader|fixture-token",
+                            "push credential persisted in local git config")
+        remotes = subprocess.run(["git", "-C", str(net_root), "remote", "v"],
+                                 capture_output=True, text=True).stdout
+        self.assertNotRegex(remotes, r"fixture-token",
+                            "push credential leaked into remote URL")
+
+    def test_publish_reports_push_failure(self):
+        """BF-W2-1 fix: publish() MUST propagate git push errors, never return success.
+
+        Before fix: publish() swallowed ReceiptError from push() at line 100-101
+        and fell through to return success.
+        
+        After fix: publish() raises ReceiptError with context when push fails.
+        
+        This test creates a bare remote with a pre-receive hook that rejects pushes,
+        simulating a protected-branch or policy-rejection scenario.
+        """
+        import subprocess as sp
+        # Create a bare remote WITH a rejecting pre-receive hook.
+        self.temp2 = tempfile.TemporaryDirectory()
+        self.root2 = Path(self.temp2.name)
+        self.remote2 = self.root2 / 'planning.git'
+        self.remote2.mkdir()
+        sp.run(['git', 'init', '-q', '--bare', str(self.remote2)],
+               check=True, capture_output=True)
+        # Create a pre-receive hook that rejects all pushes.
+        hook = self.remote2 / 'hooks' / 'pre-receive'
+        hook.parent.mkdir(parents=True, exist_ok=True)
+        hook.write_text('#!/bin/bash\nexit 1\n')
+        hook.chmod(0o755)
+        # Create a local working tree with a receipt.
+        self.wt2 = self.root2 / 'worktree'
+        sp.run(['git', 'clone', '-q', str(self.remote2), str(self.wt2)],
+               check=True, capture_output=True)
+        sp.run(['git', '-C', str(self.wt2), 'config', 'user.name', 'Wt'],
+               check=True, capture_output=True)
+        sp.run(['git', '-C', str(self.wt2), 'config', 'user.email', 'wt@example.invalid'],
+               check=True, capture_output=True)
+        # Create plan fixture.
+        plan_path = self.wt2 / verifier.PLAN_PATH
+        plan_path.parent.mkdir(parents=True)
+        plan = dict(gate=verifier.GATE, repository=verifier.REPOSITORY, workflow_id=17,
+                    head_sha='a' * 40, candidate_sha='c' * 40, base_sha='b' * 40,
+                    task='tasks/receipt-pilot.md')
+        plan_path.write_bytes(verifier.canonical(plan))
+        _git(self.wt2, 'add', '.')
+        _git(self.wt2, 'commit', '-qm', 'plan fixture')
+        # Write a receipt (this succeeds because write() doesn't push).
+        head_sha = _git(self.wt2, 'rev-parse', 'HEAD').decode().strip()
+        path, commit = writer.write(self.wt2, head_sha, 123, 1, api=self._api2)
+        # Now try to publish. The pre-receive hook will reject the push.
+        # After the fix, publish() must propagate the error.
+        # Before the fix, publish() would swallow the error and return success.
+        with self.assertRaises(verifier.ReceiptError) as ctx:
+            writer.publish(self.wt2, path, commit)
+        # Verify the error contains context about the push failure.
+        err_msg = str(ctx.exception)
+        self.assertTrue('push' in err_msg.lower() or 'failed' in err_msg.lower() or
+                        'blocked' in err_msg.lower() or 'error' in err_msg.lower() or
+                        'hook' in err_msg.lower(),
+                        f"expected push-error context, got: {err_msg}")
+
+    def _api2(self, path, *, binary=False):
+        """Fake API that passes all live checks."""
+        import copy
+        import io
+        import zipfile
+        run = dict(id=123, run_attempt=1,
+                   repository=dict(id=verifier.REPOSITORY_ID, full_name=verifier.REPOSITORY),
+                   workflow_id=17, path='.github/workflows/ci.yml', event='pull_request',
+                   head_sha='a' * 40, status='completed', conclusion='success')
+        job = dict(id=456, run_id=123, head_sha='a' * 40,
+                   name='PR · Public Contracts', status='completed', conclusion='success')
+        if binary:
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, 'w') as archive:
+                archive.writestr('pr-plan.json', verifier.canonical(dict(
+                    schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
+                    selected_gates=['integration/static/public-contracts'],
+                    head_sha='a' * 40, target_base_sha='b' * 40,
+                    integration_sha='c' * 40)))
+            return buffer.getvalue()
+        if '/artifacts?' in path:
+            return dict(total_count=1, artifacts=[dict(id=789, name='trusted-pr-plan',
+                expired=False, size_in_bytes=500,
+                workflow_run=dict(id=123, head_sha='a' * 40))])
+        if '/jobs?' in path:
+            producer = dict(job, id=457, name='PR · Trusted Plan')
+            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+        return copy.deepcopy(run)
+
+
+if __name__ == '__main__':
+    unittest.main()

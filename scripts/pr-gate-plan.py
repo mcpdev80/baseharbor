@@ -327,6 +327,21 @@ CAPABILITY_CHECKS = [
     {'id': 'capability-package-tests', 'owner': 'internal/capability',
      'command': 'go test ./internal/capability/... -count=1'},
 ]
+# Exact reviewed runtime native-binding projection of PR #1096 (b7b21dad): the
+# credential-material + host-port projection source of the switch-back retention
+# change. Its paired package regression runs under the existing source-contracts
+# check (go test ./internal/application/... ./contracts/...), which qualifies
+# this production file exactly like the receipt-pilot sources in the #1091
+# bootstrap (83d53e86). No new gate, no runner change: the exact reviewed
+# candidate resolves while every other internal/application/ source stays on
+# the conservative unresolved branch below.
+PROJECTION_REVIEWED_HEAD = 'b7b21dadfc2b4826d51be8a059328bcbdcad1a87'
+PROJECTION_REVIEWED_FILES = frozenset({
+    'internal/application/runtime_native_binding_projection.go',
+    'internal/application/runtime_environment.go',
+    'internal/application/runtime_placement_retention_test.go',
+})
+PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
@@ -627,6 +642,84 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
+# Receipt control-plane (v0.4.27 PR1/PR2): the three canonical scripts, their
+# focused regressions and the three receipt-*.yml control-plane workflows carry a
+# bounded, reviewed scope (canonical fields, attempt-1-only live pilot, dormant
+# job-level never-true guards, fail-closed base-SHA task link). These are exact
+# path-prefixes bound to existing CI/WIZARD/PYTEST classes, not a directory-level
+# exemption: a receipt production source change stays bound to pr-planner-tests
+# + focused script suite (PR1 core) and a receipt workflow change stays bound to
+# ci-policy + ci-actionlint + pr-planner-tests (PR2 control plane). Any path that
+# is not one of these exact prefixes keeps the fail-closed fallthrough below and
+# stays unresolved; an added, deleted, renamed or unreviewed receipt file is not
+# covered. This durable mapping covers every later PR1/PR2 receipt PR without a
+# per-candidate bootstrap and precedes the runtime-workflow / ci-executor
+# fallthroughs so it is not masked by them.
+RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
+    'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
+    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+})
+RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
+    'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
+    'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
+    'scripts/test_receipt_tasklink.py',
+    'scripts/test_receipt_postrun.py',
+})
+RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
+RECEIPT_CANDIDATE_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/receipt-approval.yml': 'modified',
+    '.github/workflows/receipt-post-run.yml': 'modified',
+    '.github/workflows/receipt-shadow.yml': 'modified',
+    'docs/de/development/minimal-ci-receipts.md': 'modified',
+    'docs/development/minimal-ci-receipts.md': 'modified',
+    'evidence-r27/ci1-repair.md': 'added',
+    'evidence-r27/cy1.md': 'added',
+    'evidence-r27/cy3.md': 'added',
+    'evidence-r27/f1-fix.md': 'added',
+    'evidence-r27/f1x.md': 'added',
+    'evidence-r27/f1z2.md': 'added',
+    'evidence-r27/f345b.md': 'added',
+    'evidence-r27/f3b-fix.md': 'added',
+    'evidence-r27/f8-corrective.md': 'added',
+    'evidence-r27/g1x.md': 'added',
+    'evidence-r27/g1y.md': 'added',
+    'evidence-r27/g2x.md': 'added',
+    'evidence-r27/r5i.md': 'added',
+    'evidence-r27/s2-v3staging.md': 'added',
+    'evidence-r27/w1.md': 'added',
+    'evidence-r27/w3.md': 'added',
+    'evidence-r27/w4b3.md': 'added',
+    'evidence-r27/w4c.md': 'added',
+    'evidence-r27/w5.md': 'added',
+    'evidence-r27/x1-fix.md': 'added',
+    'evidence/g1/evidence-r27/g1.md': 'added',
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/receipt_tasklink.py': 'modified',
+    'scripts/receipt_verifier.py': 'modified',
+    'scripts/receipt_writer.py': 'modified',
+    'scripts/test_ci_workflow_policy_receipts.py': 'modified',
+    'scripts/test_pr_check_runner.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    'scripts/test_receipt_chain.py': 'modified',
+    'scripts/test_receipt_postrun.py': 'added',
+    'scripts/test_receipt_tasklink.py': 'modified',
+    'scripts/test_receipt_verifier.py': 'modified',
+    'scripts/test_receipt_writer.py': 'modified',
+}
+RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
+    '.github/workflows/receipt-approval.yml',
+    '.github/workflows/receipt-post-run.yml',
+    '.github/workflows/receipt-shadow.yml',
+})
+PINBUMP_INVENTORY = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_pr_authenticated_results.py': 'modified',
+}
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -634,6 +727,8 @@ CI_CHECKS = [
      'command': 'bash scripts/ci-workflow-policy.sh'},
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+    {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
@@ -698,7 +793,9 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     Re-run the real diff resolver so caller-supplied inventories, integration
     parents and merge trees cannot substitute for Git evidence. This bounded
     record enables only the three CI scripts, optionally with ci.yml and its
-    mandatory syntax check, through an exact immutable inventory.
+    mandatory syntax check, through an exact immutable inventory. The pin-bump
+    inventory extends the allowed set with the same four CI paths plus the
+    authenticated-results test, still through an exact immutable tuple.
     Hash the frozen reviewed blobs; later source may only add exact Git-computed
     first-parent merges of authenticated target history. This permits strict
     up-to-date integration without accepting candidate-authored follow-ups.
@@ -742,14 +839,17 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         script_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
             'scripts/test_pr_gate_plan.py')}
+        receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
         workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
+        pinbump_files = PINBUMP_INVENTORY
         records = []
         for block in blocks:
             record = json.loads(block, object_pairs_hook=unique_object)
             if not isinstance(record, dict):
                 return None
             checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                      if record.get('files') == workflow_files else CI_CHECKS)
+                      if record.get('files') in (workflow_files, pinbump_files)
+                      else CI_CHECKS)
             expected_ids = {check['id'] for check in checks}
             if (not isinstance(record, dict) or set(record) != {
                     'repository', 'target_branch', 'reviewed_head', 'files',
@@ -758,7 +858,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     record['target_branch'] != context_target_branch or
                     not isinstance(record['reviewed_head'], str) or
                     re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, workflow_files) or
+                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
                     not isinstance(record['file_hashes'], dict) or
                     set(record['file_hashes']) != set(record['files']) or
                     any(not isinstance(value, str) or
@@ -801,7 +901,8 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     break
             else:
                 return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                        if record['files'] == workflow_files else CI_CHECKS)
+                        if record['files'] in (workflow_files, pinbump_files)
+                        else CI_CHECKS)
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
     return None
@@ -943,6 +1044,9 @@ def plan(diff, requirements, mapping, repository='.',
          (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
            CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
            'reviewed exact #999 GC evidence retention candidate'),
+        (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
@@ -1306,6 +1410,11 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path in PROJECTION_REVIEWED_FILES:
+            area = 'application-projection-reviewed-path'
+            require(PROJECTION_CHECKS)
+            if path_status.get(path) != 'modified' and path_status.get(path) != 'added':
+                unresolved.append('runtime native binding projection source status requires exact reviewed candidate: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
@@ -1340,6 +1449,16 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'docker-deployment-unresolved'
             require(CODE_CHECKS)
             unresolved.append('deployment/security/backup script impact needs specific native qualification: ' + path)
+        elif path in RECEIPT_CONTROL_PLANE_WORKFLOWS:
+            area = 'receipt-control-plane-workflow'
+            require(CI_CHECKS)
+            require(WORKFLOW_SYNTAX_CHECKS)
+        elif path in RECEIPT_CONTROL_PLANE_TEST_SCRIPTS:
+            area = 'receipt-control-plane-test'
+            require(CI_CHECKS)
+        elif path in RECEIPT_CONTROL_PLANE_SCRIPTS:
+            area = 'receipt-control-plane-script'
+            require(CI_CHECKS)
         elif path in PLANNING_WORKFLOWS:
             area = 'documentation-workflow'
             require(DOC_CHECKS)

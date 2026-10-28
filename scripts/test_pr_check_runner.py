@@ -1,5 +1,8 @@
 """Check the trusted dynamic validation interface without running native gates."""
 import importlib.util
+import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -212,6 +215,24 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION"', workflow)
         self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
 
+    def test_actual_workflow_route_receipt_execution_uses_trusted_base(self):
+        # R27-F2: receipt suites must be selected by the trusted base runner in
+        # both places they execute: the validation matrix case and the focused
+        # job. A candidate-owned pr-check-runner.py must never define its own
+        # receipt discovery.
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github' / 'workflows' / 'ci.yml').read_text()
+        start = workflow.index('            receipt-execution-tests)\n')
+        fragment = workflow[start:workflow.index('              ;;', start)]
+        self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
+        self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
+        self.assertIn('--check "$VALIDATION"', fragment)
+        self.assertIn('git show "${{ github.event.pull_request.base.sha }}:'
+                      'scripts/pr-check-runner.py"', workflow)
+        self.assertNotIn(
+            'python3 scripts/pr-check-runner.py execute --check '
+            'receipt-execution-tests', workflow)
+
     def test_both_required_families_execute_or_block(self):
         from subprocess import CompletedProcess
         from unittest.mock import patch
@@ -260,5 +281,71 @@ class Core754MCPExecutionTests(unittest.TestCase):
         with patch.object(runner.subprocess, 'run', return_value=CompletedProcess([], 0, '', '')):
             with self.assertRaisesRegex(RuntimeError, 'zero matching tests'):
                 runner.execute_validation('wizard-core754-mcp-tests', '.')
+
+    def test_receipt_registration_files_exist(self):
+        # R27-F2 registration exactness: every module the runner will execute
+        # must exist as a scripts/ file, so the execution list can never drift
+        # into ghosts or silently-skipped glob survivors.
+        repo = Path(__file__).resolve().parent.parent
+        for module in runner.RECEIPT_EXECUTION_SUITES:
+            with self.subTest(module=module):
+                self.assertTrue((repo / 'scripts' / (module + '.py')).is_file(),
+                                'registered receipt suite does not exist: ' + module)
+        self.assertNotIn('test_receipt*.py',
+                         ' '.join(runner.RECEIPT_EXECUTION_SUITES))
+
+    def test_receipt_execution_selects_exact_registered_modules(self):
+        # The check must invoke unittest with the explicit registered module
+        # list - never a filename glob that can silently drop suites.
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        captured = {}
+
+        def fake_run(argv, **kwargs):
+            captured['argv'] = list(argv)
+            output = ''.join(
+                'test_x (%s.Cases.test_x) ... ok\n' % module
+                for module in runner.RECEIPT_EXECUTION_SUITES)
+            return CompletedProcess(argv, 0, output + 'Ran 5 tests\nOK\n', '')
+        with patch.object(runner.subprocess, 'run', side_effect=fake_run):
+            executed = runner.execute_validation(
+                'receipt-execution-tests',
+                str(Path(__file__).resolve().parent.parent))
+        self.assertNotIn('discover', captured['argv'])
+        self.assertNotIn('-p', captured['argv'])
+        for module in runner.RECEIPT_EXECUTION_SUITES:
+            self.assertIn(module, captured['argv'])
+        self.assertEqual([module + '.py' for module in
+                          runner.RECEIPT_EXECUTION_SUITES], executed)
+
+    def test_receipt_execution_fails_closed(self):
+        repo = str(Path(__file__).resolve().parent.parent)
+        from unittest.mock import patch
+        from subprocess import CompletedProcess
+        ok_output = ''.join(
+            'test_x (%s.Cases.test_x) ... ok\n' % module
+            for module in runner.RECEIPT_EXECUTION_SUITES) + 'Ran 5 tests\nOK\n'
+        with self.subTest(failing_run=True):
+            with patch.object(runner.subprocess, 'run',
+                              return_value=CompletedProcess([], 1, 'FAILED', '')):
+                with self.assertRaisesRegex(RuntimeError, 'execution failed'):
+                    runner.execute_validation('receipt-execution-tests', repo)
+        with self.subTest(zero_tests=True):
+            with patch.object(runner.subprocess, 'run',
+                              return_value=CompletedProcess([], 0, 'Ran 0 tests\nOK\n', '')):
+                with self.assertRaisesRegex(RuntimeError, 'no receipt test executed'):
+                    runner.execute_validation('receipt-execution-tests', repo)
+        with self.subTest(dropped_suite=True):
+            partial = ok_output.replace(
+                'test_ci_workflow_policy_receipts.', 'other_module.')
+            with patch.object(runner.subprocess, 'run',
+                              return_value=CompletedProcess([], 0, partial, '')):
+                with self.assertRaisesRegex(RuntimeError, 'did not execute'):
+                    runner.execute_validation('receipt-execution-tests', repo)
+        with self.subTest(missing_file=True):
+            import tempfile
+            with tempfile.TemporaryDirectory() as empty_repo:
+                with self.assertRaisesRegex(RuntimeError, 'registered receipt suite missing'):
+                    runner.execute_validation('receipt-execution-tests', empty_repo)
 if __name__ == '__main__':
     unittest.main()
