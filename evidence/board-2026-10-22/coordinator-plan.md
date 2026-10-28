@@ -559,3 +559,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:3xZ q5 Statusbefehl (Blip-Korrektur).
 - 09:4xZ q5 Edit-Injection: Konstanten-Block aus /tmp/opencode/q5_block.py (41 Zeilen, konkrete Position).
 - 10:1xZ q5 ROTIERT (silent), Commit d94d051e lokal vorhanden — Coord vollendet Transport (Push).
+- 10:2xZ qrv/flash: Q-Review dispatched (SPEC + Register-Entscheidung als Massstab).
