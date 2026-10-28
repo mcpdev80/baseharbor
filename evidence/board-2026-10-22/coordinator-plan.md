@@ -461,3 +461,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 04:4xZ bz3 skeleton pushed (c9b46b66) — korrekt schrittweise.
 - 04:5xZ gx1 DONE (Dossier committed), rotiert; bz3 schreibt Abschnitte.
 - 05:0xZ bz3 DONE echt (75 Zeilen Dossier, branch 55544914), rotiert.
+- 05:3xZ Ruhephase: alles Preparete done (Belegsetz/Hygiene/Wiring/CI-Dossiers), Pool wartet auf 1142-Trigger.
