@@ -133,6 +133,20 @@ def _scrub_secret(text: str) -> str:
     return redacted
 
 
+def _reset_to(root, head: str) -> bool:
+    """Point the working tree at *head* and return True; return False only when
+    the reset itself fails.
+
+    The caller verifies afterwards that the resulting HEAD still fast-forwards
+    the remote, so an unconditional hard reset here is safe and never raises.
+    """
+    try:
+        git(root, "reset", "--hard", head)
+    except Exception:
+        return False
+    return True
+
+
 def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
     """Re-apply exactly our own receipt edit onto the fresh remote HEAD.
 
@@ -146,9 +160,7 @@ def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
     if current is not None:
         # A receipt already exists on the fresh remote — do not touch it.
         return False
-    try:
-        git(root, "reset", "--hard", head)
-    except Exception:
+    if not _reset_to(root, head):
         return False
     if _current_remote_bytes(root, path) is not None:
         # An unrelated edit added its own receipt here; never overwrite it.

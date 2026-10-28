@@ -492,7 +492,7 @@ class F3RetryRecoveryTest(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.bare = self.root / "planning.bare"
         self.bare.mkdir()
-        _run(["git", "init", "--bare", "-q", str(self.bare)])
+        _run(["git", "init", "--bare", "-q", "--initial-branch=main", str(self.bare)])
         self.planning = self.root / "planning"
         self.planning.mkdir()
         self._init_planning(self.planning)
@@ -542,13 +542,16 @@ class F3RetryRecoveryTest(unittest.TestCase):
         _run(["git", "-C", root, "config", "user.email", "other@example.invalid"])
 
     def test_unrelated_edit_is_preserved_and_own_receipt_reapplied(self):
-        # 1. Unrelated concurrent edit published to remote main.
-        self._author_other(self.bare)
-        unrelated = self.root / "unrelated.txt"
-        unrelated.write_text("side change\n")
-        _run(["git", "-C", self.bare, "add", "-A"])
-        _run(["git", "-C", self.bare, "commit", "-qm", "unrelated side edit"])
-        _run(["git", "-C", self.bare, "push", "-q", "origin", "main"])
+        # 1. Unrelated concurrent edit published to remote main from a second
+        #    working tree, so the bare keeps no worktree of its own.
+        side = self.root / "side"
+        _run(["git", "clone", "-q", str(self.bare), str(side)])
+        _run(["git", "-C", side, "config", "user.name", "concurrent"])
+        _run(["git", "-C", side, "config", "user.email", "other@example.invalid"])
+        (side / "unrelated.txt").write_text("side change\n")
+        _run(["git", "-C", side, "add", "-A"])
+        _run(["git", "-C", side, "commit", "-qm", "unrelated side edit"])
+        _run(["git", "-C", side, "push", "-q", "origin", "main"])
 
         # 2. A second Planning working tree that is behind the unrelated edit
         #    but carries an un-published local receipt commit for run 7.
@@ -574,12 +577,15 @@ class F3RetryRecoveryTest(unittest.TestCase):
                 behind, path, local_commit)
 
         remote_main = self._git(self.bare, "rev-parse", "main").decode().strip()
+        print("\nDEBUG pub:", pub, "intro:", intro, "remote_main:", remote_main)
+        print("DEBUG intro==local:", intro == local_commit, "pub==remote:", pub == remote_main)
         # The unrelated edit must survive on the remote...
         side = self._git(self.bare, "show", f"{remote_main}:unrelated.txt").decode()
         self.assertEqual(side, "side change\n")
         # ...and our own receipt must be durable on the remote at the re-applied
         # commit, introduced by the first commit that added the path.
-        remote_raw = self._git(self.bare, "show", f"{remote_main}:{path}").encode()
+        remote_raw = self._git(self.bare, "show", f"{remote_main}:{path}").strip()
+        print("DEBUG remote_raw==raw:", remote_raw == raw)
         self.assertEqual(receipt_verifier.receipt(remote_raw)["run"]["id"], 7)
         self.assertEqual(intro, local_commit)
         self.assertEqual(pub, remote_main)
@@ -587,20 +593,26 @@ class F3RetryRecoveryTest(unittest.TestCase):
     def test_genuine_conflict_blocks(self):
         # Remote already carries a durable receipt at the SAME path for a
         # different run; publishing a different receipt there must block.
-        self._author_other(self.bare)
+        side = self.root / "side2"
+        _run(["git", "clone", "-q", str(self.bare), str(side)])
+        _run(["git", "-C", side, "config", "user.name", "concurrent"])
+        _run(["git", "-C", side, "config", "user.email", "other@example.invalid"])
         other_raw = self._receipt_raw(999)
         conflict_path = "evidence/receipts/public-contracts/7-1.json"
-        _run(["git", "-C", self.bare, "checkout", "-q", "main"])
-        target = self.bare / conflict_path
+        target = side / conflict_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(other_raw)
-        _run(["git", "-C", self.bare, "add", "--", conflict_path])
-        _run(["git", "-C", self.bare, "commit", "-qm", "receipt: public-contracts record"])
+        _run(["git", "-C", side, "add", "--", conflict_path])
+        _run(["git", "-C", side, "commit", "-qm", "receipt: public-contracts record"])
+        _run(["git", "-C", side, "push", "-q", "origin", "main"])
 
         behind = self.root / "behind2"
         _run(["git", "clone", "-q", str(self.bare), str(behind)])
         _run(["git", "-C", behind, "config", "user.name", "producer"])
         _run(["git", "-C", behind, "config", "user.email", "producer@example.invalid"])
+        # Drop the 999 receipt commit so behind is behind the conflicting remote
+        # HEAD; pushing a different 7-1 bytes must then be a non-fast-forward.
+        _run(["git", "-C", behind, "reset", "--hard", "~1"])
         plan_commit = self._git(self.planning, "rev-parse", "HEAD").decode().strip()
         raw = self._receipt_raw(7)
         path = "evidence/receipts/public-contracts/7-1.json"
