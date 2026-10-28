@@ -542,3 +542,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 06:2xZ qb1 ohne Artefakte nach 15min -> Status/Deadline-Befehl.
 - 06:3xZ Q sichtbar: c5e8d221 pushed, Commits folgen.
 - 06:4xZ Anmerkung: Q-Branch enthaeltCoord-Kommentar-Commits (Root-Repo-Leichen aus frueheren Ops) — Inhalt qb1: 1 Commit; Bereinigung spaeter per Squash-Merge.
+- 07:0xZ INCIDENT#6: root git add -A sog product-submodules in Q-Branch (422 Commits). Q neu per Coord-Aufbau (sauber), Root-Commits nur noch dateispezifisch.
