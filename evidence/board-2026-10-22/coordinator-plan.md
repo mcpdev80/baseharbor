@@ -435,3 +435,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:0xZ doc1 DONE: planning PR#11 gemergt (Index-Dossier), rotiert.
 - 22:1xZ rv7c zu langsam (kein PLAN-Write) -> rv8/flash Hard-Cap-Review dispatched; rv7c laeuft weiter (bei doppeltem Urteil: ersterer zaehlt); prune+pull done.
 - 22:2xZ nt1 busy>40 ohne Dialog -> FINISH-Befehl (mit root-git-Korrektur nachgezogen). rv8 laeuft.
+- 22:3xZ rv7c rotiert (Doppel-Review-Verletzung durch meinen Fehler beim Prune-Check). rv8 ist offizieller #1142-Reviewer.
