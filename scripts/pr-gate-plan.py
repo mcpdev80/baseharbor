@@ -665,6 +665,49 @@ RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_tasklink.py',
     'scripts/test_pr_gate_plan_receipt_paths.py',
 })
+RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
+RECEIPT_CANDIDATE_REVIEWED_FILES = {
+    '.github/workflows/ci.yml': 'modified',
+    '.github/workflows/receipt-approval.yml': 'modified',
+    '.github/workflows/receipt-post-run.yml': 'modified',
+    '.github/workflows/receipt-shadow.yml': 'modified',
+    'docs/de/development/minimal-ci-receipts.md': 'modified',
+    'docs/development/minimal-ci-receipts.md': 'modified',
+    'evidence-r27/ci1-repair.md': 'added',
+    'evidence-r27/cy1.md': 'added',
+    'evidence-r27/cy3.md': 'added',
+    'evidence-r27/f1-fix.md': 'added',
+    'evidence-r27/f1x.md': 'added',
+    'evidence-r27/f1z2.md': 'added',
+    'evidence-r27/f345b.md': 'added',
+    'evidence-r27/f3b-fix.md': 'added',
+    'evidence-r27/f8-corrective.md': 'added',
+    'evidence-r27/g1x.md': 'added',
+    'evidence-r27/g1y.md': 'added',
+    'evidence-r27/g2x.md': 'added',
+    'evidence-r27/r5i.md': 'added',
+    'evidence-r27/s2-v3staging.md': 'added',
+    'evidence-r27/w1.md': 'added',
+    'evidence-r27/w3.md': 'added',
+    'evidence-r27/w4b3.md': 'added',
+    'evidence-r27/w4c.md': 'added',
+    'evidence-r27/w5.md': 'added',
+    'evidence-r27/x1-fix.md': 'added',
+    'evidence/g1/evidence-r27/g1.md': 'added',
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/receipt_tasklink.py': 'modified',
+    'scripts/receipt_verifier.py': 'modified',
+    'scripts/receipt_writer.py': 'modified',
+    'scripts/test_ci_workflow_policy_receipts.py': 'modified',
+    'scripts/test_pr_check_runner.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    'scripts/test_receipt_chain.py': 'modified',
+    'scripts/test_receipt_postrun.py': 'added',
+    'scripts/test_receipt_tasklink.py': 'modified',
+    'scripts/test_receipt_verifier.py': 'modified',
+    'scripts/test_receipt_writer.py': 'modified',
+}
 RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-approval.yml',
     '.github/workflows/receipt-post-run.yml',
@@ -785,6 +828,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         script_files = {path: 'modified' for path in (
             'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
             'scripts/test_pr_gate_plan.py')}
+        receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
         workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
         records = []
         for block in blocks:
@@ -801,7 +845,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     record['target_branch'] != context_target_branch or
                     not isinstance(record['reviewed_head'], str) or
                     re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, workflow_files) or
+                    record['files'] not in (script_files, receipt_files, workflow_files) or
                     not isinstance(record['file_hashes'], dict) or
                     set(record['file_hashes']) != set(record['files']) or
                     any(not isinstance(value, str) or
