@@ -426,3 +426,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 19:3xZ rv7b END ohne Evidence + #1139 = SCOPE-VERLETZUNG (14 files/+3895 statt Registry-Hunk). Close + bx3/ornith Minimal-Mission dispatched; rv7b rotiert.
 - 19:5xZ Standing rules umgesetzt: pcx DONE (#1141, e4ec565a, 1-File-Diff, persist true @200, DONE ohne Evidence-Datei=Branch-Nachweis?) rotiert; pl1 DONE rotiert; stg6 integriert pcx+f1x ALS COMMITS auf #1138 (kein neuer PR). Vor Shadow-Run: Kann-jeder-Schritt-Checkliste (Auth=Owner-Token, Pin=nach Merge auf reviewed SHA, run-id/attempt=API).
 - 20:0xZ pl1 FALSE-END (kein branch/PR/worktree, worktree-remove-V.a.) -> pl2 fresh mit ls-remote-Zeugenzwang.
+- 20:1xZ Tick: 3 Lanes frueh (keine Tips/Evidences), acked; nt1/qwen dispatched (3 lokale Negativtests tmp-ops, Vorbereitung Shadow-Gate).
