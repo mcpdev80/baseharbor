@@ -546,3 +546,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 07:1xZ Incident#6 abgeschlossen: Remote unveraendert, Kandidat clean (0 coord-Commits), Root-Klon-Mechanismus in RUNBOOK 14 dokumentiert. Q Neubau als qb2 folgt jetzt.
 - 07:2xZ qb2/flash dispatched (Q-Neubau mit Toplevel-Guard pro Befehl).
 - 07:3xZ Tick: qb2 busy (kein push), acks ok.
+- 07:4xZ qb2 15min ohne Push -> Statusbefehl.
