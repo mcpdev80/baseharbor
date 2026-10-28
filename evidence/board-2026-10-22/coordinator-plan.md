@@ -500,3 +500,5 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 18:0xZ ROOT CAUSE: 126->29 Worktree-Registraturen (Boot-Silence by 'already used'), 2 aktive (f345b) bleiben.
 - 18:1xZ f345c/ornith dispatched auf BEREITS gemounteten f345b-Worktree (Boot-Path entfernt).
 - 18:2xZ Tick: f8z/orthogonale MissioN dispatched (F8 evidence-only, disjunkt zu f345c).
+
+- 18:4xZ Tick: Dialog war BLOCKER der Silent-Lanes (git-config ~/*) -> einmal erlaubt; Hinweis an f345c; acks ok.
