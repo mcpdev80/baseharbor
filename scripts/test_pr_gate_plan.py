@@ -2871,6 +2871,24 @@ class WorkflowBindingActivationTests(TrustedBindingActivationTests):
     FILES = {**TrustedBindingActivationTests.FILES, '.github/workflows/ci.yml': 'modified'}
 
 
+class PinbumpBindingActivationTests(TrustedBindingActivationTests):
+    CHECKS = planner.CI_CHECKS + planner.WORKFLOW_SYNTAX_CHECKS
+    FILES = planner.PINBUMP_INVENTORY
+
+    def test_pinbump_inventory_resolves_with_full_check_set(self):
+        actual = self.resolved()
+        self.assertEqual(len(self.FILES), len(actual['changes']))
+        self.assertEqual(self.CHECKS, self.checks(actual))
+
+    def test_pinbump_inventory_missing_file_fails_closed(self):
+        for path in list(self.FILES):
+            record = copy.deepcopy(self.record)
+            del record['files'][path]
+            del record['file_hashes'][path]
+            with self.subTest(missing=path):
+                self.assertIsNone(self.checks(self.resolved(record)))
+
+
 class BootstrapExceptionTests(unittest.TestCase):
     """Fail-first: only PRs whose HEAD references the trusted Akte bootstrap.
 
