@@ -526,3 +526,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:2xZ CODEX DECISION C committed; hsync merges F3-F5 in Kandidaten (H-Einfrieren Schritt 1).
 - 01:4xZ vf2 DONE-ohne-Datei rotiert; Coord-Zeuge 6 fail auf e4d2b0d4; fx2/ornith dispatched (6->0 gruen, Branch f345b).
 - 02:3xZ Tick: fx2 Deadline-Befehl (20min ohne push).
+- 03:0xZ fx3=fx2 Dirty-Irrtum korrigiert; Coord-Repro: 6 fail real; fx4/ornith mit exakten 3 Fehlerklassen dispatched.
