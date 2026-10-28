@@ -445,3 +445,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:5xZ Tick: kein Lane aktiv (Entscheidungsblock beim Owner). CI#1138: FocusedPython faellt mit 'unsupported executable validation' (c6db56c4-Base) = Klasse B im Kandidaten selbst, wartet auf 1142.
 - 01:0xZ trotz Owner-Block 2 Lanes: tb1/qwen (trusted-base Diagnose) + rv9/flash (Vorpruefung Substanz #1138).
 - 01:1xZ tb1 DONE ohne END-Keyword (Dossier vollstaendig, toleriert): pin c6db56c4 liefert NUR pr-required-final.py; gate-planner kommt dynamisch von base. Klasse-B-Hebel = required-final vom Pin ODER Pin-Aenderung.
+- 01:2xZ rv9 DONE-ohne-Datei (Worktree weg), rc-Zeilen aus Transcript: s. naechste Zeile dieses Logs.
