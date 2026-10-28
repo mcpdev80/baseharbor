@@ -575,3 +575,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 14:3xZ Q' = PR #1147 (self-binding H-inventory auf develop); alte Q1-Branch c8673c45 existiert noch (unberuehrt, ignoriert).
 - 14:5xZ Tick: #1147 weiterhin offen (Bypass-Klick ausstehend), 42 Reminder gequenzt.
 - 15:1xZ Tick: 1147 weiter offen.
+- 15:2xZ nt2/qwen dispatched (3 Negativtests gegen H 8a25f4a0, regressive Beweislage).
