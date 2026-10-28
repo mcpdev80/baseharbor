@@ -543,3 +543,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 06:3xZ Q sichtbar: c5e8d221 pushed, Commits folgen.
 - 06:4xZ Anmerkung: Q-Branch enthaeltCoord-Kommentar-Commits (Root-Repo-Leichen aus frueheren Ops) — Inhalt qb1: 1 Commit; Bereinigung spaeter per Squash-Merge.
 - 07:0xZ INCIDENT#6: root git add -A sog product-submodules in Q-Branch (422 Commits). Q neu per Coord-Aufbau (sauber), Root-Commits nur noch dateispezifisch.
+- 07:1xZ Incident#6 abgeschlossen: Remote unveraendert, Kandidat clean (0 coord-Commits), Root-Klon-Mechanismus in RUNBOOK 14 dokumentiert. Q Neubau als qb2 folgt jetzt.

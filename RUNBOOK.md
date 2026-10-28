@@ -232,3 +232,6 @@ Vor jedem gehosteten Lauf (Shadow-Run) die Kann-jeder-Schritt-Zeile in die Evide
 
 ## 13. Lane-Boot-Stille durch Worktree-Registratur (Befund 2026-10-28)
 Vor jedem Spawn: `git -C baseharbor worktree prune` (Prüfumgebung) und `worktree list | wc -l` notieren. >60 Eintraege oder Zielbranch 'already used' = Lane endet kommentarlos nach accepted-Toast. Altlaener-Entfernung nur physisch-existing; Registtureintrag ist das Gefahrdungspotential, nicht das Verzeichnis.
+
+## 14. Root-Repo ist ein baseharbor-Klon (Incident#6, 2026-10-29)
+Der Workspace-root teilt sich die Origin mit baseharbor. Root-`git add -A` committet daher in das PRODUKT-Repo (424 lokale Coord-Commits, nie gepusht — Remote sauber). Regeln: (1) Coord committet root-Evidence NUR mit Dateipfaden (git add <files>), niemals -A. (2) Produkt-Branch-Transporte laufen ausschliesslich in baseharbor/ oder seinen Worktrees, nie im root-CWD. (3) Vor jedem Transport-Commit: git rev-parse --show-toplevel gegen das intendierte Repo pruefen.
