@@ -451,3 +451,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:5xZ Tick: pool-empty geblockt; ci38b/flash dispatched (CI-Dossier 94f35d02 A/B-Klassifikation + gruen-wiederverwendbar-Liste).
 - 02:0xZ ci38b DONE (END-Marker fehlerhaft 'DONE3', Dossier voll). Lane rotiert, committed.
 - 02:1xZ nt1-Leiche entfernt (war als letzter 'busy' gemeldet,gone seit 21:5x). Reminder-Zyklus sauber.
+- 02:4xZ fx1 DONE (END-Keyword fehlte, Dossier 3/3 Sektionen) committed, rotiert.
