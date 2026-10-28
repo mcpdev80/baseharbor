@@ -450,3 +450,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:4xZ Tick: Watch-Reminder-Müll von 5 toten panes entfernt; acks sauber; Block (1142-Ruleset) beim Owner, kein Scheinauftrag.
 - 01:5xZ Tick: pool-empty geblockt; ci38b/flash dispatched (CI-Dossier 94f35d02 A/B-Klassifikation + gruen-wiederverwendbar-Liste).
 - 02:0xZ ci38b DONE (END-Marker fehlerhaft 'DONE3', Dossier voll). Lane rotiert, committed.
+- 02:1xZ nt1-Leiche entfernt (war als letzter 'busy' gemeldet,gone seit 21:5x). Reminder-Zyklus sauber.
