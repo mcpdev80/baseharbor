@@ -516,3 +516,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:2xZ nq1/qwen dispatched (Qualifikations-Mechanismus-Analyse, read-only).
 - 22:3xZ f345c transport-konform: F3a+F3b gelandet (71187c52,f0cb1065). nq1 laeuft.
 - 22:5xZ nq1 BLOCKED rotiert; nq2/ornith dispatched (read-only Qualifikations-Analyse).
+- 23:0xZ f345c busy>40 ohne Dialog, aber 2 dirty Dateien -> Push-Deadline-Befehl.
