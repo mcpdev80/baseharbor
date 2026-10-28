@@ -632,3 +632,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:4xZ Kette3: Promotion-PR created (tree==develop ac575452, -X ours, 0 Abweichungen).
 - 22:0xZ Token-Luecke Owner-Befund uebernommen: PR #1166 (3 env-Zeilen). #1165 wird NACH Merge geschlossen/ersetzt (Reihenfolge!). Probe 1162 bleibt offen.
 - 22:3xZ #1167 Promotion (tree==develop fc230f9c, beide post-run-Fixes drin). Watcher laeuft.
+- 23:0xZ Probe #3 = #1168 launched, chain-1168.md watcher laeuft.
