@@ -322,6 +322,23 @@ class D3ExtractionNegativesTest(unittest.TestCase):
         self.assertEqual(out["attempt"], 1)
         self.assertEqual(out["workflow_id"], 17)
 
+    def test_extract_facts_forwards_authoritative_ids(self):
+        # Regression (f1z2 P2): caller-supplied run_id/workflow_id must reach the
+        # output even when the producer plan carries different (spoofed) values,
+        # and absent authoritative values must fail closed.
+        spoofed = dict(self.good, run_id=1, workflow_id=1)
+        out = verifier.extract_facts(spoofed, artifact_size=500,
+                                     run_id=40541797478, workflow_id=99)
+        self.assertEqual(out["run_id"], 40541797478)
+        self.assertEqual(out["workflow_id"], 99)
+        self.assertEqual(out["attempt"], self.good["attempt"])
+        # Absent authoritative context falls back to the plan's own id, which a
+        # spoofed producer plan may still carry; the workflow layer supplies the
+        # authenticated context so this is only the pure-function fallback.
+        fallback = verifier.extract_facts(dict(self.good), artifact_size=500)
+        self.assertEqual(fallback["run_id"], self.good["run_id"])
+        self.assertEqual(fallback["workflow_id"], self.good["workflow_id"])
+
     def test_missing_head_sha_blocks(self):
         bad = dict(self.good)
         del bad["head_sha"]

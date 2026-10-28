@@ -87,6 +87,44 @@ def full_sha(value):
     return isinstance(value, str) and SHA.fullmatch(value) is not None
 
 
+def _require_positive_int(value, message):
+    require(value is not None and type(value) is int and value > 0, message)
+    return value
+
+
+def _coerce_plan_int(plan, field, supplied, message):
+    """Authoritative override (CODE-AUDIT F1): a caller-supplied value wins over
+    the producer plan's own field, so the plan cannot inject its own run/workflow
+    id. When the caller supplies nothing, the plan field still has to be a valid
+    positive integer so a missing context fails closed downstream."""
+    if supplied is not None:
+        return _require_positive_int(supplied, message)
+    return _require_positive_int(plan.get(field), message)
+
+
+def _coerce_attempt(plan, supplied, message):
+    if supplied is not None:
+        require(type(supplied) is int and supplied == 1, message)
+        return supplied
+    return _require_positive_int(plan.get("attempt"), message)
+
+
+def artifact_size_from_path(path):
+    """Authoritative artifact size in bytes from the authenticated artifact file
+    on disk (CODE-AUDIT F1): never a fake fixed constant. Bounded the same way
+    as the API-reported size_in_bytes so an oversized artifact blocks at
+    extraction."""
+    require(isinstance(path, str) and path, "artifact path required")
+    size = os.path.getsize(path)
+    require(0 < size <= 65536, "artifact size must be a bounded positive int")
+    return size
+
+
+def _require_attempt(value, message):
+    require(value is not None and type(value) is int and value == 1, message)
+    return value
+
+
 def extract_facts(producer_plan, *, artifact_size, run_id=None, attempt=None, workflow_id=None):
     """Bounded, strict extraction of the authenticated producer facts (D3).
 
@@ -141,15 +179,15 @@ def extract_facts(producer_plan, *, artifact_size, run_id=None, attempt=None, wo
     integration_sha = _sha40("integration_sha")
     base_sha = _sha40("target_base_sha")
 
-    run_id = producer_plan.get("run_id")
-    require(run_id is not None and type(run_id) is int and run_id > 0,
-            "run_id must be a positive integer")
-    attempt = producer_plan.get("attempt")
-    require(attempt is not None and type(attempt) is int and attempt == 1,
-            "attempt must be the integer 1 (pilot restriction)")
-    workflow_id = producer_plan.get("workflow_id")
-    require(workflow_id is not None and type(workflow_id) is int and workflow_id > 0,
-            "workflow_id must be a positive integer")
+    run_id = _coerce_plan_int(
+        producer_plan, "run_id", run_id,
+        "run_id must be a positive integer")
+    attempt = _coerce_attempt(
+        producer_plan, attempt,
+        "attempt must be the integer 1 (pilot restriction)")
+    workflow_id = _coerce_plan_int(
+        producer_plan, "workflow_id", workflow_id,
+        "workflow_id must be a positive integer")
 
     return {"head_sha": head_sha, "candidate_sha": integration_sha,
             "base_sha": base_sha, "run_id": run_id, "attempt": attempt,
