@@ -429,3 +429,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 20:1xZ Tick: 3 Lanes frueh (keine Tips/Evidences), acked; nt1/qwen dispatched (3 lokale Negativtests tmp-ops, Vorbereitung Shadow-Gate).
 - 20:3xZ bx3 DONE #1142 (2 files +72, aber Evidence-Datei fehlt auf branch) rotiert; rv7c/flash mit Beweispflicht-Review dispatched. AGENTS/RUNBOOK: Standing rules perpetuiert (Commit).
 - 20:5xZ Tick: stg6 noch ohne push (busy merge?), nt1/ rv7c laufen, sr1/ornith dispatched (can-each-step PreFlight script).
+- 21:0xZ pl2 DONE: planning PR#10 (d4e1e4f3) gemergt (maintainer path), CardBoard auf Ein-Kandidaten-Stand.
