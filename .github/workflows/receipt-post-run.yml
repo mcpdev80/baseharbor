@@ -95,15 +95,19 @@ jobs:
             exit 1
           fi
           # Download with an explicit token, repository and artifact name; the
-          # producer uploads pr-plan.json inside a single zip, so the real
-          # artifact shape is plan.zip containing exactly one pr-plan.json.
+          # producer uploads pr-plan.json directly as the artifact; gh run
+          # download unpacks the artifact zip, yielding pr-plan.json.
           echo "Downloading trusted-pr-plan artifact from run $RUN_ID attempt $ATTEMPT (workflow_id=$WORKFLOW_DEFINITION_ID)"
           gh api repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts > /dev/null 2>&1 \
             || { echo "cannot list producer artifacts; refusing" >&2; exit 1; }
-          gh download artifact "$RUN_ID" --name trusted-pr-plan --archive zip --destination . \
+          AID=$(gh api repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts \
+                  --jq '.artifacts[] | select(.name == "trusted-pr-plan") | .id' | head -n1)
+          test -n "$AID" || { echo "trusted-pr-plan artifact missing; refusing" >&2; exit 1; }
+          gh api "repos/mcpdev80/baseharbor/actions/artifacts/$AID/zip" \
+               --method GET --output plan.zip.tmp \
             || { echo "artifact download failed; refusing" >&2; exit 1; }
-          test -f trusted-pr-plan.zip
-          unzip -o -q trusted-pr-plan.zip plan.zip
+          test -s plan.zip.tmp
+          mv plan.zip.tmp plan.zip
           test -f plan.zip
           echo "workflow_definition_id=$WORKFLOW_DEFINITION_ID" >> "$GITHUB_OUTPUT"
 
