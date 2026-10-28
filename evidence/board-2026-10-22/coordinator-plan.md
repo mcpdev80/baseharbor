@@ -670,3 +670,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 01:5xZ GO ausgefuehrt: #1181 gemergt (ea3aecb6), #1178 reopened+synced 2eecfe8f, run 40786149132 armed.
 - 02:1xZ Cause-8 final: Duplikat-Anker 4f0ce579 (aus #1180-Rebuild) -> Gesamtregister fail-closed. #1183 (dedup docs-only) armed run 40787059687. #1182 kontaminiert (gitlink-incident, geschlossen). Weg: 1183 gruen -> merge -> 1178 sync -> gruen -> merge -> Promotion -> Producer -> STOP vor Review.
 - 02:5xZ diag1178 Lane (flash, verifiziert) laeuft Read-only-Diagnose; dispatch rc=6 unverified, Nudge 'STATUS' brachte busy — Ergebnisse nach idle.
+- 03:0xZ Tick: diag1178 END(H2) abgeholt, Lane freigegeben. Melden an Owner: 12-Records-Migration als Entscheidung offen.
