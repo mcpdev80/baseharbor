@@ -190,7 +190,7 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: 839e5cc9fa9b3da3908ee65f26596c2b3dfaaca7
+          ref: 94f35d0293841039f45b
           fetch-depth: 0
           persist-credentials: false
 
