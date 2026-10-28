@@ -441,3 +441,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 23:4xZ cmx2/qwen tote Zustellung (Banner-Idle, 0 Aktionen, wie cmx/flash) -> cmx3/ornith.
 - 00:1xZ Diagnose #1142-Gate-Fail: trusted base c6db56c4 (pilot/core-893, NICHT auf develop!) classifier kennt neue Pfade nicht -> coverage-unresolved = Klasse B gegen den Bootstrap selbst; Merge muss via --admin durch; Retry mit stderr-Fang befohlen.
 - 00:2xZ cmx3 idle: develop unveraendert, kein END im grep, keine Evidence-Datei, Gate BLOCKED (isDraft=false!). Merge-Rechte-Frage an Owner eskaliert.
+- 00:3xZ ZEUGE: GraphQL 'Repository rule violations found — Required status check PR Selected Checks is failing (mergePullRequest)' — Admin-Bypass durch Ruleset ausgeschlossen. Kein Lane-Fehler. Eskalation an Owner (Regel-Aenderung oder Merge-Klick). cmx3 rotiert.
