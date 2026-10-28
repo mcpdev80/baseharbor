@@ -567,3 +567,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:4xZ qrv auf korrektem Tip, schreibt noch nicht — 15min-Marke naechster Tick.
 - 12:0xZ Q PR created (ACCEPT review committed on qx). Sequenz laeuft.
 - 12:1xZ #1146 PR (Q) mit Review ACCEPT-Datei, #1145 (R) checks-gruen; qr3/flash Review-Lane dispatched.
+- 12:3xZ Tick: qr3 busy; q5-Rest nach Root-Repo-Irrtum wieder auf Kurs (qx = echter develop-Nachfahre d94d051e, ls-remote e60c4a28 war alt? NEIN: qx tip = d94d051e ✓). Review ausstehend.
