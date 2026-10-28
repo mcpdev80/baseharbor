@@ -482,3 +482,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:4xZ Owner-Handreichung: Ruleset 25223521 'develop - required checks' (Disable- oder Bypass-Admin-Pfad erklaert). Stop weiterhin aktiv bis neues GO.
 - 13:0xZ Tick unter STOP: acks, keine Aktionen (Owner-Stop vorrangig).
 - 13:1xZ MERGE-BESTAETIGT: develop de568356 (#1142 squash, 2 Files, Owner-GUI-Merge). Bootstrap auf develop, Klasse-B-Loch laut mx1-Diagnose jetzt gestopft.
+- 13:2xZ Owner-GO -> stg7/flash: develop in Kandidaten mergen (sync statt rerun-insel), danach neue PR-CI-Laeufe.
