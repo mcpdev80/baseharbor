@@ -667,3 +667,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - Fristen: keine laufende Deadline (23:35Z-Deadline am 28.10. verstrich ohne Receipt; GrundCause-7 dokumentiert; keine vorgetaeuschte Akzeptanz, kein Bypass — Owner-Protokoll eingehalten).
 - 01:2xZ Tick: still D-Ruhe, acks gequenzt, Pool wartet.
 - 01:4xZ CAUSE-7 KORRIGIERT: register-Docstring zeigt exakt das 3-Dateien-Design (kein ci.yml, keine Enforcement-Flaeche). Rot war required_checks-Menge (ci-actionlint statt receipt-execution-tests) -> Fail-closed. Rebind #1181, run 40785685664 bewacht. Nach Gruen: #1178 reopen+sync -> merge -> Promotion -> Producer -> Receipt-Report -> STOP.
+- 01:5xZ GO ausgefuehrt: #1181 gemergt (ea3aecb6), #1178 reopened+synced 2eecfe8f, run 40786149132 armed.
