@@ -465,3 +465,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 05:5xZ mehrere Ruhe-Ticks ohne Aenderung (Trigger#1142 ausstehend). Beweiskette komplett, Ready fuer Merge-Retry.
 - 06:0xZ Tick: pl3/flash dispatched (Karten-Kurzsync auf neue Tatsachen).
 - 06:3xZ pl3 DONE + PR#13 gemergt (board sync3), rotiert.
+- 07:0xZ Tick: Gateway-blip#2 (recovered). mx1/ornith dispatched: localer develop+candidate-Merge mit Klassifier-Simulation (Klasse-B Heilung local beweisen, kein push).
