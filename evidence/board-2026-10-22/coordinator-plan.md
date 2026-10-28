@@ -572,3 +572,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:0xZ Tick: board-sync e53d83a verifiziert, Approve-Bottleneck dokumentiert.
 - 13:3xZ Q-Branch synced mit develop (R drin! 7896416c), tip 4f14d07e gepusht; #1146 wartet CI ab.
 - 14:0xZ Q+R AUF DEVELOP. Kandidat synced, CI laeuft erneut gegen neue Base.
+- 14:3xZ Q' = PR #1147 (self-binding H-inventory auf develop); alte Q1-Branch c8673c45 existiert noch (unberuehrt, ignoriert).
