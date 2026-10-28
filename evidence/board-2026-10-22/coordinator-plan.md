@@ -606,3 +606,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 20:2xZ #1153: Allow-List Qufifikation (23 Pfade + ci.yml) pushed 92aac7b9. Tabelleneintrag NICHT noetig (1426 reicht). Owner-Freigabe ausstehend.
 - 21:0xZ #1153 superseded (Allow-List brach 21 Fail-Closed-Tests). #1154 = native-table Tuple (head 4f0ce579, 40-Inv, core752-Kette). Tests 653: einziger Fail = develop-Baseline (ohnen Patch reproduziert). Owner-OK ausstehend.
 - 21:2xZ Tick: #1154 green/CLEAN (Owner-OK ausstehend). Lanes: br1/ornith (Board), sr2/qwen (Shadow-Runbook, read-only).
+- 21:3xZ sr2 FALSE-END (runbook fehlte) -> coord-transport shadow-runbook.md geschrieben, lane rm. nt2-Dossier existiert in evidence/board-2026-10-27.
