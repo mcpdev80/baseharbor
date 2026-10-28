@@ -574,3 +574,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 14:0xZ Q+R AUF DEVELOP. Kandidat synced, CI laeuft erneut gegen neue Base.
 - 14:3xZ Q' = PR #1147 (self-binding H-inventory auf develop); alte Q1-Branch c8673c45 existiert noch (unberuehrt, ignoriert).
 - 14:5xZ Tick: #1147 weiterhin offen (Bypass-Klick ausstehend), 42 Reminder gequenzt.
+- 15:1xZ Tick: 1147 weiter offen.
