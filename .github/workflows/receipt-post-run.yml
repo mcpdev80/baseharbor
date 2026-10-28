@@ -78,6 +78,14 @@ jobs:
       run_id: ${{ steps.plan.outputs.run_id }}
       pr_number: ${{ steps.plan.outputs.pr_number }}
     steps:
+      - name: Checkout immutable controller (reviewed CI)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Same reviewed controller pin as the publication job; scripts are
+          # read-only here so receipt_verifier resolves at import time.
+          ref: e13f1570550f4b6b09f3727728293d91afbebf94
+          persist-credentials: false
+
       - name: Download trusted-pr-plan artifact
         env:
           GH_TOKEN: ${{ github.token }}
@@ -203,7 +211,7 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: 94f35d0293f8e237895afe84ae7aa9b26722ffed
+          ref: e13f1570550f4b6b09f3727728293d91afbebf94
           fetch-depth: 0
           persist-credentials: false
 
