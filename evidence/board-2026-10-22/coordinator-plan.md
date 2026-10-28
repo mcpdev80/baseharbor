@@ -611,3 +611,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:1xZ Owner-Vollmacht erteilt. Kette: #1154 gemergt (7d8f3fdc). #1151 zurueck auf 4f0ce579 (Merge-Commits liessen Inventar schrumpfen - Strukturerkenntnis). Neuer Suite-Lauf via review_requested.
 - 22:4xZ FINAL MERGE: #1151 gemergt, develop=f4b173d3 (H-KETTE DRIN). #1155 pin-bump PR live. rv10/ornith = R7 (codex-Mode tot: stale transcripts, Befund dokumentiert). Zeitplan vor 23:35Z ok.
 - 23:0xZ Owner-Kritik PLAN/Todo berechtigt: rv10 Nachieferung befohlen, PLAN-PFLICHT.md als Coord-Kontrollregel installiert, alle Folgemissionen erhalten Schritt-0-PLAN-Block.
+- 23:2xZ R7a-Auswertung: B3 entschaerft (Record==head 4f0ce579 blob, verifiziert), B2/B4 Missionsfehler, B1 Modulnamen. rv11/R7b laeuft. #1155 geschlossen (Pin ohne operative Wirkung, Beweis im Kommentar).
