@@ -654,3 +654,14 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:5xZ Cause 7: script_files sind im HEUTIGEN Classifier terminal (allow-list leer, Register-Guard #1154) -> C2 strukturell nicht mergebar ohne A/B/C. Meldung raus.
 - 00:5xZ D-Entscheid umgesetzt: Cause-7 + Follow-ups im Dossier, #1178 geparkt. RUHEPUNKT erreicht.
 - 01:0xZ Tick: Ruhepunkt bestaetigt, keine erlaubte Arbeit (D-Entscheid), acks gequenzt.
+
+## ANKER VOR COMPACT 2026-10-29 01:1x UTC (Session 41e61806 / w1-baseharbor)
+- ZUSTAND (Owner-Entscheid D): RUHEPUNKT. develop=8cf8ed08, main=7c423380, product-PRs offen: KEINE. #1178 geparkt (closed, Begruendung PR-Kommentar). Writer fail-closed = korrekt. Kette pausiert bis Weg C.
+- WAHRHEITEN-LADUNG heute gemergt: #1164 zip-redirect, #1166 PYTHONPATH(decode), #1169 redirect, #1171 checkout-vor-import, #1173(=1175 attempt-API env), #1176 promotion, #1179/#1180 C2-Register(bleibt ungenutzt bis Weg C), Promotions #1159/#1165/#1167/#1170/#1172/#1174. Causes 1-7 dokumentiert in SHADOW-RUN-STATUS.md + final-kette/kette*.md + coordinator-plan.
+- CAUSE-7 (entscheidend): script_files-Registermuster wirkt NICHT mehr (Guard 'if not unresolved' seit #1154) -> attempt-Fehlt im pr-plan.json -> Writer fail-closed. Loesung=NUR Weg C (40-Pfade-Inventar-PR traegt runner+plan+test-Änderungen MIT echtem Inhalt; Register greift dort — Beweis #1147).
+- FOLLOW-UPS (morgen, NOCH KEINE Karten!): Weg-C-Karte, Contract-Test-Karte (Artefakt-Feldvollstaendigkeit), Writer-Selbsttest-Karte. Alle Details im SHADOW-RUN-STATUS.md Dossier.
+- WATCHER-WESENTLICHES: ci-wait.sh <run-id> schreibt RUN-Zeile EPOCH-PRAEFIX in events.log — EXAKT dieses Format zaehlt basics-check; Datum-Format = preserved-malformed = taub. Lanes: spawn-lane.sh + 8s + busy-verify + 60s-Nudge; END ohne ls-remote/file = wertlos (x-mal bewiesen: pfix-basis-falsch, topo-discover-Race, qpp/bdup silent).
+- ROOT-HYGIENE: root==baseharbor-Klon (Incident#6+#7!). Root-Commits nie pushen. product-Arbeit NIE in root. gh pr merge --auto nutzt Tabs in checks-Ausgabe nie — Predicate nur via --jq.
+- QUELLEN: Dossiers evidence/board-2026-10-27/{SHADOW-RUN-STATUS.md,R7-ACCEPT-rv12.md}; tmp-ops/{shadow/kette*.md,ci-wait.sh,mission-*.txt}; register-Blöcke docs/internal/ci-binding-qualifications.md auf develop.
+- RESUME-TRIGGER: Owner sagt "Weg C heute" oder Tick mit neuer Freigabe. Dann: Karte->Claim->PR(40 Pfade)->#1145-Muster-Register->Promotion->Producer->Receipt->Teil-2-Protokoll (Owner-Review VOR Approval!).
+- Fristen: keine laufende Deadline (23:35Z-Deadline am 28.10. verstrich ohne Receipt; GrundCause-7 dokumentiert; keine vorgetaeuschte Akzeptanz, kein Bypass — Owner-Protokoll eingehalten).
