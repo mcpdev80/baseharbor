@@ -524,3 +524,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:3xZ f345c DONE-8-Commits (END-BLOCKED nur Final-Run); vf1/flash verifiziert Serien-Tests.
 - 01:1xZ vf1 silent rotiert; vf2/flash mit 2-Direktbefehl dispatched.
 - 01:2xZ CODEX DECISION C committed; hsync merges F3-F5 in Kandidaten (H-Einfrieren Schritt 1).
+- 01:4xZ vf2 DONE-ohne-Datei rotiert; Coord-Zeuge 6 fail auf e4d2b0d4; fx2/ornith dispatched (6->0 gruen, Branch f345b).
