@@ -478,3 +478,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:2xZ OWNER-FREIGABE 'Erlaubnis erteilt mach' dokumentiert -> cmx4/ornith fuehrt 1142-Merge aus.
 - 12:0xZ Owner-Votum: gh-api Regel-Opp. cmx4 rotiert, cmx5 dispatched (export->disable->merge->restore->check, volles Log).
 - 12:1xZ Owner: Token-Scope wurde ergaenzt -> cmx5 Retry mit Scope-Test.
+- 12:2xZ OWNER STOP: alle Lanes gestoppt/rotiert (cmx5 entfernt), NICHTS laeuft; develop+PR unveraendert; keine Wiederaufnahme ohne neue Freigabe.
