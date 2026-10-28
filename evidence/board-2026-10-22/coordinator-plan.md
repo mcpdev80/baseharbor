@@ -479,3 +479,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:0xZ Owner-Votum: gh-api Regel-Opp. cmx4 rotiert, cmx5 dispatched (export->disable->merge->restore->check, volles Log).
 - 12:1xZ Owner: Token-Scope wurde ergaenzt -> cmx5 Retry mit Scope-Test.
 - 12:2xZ OWNER STOP: alle Lanes gestoppt/rotiert (cmx5 entfernt), NICHTS laeuft; develop+PR unveraendert; keine Wiederaufnahme ohne neue Freigabe.
+- 12:4xZ Owner-Handreichung: Ruleset 25223521 'develop - required checks' (Disable- oder Bypass-Admin-Pfad erklaert). Stop weiterhin aktiv bis neues GO.
