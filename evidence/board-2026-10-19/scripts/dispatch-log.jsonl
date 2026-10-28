@@ -134,3 +134,4 @@
 {"nonce":"dispatch-1793122138-1775676-13778","sid":"g1x","outcome":"blind-single-send","send_rc":4,"baseline_rc":6}
 {"nonce":"dispatch-1793122146-1775952-5418","sid":"g2x","outcome":"blind-single-send","send_rc":4,"baseline_rc":6}
 {"nonce":"dispatch-1793122594-1901584-22394","sid":"b2","outcome":"blind-single-send","send_rc":4,"baseline_rc":6}
+{"nonce":"dispatch-1793196067-1410420-22998","sid":"c2961d83-0e5e-4538-84ac-ea9de4059483","outcome":"blind-single-send","send_rc":0,"baseline_rc":6}

@@ -1,0 +1,6 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan pull -q --ff-only origin main && ls tasks/t-2026102*.md. Fehler -> END B3-BOOTFAIL.
+LANE b3 (flash) - CardBoard auf v3.5/v3.6-Stand (NUR baseharbor-plan; root/product git VERBOTEN; HARTVERBOT force/develop des Produkts).
+1) Karten t-20261024-r27-ci-impact-prototype, -r27-evidence-publisher, -r27-evidence-verifier: prs-Feld += #1128 #1131 #1132 #1129; evidence += CODEX-REVIEW-f57b30ed48f1.md + rv3-review-f57b30ed.md + p1-pilot-prereq + d3-mergecheck-v36 (Blob-URLs); Status bleibt review. publisher-Karte: unter 'Required correction' eine Zeile 'Addendum 1/2/3 zugewiesen an: w4a (work/r27-fix-f1b-recovery, PR #1128)'.
+2) t-20261027-r27-shadow-run: blocker := 'Wave-4 Pakete #1128/#1131/#1132 warten auf v3.6-Staging+CI+CODEX-R4; PLANNING_RECEIPT_WRITE_TOKEN + workflow_dispatch-Freigabe = Owner-Punkte (p1 GAP-2/GAP-5)'.
+3) render + check rc=0 (rc direkt pruefen!), ordinary commit+push origin main, non-ff -> pull rebase.
+Evidence Root evidence/board-2026-10-27/b3-board.md (## PLAN, je Karte before/after), END 'END B3-DONE <planning-sha8>'.

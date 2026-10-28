@@ -1,0 +1,9 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor fetch origin work/r27-correction-v35 work/r27-fix-f1b-recovery work/r27-fix-f2-akte2b work/r27-fix-f6-outputs2 && git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/stg3 -b work/r27-correction-v36 origin/work/r27-correction-v35. Fehler -> END STG3-BOOTFAIL.
+LANE stg3 (ornith) - v3.6-STAGING (d3-Reihenfolge; ordinary merges, KEIN force/dispatch/develop/main/root-git; HARTVERBOT worktree remove/rm auf eigenem Baum).
+1) merge origin/work/r27-fix-f2-akte2b (3dcc58c7) --no-edit
+2) merge origin/work/r27-fix-f1b-recovery (39bed489) --no-edit
+3) merge origin/work/r27-fix-f6-outputs2 (418acbfd) --no-edit
+Konflikt: minim aufloesen unter Respekt beider Rezepte; Konfliktlog je Datei in evidence-r27/stg3.md.
+4) NACHWEISE: discover -p 'test_receipt*' + -p 'test_pr_gate*' Zaehlungen; yaml.safe_load aller receipt-*.yml + ci.yml; actionlint falls da; git log --graph -10.
+5) push origin work/r27-correction-v36 + gh pr create --repo mcpdev80/baseharbor --base develop --head work/r27-correction-v36 --title 'ci(r27): v3.6 - wave4 integration (F1b/F2/F5/F6 + Owner addenda)' --body 'Pakete #1133 #1131 #1132 auf v3.5 f57b30ed; CODEX-R3 Befundpunkte F1-F6+D1-D3 adressiert; w4a-Evidence-Datei fehlte - Verweis = PR-Bodies + Commits (F8-Regel: keine Schoenung).'
+6) PR-URL in stg3.md; alle <=10min forward-commit+push. END 'END STG3-DONE <v36-sha8> <pr>'.

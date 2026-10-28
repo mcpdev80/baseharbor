@@ -1,0 +1,14 @@
+decoder_fresh_job: 1 ModuleNotFoundError: No module named 'receipt_verifier'
+decoder_real_artifact_after_shape_and_import_repair: 1 receipt_verifier.ReceiptError: run_id must be a positive integer
+decoder_duplicate_integration: 0 True
+decoder_wrong_head_and_run: 0 ['workflow_id=17', 'head_sha=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', 'candidate_sha=cccccccccccccccccccccccccccccccccccccccc', 'base_sha=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'run_id=999', 'pr_number=1124']
+workflow_writer_product_argument: 2 receipt_writer.py: error: unrecognized arguments: --product /tmp/cx-r27v6-5b81490c
+new_plan_race_publish_success: True plan_reachable: False remote_paths: ['evidence/receipts/public-contracts/17-1.json', 'tasks/example.md', 'unrelated']
+approval_race: conflicting receipt on remote; blocked
+card_inline_published: 38698f8cc496d73225c72fc3e4ddbdc1e9bf5df6 old_preserved: True prs_preserved: False evidence_keys: 3 parsed: {'id': 'example', 'evidence': [{'evidence': 'https://example.invalid/new (candidate aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, plan bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)'}], 'prs': None}
+planning_parser_inline: REJECT: duplicate frontmatter key 'evidence'
+card_block_published: 698a29f15e7ae79b0a0b22101f4b26b81f797f35 old_preserved: False prs_preserved: False evidence_keys: 3 parsed: {'id': 'example', 'evidence': [{'evidence': 'https://example.invalid/new (candidate aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, plan bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb)'}], 'prs': None}
+planning_parser_block: REJECT: duplicate frontmatter key 'evidence'
+issuance_missing_task: tasks/nonexistent.md
+approval_parser_duplicate_prs: {'id': 'example', 'prs': ['mcpdev80/baseharbor#17']}
+real_planning_parser_duplicate_prs: duplicate frontmatter key 'prs'

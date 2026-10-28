@@ -1,0 +1,7 @@
+TOOL 1: gh pr view 1142 --repo mcpdev80/baseharbor --json state,isDraft | head -c 80. Fehler -> END CMX4-BOOTFAIL.
+LANE cmx4 (ornith) - ROLLE CODEX-MERGE, OWNER-FREIGABE JETZT EXPLIZIT ERTEILT (2026-10-29, 'Erlaubnis erteilt mach' nach Ruleset-Block-Meldung).
+1) gh pr merge 1142 --repo mcpdev80/baseharbor --squash --admin 2>&1 (gesamte Ausgabe in Evidence-Datei, Schritt fuer Schritt).
+2) git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor ls-remote origin refs/heads/develop (VORHER in Evidence notieren: 3431b22c..., NACHHER neue SHA).
+3) git fetch origin && git diff --name-only origin/develop~1..origin/develop (erwartet <=2 Dateien, muss pr-check-runner.py enthalten).
+4) Evidence baseharbor-plan/evidence/board-2026-10-28/cmx4-1142-merge.md (im WORKTREE: git -C .../baseharbor-plan worktree add ../worktrees/cmx4 -b work/cmx4-note origin/main falls noetig; ODER als root evidence/board-2026-10-28/cmx4-1142-merge.md — root evidence ist erlaubt, root GIT-OPS nicht): Owner-Freigabe-Zitat (sinnentstellend-frei): "Erlaubnis erteilt mach" 2026-10-29; GraphQL-Block vor Freigabe (Referenz cmx3-merge-attempt.txt); neue develop-SHA; Dateienstat.
+5) END 'END CMX4-DONE <sha>' NUR wenn develop-Tip != 3431b22c UND ls-remote-Zeile im Transcript. Sonst 'END CMX4-BLOCKED <wortliche API-Antwort>'. force-push/direkter develop-push verboten — nur PR-Merge API.

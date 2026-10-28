@@ -1,0 +1,7 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/rv8 --detach origin/work/r27-boot-validator2. Fehler -> END RV8-BOOTFAIL.
+LANE rv8 (flash) - REVIEW #1142, HARD-CAP 15min, VIER Befehle, jeder Output sofort in evidence-r27/rv8.md (Write NACH JEDEM Befehl, ## PLAN zuerst, ls-remote als Zeile 1):
+B1 git diff --name-only origin/develop...HEAD (erwartet: nur pr-check-runner.py + test_pr_check_runner.py)
+B2 git diff origin/develop...HEAD | grep -n "^+" | grep -aiE "executable|validation|registry" | head -20
+B3 python3 scripts/pr-check-runner.py --help (rc) ; python3 -m unittest scripts.test_pr_check_runner -q 2>&1 | tail -2 (alternativ discover -p test_pr_check_runner*)
+B4 grep -nE "^import|^from" der NEUEN Zeilen (diff), jeder importierte Module gegen develop-Bestand prüfen (git ls-tree origin/develop -- scripts/<mod>.py)
+Dann rv8.md: K1-K4 je PASS/FAIL + einzeilige Begründung, commit im Worktree. END 'END RV8-ACCEPT' / 'END RV8-CHANGES <k:zeile>'. Kein PR-Kommentar, kein push, kein naechstes Lesen nach B4.

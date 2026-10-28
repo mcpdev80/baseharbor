@@ -1,0 +1,35 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/reg1 -b work/r27-register-fix origin/develop; echo rc=$?. rc!=0 -> END REG1-BOOTFAIL.
+LANE reg1 (ornith) - REGISTER-KORREKTUR (Ursache fix und fertig, nur ausfuehren):
+1) cd /home/marcel/dev/baseharbor-ecosystem/worktrees/reg1
+2) python3 - <<'PY'
+import subprocess, hashlib, json, re
+head=subprocess.run(["git","ls-remote","origin","refs/heads/work/r27-qualify-candidate2"],capture_output=True,text=True).stdout.split()[0]
+base=subprocess.run(["git","ls-remote","origin","refs/heads/develop"],capture_output=True,text=True).stdout.split()[0]
+out=subprocess.run(["git","diff","--name-status",base+".."+head],capture_output=True,text=True).stdout
+st={'M':'modified','A':'added','D':'deleted'}
+files={}; hashes={}
+for l in out.strip().splitlines():
+    s,p=l.split()
+    if p=='docs/internal/ci-binding-qualifications.md':  # register must not describe itself
+        raise SystemExit("register md inside candidate diff — ABORT, Coord rufen")
+    files[p]=st[s[0]]
+    hashes[p]=hashlib.sha256(subprocess.run(["git","show",f"{head}:{p}"],capture_output=True).stdout).hexdigest()
+rec={"repository":"mcpdev80/baseharbor","target_branch":"develop","reviewed_head":head,
+     "files":files,"file_hashes":hashes,
+     "required_checks":["pr-planner-tests","ci-policy","ci-executor-verifier-tests","ci-actionlint"]}
+md=open("docs/internal/ci-binding-qualifications.md").read()
+# remove the poisoned 40-file block: keep only blocks whose files count != 40
+blocks=re.findall(r'```json\n(.*?)\n```', md, re.DOTALL)
+good=[b for b in blocks if len(json.loads(b)["files"])!=40]
+assert len(blocks)-len(good)==1, "expected exactly one poisoned block"
+for b in blocks:
+    if b not in good: md=md.replace("```json\n"+b+"\n```\n","",1) if "```json\n"+b+"\n```\n" in md else md.replace("```json\n"+b+"\n```","",1)
+md=md.rstrip("\n")+"\n\n```json\n"+json.dumps(good and json.loads(good[-1]) or {},separators=(',',':'))+"\n```\n" if False else md
+md=md.rstrip("\n")+"\n\n```json\n"+json.dumps(rec,separators=(',',':'),sort_keys=True)+"\n```\n"
+open("docs/internal/ci-binding-qualifications.md","w").write(md)
+print("blocks_before",len(blocks),"kept",len(good),"new files",len(files))
+PY
+   Erwarteter Print: files 39, kept 3, new 1. Abweichung -> END REG1-BLOCKED <print>.
+3) git add docs/internal/ci-binding-qualifications.md; git commit -m "docs(ci): replace stale 40-file register block with exact 39-file #1147 inventory" (1 commit, 1 file)
+4) git push -q origin HEAD:refs/heads/work/r27-register-fix; git ls-remote origin refs/heads/work/r27-register-fix | cut -c1-10 (muss den Commit zeigen)
+5) gh pr create --repo mcpdev80/baseharbor --base develop --head work/r27-register-fix --title "docs(ci): unpoison register (39-file inventory for Q')" --body "Der via #1148 gemergte Block beschrieb ein 40-Dateien-Inventar gegen eine alte Base; der echte Q'-Diff ist 39 Dateien. Ein unguel tiger Block failt den gesamt

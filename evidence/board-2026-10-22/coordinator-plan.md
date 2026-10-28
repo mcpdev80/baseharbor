@@ -602,3 +602,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 19:0xZ Owner-Arbeitsauftrag: Diagnose fertig (Klassifikations-Weil verworfen, 20 Test-Fails als Beweis). Registration-PR created. Warten: Owner-Review+Freigabe, dann Pin-Commit (Owner) auf #1151.
 - 19:1xZ #1152 steht (6/7 green). Owner-Review-Phase; codex-R7-Lane entfernt (wird nach finaler SHA neu dispatched).
 - 19:4xZ #1152 gemergt (dev 44726f54). Pin-Commit als First-Parent-Merge auf #1151 (head jetzt neu), force-with-lease auf feature-branch. Re-Registration (#1153) folgt falls Head-Check failt.
+- 19:5xZ Pin-on-candidate verworfen (sync laesst Diff gegen Konstanten schrumpfen - struktureller Konflikt). Branch zurueck auf exakt 4f0ce579; Pin-Bump wird Follow-up-PR NACH Merge.

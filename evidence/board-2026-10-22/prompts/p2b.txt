@@ -1,0 +1,6 @@
+TOOL 1: bash /home/marcel/tmp-ops/pilot/run-pilot.sh > /home/marcel/tmp-ops/pilot/run.log 2>&1; echo rc=$?. (tmp-ops ist jetzt freigegeben, keine Dialoge erwartet.)
+LANE p2b (flash) - Pilot-Script-Ausfuehrung + Dossier. Vorher: run-pilot.sh lesen (read-only) und bestaetigen, dass KEIN gh-Schreibaufruf/clone-push/workflow_dispatch darin vorkommt (grep -nE 'push|dispatch|workflow run|merge' — Fund melden statt ausfuehren!).
+1) Ausfuehren, rc + Schritt-Namen aus run.log extrahieren (Tabelle rc je Schritt in Dossier).
+2) Dossier /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-27/p2-pilot-prep.md anlegen: ## PLAN, rc-Tabelle, Gap-Liste (Token PLANNING_RECEIPT_WRITE_TOKEN, Registration, Owner-Klick, Workflow-IDs), Referenzen (PR #1134/#1137/#1138/#1139, Run-IDs).
+3) Falls das Script bricht, weil etwas fehlt: NICHT flicken — Fehlerwortlaut + betroffene Zeile dokumentieren. END 'END P2B-DONE' / 'END P2B-BLOCKED <zeile>'.
+KEINE Aenderung an run-pilot.sh, keine gh-Schreibcommands, root-git verboten.

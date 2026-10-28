@@ -1,0 +1,5 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan pull --ff-only -q origin main && python3 /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/scripts/plan.py check; rc!=0 -> END VB-CHECKFAIL mit rc+Ausgabe.
+LANE vb (flash) - GEGENPRUEFUNG des b3-Board-Commits f362855 (read-only; einzige Schreibaktion: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-27/vb-boardcheck.md).
+1) plan.py show der drei R27-W-Karten + shadow-run: Status, prs, evidence-Eintragszahlen, blocker-Text gegen Auftragsvorgaben (Wave4-PRs #1128 #1131 #1132 #1133, CODEX-REVIEW-f57b30ed48f1, rv3/p1/d3-Pfade, Publisher-Karte Addendum-Zuweisungszeile).
+2) render-Dateien: views/overview.md + releases/v0.4.27.md enthalten v3.6-Hinweise konsistent; keine Checkbox-Markdown in generierten Views.
+3) findings-Liste: je Punkt OK/ABWEICHEND(datei:zeile). Dossier + END 'END VB-DONE' / 'END VB-FINDINGS <anzahl>'. KEIN Edit an baseharbor-plan. root-git verboten.

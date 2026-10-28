@@ -1,0 +1,4 @@
+TOOL 1: gh pr view 1138 --repo mcpdev80/baseharbor --json headRefOid | head -c 60. Fehler -> END CI38B-BOOTFAIL.
+LANE ci38b (flash) - NUR-LESE CI-Dossier fuer Kandidaten 94f35d02 (#1138): evidence/board-2026-10-27/ci38b-kandidat.md (root evidence Pfad, Coordinator committet):
+1) gh pr checks 1138 — Tabelle aller Checks (name/status/konclusion) mit Run-URL. 2) Fuer jeden FAILURE: run id -> jobs -> fehlgeschlagener Job log, KURZER Fehlerwortlaut (1 Zeile) + Klassifizierung A (Substanz) oder B ('unsupported executable validation'/'coverage-unresolved' vom alten Base) gegen ueber d5-Notizen. 3) Feststellung: welche gruenen Checks bereits grune Evidence fuer 94f35d02 sind (fuer Wiederverwendung, AGENTS CI-Effizienz). 4) Blockliste: was kann VOR #1142-Merge nicht gruen werden.
+KEINE Repo-Writes, keine gh-schreib-Aktionen (kein rerun!). END 'END CI38B-DONE' / 'END CI38B-BLOCKED <grund>'.

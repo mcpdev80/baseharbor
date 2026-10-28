@@ -1,0 +1,6 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan pull -q --ff-only origin main. Fehler -> END Q2-BOOTFAIL.
+LANE q2 (qwen) - BOARD-PATCH nach vb-boardcheck.md (lies die 3 Abweichungen dort ZUERST). NUR baseharbor-plan; aendere Task-METADATEN via scripts/plan.py edit (Nie generierte Views manuell), dann render + check mit rc-Direktpruefung, ordinary commit+push (non-ff: pull rebase, KEIN force).
+1) t-20261024-r27-ci-impact-prototype UND t-20261022-r27-evidence-publisher: prs += mcpdev80/baseharbor#1133 (w4a recovery PR) - je nach Dateizueroernung, evidence += Blob-URL von PR #1133 wenn Schema es erlaubt, sonst evidence-Feld unveraendert (erklaere Entscheidung).
+2) Publisher-Karte: 'Addendum 1/2/3 zugewiesen an...' Zeile an den von vb als falsch lokalisierten Ort versetzen/ergaenzen (bevorzugt ENTSCHIEDEN unter '## Required correction' als eigener kurzer Absatz 'Addendum assignment').
+3) releases/v0.4.27.md Release-Note: ein Satz, dass Kandidatenlinie v3.5 (#1129 f57b30ed) + Wave-4-Pakete #1131/#1132/#1133 auf v3.6-Staging laufen (Host-CI + CODEX-R4 offen); keine Statusbehauptung.
+Evidence board-2026-10-27/q2-boardpatch.md (before/after-Zeilen), END 'END Q2-DONE <sha8>'. root/product-git verboten.

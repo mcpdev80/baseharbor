@@ -1,0 +1,7 @@
+TOOL 1: pwd && ls /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/RUNBOOK.md 2>/dev/null; grep -a "Schattenlauf" /home/marcel/dev/baseharbor-ecosystem/RUNBOOK.md | head -1. Fehler -> END P2-BOOTFAIL.
+LANE p2 (flash) - HOSTED-PILOT-VORBEREITUNG (Owner-Schwenk A) NUR lokal+read-only, ausser Dossier+Skript in /home/marcel/tmp-ops/pilot/:
+1) Extrahiere RUNBOOK §12 'EIN Lauf'-Rezept und aktualisiere PFADE/IDs auf den jetzigen Stand (Branches v38 cb7d8213, Workflow-IDs aus gh api, planning main SHA). 
+2) Baue tmp-ops/pilot/run-pilot.sh (set -euo pipefail, jeder Schritt mit echo-Schrittname, Fehler abort; SCHRITTE: probe-PR-Run ausloesen? NEIN - nur die LESE-/Pruefketten: run-id lookup, artifact download nach tmp-ops/pilot/dl, tasklink+writer+verifier LOCAL gegen tmp bare remote als smoke, bevor irgendetwas hosted dispatched wird).
+3) Fuehre den LOCAL-smoke einmal aus und protokolliere rc je Schritt.
+4) Gap-Liste: was fuer den HOSTED-Lauf zwingend fehlt (Token! GAP-2/5 aus p1 Dossier, Registration, Owner-Klick) mit exakten github.com-Pfaden (ohne Werte).
+Dossier /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-27/p2-pilot-prep.md (## PLAN, rc-Tabelle, Gap-Liste, Shellcheck-de rc=0). END 'END P2-DONE'. KEINE gh-Schreibaufrufe, KEIN git in Repos ausser fetch.

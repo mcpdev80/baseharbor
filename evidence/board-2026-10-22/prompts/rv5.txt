@@ -1,0 +1,6 @@
+TOOL 1: pwd && git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/rv5 --detach origin/work/r27-fix-f2-akte2b. Fehler -> END RV5-BOOTFAIL.
+LANE rv5 (ornith) - SCHMALE Nachpruefung der drei F2-Negativfaelle, die rv4 verlieren lies (rv4 END RV4-CHANGES ohne Liste). NUR dieses, read-only Produkt (schreiben: rv5.md im Worktree + tmp-ops/rv5-scratch):
+A) scripts/test_pr_gate_plan.py: ReceiptControlPlaneMappingTests - existieren beide Klassen mit eindeutigem Namen oder ueberschreibt eine die andere? (grep + unittest-Load mit Zaehlung der Methoden je Klasse.)
+B) Ein echter positiver plan()-Aufruf mit NICHT-LEEREM validen Diff gegen den Head-Planner: wird eine registered path als unresolved geliefert obwohl Tests existieren? (tmp-ops/rv5-scratch bare repo, rc + Ausgabe.)
+C) Akte-Fallback: alter/unbekannter reviewed_head mit Teillinventar -> erwartet REJECT; dokumentiere tatsaechliches Verhalten mit Datei:Zeile.
+Evidence worktrees/rv5/evidence-r27/rv5.md (## PLAN, je A/B/C Befehl+rc+Auswertung, ## repo-rule compliance), ordinary commit im Worktree KEIN push. END 'END RV5-ACCEPT' wenn alle drei dem CODEX-Rezept entsprechen, sonst 'END RV5-CHANGES <kurzliste>'. root-git/force/dispatch/main verboten.

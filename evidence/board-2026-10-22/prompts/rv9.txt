@@ -1,0 +1,8 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/rv9 --detach origin/work/r27-correction-v38. Fehler -> END RV9-BOOTFAIL.
+LANE rv9 (flash) - VORPRUEFUNG Kandidat #1138 (94f35d02) als VORSTUFE zum CODEX-Verdict (kein Verdict selbst!). HARTER BAUSTEIN: evidence-r27/rv9.md nach JEDEM der 5 Befehle erweitern (## PLAN zuerst):
+A1 git diff --stat origin/develop...HEAD (Umfang des Kandidaten gesamt)
+A2 git log --oneline origin/develop..HEAD | wc -l
+A3 python3 -m unittest discover -s scripts -p 'test_receipt*' 2>&1 | tail -2 (lokale Substanz neben dem Klasse-B-Tor)
+A4 python3 -m unittest discover -s scripts -p 'test_pr_gate*' 'test_ci_workflow*' 2>&1 | tail -2
+A5 grep -c "persist-credentials: true" .github/workflows/receipt-post-run.yml + grep -n "839e5cc9" .github/workflows/receipt-post-run.yml (Pin-Status dokumentieren)
+Urteil rv9.md: SUBSTANZ OK/NICHT OK + Liste lokaler Fail-Tests (wenn A3/A4 >0 fails, sonst Pin-Opfer = erwartbar). END 'END RV9-DONE ok' / 'END RV9-DONE fails:<n>' / 'END RV9-BLOCKED <zeile>'. Nur lesen+eigene Worktree-Evidence, keine PR-Kommentare.

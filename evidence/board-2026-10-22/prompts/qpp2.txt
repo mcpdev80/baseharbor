@@ -1,0 +1,7 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/qpp2 -b work/r27-planner-widen-qpp2 origin/develop; echo rc=$?. rc!=0 -> END QPP2-BOOTFAIL.
+LANE qpp2 (ornith) - MINIMALER PLANNER-FIX (Ursache zeugenfest: Run-Log #1147 coverage-unresolved fuer ci.yml+evidence; Register-Loop vergleicht record['files'] nur gegen script_files/workflow_files):
+In scripts/pr-gate-plan.py, trusted_binding_checks (Zeilen ~785-788): neue lokale Zuordnung
+    candidate_files = RECEIPT_CANDIDATE_REVIEWED_FILES
+und bei der Record-Validierung die erlaubte Menge erweitern auf (script_files, workflow_files, candidate_files); required_checks-Wahl wie bisher (== workflow_files -> +WORKFLOW_SYNTAX; == candidate_files -> CI_CHECKS + WORKFLOW_SYNTAX_CHECKS; sonst CI_CHECKS).
+KEINE weiteren Logik-Aenderungen. TESTS in scripts/test_pr_gate_plan.py: 2 neueFaelle — (a) candidate_files-Inventar mit echtem merge-tree/head==reviewed -> resolved (must be list), (b) gleiches Inventar mit faux head (nicht an der chain) -> None. Bestehende 25 TrustedBinding-Tests muessen OK bleiben.
+WIE GEWOHNT: pwde + git log -1 posten, evidence-r27/qpp2.md Schritt-Null (## PLAN), pro Datei 1 commit mit push origin HEAD:refs/heads/work/r27-planner-widen-qpp2 + ls-remote, cd scripts && unittest test_pr_gate_plan -q 0/0 + discover -p 'test_ci_workflow*' 0/0, gh pr create base develop draft. END 'END QPP2-DONE <pr>' / 'END QPP2-BLOCKED <rc+stelle>'. force/dispatch/develop-push/root-git/worktree-remove verboten.

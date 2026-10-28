@@ -1,0 +1,3 @@
+selected_reusable_source: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@f57b30ed48f19e62452ab793801a02ccd2658414
+selected_reusable_inputs: ['candidate', 'plan', 'receipt']
+unsupported_caller_inputs: ['publication']

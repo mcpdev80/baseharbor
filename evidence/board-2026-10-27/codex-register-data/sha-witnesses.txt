@@ -1,0 +1,24 @@
+de5683561dec2269649e1c0204ab98cc666a3ff1 ADVERTISED
+de5683561dec2269649e1c0204ab98cc666a3ff1	refs/heads/develop
+ancestor-of-advertised-develop=True
+3f79468478aa031e7047bddf7862a53cb8901aba ADVERTISED
+3f79468478aa031e7047bddf7862a53cb8901aba	refs/heads/work/r27-correction-v38
+3f79468478aa031e7047bddf7862a53cb8901aba	refs/pull/1138/head
+ancestor-of-advertised-develop=False
+577aac4a0e7eccb615762cc0b8d679ceb27c256d NOT DIRECTLY ADVERTISED
+ancestor-of-advertised-develop=True
+f3c87253170c747bd26528beae22fcbacc390957 ADVERTISED
+f3c87253170c747bd26528beae22fcbacc390957	refs/pull/1106/head
+ancestor-of-advertised-develop=False
+eb617cf2fefea0b29c52a7654070c959b476ee96 NOT DIRECTLY ADVERTISED
+ancestor-of-advertised-develop=True
+d95a987f9a3ea417f456809653f798c73292921d ADVERTISED
+d95a987f9a3ea417f456809653f798c73292921d	refs/pull/1091/head
+ancestor-of-advertised-develop=False
+57f368ca5ebe4f8c37a8e6500b3a7de8a78e40b3 ADVERTISED
+57f368ca5ebe4f8c37a8e6500b3a7de8a78e40b3	refs/heads/work/r27-w2-publication
+57f368ca5ebe4f8c37a8e6500b3a7de8a78e40b3	refs/pull/1108/head
+ancestor-of-advertised-develop=False
+b9c3ba05bbfff99e72b4d4b9e8bf0d8989295d54 ADVERTISED
+b9c3ba05bbfff99e72b4d4b9e8bf0d8989295d54	refs/pull/1142/head
+ancestor-of-advertised-develop=False

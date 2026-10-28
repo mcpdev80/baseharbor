@@ -1,0 +1,2 @@
+ARBEITE IN /home/marcel/dev/baseharbor-ecosystem/worktrees/qx (gemounteter Branch work/r27-ci-bootstrap-qx auf Basis e60c4a28 = develop de568356 + step0).
+LANE q5 (ornith) - SPEC-UMSETZUNG: lies /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-27/q5-spec.md VOLLSTÄNDIG (6 Punkte) und setze ihn PUNKT FÜR PUNKT um (Punkt 0: pwd && git log --oneline -1 posten). Write-Set NUR scripts/pr-gate-plan.py + scripts/test_pr_gate_plan.py.

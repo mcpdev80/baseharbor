@@ -1,0 +1,10 @@
+gh pr merge 1142 --repo mcpdev80/baseharbor --squash --admin 2>&1 | tail -5
+GraphQL: Repository rule violations found
+
+Required status check "PR Selected Checks" is failing.
+
+ (mergePullRequest)
+=== ls-remote origin refs/heads/develop ===
+/bin/bash: line 2: ls-remote: command not found
+=== git ls-remote origin refs/heads/develop ===
+3431b22c94b068f15f9bd7b31b9f87e846200f0f	refs/heads/develop

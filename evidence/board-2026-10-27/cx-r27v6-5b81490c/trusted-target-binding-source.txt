@@ -1,0 +1,114 @@
+    """Verify the frozen binding from the authenticated target, never PR content.
+
+    Re-run the real diff resolver so caller-supplied inventories, integration
+    parents and merge trees cannot substitute for Git evidence. This bounded
+    record enables only the three CI scripts, optionally with ci.yml and its
+    mandatory syntax check, through an exact immutable inventory.
+    Hash the frozen reviewed blobs; later source may only add exact Git-computed
+    first-parent merges of authenticated target history. This permits strict
+    up-to-date integration without accepting candidate-authored follow-ups.
+    """
+    valid, _ = validated_diff(diff)
+    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
+        return None
+    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
+                          if context_repository is None else context_repository)
+    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
+                            if context_target_branch is None else context_target_branch)
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
+        return None
+
+    def git(*args):
+        return subprocess.run(['git', '-C', str(repository), *args],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              check=True).stdout
+
+    try:
+        raw = git('show', diff['target_base_sha'] +
+                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
+        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
+                            flags=re.MULTILINE | re.DOTALL)
+        # The trusted register may accumulate one entry per reviewed candidate.
+        # Every fenced block must be a complete, well-formed supported inventory;
+        # a stray fence, duplicate anchor or weakened
+        # record fails the whole register closed.
+        if not blocks or raw.count('```') != 2 * len(blocks):
+            return None
+
+        def unique_object(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError('duplicate qualification key')
+                result[key] = value
+            return result
+
+        script_files = {path: 'modified' for path in (
+            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
+            'scripts/test_pr_gate_plan.py')}
+        workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
+        records = []
+        for block in blocks:
+            record = json.loads(block, object_pairs_hook=unique_object)
+            if not isinstance(record, dict):
+                return None
+            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+                      if record.get('files') == workflow_files else CI_CHECKS)
+            expected_ids = {check['id'] for check in checks}
+            if (not isinstance(record, dict) or set(record) != {
+                    'repository', 'target_branch', 'reviewed_head', 'files',
+                    'file_hashes', 'required_checks'} or
+                    record['repository'] != context_repository or
+                    record['target_branch'] != context_target_branch or
+                    not isinstance(record['reviewed_head'], str) or
+                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
+                    record['files'] not in (script_files, workflow_files) or
+                    not isinstance(record['file_hashes'], dict) or
+                    set(record['file_hashes']) != set(record['files']) or
+                    any(not isinstance(value, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', value) is None
+                        for value in record['file_hashes'].values()) or
+                    not isinstance(record['required_checks'], list) or
+                    len(record['required_checks']) != len(expected_ids) or
+                    set(record['required_checks']) != expected_ids):
+                return None
+            records.append(record)
+        anchors = [record['reviewed_head'] for record in records]
+        if len(anchors) != len(set(anchors)):
+            return None
+        # Import the resolver beside this trusted planner, not from the PR tree.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
+        resolver = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(resolver)
+        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
+                                          diff['head_sha'], diff['integration_sha'])
+        if actual != diff or actual['broad_required']:
+            return None
+        changes = actual['changes']
+        # A register entry qualifies only through the existing review-ancestry
+        # and frozen-blob proof; entries not binding this exact candidate never
+        # contribute, so a missing entry keeps the conservative fallback.
+        for record in records:
+            if (len(changes) != len(record['files']) or
+                    {c.get('path'): c.get('status') for c in changes} != record['files']):
+                continue
+            if not core752_reviewed_merge_chain(
+                    diff['target_base_sha'], diff['head_sha'],
+                    record['reviewed_head'], repository):
+                continue
+            for path, digest in record['file_hashes'].items():
+                if (not isinstance(digest, str) or
+                        re.fullmatch(r'[0-9a-f]{64}', digest) is None or
+                        hashlib.sha256(git('cat-file', 'blob',
+                                           record['reviewed_head'] + ':' + path)).hexdigest() != digest):
+                    break
+            else:
+                return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+                        if record['files'] == workflow_files else CI_CHECKS)
+    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
+        return None
+    return None
+
+

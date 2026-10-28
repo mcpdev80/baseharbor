@@ -1,0 +1,4 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add ../worktrees/fx1 --detach 94f35d02. Fehler -> END FX1-BOOTFAIL.
+LANE fx1 (ornith) - NUR-LESE F1-VERDRAHTUNGSAUDIT (rv9-Randfund) im Kandidaten: Dossier evidence/board-2026-10-27/fx1-f1-wiring.md (root, Coordinator committet):
+A) .github/workflows/ — jeder Job, der receipt_* oder pr-gate-Skripte aufruft: Job-Name, Zeile, aufgerufenen Pfad, und ob dieser Pfad im Worktree EXISTIERTE (ls). B) discover -p 'test_receipt_postrun*' zeigt Welche/Ob sie im Workflow verdrahtet sind (ja/nein-Tabelle). C) 'F1 core wired' aus den Karten/Dossiers: was ist verdrahtet, was nur getestet (Kurzliste mit Zeilenbelegen).
+KEINE gh-schreib/Reruns, keine Produktwrites. END 'END FX1-DONE' / 'END FX1-BLOCKED <zeile>'.

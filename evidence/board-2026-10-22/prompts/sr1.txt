@@ -1,0 +1,6 @@
+TOOL 1: ls /home/marcel/tmp-ops/pilot/run-pilot.sh. Fehler -> END SR1-BOOTFAIL.
+LANE sr1 (ornith) - SHADOW-RUN VORBEREITUNG (Doku+Script, keine echten hosted Actions). Erzeuge /home/marcel/tmp-ops/shadow/shadow-run.sh + Evidence evidence/board-2026-10-27/sr1-shadow-plan.md:
+1) Kann-jeder-Schritt-CHECKLISTE als ausführbarer Teil des Scripts: fuer JEDEN Schritt des RUNBOOK §12 EIN-Lauf-Rezepts eine Zeile 'SCHRITT | BENÖTIGTE AUTH/PIN/ENV | QUELLE (Owner-Token/Repo-Secret/GitHub-API — NIE lane-gesetzt)' + Pre-Flight-Grep im finalen Workflow: persist-credentials (muss true am planning-checkout), CONTROLLER ref Pin (muss = Kandidaten-tip sein — Variable KANDIDAT, Script prueft merge-base --is-ancestor Pin..KANDIDAT und meldet ABORT bei Diskrepanz).
+2) Ablauf-Teil: befehlt NUR lesende gh api + ein dokumentierter Platzhalter-Kommentar, wo der OWNER den workflow_dispatch/PR-Klick tut (kein Lane-Aufruf!). Script bricht sicher, wenn KANDIDAT/Secrets nicht gesetzt sind (set -euo, keine Defaults fuer Auth).
+3) Evidence: Plan, rc des dry-run (KANDIDAT leer -> erwarteter Abbruch mit Klarheit), Diskrepanz-Test: Pin != Kandidat -> ABORT-Meldung erscheint (belege Zeile).
+END 'END SR1-DONE' / 'END SR1-PARTIAL <grund>'. root-git/gh-schreib/dispatch verboten.

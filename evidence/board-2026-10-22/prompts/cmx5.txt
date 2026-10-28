@@ -1,0 +1,7 @@
+TOOL 1: gh api repos/mcpdev80/baseharbor/rulesets --jq '.[].id' 2>&1 | tr '\n' ' '. Fehler/leer -> END CMX5-NORULESETS (dann: gh api repos/mcpdev80/baseharbor/branches/develop/protection 2>&1 | head -c 200 und END CMX5-CLASSIC <json-anfang>).
+LANE cmx5 (ornith) - OWNER-FREIGABE FUER API-REGEL-OPP (12:0xZ: 'Regel anpassen via gh api'). Exakte Reihenfolge, JEDER api-Aufruf mit voller Antwort in evidence/board-2026-10-28/cmx5-ruleset-ops.md (Datei im root Repo anlegen, Coordinator committet):
+1) EXPORT: gh api repos/mcpdev80/baseharbor/rulesets (komplett) + pro Ruleset gh api .../rulesets/<id> — JSON 1:1 in Evidence. Pruefe .include/branches enthaelt develop.
+2) DISABLE: fuer das develop-relevante Ruleset: gh api -X PATCH repos/mcpdev80/baseharbor/rulesets/<id> -f active=false — Antwort dokumentieren.
+3) MERGE: gh pr merge 1142 --repo mcpdev80/baseharbor --squash --admin 2>&1.
+4) RESTORE: gh api -X PATCH .../rulesets/<id> -f active=true — Antwort dokumentieren; DANACH Kontroll-GET: gh api .../rulesets/<id> --jq .active (muss true sein) + ls-remote develop (neue SHA).
+5) END 'END CMX5-DONE <sha>' NUR wenn develop-Tip != 3431b22c UND active==true bestaetigt. Sonst 'END CMX5-BLOCKED <antwort>'. KEINE anderen Regel-Felder aendern, kein Delete, kein direkter develop-Push, force verboten.

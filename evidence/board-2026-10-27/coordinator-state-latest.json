@@ -1,9 +1,9 @@
 {
- "at": 1793130538,
+ "at": 1793141607,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1793130541,
+   "observed_at": 1793141609,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1793130542,
+   "observed_at": 1793141610,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1793130541,
+   "observed_at": 1793141610,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1793130543,
+   "observed_at": 1793141611,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 8021,
-  "tmp_free_mb": 11554,
+  "mem_available_mb": 13998,
+  "tmp_free_mb": 10412,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -80,49 +80,31 @@
  },
  "lanes": [
   {
-   "id": "01d9d610-f3cf-4cea-abed-fa7a1cfde20d",
+   "id": "5022caf5-d673-42f2-b8cd-d00974bcc972",
    "idle_s": 0,
    "mode": "opencode",
    "model": null,
-   "name": "rv3",
+   "name": "d5",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "46000bd9-a523-4c8f-a803-376015ed2cc9",
+   "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "r5i",
    "self": false,
    "status": "busy"
   },
   {
    "id": "41e61806-074a-4472-91cf-b32fdab3b766",
-   "idle_s": 0,
+   "idle_s": 373,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
    "self": true,
-   "status": "busy"
-  },
-  {
-   "id": "86bfdf6a-943c-4382-87f6-6963b7937c77",
-   "idle_s": 0,
-   "mode": "opencode",
-   "model": null,
-   "name": "w4a",
-   "self": false,
-   "status": "busy"
-  },
-  {
-   "id": "0b5dcc7f-ccb7-4d70-870d-a734a9dfb083",
-   "idle_s": 0,
-   "mode": "opencode",
-   "model": null,
-   "name": "w4b",
-   "self": false,
-   "status": "busy"
-  },
-  {
-   "id": "3e441aa3-4535-4944-aa04-8ee407e17856",
-   "idle_s": 0,
-   "mode": "opencode",
-   "model": null,
-   "name": "w4c",
-   "self": false,
-   "status": "busy"
+   "status": "idle"
   }
  ],
  "missions": {

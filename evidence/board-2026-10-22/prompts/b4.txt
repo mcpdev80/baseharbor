@@ -1,0 +1,7 @@
+TOOL 1: git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan pull -q --ff-only origin main. Fehler -> END B4-BOOTFAIL.
+LANE b4 (flash) - CARD-REFRESH R4 (NUR baseharbor-plan, root-git verboten, HARTVERBOT force/produkt-repos):
+1) R27-W-Karten (t-20261024-r27-ci-impact-prototype, -evidence-publisher, -evidence-verifier): prs += #1134 #1135; evidence += Blob-URL CODEX-REVIEW-27507add.md; Status bleibt review.
+2) publisher-Karte: unter 'Required correction' neuer kurzer Absatz 'Status R4 (2026-10-27): D1/D2/D3 PARTLY laut CODEX-R4; Restarbeiten gebuendelt in work/r27-integration-r5 (LANE r5i) statt Wellen.'
+3) t-20261027-r27-shadow-run blocker := 'v3.7-Staging (stg4) + r5i Sammel-Integration laufen; CODEX-R5 danach; Owner-Punkte Token/dispatch offen (p1 GAP-2/5)'.
+4) render+check rc=0 (rc direkt), commit+push origin main, non-ff -> pull rebase.
+Evidence board-2026-10-27/b4-board.md (before/after), END 'END B4-DONE <sha8>'.
