@@ -87,15 +87,16 @@ def full_sha(value):
     return isinstance(value, str) and SHA.fullmatch(value) is not None
 
 
-def extract_facts(producer_plan, *, artifact_size):
+def extract_facts(producer_plan, *, artifact_size, run_id=None, attempt=None, workflow_id=None):
     """Bounded, strict extraction of the authenticated producer facts (D3).
 
-    Derives head/candidate/base SHAs, run id, attempt and workflow id from the
-    real producer plan object and returns them as typed values. Every input is
-    validated for type, length and hexness BEFORE anything is returned, so a
-    malformed/missing/null/duplicate field blocks at extraction and no consumer
-    is invoked with spoofed context. Duplicate JSON keys are rejected by the
-    canonical decoder that built *producer_plan*; this guards the resolved value.
+    Derives head/candidate/base SHAs from the real producer plan object and
+    run id, attempt and workflow id from the caller-provided run context.
+    Every input is validated for type, length and hexness BEFORE anything is
+    returned, so a malformed/missing/null/duplicate field blocks at extraction
+    and no consumer is invoked with spoofed context. Duplicate JSON keys are
+    rejected by the canonical decoder that built *producer_plan*; this guards
+    the resolved value.
 
     Parameters
     ----------
@@ -104,6 +105,13 @@ def extract_facts(producer_plan, *, artifact_size):
     artifact_size : int
         The artifact size in bytes from the authenticated artifact object,
         already bounded by the caller against the documented maximum.
+    run_id : int or None
+        The authenticated producer run id (positive integer), from the
+        API lookup, not from the producer plan itself.
+    attempt : int or None
+        The attempt number (must be 1 for pilot).
+    workflow_id : int or None
+        The authenticated producer workflow id (positive integer).
 
     Returns
     -------
@@ -133,9 +141,12 @@ def extract_facts(producer_plan, *, artifact_size):
     integration_sha = _sha40("integration_sha")
     base_sha = _sha40("target_base_sha")
 
-    run_id = kwargs.get("run_id") if kwargs else None
-    attempt = kwargs.get("attempt") if kwargs else None
-    workflow_id = kwargs.get("workflow_id") if kwargs else None
+    require(run_id is not None and type(run_id) is int and run_id > 0,
+            "run_id must be a positive integer")
+    require(attempt is not None and type(attempt) is int and attempt == 1,
+            "attempt must be the integer 1 (pilot restriction)")
+    require(workflow_id is not None and type(workflow_id) is int and workflow_id > 0,
+            "workflow_id must be a positive integer")
 
     require(run_id is not None and type(run_id) is int and run_id > 0,
             "run_id must be a positive integer")
