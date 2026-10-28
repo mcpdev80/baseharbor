@@ -106,7 +106,7 @@ jobs:
                   --jq '.artifacts[] | select(.name == "trusted-pr-plan") | .id' | head -n1)
           test -n "$AID" || { echo "trusted-pr-plan artifact missing; refusing" >&2; exit 1; }
           gh api "repos/mcpdev80/baseharbor/actions/artifacts/$AID/zip" \
-               --method GET --output plan.zip.tmp \
+               --method GET > plan.zip.tmp \
             || { echo "artifact download failed; refusing" >&2; exit 1; }
           test -s plan.zip.tmp
           mv plan.zip.tmp plan.zip
