@@ -648,3 +648,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:5xZ ROOTCAUSE Wake: events.log erwartet Epoch-Praefix (log_queue-Format); meine Datum-Zeilen waren 'preserved-malformed' -> Zaehler blind. ci-wait auf date +%s umgestellt, 23 Altzeilen entfernt.
 - 22:2xZ Fix A PR created (Desk: injiziert OK / ohne rot, echte API 40774441060 attempt=1). Contract-Test-Note folgt ins Dossier.
 - 22:3xZ #1177 (Fix A) PR + watcher auf run 40775930748.
+- 23:0xZ C2 geliefert: #1178 (3-Dateien runner/planner/test) + #1179 (Register script_files), Desk+Kontrast-Zeugen im Commit. Watcher auf beiden Runs.
