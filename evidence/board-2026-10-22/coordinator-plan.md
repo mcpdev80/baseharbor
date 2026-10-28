@@ -453,3 +453,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 02:1xZ nt1-Leiche entfernt (war als letzter 'busy' gemeldet,gone seit 21:5x). Reminder-Zyklus sauber.
 - 02:4xZ fx1 DONE (END-Keyword fehlte, Dossier 3/3 Sektionen) committed, rotiert.
 - 03:1xZ Tick: bz1/qwen dispatched (R6-Belegsetz-Dossier, planning-only, keine Scheinauftraege weiter).
+- 03:3xZ bz1 END-DONE gemeldet, aber branch leer (ls-remote ohne Fund) -> False-END-Verdacht, Transcript nach ls-remote-Zeile pruefen naechsten Tick.
