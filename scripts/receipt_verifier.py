@@ -657,22 +657,24 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
     push is attempted, and no token value ever enters a message or log.
     """
     import receipt_writer
-    helper = getattr(receipt_writer, "publish_edit", None)
+    helper = getattr(receipt_writer, "publish", None)
     if helper is None or not callable(helper):
         require(False,
-                "publication blocked: W2 receipt_writer.publish_edit interface missing (finding BF-W3-1)")
+                "publication blocked: W2 receipt_writer.publish interface missing (finding BF-W3-1)")
     require(os.environ.get(PUSH_CREDENTIAL_ENV, "") != "",
             "publication blocked: Planning write credential " + PUSH_CREDENTIAL_ENV
             + " is not configured; failing closed before any push")
-    # An approval edit modifies an existing durable receipt; it must push the
-    # exact approved commit and never let a bounded re-apply drop it.
-    is_new_file = not receipt_writer._introduces_path(planning, approval_commit, path)
     try:
-        publication = helper(planning, path, approval_commit, is_new_file=is_new_file)
+        published = helper(planning, path, approval_commit)
     except Exception as exc:
-        err_msg = "publication blocked: W2 publish_edit failed (%s; finding BF-W3-1)" % exc
+        err_msg = "publication blocked: W2 publish failed (%s; finding BF-W3-1)" % exc
         raise ReceiptError(err_msg) from exc
-    require(full_sha(publication), "publication returned no durable commit")
+    require(isinstance(published, (tuple, list)) and len(published) == 3
+            and all(isinstance(part, str) for part in published),
+            "W2 publish returned no (path, introduction, publication) tuple")
+    path_back, introduction, publication = published
+    require(path_back == path and full_sha(introduction) and full_sha(publication),
+            "publication returned no durable commit")
     # Automatic evidence publication (CODEX-REVIEW F5 verifier side): the card
     # edit goes through tasklink and its durable publication SHA is captured and
     # returned — never the older receipt publication alone. Failures propagate
