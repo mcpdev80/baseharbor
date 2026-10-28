@@ -617,3 +617,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:0xZ Owner-Korrektur: 8f8e554 war LOKALER develop-Branch (10-26, Phantom). branch -f develop=origin/develop, r7c deleted. rv12/R7-final dispatched.
 - 16:3xZ R7-ACCEPT (rv12, Dossier R7-ACCEPT-rv12.md). PreFlight laeuft, dann Owner-Klicks Runbook A.
 - 16:5xZ PreFlight: Sicherheits-Gates OK (Pin/Ancestry) ABER receipt-post-run.yml auf GitHub UNREGISTERED (default branch=main, Datei nur auf develop). Shadow-Run braucht main-Promotion ODER Owner-Aktivierung. Owner-Entscheid noetig.
+- 17:1xZ Negativtests LIVE 43/43 OK auf f4b173d3; ShadowRun blockiert bis main-Promotion (SHADOW-RUN-STATUS.md); R7-ACCEPT Dossier rv12 uebernommen.
