@@ -420,3 +420,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - TRIGGER-KETTE JETZT: rv7 ACCEPT -> Merge-Lane cmx1139 (CODEx-MERGE, develop, post-merge Checks!) -> f1x END -> v3.9-Staging (v38 + #1137 + #1139-in-develop-Anpassung + f1x) -> run-pilot rc=0 Pflicht -> CODEX-R6 NUR als Verdict über den Hosted-Beweis. rv7 CHANGES -> Rezept-Lane booted Slice neu. f1x ghost -> Swap ornith.
 - MODELL-HOST: Gateway 10 Modelle, ping ok (flash 467ms/ornith 388ms/qwen-laptop 881ms); Codex = gpt-6.1-terra-Login-Weg.
 - RESUME: basics-check.py (TMPDIR=/home/marcel/tmp-ops) -> events --reminders --ack + --ack -> agent list + THIS FILE ab ANKER -> rv7/f1x Disk-Check -> cmx1139/f1x-Nachfolge je nach END.
+- 18:3xZ f1x DONE #1140 (c6a03c6a) rotiert. rv7 75min -> Ultimatum-Urteilsbefehl.
