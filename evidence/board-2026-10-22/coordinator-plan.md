@@ -407,3 +407,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:4xZ p2b DONE (Dossier da, rotiert): LOCAL-SMOKE BROCHT an F1-Rest (verifier run_id!=int, facts.env fehlt) -> Klasse-A-Beweis fehlt weiter. rv7 offen.
 - 17:5xZ force-Fund = Fixture-Setup im TMP-Remote (legitim, nicht produktiv). f1x/qwen dispatched: Klasse-A Smoke-Fix mit Abnahme (a)-(d).
 - 18:0xZ Tick: rv7 55min + f1x 15min ohne PLAN-Datei -> Disziplin-Sende; Watch-Fernbereinigung; ack.
+- 18:1xZ f1x halb (1ea75ac1 lokal) -> REST-Befehl gesendet.
