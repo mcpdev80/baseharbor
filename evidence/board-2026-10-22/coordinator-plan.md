@@ -536,3 +536,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 05:1xZ Tick: CI 0 fail/1 pending (nur noch Selected-Checks-Aggregator).
 - 05:2xZ fx5/flash dispatched: fx4-Worktree-Rest committen/pushen + Finish.
 - 05:3xZ KORREKTUR (Fehler im Plan): fx4-Worktree existiert NICHT mehr, keine unpushed Arbeit; fx5 Schritt1 laeuft ins Leere -> Anweisung an fx5 angepasst.
+- 05:5xZ Klarstellung: fx4(b) WAR gepusht (e7fbee8e); Suite 175 OK; Selected-Checks = Qualifikations-Block (CODEX Option C Q+R). fx6 Ancestry-Transport gemergt, Tip aktualisiert.
