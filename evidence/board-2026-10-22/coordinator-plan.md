@@ -604,3 +604,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 19:4xZ #1152 gemergt (dev 44726f54). Pin-Commit als First-Parent-Merge auf #1151 (head jetzt neu), force-with-lease auf feature-branch. Re-Registration (#1153) folgt falls Head-Check failt.
 - 19:5xZ Pin-on-candidate verworfen (sync laesst Diff gegen Konstanten schrumpfen - struktureller Konflikt). Branch zurueck auf exakt 4f0ce579; Pin-Bump wird Follow-up-PR NACH Merge.
 - 20:2xZ #1153: Allow-List Qufifikation (23 Pfade + ci.yml) pushed 92aac7b9. Tabelleneintrag NICHT noetig (1426 reicht). Owner-Freigabe ausstehend.
+- 21:0xZ #1153 superseded (Allow-List brach 21 Fail-Closed-Tests). #1154 = native-table Tuple (head 4f0ce579, 40-Inv, core752-Kette). Tests 653: einziger Fail = develop-Baseline (ohnen Patch reproduziert). Owner-OK ausstehend.
