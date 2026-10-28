@@ -1032,6 +1032,9 @@ def plan(diff, requirements, mapping, repository='.',
          (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
            CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
            'reviewed exact #999 GC evidence retention candidate'),
+        (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
+         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
+         'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
