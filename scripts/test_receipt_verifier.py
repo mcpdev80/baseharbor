@@ -892,6 +892,36 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
         with self.assertRaisesRegex(verifier.ReceiptError, 'invalid YAML'):
             self.approve_pr()
 
+    def test_binding_rejects_duplicate_prs_keys(self):
+        # F4b: the Planning schema parser rejects duplicate front-matter keys,
+        # so must this resolver — a duplicate PR marker binds ambiguously.
+        (self.root / TASK_PATH).write_bytes(
+            f'---\nprs: ["{PR_MARKER}", "{PR_MARKER}"]\n---\npilot\n'.encode())
+        self.command('add', '.')
+        self.command('commit', '-qm', 'duplicate prs front-matter key')
+        plan2 = self.head()
+        self.run.update(id=777)
+        self.job.update(run_id=777)
+        writer.write(self.root, plan2, 777, 1, api=self.api)
+        self.seed_remote_main()
+        with self.assertRaisesRegex(verifier.ReceiptError, 'duplicate PR marker'):
+            self.approve_pr()
+
+    def test_binding_ignores_prs_mentions_in_body_prose(self):
+        # F4a: the schema front matter is the single binding authority; a PR
+        # marker that appears only in task-note body prose never binds.
+        (self.root / TASK_PATH).write_bytes(
+            b'---\nid: receipt-pilot\nprs: []\n---\nSee mcpdev80/baseharbor#123 in body.\n')
+        self.command('add', '.')
+        self.command('commit', '-qm', 'prs mention only in body prose')
+        plan2 = self.head()
+        self.run.update(id=777)
+        self.job.update(run_id=777)
+        writer.write(self.root, plan2, 777, 1, api=self.api)
+        self.seed_remote_main()
+        with self.assertRaisesRegex(verifier.ReceiptError, 'association missing'):
+            self.approve_pr()
+
     def test_approval_blocks_before_push_without_write_credential(self):
         # Addendum cc379b1-1: a missing write token fails closed BEFORE any
         # push; the publication mechanism is never invoked and the remote is
