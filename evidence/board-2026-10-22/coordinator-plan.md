@@ -498,3 +498,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 17:3xZ Coord setzte Step0 (1d9dc534, Nur-Scaffold) — Lanes liefern seit 4x nicht; f345b/ornith auf vorhandener Branch dispatched.
 - 17:5xZ f345b silent-boot: Coord setzte worktree, sendete arbeitsbefehl ohne boot.
 - 18:0xZ ROOT CAUSE: 126->29 Worktree-Registraturen (Boot-Silence by 'already used'), 2 aktive (f345b) bleiben.
+- 18:1xZ f345c/ornith dispatched auf BEREITS gemounteten f345b-Worktree (Boot-Path entfernt).
