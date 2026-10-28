@@ -3639,9 +3639,18 @@ def runner_validations():
 
 
 class AttemptContractTests(unittest.TestCase):
+    def _mod(self):
+        import importlib.util, pathlib
+        spec = importlib.util.spec_from_file_location(
+            "pr_gate_plan_under_test",
+            pathlib.Path(__file__).with_name("pr-gate-plan.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
     def test_main_output_carries_authenticated_attempt(self):
-        import importlib, os
-        mod = importlib.import_module("pr-gate-plan")
+        import os
+        mod = self._mod()
         os.environ["GITHUB_RUN_ATTEMPT"] = "7"
         self.assertEqual(mod._authenticated_attempt(), 7)
         os.environ["GITHUB_RUN_ATTEMPT"] = ""
