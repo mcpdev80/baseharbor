@@ -454,3 +454,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 02:4xZ fx1 DONE (END-Keyword fehlte, Dossier 3/3 Sektionen) committed, rotiert.
 - 03:1xZ Tick: bz1/qwen dispatched (R6-Belegsetz-Dossier, planning-only, keine Scheinauftraege weiter).
 - 03:3xZ bz1 END-DONE gemeldet, aber branch leer (ls-remote ohne Fund) -> False-END-Verdacht, Transcript nach ls-remote-Zeile pruefen naechsten Tick.
+- 03:4xZ bz1 FALSE-END bestaetigt (kein branch/PR/worktree) — qwen-Streichliste #2. bz2/flash dispatched.
