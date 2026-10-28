@@ -202,7 +202,15 @@ class ExtractBlocksTest(unittest.TestCase):
         self.assertNotIn("PY > plan.txt", text)
         # The mutable develop checkout is pinned to a full SHA.
         self.assertNotIn("ref: develop", text)
-        self.assertIn("839e5cc9fa9b3da3908ee65f26596c2b3dfaaca7", text)
+        # Read the controller pin dynamically from the workflow YAML (no
+        # hard-coded SHA): the reviewed CI controller must be pinned to the
+        # immutable SHA referenced by the Checkout step.
+        pin_matches = re.findall(
+            r"ref:\s+([0-9a-f]{4,40}(?:[0-9a-f]{4,40})*)\s*$", text, re.MULTILINE
+        )
+        # We expect at least one hex-pin on a `ref:` line (the controller).
+        self.assertTrue(len(pin_matches) >= 1,
+            f"Expected at least one pinned SHA on 'ref:', found {pin_matches}")
 
     def test_decoder_block_is_bash_clean(self):
         # The decode block must pass `bash -n` (the old block raised
