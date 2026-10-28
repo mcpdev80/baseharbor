@@ -38,3 +38,12 @@ Ruhepunkt: develop=8cf8ed08 (#1180), main=7c423380, #1178 bleibt OPEN bis Weg C.
   geforderten Felder (inkl. attempt) als Required-Check.
 - Writer-Selbsttest-Karte: receipt-post-run fuehrt gegen sein eigenes
   Producer-Artefakt einen Formtest, bevor es den Writer ueberhaupt triggert.
+
+## Protokoll-Zusaetze (Cause-8-Kette, 2026-10-29)
+- Cause-8 final: duplierter 40-Pfade-Block (Anker 4f0ce579, eingebracht durch #1180-Rebuild)
+  -> duplicate-anchor-Guard -> GESAMTES Register fail-closed. Rebend-Records selbst waren
+  korrekt. Lesson: Register-Eingriffe immer gegen Anker-Unique-assert pruefen (lokaler
+  Einzeiler genuegt), nicht nur gegen das eigene Record.
+- Gitlink-Incident (#1182): `git add -A` in einem Pfad, der verschachtelte Worktrees/
+  Branch-Verzeichnisse enthaelt, zieht diese als gitlinks ins Produkt-Commit. Regel:
+  gezieltes `git add <datei>`; vor jedem Push `git diff --cached --name-only` pruefen.
