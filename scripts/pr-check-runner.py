@@ -317,7 +317,7 @@ def validate_pins_data(check, repository):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=['matrix', 'results', 'execute'])
+    parser.add_argument('mode', choices=['matrix', 'results', 'execute', 'plan-json'])
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--check')
     parser.add_argument('--repository', default='.')
@@ -337,6 +337,10 @@ def main():
     if not args.plan:
         parser.error('--plan is required for matrix/results')
     plan = json.loads(args.plan.read_text())
+    if args.mode == 'plan-json':
+        plan.setdefault('attempt', int(os.environ.get('GITHUB_RUN_ATTEMPT', '1') or 1))
+        print(json.dumps(plan, sort_keys=True))
+        return
     value = matrix(plan) if args.mode == 'matrix' else report(
         plan, args.job_conclusion, args.matrix_result)
     print(json.dumps(value, sort_keys=True, separators=(',', ':')))

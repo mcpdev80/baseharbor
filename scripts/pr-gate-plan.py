@@ -1502,6 +1502,13 @@ def plan(diff, requirements, mapping, repository='.',
                 'or automatically run the complete release catalog.'),
             'reasons': reasons}
 
+def _authenticated_attempt():
+    # Producer contract: extract_facts requires plan["attempt"]; the Actions
+    # runner env value is authenticated context, never PR-controlled content.
+    attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "")
+    return int(attempt) if attempt.isdigit() and int(attempt) >= 1 else 1
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--diff', type=Path, required=True, help='JSON output from scripts/pr-diff-base.py')
@@ -1527,6 +1534,7 @@ def main():
     result = plan(diff, requirements, mapping,
                   context_repository=context_repository,
                   context_target_branch=context_target_branch)
+    result["attempt"] = _authenticated_attempt()
     print(json.dumps(result, indent=2, sort_keys=True))
 
 
