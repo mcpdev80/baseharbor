@@ -492,3 +492,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 15:4xZ f6all STUCK (0 commits nach 35min trotz Druck) rotiert -> f6all2/flash mit Sichtbarkeit-zuerst Klausel.
 - 16:1xZ f6all2 stumm 20min (kein worktree) -> Schritt-fuer-Schritt-Ultimatum.
 - 16:3xZ Strategie: Grosz-Lane 2x stumm -> Mission gesplittet; f1z/qwen nur P1(PIN)+P2(extract_facts).
+- 16:5xZ f1z2 DONE PR#1143 (P1 pin 40-char korrekt validiert, P2 extract). Ornith-Liefermuster = small-steps funktioniert.
