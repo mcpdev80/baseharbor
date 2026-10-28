@@ -650,3 +650,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 22:3xZ #1177 (Fix A) PR + watcher auf run 40775930748.
 - 23:0xZ C2 geliefert: #1178 (3-Dateien runner/planner/test) + #1179 (Register script_files), Desk+Kontrast-Zeugen im Commit. Watcher auf beiden Runs.
 - 23:5xZ C2-Kopf geflickt (Test-Import-Bug + Chain-Carry); head e7f632c4, run 40780762262 watched.
+- 00:2xZ C2-rebind #1180 (register an e7f632c4, 3 script_files blobs). Warten: 1180 gruen -> merge -> 1178 sync -> gruen -> merge -> Promotion -> Producer.
