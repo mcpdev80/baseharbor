@@ -641,3 +641,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:0xZ Kette2 armed: PR #1173 (1 env-Zeile PYTHONPATH, root-cwd-Desk-Test bestanden), Vollmacht-Monitor laeuft (kette2.md + events.log).
 - 21:0xZ kette2-Bug aufgeklart (grep -ao ohne Quotes -> Predicate leer, merge nie versucht). 1173 manuell gemergt, kette3 laeuft korrekt.
 - 21:2xZ kette4 armed (realer Producer-Lauf 40769743375 nach echtem probe3-Sync). kette2/3-Bug-Historie dokumentiert.
+- 21:4xZ Root-Cause 3 gemeldet (attempt-Feld im Webhook-Payload nicht vorhanden) — API-Lösung vorgeschlagen, Freigabe offen.
