@@ -540,3 +540,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 06:0xZ qb1/ornith dispatched (Q-Bootstrap, 4-File-Write-Set, Schritt-Null-Pflicht).
 - 06:1xZ Tick: qb1 busy, kein Branch — naechster Tick Deadline.
 - 06:2xZ qb1 ohne Artefakte nach 15min -> Status/Deadline-Befehl.
+- 06:3xZ Q sichtbar: c5e8d221 pushed, Commits folgen.
