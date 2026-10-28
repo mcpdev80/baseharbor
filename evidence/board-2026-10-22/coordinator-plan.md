@@ -505,3 +505,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 19:0xZ f345c/f8z silent 20min -> 3-Befehls-Konfrontation an f345c.
 - 19:3xZ Beide Lanes 40min ohne Commits -> interrupt + Kommando-Modus (Ein-Befehl-Takt).
 - 19:5xZ f345c Tests lauffaehig (FAILED=offener Fix), f8z push steht aus; Kommando-Takt laeuft.
+- 20:0xZ f8z FALSE-END (kein branch) rotiert; f8z2/ornith dispatched (F8 als Code-Mission wie f1z2).
