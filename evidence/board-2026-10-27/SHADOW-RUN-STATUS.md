@@ -14,3 +14,27 @@
 Wenn der Controller (receipt_verifier.py u.a.) ein neues Modul erhaelt, muss der
 Writer-Pin in receipt-post-run.yml im selben reviewed Change mitwandern — sonst
 importiert der Writer Code, den sein Pin nicht kennt (heute: 94f35d02 < Modul).
+
+## Cause-7 Dossier (Owner-Entscheidung D, 2026-10-29 00:5x UTC)
+Befund (empirisch, nicht theoretisch):
+1. C2-nur-Register: planner auf develop@8cf8ed08, diff=script_files-Tupel ->
+   'coverage: unresolved — CI execution/evidence impact requires specific
+   qualification: scripts/pr-check-runner.py' (exakt die Run-BLOCKED-Zeile).
+   Ursache: #1154 hat den binding-Vor-Guard 'if not unresolved' eingefuehrt —
+   das script_files-Registermuster kann den Terminalzweig nicht mehr aufloesen.
+2. C2-mit-Allow-List: +3 Eintraege in RECEIPT_CONTROL_PLANE_* -> 16 Failures
+   in der Fail-Closed-Suite (dieselbe Klassifikation wie das verworfene #1153).
+Owner-Entscheid: BEIDES abgelehnt. Fail-Closed-Semantik bleibt unangetastet.
+Writer-Status: fail-closed (korrekt); Producer-Artefakt ohne attempt-Feld ist
+bewiesenermassen der einzige verbleibende Blocker der Receipt-Kette.
+Ruhepunkt: develop=8cf8ed08 (#1180), main=7c423380, #1178 bleibt OPEN bis Weg C.
+
+## Follow-ups fuer morgen (nicht heute — Owner-Liste)
+- Weg-C-Karte: naechster echter Receipt-Inventar-PR (40 Pfade) traegt attempt
+  in pr-check-runner.py + pr-gate-plan.py + test_pr_gate_plan.py; Register greift
+  (Beweismuster #1147). Vorbereitung: 3 Dateien auf echte inhaltliche Aenderungen
+  strukturieren.
+- Contract-Test-Karte: Producer-Artefakt enthaelt alle von extract_facts
+  geforderten Felder (inkl. attempt) als Required-Check.
+- Writer-Selbsttest-Karte: receipt-post-run fuehrt gegen sein eigenes
+  Producer-Artefakt einen Formtest, bevor es den Writer ueberhaupt triggert.
