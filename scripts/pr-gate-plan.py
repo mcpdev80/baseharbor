@@ -713,6 +713,13 @@ RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
     '.github/workflows/receipt-post-run.yml',
     '.github/workflows/receipt-shadow.yml',
 })
+PINBUMP_INVENTORY = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'scripts/test_pr_authenticated_results.py': 'modified',
+}
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -786,7 +793,9 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
     Re-run the real diff resolver so caller-supplied inventories, integration
     parents and merge trees cannot substitute for Git evidence. This bounded
     record enables only the three CI scripts, optionally with ci.yml and its
-    mandatory syntax check, through an exact immutable inventory.
+    mandatory syntax check, through an exact immutable inventory. The pin-bump
+    inventory extends the allowed set with the same four CI paths plus the
+    authenticated-results test, still through an exact immutable tuple.
     Hash the frozen reviewed blobs; later source may only add exact Git-computed
     first-parent merges of authenticated target history. This permits strict
     up-to-date integration without accepting candidate-authored follow-ups.
@@ -832,13 +841,15 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
             'scripts/test_pr_gate_plan.py')}
         receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
         workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
+        pinbump_files = PINBUMP_INVENTORY
         records = []
         for block in blocks:
             record = json.loads(block, object_pairs_hook=unique_object)
             if not isinstance(record, dict):
                 return None
             checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                      if record.get('files') == workflow_files else CI_CHECKS)
+                      if record.get('files') in (workflow_files, pinbump_files)
+                      else CI_CHECKS)
             expected_ids = {check['id'] for check in checks}
             if (not isinstance(record, dict) or set(record) != {
                     'repository', 'target_branch', 'reviewed_head', 'files',
@@ -847,7 +858,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     record['target_branch'] != context_target_branch or
                     not isinstance(record['reviewed_head'], str) or
                     re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, receipt_files, workflow_files) or
+                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
                     not isinstance(record['file_hashes'], dict) or
                     set(record['file_hashes']) != set(record['files']) or
                     any(not isinstance(value, str) or
