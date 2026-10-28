@@ -493,3 +493,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 16:1xZ f6all2 stumm 20min (kein worktree) -> Schritt-fuer-Schritt-Ultimatum.
 - 16:3xZ Strategie: Grosz-Lane 2x stumm -> Mission gesplittet; f1z/qwen nur P1(PIN)+P2(extract_facts).
 - 16:5xZ f1z2 DONE PR#1143 (P1 pin 40-char korrekt validiert, P2 extract). Ornith-Liefermuster = small-steps funktioniert.
+- 17:0xZ f345z/ornith dispatched (F3+F4+F5, 6 Schritte, Schritt-0-Pflicht+60s-Nudge Muster).
