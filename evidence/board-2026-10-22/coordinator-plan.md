@@ -643,3 +643,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:2xZ kette4 armed (realer Producer-Lauf 40769743375 nach echtem probe3-Sync). kette2/3-Bug-Historie dokumentiert.
 - 21:4xZ Root-Cause 3 gemeldet (attempt-Feld im Webhook-Payload nicht vorhanden) — API-Lösung vorgeschlagen, Freigabe offen.
 - 22:0xZ ATTEMPT-API-Fix PR created (Desk-Test Zeuge run_attempt=1).
+- 22:1xZ kette5 armed (1175 attempt-api -> promotion -> producer -> receipt). Diff: 1 Zuweisung +3 Kommentare, Desk-Zeuge run_attempt=1.
