@@ -551,3 +551,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 08:0xZ q3-Branch pushed (e60c4a28, 1 Commit bisher).
 - 08:1xZ qb3 step0-fertig, B fehlt -> Arbeitsbefehl mit erstem grep.
 - 08:2xZ qb3 Ultimatum.
+- 08:3xZ q4/flash dispatched (Q auf qx-Branch, Single-File-Commits).
