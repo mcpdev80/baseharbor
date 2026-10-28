@@ -472,3 +472,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:1xZ Tick: Stillstand bewusst (Trigger #1142), acks+reminders (18) gequenzt, nichts verwaist.
 - 09:3xZ Tick: identische Wartelage (3.), acks ok, Deadline-Countdown laeuft.
 - 09:5xZ Tick: Wartelage konstant, Reminder (20) gequenzt.
+- 10:2xZ Tick: Lage fix (1142 OPEN, develop 3431b22c, Coord-only). 27 Reminder gequenzt; Warten bleibt korrekt.
