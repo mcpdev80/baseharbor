@@ -673,3 +673,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:0xZ Tick: diag1178 END(H2) abgeholt, Lane freigegeben. Melden an Owner: 12-Records-Migration als Entscheidung offen.
 - 03:2xZ Migration #1184 gepusht, run 40791260853 bewacht. 3 Zeugen an Owner; Merge erst nach Owner-Wort (Protokoll)
 - 03:3xZ #1184 gemergt (9e50d8a4), #1178 sync b8327957, run 40791657560 armed.
+- 04:0xZ E1: #1178 closed (Cause-10), Promotion #1186 (trees==develop 1 unique), run 40793534758 armed.
