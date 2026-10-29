@@ -70,10 +70,12 @@ GH_EXPR = {
     "${{ github.event.workflow_run.run_attempt }}": "1",
     "${{ needs.verify_producer.outputs.pr_number }}": "1124",
     "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}": "fixture-token",
+    "${{ secrets.GITHUB_TOKEN }}": "fixture-token",
     "${{ needs.extract_plan.outputs.workflow_id }}": str(FAKE_PLAN["workflow_id"]),
     "${{ needs.extract_plan.outputs.head_sha }}": HEAD_SHA,
     "${{ needs.extract_plan.outputs.candidate_sha }}": "c" * 40,
     "${{ needs.extract_plan.outputs.base_sha }}": "b" * 40,
+    "${{ github.event.workflow_run.pull_requests[0].number }}": "1124",
 }
 
 
@@ -97,18 +99,36 @@ def _extract_run_block(role):
     # already chomped to the runner's delivery form.
     doc = yaml.safe_load(text)
     run_text = None
+    step_env = None
     for job in doc["jobs"].values():
         for step in job["steps"]:
             if marker in step.get("name", "") and step.get("run"):
                 run_text = step["run"]
+                step_env = step.get("env", {})
                 break
         if run_text is not None:
             break
     if run_text is None:
         raise AssertionError("run block for %r not found" % role)
     block = run_text
+    # Substitute expressions in the run block text.
     for expr, val in GH_EXPR.items():
         block = block.replace(expr, val)
+    # Process env block values: substitute expressions and export as shell
+    # assignments so the run block can reference them. For github.workspace
+    # in env blocks, use the actual scripts directory so the test runs
+    # correctly regardless of cwd.
+    if step_env:
+        substituted = {}
+        for k, v in step_env.items():
+            for expr, val in GH_EXPR.items():
+                v = v.replace(expr, val)
+            # Replace relative ./scripts with absolute path to scripts
+            if v == "./scripts":
+                v = str(HERE)
+            substituted[k] = v
+        for k, v in substituted.items():
+            block = "export {}=\"{}\"\n".format(k, v) + block
     return block
 
 
@@ -279,15 +299,29 @@ class F1PositiveRun(unittest.TestCase):
     def _decode_block(self):
         return _extract_run_block("decode")
 
+    def _gh_stub_path(self):
+        """Ensure a bin directory with a fake gh is available on PATH."""
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir(exist_ok=True)
+        stub = bin_dir / "gh"
+        if not stub.exists():
+            stub.write_text(FAKE_GH_STUB)
+            stub.chmod(0o755)
+        return str(bin_dir)
+
     def test_full_run_publishes_plan_and_receipt(self):
         # 1. Decode the artifact with the extracted decode block. The download
         # step (network-only) is exercised by the missing-artifact negative;
         # here we prove the decoder produces the correct authenticated facts
         # and that those facts flow to a real plan + receipt publication.
         decode_block = self._decode_block()
+        stub_path = self._gh_stub_path()
         env = dict(os.environ,
                    GITHUB_OUTPUT=str(self.root / "gh_out"),
-                   PYTHONPATH=str(HERE))
+                   PYTHONPATH=str(HERE),
+                   PATH="%s:%s" % (stub_path, os.environ.get("PATH", "")),
+                   GITHUB_TOKEN="fixture-token",
+                   GH_WORKFLOW_TOKEN="fixture-token")
         (self.root / "gh_out").write_text("")
         proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
                     cwd=self.root)
@@ -405,13 +439,21 @@ class F1WorkflowShellEndToEnd(unittest.TestCase):
         # assert the plan fixture is durable on the bare remote main. The
         # extracted block calls `gh api` which resolves to PATH; the stub makes
         # the PR->task resolution return the fixture task deterministically.
-        tasklink_block = _extract_run_block("tasklink")
+        tasklink_block = _build_block_with_env("tasklink", {
+            "PLANNING_ROOT": str(self.planning),
+            "WORKFLOW_ID": str(FAKE_PLAN["workflow_id"]),
+            "HEAD_SHA": HEAD_SHA,
+            "CANDIDATE_SHA": "c" * 40,
+            "BASE_SHA": "b" * 40,
+            "PR_NUMBER": "1124",
+        })
+        # Also export these as env vars for the bash subprocess so the block
+        # can reference them via $WORKFLOW_ID etc.
         gh_out = self.root / "gh_out"
         gh_out.write_text("")
         env = dict(os.environ,
                    GITHUB_OUTPUT=str(gh_out),
                    GITHUB_TOKEN="fixture-token",
-                   PLANNING_ROOT=str(self.planning),
                    WORKFLOW_ID=str(FAKE_PLAN["workflow_id"]),
                    HEAD_SHA=HEAD_SHA,
                    CANDIDATE_SHA="c" * 40,
@@ -420,7 +462,7 @@ class F1WorkflowShellEndToEnd(unittest.TestCase):
                    PATH="%s:%s" % (self.bin, os.environ.get("PATH", "")),
                    PYTHONPATH=str(HERE.parent))
         proc = _run(["bash", "-euo", "pipefail", "-c", tasklink_block], env=env,
-                    cwd=str(HERE.parent))
+                     cwd=str(HERE.parent))
         self.assertEqual(proc.returncode, 0, f"tasklink block failed: {proc.stderr}")
 
         fixture = self.planning / receipt_tasklink.PLAN_PATH
@@ -437,28 +479,128 @@ FAKE_GH_STUB = r'''#!/usr/bin/env python3
 # Controlled gh stub: answers `gh api <path>` for the F1 tasklink resolution so
 # the extracted workflow block never reaches the real GitHub API. The real
 # invocation is: gh api <url> -H "Authorization: ..." -H "Accept: ...", so the
-# URL is the third positional argument (sys.argv[2]).
+# URL is the third positional argument (sys.argv[2]). Supports --jq filters.
 import json
 import sys
+import re
 
 args = sys.argv[1:]
 path = ""
-for i, a in enumerate(args):
-    if a == "api" and i + 1 < len(args):
+jq_filter = None
+i = 0
+while i < len(args):
+    if args[i] == "api" and i + 1 < len(args):
         path = args[i + 1]
-        break
+        i += 2
+        continue
+    if args[i] == "--jq" and i + 1 < len(args):
+        jq_filter = args[i + 1]
+        i += 2
+        continue
+    i += 1
 if "/pulls/" in path or path.endswith("/pulls"):
-    print(json.dumps({"number": 1124, "state": "open",
-                      "body": "Closes #1125"}))
-    sys.exit(0)
-if "/issues/" in path or path.endswith("/issues"):
-    print(json.dumps({"number": 1125,
-                      "title": "t-20261022-r27-evidence-pilot",
-                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
-    sys.exit(0)
-sys.stderr.write("gh stub: unexpected path %s\n" % path)
-sys.exit(401)
+    result = {"number": 1124, "state": "open", "body": "Closes #1125"}
+elif "/issues/" in path or path.endswith("/issues"):
+    result = {"number": 1125, "title": "t-20261022-r27-evidence-pilot",
+              "body": "tasks/t-20261022-r27-evidence-pilot.md"}
+elif "/actions/runs/" in path:
+    # Return run_attempt=1 for the authenticated run
+    result = {"run_attempt": 1}
+else:
+    sys.stderr.write("gh stub: unexpected path %s\n" % path)
+    sys.exit(401)
+# Apply jq filter if provided (simple path only)
+if jq_filter:
+    # Simple jq: .run_attempt, .number, etc.
+    key = jq_filter.lstrip(".")
+    if key in result:
+        print(result[key])
+    else:
+        # Try nested access like .run_attempt
+        parts = key.split(".")
+        val = result
+        for p in parts:
+            if isinstance(val, dict) and p in val:
+                val = val[p]
+            else:
+                val = None
+                break
+        if val is not None:
+            print(val)
+        else:
+            print("")
+else:
+    print(json.dumps(result))
+sys.exit(0)
 '''
+
+
+def _get_step_env_for_role(role):
+    """Extract the step env dict for a given role marker."""
+    import yaml
+    text = POST_RUN_YML.read_text()
+    marker = {
+        "download": "Download trusted-pr-plan artifact",
+        "decode": "Decode pr-plan and extract candidate_sha",
+        "tasklink": "Automatic task-link (plan fixture)",
+        "publish": "Publish receipt to Planning",
+    }[role]
+    doc = yaml.safe_load(text)
+    for job in doc["jobs"].values():
+        for step in job["steps"]:
+            if marker in step.get("name", ""):
+                return step.get("env", {})
+    return {}
+
+
+def _build_block_with_env(role, extra_env=None):
+    """Extract run block with substituted env block values, but allow
+    extra_env to override values that would come from the workflow env block.
+    This ensures tests can provide their own values for env vars like
+    PLANNING_ROOT that are set in the workflow but should use test paths."""
+    import yaml
+    text = POST_RUN_YML.read_text()
+    marker = {
+        "download": "Download trusted-pr-plan artifact",
+        "decode": "Decode pr-plan and extract candidate_sha",
+        "tasklink": "Automatic task-link (plan fixture)",
+        "publish": "Publish receipt to Planning",
+    }[role]
+    doc = yaml.safe_load(text)
+    run_text = None
+    step_env = None
+    for job in doc["jobs"].values():
+        for step in job["steps"]:
+            if marker in step.get("name", "") and step.get("run"):
+                run_text = step["run"]
+                step_env = step.get("env", {})
+                break
+        if run_text is not None:
+            break
+    if run_text is None:
+        raise AssertionError("run block for %r not found" % role)
+    block = run_text
+    # Substitute expressions in the run block text.
+    for expr, val in GH_EXPR.items():
+        block = block.replace(expr, val)
+    # Process env block values: substitute expressions and export as shell
+    # assignments so the run block can reference them. But if extra_env
+    # provides a value for an env var, use that instead.
+    if step_env:
+        substituted = {}
+        for k, v in step_env.items():
+            for expr, val in GH_EXPR.items():
+                v = v.replace(expr, val)
+            # Replace relative ./scripts with absolute path to scripts
+            if v == "./scripts":
+                v = str(HERE)
+            # If extra_env provides a value, use it instead
+            if extra_env and k in extra_env:
+                v = extra_env[k]
+            substituted[k] = v
+        for k, v in substituted.items():
+            block = "export {}=\"{}\"\n".format(k, v) + block
+    return block
 
 
 class F1NegativeMissingArtifact(unittest.TestCase):
@@ -690,3 +832,29 @@ class DownloadInvocationTests(unittest.TestCase):
         text = self.WORKFLOW.read_text()
         self.assertIn("plan.zip", text)
         self.assertIn("zipfile.ZipFile(\"plan.zip\")", text)
+
+    def test_publish_step_env_carries_planning_receipt_token(self):
+        """Verify the publish_receipt step env includes
+        PLANNING_RECEIPT_WRITE_TOKEN."""
+        import yaml
+        text = self.WORKFLOW.read_text()
+        doc = yaml.safe_load(text)
+        # Find the publish_receipt job
+        pub_job = doc["jobs"]["publish_receipt"]
+        # The publish step is the last step with env containing GH_TOKEN
+        publish_step = None
+        for step in pub_job["steps"]:
+            env = step.get("env", {})
+            if env and "GH_TOKEN" in env:
+                publish_step = step
+                break
+        self.assertIsNotNone(publish_step, "publish step env with GH_TOKEN not found")
+        self.assertIn(
+            "PLANNING_RECEIPT_WRITE_TOKEN",
+            publish_step["env"],
+            "publish step env must carry PLANNING_RECEIPT_WRITE_TOKEN",
+        )
+        self.assertEqual(
+            publish_step["env"]["PLANNING_RECEIPT_WRITE_TOKEN"],
+            "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
+        )
