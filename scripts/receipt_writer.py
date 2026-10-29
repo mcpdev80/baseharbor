@@ -348,13 +348,13 @@ def write(root, plan_revision, run_id, attempt, api=None, *, product=None) -> Tu
 
 
 def write_and_publish(root, plan_revision, run_id, attempt, api=None,
-                      remote_push: bool = True) -> Tuple[str, str, str]:
+                      remote_push: bool = True, product=None) -> Tuple[str, str, str]:
     """Write a receipt and publish it to Planning.
 
     Returns (path, introduction_commit, publication_commit).
     If remote_push is False, skip the push and return (path, commit, commit).
     """
-    path, commit = write(root, plan_revision, run_id, attempt, api)
+    path, commit = write(root, plan_revision, run_id, attempt, api, product=product)
     if not remote_push:
         # Local-only mode: no remote push, return the local commit.
         return path, commit, commit
@@ -367,6 +367,8 @@ def main():
     parser.add_argument("--plan", required=True)
     parser.add_argument("--run", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--product", type=Path, default=None,
+                        help="reviewed controller checkout for pinned-source checks")
     parser.add_argument("--publish", action="store_true",
                         help="Publish to Planning remote after writing")
     parser.add_argument("--dry-run", action="store_true",
@@ -380,10 +382,11 @@ def main():
         if args.publish:
             path, intro, pub = write_and_publish(
                 args.planning, args.plan, args.run, args.attempt,
-                remote_push=not args.dry_run)
+                remote_push=not args.dry_run, product=args.product)
             print(f"receipt: {pub}:{path} (intro:{intro})")
         else:
-            path, commit = write(args.planning, args.plan, args.run, args.attempt)
+            path, commit = write(args.planning, args.plan, args.run, args.attempt,
+                               product=args.product)
             print(f"receipt: {commit}:{path}")
     except (ReceiptError, OSError, TypeError) as exc:
         parser.exit(1, "receipt blocked: " + str(exc) + "\n")
