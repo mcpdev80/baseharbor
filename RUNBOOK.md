@@ -246,3 +246,8 @@ GitHub-Transfer: khudari/* ist 404, alle gh-Aufrufe nutzen mcpdev80/baseharbor (
 
 ## 17 Card-Status-Wahrheit (plan.py, Befund 2026-10-29)
 Der authoritative Status steht im Tag der Kartenzeile '#status/...' im Karten-Körper (plan.py:270), NICHT im Frontmatter-Feld 'status:' - Frontmatter 'status:' wird nicht als Quelle gelesen (doppelt gepflegt = Fehlerquelle 'status blocked requires a blocker'). Statuswechsel IMMER an der Tag-Zeile (render + check danach).
+
+## 18 Approval-Kette Live-Fakten (2026-10-29)
+- receipt-approval.yml Interface: EIN Input pr_number (kein receipt_path/candidate/plan - approver loest alles selbst auf), MUSS --ref main laufen (POLICY_BRANCHES=("main",) + authentifizierter Run-Head als Byte-Quelle).
+- receipt_verifier.py braucht PyYAML (Lazy-import :573 im schema resolver, nur approve-Pfad; post-run/shadow-Pfade ohne yaml). Laeufer ohne Vorinstallation -> setup-python + pip install 'PyYAML==6.0.2' im approve-Job (Muster artifact-gc.yml:32). Behoben via #1209 (develop 676edc0a) + #1210 (main 0b0659f2).
+- Pin-Register-Regel: Aenderung an receipt-approval.yml ODER receipt_verifier.py erfordert TRUSTED_SOURCE-PATCH auf den finalen MAIN-Commit nach dem Merge (Bytes-Gleichheit pinned_source :338-350), sonst fail-closed. Aktueller Pin: 0b0659f2.
