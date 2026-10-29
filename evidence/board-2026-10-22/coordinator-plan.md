@@ -688,3 +688,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 12:4xZ Tick: constant hold (9e50d8a4/7a417d37), acks done, waiting contracts-Producer decision.
 - 13:0xZ 3 Leichen per 'agent rm' entfernt (gone-Events gequenzt). Selbstkritik: RUNBOOK-Zeile 36 kannte den Pfad schon — Regel war存在, nur von mir nie ausgefuehrt; kein Patch noetig.
 - 13:1xZ POOLSäUBERUNG: 3 Leichen via 'agent rm' (RUNBOOK-Zeile 36 existierte — Regelnichtbefolgung, kein Fehlereintrag), 71 verwaiste watch-Registrations entfernt (Ursache des Reminderrauschs!), watch list = 1 (Coord).
+- 13:4xZ Tick: Pool 0 nach Leichen Cleanup — neue frische Analyse-Lane c390 dispatched (#390 kleinste contracts-Scheibe = Producer-Kandidat). acks gequenzt.
