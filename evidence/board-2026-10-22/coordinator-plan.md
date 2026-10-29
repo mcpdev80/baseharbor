@@ -690,3 +690,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 13:1xZ POOLSäUBERUNG: 3 Leichen via 'agent rm' (RUNBOOK-Zeile 36 existierte — Regelnichtbefolgung, kein Fehlereintrag), 71 verwaiste watch-Registrations entfernt (Ursache des Reminderrauschs!), watch list = 1 (Coord).
 - 13:4xZ Tick: Pool 0 nach Leichen Cleanup — neue frische Analyse-Lane c390 dispatched (#390 kleinste contracts-Scheibe = Producer-Kandidat). acks gequenzt.
 - 14:1xZ pvec1 lobenswert gestoppt (Refs-Akzeptanz-Frage) — Coord klaerte: tasklink:31 nur Closes/Fixes/Resolves + #1049 bereits closed (kein Auto-Close-Risiko). Lane1 rm'd, pvec2 dispatched.
+- 14:3xZ #1199 gemergt (sauberer Worker-PR, tests lokal+hosted gruen). Merge-run 40833893562 = Producer (attempt 1). Kette laeuft: pr_plan artefakt -> Writer -> Receipt.
