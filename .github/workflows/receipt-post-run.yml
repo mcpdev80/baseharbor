@@ -139,7 +139,8 @@ jobs:
           WORKFLOW_DEFINITION_ID="${{ github.event.workflow_run.workflow_id }}"
           # Resolve the PR number from the authenticated run's base_ref via the
           # PR API, not from an invented workflow_run field.
-          PR_NUMBER=""
+          PR_NUMBER="${{ github.event.workflow_run.pull_requests[0].number }}"
+          PR_NUMBER="${PR_NUMBER:-}"
           BASE_REF="${{ github.event.workflow_run.base_ref }}"
           if [[ "$BASE_REF" =~ refs/pull/([0-9]+)/merge ]]; then
             PR_NUMBER="${BASH_REMATCH[1]}"
