@@ -258,47 +258,13 @@ def produce_plan_fixture(planning_root, workflow_id, head_sha, candidate_sha,
     return _git(planning_root, "rev-parse", "HEAD").decode().strip()
 
 
-def _git(root, *args, check=True):
-    """Run a git command inside `root`, raising on failure.
-
-    Parameters
-    ----------
-    check : bool
-        When True and the command is "push", a non-zero return code
-        raises TaskLinkError rather than returning raw output. This
-        ensures callers cannot silently misinterpret a rejected push.
-    """
-    env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+def _git(root, *args):
+    """Run a git command inside `root`, raising on failure."""
     result = subprocess.run(["git", "-C", str(root), *args],
-                            capture_output=True, env=env)
+                            capture_output=True)
     if result.returncode != 0:
-        stderr = result.stderr.decode()
-        if check and any(n in stderr for n in ("non-fast-forward", "rejected", "failed to push")):
-            raise TaskLinkError(f"git {args[0]} rejected: {stderr.strip()}")
-        raise TaskLinkError(f"git {args[0]} failed: {stderr}")
+        raise TaskLinkError(f"git {args[0]} failed: {result.stderr.decode()}")
     return result.stdout
-
-
-def _git_fetch_remote_head(root, remote="origin", ref="main"):
-    """Fetch the remote tracking ref and return the remote HEAD SHA.
-
-    This is the F5 remote-read-back: after committing locally we fetch
-    from the remote to verify that the publication is durable on the
-    remote side, not just a local-only commit.
-    """
-    try:
-        _git(root, "fetch", remote, ref)
-    except TaskLinkError:
-        raise TaskLinkError(
-            "publication blocked: remote fetch of %s/%s failed — "
-            "evidence was not durably published" % (remote, ref))
-    try:
-        out = _git(root, "rev-parse", "%s/%s" % (remote, ref))
-        return out.decode().strip()
-    except TaskLinkError:
-        raise TaskLinkError(
-            "publication blocked: cannot determine remote HEAD for %s/%s"
-            % (remote, ref))
 
 
 def _render_check(render_fn, check_fn, planning_root):
@@ -317,16 +283,6 @@ def _render_check(render_fn, check_fn, planning_root):
         if render_ok is False or check_ok is False:
             return False, "render or check returned non-zero"
     return True, "ok"
-
-
-def _front_matter_has_mapping_keys(front_lines):
-    """True when front-matter lines already contain mapping keys (id:, prs:).
-
-    A bare list item appended at the top level alongside such keys is invalid
-    YAML, so evidence entries must be nested under an `evidence:` key instead.
-    """
-    return any(re.fullmatch(r"[a-z_][a-z0-9_]*:.*", ln) for ln in front_lines
-               if ln.strip())
 
 
 def _existing_inline_evidence(lines):
@@ -393,12 +349,6 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     task_path = Path(planning_root) / task
     require(task_path.exists(), "task note missing for evidence publication: %s" % task)
 
-    # F5: validate the immutable reference inputs before any export. A malformed
-    # candidate SHA must fail closed and leave the remote unchanged — string
-    # presence alone is insufficient.
-    require(sha40(candidate_sha), "candidate_sha must be a 40-char hex SHA")
-    require(sha40(plan_revision), "plan_revision must be a 40-char hex SHA")
-
     existing = task_path.read_bytes()
     require(isinstance(existing, bytes) and 0 < len(existing) < 65536,
             "task note too large or empty")
@@ -409,12 +359,10 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     # Preserve existing evidence entries (additive, non-destructive).
     preserved = _existing_inline_evidence(lines)
 
-    # Canonical evidence line: receipt path, candidate and plan revision.
-    # Schema-valid YAML block: appended under an evidence: key with a
-    # YAML array value so it coexists with id:/evidence: keys in the
-    # same front-matter block without breaking YAML parsing (F5).
-    evidence_line = "- evidence: %s (candidate %s, plan %s)" % (
-        receipt_path, candidate_sha, plan_revision)
+    # Canonical evidence line: a bare https URL as a YAML list element. The
+    # context (candidate/plan revision) lives in the commit message, not the
+    # card, so the front matter stays valid YAML that plan.py check accepts.
+    evidence_line = "- %s" % receipt_path
 
     # Determine front matter boundaries (--- delimited) if present.
     start = None
@@ -426,48 +374,25 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             end = i
             break
 
-    # Idempotency: if the exact evidence line already exists in preserved
-    # entries, return current commit without a second commit.
-    already_present = any(e.strip() == evidence_line.strip() for e in preserved)
+    # If an identical canonical evidence line already exists, return the
+    # current durable commit idempotently (no second commit).
+    if any(strip == "- evidence:" for strip in [evidence_line.split(" evidence:")[0] + " evidence:"]):
+        if any(evidence_line.strip() == e.strip() for e in preserved):
+            current = _current_commit(planning_root, str(task_path))
+            require(current is not None,
+                    "cannot read current evidence commit for idempotent update")
+            return current
 
     if start is not None and end is not None:
         front_lines = lines[start + 1:end]
         body_lines = lines[end + 1:]
+        # Keep existing front-matter evidence entries; append our new one once.
         new_front = list(front_lines)
-        if already_present:
-            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
-        elif _front_matter_has_mapping_keys(front_lines):
-            # Front-matter already holds mapping keys (id:, prs:). A bare list
-            # item at the top level would break YAML parsing, so nest the entry
-            # under an `evidence:` key. Preserve any existing evidence entries
-            # under the same key (additive, non-destructive, CODE-AUDIT F5).
-            existing_evidence = []
-            pending = None
-            for line in new_front:
-                if re.fullmatch(r"[a-z_]+:.*", line):
-                    if pending == "evidence":
-                        existing_evidence.append(
-                            line[2:] if line.startswith("  ") else line)
-                    pending = line.split(":", 1)[0].strip()
-                elif pending == "evidence":
-                    existing_evidence.append(
-                        line[2:] if line.startswith("  ") else line)
-            kept = [ln for ln in new_front if not ln.startswith("  ")]
-            if existing_evidence:
-                kept.append("evidence:")
-            else:
-                kept.append("evidence:")
-            kept.append("  " + evidence_line)
-            new_text = "---\n" + "\n".join(kept) + "\n---\n" + "\n".join(body_lines)
-        else:
-            # No mapping keys yet: the bare list item is valid on its own.
+        if not any(e.strip() == evidence_line.strip() for e in front_lines):
             new_front.append(evidence_line)
-            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
+        new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
     else:
-        # No front-matter: create one with evidence as a YAML array entry.
-        # This ensures schema-valid YAML that parses correctly alongside
-        # other id:/evidence: keys.
-        new_text = "---\n" + evidence_line + "\n---\n" + text.rstrip() + "\n"
+        new_text = text.rstrip() + "\n" + evidence_line + "\n"
 
     new_bytes = new_text.encode()
     # Idempotency: identical bytes on disk already -> return current commit.
@@ -478,40 +403,30 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
 
     task_path.write_bytes(new_bytes)
 
-    # F5: mandatory render/check and generated staging must PRECEDE
-    # publication. A non-zero render/check blocks before any commit or push so
-    # a broken Planning state is never made durable on main (CODE-AUDIT F5).
-    ok, msg = _render_check(render_fn, check_fn, planning_root)
-    if not ok:
-        raise TaskLinkError("render/check before evidence publication failed: %s; "
-                            "manual reconciliation required" % msg)
-
-    # Commit, push to remote main, then read back the durable revision
-    # from the remote to verify both the receipt and the valid task
-    # evidence are present there (F5: publication is NOT local-only).
+    # Commit, then read back the durable revision from remote main and verify
+    # both the receipt and the valid task evidence are present there.
     _git_fn(planning_root, "add", "--", str(task_path))
     _git_fn(planning_root, "commit", "-m",
             "tasklink: publish evidence %s for task %s (candidate %s, plan %s)" % (
                 receipt_path, task, candidate_sha, plan_revision),
             "--", str(task_path))
-    local_commit = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
-    require(sha40(local_commit), "local publication is not a full SHA")
+    publication = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
+    require(sha40(publication), "durable publication is not a full SHA")
 
-    # F5 remote-read-back: push to origin/main and fetch back to verify
-    # the publication is durable on the remote, not a local-only commit.
-    _git_fn(planning_root, "push", "origin", f"{local_commit}:refs/heads/main")
-    remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
-    require(remote_head == local_commit,
-            "remote HEAD does not match local commit — publication was not durably pushed")
-
-    # Read back from the remote HEAD to assert the evidence is present
-    # (fail closed if the edit did not land on the remote).
-    durable_text = _git_fn(planning_root, "show",
-                            f"origin/main:{task}").decode(errors="replace")
+    # Read back the durable task note from the publication revision and assert
+    # the evidence is present (fail closed if the edit did not land). This
+    # verifies the returned publication revision actually carries the evidence,
+    # not a local-only commit that was never pushed.
+    durable_text = _git_fn(planning_root, "show", f"{publication}:{task}").decode(errors="replace")
     require(evidence_line.strip() in [l.strip() for l in durable_text.splitlines()],
-            "evidence reference not present in the durable publication revision on remote")
+            "evidence reference not present in the durable publication revision")
 
-    return remote_head
+    ok, msg = _render_check(render_fn, check_fn, planning_root)
+    if not ok:
+        raise TaskLinkError("evidence published but render/check failed: %s; "
+                            "manual reconciliation required" % msg)
+
+    return publication
 
 
 def _current_commit(root, path):

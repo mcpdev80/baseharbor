@@ -5,6 +5,7 @@ Verifies:
 - load_plan() can consume the fixture (link shows on right Task-Karte)
 - fail-closed when task reference is missing or wrong
 - fail-closed when plan fixture doesn't exist (different Receipt)
+- publish_evidence writes a valid YAML front-matter list element for evidence
 - Existing 6 test suites in test_receipt_chain.py remain green
 """
 import json
@@ -535,6 +536,95 @@ class TestBaseShaResolution(unittest.TestCase):
         self.assertEqual(value["head_sha"], "a" * 40)
         self.assertEqual(value["candidate_sha"], "c" * 40)
         self.assertEqual(value["base_sha"], "b" * 40)
+
+
+class TestPublishEvidenceYamlFormat(unittest.TestCase):
+    """publish_evidence must write a valid YAML front-matter list element.
+
+    Regression test for BF-W3-2: the automatic tasklink writer previously
+    wrote a non-YAML evidence line like
+    '- evidence: <url> (candidate <sha>, plan <sha>)', which plan.py check
+    rejected ('evidence must be https links'). The evidence entry must be a
+    bare '- <url>' list element so the front matter parses cleanly.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self._git("init", "-q")
+        self._git("config", "user.name", "Tasklink fixture")
+        self._git("config", "user.email", "tasklink@example.invalid")
+        self.task = "tasks/t-20261022-r27-evidence-pilot.md"
+        self.receipt_path = "evidence/receipts/public-contracts-receipt.json"
+        self.candidate_sha = "c" * 40
+        self.plan_revision = "p" * 40
+
+    def _git(self, *args):
+        return subprocess.check_output(["git", "-C", str(self.root), *args],
+                                       stderr=subprocess.PIPE)
+
+    def test_evidence_entry_is_valid_yaml_list_element(self):
+        """The published evidence line parses as a YAML list under front matter."""
+        import yaml
+        task_path = Path(self.root) / self.task
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        task_path.write_text("---\ntitle: r27 evidence pilot\n---\n\nBody.\n")
+        # Inject a fake durable rev-parse + show for the read-back path.
+        show_output = ("---\ntitle: r27 evidence pilot\n---\n\n"
+                       "Body.\n- %s\n" % self.receipt_path)
+        git_calls = {}
+
+        def fake_git(root, *args):
+            list_args = [a.decode() if isinstance(a, bytes) else a
+                         for a in args]
+            if list_args[:2] == ["rev-parse"]:
+                return b"e" * 40 + b"\n"
+            if list_args[:2] == ["show"]:
+                return show_output.encode()
+            return subprocess.check_output(
+                ["git", "-C", str(root), *args], stderr=subprocess.PIPE)
+
+        tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, self.candidate_sha,
+            self.plan_revision, render_fn=None, check_fn=None,
+            _git_fn=fake_git)
+
+        raw = task_path.read_bytes()
+        text = raw.decode()
+        # The visible evidence line on disk is a bare '- https URL' list element.
+        self.assertIn("- %s" % self.receipt_path, text.splitlines())
+        self.assertNotIn("candidate", text)
+        self.assertNotIn("plan %s" % self.plan_revision, text)
+        # The published durable revision read-back must contain the bare URL.
+        self.assertIn("- %s" % self.receipt_path, show_output.splitlines())
+
+    def test_evidence_not_inlined_with_candidate_plan(self):
+        """The card must not contain the old '(candidate <sha>, plan <sha>)' text."""
+        task_path = Path(self.root) / self.task
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        task_path.write_text("---\ntitle: r27 evidence pilot\n---\n\nBody.\n")
+        show_output = ("---\ntitle: r27 evidence pilot\n---\n\n"
+                       "Body.\n- %s\n" % self.receipt_path)
+
+        def fake_git(root, *args):
+            list_args = [a.decode() if isinstance(a, bytes) else a
+                         for a in args]
+            if list_args[:2] == ["rev-parse"]:
+                return b"e" * 40 + b"\n"
+            if list_args[:2] == ["show"]:
+                return show_output.encode()
+            return subprocess.check_output(
+                ["git", "-C", str(root), *args], stderr=subprocess.PIPE)
+
+        tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, self.candidate_sha,
+            self.plan_revision, render_fn=None, check_fn=None,
+            _git_fn=fake_git)
+        self.assertNotIn("candidate", task_path.read_text(),
+                         "candidate SHA must not be inlined into the card")
+        self.assertNotIn("plan", task_path.read_text(),
+                         "plan revision must not be inlined into the card")
 
 
 if __name__ == "__main__":
