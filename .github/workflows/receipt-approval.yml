@@ -26,10 +26,12 @@
 # Dormant until the coordinator's CI-only default-branch registration: main is
 # the product default branch, while these helpers/workflows live on develop.
 # Only a manual workflow_dispatch by the Owner starts this job; no automatic
-# trigger is armed and no required check is added. TRUSTED_SOURCE below is the
-# immutable reviewed commit and is updated by the coordinator at final
-# integration; while it is empty the verifier fails closed (tested pinned
-# source unavailable), which is the honest pre-registration state.
+# trigger is armed and no required check is added. TRUSTED_SOURCE below pins the
+# immutable reviewed commit (b53632aa) whose receipt_verifier.py and
+# receipt-approval.yml blobs are verified by pinned_source() before any approval.
+# The pin was empty in the pre-registration state (verifier failed closed, tested
+# pinned source unavailable); it is now set to the reviewed develop head so the
+# verifier proves against the reviewed bytes instead of refusing every run.
 
 name: receipt-approval
 
@@ -83,7 +85,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
-          TRUSTED_SOURCE: ''
+          TRUSTED_SOURCE: 'b53632aaaee6067397c27000c229f34736ec2155'
           PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
         run: |
           set -euo pipefail
@@ -128,13 +130,15 @@ jobs:
   # Reusable workflow call with the exact published outputs including the final
   # durable publication. R27-F6: the reusable source is a reviewed immutable
   # full SHA — a mutable branch ref (@develop) would let the executed shadow
-  # code diverge from the reviewed candidate. The coordinator updates this pin
-  # to the final integrated reviewed head at registration; while the pin does
-  # not yet carry the integrated shadow code the chain fails closed, which is
-  # the honest pre-registration state (same policy as TRUSTED_SOURCE above).
+  # code diverge from the reviewed candidate. b53632aa pins the reviewed
+  # receipt-shadow.yml that carries the R27-F6 publication input (required by the
+  # publication output wired above). The previous pin f57b30ed predated the R27-F6
+  # publication-input fix and failed closed on the missing input; b53632aa is the
+  # reviewed develop head whose shadow blob is verified against the chain (same
+  # policy as TRUSTED_SOURCE above).
   shadow:
     needs: [approve]
-    uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@f57b30ed48f19e62452ab793801a02ccd2658414
+    uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@b53632aaaee6067397c27000c229f34736ec2155
     with:
       receipt: ${{ needs.approve.outputs.receipt }}
       plan: ${{ needs.approve.outputs.plan }}
