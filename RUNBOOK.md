@@ -235,3 +235,7 @@ Vor jedem Spawn: `git -C baseharbor worktree prune` (Prüfumgebung) und `worktre
 
 ## 14. Root-Repo ist ein baseharbor-Klon (Incident#6, 2026-10-29)
 Der Workspace-root teilt sich die Origin mit baseharbor. Root-`git add -A` committet daher in das PRODUKT-Repo (424 lokale Coord-Commits, nie gepusht — Remote sauber). Regeln: (1) Coord committet root-Evidence NUR mit Dateipfaden (git add <files>), niemals -A. (2) Produkt-Branch-Transporte laufen ausschliesslich in baseharbor/ oder seinen Worktrees, nie im root-CWD. (3) Vor jedem Transport-Commit: git rev-parse --show-toplevel gegen das intendierte Repo pruefen.
+
+
+## 14 Repo-Slug-Wechsel (2026-10-29)
+GitHub-Transfer: khudari/* ist 404, alle gh-Aufrufe nutzen mcpdev80/baseharbor (Plan: mcpdev80/baseharbor-plan). Alte khudari-Links in Evidence redirecten im UI.
