@@ -11,16 +11,16 @@ d = json.loads(agents_raw)
 agents = d if isinstance(d, list) else d.get("agents", [])
 live = {a["id"] for a in agents}
 st = json.load(open(state_path))
-live.add(st.get("watcher", {}).get("coordinator_id", ""))
+live.add((st.get("watcher") or {}).get("coordinator") or "")
 pruned = 0
 for section in ("lane_state", "idle_streak", "last_status", "names", "compact_watch", "busy_since"):
-    sec = st.get(section, {})
+    sec = st.get(section) or {}
     if isinstance(sec, dict):
         dead = [k for k in sec if k not in live]
         for k in dead:
             del sec[k]
             pruned += 1
-for k in [k for k in st.get("delivered", {}) if k.split(":")[0] not in live]:
+for k in [k for k in (st.get("delivered") or {}) if k.split(":")[0] not in live]:
     del st["delivered"][k]
     pruned += 1
 json.dump(st, open(state_path, "w"), indent=1)
