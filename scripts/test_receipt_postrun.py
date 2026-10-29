@@ -234,19 +234,28 @@ class ExtractBlocksTest(unittest.TestCase):
         return [key for key in env if not key.startswith("#")]
 
     def test_publish_step_env_carries_write_token(self):
-        # Main hardening (#1198): PLANNING_RECEIPT_WRITE_TOKEN is no longer
-        # exposed at the publish step level — it's consumed in-process by
-        # _push_authed() and _scrub_secret. The controller reads it from
-        # os.environ at push time; the step env does NOT carry it as a named
-        # variable anymore (Owner cutover 2026-10-29, #1198).
+        # Root cause 40834168626: the controller requires
+        # PLANNING_RECEIPT_WRITE_TOKEN from os.environ and fails closed when it
+        # is absent (receipt_writer.py:108-110). The publish step env must
+        # supply it; a missing key re-introduces the fail-closed gap.
         keys = self._publish_step_env_keys()
         self.assertIn("PLANNING_ROOT", keys)
         self.assertIn("RUN_ID", keys)
         self.assertIn("PLAN_REVISION", keys)
-        self.assertNotIn(
+        self.assertIn(
             "PLANNING_RECEIPT_WRITE_TOKEN", keys,
-            "publish step env must NOT expose PLANNING_RECEIPT_WRITE_TOKEN "
-            "(main hardening #1198: in-process token via _push_authed)",
+            "publish step env must supply the Planning write token",
+        )
+        # The token is sourced from the repository secret, never a literal.
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        self.assertEqual(
+            str(publish["env"]["PLANNING_RECEIPT_WRITE_TOKEN"]),
+            "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
         )
 
     def test_publish_step_env_carries_gh_token(self):
