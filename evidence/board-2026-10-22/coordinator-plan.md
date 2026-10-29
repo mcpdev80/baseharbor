@@ -684,3 +684,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 10:0xZ Tick: 2 Follow-up-Karten angelegt+publiziert (plan main 18a2954).
 - 10:2xZ Tick-Aktivitaet: contracts/** = Public-Contracts-Gate-Trigger gefunden (pgp.py:1447 + ci.yml:906), Blocker-Text auf plan main aktualisiert.
 - 11:0xZ Tick: #1162 (alter Probe) geschlossen, #1168/#1188 bleiben als Producer offen; sonst stabil.
+- 11:5xZ Tick: constant state, remotes 9e50d8a4/7a417d37; acks done; kill/delete fuer idle Lanes fehlt in dieser CLI (GUI noetig); Owner-Trigger contracts-Producer offen.
