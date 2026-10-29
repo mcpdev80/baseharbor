@@ -263,8 +263,14 @@ Der authoritative Status steht im Tag der Kartenzeile '#status/...' im Karten-KÃ
   ```
   receipt-execution-tests)
   ```
-- Test-Case 1: `pr-check-runner.py execute --check receipt-execution-tests --repository $BASE_DIR`
-- Test-Case 2: `pr-check-runner.py execute --check receipt-execution-tests-error --repository $BASE_DIR`
+- Definition: 5 Dateien in origin/develop e0de0117:
+  - `.github/workflows/ci.yml`
+  - `docs/de/development/minimal-ci-receipts.md`
+  - `docs/development/minimal-ci-receipts.md`
+  - `docs/internal/ci-binding-qualifications.md`
+  - `evidence-r27/cy3.md`
+- Test-Case 1: `pr-check-runner.py execute --check receipt-execution-tests --repository $DEVELOP_DIR`
+- Test-Case 2: `pr-check-runner.py execute --check receipt-execution-tests-error --repository $DEVELOP_DIR`
 - Exit-Code transparent, `--list` Modus zeigt die Suiten.
 
 ### 19.2 Warnung vor 4-Suiten-Trugschluss
@@ -276,7 +282,7 @@ Der authoritative Status steht im Tag der Kartenzeile '#status/...' im Karten-KÃ
 - Lane-Auftraege fordern routinemaessig 'unittest-Quartett' - aber das ist unzureichend.
 
 ### 19.3 Test-Evidence (origin/develop clean vs. PR #1213 HEAD)
-- origin/develop HEAD: `9eb279d9` (9eb279d9 coord: negatives live, shadow blocked-on-main)
+- origin/develop HEAD: `e0de0117` (e0de0117 ci(receipt): planning checkout uses write-token auth like post-run)
 - PR #1213 HEAD: `c845caf6` (c845caf660 ci(receipt): publish evidence as valid YAML list element)
 - origin/develop clean: EXIT 0, `pr-check-runner.py` nicht gefunden (OK - Script existiert nicht im Produkt-Branch).
 - PR #1213 HEAD c845caf6: verifiers failn bis o230 - dokumentiert.
@@ -284,3 +290,6 @@ Der authoritative Status steht im Tag der Kartenzeile '#status/...' im Karten-KÃ
 
 ## 20 Codex-Gate (Owner-Direktive 2026-10-29)
 CODEX-REVIEW/-MERGE-Missionen werden NACH dispatcht, wenn die Exakt-Head-Hosted-Checks des Kandidaten GRUEN sind (bzw. bei base=main: Workflow policy SUCCESS - strukturelles Muster). Rote/pending Checks zuerst per Worker-Runde + lokaler Voll-Suite (scripts/receipt-suite.sh, Â§19) heilen; Codex-Reviews auf Kandidaten mit bekannten Fehlfarben sind Ressourcenmissbrauch.
+
+## 21 Spawn-Boot-Stall (Serie 2026-10-29: o215, o220, o232)
+Ornith-Lanes bleiben nach 1-2 Datei-Reads kommentarlos idle (Kontext <10 %, kein Error, keine Evidence). Muster: Read->TodoWrite->Stall. Standardreaktion: EIN Nudge mit erstem konkreten AUSFUEHR-Befehl (kein erneutes 'lies die Mission'); wirkt in bisher allen FÃ¤llen. Zwei Nudge-FehlschlÃ¤ge => Lane rotieren (rm + frisch spawnen), nicht weiter-nudgen.
