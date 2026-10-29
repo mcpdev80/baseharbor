@@ -63,3 +63,6 @@ The post-run writer resolves the run attempt from the authenticated Actions
 API (run_attempt of the triggering run) and passes it as the authoritative
 override into receipt_verifier.extract_facts; producer plans do not carry
 attempt. Reruns (attempt != 1) are refused, never relabelled.
+
+> Producer note: writer resolves run_attempt inside the extract step
+> (self-contained, no cross-step variable reliance).
