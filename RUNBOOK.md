@@ -237,5 +237,9 @@ Vor jedem Spawn: `git -C baseharbor worktree prune` (Prüfumgebung) und `worktre
 Der Workspace-root teilt sich die Origin mit baseharbor. Root-`git add -A` committet daher in das PRODUKT-Repo (424 lokale Coord-Commits, nie gepusht — Remote sauber). Regeln: (1) Coord committet root-Evidence NUR mit Dateipfaden (git add <files>), niemals -A. (2) Produkt-Branch-Transporte laufen ausschliesslich in baseharbor/ oder seinen Worktrees, nie im root-CWD. (3) Vor jedem Transport-Commit: git rev-parse --show-toplevel gegen das intendierte Repo pruefen.
 
 
-## 14 Repo-Slug-Wechsel (2026-10-29)
+## 15 Repo-Slug-Wechsel (2026-10-29)
 GitHub-Transfer: khudari/* ist 404, alle gh-Aufrufe nutzen mcpdev80/baseharbor (Plan: mcpdev80/baseharbor-plan). Alte khudari-Links in Evidence redirecten im UI.
+
+## 16 Merge-Ancestry-Strategie bei main/develop-Divergenz (m1206-Serie, 2026-10-29)
+- Fall: main-only-Haertungen fuehren dazu dass merge-tree main->develop auf Dauer konfliktbehaftet bleibt; Squash-Merges von develop-PRs erzeugen KEINE main-Ancestry (Eltern verlieren den zweiten Strang).
+- Regeln: (1) Beweisklasse 'promotable' IMMER VOR der Merge-Entscheidung liefern, nicht als Folge-Mission ankuedigen (rv1206D-Punkt, berechtigt). (2) Simulation ist legitim: S=commit-tree(<union-tree>,-p developTip), M2=commit-tree(<union-tree>,-p S,-p mainTip); merge-tree main×M2 clean + diff main..M2 ohne Defense-Minus-Zeilen = squash+branch-sync Route erfuellungsfähig. (3) Wenn Kartenwortlaut eine andere Ancestry verlangt (merge-tree main->develop), ist das eine OWNER-Entscheidung merge-commit vs. Klausel-Aenderung - nicht dreimal denselben Kandidaten neu reviewen. (4) Torverschiebungs-Bremse: Review-Missionen mit 3 Optionen (ACCEPT / Vertragszitat file:line / technischer Gegenbeweis) schicken.
