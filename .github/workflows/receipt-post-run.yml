@@ -276,7 +276,7 @@ jobs:
           # as its final line; the plan revision is that last 40-hex line
           # only — never parsed from arbitrary progress text (Owner
           # correction 2026-10-27).
-          RESULT="$(python3 scripts/receipt_tasklink.py \
+          RESULT="$(GITHUB_TOKEN="${GH_WORKFLOW_TOKEN}" python3 scripts/receipt_tasklink.py \
             --planning "$PLANNING_ROOT" \
             --workflow-id "$WORKFLOW_ID" \
             --head "$HEAD_SHA" \
