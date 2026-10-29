@@ -39,24 +39,40 @@ func TestExtensionDescriptorSchemaRejectsGoValidatorDivergence(t *testing.T) {
 		t.Fatalf("schema-valid extension descriptor rejected by the packaged schema: %v", err)
 	}
 
-	// A descriptor valid under the Go metadata validator is still rejected by the
-	// packaged schema when the required oci_reference and configuration_schema.dialect
-	// fields are removed; the schema, not the Go validator, closes the boundary.
-	missing := map[string]any{
+	// The artifact.oci_reference field is required: removing it (leaving the rest
+	// of the descriptor intact) is rejected by the packaged schema for that reason.
+	missingArtifact := map[string]any{
 		"schema_version":       "baseharbor.extension/v1",
 		"id":                   "example.com/org.example-extension",
 		"family":               "provider",
 		"version":              "0.1.0",
 		"configuration_schema": map[string]any{},
 	}
-	if err := resolved.Validate(missing); err == nil {
-		t.Fatal("descriptor schema accepted a descriptor missing required artifact.oci_reference and configuration_schema.dialect")
+	if err := resolved.Validate(missingArtifact); err == nil {
+		t.Fatal("descriptor schema accepted a descriptor missing required artifact.oci_reference")
+	}
+
+	// The configuration_schema.dialect field is required whenever configuration_schema
+	// is present: an empty object (present but without dialect) is rejected by the
+	// packaged schema for that reason.
+	missingDialect := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"artifact":             map[string]any{"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		"configuration_schema": map[string]any{},
+	}
+	if err := resolved.Validate(missingDialect); err == nil {
+		t.Fatal("descriptor schema accepted a descriptor with a configuration_schema missing required dialect")
 	}
 }
 
 // TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily closes the trust boundary
-// at the public-contracts surface for the extension family by rejecting a valid
-// descriptor that mutates exactly one constraint.
+// at the public-contracts surface for the extension family. Each case derives from
+// the same schema-valid baseline (asserted here once), mutates exactly one field
+// per iteration, and asserts the schema names that constraint: one loop over invalid
+// id patterns, one over out-of-enum family values.
 func TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily(t *testing.T) {
 	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
 	if err != nil {
@@ -77,6 +93,9 @@ func TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily(t *testing.T) {
 		"version":              "0.1.0",
 		"artifact":             map[string]any{"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
 		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
+	}
+	if err := resolved.Validate(base); err != nil {
+		t.Fatalf("schema-valid extension descriptor rejected by the packaged schema: %v", err)
 	}
 	for _, id := range []string{"UPPER/Name", "/leading-namespace", "x/-segment", "trailing-namespace/UPPER"} {
 		got := clone(base)
