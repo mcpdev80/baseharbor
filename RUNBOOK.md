@@ -251,3 +251,36 @@ Der authoritative Status steht im Tag der Kartenzeile '#status/...' im Karten-Kร
 - receipt-approval.yml Interface: EIN Input pr_number (kein receipt_path/candidate/plan - approver loest alles selbst auf), MUSS --ref main laufen (POLICY_BRANCHES=("main",) + authentifizierter Run-Head als Byte-Quelle).
 - receipt_verifier.py braucht PyYAML (Lazy-import :573 im schema resolver, nur approve-Pfad; post-run/shadow-Pfade ohne yaml). Laeufer ohne Vorinstallation -> setup-python + pip install 'PyYAML==6.0.2' im approve-Job (Muster artifact-gc.yml:32). Behoben via #1209 (develop 676edc0a) + #1210 (main 0b0659f2).
 - Pin-Register-Regel: Aenderung an receipt-approval.yml ODER receipt_verifier.py erfordert TRUSTED_SOURCE-PATCH auf den finalen MAIN-Commit nach dem Merge (Bytes-Gleichheit pinned_source :338-350), sonst fail-closed. Aktueller Pin: 0b0659f2.
+
+## 19 Voll-Suite Receipt-Tests (Warnung vor dem 4-Suiten-Trugschluss)
+
+### 19.1 Voll-Suite: receipt-execution-tests
+- Definition: `.github/workflows/ci.yml:660`
+  ```
+  python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
+  ```
+- Definition: `.github/workflows/ci.yml:733`
+  ```
+  receipt-execution-tests)
+  ```
+- Test-Case 1: `pr-check-runner.py execute --check receipt-execution-tests --repository $BASE_DIR`
+- Test-Case 2: `pr-check-runner.py execute --check receipt-execution-tests-error --repository $BASE_DIR`
+- Exit-Code transparent, `--list` Modus zeigt die Suiten.
+
+### 19.2 Warnung vor 4-Suiten-Trugschluss
+- Die 'unittest-Quartett' (postrun/chain/writer/tasklink) ist der TRUGSCHLUSS.
+- Die HOSTED-Validation 'receipt-execution-tests' fuehrt MEHR Tests aus:
+  - `pr-check-runner.py execute --check receipt-execution-tests` (lokal)
+  - `pr-check-runner.py execute --check receipt-execution-tests-error` (Fehler-Fall)
+- Jede Aenderung an `scripts/receipt_*.py` braucht kuenftig den PASS der VOLLSTAENDIGEN Suite.
+- Lane-Auftraege fordern routinemaessig 'unittest-Quartett' - aber das ist unzureichend.
+
+### 19.3 Test-Evidence (origin/develop clean vs. PR #1213 HEAD)
+- origin/develop HEAD: `9eb279d9` (9eb279d9 coord: negatives live, shadow blocked-on-main)
+- PR #1213 HEAD: `c845caf6` (c845caf660 ci(receipt): publish evidence as valid YAML list element)
+- origin/develop clean: EXIT 0, `pr-check-runner.py` nicht gefunden (OK - Script existiert nicht im Produkt-Branch).
+- PR #1213 HEAD c845caf6: verifiers failn bis o230 - dokumentiert.
+- Beide Laeufe mit Ausgabe: evidence/r27-ci-replacement-2026-10-29/receipt-suite-manifest.md.
+
+## 20 Codex-Gate (Owner-Direktive 2026-10-29)
+CODEX-REVIEW/-MERGE-Missionen werden NACH dispatcht, wenn die Exakt-Head-Hosted-Checks des Kandidaten GRUEN sind (bzw. bei base=main: Workflow policy SUCCESS - strukturelles Muster). Rote/pending Checks zuerst per Worker-Runde + lokaler Voll-Suite (scripts/receipt-suite.sh, ยง19) heilen; Codex-Reviews auf Kandidaten mit bekannten Fehlfarben sind Ressourcenmissbrauch.
