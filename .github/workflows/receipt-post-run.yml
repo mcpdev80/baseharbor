@@ -252,6 +252,8 @@ jobs:
           python-version: '3.14'
 
       - name: Automatic task-link (plan fixture)
+        env:
+          GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         id: plan_commit
         env:
           PLANNING_ROOT: ${{ github.workspace }}/planning
