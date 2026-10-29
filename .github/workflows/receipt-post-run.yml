@@ -83,7 +83,7 @@ jobs:
         with:
           # Same reviewed controller pin as the publication job; scripts are
           # read-only here so receipt_verifier resolves at import time.
-          ref: e13f1570550f4b6b09f3727728293d91afbebf94
+          ref: dd8fb61d614b59252c9d29121380b5893d006828
           persist-credentials: false
 
       - name: Download trusted-pr-plan artifact
@@ -216,7 +216,7 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: e13f1570550f4b6b09f3727728293d91afbebf94
+          ref: dd8fb61d614b59252c9d29121380b5893d006828
           fetch-depth: 0
           persist-credentials: false
 
@@ -290,6 +290,7 @@ jobs:
 
       - name: Publish receipt to Planning
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLANNING_ROOT: ${{ github.workspace }}/planning
           # run-id for the receipt is the authenticated workflow RUN (the
           # live workflow run id), never the workflow definition id
