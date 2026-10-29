@@ -677,3 +677,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 04:4xZ Vollmacht: Producer 40794020123 gruen, Writer 40794285213 fail-closed auf plan['attempt'] (Cause-10 Nachzug). Desk-Tests gruen/refused. #1187 (1-Argument-Override-Pfad) bewaffnet run 40794918490.
 - 05:2xZ Cause-11: ADDED evidence-r27/probe3b.md = terminal (nur 'modified' qualifiziert). probe3c: modified w5.md. run 40796393844 armed.
 - 05:5xZ Cause-13: leerer-Diff-PR = BLOCKED 'empty or unverified changes' (fail-closed, korrekt). Producer #2 = docs-PR mit echtem Inhalt (attempt-Provenance), run 40797537663 armed.
+- 07:2xZ Cause-14: #1191 PR-Selftest gruen aber UNMERGED (main-Policy). rv13 unabhaengige Review-Lane dispatched.
