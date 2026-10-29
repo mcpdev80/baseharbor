@@ -47,3 +47,11 @@ Ruhepunkt: develop=8cf8ed08 (#1180), main=7c423380, #1178 bleibt OPEN bis Weg C.
 - Gitlink-Incident (#1182): `git add -A` in einem Pfad, der verschachtelte Worktrees/
   Branch-Verzeichnisse enthaelt, zieht diese als gitlinks ins Produkt-Commit. Regel:
   gezieltes `git add <datei>`; vor jedem Push `git diff --cached --name-only` pruefen.
+
+## Receipt-Kettenstand 2026-10-29 14:4x UTC (nach #1199)
+- ALLE Verifikationsschritte gruen: public-contracts job success (contracts_test vector-Guard, PR #1199, merge-dev 7a4debc), tasklink bindet #1049->tasks/t-20261018-r27-artifact-resolution.md, live-witness ok, attempt=1 via API.
+- LETZTE WAND = INFRA, nicht Code: repository secret PLANNING_RECEIPT_WRITE_TOKEN fehlt (Secret-listing 404; checkout Schritt 236 braucht ihn; writer verweigert fail-closed: "PLANNING_RECEIPT_WRITE_TOKEN required").
+- Owner-Aktion (einmalig, ready): fine-grained PAT, nur baseharbor-plan, only selected repositories, Contents: Read&write; dann:
+  gh secret set PLANNING_RECEIPT_WRITE_TOKEN --repo mcpdev80/baseharbor --body "<TOKEN>"
+  (Token niemals in Logs/Evidence/Commits.)
+- Nach Anlage: letzter Producer-Run rerun NICHT noetig — ein neuer grüner PR-Lauf genuegt (attempt 1), oder Writer-Rerun mit identischem Run? NEIN: Rerun erhoeht attempt -> refuse. Also: kleiner neuer develop-PR (beliebige qualifizierte genuine Aenderung) oder Rest-Probe #1188-commit — Receipt folgt automatisch <20 min.

@@ -1,9 +1,9 @@
 {
- "at": 1793229784,
+ "at": 1793257736,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1793229787,
+   "observed_at": 1793257739,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1793229788,
+   "observed_at": 1793257740,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1793229787,
+   "observed_at": 1793257739,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1793229788,
+   "observed_at": 1793257740,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 17798,
-  "tmp_free_mb": 11052,
+  "mem_available_mb": 14534,
+  "tmp_free_mb": 11087,
   "tmpdir": "/tmp",
   "tmpdir_is_tmpfs": true,
   "watcher": {
@@ -80,13 +80,22 @@
  },
  "lanes": [
   {
-   "id": "41e61806-074a-4472-91cf-b32fdab3b766",
+   "id": "3f8de54c-faa2-40a3-a9cd-9761b88ea747",
    "idle_s": 0,
+   "mode": "opencode",
+   "model": null,
+   "name": "pvec",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "41e61806-074a-4472-91cf-b32fdab3b766",
+   "idle_s": 62,
    "mode": "opencode",
    "model": null,
    "name": "w1-baseharbor",
    "self": true,
-   "status": "busy"
+   "status": "idle"
   }
  ],
  "missions": {
