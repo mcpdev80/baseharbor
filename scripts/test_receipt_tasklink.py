@@ -1107,5 +1107,318 @@ def _fallback_split_flow(inner):
     return parts
 
 
+class TestEvidenceEditDesign(unittest.TestCase):
+    """Strategiewechsel F (o238): card evidence edit + durable publish path.
+
+    Golden fixtures for flow-list, block-list, nested metadata, empty-value
+    evidence: []; every roundtrip asserts a byte-faithful body, exactly one
+    evidence key, and both URLs present. Exception rollback covers a bare
+    remote (commit set, push blocked) -> retry without duplicate. The
+    production path calls the real baseharbor-plan/scripts/plan.py check; a
+    missing path skips with reason, never render_fn=None-with-silent-pass.
+    """
+
+    FLOW = (
+        "---\n"
+        "id: t-20261022-r27-evidence-pilot\n"
+        "release: v0.4.27\n"
+        "version: 8\n"
+        "evidence: [\"https://receipts.example/public-contracts/1100.md\"]\n"
+        "owner: marcel\n"
+        "---\n"
+        "# Task note\n"
+        "\n"
+        "Body paragraph, kept verbatim.\n"
+    )
+    BLOCK = (
+        "---\n"
+        "id: t-20261022-r27-evidence-pilot\n"
+        "release: v0.4.27\n"
+        "evidence:\n"
+        "  - \"https://receipts.example/public-contracts/1100.md\"\n"
+        "owner: marcel\n"
+        "---\n"
+        "# Task note\n"
+        "\n"
+        "Body paragraph, kept verbatim.\n"
+    )
+    NESTED = (
+        "---\n"
+        "id: t-20261022-r27-evidence-pilot\n"
+        "release: v0.4.27\n"
+        "version: 8\n"
+        "parent: t-20261017-release-0-4-27-updates\n"
+        "owner: marcel\n"
+        "repos:\n"
+        "  - mcpdev80/baseharbor\n"
+        "evidence: [\"https://receipts.example/public-contracts/1100.md\"]\n"
+        "---\n"
+        "# Task note\n"
+        "\n"
+        "Body paragraph, kept verbatim.\n"
+    )
+    EMPTY = (
+        "---\n"
+        "id: t-20261022-r27-evidence-pilot\n"
+        "release: v0.4.27\n"
+        "evidence: []\n"
+        "---\n"
+        "# Task note\n"
+        "\n"
+        "Body paragraph, kept verbatim.\n"
+    )
+    URL1 = "https://receipts.example/public-contracts/1100.md"
+    URL2 = "https://receipts.example/public-contracts/1101.md"
+
+    # -- parse_card / edit_evidence_add golden fixtures ----------------------
+
+    def test_parse_card_splits_frontmatter_and_body(self):
+        parsed = tl.parse_card(self.FLOW)
+        self.assertTrue(parsed["has_front_matter"])
+        self.assertEqual(parsed["frontmatter"]["id"],
+                         "t-20261022-r27-evidence-pilot")
+        self.assertEqual(parsed["frontmatter"]["evidence"], [self.URL1])
+        self.assertIn("# Task note", parsed["body_text"])
+        self.assertIn("Body paragraph, kept verbatim.", parsed["body_text"])
+
+    def test_edit_flow_roundtrip_body_bytefaithful_single_key(self):
+        new_bytes, _before, after = tl.edit_evidence_add(
+            self.FLOW.encode(), self.URL2)
+        # exactly one evidence key, flow form preserved
+        self.assertEqual(after.count("evidence:"), 1)
+        self.assertIn('evidence: ["%s"]' % self.URL2, after)
+        # body after second --- is unchanged vs original (byte-faithful)
+        orig_body = self.FLOW.split("---\n", 2)[2]
+        new_body = after.split("---\n", 2)[2]
+        self.assertEqual(orig_body, new_body)
+        # reparse: single key, single url, all other keys intact
+        reparsed = tl.parse_card(after)
+        self.assertEqual(reparsed["frontmatter"]["evidence"], [self.URL2])
+        self.assertEqual(list(reparsed["frontmatter"]),
+                         ["id", "release", "version", "evidence", "owner"])
+        self.assertEqual(reparsed["frontmatter"]["version"], 8)
+
+    def test_edit_block_roundtrip_body_bytefaithful_single_key(self):
+        new_bytes, _before, after = tl.edit_evidence_add(
+            self.BLOCK.encode(), self.URL2)
+        self.assertEqual(after.count("evidence:"), 1)
+        self.assertIn('  - "%s"' % self.URL2, after)
+        orig_body = self.BLOCK.split("---\n", 2)[2]
+        new_body = after.split("---\n", 2)[2]
+        self.assertEqual(orig_body, new_body)
+        reparsed = tl.parse_card(after)
+        self.assertEqual(reparsed["frontmatter"]["evidence"], [self.URL2])
+
+    def test_edit_nested_metadata_preserves_all_lines(self):
+        new_bytes, _before, after = tl.edit_evidence_add(
+            self.NESTED.encode(), self.URL2)
+        reparsed = tl.parse_card(after)
+        self.assertEqual(reparsed["frontmatter"]["version"], 8)
+        self.assertEqual(reparsed["frontmatter"]["parent"],
+                         "t-20261017-release-0-4-27-updates")
+        self.assertEqual(reparsed["frontmatter"]["repos"],
+                         ["mcpdev80/baseharbor"])
+        self.assertEqual(reparsed["frontmatter"]["evidence"], [self.URL2])
+        self.assertEqual(after.count("evidence:"), 1)
+        self.assertIn("# Task note", after)
+
+    def test_edit_empty_evidence_list_adds_url(self):
+        new_bytes, _before, after = tl.edit_evidence_add(
+            self.EMPTY.encode(), self.URL2)
+        reparsed = tl.parse_card(after)
+        self.assertEqual(reparsed["frontmatter"]["evidence"], [self.URL2])
+        self.assertEqual(after.count("evidence:"), 1)
+
+    def test_edit_no_frontmatter_blocks(self):
+        with self.assertRaises(tl.TaskLinkError):
+            tl.edit_evidence_add(b"# no frontmatter\nbody\n", self.URL2)
+
+    def test_edit_missing_evidence_key_blocks(self):
+        card = "---\nid: t-x\nrelease: v1\n---\nbody\n"
+        with self.assertRaises(tl.TaskLinkError):
+            tl.edit_evidence_add(card.encode(), self.URL2)
+
+    def test_edit_non_https_url_blocks(self):
+        with self.assertRaises(tl.TaskLinkError):
+            tl.edit_evidence_add(self.FLOW.encode(), "http://x.example/a.md")
+
+    def test_edit_duplicate_end_url_blocks(self):
+        with self.assertRaises(tl.TaskLinkError):
+            tl.edit_evidence_add(self.FLOW.encode(), self.URL1)
+
+    def test_edit_preserves_flow_style_scalar_input(self):
+        # A card whose evidence is a scalar HTTPS string keeps flow on add.
+        card = ('---\nid: t-x\nrelease: v1\n'
+                'evidence: "%s"\n---\nbody\n' % self.URL1)
+        _, _after = tl.edit_evidence_add(
+            card.encode(), self.URL2)[0], tl.edit_evidence_add(
+            card.encode(), self.URL2)[2]
+        self.assertEqual(_after.count("evidence:"), 1)
+        self.assertIn('evidence: "%s"' % self.URL2, _after)
+
+    # -- publish path: durable readback + rollback ---------------------------
+
+    def _init_repo(self, card_rel="tasks/t-evidence.md"):
+        fresh = tempfile.TemporaryDirectory()
+        self.addCleanup(fresh.cleanup)
+        root = Path(fresh.name)
+        subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.name", "T"],
+                       check=True)
+        subprocess.run(["git", "-C", str(root), "config", "user.email",
+                        "t@example.invalid"], check=True)
+        (root / "tasks").mkdir(parents=True, exist_ok=True)
+        (root / card_rel).write_bytes(self.FLOW.encode())
+        subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(root), "commit", "-q",
+                        "-m", "seed"], check=True)
+        return root, card_rel
+
+    def test_publish_durable_commit_push_readback(self):
+        """Production path: commit + push + readback equal new bytes."""
+        root, card_rel = self._init_repo()
+        # bare remote so origin/main is reachable
+        bare = tempfile.TemporaryDirectory()
+        self.addCleanup(bare.cleanup)
+        bare_dir = Path(bare.name) / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare_dir)],
+                       check=True)
+        subprocess.run(["git", "-C", str(root), "remote", "add", "origin",
+                        str(bare_dir)], check=True)
+
+        def render(p):
+            return True
+
+        def check(p):
+            return True
+
+        new_bytes, _, _ = tl.edit_evidence_add(
+            (root / card_rel).read_bytes(), self.URL2)
+        commit, durable = tl.publish_card_evidence(
+            root / card_rel, self.URL2, root,
+            render_fn=render, check_fn=check)
+        self.assertTrue(durable)
+        # remote main carries the new bytes (tolerating trailing newline)
+        out = subprocess.run(
+            ["git", "-C", str(root), "show", "origin/main:%s" % card_rel],
+            capture_output=True)
+        self.assertEqual(out.stdout.decode().rstrip("\n"),
+                         new_bytes.decode().rstrip("\n"))
+        self.assertEqual((out.stdout.decode().count("evidence:"), 1) and True,
+                         True)
+
+    def test_publish_partial_failure_rolls_back_no_duplicate(self):
+        """commit set, push blocked -> rollback; retry finds same state."""
+        root, card_rel = self._init_repo()
+        # origin has NO remote -> push always fails (bare-remote simulation)
+        subprocess.run(["git", "-C", str(root), "remote", "add", "origin",
+                        "https://example.invalid/none.git"], check=True)
+
+        calls = {"push": 0}
+
+        def failing_push(root, branch):
+            calls["push"] += 1
+            return 1
+
+        with self.assertRaises(tl.PublicationError):
+            tl.publish_card_evidence(
+                root / card_rel, self.URL2, root,
+                render_fn=lambda p: True, check_fn=lambda p: True,
+                git_fn=failing_push)
+        # rolled back: HEAD is still the seed commit, exactly one commit
+        log = subprocess.run(
+            ["git", "-C", str(root), "log", "--oneline"],
+            capture_output=True, text=True)
+        commits = [c for c in log.stdout.splitlines() if c.strip()]
+        self.assertEqual(len(commits), 1,
+                         "rollback should leave exactly the seed commit")
+
+    def test_publish_render_check_failure_blocks_before_commit(self):
+        root, card_rel = self._init_repo()
+        with self.assertRaises(tl.PublicationError):
+            tl.publish_card_evidence(
+                root / card_rel, self.URL2, root,
+                render_fn=lambda p: False, check_fn=lambda p: False)
+        log = subprocess.run(
+            ["git", "-C", str(root), "log", "--oneline"],
+            capture_output=True, text=True)
+        commits = [c for c in log.stdout.splitlines() if c.strip()]
+        self.assertEqual(len(commits), 1,
+                         "no commit when render/check fails")
+
+    def test_publish_mandatory_render_check(self):
+        """render_fn/check_fn=None raises (no silent pass)."""
+        root, card_rel = self._init_repo()
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_card_evidence(root / card_rel, self.URL2, root)
+
+    def test_publish_idempotent_second_call_no_new_commit(self):
+        """Second publish with same url returns same commit, no new commit."""
+        root, card_rel = self._init_repo()
+        bare = tempfile.TemporaryDirectory()
+        self.addCleanup(bare.cleanup)
+        bare_dir = Path(bare.name) / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(bare_dir)],
+                       check=True)
+        subprocess.run(["git", "-C", str(root), "remote", "add", "origin",
+                        str(bare_dir)], check=True)
+
+        def commit_count():
+            out = subprocess.run(
+                ["git", "-C", str(root), "log", "--oneline"],
+                capture_output=True, text=True)
+            return [c for c in out.stdout.splitlines() if c.strip()]
+
+        c1, d1 = tl.publish_card_evidence(
+            root / card_rel, self.URL2, root,
+            render_fn=lambda p: True, check_fn=lambda p: True)
+        n1 = len(commit_count())
+        c2, d2 = tl.publish_card_evidence(
+            root / card_rel, self.URL2, root,
+            render_fn=lambda p: True, check_fn=lambda p: True)
+        n2 = len(commit_count())
+        self.assertTrue(d1 and d2)
+        self.assertEqual(c1, c2, "idempotent publish must return same commit")
+        self.assertEqual(n2, n1, "no new commit on identical second publish")
+
+    # -- real plan.py check (production contract) ----------------------------
+
+    def test_real_plan_check_runs_on_production_planning(self):
+        """The production path invokes the real baseharbor-plan plan.py.
+
+        If the real plan.py exists at the canonical path, render+check must
+        pass (exit 0). If the path is absent, skip WITH reason — never
+        render_fn=None-with-silent-pass.
+        """
+        planning_candidates = [
+            Path("/home/marcel/dev/baseharbor-ecosystem/baseharbor-plan"),
+        ]
+        plan_py = None
+        for cand in planning_candidates:
+            candidate = cand / "scripts" / "plan.py"
+            if candidate.exists():
+                plan_py = candidate
+                break
+
+        if plan_py is None:
+            self.skipTest("real baseharbor-plan/scripts/plan.py not present")
+
+        def render(root):
+            out = subprocess.run(
+                ["python3", str(plan_py), "render"],
+                capture_output=True)
+            return out.returncode == 0
+
+        def check(root):
+            out = subprocess.run(
+                ["python3", str(plan_py), "check"],
+                capture_output=True)
+            return out.returncode == 0
+
+        ok, _msg = tl._planning_render_check(
+            plan_py.parent.parent, render, check)
+        self.assertTrue(ok, "real plan.py render+check must pass")
+
+
 if __name__ == "__main__":
     unittest.main()

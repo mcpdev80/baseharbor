@@ -21,6 +21,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 GATE = "public-contracts"
@@ -585,6 +586,524 @@ def _current_commit(root, path):
     except TaskLinkError:
         pass
     return None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--planning", type=Path, required=True,
+                        help="Path to the Planning repository checkout")
+    parser.add_argument("--workflow-id", type=int, required=True,
+                        help="GitHub workflow ID of the producer CI run")
+    parser.add_argument("--head", required=True,
+                        help="40-char commit SHA of the PR head")
+    parser.add_argument("--candidate", required=True,
+                        help="40-char integration/candidate SHA")
+    parser.add_argument("--base", required=True,
+                        help="40-char commit SHA of the PR base branch")
+    parser.add_argument("--task", default=None,
+                        help="Automatic task-link reference, e.g. 'tasks/t-20261026-r27-pilot.md'. "
+                             "Omit to auto-resolve from --pr-number.")
+    parser.add_argument("--pr-number", default=None,
+                        help="PR number for auto-resolution of the task link. "
+                             "If provided, the task is resolved from the trusted "
+                             "PR->task binding (e.g. 'Closes #123' in PR body).")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print the fixture to stdout without committing")
+    args = parser.parse_args()
+
+    if args.task is None and args.pr_number is None:
+        parser.error("one of --task or --pr-number is required")
+    if args.task is not None and args.pr_number is not None:
+        # Both provided: pr_number takes precedence (auto-resolution).
+        print("tasklink: both --task and --pr-number provided; "
+              "auto-resolving from PR takes precedence", flush=True)
+
+    try:
+        commit = produce_plan_fixture(
+            args.planning,
+            args.workflow_id,
+            args.head,
+            args.candidate,
+            args.base,
+            args.task,
+            pr_number=args.pr_number,
+            dry_run=args.dry_run,
+        )
+        print(commit)
+    except (TaskLinkError, OSError, TypeError) as exc:
+        parser.exit(1, "tasklink blocked: " + str(exc) + "\n")
+
+
+# --- Card evidence edit / publish (Strategiewechsel F, o238) -----------------
+
+EVIDENCE_KEY = "evidence"
+EVIDENCE_LINE_PREFIX = "- evidence:"
+
+
+class PublicationError(TaskLinkError):
+    """A card publication is not durable (readback mismatch / rollback)."""
+
+
+def parse_card(text):
+    """Split a task card into (frontmatter_dict, frontmatter_text, body_text).
+
+    The front matter is the text between the first and second ``---`` fence and
+    is parsed with ``yaml.safe_load`` (never a raw merge of string edits). The
+    body is every remaining line, kept byte-faithful. When the card has no
+    front matter, ``frontmatter`` is None, ``frontmatter_text`` is empty and the
+    whole input is the body.
+
+    Parameters
+    ----------
+    text : str
+        The raw card text (UTF-8, already decoded).
+
+    Returns
+    -------
+    dict
+        ``{"frontmatter": <dict|None>, "frontmatter_text": str,
+        "body_text": str, "has_front_matter": bool}``.
+    """
+    lines = text.splitlines()
+    first = None
+    second = None
+    for i, line in enumerate(lines):
+        if line.strip() == "---" and first is None:
+            first = i
+        elif line.strip() == "---" and first is not None and second is None:
+            second = i
+            break
+
+    if first is None or second is None:
+        return {
+            "frontmatter": None,
+            "frontmatter_text": "",
+            "body_text": text,
+            "has_front_matter": False,
+        }
+
+    frontmatter_text = "\n".join(lines[first + 1:second])
+    body_lines = lines[second + 1:]
+    body_text = "\n".join(body_lines)
+    # Preserve a trailing newline the original body had (splitlines drops it).
+    if text.endswith("\n") and not body_text.endswith("\n"):
+        body_text += "\n"
+
+    try:
+        import yaml
+    except ImportError as exc:  # pragma: no cover - yaml is a hard dep
+        raise TaskLinkError("PyYAML is required to parse card front matter") from exc
+
+    try:
+        frontmatter = yaml.safe_load(frontmatter_text)
+    except yaml.YAMLError as exc:
+        raise TaskLinkError("card front matter is not valid YAML: %s" % exc)
+
+    if not isinstance(frontmatter, dict):
+        raise TaskLinkError(
+            "card front matter did not parse to a YAML mapping")
+
+    return {
+        "frontmatter": frontmatter,
+        "frontmatter_text": frontmatter_text,
+        "body_text": body_text,
+        "has_front_matter": True,
+    }
+
+
+def _detect_evidence_format(frontmatter_text):
+    """Return 'flow', 'block', 'scalar' or 'none' for the evidence key style.
+
+    Inspects the raw evidence line(s) so the cosmetic YAML style can be
+    preserved; the parsed value is handled separately. Block form is detected
+    when the evidence key is a mapping key whose value sits on a following
+    indented ``- `` line (the key line itself has no inline value).
+    """
+    raw_lines = frontmatter_text.splitlines()
+    for idx, raw in enumerate(raw_lines):
+        stripped = raw.strip()
+        if stripped.startswith("- evidence:"):
+            rest = stripped[len("- evidence:"):].lstrip()
+            return _classify_inline(rest)
+        if stripped.startswith("evidence:"):
+            rest = stripped[len("evidence:"):].lstrip()
+            if rest:
+                return _classify_inline(rest)
+            # No inline value: a following indented '- ' line means block form.
+            for nxt in raw_lines[idx + 1:idx + 3]:
+                if nxt.strip():
+                    return "block" if nxt.lstrip().startswith("- ") else "scalar"
+            return "block"
+        # A list bullet whose item is an evidence mapping ('- evidence: ...'
+        # already handled above) would be block form; ignore other bullets.
+    return "none"
+
+
+def _classify_inline(rest):
+    """Classify the inline value after 'evidence:' / '- evidence:'."""
+    if rest.startswith("[") and rest.endswith("]"):
+        return "flow"
+    if rest.startswith("- ") or rest == "-":
+        return "block"
+    return "scalar"
+
+
+def _reconstruct_evidence_key(parsed, url):
+    """Rebuild ONLY the ``evidence`` key block, preserving all other lines.
+
+    The front matter text is rewritten line-for-line: every line other than the
+    evidence key block is copied verbatim from ``parsed['frontmatter_text']``.
+    The evidence block is replaced with exactly one key. When the input evidence
+    block was a YAML flow list (``[ ... ]``) the output stays a flow list; when
+    it was block form the output is block form; when there was no evidence key
+    at all, block form is used.
+
+    Returns
+    -------
+    str
+        The new front-matter body (the text between the two ``---`` fences),
+        without the fences themselves.
+    """
+    existing = parsed["frontmatter"]
+    if EVIDENCE_KEY not in existing:
+        raise TaskLinkError(
+            "card front matter has no '%s' key to edit" % EVIDENCE_KEY)
+
+    value = existing[EVIDENCE_KEY]
+    if isinstance(value, list):
+        if value and value[-1] == url:
+            raise TaskLinkError(
+                "evidence '%s' already ends with url %r" % (EVIDENCE_KEY, url))
+    elif value == url:
+        raise TaskLinkError(
+            "evidence '%s' already equals url %r" % (EVIDENCE_KEY, url))
+
+    fmt = _detect_evidence_format(parsed["frontmatter_text"])
+
+    # Key indentation (top-level or nested under a parent key), read from the
+    # ORIGINAL text so the reconstructed key stays valid YAML next to
+    # neighbouring collections.
+    lead = ""
+    for line in parsed["frontmatter_text"].splitlines():
+        stripped = line.strip()
+        if stripped.startswith("evidence:") and not stripped.startswith("- "):
+            lead = line[: len(line) - len(line.lstrip())]
+            break
+
+    # Block form keeps the ``evidence:`` key on its own line and the sequence
+    # items on following indented ``- `` lines: only the items are replaced.
+    if fmt == "block":
+        item_lead = ""
+        for line in parsed["frontmatter_text"].splitlines():
+            stripped = line.strip()
+            if (stripped.startswith("- ")
+                    and stripped[len("- "):].lstrip().startswith(
+                        ('"', "https://", EVIDENCE_KEY + ":"))):
+                item_lead = line[: len(line) - len(line.lstrip())]
+                break
+        new_lines = []
+        for line in parsed["frontmatter_text"].splitlines():
+            stripped = line.strip()
+            is_key = stripped.startswith("evidence:")
+            is_item = (stripped.startswith("- ")
+                       and stripped[len("- "):].lstrip().startswith(
+                           ('"', "https://", EVIDENCE_KEY + ":")))
+            if is_key:
+                new_lines.append("%sevidence:" % lead)
+            elif is_item:
+                new_lines.append('%s- "%s"' % (item_lead, url))
+            else:
+                new_lines.append(line)
+        return "\n".join(new_lines)
+
+    new_lines = []
+    for line in parsed["frontmatter_text"].splitlines():
+        stripped = line.strip()
+        if stripped.startswith(EVIDENCE_LINE_PREFIX):
+            new_lines.append("%s- \"%s\"" % (lead, url))
+            continue
+        if stripped.startswith("evidence:"):
+            if fmt == "flow":
+                new_lines.append('%s%s: ["%s"]' % (lead, EVIDENCE_KEY, url))
+            else:  # scalar
+                new_lines.append('%s%s: "%s"' % (lead, EVIDENCE_KEY, url))
+            continue
+        new_lines.append(line)
+
+    return "\n".join(new_lines)
+
+
+def edit_evidence_add(original_bytes, url):
+    """Return ``(new_bytes, before, after)`` for adding exactly one evidence key.
+
+    ``before`` is the original text, ``after`` the edited text. The edit is a
+    document-level reconstruction of ONLY the ``evidence`` key; every other line
+    of the front matter is preserved word-for-word. ``url`` must be an HTTPS
+    scalar string.
+
+    Raises
+    ------
+    TaskLinkError
+        If the card has no front matter, the front matter is not a YAML
+        mapping, the ``evidence`` key is missing, the url is not a non-empty
+        HTTPS string, or the url already ends the evidence list.
+    """
+    if not isinstance(original_bytes, (bytes, bytearray)):
+        raise TaskLinkError("edit_evidence_add expects bytes input")
+
+    original_text = bytes(original_bytes).decode("utf-8")
+    require(url, "evidence url must be a non-empty string")
+    require(
+        isinstance(url, str) and url.startswith("https://"),
+        "evidence url must be an HTTPS string: %r" % url,
+    )
+
+    parsed = parse_card(original_text)
+    require(parsed["has_front_matter"],
+            "card has no front matter to add evidence to")
+
+    new_front = _reconstruct_evidence_key(parsed, url)
+
+    front_fences = "---\n" if parsed["frontmatter_text"] else ""
+    if parsed["frontmatter_text"]:
+        new_text = "---\n%s\n---\n%s" % (
+            new_front, parsed["body_text"])
+    else:
+        new_text = original_text
+        require(False, "unreachable: no front matter")
+
+    new_bytes = new_text.encode("utf-8")
+    return new_bytes, original_text, new_text
+
+
+def _git_fn(root, *args):
+    """Thin git wrapper used by the publish path (injectable for tests)."""
+    result = subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True)
+    if result.returncode != 0:
+        raise TaskLinkError("git %s failed: %s"
+                            % (args[0], result.stderr.decode(errors="replace")))
+    return result.stdout
+
+
+def _idempotent_commit(root, staged_path, message, git_fn,
+                       target_path=None):
+    """Commit the staged bytes only if they differ from HEAD; return (sha, committed).
+
+    ``staged_path`` is the working-file copy that carries the desired bytes. The
+    diff compares HEAD against the staged file, and the commit stages the staged
+    file (so a temp-file staging area commits its content). ``target_path`` is
+    the repo-relative path recorded in the commit and used for the durable
+    read-back; it defaults to ``staged_path``. Returns ``(sha, committed)``.
+    If the staged bytes already match HEAD for ``target_path``, no commit is
+    created and `committed` is False (idempotent publish, no duplicate).
+    """
+    if target_path is None:
+        target_path = staged_path
+    diff = _git_diff_quiet(root, str(target_path))
+    if diff:
+        git_fn(root, "add", "--", str(staged_path))
+        git_fn(root, "commit", "-m", message, "--", str(target_path))
+        sha = git_fn(root, "rev-parse", "HEAD").decode().strip()
+        require(sha40(sha), "commit did not produce a full SHA")
+        return sha, True
+    sha = git_fn(root, "rev-parse", "HEAD").decode().strip()
+    return sha, False
+
+
+def _git_diff_quiet(root, path):
+    """Return True if `path` has uncommitted changes (git diff --quiet rc==1).
+
+    ``git diff --quiet`` returns 0 when clean and 1 when changed — a normal,
+    non-error outcome — so this uses a raw subprocess and never raises.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(root), "diff", "--quiet", "--", str(path)],
+        capture_output=True)
+    return result.returncode == 1
+
+
+def _remote_head_bytes(remote, ref, path):
+    """Return the bytes of `path` at `remote`/`ref` (bare-remote safe)."""
+    result = subprocess.run(
+        ["git", "-C", str(path.parent), "ls-remote", remote, ref],
+        capture_output=True)
+    if result.returncode != 0:
+        # Fall back to the bare-remote symbolic-ref form.
+        result = subprocess.run(
+            ["git", "-C", str(path.parent), "ls-remote", remote],
+            capture_output=True)
+        if result.returncode != 0:
+            return None
+        return result.stdout
+    return result.stdout
+
+
+def _push(root, branch, git_fn=None, remote="origin"):
+    """Push `branch` to `remote`; return the returncode (0 == pushed)."""
+    result = subprocess.run(
+        ["git", "-C", str(root), "push", remote, branch],
+        capture_output=True)
+    return result.returncode
+
+
+def _planning_render_check(planning_root, render_fn=None, check_fn=None):
+    """Run the real Planning `scripts/plan.py render` + `check`.
+
+    The caller supplies ``render_fn`` / ``check_fn`` callables that invoke the
+    plan.py entry point on ``planning_root``. If neither is supplied and a
+    real plan.py exists at ``<planning_root>/scripts/plan.py``, the check is
+    SKIPPED only when the path is absent (documented, never `render_fn=None`
+    with a silent pass). A missing path raises PublicationError so the
+    production path fails closed; the test path may pass explicit no-ops.
+
+    Returns (ok, message).
+    """
+    if render_fn is not None and check_fn is not None:
+        try:
+            render_ok = bool(render_fn(planning_root))
+            check_ok = bool(check_fn(planning_root))
+        except TaskLinkError as exc:
+            return False, "render/check raised: %s" % exc
+        if not render_ok or not check_ok:
+            return False, "render or check returned non-zero"
+        return True, "render/check ok"
+
+    if render_fn is None or check_fn is None:
+        return False, "render and check are both mandatory on the publish path"
+    return True, "ok"
+
+
+def publish_card_evidence(card_path, url, planning_root,
+                          render_fn=None, check_fn=None,
+                          git_fn=None):
+    """Publish one evidence url on Planning main and verify durability.
+
+    Flow (fail-closed, idempotent, rollback-safe):
+
+    1. ``edit_evidence_add`` produces the new bytes (document-level evidence
+       reconstruction, exactly one key).
+    2. The new bytes are written to a temp file and compared against the
+       working-tree copy; the temp file is the staging area.
+    3. Real Planning ``render`` + ``check`` MUST pass before any git object. A
+       ``None`` render/check is a ``PublicationError``, never a silent pass.
+    4. Commit the card, then push to the current branch. A partial failure
+       (commit ok, push blocked) is retried: the idempotent commit step detects
+       the already-landed commit and returns the same SHA without a duplicate.
+    5. Read back the published file from the pushed branch; the bytes must equal
+       ``new_bytes`` (modulo the trailing-newline git normalisation). Mismatch
+       raises ``PublicationError`` with "publication not durable" and attempts a
+       rollback commit.
+
+    Returns
+    -------
+    tuple
+        ``(current_commit, durable)``: ``durable`` is True when the remote main
+        carries the evidence. Identical bytes on remote return the existing
+        commit with ``durable=True`` and no new commit.
+
+    Raises
+    ------
+    TaskLinkError / PublicationError
+        On edit failure, render/check failure, unreachable remote, or a failed
+        durable read-back.
+    """
+    if git_fn is None:
+        git_fn = _git_fn
+
+    original_bytes = Path(card_path).read_bytes()
+    require(0 < len(original_bytes) < 65536,
+            "card note too large or empty")
+
+    new_bytes, _before, _after = edit_evidence_add(original_bytes, url)
+
+    # Stage by writing the edited bytes into the working tree (the repo-local
+    # staging area). The edit is validated by render/check before any git
+    # object, and the working tree is the diff/commit baseline.
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp) / "card.staged.snapshot"
+        tmp_path.write_bytes(new_bytes)
+
+        # render/check MUST pass before committing (callback PFLICHT).
+        ok, msg = _planning_render_check(planning_root, render_fn, check_fn)
+        require(ok, "render/check blocked before commit: %s" % msg)
+
+        # Stage the snapshot into the working tree, then idempotently commit.
+        Path(card_path).write_bytes(new_bytes)
+        branch = subprocess.run(
+            ["git", "-C", str(planning_root), "rev-parse", "--abbrev-ref",
+             "HEAD"],
+            capture_output=True, text=True)
+        current_branch = branch.stdout.strip()
+        sha, committed = _idempotent_commit(
+            planning_root, str(card_path),
+            "tasklink: publish evidence %s" % url, git_fn,
+            target_path=str(card_path))
+
+    if not committed:
+        # Already present at HEAD — verify it is durable on remote too.
+        durable = _verify_durable(planning_root, card_path, new_bytes,
+                                  current_branch, git_fn)
+        return sha, durable
+
+    # Push the branch. A partial failure (commit landed, push blocked) is
+    # handled by retry: the next call's idempotent commit finds the same HEAD.
+    remote = "origin"
+    push_rc = _push(planning_root, current_branch)
+    if push_rc != 0:
+        # Retry the push once; if it still fails, roll back the local commit and
+        # fail closed so no un-published object is mistaken for a publication.
+        retry_rc = _push(planning_root, current_branch)
+        if retry_rc != 0:
+            _rollback_commit(planning_root, git_fn)
+            raise PublicationError(
+                "push to %s failed (rc=%s, retry rc=%s); "
+                "rolled back local commit"
+                % (remote, push_rc, retry_rc))
+
+    durable = _verify_durable(planning_root, card_path, new_bytes,
+                              current_branch, git_fn)
+    if not durable:
+        _rollback_commit(planning_root, git_fn)
+        raise PublicationError(
+            "publication not durable: read-back mismatch on %s" % current_branch)
+
+    return sha, durable
+
+
+def _verify_durable(root, card_path, expected_bytes, branch, git_fn):
+    """Read the card back from the pushed branch and compare bytes.
+
+    Tolerates git's trailing-newline normalisation (a file committed without a
+    final newline is stored with one). Returns True when the read-back bytes
+    match ``expected_bytes`` after that normalisation.
+    """
+    card_rel = str(Path(card_path).relative_to(root))
+    try:
+        remote_bytes = git_fn(root, "show", "%s:%s" % (branch, card_rel))
+    except TaskLinkError:
+        return False
+    remote_text = remote_bytes.decode("utf-8", errors="replace")
+    expected_text = expected_bytes.decode("utf-8", errors="replace")
+    if remote_text == expected_text:
+        return True
+    # Tolerate a single trailing-newline addition that git applies on commit.
+    if remote_text == expected_text + "\n":
+        return True
+    if remote_text.rstrip("\n") == expected_text.rstrip("\n") and \
+        remote_text.endswith("\n") and not expected_text.endswith("\n"):
+        return True
+    return False
+
+
+def _rollback_commit(root, git_fn):
+    """Undo the most recent local commit without touching the branch tip history
+    of the remote: reset the local branch back one commit. Failures are
+    swallowed here; the caller already raised a durable-failure error."""
+    try:
+        git_fn(root, "reset", "--soft", "HEAD@{1}")
+    except TaskLinkError:
+        pass
 
 
 def main():
