@@ -1,0 +1,6 @@
+TASK t-20261029-r27-ci-producer - #1207 BASE-FRISCHKUR (read-only bis auf Branch-Push). Lies /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/codex-rv1207-merge.md REVIEW-Sektion.
+(1) git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor fetch origin; worktree add --detach /home/marcel/dev/baseharbor-ecosystem/worktrees/o226 origin/work/r27-producer-extension-reserve; cd; git merge origin/develop -m 'sync: base fresh-cure onto e0de0117 (exact-base qualification)' (erwartet konfliktfrei; else resolve minimal + dokumentieren).
+(2) GOPATH=/tmp/gopath GOCACHE=/tmp/gocache go test ./contracts/ -count=1 exit 0 (VOLLAUSGABE in Evidence, das ist Codex' lokaler Testbeleg).
+(3) push HEAD:work/r27-producer-extension-reserve; neue head SHA + PR view mergeable/mergedBase meldung.
+(4) gh run list --branch work/r27-producer-extension-reserve --limit 1 notieren; NICHT auf Abschluss warten (Heartbeat reicht), aber Run-ID nennen.
+EVIDENCE: baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/pr1207-base-fresh.md (numerierte PLAN, keine Checkboxen, END o226-DONE). Kein Merge, kein dispatch, kein git in baseharbor-plan.

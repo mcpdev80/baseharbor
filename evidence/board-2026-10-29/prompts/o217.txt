@@ -1,0 +1,10 @@
+TASK t-20261029-r27-develop-main-reconcile - STRATEGY-CHANGE-RUNDE (read /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/codex-rv1206c.md VERDICT+recipe fully first; q207 failed twice, you execute the surgical union recipe).
+RECIPE (exact): (1) git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add /home/marcel/dev/baseharbor-ecosystem/worktrees/o217 089572fc1f3e39cf1d61efb887ed97ffda007118  (this tree = rv1206B-ACCEPTED content union; source-accepted, only its LINEAGE lacked main-ancestry).
+(2) cd worktrees/o217 && git checkout -b work/r27-develop-main-reconcile-b && git merge -s ours -m 'reconcile: strategy-ours union of accepted 089572fc with origin/main ancestry (rv1206C recipe)' origin/main
+(3) VERIFY (paste all three outputs into evidence):
+  a) git diff origin/develop...HEAD --stat must be NON-empty and include scripts/receipt_writer.py + .github/workflows/receipt-post-run.yml.
+  b) git diff origin/main HEAD must contain NO removal of these main-defense lines: grep for '^-' lines mentioning GH_WORKFLOW_TOKEN or --product or run_attempt or pull_requests - if any appear, STOP and deliver BLOCKED.
+  c) grep confirms the develop-side lines present: vars.BASEHARBOR_RECEIPT_TRUSTED_SOURCE and PLANNING_RECEIPT_WRITE_TOKEN in receipt-post-run.yml/receipt-approval.yml.
+(4) cd scripts && GOPATH=/tmp/gopath GOCACHE=/tmp/gocache python3 -m unittest test_receipt_postrun test_receipt_chain test_receipt_writer test_receipt_tasklink -> exit 0 (73 tests).
+(5) git push origin work/r27-develop-main-reconcile-b; gh pr edit 1206 --repo mcpdev80/baseharbor --head work/r27-develop-main-reconcile-b (gh api -X PATCH repos/mcpdev80/baseharbor/pulls/1206 -f head=... if GraphQL projects bug hits). Report new head SHA.
+EVIDENCE (absolute path): /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/develop-main-reconcile.md - APPEND '## Runde F (strategy-ours union, o217)' numbered, no checkboxes, END o217-DONE/-BLOCKED last. No merges, no git in baseharbor-plan.

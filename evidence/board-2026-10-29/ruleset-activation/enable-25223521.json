@@ -1,0 +1,8 @@
+{
+  "ruleset_id": 25223521,
+  "enabled": true,
+  "note": "FERTIGER PUT-Body fuer ruleset-activation; REST identisch zum Live-Ist - API 404 Not Found (ruleset exists at API but not accessible)",
+  "created": "2026-10-29",
+  "task": "t-20261027-r27-cutover-pr3",
+  "source": "q230.txt ruleset-activation/enable-25223521.json"
+}

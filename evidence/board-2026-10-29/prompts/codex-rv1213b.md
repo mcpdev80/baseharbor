@@ -1,0 +1,4 @@
+ROLLE: CODEX-REVIEW - PR #1213 (mcpdev80/baseharbor, base develop) HEAD-JETZT 5f0504d0 (Forward-Runde o230: Verifier-Fixtures + Readback-Assert gegen origin/main, beide rv1213m-Befunde adressiert; Evidence tasklink-yamlfix.md 'Korrekturrunde'). Hosted exact-head run 40940104763: PR Selected Checks + ci-policy pass (vollstaendige Liste selbst pruefen).
+CHECKS: diff main..head umfasst receipt_tasklink.py+test_receipt_tasklink.py+test_receipt_verifier.py; 5-Suiten-Vollsuite (RUNBOOK 19) exit 0 im detached worktree; Readback-Assert Test zeigt echten Fail-Weg (Negative im Test vorhanden?); threads leer; rulesets untouched.
+DANN getrennte Sektion ROLLE: CODEX-MERGE: gh pr merge 1213 --squash -R mcpdev80/baseharbor --match-head-commit <head40>; Post-Merge develop SHA + develop-Checks terminal + ls-remote.
+OUTPUT evidence/board-2026-10-29/codex-rv1213b-merge.md, END rv1213b DONE letzte Zeile.

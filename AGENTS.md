@@ -44,7 +44,7 @@ Der Coordinator plant, delegiert, überwacht, verifiziert und hält Planning wah
 Vor jeder anderen Aktion `python3 evidence/board-2026-10-19/scripts/basics-check.py` ausführen (Events, Idle-Lanes, Pool-Mischung, PLAN-Alter, unpushed/ahead Planning) und alle FLAGS in derselben Turn-Kette abarbeiten; nach Events-Quitting `events-check.py --ack`. Diese Pflicht ersetzt Gedächtnis durch Skript.
 
 ### 3.3 Coord-Tick (Owner-Direktive 2026-10-26)
-Ein Idle-only-Tick alle 10 Minuten (Einzelheiten: RUNBOOK.md Abschnitt 3) zwingt bei Leerlauf des Coordinators:
+Ein Idle-only-Tick alle 10 Minuten (Einzelheiten: RUNBOOK.md Abschnitt 2.3) zwingt bei Leerlauf des Coordinators:
 1. mindestens drei Worker arbeiten, wenn sinnvolle konfliktfreie Arbeit existiert;
 2. für jede neue Aufgabe eine FRISCHE Lane verwenden und fertig gemeldete Lanes sofort freigeben/löschen (Kontextansammlung in Altlanes ist ein Fehler);
 3. das CardBoard via baseharbor-plan aktuell halten (Karten-Metadaten, render + check, regulär publiziert);

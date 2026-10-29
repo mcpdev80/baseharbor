@@ -1,0 +1,37 @@
+{
+  "ruleset_id": 25223521,
+  "enabled": true,
+  "name": "develop - required checks",
+  "target": "branch",
+  "source": "mcpdev80/baseharbor",
+  "source_type": "Repository",
+  "id": 25223521,
+  "enforcement": "disabled",
+  "created_at": "2026-10-16T09:13:12.673+02:00",
+  "updated_at": "2026-10-28T14:49:30.228+01:00",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "refs/heads/develop"
+      ]
+    }
+  },
+  "bypass_actors": [],
+  "current_user_can_bypass": "never",
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "PR Selected Checks",
+            "integration_id": 15368
+          }
+        ],
+        "strict_required_status_checks_policy": true
+      }
+    }
+  ]
+}

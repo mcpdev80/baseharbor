@@ -1,0 +1,7 @@
+ROLLE: CODEX-REVIEW rv1206F (explizit Review-Rolle, eigenstaendiger Durchgang; Map nicht mit Merge-Rolle gemischt). Objekt: die BEWEISROUTE selbst, SHA-genau Kandidat 4c20d676dfdc82f597434a5e64bc7d95ddf409bc (tree da634e74...).
+Evidenzpaket: (i) rv1206D Baum-/Diff-Befunde (deins, defenses retained); (ii) coordinator m1206e Simulation: S=commit-tree(da634e74,-p f95b3446), M2=commit-tree(da634e74,-p S,-p 7a417d37), merge-tree main×M2 exit 0, defense-grep auf diff main..M2 leer, realer diff main..M2 = 268+/16- (Kommentar-/Fixturezeilen); (iii) Kartenvertrag t-20261029-r27-develop-main-reconcile.md (Akzeptanztext woertlich lesen).
+AUFGABE: Entscheide EINE von drei Optionen, begruendet, OHNE neue Bedingungen die nicht im Vertrag stehen:
+OPTION 1 ACCEPT: Simulation+Diff erfuellen 'merge-tree clean' + 'promotable ohne Defense-Verlust' fuer squash+branch-sync Route -> CODEX-MERGE darf mit --squash durchfuehren, Branch-sync als Folgeevidenz.
+OPTION 2 CONTRACT-AMBIGUOUS: der Vertrag verlangt eine Beweisklasse die lokal nicht erzeugbar ist -> formuliere DEN EINEN Satz im Vertrag der das verlangt, Wort fuer Wort, Zitat mit file:line, damit der Owner ihn klaeren kann. Kein weiteres Hin-und-Her.
+OPTION 3 REQUEST_CHANGES: die Route ist inhaltlich FALSCH (nicht 'noch nicht genug Beweis' sondern 'sie funktioniert nicht') -> benenne den konkreten technischen Fehler mit Gegenbeweis.
+OUTPUT: /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/codex-rv1206f.md (ls-remote Zeile drin, Option + Begruendung, END rv1206F DONE letzte Zeile).

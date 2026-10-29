@@ -1,0 +1,7 @@
+TASK t-20261027-r27-cutover-design - SUITE-MANIFEST LUECKE SCHLIESSEN (Write-Set: NUR scripts/ unter /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/scripts/ + Evidence-Datei + RUNBOOK-Abschnitt).
+GRUND: Lane-Auftraege verlangen routinemaessig 'unittest-Quartett' (postrun/chain/writer/tasklink) - aber die Hosted-Validation 'receipt-execution-tests' fuehrt MEHR (inkl. test_receipt_verifier). Jede Aenderung an scripts/receipt_*.py braucht kuenftig den PASS der VOLLSTAENDIGEN Suite.
+(1) Ermittle die echte Voll-Suite: lies .github/workflows/ die den Job 'receipt-execution-tests' definiert (grep -r 'receipt-execution' .github/workflows/ im baseharbor checkout origin/develop) und extrahiere exakt welche Testdateien/Aufrufe dort laufen.
+(2) Schreibe evidence/board-2026-10-29/scripts/receipt-suite.sh: fuehrt GENAU diese Voll-Suite lokal aus (GOPATH/GOCACHE /tmp), Exit-Code transparent, --list Modus der die Suiten zeigt.
+(3) Teste das Script gegen origin/develop clean (sollte OK sein) und gegen den Stand von PR #1213 HEAD (c845caf6) - dort MUESSEN die Verifier-Tests failn bis o230 liefert: Dokumentiere beide Laeufe mit Ausgabe.
+(4) RUNBOOK.md (root, kein git-Transport noetig, nur Datei edit '## 19 Voll-Suite Receipt-Tests'): Rezept + Warnung vor dem 4-Suiten-Trugschluss.
+EVIDENCE: /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/receipt-suite-manifest.md (numerierte PLAN, keine Markdown-Checkboxen, END q229-DONE letzte Zeile). Kein git in baseharbor-plan (Datei OK).

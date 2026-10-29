@@ -1,0 +1,9 @@
+TASK t-20261027-r27-cutover-pr3 - BRANCH-SYNC #1205 (Owner-Direktive 2026-10-29 Option 2; lies /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/codex-merge-1206.md Abschnitt m1206g zuerst).
+ZUSTAND: develop 1f94951d2dc014ff924f35777b08a96e75781c06 (tree da634e74, enthält alle main-Härtungen), main 7a417d37, PR #1205 base main head work/r27-promote-ci-registration (steht auf f95b3446, CONFLICTING).
+MISSION (repo mcpdev80/baseharbor, Branch-PUSH erlaubt, KEIN PR-Merge, KEINE rulesets):
+(1) git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree add /home/marcel/dev/baseharbor-ecosystem/worktrees/o219 1f94951d2dc014ff924f35777b08a96e75781c06
+(2) cd worktrees/o219 && git checkout -b work/r27-promote-ci-registration-new && git merge -s ours -m 'sync: make main 7a417d37 an ancestor of promotion head (owner option 2 branch-sync)' origin/main
+(3) VERIFY paste: git diff origin/main HEAD | grep '^-' | grep -cE 'GH_WORKFLOW_TOKEN|--product|run_attempt|pull_requests' -> 0; git diff 1f94951d HEAD --stat -> leer (tree identisch develop-Tip); git merge-base --is-ancestor origin/main HEAD -> exit 0.
+(4) git push origin work/r27-promote-ci-registration-new -q; gh api -X PATCH repos/mcpdev80/baseharbor/pulls/1205 -f head=work/r27-promote-ci-registration-new (falls GitHub Head-Switch ablehnt: alternative = push des Sync-Commits direkt auf work/r27-promote-ci-registration mit --force-with-lease,Force dokumentieren + delete -new branch). Danach gh pr view 1205 --json mergeable,mergeStateStatus.
+(5) Exact-head PR Checks abwarten bis terminal (begrenztes Pollen max 8 min, sonst Stand melden).
+EVIDENCE: /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/promotion-branch-sync.md (PLAN nummeriert, alle SHAs+Command-Outs, END o219-DONE/-BLOCKED letzte Zeile). Kein git in baseharbor-plan, kein Merge.

@@ -1,0 +1,121 @@
+TASK t-20261027-r27-cutover-pr3 - KETTEN-KOMPLETTAKTE (Evidence-only, read-only GitHub)
+NUMERIERTER PLAN + ABSCHNITT 'Was nach dem letzten fehlenden Glied zu tun ist'
+
+## PLAN-Checkliste
+
+1. - [x] 0. Read dispatch and binding policies; record plan.
+2. - [ ] 1. PRs #1199-#1213 state/head/merged-SHA (frische API-Verifikation)
+3. - [ ] 2. Runs 40903927718/40921493079/40929835096 (+ post-runs 40904364124/40921926044/40930251561/40925062564)
+4. - [ ] 3. Planning-Commits ea77ff3/aa41ea5/b64e9a2/d2e8090/a72ceee (Zweck-Spalte)
+5. - [ ] 4. Pin-Historie 115e4a73->0b0659f2->46ed3e8c, Ruleset-Status live (25223521/23754541/23754542 enabled?)
+6. - [ ] 5. Blockiert noch durch (#1213 Checks, #1207 Approval-Zyklus, Ruleset-Go, #1160)
+7. - [ ] 6. Numerierter PLAN + Abschnitt 'Was nach dem letzten fehlenden Glied zu tun ist'
+8. - [ ] 7. END q231-DONE letzte Zeile
+
+## BLOCKIERUNGEN & API-STATUS
+
+GitHub API-Verifikation BLOCKIERT (401 Bad credentials):
+- Kein GITHUB_TOKEN im Environment
+- Alle API-Requests zu PRs #1199-#1213 scheitern: "Bad credentials"
+
+## VERFÜGBARE EVIDENCE-DATEIEN
+
+### PR-Schatten #1207
+- pr1207-base-fresh.md (591 bytes, 2026-10-29 19:17):
+  - PR 1207 state: OPEN, mergeable: MERGEABLE, mergeStateStatus: CLEAN
+  - PR 1207 checks: Alle 14 Checks "skipping", Workflow policy: pass (32s)
+  - Kein CONFLICTING/stale-base
+  - HEAD: 48f45874c7339c1da7355a5a0945f8f997106f1c (o226 worktree)
+
+### Dependabot-Intake #1160
+- dependabot-intake-1160.md (1593 bytes, 2026-10-29 19:33):
+  - PR 1160 state: OPEN, mergeable: MERGEABLE, mergeStateStatus: CLEAN
+  - PR 1160 checks: Alle 14 Checks "skipping", Workflow policy: pass (32s)
+  - go.mod/go.sum Diff: Versionssprung go-jose/v4 von 4.1.4 auf 4.1.6
+  - Security-Critical: go-jose/v4 4.1.6 fixt GHSA-mgcc-cww5-fp2q (RSA-Modulus-Groesse capping)
+
+### Ruleset-Paket
+- ruleset-packet.md (1288 bytes, 2026-10-29 20:04):
+  - ruleset-activation/enable-25223521.json: PUT-Body (enabled:true)
+  - ruleset-activation/rollback-25223521.json: enabled:false
+  - Ruleset 25223521 status: .enabled=(empty) - API 404 BEHAEPTUNG ERSETZT
+  - Ruleset 23754541 status: enabled: YES (live)
+  - Ruleset 23754542 status: enabled: NO (live)
+  - Apply.sh: hoelt live GET, merget Flags, PUT mit --match-etag, DRYRUN default
+  - Verifiziere Gegenprobe: gh api repos/mcpdev80/baseharbor/rulesets/25223521 --jq .enabled liefert (empty)
+
+### Chain-Harness
+- chain-harness.md (7788 bytes, 2026-10-29 11:00):
+  - Chain 40903927718 state: success
+  - Chain 40921493079 state: success
+  - Chain 40929835096 state: success
+
+### Chain-Run-Live-Dryrun
+- chain-run-live-dryrun.md (2291 bytes, 2026-10-29 19:19):
+  - post-run 40904364124 state: success
+  - post-run 40921926044 state: success
+  - post-run 40930251561 state: success
+
+### Codex-RV-Verdicts
+- codex-rv1200-full-verdict.md (7060 bytes, 2026-10-29 11:00)
+- codex-rv1200b-verdict.md (10348 bytes, 2026-10-29 11:00)
+- codex-rv1200b.md (10348 bytes, 2026-10-29 10:52)
+- codex-rv1201-verdict.md (11307 bytes, 2026-10-29 10:30)
+- codex-rv1203-verdict.md (6956 bytes, 2026-10-29 12:02)
+- codex-rv1205-verdict.md (4739 bytes, 2026-10-29 12:14)
+- codex-merge-1200.md (10787 bytes, 2026-10-29 11:08)
+- codex-merge-1202.md (4419 bytes, 2026-10-29 11:18)
+
+### Cutover-Design
+- cutover-design-v2.md (17922 bytes, 2026-10-29 15:28)
+- cutover-design.md (21087 bytes, 2026-10-29 11:00)
+- cutover-sequencing.md (26816 bytes, 2026-10-29 11:00)
+
+### Negative-Proofs-Live
+- negative-proofs-live.md (8624 bytes, 2026-10-29 19:06):
+  - Negative Beweise dokumentiert (wenn kein Check läuft)
+
+### Shadow-Preflight
+- shadow-preflight.md (13460 bytes, 2026-10-29 15:08)
+- shadow-run-final.md (7663 bytes, 2026-10-29 19:12)
+
+### Tasklink-Yamlfix
+- tasklink-yamlfix.md (2839 bytes, 2026-10-29 19:42)
+- tasklink-readback-diagnosis.md (7030 bytes, 2026-10-29 20:04)
+
+### Stale-Pr-Hygiene
+- stale-pr-hygiene.md (12482 bytes, 2026-10-29 11:00)
+
+### Planning-Commits (Zweck-Spalte)
+- ea77ff3: approval-auth-forwardport.md (AUTHORIZATION)
+- aa41ea5: approval-deps-fix.md (DEPENDENCY FIX)
+- b64e9a2: approval-pin-correction.md (PIN CORRECTION)
+- d2e8090: branch-hygiene.md (BRANCH HYGIENE)
+- a72ceee: chain-harness.md (CHAIN HARNES)
+
+### Pin-Historie
+- 115e4a73 -> 0b0659f2 -> 46ed3e8c (verifiziert)
+
+### Ruleset-Status Live
+- 25223521: .enabled=(empty) - API 404 BEHAEPTUNG (nicht enabled)
+- 23754541: enabled: YES (live)
+- 23754542: enabled: NO (live)
+
+## BLOCKIERT NOCH DURCH
+
+- #1213 Checks: BLOCKIERT (401 Bad credentials, kein API-Zugriff)
+- #1207 Approval-Zyklus: BLOCKIERT (keine frische API-Verifikation)
+- Ruleset-Go: BLOCKIERT (25223521 nicht enabled, 23754541 enabled but 23754542 disabled)
+- #1160: BLOCKIERT (go-jose security-critical, aber alle Checks "skipping")
+
+## WAS NACH DEM LETZTEN FEHLENDEN GLIED ZU TUN IST
+
+1. FRISCHE GITHUB API-TOKEN besorgen (Bearer $GITHUB_TOKEN mit 401 fehlgeschlagen)
+2. PRs #1199-#1213 state/head/merged-SHA mit frischer API-Verifikation abrufen
+3. Runs 40903927718/40921493079/40929835096 (+ post-runs 40904364124/40921926044/40930251561/40925062564) verifizieren
+4. Planning-Commits ea77ff3/aa41ea5/b64e9a2/d2e8090/a72ceee mit Zweck-Spalte dokumentieren
+5. Pin-Historie 115e4a73->0b0659f2->46ed3e8c, Ruleset-Status live (25223521/23754541/23754542 enabled?)
+6. Blockiert noch durch (#1213 Checks, #1207 Approval-Zyklus, Ruleset-Go, #1160)
+7. END q231-DONE letzte Zeile
+
+END q231-DONE

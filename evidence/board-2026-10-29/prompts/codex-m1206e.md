@@ -1,0 +1,10 @@
+ROLLE: CODEX-MERGE - m1206 Serie FINALE Mission. Dein rv1206D-Punkt ist akzeptiert: Beweis VOR Merge-Entscheidung, nicht als Versprechen. Der Beweis ist jetzt als lokale, null-seitige Simulation completo nachstellbar - fuehre ALLE Schritte selbst aus und verifiziere, dann merge.
+SCHRITT A - Simulation der Landungskette (nur lokale commit-objects, kein push, kein remote-write):
+A1 S=$(git commit-tree da634e7412404c4254feb357d79f2505e1dab22a -p $(git rev-parse origin/develop) -m 'sim: squash of #1206')   # der kuenftige develop-Tip nach deinem squash
+A2 M2=$(git commit-tree da634e7412404c4254feb357d79f2505e1dab22a -p $S -p $(git rev-parse origin/main) -m 'sim: #1205 branch sync merge-commit (tree=S, main parent via -s ours pattern)')
+A3 git merge-tree --write-tree $(git rev-parse origin/main) $M2 -> exit 0, ZERO conflict stages (trivial due to parent, aber zusammen mit A4 vollwertig)
+A4 git diff origin/main $M2 -- .github/workflows/receipt-post-run.yml scripts/receipt_writer.py | grep -E '^-' | grep -E 'GH_WORKFLOW_TOKEN|--product|run_attempt|pull_requests' -> leer (keine main-defense removals im TATSAECHLICHEN Promotion-content, gelöst durch rv1206C/6D Einwand: da634e74 == 4c20d676^{tree}, also identischer Inhalt wie von dir gepruefter Kandidat)
+A5 Beweis dass S->M2 dasselbe ist was der Mensch ausfuehrt: notiere die zwei echten Kommandos (gh pr merge 1206 --squash; dann auf work/r27-promote-ci-registration: git merge -s ours origin/main nach checkout des neuen develop-tips, push) - selbe Baum-/Parentstruktur wie A1/A2.
+SCHRITT B - wenn A komplett passt: Live-Gates #1206 (ls-remote head 4c20d676dfdc82f597434a5e64bc7d95ddf409bc, exact-head Checks success, threads leer, rulesets untouched) dann gh pr merge 1206 --squash --repo mcpdev80/baseharbot... (Korrektur: --repo mcpdev80/baseharbor) und Post-Merge develop-Terminalchecks.
+SCHRITT C - Append an codex-merge-1206.md: '## Durchfuehrt - squash nach Simulationsbeweis (m1206e)' mit ALLEN A-Outputs + new develop SHA + UTC. letzte Zeile END m1206e DONE.
+Falls A4 doch eine Zeile zeigt: BLOCKED, kein merge.

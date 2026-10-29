@@ -1,0 +1,8 @@
+TASK t-20261027-r27-cutover-pr3 - VORARBEIT Ruleset-Patch (read-only auf GitHub; Write-Set: NUR eine Evidence-Datei).
+Read first: baseharbor-plan/tasks/t-20261027-r27-cutover-pr3.md, RUNBOOK.md section 15 (mcpdev80/baseharbor!) + section 12.
+MISSION:
+(1) Hole die aktuellen Regeln beider develop-Rulesets via gh api repos/mcpdev80/baseharbor/rulesets (ids 23754541 'develop - integration branch', 25223521 'develop - required checks' integration_id 15368 context 'PR Selected Checks') und dokumentiere den exakten JSON-Ist-Zustand (enabled:false) in der Evidence.
+(2) Erstelle den minimalen Patch-Entwurf AKTIVIERUNG: ein gh api -X PUT/POST Kommando-Block, der NÄCHSTEN SCHRITT 1: 25223521 enabled:true setzt (alles andere identisch, strict bleibt), + den zugehoerigen ROLLBACK-Befehl (enabled:false). Kein Kommando selbst ausfuehren!
+(3) Praezisiere das Check-Mapping: liste pro develop-Workflow (CI * Jobs + Trusted Plan + Focused Python + Policy) den exakten context-String wie er im Checks-API erscheint (gh pr checks eines frischen develop-PRs oder API docs) und pruefe ob 'PR Selected Checks' app-integration 15368 dafuer ausreicht oder mehrere required contexts noetig sind - file:line/beleg verlinken.
+(4) Halte in der Evidence fest, WELCHE beiden Beweise laut Kartenvertrag vor der Aktivierung komplett sein muessen (Kettenlauf + 3 Negative) und verlinke die dafuer vorgesehenen Artefakt-Pfade (evidence/board-2026-10-29/scripts/chain-run.sh, negative-proofs.sh).
+STOP falls ein API-Schreibzugriff noetig waere. EVIDENCE: /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/ruleset-patch-preflight.md (PLAN nummeriert, keine Checkboxen, END o216-DONE letzte Zeile). Kein git in baseharbor-plan.

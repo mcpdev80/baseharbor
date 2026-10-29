@@ -1,0 +1,6 @@
+TASK t-20261027-r27-cutover-pr3 - DEPENDABOT-INTAKE #1160 (go-jose bump) — REBASE-CHECK, KEIN MERGE.
+(1) gh pr view 1160 --repo mcpdev80/baseharbor --json state,mergeable,mergeStateStatus,headRefName.
+(2) gh pr checks 1160 --repo mcpdev80/baseharbor (exact-head Stand notieren).
+(3) Falls CONFLICTING/stale-base: gh pr update-branch 1160 --repo mcpdev80/baseharbor (offizieller Mechanismus fuer dependabot-Branches; KEIN Force-Push, kein manuelles Rebase des Branches). Danach neue Checks beobachten bis terminal (max 8 min).
+(4) Bewerte Eignung fuer Post-Cutover-Merge: go.mod/go.sum Diff lesen (Versionssprung, Changelog-Hinweis im PR), Testpfad-Selektion (trusted-pr-plan artifact falls vorhanden), Abhaengigkeitsregeln im Repo (docs/DEVELOPMENT_GUIDELINES.md falls vorhanden). Empfehlung: jetzt mergebar ja/nein + Begruendung.
+EVIDENCE: /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/dependabot-intake-1160.md (numerierte PLAN, keine Markdown-Checkboxen, END q228-DONE letzte Zeile). Kein Merge, kein git in baseharbor-plan.

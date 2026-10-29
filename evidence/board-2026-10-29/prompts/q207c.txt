@@ -1,0 +1,8 @@
+TASK t-20261029-r27-develop-main-reconcile - KONFLIKT-LOSUNG (read /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/codex-merge-1206.md BLOCKED section first).
+FUND (coordinator, authenticated): repo war shallow (Grund fuer 'unrelated histories'), jetzt unshallowed. Echter Konflikt: git merge-tree --write-tree origin/main <dein head 089572fc>zeigt STAGE-2/3 KONFLIKT in .github/workflows/receipt-approval.yml (main blob af512987 vs develop/branch 2a1e0299). rv1205-Karte verlangt: main->develop merge-tree CLEAN und #1205 promotable ohne main-Verteidigung zu loeschen.
+WORKTREE /home/marcel/dev/baseharbor-ecosystem/worktrees/q207 (branch work/r27-develop-main-reconcile):
+(1) git fetch origin; git merge origin/main -m 'merge origin/main into r27 reconcile (conflict resolution)';
+(2) Loese .github/workflows/receipt-approval.yml so, dass BEIDE Haelften gelten: develop's vars.BASEHARBOR_RECEIPT_TRUSTED_SOURCE fail-closed Guard (#1200) UNd mains Approval-Haertungen (fetch-depth:0, git identity, revision-introducer --revision, step-env Duplikate, pin-Stand dd8fb61d). Dokumentiere Zeile fuer Zeile welche Hauptseite jede Zeile stammt in der Evidence.
+(3) python3 -m unittest test_receipt_postrun test_receipt_chain test_receipt_writer test_receipt_tasklink exit 0 (scripts/, GOPATH=/tmp/gopath GOCACHE=/tmp/gocache).
+(4) NACH Commit: 'git -C ... merge-tree --write-tree origin/main HEAD' MUST show zero conflict stages - paste the command+output tail into evidence. push, PR #1206 auto-updates.
+(5) APPEND '## Korrekturrunde E (merge-conflict resolution)' numbered to /home/marcel/dev/baseharbor-ecosystem/baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/develop-main-reconcile.md, letzte Zeile END q207-E. Kein Merge, kein git in baseharbor-plan.

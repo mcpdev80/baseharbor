@@ -1,0 +1,8 @@
+{
+  "ruleset_id": 25223521,
+  "enabled": false,
+  "note": "ROLLBACK: disabled ruleset-activation (reverse enable-25223521.json)",
+  "created": "2026-10-29",
+  "task": "t-20261027-r27-cutover-pr3",
+  "source": "q230.txt ruleset-activation/rollback-25223521.json"
+}

@@ -1,0 +1,8 @@
+TASK t-20261027-r27-cutover-pr3 - PATCH-PAKET ENDABNEHMUNGSFERTIG (Write-Set: NUR /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-29/scripts/ruleset-activation/ + Evidence-Datei; KEIN API-SCRIB).
+Baue aus ruleset-patch-preflight.md (o216) + ruleset-activation-rehearsal.md (o230mission) ein direkt ausfuehrbares Paket:
+(1) ruleset-activation/enable-25223521.json: fertiger PUT-Body (NUR enabled:true, REST identisch zum Live-Ist - hole Ist per gh api und differe).
+(2) ruleset-activation/rollback-25223521.json (enabled:false).
+(3) ruleset-activation/apply.sh --enable|--rollback: hoelt live GET, merget Flags, PUT mit --match-etag falls verfuegbar sonst etag-Pruefung manuell dokumentiert; echo was passieren Wuerde ohne es zu tun (DRYRUN default an).
+(4) Verifiziere Gegenprobe: gh api .../rulesets/25223521 unveraendert (SHA des JSON-body vergleichen mit Ist + deinem File, kein PATCH!).
+(5) Kurz-Doku im File README-activation.md (Wann aktivieren - nach #1207-Merge + #1213-Wirkung; was die Rehearsal als Engpass fand; Rollback-Test ist Teil des Konzepts).
+EVIDENCE: baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/ruleset-packet.md (numerierte PLAN, keine Markdown-Checkboxen, END q230-DONE letzte Zeile). Kein git in baseharbor-plan.
