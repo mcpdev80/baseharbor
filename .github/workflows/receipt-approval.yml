@@ -26,12 +26,18 @@
 # Dormant until the coordinator's CI-only default-branch registration: main is
 # the product default branch, while these helpers/workflows live on develop.
 # Only a manual workflow_dispatch by the Owner starts this job; no automatic
-# trigger is armed and no required check is added. TRUSTED_SOURCE below pins the
-# immutable reviewed commit (b53632aa) whose receipt_verifier.py and
-# receipt-approval.yml blobs are verified by pinned_source() before any approval.
-# The pin was empty in the pre-registration state (verifier failed closed, tested
-# pinned source unavailable); it is now set to the reviewed develop head so the
-# verifier proves against the reviewed bytes instead of refusing every run.
+# trigger is armed and no required check is added. The reviewed trusted source
+# pin is carried by the BASEHARBOR_RECEIPT_TRUSTED_SOURCE repository variable
+# and loaded here at dispatch (same "trusted repository variable selects a
+# reviewed SHA" pattern as ci.yml pr_demo_pin with
+# vars.BASEHARBOR_PR_DEMO_SOURCE_SHA). This is deliberate:
+# receipt_verifier.pinned_source() compares this workflow's own bytes at the pin
+# against the authenticated run head, so a literal SHA assigned inside this
+# compared file can never qualify the edit that introduces it (self-binding).
+# The coordinator therefore sets the variable at registration to the final
+# integrated reviewed commit carrying these exact bytes; while the variable is
+# absent or malformed the run fails closed before any approval, which is the
+# honest pre-registration state.
 
 name: receipt-approval
 
@@ -85,10 +91,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
-          TRUSTED_SOURCE: 'b53632aaaee6067397c27000c229f34736ec2155'
+          TRUSTED_SOURCE: ${{ vars.BASEHARBOR_RECEIPT_TRUSTED_SOURCE }}
           PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
         run: |
           set -euo pipefail
+          # Registration gate: the reviewed source pin must be exactly one
+          # lowercase 40-hex SHA. Absent (pre-registration) or malformed values
+          # fail closed here, before any approval work; receipt_verifier
+          # independently re-proves this in pinned_source().
+          [[ "${TRUSTED_SOURCE:-}" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "reviewed trusted source pin unset or malformed: set the BASEHARBOR_RECEIPT_TRUSTED_SOURCE repository variable to the final integrated reviewed commit carrying this workflow" >&2
+            exit 1; }
           python3 scripts/receipt_verifier.py approve \
             --planning "${GITHUB_WORKSPACE}/planning" \
             --product "${GITHUB_WORKSPACE}" \
@@ -134,8 +147,9 @@ jobs:
   # receipt-shadow.yml that carries the R27-F6 publication input (required by the
   # publication output wired above). The previous pin f57b30ed predated the R27-F6
   # publication-input fix and failed closed on the missing input; b53632aa is the
-  # reviewed develop head whose shadow blob is verified against the chain (same
-  # policy as TRUSTED_SOURCE above).
+  # reviewed develop head whose shadow blob is verified against the chain. Unlike
+  # the TRUSTED_SOURCE above, a reusable-workflow call target cannot take an
+  # expression, so this pin is a static literal inside the compared bytes.
   shadow:
     needs: [approve]
     uses: mcpdev80/baseharbor/.github/workflows/receipt-shadow.yml@b53632aaaee6067397c27000c229f34736ec2155
