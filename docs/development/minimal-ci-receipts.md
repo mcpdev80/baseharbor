@@ -85,3 +85,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 10: Closes #1049 (task-issue binding) added to PR body.
 
 > Producer 11: issue #1049 now carries the tasks/-reference (binding contract met).
+
+> Producer 12: --product CLI wiring live (#1196).
