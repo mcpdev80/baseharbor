@@ -127,6 +127,7 @@ jobs:
       - name: Decode pr-plan and extract candidate_sha
         id: plan
         env:
+          GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONPATH: ${{ github.workspace }}/scripts
         run: |
           set -euo pipefail
@@ -148,7 +149,9 @@ jobs:
           # artifact-derived strings, no source/eval on any artifact value, and
           # no fallback facts. The heredoc redirects on the Python invocation
           # (Owner correction 2026-10-27, D3).
-          RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="$(gh api repos/mcpdev80/baseharbor/actions/runs/${RUN_ID} --jq .run_attempt)" python3 - <<'PY' > plan.txt
+          export GH_TOKEN="${GH_WORKFLOW_TOKEN}"
+          ATTEMPT_RESOLVED="$(gh api repos/mcpdev80/baseharbor/actions/runs/${RUN_ID} --jq .run_attempt)"
+          RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT_RESOLVED}" python3 - <<'PY' > plan.txt
           import json, zipfile, sys, os
           import receipt_verifier as rv
           with zipfile.ZipFile("plan.zip") as z:
