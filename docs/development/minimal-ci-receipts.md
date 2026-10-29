@@ -56,5 +56,3 @@ PR 2 proves one ordinary contributor PR end to end: producer, writer, published 
 Acceptance requires one genuine successful GitHub path and three rejected cases: wrong SHA, dead run ID, edited receipt. Local tests use real temporary Git histories and fake GitHub responses; they are not hosted qualification. The retained positive also runs with API access forbidden. No full runtime matrix is needed for this code.
 
 Developer summaries have at most three lines: checked, validly reused, not required with a reason. Not-required is a plan decision, never a PASS receipt. Reuse selection and summary workflow integration are later work; this PR does not implement a second evidence authority.
-
-<!-- shadow-run probe-3 (post-fix chain) 2026-10-28 -->
