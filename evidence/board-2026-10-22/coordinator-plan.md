@@ -679,3 +679,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 05:5xZ Cause-13: leerer-Diff-PR = BLOCKED 'empty or unverified changes' (fail-closed, korrekt). Producer #2 = docs-PR mit echtem Inhalt (attempt-Provenance), run 40797537663 armed.
 - 07:2xZ Cause-14: #1191 PR-Selftest gruen aber UNMERGED (main-Policy). rv13 unabhaengige Review-Lane dispatched.
 - 07:5xZ CAUSE-14 FINAL: main-ruleset require_extra_approval_for_unattributed_changes -> meine Worker-Author-Commits brauchen FREMDE Approve. rv13 qwen lieferte 2x nicht (ghost+still). Einzige legale Akte: Marcel-Approve oder funktionierende unabhaengige Review-Lane. Kein Bypass versucht.
+- 08:4xZ Volllacht: tasklink-Blocker geloesst (Closes #1049 + tasks/-Referenz im ISSUE-body). Cause-15: --product argparse fehlt (PR #1196, tests 24 OK). producer bis 11: 40808955065.
