@@ -255,6 +255,7 @@ jobs:
         id: plan_commit
         env:
           PLANNING_ROOT: ${{ github.workspace }}/planning
+          GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
