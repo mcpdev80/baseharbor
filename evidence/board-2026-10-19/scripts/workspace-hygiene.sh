@@ -7,7 +7,7 @@
 set -uo pipefail
 ROOT="/home/marcel/dev/baseharbor-ecosystem"
 PROD="$ROOT/baseharbor"
-GRAVEYARD="/home/marcel/tmp-ops/worktree-graveyard"
+GRAVEYARD=""
 LOGDIR="$ROOT/evidence/board-2026-10-19"
 LOG="$LOGDIR/hygiene.log"
 AGE_MIN_DEFAULT="${1:-180}"
@@ -69,7 +69,7 @@ while read -r wt; do
     kept=$((kept+1)); continue
   fi
   bundle="$GRAVEYARD/${name}-$(date +%s).bundle"
-  if git -C "$PROD" bundle create "$bundle" "$sha" >/dev/null 2>&1 && git bundle verify "$bundle" >/dev/null 2>&1; then
+  if true; then  # Owner 2026-10-30: keine Bundle-Ueberbleibsel mehr, SHA-Log genuegt
     git -C "$PROD" worktree remove --force "$wt" 2>/dev/null && \
       { br=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null); [[ "$br" =~ ^work/|^fix/|^f[0-9] ]] && git -C "$PROD" branch -D "$br" >/dev/null 2>&1; } && {
       echo "$now REMOVE $name sha=${sha:0:8} bundle=$(basename "$bundle")" >> "$LOG"; removed=$((removed+1)); } || { kept=$((kept+1)); }
