@@ -1277,7 +1277,10 @@ class TestEvidenceEditDesign(unittest.TestCase):
     def test_publish_durable_commit_push_readback(self):
         """Production path: commit + push + readback equal new bytes."""
         root, card_rel = self._init_repo()
-        # bare remote so origin/main is reachable
+        branch = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True).stdout.strip()
+        # bare remote so origin/<branch> is reachable
         bare = tempfile.TemporaryDirectory()
         self.addCleanup(bare.cleanup)
         bare_dir = Path(bare.name) / "remote.git"
@@ -1298,14 +1301,14 @@ class TestEvidenceEditDesign(unittest.TestCase):
             root / card_rel, self.URL2, root,
             render_fn=render, check_fn=check)
         self.assertTrue(durable)
-        # remote main carries the new bytes (tolerating trailing newline)
+        # remote branch carries the new bytes (tolerating trailing newline)
         out = subprocess.run(
-            ["git", "-C", str(root), "show", "origin/main:%s" % card_rel],
+            ["git", "-C", str(root), "show",
+             "origin/%s:%s" % (branch, card_rel)],
             capture_output=True)
         self.assertEqual(out.stdout.decode().rstrip("\n"),
                          new_bytes.decode().rstrip("\n"))
-        self.assertEqual((out.stdout.decode().count("evidence:"), 1) and True,
-                         True)
+        self.assertEqual(out.stdout.decode().count("evidence:"), 1)
 
     def test_publish_partial_failure_rolls_back_no_duplicate(self):
         """commit set, push blocked -> rollback; retry finds same state."""
@@ -1324,7 +1327,7 @@ class TestEvidenceEditDesign(unittest.TestCase):
             tl.publish_card_evidence(
                 root / card_rel, self.URL2, root,
                 render_fn=lambda p: True, check_fn=lambda p: True,
-                git_fn=failing_push)
+                push_fn=failing_push)
         # rolled back: HEAD is still the seed commit, exactly one commit
         log = subprocess.run(
             ["git", "-C", str(root), "log", "--oneline"],
@@ -1335,7 +1338,7 @@ class TestEvidenceEditDesign(unittest.TestCase):
 
     def test_publish_render_check_failure_blocks_before_commit(self):
         root, card_rel = self._init_repo()
-        with self.assertRaises(tl.PublicationError):
+        with self.assertRaises(tl.TaskLinkError):
             tl.publish_card_evidence(
                 root / card_rel, self.URL2, root,
                 render_fn=lambda p: False, check_fn=lambda p: False)

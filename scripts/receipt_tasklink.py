@@ -588,6 +588,18 @@ def _current_commit(root, path):
     return None
 
 
+def _already_has_evidence_url(blob_text, url):
+    """Return True if the card text already carries `url` as an evidence value.
+
+    Matches the url as a quoted scalar or inside a flow list, tolerant of the
+    YAML quoting the edit writer applies. Used for idempotent publish: if HEAD
+    already contains the url, no new commit is made.
+    """
+    if isinstance(blob_text, bytes):
+        blob_text = blob_text.decode("utf-8", errors="replace")
+    return url in blob_text
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--planning", type=Path, required=True,
@@ -923,6 +935,14 @@ def _git_diff_quiet(root, path):
     return result.returncode == 1
 
 
+def _current_branch(root, git_fn=None):
+    """Return the current branch name (HEAD abbrev-ref), or 'HEAD' if detached."""
+    result = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True, text=True)
+    return result.stdout.strip() or "HEAD"
+
+
 def _remote_head_bytes(remote, ref, path):
     """Return the bytes of `path` at `remote`/`ref` (bare-remote safe)."""
     result = subprocess.run(
@@ -976,7 +996,7 @@ def _planning_render_check(planning_root, render_fn=None, check_fn=None):
 
 def publish_card_evidence(card_path, url, planning_root,
                           render_fn=None, check_fn=None,
-                          git_fn=None):
+                          git_fn=None, push_fn=None):
     """Publish one evidence url on Planning main and verify durability.
 
     Flow (fail-closed, idempotent, rollback-safe):
@@ -1015,6 +1035,25 @@ def publish_card_evidence(card_path, url, planning_root,
     require(0 < len(original_bytes) < 65536,
             "card note too large or empty")
 
+    # Idempotency: if HEAD already carries the target url for this path, the
+    # edit is a no-op — return the current commit without a new one. We read
+    # HEAD's blob directly (the working tree may already hold the url from a
+    # prior publish) rather than trusting it. render/check MUST still pass.
+    head_sha = _current_commit(planning_root, str(card_path))
+    if head_sha is not None:
+        head_raw = subprocess.run(
+            ["git", "-C", str(planning_root), "show",
+             "%s:%s" % (head_sha, str(Path(card_path).relative_to(planning_root)))],
+            capture_output=True)
+        head_text = head_raw.stdout
+        if _already_has_evidence_url(head_text, url):
+            ok, msg = _planning_render_check(planning_root, render_fn, check_fn)
+            require(ok, "render/check blocked before commit: %s" % msg)
+            durable = _verify_durable(planning_root, card_path, head_text,
+                                      _current_branch(planning_root, git_fn),
+                                      git_fn)
+            return head_sha, durable
+
     new_bytes, _before, _after = edit_evidence_add(original_bytes, url)
 
     # Stage by writing the edited bytes into the working tree (the repo-local
@@ -1049,11 +1088,13 @@ def publish_card_evidence(card_path, url, planning_root,
     # Push the branch. A partial failure (commit landed, push blocked) is
     # handled by retry: the next call's idempotent commit finds the same HEAD.
     remote = "origin"
-    push_rc = _push(planning_root, current_branch)
+    do_push = push_fn if push_fn is not None else (
+        lambda root, branch: _push(root, branch, remote=remote))
+    push_rc = do_push(planning_root, current_branch)
     if push_rc != 0:
         # Retry the push once; if it still fails, roll back the local commit and
         # fail closed so no un-published object is mistaken for a publication.
-        retry_rc = _push(planning_root, current_branch)
+        retry_rc = do_push(planning_root, current_branch)
         if retry_rc != 0:
             _rollback_commit(planning_root, git_fn)
             raise PublicationError(
