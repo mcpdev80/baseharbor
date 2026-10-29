@@ -1,0 +1,10 @@
+TASK t-20261027-r27-evidence-contract - TOTALABBAU Alt-Worktrees (Owner-Direktive 2026-10-30: "die können weg, wir brauchen keine Überbleibsel"; Bundles/Patch-Dateien sind UNERWÜNSCHT).
+SCHUTZLISTE (EINZIG diese bleiben): die vier Repo-Hauptverzeichnisse (baseharbor/, baseharbor-plan/, baseharbor-console/, baseharbor-demo/), alle Branches/refs (LOKAL wie REMOTER - keine git branch -D!), registrierte aktive codeman-Lanes (o235!), /tmp-Sockets/tmux.
+SCHRITTE:
+(1) sha-Liste aller abzubauenden Ziele EINMALIG in /home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-19/hygiene.log protokollieren (Format: TIMESTAMP SWEEP <name> <sha>) - das ist der einzige Überbleibsel-Nachweis, keine .bundle/.patch Dateien.
+(2) Registrierte Worktrees abbauen: git -C baseharbor worktree list --porcelain -> Pfade unter /home/marcel/dev/baseharbor-ecosystem/worktrees/ und baseharbor/worktrees/: git worktree remove --force (stash-Deko: git -C <wt> stash list --format='%gd %H' >> hygiene.log bevor clear+remove).
+(3) /tmp/baseharbor-*: nur LOESCHEN wenn die Pfad NICHT in 'git -C baseharbor worktree list' und keine laufende codeman-Lane sie nutzt (ps + agent read 710a2d64 zuletzt - Codex-rv1213d laeuft nicht, also alle seine rv-Worktrees weg).
+(4) worktrees/ Leerbestände rm -rf (was nach (2) noch als Verzeichnis da ist).
+(5) tmp-ops/worktree-graveyard/ ENTFERREN (rm -rf) - Owner will keine Bündel-Reste; sha-Liste aus (1) enthält alle SHAs, damit ist jeder Zustand theoretisch aus dem Repo-Objektspeicher rekonstruierbar falls je nötig.
+(6) git -C baseharbor worktree prune; ENDSTAND: worktree list | wc -l (sollte 4 Repos + maximal o235 betragen), ls worktrees/ | wc -l (0), df -h, Log-Auszug.
+EVIDENCE: baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/worktree-cleanup.md APPEND '## Totalabbau (o237, Owner-Direktive 2026-10-30)' nummeriert ohne Checkboxen mit allen 6 Schritten+Endstand, END o237-DONE letzte Zeile.

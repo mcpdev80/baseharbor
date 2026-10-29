@@ -1,0 +1,8 @@
+TASK t-20261027-r27-evidence-contract - PASS 4: ORPHAN-VERZEICHNISSE unter /home/marcel/dev/baseharbor-ecosystem/worktrees/ (Registrierungen sind bereits abgebaut; die VERZEICHNISSE belegen noch Platte).
+Fuer jedes Verzeichnis d in worktrees/* (NICHT worktrees selbst, NICHTs unter /tmp, NICHT baseharbor/worktrees/* - die sind registriert):
+(1) ist d NICHT in 'git -C /home/marcel/dev/baseharbor-ecosystem/baseharbor worktree list --porcelain' (exakte Pfadpruefung)? 
+(2) sha=git -C d rev-parse HEAD (falls kein Git-Repo drin: Inhalt per 'ls -la' in Tabelle dokumentieren, NICHT loeschen, melden).
+(3) reachability: git -C baseharbor cat-file -e $sha^{commit} (im Repo-Objektspeicher vorhanden => content gesichert, kein Bundle noetig) ODER passendes Bundle in tmp-ops/worktree-graveyard (ls | grep).
+(4) NUR wenn (1)+(3) erfuellt: rm -rf d (kein git commando in d noetig).
+Ende: df -h vor/nach, Anzahl Ordner vorher/nachher (ls worktrees | wc -l), Tabelle {verzeichnis | sha | nachweis(bundle/objektspeicher) | entfernt?}.
+EVIDENCE: baseharbor-plan/evidence/r27-ci-replacement-2026-10-29/worktree-cleanup.md APPEND '## Pass 4 (q237, Orphan-Dir-Sweep)' nummeriert ohne Checkboxen, END q237-DONE letzte Zeile. Kein git in baseharbor-plan (Datei OK), keine Registry-/Branch-/Remote-Aenderungen (dieser Pass ist reines Dateisystem-Aufraeumen).
