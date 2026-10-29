@@ -100,7 +100,7 @@ Ornith-Lanes bleiben nach 1–2 Datei-Reads kommentarlos idle (Kontext <10 %, ke
 ### 5.1 Kann-jeder-Schritt & Pin-Register (vor JEDEM gehosteten Lauf)
 
 - Kann-jeder-Schritt-Zeile in die Evidence: jede Auth/PIN/ENV-Quelle benennen; lane-gesetzte Prüfeingänge = Lauf ungültig. Controller-Pin immer = reviewed SHA des einen Kandidaten (Commit auf dem Kandidaten, nie Lane-ENV).
-- Pin-Register-Regel: Änderung an `receipt-approval.yml` ODER `receipt_verifier.py` erfordert TRUSTED_SOURCE-PATCH auf den finalen MAIN-Commit nach dem Merge (Bytes-Gleichheit `pinned_source` :338–350), sonst fail-closed. Aktueller Pin: 0b0659f2.
+- Pin-Register-Regel: Änderung an `receipt-approval.yml` ODER `receipt_verifier.py` erfordert TRUSTED_SOURCE-PATCH auf den finalen MAIN-Commit nach dem Merge (Bytes-Gleichheit `pinned_source` :338–350), sonst fail-closed. Aktueller Pin: 46ed3e8c (= main-Tip seit #1212; Variable auf Voll-SHA).
 
 ### 5.2 Schattenlauf-Rezept (kopierbar, EIN Lauf)
 
