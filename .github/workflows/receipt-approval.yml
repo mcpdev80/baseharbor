@@ -82,7 +82,8 @@ jobs:
           repository: mcpdev80/baseharbor-plan
           path: planning
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
+          token: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
 
       - name: Configure Planning commit identity
         run: |
