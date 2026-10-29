@@ -36,6 +36,21 @@ PR_MARKER = f"{verifier.REPOSITORY}#{PR_NUMBER}"
 TASK_PATH = "tasks/receipt-pilot.md"
 _UNSET = object()
 
+# A minimal, executable scripts/plan.py for test Planning checkouts. It mirrors
+# the real CLI's exit-code contract (0 on success) so the mandatory render/check
+# gate in publish_evidence() runs against a genuine entry point, not a stubbed
+# callable (BF-W3-2 / CODE-AUDIT F5).
+PLAN_STUB = (
+    "#!/usr/bin/env python3\n"
+    "import argparse\n"
+    "def main():\n"
+    "    argparse.ArgumentParser().parse_known_args()\n"
+    "    return 0\n"
+    "if __name__ == '__main__':\n"
+    "    import sys\n"
+    "    sys.exit(main())\n"
+)
+
 
 class VerifierFixtureTest(unittest.TestCase):
     def setUp(self):
@@ -143,6 +158,14 @@ class VerifierFixtureTest(unittest.TestCase):
         self.command('add', '.')
         self.command('commit', '-qm', 'plan and task fixture')
         self.command('checkout', '-q', '-b', 'main')
+        # Seed a real, executable scripts/plan.py so the mandatory render/check
+        # gate in publish_evidence() runs the Planning validator (BF-W3-2 /
+        # CODE-AUDIT F5). The stub mirrors the real CLI's exit-code contract.
+        scripts_dir = self.root / 'scripts'
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / 'plan.py').write_bytes(PLAN_STUB.encode())
+        self.command('add', '.')
+        self.command('commit', '-qm', 'plan.py validator + task fixture')
         self.command('push', '-q', 'origin', 'HEAD:refs/heads/main')
         self.plan_sha = self.head()
 
@@ -1006,6 +1029,19 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
         self.assertEqual(self.remote_main(), head_before)
         self.assertEqual(len(self.edits(path)), 2)
 
+    def test_evidence_render_check_mandatory_before_publish(self):
+        """F5 (verifier): publish_evidence requires render/check callbacks;
+        a None callback fails closed (mandatory render/check, CODE-AUDIT F5)."""
+        path, original = self.create()
+        self.seed_remote_main()
+        before = self.command('rev-parse', 'origin/main').decode().strip()
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                self.root, TASK_PATH, path, self.candidate, self.plan_sha,
+                render_fn=None, check_fn=None)
+        after = self.command('rev-parse', 'origin/main').decode().strip()
+        self.assertEqual(before, after, "missing render/check must not advance remote main")
+
 
     def test_binding_accepts_block_list_and_quoted_entries(self):
         # F4 verifier side: the backward mapping is Planning front-matter
@@ -1478,8 +1514,11 @@ class ProductionPathCliTest(VerifierFixtureTest):
         path, original = self.create()
         before = self.head()
 
+        def local_check(root):
+            return True
         published = tl.publish_evidence(
-            self.root, TASK_PATH, path, self.candidate, self.plan_sha)
+            self.root, TASK_PATH, path, self.candidate, self.plan_sha,
+            render_fn=local_check, check_fn=local_check)
         # The front-matter block parses as schema-valid YAML (the body is prose).
         note = self.command('show', f'{published}:{TASK_PATH}').decode()
         first = note.index('---')
@@ -1507,10 +1546,14 @@ class ProductionPathCliTest(VerifierFixtureTest):
         second card commit; a validation failure leaves the remote unchanged."""
         path, original = self.create()
         self.approve(path, original)
+        def local_check(root):
+            return True
         published1 = tl.publish_evidence(
-            self.root, TASK_PATH, path, self.candidate, self.plan_sha)
+            self.root, TASK_PATH, path, self.candidate, self.plan_sha,
+            render_fn=local_check, check_fn=local_check)
         published2 = tl.publish_evidence(
-            self.root, TASK_PATH, path, self.candidate, self.plan_sha)
+            self.root, TASK_PATH, path, self.candidate, self.plan_sha,
+            render_fn=local_check, check_fn=local_check)
         self.assertEqual(published1, published2,
                          "identical evidence update must be idempotent")
         # A genuine validation failure (bad candidate SHA) leaves remote main

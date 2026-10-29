@@ -589,9 +589,11 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
         subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
 
+        def local_check(root):
+            return True
         published = tl.publish_evidence(
             str(self.root), self.task, self.receipt_path, "c" * 40,
-            "a" * 40, render_fn=None, check_fn=None)
+            "a" * 40, render_fn=local_check, check_fn=local_check)
 
         # The returned publication is durable on origin/main (not local-only).
         remote_head = subprocess.check_output(
@@ -648,6 +650,143 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
             tl.publish_evidence(
                 str(self.root), self.task, self.receipt_path, "c" * 40,
                 "a" * 40, render_fn=None, check_fn=None, _git_fn=refusing_git)
+
+    def test_flow_list_card_preserves_old_and_new_scalar(self):
+        """F1 (core-896 pattern): a pre-existing inline-flow
+        `evidence: ["https://old", ...]` survives a second publication alongside
+        the new scalar — real YAML parsing, not line scraping.
+
+        (a) Proves old + new HTTPS scalars both appear on origin/main after
+        publication, and (d) the unrelated metadata keys survive byte-wise."""
+        import yaml
+        old = "https://github.com/mcpdev80/baseharbor-plan/blob/aaa111/evidence/receipts/public-contracts/123-1.json"
+        flow_body = (
+            "---\nid: core-896\nrelease: v0.4.26\n"
+            'evidence: ["%s"]\n---\n\nBody.\n' % old
+        )
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main(body=flow_body)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        def local_check(root):
+            return True
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=local_check, check_fn=local_check)
+
+        remote_note = subprocess.check_output(
+            ["git", "-C", str(remote), "show", "main:" + self.task],
+            stderr=subprocess.PIPE).decode()
+        first = remote_note.index("---")
+        second = remote_note.index("---", first + 3)
+        front = yaml.safe_load(remote_note[first + 3:second])
+        # Old flow scalar + new scalar both present after publication.
+        self.assertIn("evidence", front)
+        self.assertIsInstance(front["evidence"], list)
+        self.assertIn(old, front["evidence"], "pre-existing flow scalar must be preserved")
+        self.assertIn(self.receipt_path, front["evidence"], "new scalar must be added")
+        # (d) unrelated metadata (id, release) survives.
+        self.assertEqual(front["id"], "core-896")
+        self.assertEqual(front["release"], "v0.4.26")
+        # Durable on origin/main.
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
+
+    def test_idempotent_retry_no_second_card_commit(self):
+        """F1 (c): publishing the same evidence twice is idempotent — the second
+        call returns the same durable SHA, never a second card commit."""
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main()
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        def local_check(root):
+            return True
+        published1 = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=local_check, check_fn=local_check)
+        published2 = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=local_check, check_fn=local_check)
+        self.assertEqual(published1, published2,
+                         "identical evidence update must return the same durable SHA")
+
+    def test_invalid_card_fails_closed_before_remote(self):
+        """F2: a card with malformed YAML front matter fails closed
+        (TaskLinkError) and leaves origin/main exactly where it was — no
+        remote mutation path."""
+        import yaml
+        # Malformed YAML: an unclosed flow sequence in front matter.
+        bad_body = "---\nid: broken\nprs: [foo#1\nevidence: []\n---\n\nBody.\n"
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main(body=bad_body)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        def local_check(root):
+            return True
+        before = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                str(self.root), self.task, self.receipt_path, "c" * 40,
+                "a" * 40, render_fn=local_check, check_fn=local_check)
+        after = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(before, after, "invalid card must not advance origin/main")
+
+    def test_metadata_preserved_byte_wise(self):
+        """F1 (d): every non-evidence front-matter key and body prose is
+        preserved byte-wise; only the evidence block changes."""
+        import yaml
+        body = (
+            "---\nid: core-896\nrelease: v0.4.26\nversion: \"\"\n"
+            "parent: core-888\nowner: mcpdev80 (session 1)\n"
+            "depends_on: [core-893-interface]\nrepos: [mcpdev80/baseharbor]\n"
+            'prs: ["mcpdev80/baseharbor#932"]\n'
+            'sources: ["mcpdev80/baseharbor#896"]\n'
+            'labels: [area/evidence]\n---\n\n- [x] core-896 body.\n'
+        )
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main(body=body)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        def local_check(root):
+            return True
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=local_check, check_fn=local_check)
+
+        remote_note = subprocess.check_output(
+            ["git", "-C", str(remote), "show", "main:" + self.task],
+            stderr=subprocess.PIPE).decode()
+        first = remote_note.index("---")
+        second = remote_note.index("---", first + 3)
+        front = yaml.safe_load(remote_note[first + 3:second])
+        # All original keys present and unchanged.
+        self.assertEqual(front["id"], "core-896")
+        self.assertEqual(front["release"], "v0.4.26")
+        self.assertEqual(front["version"], "")
+        self.assertEqual(front["parent"], "core-888")
+        self.assertEqual(front["owner"], "mcpdev80 (session 1)")
+        self.assertEqual(front["repos"], ["mcpdev80/baseharbor"])
+        self.assertEqual(front["sources"], ["mcpdev80/baseharbor#896"])
+        self.assertEqual(front["labels"], ["area/evidence"])
+        # Body prose intact.
+        self.assertIn("core-896 body.", remote_note)
+        # Only the new evidence scalar was added.
+        self.assertEqual(front["evidence"], [self.receipt_path])
+        # Durable on origin/main.
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
 
 
 if __name__ == "__main__":

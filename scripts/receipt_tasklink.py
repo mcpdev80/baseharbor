@@ -302,20 +302,22 @@ def _git_fetch_remote_head(root, remote="origin", ref="main"):
 
 
 def _render_check(render_fn, check_fn, planning_root):
-    """Run Planning render + check after a metadata edit; report failure.
+    """Run mandatory Planning render + check before any evidence publication.
 
-    Returns (ok, message). A missing render/check entry point is tolerated but
-    reported, not fatal. A non-zero render/check is reported so the caller can
-    decide whether it blocks; the caller decides the gate.
+    Returns (ok, message). Both hooks are REQUIRED (fail-closed): a missing
+    render/check entry point fails the publication, never a silent "ok", so a
+    broken Planning state can never be made durable on main (CODE-AUDIT F5). A
+    non-zero render/check is likewise a hard failure.
     """
-    if render_fn is not None and check_fn is not None:
-        try:
-            render_ok = render_fn(planning_root)
-            check_ok = check_fn(planning_root)
-        except TaskLinkError as exc:
-            return False, "render/check raised: %s" % exc
-        if render_ok is False or check_ok is False:
-            return False, "render or check returned non-zero"
+    if render_fn is None or check_fn is None:
+        return False, "mandatory render or check callback not provided"
+    try:
+        render_ok = render_fn(planning_root)
+        check_ok = check_fn(planning_root)
+    except TaskLinkError as exc:
+        return False, "render/check raised: %s" % exc
+    if render_ok is False or check_ok is False:
+        return False, "render or check returned non-zero"
     return True, "ok"
 
 
@@ -432,6 +434,28 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     front_lines = list(lines[start + 1:end]) if has_front else []
     body_lines = list(lines[end + 1:]) if has_front else ["", text.rstrip()]
 
+    # Recognise EVERY evidence shape by real YAML parsing rather than line
+    # scraping (BF-W3-2 / CODE-AUDIT F5): an empty 'evidence: []' scalar, a
+    # block sequence ('evidence:' followed by '  - ...' items) and an inline
+    # flow 'evidence: ["https://...", ...]' value all resolve to the same
+    # Python list so nothing is dropped. A corrupt front matter fails closed
+    # instead of silently skipping prior evidence. ``existing_items`` holds the
+    # raw evidence strings (the receipt paths) so idempotency and re-emission
+    # compare apples to apples (CODE-AUDIT F5).
+    try:
+        import yaml
+    except ImportError as exc:
+        raise TaskLinkError("evidence preservation requires PyYAML") from exc
+    existing_items = []
+    try:
+        parsed = yaml.safe_load("\n".join(front_lines)) if front_lines else {}
+    except yaml.YAMLError as exc:
+        raise TaskLinkError("evidence front matter is invalid YAML: %s" % exc) from exc
+    if isinstance(parsed, dict) and isinstance(parsed.get("evidence"), list):
+        for item in parsed["evidence"]:
+            if isinstance(item, str) and item.strip():
+                existing_items.append(item.strip())
+
     # Strip any pre-existing evidence artefacts from the front-matter body and
     # collect the valid pre-existing evidence items: drop the stale
     # 'evidence: []' scalar, an 'evidence:' mapping key together with its
@@ -439,21 +463,9 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     # keep every valid existing '- <url>' block item. Every other key and its
     # order are preserved untouched.
     cleaned_front = []
-    existing_items = []
     pending_evidence_key = False
     for line in front_lines:
         stripped = line.strip()
-        if pending_evidence_key:
-            # Inside a nested 'evidence:' block: capture valid block items and
-            # skip anything until the next top-level mapping key (e.g. 'id:',
-            # 'prs:') reopens front-matter body.
-            if stripped.startswith("- ") and not stripped.startswith("- evidence:"):
-                existing_items.append(stripped)
-                continue
-            if re.fullmatch(r"[a-z_][a-z0-9_]*:.*", stripped):
-                pending_evidence_key = False
-            else:
-                continue
         if stripped == "evidence: []" or stripped == "evidence:":
             pending_evidence_key = True
             continue
@@ -463,8 +475,7 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
 
     # Idempotency: an identical evidence entry is already present -> the card
     # on disk already holds the canonical form, so emit exactly those bytes.
-    already_present = any(
-        item.strip() == evidence_entry.strip() for item in existing_items)
+    already_present = any(item == receipt_path for item in existing_items)
     if already_present:
         new_text = "---\n" + "\n".join(front_lines) + "\n---\n" + "\n".join(body_lines)
     else:
@@ -478,7 +489,7 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
         elif not cleaned_front[-1].strip().endswith("evidence:"):
             cleaned_front.append("evidence:")
         for item in existing_items:
-            cleaned_front.append(("  " + item) if not item.startswith("  ") else item)
+            cleaned_front.append("  - %s" % item)
         cleaned_front.append(evidence_entry)
         new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
 
@@ -489,15 +500,16 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
         require(current is not None, "cannot read current evidence commit")
         return current
 
-    task_path.write_bytes(new_bytes)
-
     # F5: mandatory render/check and generated staging must PRECEDE
-    # publication. A non-zero render/check blocks before any commit or push so
-    # a broken Planning state is never made durable on main (CODE-AUDIT F5).
+    # ANY write, commit or push. A missing or non-zero render/check blocks
+    # before the card is touched so a broken Planning state is never left
+    # dirty nor made durable on main (CODE-AUDIT F5).
     ok, msg = _render_check(render_fn, check_fn, planning_root)
     if not ok:
         raise TaskLinkError("render/check before evidence publication failed: %s; "
                             "manual reconciliation required" % msg)
+
+    task_path.write_bytes(new_bytes)
 
     # Commit, push to remote main, then read back the durable revision
     # from the remote to verify both the receipt and the valid task
