@@ -68,3 +68,6 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > (self-contained, no cross-step variable reliance).
 
 > Third note: attempt API call runs inside the step with its token (PR 1190).
+
+> Final producer note: task reference for the receipt is carried in the PR body
+> (tasks/t-20261018-r27-artifact-resolution.md) per receipt_tasklink contract.
