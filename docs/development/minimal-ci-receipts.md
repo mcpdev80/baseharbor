@@ -91,3 +91,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 13: controller pin bumped to dd8fb61d (#1197).
 
 > Producer 14: witness token live (#1198).
+
+> Producer 15: post-secret trigger (token existed since 2026-10-28, wall was #1199 gate order).
