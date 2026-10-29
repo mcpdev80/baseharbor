@@ -73,3 +73,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > (tasks/t-20261018-r27-artifact-resolution.md) per receipt_tasklink contract.
 
 > Producer 5: tasklink body reference confirmed via REST (GraphQL projects noise bypassed).
+
+> Producer 6: pr_number association fix (#1191) live on main.
