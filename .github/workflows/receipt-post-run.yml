@@ -148,7 +148,7 @@ jobs:
           # artifact-derived strings, no source/eval on any artifact value, and
           # no fallback facts. The heredoc redirects on the Python invocation
           # (Owner correction 2026-10-27, D3).
-          RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" python3 - <<'PY' > plan.txt
+          RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT}" python3 - <<'PY' > plan.txt
           import json, zipfile, sys, os
           import receipt_verifier as rv
           with zipfile.ZipFile("plan.zip") as z:
@@ -161,7 +161,8 @@ jobs:
           ARTIFACT_SIZE = rv.artifact_size_from_path("plan.zip")
           out = rv.extract_facts(plan, artifact_size=ARTIFACT_SIZE,
                                  run_id=int(os.environ["RUN_ID"]),
-                                 workflow_id=int(os.environ["WORKFLOW_DEFINITION_ID"]))
+                                 workflow_id=int(os.environ["WORKFLOW_DEFINITION_ID"]),
+                                 attempt=int(os.environ.get("RUN_ATTEMPT", "1")))
           print("workflow_id=%s" % out["workflow_id"])
           print("head_sha=%s" % out["head_sha"])
           print("candidate_sha=%s" % out["candidate_sha"])
