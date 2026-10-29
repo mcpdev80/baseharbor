@@ -77,3 +77,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 6: pr_number association fix (#1191) live on main.
 
 > Producer 7: pr_number association fix live on main (#1192).
+
+> Producer 8: tasklink token fix (#1193) live on main.
