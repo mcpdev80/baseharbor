@@ -87,3 +87,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 11: issue #1049 now carries the tasks/-reference (binding contract met).
 
 > Producer 12: --product CLI wiring live (#1196).
+
+> Producer 13: controller pin bumped to dd8fb61d (#1197).
