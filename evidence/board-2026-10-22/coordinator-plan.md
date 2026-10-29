@@ -686,3 +686,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 11:0xZ Tick: #1162 (alter Probe) geschlossen, #1168/#1188 bleiben als Producer offen; sonst stabil.
 - 11:5xZ Tick: constant state, remotes 9e50d8a4/7a417d37; acks done; kill/delete fuer idle Lanes fehlt in dieser CLI (GUI noetig); Owner-Trigger contracts-Producer offen.
 - 12:4xZ Tick: constant hold (9e50d8a4/7a417d37), acks done, waiting contracts-Producer decision.
+- 13:0xZ 3 Leichen per 'agent rm' entfernt (gone-Events gequenzt). Selbstkritik: RUNBOOK-Zeile 36 kannte den Pfad schon — Regel war存在, nur von mir nie ausgefuehrt; kein Patch noetig.
