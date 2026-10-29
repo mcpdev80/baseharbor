@@ -39,6 +39,8 @@ sys.path.insert(0, str(HERE))
 import receipt_tasklink  # noqa: E402
 import receipt_writer  # noqa: E402
 
+import yaml  # noqa: E402  # local-only consumer of POST_RUN_YML assertions
+
 POST_RUN_YML = HERE.parent / ".github" / "workflows" / "receipt-post-run.yml"
 
 # A fake producer artifact shape: a zip containing exactly one pr-plan.json.
@@ -218,6 +220,42 @@ class ExtractBlocksTest(unittest.TestCase):
         block = _extract_run_block("decode")
         proc = _run(["bash", "-n", "-"], input=block)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def _publish_step_env_keys(self):
+        """Return the publish-step env keys in source order (comments stripped)."""
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        env = publish.get("env", {}) or {}
+        return [key for key in env if not key.startswith("#")]
+
+    def test_publish_step_env_carries_write_token(self):
+        # Root cause 40834168626: the controller requires
+        # PLANNING_RECEIPT_WRITE_TOKEN from os.environ and fails closed when it
+        # is absent (receipt_writer.py:108-110). The publish step env must
+        # supply it; a missing key re-introduces the fail-closed gap.
+        keys = self._publish_step_env_keys()
+        self.assertIn("PLANNING_ROOT", keys)
+        self.assertIn("RUN_ID", keys)
+        self.assertIn("PLAN_REVISION", keys)
+        self.assertIn(
+            "PLANNING_RECEIPT_WRITE_TOKEN", keys,
+            "publish step env must supply the Planning write token",
+        )
+        # The token is sourced from the repository secret, never a literal.
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        self.assertEqual(
+            str(publish["env"]["PLANNING_RECEIPT_WRITE_TOKEN"]),
+            "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
+        )
 
 
 class F1PositiveRun(unittest.TestCase):
