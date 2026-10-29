@@ -257,6 +257,39 @@ class ExtractBlocksTest(unittest.TestCase):
             "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
         )
 
+    def test_publish_step_env_carries_gh_token(self):
+        # The publish step requires GH_TOKEN for the writer's live witness
+        # gh call; without it the receipt_writer.py live() verification fails.
+        # This assertion verifies the forward-port of main's GH_TOKEN fix.
+        keys = self._publish_step_env_keys()
+        self.assertIn(
+            "GH_TOKEN", keys,
+            "publish step env must supply GH_TOKEN for writer live witness",
+        )
+        # GH_TOKEN is sourced from the repository secret, never a literal.
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        self.assertEqual(
+            str(publish["env"]["GH_TOKEN"]),
+            "${{ secrets.GITHUB_TOKEN }}",
+        )
+
+    def test_controller_pins_bumped_to_dd8fb61d(self):
+        # The e13f157 controller lacks --product in argparse; dd8fb61d
+        # fixes this (commit dd8fb61d: wire --product through CLI).
+        # Both checkout pins must reference dd8fb61d.
+        text = POST_RUN_YML.read_text()
+        pin_matches = re.findall(
+            r"ref:\s+dd8fb61d614b59252c9d29121380b5893d006828\s*$",
+            text, re.MULTILINE,
+        )
+        self.assertEqual(len(pin_matches), 2,
+            f"Expected exactly 2 controller pins at dd8fb61d, found {len(pin_matches)}")
+
 
 class F1PositiveRun(unittest.TestCase):
     """The full extracted run publishes plan + receipt to a temp bare remote."""
