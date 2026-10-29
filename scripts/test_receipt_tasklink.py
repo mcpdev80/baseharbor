@@ -9,10 +9,12 @@ Verifies:
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
+import yaml
 from pathlib import Path
 
 # Ensure the scripts/ directory is importable for receipt_tasklink and receipt_verifier
@@ -787,6 +789,238 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
             ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
             stderr=subprocess.PIPE).decode().strip()
         self.assertEqual(remote_head, published)
+
+
+# Load the REAL Planning validator/parser from baseharbor-plan so the evidence
+# key assertions are checked against plan.py's own YAML subset parser, not a
+# stand-in. The path mechanism mirrors the existing test-kit convention.
+_PLANNING_PLAN_PY = Path(__file__).resolve().parents[3] / "baseharbor-plan" / "scripts" / "plan.py"
+if _PLANNING_PLAN_PY.is_file():
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("plan_under_test", _PLANNING_PLAN_PY)
+    _PLAN_UNDER_TEST = importlib.util.module_from_spec(_spec)
+    try:
+        _spec.loader.exec_module(_PLAN_UNDER_TEST)
+        _REAL_PLAN = True
+    except Exception:
+        _REAL_PLAN = False
+else:
+    _REAL_PLAN = False
+
+
+class TestEvidenceNodeReplacement(unittest.TestCase):
+    """Runde E (o235): publish_evidence replaces the ENTIRE evidence node.
+
+    Both existing evidence shapes (inline-flow and block) are handled by real
+    YAML parsing; the result holds EXACTLY one 'evidence' key, preserves old +
+    new values byte-wise and every unrelated front-matter key, and the durable
+    edit is confirmed on a bare origin. A deliberately duplicate 'evidence' key
+    fails the real plan.py front-matter parser.
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        subprocess.run(["git", "-C", str(self.root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Tasklink fixture"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.email", "tasklink@example.invalid"], check=True)
+        self.task = "tasks/t-20261022-r27-evidence-pilot.md"
+        self.receipt_path = "evidence/receipts/public-contracts-receipt.json"
+        self.old_value = "https://github.com/mcpdev80/baseharbor-plan/blob/aaa111/evidence/receipts/public-contracts/123-1.json"
+        self.new_value = "https://github.com/mcpdev80/baseharbor-plan/blob/bbb222/evidence/receipts/public-contracts/123-2.json"
+
+    def _bare_outside_worktree(self):
+        bare = self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+        return bare
+
+    def _push_main(self, body):
+        task_path = Path(self.root) / self.task
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        task_path.write_text(body)
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "commit", "-q", "-m", "main"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(self._bare_outside_worktree())], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+    def _remote_front(self):
+        remote = self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))
+        note = subprocess.check_output(
+            ["git", "-C", str(remote), "show", "main:" + self.task],
+            stderr=subprocess.PIPE).decode()
+        first = note.index("---")
+        second = note.index("---", first + 3)
+        return note, yaml.safe_load(note[first + 3:second])
+
+    def _assert_single_evidence_key(self, raw):
+        """Exactly one 'evidence:' mapping key in the raw front matter."""
+        self.assertEqual(len(re.findall(r"^(?:\s+)?evidence:\s*(?:\[\])?", raw, re.M)), 1,
+                         "exactly one 'evidence' mapping key must exist")
+        # No orphaned block items that drift outside their key.
+        self.assertNotIn("\n  - \n", "\n" + raw + "\n")
+
+    def test_flow_form_replaced_single_key_old_and_new_present(self):
+        """Pre-existing inline-flow evidence -> single key, old + new preserved."""
+        body = ("---\nid: core-896\nrelease: v0.4.26\n"
+                'evidence: ["%s"]\n---\n\nBody.\n' % self.old_value)
+        self._push_main(body)
+        def ok(root):
+            return True
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=ok, check_fn=ok)
+        remote, front = self._remote_front()
+        self.assertIn("evidence", front)
+        self.assertIsInstance(front["evidence"], list)
+        self.assertIn(self.old_value, front["evidence"], "old flow value preserved")
+        self.assertIn(self.receipt_path, front["evidence"], "new value added")
+        self.assertEqual(front["evidence"].count(self.receipt_path), 1,
+                         "new value added exactly once")
+        self.assertEqual(front["id"], "core-896")
+        self.assertEqual(front["release"], "v0.4.26")
+        self.assertEqual(front["evidence"].count(self.old_value), 1,
+                         "old value present exactly once, not duplicated")
+        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
+             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
+
+    def test_block_form_replaced_single_key_old_and_new_present(self):
+        """Pre-existing block evidence -> single key, old + new preserved."""
+        body = ("---\nid: core-896\nrelease: v0.4.26\n"
+                "evidence:\n  - %s\n---\n\nBody.\n" % self.old_value)
+        self._push_main(body)
+        def ok(root):
+            return True
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=ok, check_fn=ok)
+        remote, front = self._remote_front()
+        self.assertIn("evidence", front)
+        self.assertIsInstance(front["evidence"], list)
+        self.assertIn(self.old_value, front["evidence"])
+        self.assertIn(self.receipt_path, front["evidence"])
+        self.assertEqual(front["evidence"].count(self.old_value), 1)
+        self.assertEqual(front["evidence"].count(self.receipt_path), 1)
+        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
+        self.assertEqual(front["id"], "core-896")
+        self.assertEqual(front["release"], "v0.4.26")
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
+             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
+
+    def test_unrelated_metadata_preserved_byte_wise_single_key(self):
+        """All non-evidence keys + body preserved; exactly one evidence key."""
+        body = ("---\nid: core-896\nrelease: v0.4.26\nversion: \"\"\n"
+                "parent: core-888\nowner: mcpdev80 (session 1)\n"
+                "depends_on: [core-893-interface]\nrepos: [mcpdev80/baseharbor]\n"
+                'prs: ["mcpdev80/baseharbor#932"]\n'
+                'sources: ["mcpdev80/baseharbor#896"]\n'
+                'labels: [area/evidence]\n'
+                'evidence: ["%s"]\n---\n\n- [x] core-896 body.\n' % self.old_value)
+        self._push_main(body)
+        def ok(root):
+            return True
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=ok, check_fn=ok)
+        remote, front = self._remote_front()
+        self.assertEqual(front["id"], "core-896")
+        self.assertEqual(front["release"], "v0.4.26")
+        self.assertEqual(front["version"], "")
+        self.assertEqual(front["parent"], "core-888")
+        self.assertEqual(front["owner"], "mcpdev80 (session 1)")
+        self.assertEqual(front["repos"], ["mcpdev80/baseharbor"])
+        self.assertEqual(front["sources"], ["mcpdev80/baseharbor#896"])
+        self.assertEqual(front["labels"], ["area/evidence"])
+        self.assertIn("core-896 body.", remote)
+        self.assertIn(self.old_value, front["evidence"])
+        self.assertIn(self.receipt_path, front["evidence"])
+        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
+             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
+
+    def test_duplicate_evidence_key_fails_real_plan_parser(self):
+        """A hand-constructed duplicate 'evidence' key trips plan.py front-matter."""
+        import io
+        body = ("---\nid: core-896\n"
+                'evidence: ["%s"]\nevidence: ["%s"]\n---\n\nBody.\n' % (self.old_value, self.new_value))
+        # The real plan.py front-matter parser rejects a duplicate key.
+        self.assertTrue(_REAL_PLAN, "planning plan.py parser unavailable in this checkout")
+        with self.assertRaises(ValueError):
+            _PLAN_UNDER_TEST.parse_frontmatter(body)
+
+    def test_invalid_card_fails_closed_before_remote_single_key(self):
+        """Malformed card -> TaskLinkError, origin/main unchanged (finding 2)."""
+        bad_body = "---\nid: broken\nprs: [foo#1\nevidence: []\n---\n\nBody.\n"
+        self._push_main(bad_body)
+        before = subprocess.check_output(
+            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
+             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
+        def ok(root):
+            return True
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                str(self.root), self.task, self.receipt_path, "c" * 40,
+                "a" * 40, render_fn=ok, check_fn=ok)
+        after = subprocess.check_output(
+            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
+             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(before, after, "invalid card must not advance origin/main")
+
+    def test_validation_runs_before_remote_and_rolls_back_on_failure(self):
+        """Finding 2: render/check runs against the staged candidate; a failing
+        check rolls the working-tree card back to the pre-edit state."""
+        import shutil
+        body = "---\nid: core-896\nrelease: v0.4.26\n" \
+               'evidence: ["%s"]\n---\n\nBody.\n' % self.old_value
+        self._push_main(body)
+        original = Path(self.root) / self.task
+        before_bytes = original.read_bytes()
+
+        def failing_check(root):
+            return False
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                str(self.root), self.task, self.receipt_path, "c" * 40,
+                "a" * 40, render_fn=failing_check, check_fn=failing_check)
+        # The working-tree card is rolled back to the original bytes.
+        self.assertEqual(original.read_bytes(), before_bytes)
+
+    def test_rejected_push_reaches_seam_and_fails_closed(self):
+        """Finding 3: passing real validation, the push seam is reached; a
+        rejected push leaves the remote unchanged and fails closed."""
+        remote = self._bare_outside_worktree()
+        body = "---\nid: core-896\nrelease: v0.4.26\n---\n\nBody.\n"
+        self._push_main(body)
+        old_main = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+
+        def refusing_git(root, *args):
+            list_args = [a.decode() if isinstance(a, bytes) else a for a in args]
+            if list_args[:1] == ["push"]:
+                return b""
+            if list_args[:1] == ["fetch"]:
+                return b""
+            if list_args[:2] == ["rev-parse", "origin"] and list_args[-1].endswith("/main"):
+                return (old_main + "\n").encode()
+            return subprocess.check_output(["git", "-C", str(root), *args], stderr=subprocess.PIPE)
+
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                str(self.root), self.task, self.receipt_path, "c" * 40,
+                "a" * 40, render_fn=lambda r: True, check_fn=lambda r: True,
+                _git_fn=refusing_git)
+        after = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(after, old_main, "rejected push must not advance origin/main")
 
 
 if __name__ == "__main__":

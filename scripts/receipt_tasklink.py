@@ -456,17 +456,26 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             if isinstance(item, str) and item.strip():
                 existing_items.append(item.strip())
 
-    # Strip any pre-existing evidence artefacts from the front-matter body and
-    # collect the valid pre-existing evidence items: drop the stale
-    # 'evidence: []' scalar, an 'evidence:' mapping key together with its
-    # nested block, and any prior annotated/inline evidence list item, but
-    # keep every valid existing '- <url>' block item. Every other key and its
-    # order are preserved untouched.
+    # Replace the ENTIRE evidence node in one shot: strip every pre-existing
+    # evidence artefact — the stale 'evidence: []' scalar, an 'evidence:'
+    # mapping key together with its nested block items, and any prior inline-
+    # flow or block list item — while keeping every other key and its order
+    # byte-for-byte. Re-emitting a SINGLE 'evidence:' key with all preserved
+    # items plus the new scalar guarantees exactly one evidence key in the
+    # result (finding 1), never orphaned '  - ...' lines, never a duplicate
+    # key, and never loss of prior evidence (CODE-AUDIT F5).
     cleaned_front = []
     pending_evidence_key = False
     for line in front_lines:
         stripped = line.strip()
-        if stripped == "evidence: []" or stripped == "evidence:":
+        # Drop the 'evidence:' mapping key itself and every line until its
+        # nested block ends (a following indented '- <url>' item, an inline
+        # flow value, or the '[]' scalar).
+        if pending_evidence_key:
+            if stripped.startswith("- ") or stripped.startswith("  -") or stripped.startswith("["):
+                continue
+            pending_evidence_key = False
+        if stripped == "evidence: []" or stripped == "evidence:" or stripped.startswith("evidence: ["):
             pending_evidence_key = True
             continue
         if stripped.startswith("- evidence:"):
@@ -474,10 +483,23 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
         cleaned_front.append(line)
 
     # Idempotency: an identical evidence entry is already present -> the card
-    # on disk already holds the canonical form, so emit exactly those bytes.
+    # on disk already holds the canonical form, so re-emit that exact canonical
+    # form: a single 'evidence:' key with each preserved item once plus the new
+    # scalar exactly once. Re-emitting the key here — not skipping it — keeps
+    # exactly one evidence key and never drops prior evidence (CODE-AUDIT F5).
     already_present = any(item == receipt_path for item in existing_items)
     if already_present:
-        new_text = "---\n" + "\n".join(front_lines) + "\n---\n" + "\n".join(body_lines)
+        if not cleaned_front:
+            cleaned_front = ["evidence:"]
+        elif not cleaned_front[-1].strip().endswith("evidence:"):
+            cleaned_front.append("evidence:")
+        for item in existing_items:
+            cleaned_front.append("  - %s" % item)
+        # The new scalar is already one of existing_items (idempotent re-emission),
+        # so append it only when it is not already the last preserved item.
+        if existing_items[-1] != receipt_path:
+            cleaned_front.append(evidence_entry)
+        new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
     else:
         # Ensure the entries live under a single 'evidence:' key so the block
         # sequence parses alongside the other front-matter keys. With no
@@ -493,23 +515,38 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
         cleaned_front.append(evidence_entry)
         new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
 
-    new_bytes = new_text.encode()
+    # Preserve the exact trailing newline of the original file: splitlines()
+    # drops it, so restore one trailing "\n" when the original ended in exactly
+    # one newline. This keeps idempotency (re-emission compares equal to the
+    # on-disk bytes) and avoids silently rewriting trailing-newline state.
+    if text.endswith("\n") and not text.endswith("\n\n"):
+        new_bytes = (new_text + "\n").encode()
+    elif text.endswith("\n\n"):
+        new_bytes = (new_text + "\n").encode()
+    else:
+        new_bytes = new_text.encode()
     # Idempotency: identical bytes on disk already -> return current commit.
     if task_path.read_bytes() == new_bytes:
         current = _current_commit(planning_root, str(task_path))
         require(current is not None, "cannot read current evidence commit")
         return current
 
-    # F5: mandatory render/check and generated staging must PRECEDE
-    # ANY write, commit or push. A missing or non-zero render/check blocks
-    # before the card is touched so a broken Planning state is never left
-    # dirty nor made durable on main (CODE-AUDIT F5).
+    # F5: validate the EDITED candidate BEFORE any commit or push. The edited
+    # bytes are written to the real card first, so the mandatory render/check
+    # runs ONCE against the exact state that will be published — never against
+    # the old card (finding 2 / CODE-AUDIT F5). A missing or non-zero gate
+    # fails closed and the candidate bytes are rolled back, so a broken
+    # Planning state is never left dirty nor made durable on main. Generated
+    # staging outputs produced by render are handled under the Planning
+    # contract and never advance the remote on their own.
+    task_path.write_bytes(new_bytes)
     ok, msg = _render_check(render_fn, check_fn, planning_root)
     if not ok:
+        # Roll the candidate back so a failed gate leaves the working tree
+        # exactly as it was: the edited state never survives a blocked publish.
+        task_path.write_bytes(existing)
         raise TaskLinkError("render/check before evidence publication failed: %s; "
                             "manual reconciliation required" % msg)
-
-    task_path.write_bytes(new_bytes)
 
     # Commit, push to remote main, then read back the durable revision
     # from the remote to verify both the receipt and the valid task
