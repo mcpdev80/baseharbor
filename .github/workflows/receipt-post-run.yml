@@ -305,13 +305,6 @@ jobs:
           # Planning commit below.
           RUN_ID: ${{ needs.extract_plan.outputs.run_id }}
           PLAN_REVISION: ${{ steps.plan_commit.outputs.plan_revision }}
-          # The controller requires this token from the environment and fails
-          # closed when it is absent (receipt_writer.py:108-110). The Planning
-          # checkout step above already sources the same secret; the writer's
-          # push auth path reads it from os.environ, so the step env must carry
-          # it. The value is never echoed: _push_authed passes it via an
-          # ephemeral http.extraheader and _scrub_secret redacts any bearer
-          # diagnostic, so publication cannot leak the token.
           PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
         shell: bash
         run: |
