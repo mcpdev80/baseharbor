@@ -81,3 +81,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 8: tasklink token fix (#1193) live on main.
 
 > Producer 9: tasklink token (dup-key fixed, #1195) live.
+
+> Producer 10: Closes #1049 (task-issue binding) added to PR body.
