@@ -89,3 +89,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 > Producer 12: --product CLI wiring live (#1196).
 
 > Producer 13: controller pin bumped to dd8fb61d (#1197).
+
+> Producer 14: witness token live (#1198).
