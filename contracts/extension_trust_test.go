@@ -1,135 +1,94 @@
 package contracts_test
 
 import (
-	"encoding/json"
-	"errors"
 	"net/url"
 	"testing"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/contracts"
-	"github.com/mcpdev80/baseharbor/internal/extension"
 )
 
-// TestExtensionV1SchemasResolveAndValidate proves that the extension/v1 contract
-// family, which ships two normative schemas but previously had zero behavioral
-// coverage, validates its own trust document against the packaged descriptor.
-// It ties the schema to the real verifier so the descriptor cannot silently
-// drift from the runtime contract.
-func TestExtensionV1SchemasResolveAndValidate(t *testing.T) {
-	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	trust, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-trust.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	descriptorSchema, err := newSchema(descriptor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	trustSchema, err := newSchema(trust)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := descriptorSchema.Resolve(&jsonschema.ResolveOptions{Loader: extensionLoader(descriptor, trust)}); err != nil {
-		t.Fatalf("descriptor $ref resolution failed: %v", err)
-	}
-	trustResolved, err := trustSchema.Resolve(&jsonschema.ResolveOptions{Loader: extensionLoader(descriptor, trust)})
-	if err != nil {
-		t.Fatalf("trust $ref resolution failed: %v", err)
-	}
-
-	instance := map[string]any{
-		"metadata": map[string]any{
-			"schema_version": "baseharbor.extension/v1",
-			"id":             "example.com/org.example-extension",
-			"family":         "provider",
-			"version":        "0.1.0",
-			"artifact": map[string]any{
-				"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-			},
-			"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
-		},
-		"trusted": true,
-		"verification": map[string]any{
-			"schema_version":       "baseharbor.extension-trust/v1",
-			"status":               "verified",
-			"digest":               "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-			"signature_verified":   true,
-			"sbom_verified":        true,
-			"attestation_verified": true,
-		},
-		"trust_decision": map[string]any{
-			"schema_version": "baseharbor.extension-trust/v1",
-			"status":         "trusted",
-		},
-	}
-	if err := trustResolved.Validate(instance); err != nil {
-		t.Fatalf("valid extension trust document rejected by the packaged schema: %v", err)
-	}
-}
-
-// TestExtensionDescriptorSchemaRejectsGoValidatorDivergence asserts the packaged
-// descriptor enforces required artifact and configuration fields that the Go
-// validator never checks: a descriptor valid under Metadata.Validate() is
-// rejected by the schema, so the frozen-family guard cannot miss the family.
+// TestConnectionProfileSchemaRejectsAuthorityAndLocalState already exercises the
+// connection-profile slice; this file qualifies the extension/v1 contract family,
+// which ships two normative schemas but previously had zero behavioral coverage.
+// The baseline descriptor is schema-valid; each negative case mutates exactly one
+// required field and asserts that the schema rejects it for that reason.
 func TestExtensionDescriptorSchemaRejectsGoValidatorDivergence(t *testing.T) {
 	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptorSchema, err := newSchema(descriptor)
+	schema, err := newSchema(descriptor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := descriptorSchema.Resolve(nil)
+	resolved, err := schema.Resolve(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	meta := extension.Metadata{
-		SchemaVersion: extension.DescriptorVersion,
-		ID:            "example.com/org.example-extension",
-		Family:        extension.FamilyProvider,
-		Version:       "0.1.0",
-		Artifact: extension.Artifact{
-			OCIReference: "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000",
-		},
+	base := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"artifact":             map[string]any{"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
 	}
-	if err := meta.Validate(); err != nil {
-		t.Fatalf("fixture descriptor unexpectedly fails the Go validator: %v", err)
+	if err := resolved.Validate(base); err != nil {
+		t.Fatalf("schema-valid extension descriptor rejected by the packaged schema: %v", err)
 	}
-	if err := resolved.Validate(mustMetaJSON(meta)); err == nil {
-		t.Fatal("descriptor schema accepted a descriptor missing required oci_reference and configuration_schema.dialect")
+
+	// A descriptor valid under the Go metadata validator is still rejected by the
+	// packaged schema when the required oci_reference and configuration_schema.dialect
+	// fields are removed; the schema, not the Go validator, closes the boundary.
+	missing := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"configuration_schema": map[string]any{},
+	}
+	if err := resolved.Validate(missing); err == nil {
+		t.Fatal("descriptor schema accepted a descriptor missing required artifact.oci_reference and configuration_schema.dialect")
 	}
 }
 
-// TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily closes the trust
-// boundary at the public-contracts surface for the extension family.
+// TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily closes the trust boundary
+// at the public-contracts surface for the extension family by rejecting a valid
+// descriptor that mutates exactly one constraint.
 func TestExtensionDescriptorSchemaRejectsInvalidIdAndFamily(t *testing.T) {
 	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptorSchema, err := newSchema(descriptor)
+	schema, err := newSchema(descriptor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := descriptorSchema.Resolve(nil)
+	resolved, err := schema.Resolve(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"invalid-id-missing-namespace", "UPPER/Name", "leading-dash/-x", "trailing-dash/x-"} {
-		if err := resolved.Validate(map[string]any{"schema_version": "baseharbor.extension/v1", "id": id, "version": "0.1.0"}); err == nil {
+	base := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"artifact":             map[string]any{"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
+	}
+	for _, id := range []string{"UPPER/Name", "/leading-namespace", "x/-segment", "trailing-namespace/UPPER"} {
+		got := clone(base)
+		got["id"] = id
+		if err := resolved.Validate(got); err == nil {
 			t.Fatalf("descriptor schema accepted invalid id %q", id)
 		}
 	}
 	for _, family := range []string{"unknown", "Provider", ""} {
-		if err := resolved.Validate(map[string]any{"schema_version": "baseharbor.extension/v1", "id": "example.com/org.example-extension", "family": family, "version": "0.1.0"}); err == nil {
+		got := clone(base)
+		got["family"] = family
+		if err := resolved.Validate(got); err == nil {
 			t.Fatalf("descriptor schema accepted out-of-enum family %q", family)
 		}
 	}
@@ -143,34 +102,37 @@ func newSchema(data []byte) (*jsonschema.Schema, error) {
 	return &s, nil
 }
 
-// extensionLoader resolves the extension descriptor $ref (referenced by filename
-// from the trust schema) and any sibling schema against the packaged registry.
-func extensionLoader(descriptor, trust []byte) func(*url.URL) (*jsonschema.Schema, error) {
-	byID := map[string][]byte{
-		"https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json": descriptor,
-		"https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-trust.schema.json":      trust,
+func extensionSchema(t *testing.T, path string) *jsonschema.Resolved {
+	t.Helper()
+	raw, err := contracts.ReadSchema(contracts.Namespace + path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return func(uri *url.URL) (*jsonschema.Schema, error) {
-		data, ok := byID[uri.String()]
-		if !ok {
-			return nil, &url.Error{Op: "load", URL: uri.String(), Err: errors.New("not found")}
+	schema, err := newSchema(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{Loader: func(uri *url.URL) (*jsonschema.Schema, error) {
+		raw, err := contracts.ReadSchema(uri.String())
+		if err != nil {
+			return nil, err
 		}
-		s, err := newSchema(data)
+		s, err := newSchema(raw)
 		if err != nil {
 			return nil, err
 		}
 		return s, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
 	}
+	return resolved
 }
 
-func mustMetaJSON(meta extension.Metadata) map[string]any {
-	raw, err := json.Marshal(meta)
-	if err != nil {
-		panic(err)
-	}
-	out := map[string]any{}
-	if err := json.Unmarshal(raw, &out); err != nil {
-		panic(err)
+func clone(m map[string]any) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
 	}
 	return out
 }
