@@ -66,3 +66,5 @@ attempt. Reruns (attempt != 1) are refused, never relabelled.
 
 > Producer note: writer resolves run_attempt inside the extract step
 > (self-contained, no cross-step variable reliance).
+
+> Third note: attempt API call runs inside the step with its token (PR 1190).
