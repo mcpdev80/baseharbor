@@ -296,6 +296,7 @@ jobs:
 
       - name: Publish receipt to Planning
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PLANNING_ROOT: ${{ github.workspace }}/planning
           # run-id for the receipt is the authenticated workflow RUN (the
           # live workflow run id), never the workflow definition id
