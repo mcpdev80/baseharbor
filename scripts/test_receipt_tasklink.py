@@ -537,5 +537,118 @@ class TestBaseShaResolution(unittest.TestCase):
         self.assertEqual(value["base_sha"], "b" * 40)
 
 
+class PublishEvidenceYamlFormat(unittest.TestCase):
+    """publish_evidence writes a schema-valid YAML evidence list element and
+    proves durable remote publication (fail-closed on a rejected push)."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        subprocess.run(["git", "-C", str(self.root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Tasklink fixture"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.email", "tasklink@example.invalid"], check=True)
+        self.task = "tasks/t-20261022-r27-evidence-pilot.md"
+        self.receipt_path = "evidence/receipts/public-contracts-receipt.json"
+        self.candidate_sha = "c" * 40
+        self.plan_revision = "p" * 40
+
+    def _commit_initial_main(self, body="---\ntitle: r27 evidence pilot\n---\n\nBody.\n"):
+        task_path = Path(self.root) / self.task
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        task_path.write_text(body)
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "commit", "-q", "-m", "main"], check=True)
+
+    def _seed_bare_origin(self, body="---\ntitle: r27 evidence pilot\n---\n\nBody.\n"):
+        """Create a bare origin/main reachable after the caller pushes its main.
+
+        The bare remote lives outside the local planning work tree so git does
+        not treat it as a tracked file. The caller seeds origin/main by pushing
+        its own initial commit (see the test bodies); the returned path is the
+        bare remote the caller registers as `origin`.
+        """
+        return self.root / "remote.git"
+
+    def _bare_outside_worktree(self):
+        """A bare remote outside the local planning work tree.
+
+        A bare repo inside the work tree is treated by git as a tracked file
+        and its refs can drift; placing it on a sibling path keeps the F5
+        push/read-back against a genuine, independent remote.
+        """
+        bare = self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+        return bare
+
+    def test_evidence_line_is_valid_yaml_list_element_and_durably_pushed(self):
+        """A bare origin/main receives the edit; durable card evidence is valid YAML."""
+        import yaml
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main()
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        published = tl.publish_evidence(
+            str(self.root), self.task, self.receipt_path, "c" * 40,
+            "a" * 40, render_fn=None, check_fn=None)
+
+        # The returned publication is durable on origin/main (not local-only).
+        remote_head = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_head, published)
+        # The remote task note carries the evidence line as a valid YAML element.
+        remote_note = subprocess.check_output(
+            ["git", "-C", str(remote), "show", "main:" + self.task],
+            stderr=subprocess.PIPE).decode()
+        first = remote_note.index("---")
+        second = remote_note.index("---", first + 3)
+        front = yaml.safe_load(remote_note[first + 3:second])
+        self.assertIn("evidence", front)
+        # The card evidence is a schema-valid YAML list element:
+        #   evidence:
+        #     - evidence/receipts/... (candidate <sha>, plan <sha>)
+        self.assertIsInstance(front["evidence"], list)
+        self.assertTrue(
+            any(self.receipt_path in str(item) for item in front["evidence"]),
+            "durable card evidence must be a valid YAML list element")
+        self.assertNotEqual(front["evidence"],
+                            ["- evidence: %s (candidate c*40, plan a*40)"])
+
+    def test_rejected_push_fails_closed(self):
+        """A rejected push raises TaskLinkError (fail-closed), no false 'published'."""
+        remote = self._bare_outside_worktree()
+        self._commit_initial_main()
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
+
+        # A push that silently does nothing: the local commit advances but
+        # origin/main never receives the edit, so the F5 read-back against
+        # origin/main cannot confirm the durable evidence and publish fails
+        # closed (TaskLinkError) instead of returning a false success.
+        old_main = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+
+        def refusing_git(root, *args):
+            list_args = [a.decode() if isinstance(a, bytes) else a for a in args]
+            # list_args[0] is the git subcommand; the remote path is the first
+            # positional arg (e.g. "push" "origin" "<sha>:refs/heads/main").
+            if list_args[:1] == ["push"]:
+                return b""
+            if list_args[:1] == ["fetch"]:
+                return b""
+            if list_args[:2] == ["rev-parse", "origin"] and list_args[-1].endswith("/main"):
+                return (old_main + "\n").encode()
+            return subprocess.check_output(
+                ["git", "-C", str(root), *args], stderr=subprocess.PIPE)
+
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                str(self.root), self.task, self.receipt_path, "c" * 40,
+                "a" * 40, render_fn=None, check_fn=None, _git_fn=refusing_git)
+
+
 if __name__ == "__main__":
     unittest.main()
