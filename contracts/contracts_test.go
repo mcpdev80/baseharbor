@@ -45,7 +45,7 @@ func TestServiceSchemasUseJSONSchema202012AndStayProviderNeutral(t *testing.T) {
 func TestShippedServiceFamiliesHaveSchemas(t *testing.T) {
 	for _, name := range []string{
 		"sql", "cache", "key-value", "document-database", "object-storage",
-		"secrets", "observability", "identity", "messaging", "exposure",
+		"secrets", "observability", "identity", "messaging", "vector", "exposure",
 	} {
 		path := filepath.Join("service", "v1", name+".schema.json")
 		if _, err := os.Stat(path); err != nil {

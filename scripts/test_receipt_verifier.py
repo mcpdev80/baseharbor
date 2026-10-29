@@ -744,6 +744,132 @@ class TrustedSourceTest(VerifierFixtureTest):
             self.approve(path, original, product=None)
 
 
+class CommittedApprovalPinTest(unittest.TestCase):
+    """PR #1200 F1 correction: the committed approval configuration must be
+    self-consistent under pinned_source().
+
+    pinned_source() compares this repository's receipt-approval.yml bytes at
+    the pin against the bytes at the authenticated run head (and the running
+    verifier against the pinned verifier). A literal SHA assigned inside the
+    compared file can therefore never qualify the edit that introduces it: a
+    commit cannot contain its own full SHA. The reviewed source is consequently
+    carried outside the compared bytes by the BASEHARBOR_RECEIPT_TRUSTED_SOURCE
+    repository variable (ci.yml pr_demo_pin precedent: a trusted repository
+    variable selects a reviewed full SHA). Registration names a commit that
+    already carries the final workflow/verifier bytes; ordinary later history
+    (no-edit merge and promotion children) never invalidates it. These
+    regressions run the REAL pinned_source against REAL temporary git commits:
+    commit A introduces the exact committed candidate bytes, commit B is an
+    unrelated child (the merge/promotion shape the approval run later sees).
+    """
+
+    APPROVAL_PATH = '.github/workflows/receipt-approval.yml'
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.product = Path(self.temp.name) / 'product'
+        self.product.mkdir()
+        self.pcommand('init', '-q')
+        self.pcommand('config', 'user.name', 'Approval pin fixture')
+        self.pcommand('config', 'user.email', 'approval-pin@example.invalid')
+        # Commit A: the final candidate bytes, taken from THIS working tree so
+        # the source-equality proof binds the actual committed configuration.
+        self.pwrite('scripts/receipt_verifier.py',
+                    Path(verifier.__file__).resolve().read_bytes())
+        self.pwrite(self.APPROVAL_PATH,
+                    (REPO_ROOT / self.APPROVAL_PATH).read_bytes())
+        self.pwrite('.github/workflows/receipt-shadow.yml',
+                    (REPO_ROOT / '.github/workflows/receipt-shadow.yml').read_bytes())
+        self.pcommand('add', '.')
+        self.pcommand('commit', '-qm', 'reviewed approval configuration (commit A)')
+        self.commit_a = self.phead()
+        # Commit B: a child that touches neither compared file — the shape of
+        # an ordinary no-edit merge commit or later promoted head.
+        self.pwrite('docs/unrelated.txt', b'later reviewed history\n')
+        self.pcommand('add', '.')
+        self.pcommand('commit', '-qm', 'no-edit descendant (commit B)')
+        self.commit_b = self.phead()
+
+    def pwrite(self, rel, raw):
+        target = self.product / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+
+    def pcommand(self, *args):
+        return subprocess.check_output(['git', '-C', str(self.product), *args],
+                                       stderr=subprocess.PIPE)
+
+    def phead(self):
+        return self.pcommand('rev-parse', 'HEAD').decode().strip()
+
+    def run_from(self, source_sha):
+        return patch.dict(os.environ, {'GITHUB_SHA': source_sha}, clear=False)
+
+    def test_committed_workflow_has_no_self_referential_pin(self):
+        text = (REPO_ROOT / self.APPROVAL_PATH).read_text()
+        # The pin value is loaded from the trusted repository variable, never
+        # assigned as a literal full SHA inside the compared bytes.
+        self.assertRegex(
+            text,
+            r'TRUSTED_SOURCE:\s*\$\{\{\s*vars\.BASEHARBOR_RECEIPT_TRUSTED_SOURCE\s*\}\}')
+        self.assertNotRegex(text, r"TRUSTED_SOURCE:\s*'?\"?[0-9a-f]{40}")
+        # Loaded value is validated fail-closed before the verifier runs.
+        self.assertRegex(text, r'\[\[ "\$\{TRUSTED_SOURCE:-\}" =~ \^\[0-9a-f\]\{40\}\$ \]\]')
+
+    def test_registered_pin_accepts_final_candidate_bytes(self):
+        # Positive committed-configuration regression: the verifier at the
+        # pinned commit accepts the FINAL candidate workflow bytes when the run
+        # head is ordinary no-edit descendant history (merge commit or later
+        # promoted head). This is exactly what the inline self-pin could not
+        # do; it is the property the coordinator relies on at registration.
+        with self.run_from(self.commit_b):
+            verifier.pinned_source(self.product, self.commit_a)
+
+    def test_pin_equal_to_run_head_accepts(self):
+        # A dispatch whose authenticated head IS the pinned commit also passes;
+        # the check is byte equality, never commit identity.
+        with self.run_from(self.commit_a):
+            verifier.pinned_source(self.product, self.commit_a)
+
+    def test_missing_pin_fails_closed(self):
+        for absent in ('', None):
+            with self.run_from(self.commit_b):
+                with self.assertRaisesRegex(verifier.ReceiptError, 'full SHA'):
+                    verifier.pinned_source(self.product, absent)
+
+    def test_malformed_pin_fails_closed(self):
+        for malformed in ('main', 'develop', 'z' * 40, 'A' * 40, 'e' * 39 + 'g'):
+            with self.run_from(self.commit_b):
+                with self.assertRaisesRegex(verifier.ReceiptError, 'full SHA'):
+                    verifier.pinned_source(self.product, malformed)
+
+    def test_unavailable_pin_fails_closed(self):
+        with self.run_from(self.commit_b):
+            with self.assertRaises(verifier.ReceiptError):
+                verifier.pinned_source(self.product, 'e' * 40)
+
+    def test_changed_verifier_at_pin_fails_closed(self):
+        self.pwrite('scripts/receipt_verifier.py', b'print("edited verifier")\n')
+        self.pcommand('add', '.')
+        self.pcommand('commit', '-qm', 'diverging verifier bytes (commit V)')
+        divergent = self.phead()
+        with self.run_from(self.commit_b):
+            with self.assertRaisesRegex(verifier.ReceiptError,
+                                        'differs from reviewed pinned source'):
+                verifier.pinned_source(self.product, divergent)
+
+    def test_changed_approval_workflow_at_run_head_fails_closed(self):
+        self.pwrite(self.APPROVAL_PATH, b'name: edited approval workflow\n')
+        self.pcommand('add', '.')
+        self.pcommand('commit', '-qm', 'edited approval workflow (commit W)')
+        edited_head = self.phead()
+        with self.run_from(edited_head):
+            with self.assertRaisesRegex(verifier.ReceiptError,
+                                        'approval workflow differs from reviewed pinned'):
+                verifier.pinned_source(self.product, self.commit_a)
+
+
 class ProducerIdentityTest(VerifierFixtureTest):
     def _product_commit(self, rel, raw, message):
         self._pwrite(rel, raw)

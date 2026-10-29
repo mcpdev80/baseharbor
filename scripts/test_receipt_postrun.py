@@ -39,6 +39,8 @@ sys.path.insert(0, str(HERE))
 import receipt_tasklink  # noqa: E402
 import receipt_writer  # noqa: E402
 
+import yaml  # noqa: E402  # local-only consumer of POST_RUN_YML assertions
+
 POST_RUN_YML = HERE.parent / ".github" / "workflows" / "receipt-post-run.yml"
 
 # A fake producer artifact shape: a zip containing exactly one pr-plan.json.
@@ -63,17 +65,18 @@ GH_EXPR = {
     "${{ github.event.workflow_run.id }}": str(RUN_ID),
     "${{ github.event.workflow_run.run_attempt }}": "1",
     "${{ github.event.workflow_run.base_ref }}": "refs/pull/1124/merge",
+    "${{ github.event.workflow_run.pull_requests[0].number }}": "1124",
     "${{ needs.extract_plan.outputs.run_id }}": str(RUN_ID),
     "${{ github.repository }}": "mcpdev80/baseharbor",
     "${{ github.workspace }}": ".",
     "${{ github.event.workflow_run.workflow_id }}": str(FAKE_PLAN["workflow_id"]),
-    "${{ github.event.workflow_run.run_attempt }}": "1",
     "${{ needs.verify_producer.outputs.pr_number }}": "1124",
     "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}": "fixture-token",
     "${{ needs.extract_plan.outputs.workflow_id }}": str(FAKE_PLAN["workflow_id"]),
     "${{ needs.extract_plan.outputs.head_sha }}": HEAD_SHA,
     "${{ needs.extract_plan.outputs.candidate_sha }}": "c" * 40,
     "${{ needs.extract_plan.outputs.base_sha }}": "b" * 40,
+    "${{ secrets.GITHUB_TOKEN }}": "fixture-token",
 }
 
 
@@ -219,6 +222,75 @@ class ExtractBlocksTest(unittest.TestCase):
         proc = _run(["bash", "-n", "-"], input=block)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def _publish_step_env_keys(self):
+        """Return the publish-step env keys in source order (comments stripped)."""
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        env = publish.get("env", {}) or {}
+        return [key for key in env if not key.startswith("#")]
+
+    def test_publish_step_env_carries_write_token(self):
+        # Root cause 40834168626: the controller requires
+        # PLANNING_RECEIPT_WRITE_TOKEN from os.environ and fails closed when it
+        # is absent (receipt_writer.py:108-110). The publish step env must
+        # supply it; a missing key re-introduces the fail-closed gap.
+        keys = self._publish_step_env_keys()
+        self.assertIn("PLANNING_ROOT", keys)
+        self.assertIn("RUN_ID", keys)
+        self.assertIn("PLAN_REVISION", keys)
+        self.assertIn(
+            "PLANNING_RECEIPT_WRITE_TOKEN", keys,
+            "publish step env must supply the Planning write token",
+        )
+        # The token is sourced from the repository secret, never a literal.
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        self.assertEqual(
+            str(publish["env"]["PLANNING_RECEIPT_WRITE_TOKEN"]),
+            "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
+        )
+
+    def test_publish_step_env_carries_gh_token(self):
+        # The publish step requires GH_TOKEN for the writer's live witness
+        # gh call; without it the receipt_writer.py live() verification fails.
+        # This assertion verifies the forward-port of main's GH_TOKEN fix.
+        keys = self._publish_step_env_keys()
+        self.assertIn(
+            "GH_TOKEN", keys,
+            "publish step env must supply GH_TOKEN for writer live witness",
+        )
+        # GH_TOKEN is sourced from the repository secret, never a literal.
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        publish = next(
+            step
+            for step in doc["jobs"]["publish_receipt"]["steps"]
+            if step.get("name") == "Publish receipt to Planning"
+        )
+        self.assertEqual(
+            str(publish["env"]["GH_TOKEN"]),
+            "${{ secrets.GITHUB_TOKEN }}",
+        )
+
+    def test_controller_pins_bumped_to_dd8fb61d(self):
+        # The e13f157 controller lacks --product in argparse; dd8fb61d
+        # fixes this (commit dd8fb61d: wire --product through CLI).
+        # Both checkout pins must reference dd8fb61d.
+        text = POST_RUN_YML.read_text()
+        pin_matches = re.findall(
+            r"ref:\s+dd8fb61d614b59252c9d29121380b5893d006828\s*$",
+            text, re.MULTILINE,
+        )
+        self.assertEqual(len(pin_matches), 2,
+            f"Expected exactly 2 controller pins at dd8fb61d, found {len(pin_matches)}")
+
 
 class F1PositiveRun(unittest.TestCase):
     """The full extracted run publishes plan + receipt to a temp bare remote."""
@@ -244,6 +316,17 @@ class F1PositiveRun(unittest.TestCase):
         # The download step requires a plan.zip in the working directory.
         with zipfile.ZipFile(self.root / "plan.zip", "w") as z:
             z.writestr("pr-plan.json", json.dumps(FAKE_PLAN))
+
+        # Controlled gh stub ahead on PATH so the extracted decode block does
+        # not hit the real GitHub API.
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self._write_gh_stub()
+
+    def _write_gh_stub(self):
+        stub = self.bin / "gh"
+        stub.write_text(FAKE_GH_STUB)
+        stub.chmod(0o755)
 
     def _init_planning(self, root: Path):
         _run(["git", "init", "-q", str(root)])
@@ -285,8 +368,13 @@ class F1PositiveRun(unittest.TestCase):
         # here we prove the decoder produces the correct authenticated facts
         # and that those facts flow to a real plan + receipt publication.
         decode_block = self._decode_block()
+        # The decode block now calls `gh api` for ATTEMPT_RESOLVED; provide a
+        # stub so the real GitHub API is never reached.
+        self._write_gh_stub()
         env = dict(os.environ,
                    GITHUB_OUTPUT=str(self.root / "gh_out"),
+                   GH_WORKFLOW_TOKEN="fixture-token",
+                   PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
                    PYTHONPATH=str(HERE))
         (self.root / "gh_out").write_text("")
         proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
@@ -411,6 +499,7 @@ class F1WorkflowShellEndToEnd(unittest.TestCase):
         env = dict(os.environ,
                    GITHUB_OUTPUT=str(gh_out),
                    GITHUB_TOKEN="fixture-token",
+                   GH_WORKFLOW_TOKEN="fixture-token",
                    PLANNING_ROOT=str(self.planning),
                    WORKFLOW_ID=str(FAKE_PLAN["workflow_id"]),
                    HEAD_SHA=HEAD_SHA,
@@ -434,12 +523,11 @@ class F1WorkflowShellEndToEnd(unittest.TestCase):
 
 
 FAKE_GH_STUB = r'''#!/usr/bin/env python3
-# Controlled gh stub: answers `gh api <path>` for the F1 tasklink resolution so
-# the extracted workflow block never reaches the real GitHub API. The real
-# invocation is: gh api <url> -H "Authorization: ..." -H "Accept: ...", so the
-# URL is the third positional argument (sys.argv[2]).
+# Controlled gh stub: answers `gh api <path>` for the F1 tasklink / decode
+# resolution so the extracted workflow block never reaches the real GitHub API.
 import json
 import sys
+import shlex
 
 args = sys.argv[1:]
 path = ""
@@ -455,6 +543,18 @@ if "/issues/" in path or path.endswith("/issues"):
     print(json.dumps({"number": 1125,
                       "title": "t-20261022-r27-evidence-pilot",
                       "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
+    sys.exit(0)
+if "/actions/runs/" in path:
+    # Extract run_attempt for the decode block's ATTEMPT_RESOLVED call.
+    # The --jq ".run_attempt" filter is a positional argument after the URL.
+    run_attempt = "1"
+    for j, a in enumerate(args):
+        if a == "--jq" and j + 1 < len(args):
+            jq = args[j + 1]
+            if "run_attempt" in jq:
+                run_attempt = "1"
+            break
+    print(run_attempt)
     sys.exit(0)
 sys.stderr.write("gh stub: unexpected path %s\n" % path)
 sys.exit(401)
