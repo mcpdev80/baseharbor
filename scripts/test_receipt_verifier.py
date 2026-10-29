@@ -1491,9 +1491,16 @@ class ProductionPathCliTest(VerifierFixtureTest):
         # Durable on origin main.
         durable = self.command('show', 'origin/main:' + TASK_PATH).decode()
         self.assertIn('evidence:', durable)
-        # The evidence line references the exact candidate + plan revision.
-        self.assertIn(self.candidate, durable)
-        self.assertIn(self.plan_sha, durable)
+        # The durable card evidence is a schema-valid YAML block sequence of the
+        # published receipt path. Candidate/plan revisions move to the commit
+        # message and never leak into the card front matter (CODE-AUDIT F5).
+        self.assertIn(path, durable)
+        self.assertNotIn(self.candidate, note)
+        self.assertNotIn(self.plan_sha, note)
+        # The candidate/plan revisions are preserved in the publish commit.
+        commit_msg = self.command('log', '-1', '--format=%B', published).decode()
+        self.assertIn(self.candidate, commit_msg)
+        self.assertIn(self.plan_sha, commit_msg)
 
     def test_publish_evidence_no_second_approval_on_identical_retry(self):
         """F5: an identical evidence update returns idempotently without a

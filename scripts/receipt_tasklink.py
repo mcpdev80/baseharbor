@@ -406,15 +406,14 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     text = existing.decode(errors="replace")
     lines = text.splitlines()
 
-    # Preserve existing evidence entries (additive, non-destructive).
-    preserved = _existing_inline_evidence(lines)
-
-    # Canonical evidence line: receipt path, candidate and plan revision.
-    # Schema-valid YAML block: appended under an evidence: key with a
-    # YAML array value so it coexists with id:/evidence: keys in the
-    # same front-matter block without breaking YAML parsing (F5).
-    evidence_line = "- evidence: %s (candidate %s, plan %s)" % (
-        receipt_path, candidate_sha, plan_revision)
+    # Canonical evidence entry: an immutable, schema-valid HTTPS receipt URL
+    # (receipt path). candidate/plan revisions move into the commit message,
+    # never into the card front matter. The Planning validator (plan.py)
+    # requires each evidence item to be a plain https string, so the entry is
+    # emitted as a nested YAML block list item under a single 'evidence:' key.
+    # The 2-space indentation keeps the block sequence valid under PyYAML and
+    # alongside the other id:/evidence: mapping keys (CODE-AUDIT F5).
+    evidence_entry = "  - %s" % receipt_path
 
     # Determine front matter boundaries (--- delimited) if present.
     start = None
@@ -426,48 +425,62 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             end = i
             break
 
-    # Idempotency: if the exact evidence line already exists in preserved
-    # entries, return current commit without a second commit.
-    already_present = any(e.strip() == evidence_line.strip() for e in preserved)
+    # Split front matter into its body lines and the trailing body; a missing
+    # front-matter block is synthesised below so the result is always a
+    # schema-valid, single-document YAML block (F5).
+    has_front = start is not None and end is not None
+    front_lines = list(lines[start + 1:end]) if has_front else []
+    body_lines = list(lines[end + 1:]) if has_front else ["", text.rstrip()]
 
-    if start is not None and end is not None:
-        front_lines = lines[start + 1:end]
-        body_lines = lines[end + 1:]
-        new_front = list(front_lines)
-        if already_present:
-            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
-        elif _front_matter_has_mapping_keys(front_lines):
-            # Front-matter already holds mapping keys (id:, prs:). A bare list
-            # item at the top level would break YAML parsing, so nest the entry
-            # under an `evidence:` key. Preserve any existing evidence entries
-            # under the same key (additive, non-destructive, CODE-AUDIT F5).
-            existing_evidence = []
-            pending = None
-            for line in new_front:
-                if re.fullmatch(r"[a-z_]+:.*", line):
-                    if pending == "evidence":
-                        existing_evidence.append(
-                            line[2:] if line.startswith("  ") else line)
-                    pending = line.split(":", 1)[0].strip()
-                elif pending == "evidence":
-                    existing_evidence.append(
-                        line[2:] if line.startswith("  ") else line)
-            kept = [ln for ln in new_front if not ln.startswith("  ")]
-            if existing_evidence:
-                kept.append("evidence:")
+    # Strip any pre-existing evidence artefacts from the front-matter body and
+    # collect the valid pre-existing evidence items: drop the stale
+    # 'evidence: []' scalar, an 'evidence:' mapping key together with its
+    # nested block, and any prior annotated/inline evidence list item, but
+    # keep every valid existing '- <url>' block item. Every other key and its
+    # order are preserved untouched.
+    cleaned_front = []
+    existing_items = []
+    pending_evidence_key = False
+    for line in front_lines:
+        stripped = line.strip()
+        if pending_evidence_key:
+            # Inside a nested 'evidence:' block: capture valid block items and
+            # skip anything until the next top-level mapping key (e.g. 'id:',
+            # 'prs:') reopens front-matter body.
+            if stripped.startswith("- ") and not stripped.startswith("- evidence:"):
+                existing_items.append(stripped)
+                continue
+            if re.fullmatch(r"[a-z_][a-z0-9_]*:.*", stripped):
+                pending_evidence_key = False
             else:
-                kept.append("evidence:")
-            kept.append("  " + evidence_line)
-            new_text = "---\n" + "\n".join(kept) + "\n---\n" + "\n".join(body_lines)
-        else:
-            # No mapping keys yet: the bare list item is valid on its own.
-            new_front.append(evidence_line)
-            new_text = "---\n" + "\n".join(new_front) + "\n---\n" + "\n".join(body_lines)
+                continue
+        if stripped == "evidence: []" or stripped == "evidence:":
+            pending_evidence_key = True
+            continue
+        if stripped.startswith("- evidence:"):
+            continue
+        cleaned_front.append(line)
+
+    # Idempotency: an identical evidence entry is already present -> the card
+    # on disk already holds the canonical form, so emit exactly those bytes.
+    already_present = any(
+        item.strip() == evidence_entry.strip() for item in existing_items)
+    if already_present:
+        new_text = "---\n" + "\n".join(front_lines) + "\n---\n" + "\n".join(body_lines)
     else:
-        # No front-matter: create one with evidence as a YAML array entry.
-        # This ensures schema-valid YAML that parses correctly alongside
-        # other id:/evidence: keys.
-        new_text = "---\n" + evidence_line + "\n---\n" + text.rstrip() + "\n"
+        # Ensure the entries live under a single 'evidence:' key so the block
+        # sequence parses alongside the other front-matter keys. With no
+        # pre-existing front matter, prepend the key so the block sequence is
+        # not emitted at the top level (F5). Re-add preserved items first so the
+        # existing evidence is never lost (CODE-AUDIT F5).
+        if not cleaned_front:
+            cleaned_front = ["evidence:"]
+        elif not cleaned_front[-1].strip().endswith("evidence:"):
+            cleaned_front.append("evidence:")
+        for item in existing_items:
+            cleaned_front.append(("  " + item) if not item.startswith("  ") else item)
+        cleaned_front.append(evidence_entry)
+        new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
 
     new_bytes = new_text.encode()
     # Idempotency: identical bytes on disk already -> return current commit.
@@ -508,7 +521,7 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     # (fail closed if the edit did not land on the remote).
     durable_text = _git_fn(planning_root, "show",
                             f"origin/main:{task}").decode(errors="replace")
-    require(evidence_line.strip() in [l.strip() for l in durable_text.splitlines()],
+    require(evidence_entry.strip() in [l.strip() for l in durable_text.splitlines()],
             "evidence reference not present in the durable publication revision on remote")
 
     return remote_head
