@@ -675,3 +675,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:3xZ #1184 gemergt (9e50d8a4), #1178 sync b8327957, run 40791657560 armed.
 - 04:0xZ E1: #1178 closed (Cause-10), Promotion #1186 (trees==develop 1 unique), run 40793534758 armed.
 - 04:4xZ Vollmacht: Producer 40794020123 gruen, Writer 40794285213 fail-closed auf plan['attempt'] (Cause-10 Nachzug). Desk-Tests gruen/refused. #1187 (1-Argument-Override-Pfad) bewaffnet run 40794918490.
+- 05:2xZ Cause-11: ADDED evidence-r27/probe3b.md = terminal (nur 'modified' qualifiziert). probe3c: modified w5.md. run 40796393844 armed.
