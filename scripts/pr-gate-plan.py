@@ -374,6 +374,16 @@ INSPECT_RECONCILE_REVIEWED = frozenset([
     'internal/repositoryinspect/reconcile.go',
     'internal/repositoryinspect/reconcile_default_instance_test.go',
 ])
+# core-750 permanent lane: exact reviewed source of the source-neutral shared
+# summary projection. Like INSPECT_RECONCILE_REVIEWED this is an exact reviewed
+# path allowlist, never a prefix or name heuristic: the package tests at
+# internal/repositoryinspect/ cover this production file and its parity test,
+# with zero native release gates. Every other internal/repositoryinspect/*.go
+# file stays fail-closed unresolved on the branch below.
+INSPECT_PROJECTION_REVIEWED = frozenset([
+    'internal/repositoryinspect/inspect.go',
+    'internal/repositoryinspect/workload_source_parity_test.go',
+])
 # core-751 prospective scope is explicit but never a path-only qualification.
 # Source review and immutable commit binding must precede resolved coverage.
 INSPECT_IMPORT_CANDIDATE_FILES = {
@@ -1436,6 +1446,9 @@ def plan(diff, requirements, mapping, repository='.',
             unresolved.append('import detector requires independent immutable source binding: ' + path)
         elif path in INSPECT_RECONCILE_REVIEWED:
             area = 'inspect-reconciliation'
+            require(INSPECT_CHECKS)
+        elif path in INSPECT_PROJECTION_REVIEWED:
+            area = 'inspect-implementation-resolved'
             require(INSPECT_CHECKS)
         elif path.startswith('internal/repositoryinspect/') and path.endswith('.go'):
             area = 'inspect-implementation-unresolved'

@@ -62,3 +62,13 @@ not infer native impact from arbitrary workflow YAML. No automatic full matrix.
 ## Additional package/runtime boundary
 
 The only `internal/capability/` resolved paths are the audited `domain_test.go` and `integration_contract_test.go` conformance tests. These require the package's actual `go test ./internal/capability/... -count=1`, as well as existing contract checks. All capability implementation/registry/provider paths and all `internal/application/` paths remain explicitly `unresolved` pending scoped impact qualification. The previously broad `deploy/docker/**` lifecycle-only resolution is removed entirely: arbitrary deployment, backup, security, or launch scripts require justified native qualification. No full-matrix fallback is introduced.
+
+The only `internal/repositoryinspect/` resolved paths are the audited conformance
+test paths (`workload_source_parity_test.go`, `inspect_test.go`) and the exact
+reviewed production path `inspect.go` (core-750 source-neutral summary
+projection). These resolve to the focused repositoryinspect package tests,
+`go vet ./cmd/baha`, `go build ./cmd/baha`, and the contract/application
+`go test` superset with **zero** selected release gates. Every other
+`internal/repositoryinspect/*.go` production or test file stays
+`unresolved` pending scoped native qualification; no blanket package
+resolution is claimed.

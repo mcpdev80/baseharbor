@@ -859,6 +859,40 @@ class MappingTests(unittest.TestCase):
                 self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
                 self.assertIn("go test ./cmd/baha -run 'Inspect|Reconcile' -count=1", commands)
 
+    def test_inspect_projection_allowlist_runs_focused_inspect_checks_resolved(self):
+        # core-750 permanent lane: only the exact reviewed projection files
+        # resolve to the focused package checks, with zero native release gates.
+        for name in ['internal/repositoryinspect/inspect.go',
+                     'internal/repositoryinspect/workload_source_parity_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'inspect-gofmt', 'inspect-package-tests',
+                                  'inspect-vet', 'inspect-consumer-tests',
+                                  'inspect-consumer-build'}, ids)
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
+                self.assertIn("go test ./cmd/baha -run 'Inspect|Reconcile' -count=1", commands)
+
+    def test_unreviewed_inspect_production_stays_fail_closed(self):
+        # A blanket resolution of every repositoryinspect file must never be
+        # claimed: any unreviewed production file stays unresolved, exactly like
+        # capability/application implementation paths.
+        for name in ['internal/repositoryinspect/compose_detection.go',
+                     'internal/repositoryinspect/workload_source.go',
+                     'internal/repositoryinspect/model.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
+
     def test_reconcile_with_other_package_source_stays_fail_closed(self):
         # A reviewed reconcile change bundled with an unreviewed inspect file
         # must never inherit the narrow resolved coverage.
