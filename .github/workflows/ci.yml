@@ -1027,52 +1027,26 @@ jobs:
           BASE_SHA: ""
         run: |
           set -euo pipefail
-          # Derive the current PR tuple from the authenticated runner context.
           head_sha="$(git -C . rev-parse HEAD)"
           base_ref="${GITHUB_BASE_REF:-develop}"
           base_sha="$(git -C . rev-parse "origin/${base_ref}" 2>/dev/null || git -C . merge-base HEAD "origin/${base_ref}" 2>/dev/null || echo '')"
-          if [ -z "$head_sha" ] || [ -z "$base_sha" ]; then
-            echo "ERROR: unable to resolve head_sha or base_sha" >&2
-            exit 1
-          fi
+          [ -z "$head_sha" ] || [ -z "$base_sha" ] && { echo "ERROR: unable to resolve head_sha or base_sha" >&2; exit 1; }
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
           echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
-
-          # Step 1: Check if the PR diff contains contracts/** paths.
-          # Use the authenticated GitHub compare API to get changed files.
           compare_url="https://api.github.com/repos/${{ github.repository }}/compare/${base_ref}...${head_sha}"
           changed_files="$(gh api "$compare_url" --jq '.files[].filename' 2>/dev/null || echo '')"
-          # Fallback: use git diff if API unavailable.
-          if [ -z "$changed_files" ]; then
-            changed_files="$(git -C . diff --name-only "origin/${base_ref}...HEAD" 2>/dev/null || echo '')"
-          fi
-
-          # Check if any changed file starts with 'contracts/'
+          [ -z "$changed_files" ] && changed_files="$(git -C . diff --name-only "origin/${base_ref}...HEAD" 2>/dev/null || echo '')"
           has_contracts=false
-          for f in $changed_files; do
-            if echo "$f" | grep -q '^contracts/'; then
-              has_contracts=true
-              break
-            fi
-          done
-
+          for f in $changed_files; do echo "$f" | grep -q '^contracts/' && { has_contracts=true; break; }; done
           if [ "$has_contracts" = false ]; then
             echo "SKIPPED: PR does not touch contracts/** — no Receipt Approval needed" >&2
             echo "skipped=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-
           echo "PR touches contracts/** — enforcing Receipt Approval" >&2
-
-          # Step 2: Check that baseharbor-plan main has an approved Receipt.
           planning_path="${GITHUB_WORKSPACE}/planning"
           receipts_dir="${planning_path}/evidence/receipts/public-contracts"
-          if [ ! -d "$receipts_dir" ]; then
-            echo "Receipt Approval BLOCKED: no receipts directory on plan main" >&2
-            exit 1
-          fi
-
-          # Step 3: Verify Receipt is approved and bound to this PR tuple.
+          [ ! -d "$receipts_dir" ] && { echo "Receipt Approval BLOCKED: no receipts directory on plan main" >&2; exit 1; }
           export HEAD_SHA="$head_sha"
           export BASE_SHA="$base_sha"
           python3 "${GITHUB_WORKSPACE}/scripts/pr-receipt-enforcement-check.py" "$receipts_dir" || exit 1
