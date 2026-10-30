@@ -1,5 +1,7 @@
 package application
 
+// rv1225 smoke probe: binding witness only.
+
 import (
 	"context"
 	"fmt"
