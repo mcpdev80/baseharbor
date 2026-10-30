@@ -814,3 +814,13 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 21:3xZ #1226 Root-Caused bis Extraktor: test_pr_actions_summary.summary_source() kompiliert Python-Fragmente aus dem ci.yml-Text, dein neuer Job-Block liefert ein unindent-konform-zerhacktes Fragment bei Merge-Stand Zeile 115. Anweisung: lokal unittest-Repro, Fragment-Auslagerung, Test nicht abschwächen. w750 Bootstrap läuft, q251 Base-Härtung läuft.
 - 21:5xZ Bootstrap v2 (41074128205) FAILT mit 0.1s-Fehlmuster = validate-Job ohne docker-Runner; Anweisung: native IDs an 'Targeted HA'-Jobtyp binden (bestehendes Muster), skip-Script entfernen, v3-Bootstrap + Watch. #1226 an Extraktor-Kollision (Diagnose zugestellt). q251 laeuft.
 - 22:1xZ Incident klein gehalten: w750 pushte aus verwaister Kopie worktrees/w1222 das 4d755b12-Experiment auf den PR-Branch (Bootstrap-Sonderpfad, HA-Kontext verloren). Coordinator-Transport: Branch zurueck auf bfde5e62 (§3.6 dokumentiert), A3-Instruktion erteilt (skip-Script raus, HA-Jobtyp-Bindung, keine weiteren runtime-validation-Zweige — core-766 zeigt, selected_ha greift direkt im PR). Lektion §6.4-Anhang: VOR jedem Push 'git rev-parse --show-toplevel' + Branchvergleich — Lane-Transporte nur aus registriertem Lane-Worktree.
+
+## ANKER 3 (2026-10-30 ~22:2xZ, Pre-Compact)
+Zustand: alle R27-Haupttickets GELIEFERT-geschlossen (producer closed, ruleset active, Kette approved+shadow+retained, negatives 3/3, Pin 5ba82862, main e92e2058, develop 72ba7a99).
+Offene Fäden JETZT:
+- #1225 (w750, branch fix/750-ci-gate-qualify @bfde5e62): A3 = skip-script raus, native IDs an Targeted-HA-Job binden, kein runtime-validation-Zweig. Codex-Historie: rv1224/rv1225 jeweils Rezept im Dossier board-2026-10-30/. Lane 87% — BEIM NÄCHSTEN HANDOFF: neu starten (Mission 'A3 aus rv1225b/rv1224-Rezepten', Worktree fix/750-ci-gate-qualify) statt weiter-nudgen.
+- #1226 (cutover, work/r27-receipt-enforcement @0bfd9ebd): ci.yml-Inline-Python → scripts/receipt-enforcement-check.py auslagern (test_pr_actions_summary.py:69-70 ist der Extraktor; Job-Block auf 'python3 scripts/...'-Einzeiler). Lane 84% — analog Reset mit 3-Zeilen-Mission.
+- #1221 (q251, fix/rv1219-producer-failclosed @817c8ef5): rv1221d-Pkt2 — yml :141-150/165-174 härten (rc!=0, null/leer/000, array-shape/truncated compare) + base/head-drift Tests. 76% — nach diesem Turn ebenfalls frisch.
+- #1222 wartet Rebase nach #1225-Merge; #1220 rerun nach #1225; #1160 dependabot post-cutover-Fenster; c390-Queue (core-390 criterion 3, rv390 Rezept) bei freiem Slot.
+Regel-Neu (dieser Turn): Korrekturschleifen NICHT unbegrenzt in derselben Lane — 3 Runden oder Kontext>70% ⇒ frische Lane mit kompaktem Missions-Digest (RUNBOOK §4.4 Muster).
+Owner-Compact: gleich.
