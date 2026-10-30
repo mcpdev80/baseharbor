@@ -196,7 +196,7 @@ jobs:
       cancel-in-progress: false
     if: always() && ((github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))) || (github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.cli_native_required == 'true'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: docker
     steps:
@@ -223,6 +223,30 @@ jobs:
         shell: bash
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
+      - name: Build exact candidate for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "$GITHUB_SHA"
+      - name: Package exact candidate runtime image for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          build_dir="$RUNNER_TEMP/native-integration-build"
+          image="localhost/baseharbor-runtime:ha-native-docker-$candidate_sha"
+          mkdir -p "$build_dir"
+          cp "$RUNNER_TEMP/baha" "$build_dir/baha"
+          cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
+          docker --host "$DOCKER_HOST" build --pull \
+            --label "org.opencontainers.image.revision=$candidate_sha" -t "$image" "$build_dir"
+          test "$(docker --host "$DOCKER_HOST" image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+          printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
       - name: Run cmd/baha native integration tests
         shell: bash
         env:
@@ -263,7 +287,7 @@ jobs:
       cancel-in-progress: false
     if: always() && ((github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))) || (github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.cli_native_required == 'true'))
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: podman
     steps:
@@ -290,6 +314,30 @@ jobs:
         shell: bash
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
+      - name: Build exact candidate for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "$GITHUB_SHA"
+      - name: Package exact candidate runtime image for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          build_dir="$RUNNER_TEMP/native-integration-build"
+          image="localhost/baseharbor-runtime:ha-native-podman-$candidate_sha"
+          mkdir -p "$build_dir"
+          cp "$RUNNER_TEMP/baha" "$build_dir/baha"
+          cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
+          podman build --pull=always \
+            --label "org.opencontainers.image.revision=$candidate_sha" -t "$image" "$build_dir"
+          test "$(podman image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+          printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
       - name: Run cmd/baha native integration tests
         shell: bash
         env:
