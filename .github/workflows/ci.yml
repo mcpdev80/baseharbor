@@ -1055,6 +1055,7 @@ jobs:
           done
           exit "$status"
       - name: Run cmd/baha native integration tests
+        if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
@@ -1069,7 +1070,7 @@ jobs:
           echo "native integration capture is non-empty"
           exit "$status"
       - name: Upload native integration capture
-        if: always()
+        if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: native-integration-docker-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1163,6 +1164,7 @@ jobs:
           done
           exit "$status"
       - name: Run cmd/baha native integration tests
+        if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
@@ -1177,7 +1179,7 @@ jobs:
           echo "native integration capture is non-empty"
           exit "$status"
       - name: Upload native integration capture
-        if: always()
+        if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: native-integration-podman-${{ github.run_id }}-${{ github.run_attempt }}
