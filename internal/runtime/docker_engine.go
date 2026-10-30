@@ -37,14 +37,27 @@ func ResolveDockerEngine(ctx context.Context, command string) (DockerEngineObser
 }
 
 func dockerEngineOutput(ctx context.Context, command string, args []string, env []string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, command, args...)
+	runner := engineRunner(command, os.Getenv("BASEHARBOR_TEST_RUNTIME"))
+	cmd := exec.CommandContext(ctx, runner, args...)
 	cmd.Env = env
 	return cmd.Output()
+}
+
+// engineRunner respects the configured Target runtime. When BASEHARBOR_TEST_RUNTIME
+// is podman, the engine probe runs against podman, which shares the docker CLI
+// subcommands used here (context show/inspect and --host info). The default
+// docker runner is used otherwise so the fail-closed Docker path is unchanged.
+func engineRunner(command string, runtimeEnv string) string {
+	if strings.EqualFold(strings.TrimSpace(runtimeEnv), "podman") {
+		return "podman"
+	}
+	return command
 }
 
 func resolveDockerEngine(ctx context.Context, command string, selection DockerEngineSelection, run func(context.Context, string, []string, []string) ([]byte, error), getenv func(string) string, uid int) (DockerEngineObservation, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	runner := engineRunner(command, getenv("BASEHARBOR_TEST_RUNTIME"))
 	result := DockerEngineObservation{Mode: "unknown"}
 	mode := strings.TrimSpace(selection.Mode)
 	if mode == "" {
@@ -69,7 +82,7 @@ func resolveDockerEngine(ctx context.Context, command string, selection DockerEn
 		endpoint = strings.TrimSpace(getenv("DOCKER_HOST"))
 		result.SelectionOrigin = "environment-endpoint"
 	default:
-		output, err := run(ctx, command, []string{"context", "show"}, os.Environ())
+		output, err := run(ctx, runner, []string{"context", "show"}, os.Environ())
 		if err != nil {
 			return result, fmt.Errorf("cannot resolve active Docker context; configure the Target's Docker endpoint or context")
 		}
@@ -91,7 +104,7 @@ func resolveDockerEngine(ctx context.Context, command string, selection DockerEn
 		if strings.HasPrefix(selectedContext, "-") || strings.ContainsAny(selectedContext, "\x00\r\n") {
 			return result, fmt.Errorf("invalid Docker context name")
 		}
-		output, err := run(ctx, command, []string{"context", "inspect", selectedContext, "--format", "{{json .Endpoints.docker.Host}}"}, os.Environ())
+		output, err := run(ctx, runner, []string{"context", "inspect", selectedContext, "--format", "{{json .Endpoints.docker.Host}}"}, os.Environ())
 		if err != nil || json.Unmarshal(output, &endpoint) != nil {
 			return result, fmt.Errorf("Docker context %q endpoint could not be resolved; no engine fallback", selectedContext)
 		}
@@ -100,7 +113,7 @@ func resolveDockerEngine(ctx context.Context, command string, selection DockerEn
 	if !strings.HasPrefix(endpoint, "unix:///") || strings.ContainsAny(endpoint, "\x00\r\n") || strings.Contains(endpoint, "?") || strings.Contains(endpoint, "#") {
 		return result, fmt.Errorf("local Docker Target requires an absolute unix socket endpoint; use authenticated Node access for remote engines")
 	}
-	output, err := run(ctx, command, []string{"--host", endpoint, "info", "--format", "{{json .}}"}, dockerBoundEnvironment(os.Environ(), endpoint))
+	output, err := run(ctx, runner, []string{"--host", endpoint, "info", "--format", "{{json .}}"}, dockerBoundEnvironment(os.Environ(), endpoint))
 	if err != nil {
 		return result, fmt.Errorf("selected Docker endpoint %s is unavailable; start its rootless daemon or correct the Target endpoint/context; no fallback to System Docker", endpoint)
 	}

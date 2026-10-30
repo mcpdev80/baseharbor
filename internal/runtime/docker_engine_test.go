@@ -113,3 +113,69 @@ printf 'observed\n'
 		}
 	}
 }
+
+func TestResolveDockerEngineDispatchesPodmanWhenRuntimeIsPodman(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		runtime        string
+		wantCommand    string
+	}{
+		{name: "podman-runtime-uses-podman", runtime: "podman", wantCommand: "podman"},
+		{name: "docker-runtime-uses-docker", runtime: "docker", wantCommand: "docker"},
+		{name: "unset-runtime-uses-docker", runtime: "", wantCommand: "docker"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var commands []string
+			run := func(_ context.Context, command string, args []string, env []string) ([]byte, error) {
+				commands = append(commands, command)
+				switch {
+				case args[0] == "context" && args[1] == "show":
+					return []byte("default"), nil
+				case args[0] == "context" && args[1] == "inspect":
+					return []byte(`"unix:///run/user/1000/podman.sock"`), nil
+				case args[0] == "--host" && args[2] == "info":
+					return []byte(`{"ID":"podman-daemon","SecurityOptions":["name=rootless"]}`), nil
+				}
+				return nil, nil
+			}
+			got, err := resolveDockerEngine(context.Background(), "docker", DockerEngineSelection{}, run, func(k string) string {
+				if k == "BASEHARBOR_TEST_RUNTIME" {
+					return tc.runtime
+				}
+				return ""
+			}, 1000)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Verified {
+				t.Fatal("engine was not verified under podman runtime")
+			}
+			for _, command := range commands {
+				if command != tc.wantCommand {
+					t.Fatalf("expected all probes on %q, got commands %v", tc.wantCommand, commands)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveDockerEngineDockerPathStaysFailClosedWithMissingRunner(t *testing.T) {
+	run := func(_ context.Context, command string, args []string, env []string) ([]byte, error) {
+		if args[0] == "context" && args[1] == "show" {
+			return nil, errors.New("docker unavailable")
+		}
+		return nil, nil
+	}
+	_, err := resolveDockerEngine(context.Background(), "docker", DockerEngineSelection{}, run, func(k string) string {
+		if k == "BASEHARBOR_TEST_RUNTIME" {
+			return "docker"
+		}
+		return ""
+	}, 1000)
+	if err == nil {
+		t.Fatal("docker path must remain fail-closed when the engine probe fails")
+	}
+	if !strings.Contains(err.Error(), "cannot resolve active Docker context") {
+		t.Fatalf("unexpected fail-closed message: %v", err)
+	}
+}
