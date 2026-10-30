@@ -982,8 +982,12 @@ jobs:
               if not entries:
                   lines.append("- None confirmed")
               lines.append("")
-           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
-               output.write("\n".join(lines) + "\n")
+          import os as _os
+          _output = open(_os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8")
+          try:
+              _output.write("\n".join(lines) + "\n")
+          finally:
+              _output.close()
 
   pr_gate_receipt_approval:
     name: "PR · Receipt Approval"
