@@ -747,3 +747,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 00:1xZ RV1213F: REQUEST_CHANGES strikt innerhalb A/B/C (Torbrems gehalten!) - Diagnose: Design gut aber Produktionspfad noch auf alter Funktion verdrahtet. Runde G = reine Rezept-Ausfuehrung, frische Lane o240 (5577eb0a) dispatched; keine Owner-Eskalation noetig, da keine neuen Kriterien.
 - 00:3xZ TICK: o240 Boot-Stall (§4.4-Muster, 17% Kontext) -> EIN Nudge mit Befehl 1 -> busy; Worktree vorhanden; planning clean; head noch c4293237; Flags gewollt/abarbeitet.
 - 00:5xZ o240 2x Null-aktion -> §4.4 ROTIERT: rm o240+WT, frisch qwen-Lane o241 (f6d9c30c) dispatched mit identischer G-Mission; Disk-Gegenprobe erhoet wegen Qwen-Geisterdatei-Muster (§4.2).
+- 01:1xZ TICK: acked; o241 busy (G-Lauf laeuft), head unveraendert c4293237, planning clean; kein Folgeauftrag vor Merge (Kaskade haengt an #1213).
