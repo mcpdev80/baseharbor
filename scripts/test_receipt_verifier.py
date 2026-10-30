@@ -1597,16 +1597,17 @@ class ProductionPathCliTest(VerifierFixtureTest):
         # Durable on origin main.
         durable = self.command('show', 'origin/main:' + TASK_PATH).decode()
         self.assertIn('evidence:', durable)
-        # The durable card evidence is a schema-valid YAML block sequence of the
-        # published receipt path. Candidate/plan revisions move to the commit
-        # message and never leak into the card front matter (CODE-AUDIT F5).
+        # The durable card evidence is a schema-valid HTTPS evidence reference
+        # (single live publisher: publish_evidence is a thin wrapper around
+        # publish_card_evidence). The reference pins the receipt at its approved
+        # candidate SHA — candidate/plan live in the URL, not the commit message.
         self.assertIn(path, durable)
-        self.assertNotIn(self.candidate, note)
-        self.assertNotIn(self.plan_sha, note)
-        # The candidate/plan revisions are preserved in the publish commit.
-        commit_msg = self.command('log', '-1', '--format=%B', published).decode()
-        self.assertIn(self.candidate, commit_msg)
-        self.assertIn(self.plan_sha, commit_msg)
+        self.assertTrue(
+            any(item.startswith("https://github.com/mcpdev80/baseharbor/blob/%s/" % self.candidate)
+                and path in str(item) for item in front["evidence"]),
+            "the evidence reference must pin this receipt at the candidate SHA")
+        # The candidate SHA is present in the durable evidence reference.
+        self.assertIn(self.candidate, durable)
 
     def test_publish_evidence_no_second_approval_on_identical_retry(self):
         """F5: an identical evidence update returns idempotently without a

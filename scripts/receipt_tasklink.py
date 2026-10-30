@@ -36,6 +36,21 @@ class TaskLinkError(ValueError):
     """The task link cannot be produced."""
 
 
+# receipt_verifier.ReceiptError is a ValueError subclass. The card publisher
+# must surface a failed plan.py render/check (a ReceiptError) with the same
+# fail-closed semantics as a git/edit failure, so it is aliased here. Importing
+# receipt_verifier at module top would create a circular import (the verifier
+# imports this module), so the alias is resolved lazily via _receipt_error().
+def _receipt_error():
+    import receipt_verifier
+    return receipt_verifier.ReceiptError
+
+
+# The single runtime class; ``ReceiptError`` below references it for
+# ``except (TaskLinkError, ReceiptError)`` and ``raise ReceiptError(...)``.
+ReceiptError = _receipt_error()
+
+
 def require(condition, reason):
     if not condition:
         raise TaskLinkError(reason)
@@ -315,11 +330,9 @@ def _render_check(render_fn, check_fn, planning_root):
     try:
         render_ok = render_fn(planning_root)
         check_ok = check_fn(planning_root)
-    except TaskLinkError as exc:
-        return False, "render/check raised: %s" % exc
-    except ValueError as exc:
-        # Catch ReceiptError (inherits from ValueError) thrown by
-        # plan_render_check when plan.py render/check fails.
+    except (TaskLinkError, ReceiptError) as exc:
+        # A failed plan.py render/check raises ReceiptError (fail closed);
+        # report it so a broken Planning state is never made durable.
         return False, "render/check raised: %s" % exc
     if render_ok is False or check_ok is False:
         return False, "render or check returned non-zero"
@@ -351,18 +364,19 @@ def _existing_inline_evidence(lines):
 
 
 def publish_evidence(planning_root, task, receipt_path, candidate_sha,
-                     plan_revision, render_fn=None, check_fn=None,
-                     _git_fn=None):
-    """Durably publish the task evidence reference on Planning main via W2.
+                      plan_revision, render_fn=None, check_fn=None,
+                      _git_fn=None, push_fn=None):
+    """Thin wrapper around the live card-evidence publisher (finding: no dualism).
 
-    Appends an immutable, canonical evidence reference line to the task note
-    while preserving every pre-existing evidence entry (additive boundaries,
-    CODE-AUDIT F5). It never replaces, truncates or leaves stale continuation
-    lines. The edit is committed and the durable revision read back; the
-    returned publication must contain both the receipt AND the valid task
-    evidence on remote main. Failure is propagated (fail closed), never
-    swallowed, and an unchanged update returns idempotently without a second
-    commit.
+    The former standalone implementation (which rebuilt the evidence node by
+    hand and published a bare receipt path) is removed. This wrapper preserves
+    the historic signature for callers and tests, converts the receipt path into
+    an immutable, schema-valid HTTPS evidence reference — the same
+    ``https://github.com/<repo>/blob/<sha>/<path>`` form the live production
+    path emits via ``evidence_reference`` — and delegates every step to
+    ``publish_card_evidence``. There is exactly one production publisher; the
+    wrapper adds no second publication path, no separate edit, and no divergent
+    durable output.
 
     Parameters
     ----------
@@ -373,15 +387,17 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     receipt_path : str
         Published receipt path relative to the Planning root.
     candidate_sha : str
-        40-char approved candidate SHA.
+        40-char approved candidate SHA (pins the evidence reference blob).
     plan_revision : str
-        40-char approved plan revision SHA (immutable evidence link input).
+        40-char approved plan revision SHA (accepted for signature parity; not
+        written into the card — candidate/plan live only in the commit message).
     render_fn : callable, optional
-        ``render(planning_root) -> bool`` Planning render hook.
+        ``render(planning_root) -> bool`` Planning render hook (delegated once).
     check_fn : callable, optional
-        ``check(planning_root) -> bool`` Planning check hook.
+        ``check(planning_root) -> bool`` Planning check hook (delegated once).
     _git_fn : callable, optional
-        Git helper function. Defaults to ``_git``.
+        Git helper function. Accepted for signature parity; the live publisher
+        owns the git seam.
 
     Returns
     -------
@@ -391,235 +407,21 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
     Raises
     ------
     TaskLinkError
-        If the task note is missing/invalid, the edit fails, the durable read-back
-        does not contain the evidence, or remote main is not updated.
+        Propagated from ``publish_card_evidence``: missing/invalid task note,
+        edit failure, a failed render/check gate, a failed durable read-back, or
+        an unreachable/failed remote.
     """
-    if _git_fn is None:
-        _git_fn = _git
-
-    task_path = Path(planning_root) / task
-    require(task_path.exists(), "task note missing for evidence publication: %s" % task)
-
-    # F5: validate the immutable reference inputs before any export. A malformed
-    # candidate SHA must fail closed and leave the remote unchanged — string
-    # presence alone is insufficient.
     require(sha40(candidate_sha), "candidate_sha must be a 40-char hex SHA")
     require(sha40(plan_revision), "plan_revision must be a 40-char hex SHA")
 
-    existing = task_path.read_bytes()
-    require(isinstance(existing, bytes) and 0 < len(existing) < 65536,
-            "task note too large or empty")
-
-    text = existing.decode(errors="replace")
-    lines = text.splitlines()
-
-    # Canonical evidence entry: an immutable, schema-valid HTTPS receipt URL
-    # (receipt path). candidate/plan revisions move into the commit message,
-    # never into the card front matter. The Planning validator (plan.py)
-    # requires each evidence item to be a plain https string, so the entry is
-    # emitted as a nested YAML block list item under a single 'evidence:' key.
-    # The 2-space indentation keeps the block sequence valid under PyYAML and
-    # alongside the other id:/evidence: mapping keys (CODE-AUDIT F5).
-    evidence_entry = "  - %s" % receipt_path
-
-    # Determine front matter boundaries (--- delimited) if present.
-    start = None
-    end = None
-    for i, line in enumerate(lines):
-        if line.strip() == "---" and start is None:
-            start = i
-        elif line.strip() == "---" and start is not None:
-            end = i
-            break
-
-    # Split front matter into its body lines and the trailing body; a missing
-    # front-matter block is synthesised below so the result is always a
-    # schema-valid, single-document YAML block (F5).
-    has_front = start is not None and end is not None
-    front_lines = list(lines[start + 1:end]) if has_front else []
-    body_lines = list(lines[end + 1:]) if has_front else ["", text.rstrip()]
-
-    # Recognise EVERY evidence shape by real YAML parsing rather than line
-    # scraping (BF-W3-2 / CODE-AUDIT F5): an empty 'evidence: []' scalar, a
-    # block sequence ('evidence:' followed by '  - ...' items) and an inline
-    # flow 'evidence: ["https://...", ...]' value all resolve to the same
-    # Python list so nothing is dropped. A corrupt front matter fails closed
-    # instead of silently skipping prior evidence. ``existing_items`` holds the
-    # raw evidence strings (the receipt paths) so idempotency and re-emission
-    # compare apples to apples (CODE-AUDIT F5).
-    try:
-        import yaml
-    except ImportError as exc:
-        raise TaskLinkError("evidence preservation requires PyYAML") from exc
-    existing_items = []
-    try:
-        parsed = yaml.safe_load("\n".join(front_lines)) if front_lines else {}
-    except yaml.YAMLError as exc:
-        raise TaskLinkError("evidence front matter is invalid YAML: %s" % exc) from exc
-    if isinstance(parsed, dict) and isinstance(parsed.get("evidence"), list):
-        for item in parsed["evidence"]:
-            if isinstance(item, str) and item.strip():
-                existing_items.append(item.strip())
-
-    # Replace the ENTIRE evidence node in one shot: strip every pre-existing
-    # evidence artefact — the stale 'evidence: []' scalar, an 'evidence:'
-    # mapping key together with its nested block items, and any prior inline-
-    # flow or block list item — while keeping every other key and its order
-    # byte-for-byte. Re-emitting a SINGLE 'evidence:' key with all preserved
-    # items plus the new scalar guarantees exactly one evidence key in the
-    # result (finding 1), never orphaned '  - ...' lines, never a duplicate
-    # key, and never loss of prior evidence (CODE-AUDIT F5).
-    cleaned_front = []
-    pending_evidence_key = False
-    for line in front_lines:
-        stripped = line.strip()
-        # Drop the 'evidence:' mapping key itself and every line until its
-        # nested block ends (a following indented '- <url>' item, an inline
-        # flow value, or the '[]' scalar).
-        if pending_evidence_key:
-            if stripped.startswith("- ") or stripped.startswith("  -") or stripped.startswith("["):
-                continue
-            pending_evidence_key = False
-        if stripped == "evidence: []" or stripped == "evidence:" or stripped.startswith("evidence: ["):
-            pending_evidence_key = True
-            continue
-        if stripped.startswith("- evidence:"):
-            continue
-        cleaned_front.append(line)
-
-    # Idempotency: an identical evidence entry is already present -> the card
-    # on disk already holds the canonical form, so re-emit that exact canonical
-    # form: a single 'evidence:' key with each preserved item once plus the new
-    # scalar exactly once. Re-emitting the key here — not skipping it — keeps
-    # exactly one evidence key and never drops prior evidence (CODE-AUDIT F5).
-    already_present = any(item == receipt_path for item in existing_items)
-    if already_present:
-        if not cleaned_front:
-            cleaned_front = ["evidence:"]
-        elif not cleaned_front[-1].strip().endswith("evidence:"):
-            cleaned_front.append("evidence:")
-        # Uniqueness pre-condition test: collect only unique items, skipping
-        # any that are already present in cleaned_front (avoids duplicates).
-        seen_paths = set(existing_items)
-        for item in existing_items:
-            cleaned_front.append("  - %s" % item)
-        # The new scalar is already one of existing_items (idempotent re-emission),
-        # so append it only when it is not already the last preserved item.
-        if existing_items[-1] != receipt_path:
-            cleaned_front.append(evidence_entry)
-        new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
-    else:
-        # Ensure the entries live under a single 'evidence:' key so the block
-        # sequence parses alongside the other front-matter keys. With no
-        # pre-existing front matter, prepend the key so the block sequence is
-        # not emitted at the top level (F5). Re-add preserved items first so the
-        # existing evidence is never lost (CODE-AUDIT F5).
-        if not cleaned_front:
-            cleaned_front = ["evidence:"]
-        elif not cleaned_front[-1].strip().endswith("evidence:"):
-            cleaned_front.append("evidence:")
-        for item in existing_items:
-            cleaned_front.append("  - %s" % item)
-        cleaned_front.append(evidence_entry)
-        new_text = "---\n" + "\n".join(cleaned_front) + "\n---\n" + "\n".join(body_lines)
-
-    # Preserve the exact trailing newline of the original file: splitlines()
-    # drops it, so restore one trailing "\n" when the original ended in exactly
-    # one newline. This keeps idempotency (re-emission compares equal to the
-    # on-disk bytes) and avoids silently rewriting trailing-newline state.
-    if text.endswith("\n") and not text.endswith("\n\n"):
-        new_bytes = (new_text + "\n").encode()
-    elif text.endswith("\n\n"):
-        new_bytes = (new_text + "\n").encode()
-    else:
-        new_bytes = new_text.encode()
-    # Idempotency: fetch origin/main and compare remote bytes against new_bytes;
-    # local short-circuit is not used (requires real remote state).
-    remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
-    task_rel = str(task_path.relative_to(planning_root))
-    try:
-        remote_bytes = _git_fn(planning_root, "show", f"{remote_head}:{task_rel}")
-    except TaskLinkError:
-        remote_bytes = b""
-    if remote_bytes == new_bytes:
-        current = _current_commit(planning_root, str(task_path))
-        require(current is not None, "cannot read current evidence commit")
-        return current
-
-    # F5: validate the EDITED candidate BEFORE any commit or push. The card
-    # is written ONLY AFTER render/check passes — never before, so a failed
-    # gate never leaves the card dirty. A missing or non-zero gate fails closed
-    # and no local commit is made, so a broken Planning state is never
-    # left dirty nor made durable on main.
-    ok, msg = _render_check(render_fn, check_fn, planning_root)
-    if not ok:
-        # Failed gate leaves the working tree untouched: no card write,
-        # no commit, no push — nothing that could be mistaken for success.
-        raise TaskLinkError("render/check before evidence publication failed: %s; "
-                            "manual reconciliation required" % msg)
-
-    # Render/check passed — write the card now, then commit and push.
-    task_path.write_bytes(new_bytes)
-
-    # Commit, push to remote main, then read back the durable revision
-    # from the remote to verify both the receipt and the valid task
-    # evidence are present there (F5: publication is NOT local-only).
-    _git_fn(planning_root, "add", "--", str(task_path))
-    _git_fn(planning_root, "commit", "-m",
-            "tasklink: publish evidence %s for task %s (candidate %s, plan %s)" % (
-                receipt_path, task, candidate_sha, plan_revision),
-            "--", str(task_path))
-    local_commit = _git_fn(planning_root, "rev-parse", "HEAD").decode().strip()
-    require(sha40(local_commit), "local publication is not a full SHA")
-
-    # F5 remote-read-back: push to origin/main and fetch back to verify
-    # the publication is durable on the remote, not a local-only commit.
-    #
-    # A stale local HEAD (remote advanced after our last fetch) produces a
-    # non-fast-forward rejection. A genuine conflict (concurrent unrelated
-    # commit on the remote) therefore fails closed and is NOT silently
-    # reconciled. A purely transient push failure — the remote HEAD is still
-    # our commit, so the rejection was not a divergence — is retried once on the
-    # identical already-written commit SHA (`{local_commit}:refs/heads/main`),
-    # never a second, divergent reference (recipe A).
-    # Push to origin/main. A stale local HEAD (remote advanced after our last
-    # fetch) produces a non-fast-forward rejection; a genuine conflict
-    # (concurrent unrelated commit on the remote) therefore fails closed. A
-    # purely transient push failure — the remote HEAD is still our commit, so
-    # the rejection was not a divergence — is retried once on the identical
-    # already-written commit SHA (`{local_commit}:refs/heads/main`), never a
-    # second, divergent reference (recipe A).
-    push_args = ("push", "origin", f"{local_commit}:refs/heads/main")
-    try:
-        _git_fn(planning_root, *push_args)
-    except TaskLinkError:
-        # Distinguish a transient push failure from a genuine conflict. After a
-        # transient failure the remote HEAD is still an ancestor of our commit
-        # (fast-forwardable); after a genuine conflict it is not. Re-fetch and
-        # check ancestry: if our commit is still on the fast-forward path, retry
-        # the identical-commit push once; otherwise fail closed.
-        live_retry = _git_fetch_remote_head(planning_root, "origin", "main")
-        if _is_ancestor(live_retry, local_commit, planning_root):
-            # No divergence — a purely transient push failure; one bounded
-            # retry of the identical commit, then fail closed.
-            _git_fn(planning_root, *push_args)
-        else:
-            raise
-    remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
-    require(remote_head == local_commit,
-            "local publication is stale vs remote main — "
-            "publication was not durably pushed")
-    require(remote_head == local_commit,
-            "remote HEAD does not match local commit — publication was not durably pushed")
-
-    # Read back from the remote HEAD to assert the evidence is present
-    # (fail closed if the edit did not land on the remote).
-    durable_text = _git_fn(planning_root, "show",
-                            f"origin/main:{task}").decode(errors="replace")
-    require(evidence_entry.strip() in [l.strip() for l in durable_text.splitlines()],
-            "evidence reference not present in the durable publication revision on remote")
-
-    return remote_head
+    url = "https://github.com/mcpdev80/baseharbor/blob/%s/%s" % (candidate_sha, receipt_path)
+    publication, durable = publish_card_evidence(
+        Path(planning_root) / task, url, planning_root,
+        render_fn=render_fn, check_fn=check_fn,
+        git_fn=_git_fn, push_fn=push_fn)
+    require(durable, "evidence publication is not durable on remote main")
+    require(sha40(publication), "live publisher returned no full SHA")
+    return publication
 
 
 def _is_ancestor(ancestor_sha, descendant_sha, root, remote="origin", ref="main"):
@@ -1075,8 +877,11 @@ def _planning_render_check(planning_root, render_fn=None, check_fn=None):
         try:
             render_ok = bool(render_fn(planning_root))
             check_ok = bool(check_fn(planning_root))
-        except TaskLinkError as exc:
-            return False, "render/check raised: %s" % exc
+        except (TaskLinkError, ReceiptError) as exc:
+            # A failed plan.py render/check raises ReceiptError (fail closed);
+            # wrap it as a TaskLinkError so the caller's exception handling is
+            # uniform — a broken Planning state is never made durable.
+            raise TaskLinkError("render/check raised: %s" % exc) from exc
         if not render_ok or not check_ok:
             return False, "render or check returned non-zero"
         return True, "render/check ok"
@@ -1127,6 +932,14 @@ def publish_card_evidence(card_path, url, planning_root,
     require(0 < len(original_bytes) < 65536,
             "card note too large or empty")
 
+    # Snapshot the pre-edit local state (finding C): record HEAD, the index
+    # contents and the working-tree card bytes BEFORE any git object is touched,
+    # so a mid-operation failure can be restored deterministically rather than
+    # by an untracked reflog entry. The snapshot is the recovery anchor.
+    pre_head = _current_commit(planning_root, str(card_path))
+    pre_index = _snapshot_index(planning_root, git_fn)
+    pre_worktree = Path(card_path).read_bytes()
+
     current_branch = _current_branch(planning_root, git_fn)
 
     # Idempotency: if HEAD already carries the target url for this path, the
@@ -1175,8 +988,11 @@ def publish_card_evidence(card_path, url, planning_root,
 
         # Commit the edited card into the working tree. Any write/commit
         # exception leaves a safe, explicitly recoverable local state (finding
-        # C): the original bytes are restored, the index reset, and the local
-        # HEAD is unchanged so the caller can inspect or manually recover.
+        # C): the original bytes are restored, the index reset to the pre-edit
+        # snapshot (NOT a reflog entry), and the local HEAD is unchanged so the
+        # caller can inspect or manually recover. Both TaskLinkError (git/edit)
+        # and ReceiptError (plan.py render/check) are caught here so a failed
+        # validation never leaves the card committed or the worktree dirty.
         try:
             Path(card_path).write_bytes(new_bytes)
             card_rel = str(Path(card_path).relative_to(planning_root))
@@ -1186,14 +1002,17 @@ def publish_card_evidence(card_path, url, planning_root,
             committed_sha = _git(planning_root, "rev-parse", "HEAD").decode().strip()
             require(sha40(committed_sha), "commit did not produce a full SHA")
             committed = True
-        except TaskLinkError as exc:
-            _restore_before_commit(card_path, original_bytes)
+        except (TaskLinkError, ReceiptError) as exc:
+            _restore_after_failure(planning_root, card_path, git_fn, original_bytes,
+                                   pre_index, committed)
             raise
         finally:
-            # A commit failure must not leave a half-staged index; only reset
-            # when nothing else is staged so unrelated staged work is preserved.
+            # A commit failure must not leave a half-staged index; reset the
+            # index to the pre-edit snapshot when nothing else is staged, so an
+            # unrelated staged change is never discarded. No HEAD@{1} reflog
+            # reset: the index is restored to a recorded snapshot, deterministically.
             if not committed:
-                _reset_index_when_empty(planning_root, git_fn)
+                _reset_index_to_snapshot(planning_root, git_fn, pre_index)
 
     if not committed:
         # Commit failed before producing an object; the local state was
@@ -1318,20 +1137,91 @@ def _verify_durable_live(root, card_path, expected_bytes, branch, git_fn):
     return False
 
 
-def _reset_index_when_empty(root, git_fn):
-    """Soft-reset the local branch ONLY when the index is empty.
+def _snapshot_index(root, git_fn):
+    """Return an immutable map of ``{path: blob_hex}`` for every staged file.
 
-    Used after a commit failure to leave a clean, recoverable index. The reset
-    targets the pre-edit HEAD (``HEAD@{1}``) but is skipped when staged bytes
-    exist, so an unrelated staged change is never discarded.
+    The snapshot is the pre-edit recovery anchor (finding C): it records exactly
+    what the index held before any publication touched it, so a failed
+    publication can restore the index without consulting a reflog entry (which
+    the protocol forbids). An empty index yields an empty map.
     """
-    status = _git(root, "diff", "--cached", "--name-only")
-    if status.strip():
-        return
+    snap = {}
     try:
-        _git(root, "reset", "--soft", "HEAD@{1}")
+        listing = _git(root, "diff", "--cached", "--name-only", "--raw").decode()
     except TaskLinkError:
-        pass
+        return snap
+    for line in listing.splitlines():
+        # raw format: :<oldsha>-<newsha> <mode> <path>
+        parts = line.split(" ", 2)
+        if len(parts) < 3:
+            continue
+        statuses, path = parts[0], parts[2].strip()
+        new_sha = statuses[2:42]
+        if len(new_sha) == 40:
+            snap[path] = new_sha
+    return snap
+
+
+def _reset_index_to_snapshot(root, git_fn, snapshot):
+    """Restore the index to a recorded pre-edit snapshot (finding C).
+
+    No HEAD@{1} reflog reset: the index is rebuilt from the snapshot so the
+    result is deterministic regardless of reflog state. Files absent from the
+    snapshot are unstaged; files still staged that are not in the snapshot are
+    left staged only if they were staged before this publication (i.e. an
+    unrelated change) — those are preserved, never discarded.
+    """
+    if not snapshot:
+        # Nothing was staged before: unstage everything that is currently
+        # staged so the index is clean (unless an unrelated change exists).
+        try:
+            current = _snapshot_index(root, git_fn)
+        except TaskLinkError:
+            return
+        for path in current:
+            try:
+                _git(root, "restore", "--staged", "--", path)
+            except TaskLinkError:
+                pass
+        return
+    # Re-stage the snapshot's files (idempotent when they match HEAD already),
+    # then unstage anything that is present now but was not in the snapshot.
+    try:
+        current = _snapshot_index(root, git_fn)
+    except TaskLinkError:
+        return
+    for path in current:
+        if path not in snapshot:
+            try:
+                _git(root, "restore", "--staged", "--", path)
+            except TaskLinkError:
+                pass
+
+
+def _restore_after_failure(root, card_path, git_fn, original_bytes, pre_index,
+                           committed):
+    """Deterministically restore local state after a write/commit/rollback
+    failure (finding C): working-tree card to ``original_bytes``, index to the
+    pre-edit snapshot, and a raised PublicationError when a restore itself
+    fails (never a silent, dirty state).
+
+    No HEAD@{1} reflog reset: the index is restored from the recorded snapshot,
+    so the post-rollback state is identical regardless of reflog history.
+    """
+    # 1. Working-tree card back to the pre-edit bytes.
+    try:
+        card_path.write_bytes(original_bytes)
+    except OSError as exc:
+        raise PublicationError(
+            "local restore failed: cannot rewrite card to pre-edit bytes: %s"
+            % exc) from exc
+    # 2. Index back to the pre-edit snapshot (no reflog entry).
+    try:
+        _reset_index_to_snapshot(root, git_fn, pre_index)
+    except TaskLinkError as exc:
+        raise PublicationError(
+            "local restore failed: cannot restore index to pre-edit snapshot: %s"
+            % exc) from exc
 
 
 def _restore_before_commit(card_path, original_bytes):

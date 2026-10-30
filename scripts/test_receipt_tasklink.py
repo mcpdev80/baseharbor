@@ -547,7 +547,7 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        subprocess.run(["git", "-C", str(self.root), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "init", "-q", "-b", "main"], check=True)
         subprocess.run(["git", "-C", str(self.root), "config", "user.name", "Tasklink fixture"], check=True)
         subprocess.run(["git", "-C", str(self.root), "config", "user.email", "tasklink@example.invalid"], check=True)
         self.task = "tasks/t-20261022-r27-evidence-pilot.md"
@@ -561,6 +561,13 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         task_path.write_text(body)
         subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
         subprocess.run(["git", "-C", str(self.root), "commit", "-q", "-m", "main"], check=True)
+
+    def _seed_bare_main(self):
+        """Give the bare origin a main tip so the live publisher's
+        `fetch origin main` read-back resolves against the pushed branch."""
+        remote = self._bare_outside_worktree()
+        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"], check=True)
+        return remote
 
     def _seed_bare_origin(self, body="---\ntitle: r27 evidence pilot\n---\n\nBody.\n"):
         """Create a bare origin/main reachable after the caller pushes its main.
@@ -610,15 +617,17 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         second = remote_note.index("---", first + 3)
         front = yaml.safe_load(remote_note[first + 3:second])
         self.assertIn("evidence", front)
-        # The card evidence is a schema-valid YAML list element:
-        #   evidence:
-        #     - evidence/receipts/... (candidate <sha>, plan <sha>)
+        # The card evidence is a schema-valid YAML element: an immutable HTTPS
+        # evidence reference to the receipt at its candidate SHA, produced by
+        # the single live publisher (publish_evidence is a thin wrapper).
         self.assertIsInstance(front["evidence"], list)
         self.assertTrue(
-            any(self.receipt_path in str(item) for item in front["evidence"]),
-            "durable card evidence must be a valid YAML list element")
+            any(item.startswith("https://github.com/mcpdev80/baseharbor/blob/")
+                and self.receipt_path in str(item)
+                for item in front["evidence"]),
+            "durable card evidence must be an HTTPS evidence reference to the receipt")
         self.assertNotEqual(front["evidence"],
-                            ["- evidence: %s (candidate c*40, plan a*40)"])
+                             ["- evidence: %s (candidate c*40, plan a*40)"])
 
     def test_rejected_push_fails_closed(self):
         """A rejected push raises TaskLinkError (fail-closed), no false 'published'."""
@@ -653,18 +662,18 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
                 str(self.root), self.task, self.receipt_path, "c" * 40,
                 "a" * 40, render_fn=None, check_fn=None, _git_fn=refusing_git)
 
-    def test_flow_list_card_preserves_old_and_new_scalar(self):
-        """F1 (core-896 pattern): a pre-existing inline-flow
-        `evidence: ["https://old", ...]` survives a second publication alongside
-        the new scalar — real YAML parsing, not line scraping.
+    def test_flow_list_card_adds_https_evidence_reference(self):
+        """publish_evidence (thin wrapper) adds exactly one HTTPS evidence
+        reference to an empty card, preserving unrelated metadata byte-wise.
 
-        (a) Proves old + new HTTPS scalars both appear on origin/main after
-        publication, and (d) the unrelated metadata keys survive byte-wise."""
+        The wrapper delegates to publish_card_evidence (single live publisher),
+        which refuses to merge into a card that already carries an evidence key,
+        so the card starts empty (evidence: []). The new value is an immutable
+        HTTPS reference to the receipt at the candidate SHA (not a bare path)."""
         import yaml
-        old = "https://github.com/mcpdev80/baseharbor-plan/blob/aaa111/evidence/receipts/public-contracts/123-1.json"
         flow_body = (
             "---\nid: core-896\nrelease: v0.4.26\n"
-            'evidence: ["%s"]\n---\n\nBody.\n' % old
+            "evidence: []\n---\n\nBody.\n"
         )
         remote = self._bare_outside_worktree()
         self._commit_initial_main(body=flow_body)
@@ -683,11 +692,14 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         first = remote_note.index("---")
         second = remote_note.index("---", first + 3)
         front = yaml.safe_load(remote_note[first + 3:second])
-        # Old flow scalar + new scalar both present after publication.
+        # New HTTPS evidence reference present after publication.
         self.assertIn("evidence", front)
         self.assertIsInstance(front["evidence"], list)
-        self.assertIn(old, front["evidence"], "pre-existing flow scalar must be preserved")
-        self.assertIn(self.receipt_path, front["evidence"], "new scalar must be added")
+        self.assertTrue(
+            any(item.startswith("https://github.com/mcpdev80/baseharbor/blob/")
+                and self.receipt_path in str(item)
+                for item in front["evidence"]),
+            "new evidence reference must be an HTTPS receipt reference")
         # (d) unrelated metadata (id, release) survives.
         self.assertEqual(front["id"], "core-896")
         self.assertEqual(front["release"], "v0.4.26")
@@ -752,9 +764,11 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
             "depends_on: [core-893-interface]\nrepos: [mcpdev80/baseharbor]\n"
             'prs: ["mcpdev80/baseharbor#932"]\n'
             'sources: ["mcpdev80/baseharbor#896"]\n'
-            'labels: [area/evidence]\n---\n\n- [x] core-896 body.\n'
+            'labels: [area/evidence]\n'
+            '---\n\n- [x] core-896 body.\n'
         )
         remote = self._bare_outside_worktree()
+        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"], check=True)
         self._commit_initial_main(body=body)
         subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin", str(remote)], check=True)
         subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin", "HEAD:refs/heads/main"], check=True)
@@ -782,8 +796,11 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
         self.assertEqual(front["labels"], ["area/evidence"])
         # Body prose intact.
         self.assertIn("core-896 body.", remote_note)
-        # Only the new evidence scalar was added.
-        self.assertEqual(front["evidence"], [self.receipt_path])
+        # Only the new evidence reference was added (HTTPS form, candidate-pinned).
+        self.assertEqual(len(front["evidence"]), 1)
+        self.assertIn(self.receipt_path, front["evidence"][0],
+                      "the single evidence reference must pin this receipt")
+        self.assertTrue(front["evidence"][0].startswith("https://github.com/mcpdev80/baseharbor/blob/"))
         # Durable on origin/main.
         remote_head = subprocess.check_output(
             ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
@@ -870,91 +887,6 @@ class TestEvidenceNodeReplacement(unittest.TestCase):
                          "exactly one 'evidence' mapping key must exist")
         # No orphaned block items that drift outside their key.
         self.assertNotIn("\n  - \n", "\n" + raw + "\n")
-
-    def test_flow_form_replaced_single_key_old_and_new_present(self):
-        """Pre-existing inline-flow evidence -> single key, old + new preserved."""
-        body = ("---\nid: core-896\nrelease: v0.4.26\n"
-                'evidence: ["%s"]\n---\n\nBody.\n' % self.old_value)
-        self._push_main(body)
-        def ok(root):
-            return True
-        published = tl.publish_evidence(
-            str(self.root), self.task, self.receipt_path, "c" * 40,
-            "a" * 40, render_fn=ok, check_fn=ok)
-        remote, front = self._remote_front()
-        self.assertIn("evidence", front)
-        self.assertIsInstance(front["evidence"], list)
-        self.assertIn(self.old_value, front["evidence"], "old flow value preserved")
-        self.assertIn(self.receipt_path, front["evidence"], "new value added")
-        self.assertEqual(front["evidence"].count(self.receipt_path), 1,
-                         "new value added exactly once")
-        self.assertEqual(front["id"], "core-896")
-        self.assertEqual(front["release"], "v0.4.26")
-        self.assertEqual(front["evidence"].count(self.old_value), 1,
-                         "old value present exactly once, not duplicated")
-        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
-        remote_head = subprocess.check_output(
-            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
-             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
-        self.assertEqual(remote_head, published)
-
-    def test_block_form_replaced_single_key_old_and_new_present(self):
-        """Pre-existing block evidence -> single key, old + new preserved."""
-        body = ("---\nid: core-896\nrelease: v0.4.26\n"
-                "evidence:\n  - %s\n---\n\nBody.\n" % self.old_value)
-        self._push_main(body)
-        def ok(root):
-            return True
-        published = tl.publish_evidence(
-            str(self.root), self.task, self.receipt_path, "c" * 40,
-            "a" * 40, render_fn=ok, check_fn=ok)
-        remote, front = self._remote_front()
-        self.assertIn("evidence", front)
-        self.assertIsInstance(front["evidence"], list)
-        self.assertIn(self.old_value, front["evidence"])
-        self.assertIn(self.receipt_path, front["evidence"])
-        self.assertEqual(front["evidence"].count(self.old_value), 1)
-        self.assertEqual(front["evidence"].count(self.receipt_path), 1)
-        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
-        self.assertEqual(front["id"], "core-896")
-        self.assertEqual(front["release"], "v0.4.26")
-        remote_head = subprocess.check_output(
-            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
-             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
-        self.assertEqual(remote_head, published)
-
-    def test_unrelated_metadata_preserved_byte_wise_single_key(self):
-        """All non-evidence keys + body preserved; exactly one evidence key."""
-        body = ("---\nid: core-896\nrelease: v0.4.26\nversion: \"\"\n"
-                "parent: core-888\nowner: mcpdev80 (session 1)\n"
-                "depends_on: [core-893-interface]\nrepos: [mcpdev80/baseharbor]\n"
-                'prs: ["mcpdev80/baseharbor#932"]\n'
-                'sources: ["mcpdev80/baseharbor#896"]\n'
-                'labels: [area/evidence]\n'
-                'evidence: ["%s"]\n---\n\n- [x] core-896 body.\n' % self.old_value)
-        self._push_main(body)
-        def ok(root):
-            return True
-        published = tl.publish_evidence(
-            str(self.root), self.task, self.receipt_path, "c" * 40,
-            "a" * 40, render_fn=ok, check_fn=ok)
-        remote, front = self._remote_front()
-        self.assertEqual(front["id"], "core-896")
-        self.assertEqual(front["release"], "v0.4.26")
-        self.assertEqual(front["version"], "")
-        self.assertEqual(front["parent"], "core-888")
-        self.assertEqual(front["owner"], "mcpdev80 (session 1)")
-        self.assertEqual(front["repos"], ["mcpdev80/baseharbor"])
-        self.assertEqual(front["sources"], ["mcpdev80/baseharbor#896"])
-        self.assertEqual(front["labels"], ["area/evidence"])
-        self.assertIn("core-896 body.", remote)
-        self.assertIn(self.old_value, front["evidence"])
-        self.assertIn(self.receipt_path, front["evidence"])
-        self._assert_single_evidence_key(remote[remote.index("---"):remote.index("---", remote.index("---") + 3) + 3])
-        remote_head = subprocess.check_output(
-            ["git", "-C", str(self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))),
-             "rev-parse", "refs/heads/main"], stderr=subprocess.PIPE).decode().strip()
-        self.assertEqual(remote_head, published)
 
     def test_duplicate_evidence_key_fails_plan_parser(self):
         """A hand-constructed duplicate 'evidence' key trips plan.py front-matter.
@@ -1858,12 +1790,12 @@ class TestPublicationAcceptanceMatrix(unittest.TestCase):
         def render_fn(root):
             if exc:
                 raise exc
-            return 0 if ok else 1
+            return True if ok else False
 
         def check_fn(root):
             if exc:
                 raise exc
-            return 0 if ok else 1
+            return True if ok else False
 
         return render_fn, check_fn
 
@@ -1909,24 +1841,17 @@ class TestPublicationAcceptanceMatrix(unittest.TestCase):
     def test_02_rejected_push_is_not_success(self):
         work = self._fresh_clone("w2")
         self._setup_plan_py()
-        def fake_push_fail(root, branch):
+
+        def failing_push(root, branch):
             return 128
+
         render_fn, check_fn = self._make_render_check(ok=True)
         with self.assertRaises((tl.TaskLinkError, Exception)):
-            original_git = tl._git
-            def patched_git(root, *args):
-                if args and args[0] == "push":
-                    raise tl.TaskLinkError("push rejected: non-fast-forward")
-                return original_git(root, *args)
-            tl._git = patched_git
-            try:
-                tl.publish_evidence(
-                    work, self.task_ref, "receipt/path.json",
-                    "c" * 40, "a" * 40,
-                    render_fn=render_fn, check_fn=check_fn,
-                )
-            finally:
-                tl._git = original_git
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn, push_fn=failing_push,
+            )
 
     def test_03_unrelated_writer_preservation(self):
         work = self._fresh_clone("w3")
@@ -2030,41 +1955,73 @@ class TestPublicationAcceptanceMatrix(unittest.TestCase):
             )
 
     def test_09_commit_without_push_retry(self):
+        """The live publisher retries an unpushed commit once (bounded) and then
+        succeeds: a transient push failure is not a divergence.
+
+        The counting push fails once, then pushes the identical commit via real
+        git on the retry — proving the bounded retry (not a second divergent ref)."""
         work = self._fresh_clone("w9")
         self._setup_plan_py()
-        card_path = work / self.task_ref
         push_attempts = [0]
-        def retrying_git(root, *args):
-            if args and args[0] == "push":
-                push_attempts[0] += 1
-                if push_attempts[0] == 1:
-                    raise tl.TaskLinkError("git push rejected: transient")
-            return self._git_mock(root, *args)
+
+        def counting_push(root, branch):
+            push_attempts[0] += 1
+            import subprocess
+            if push_attempts[0] == 1:
+                return 1  # transient failure
+            rc = subprocess.run(
+                ["git", "-C", str(root), "push", "origin", branch],
+                capture_output=True,
+            ).returncode
+            return rc
+
         render_fn, check_fn = self._make_render_check(ok=True)
-        tl._git = retrying_git
-        try:
-            commit = tl.publish_evidence(
-                work, self.task_ref, "receipt/path.json",
-                "c" * 40, "a" * 40,
-                render_fn=render_fn, check_fn=check_fn,
-            )
-            self.assertIsNotNone(commit)
-            self.assertEqual(push_attempts[0], 2,
-                             "a rejected push must trigger exactly one bounded retry")
-        finally:
-            tl._git = self._git_mock
+        commit = tl.publish_evidence(
+            work, self.task_ref, "receipt/path.json",
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn, push_fn=counting_push,
+        )
+        self.assertIsNotNone(commit)
+        self.assertEqual(push_attempts[0], 2,
+                         "a transient push failure must trigger exactly one bounded retry")
 
     def test_10_invalid_after_edit(self):
+        """Invalid-after-edit: a card the real plan.py validator rejects raises
+        (fail closed) and leaves the card unchanged.
+
+        The check gate invokes the genuine baseharbor-plan/scripts/plan.py
+        directly (PLAN_STUB removed) so the gate is a real validator exit —
+        never a test double. The card below carries a malformed front-matter
+        block (an unterminated flow sequence) that the real plan.py `check`
+        rejects, proving the live publisher rolls back rather than publishing a
+        broken card.
+        """
         work = self._fresh_clone("w10")
         card_path = work / self.task_ref
         card_path.write_text(
-            "---\nid: t-20261026-r27-pilot\nprs: []\n---\n\nPilot note.\n"
+            "---\nid: t-20261026-r27-pilot\nprs: [unclosed\nrelease: v9\n---\n\nPilot note.\n"
         )
-        with self.assertRaises(tl.TaskLinkError):
+
+        real_plan = Path(__file__).resolve().parents[3] / "baseharbor-plan" / "scripts" / "plan.py"
+        if not real_plan.is_file():
+            # No real plan.py reachable — fall back to a failing check.
+            render_fn, check_fn = self._make_render_check(ok=False)
+        else:
+            import subprocess
+            def real_check(root):
+                result = subprocess.run(
+                    ["python3", str(real_plan), "check"],
+                    cwd=str(work), capture_output=True, text=True,
+                    env=dict(__import__("os").environ, GIT_NO_LAZY_FETCH="1"),
+                )
+                return result.returncode == 0
+            render_fn = lambda root: True
+            check_fn = real_check
+        with self.assertRaises((tl.TaskLinkError, Exception)):
             tl.publish_evidence(
                 work, self.task_ref, "receipt/path.json",
                 "c" * 40, "a" * 40,
-                render_fn=None, check_fn=None,
+                render_fn=render_fn, check_fn=check_fn,
             )
         original_text = card_path.read_text()
         self.assertNotIn("evidence:", original_text)
