@@ -754,3 +754,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:0xZ RV1213G: REQUEST_CHANGES, weiter strikt A/B/C aber auf Mikrobefunde geschrumpft (fetch-live-vergleich, validierung-vor-install, rollback-grenze). Runde I dispatched (o242) als LETZTE autonome Runde - ICH-Regel bei erneutem REQUEST_CHANGES: Owner-Eskalation 'Konvergenz-Grenze' (Accept-with-notes oder Reviewer-Wechsel), keine Runde J. rv-Befundliste ist in rv1213g-merge.md referenziert, Mission enthaelt nur die 3 Rezepte.
 - 03:2xZ TICK: acked; o242 busy (I noch ohne Forward, head 8b03f17d), planning clean, Pool-Flags = Folge der Merge-Kaskade (kein Scheinauftrag).
 - 03:4xZ TICK: acked; o242 weiter beschaeftigt (kein Forward, head 8b03f17d, Run dort weiter success), nothing to delegate.
+- 04:1xZ TICK: acked+currency publiziert; o242c laeuft (Regression-Fix, neuer Head 700662da gepusht, Run prueft im naechsten Event).
