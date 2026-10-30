@@ -196,7 +196,7 @@ Nach JEDER Pause/Suspend: `timedatectl` + `git fetch` beider Repos + PR-Status-C
 - Produktskripte (`scripts/receipt_*.py`, `pr-gate-plan.py`) gehören ins baseharbor-Repo, nie in evidence-Verzeichnisse (dorthin nur Repro-Helfer → jetzt `_archive-2026-10-30/`).
 
 ### 8.1 Hygiene-Routinen (cron-gepflegt, Stand 2026-10-30)
-- `evidence/board-2026-10-19/scripts/workspace-hygiene.sh [ALTER_MIN]` — entfernt taeglich (cron 05:30Z, Alter 1440) nur saubere, stash-freie, inhaltsbasiert integrierte Worktrees nach Bundle-Beweis (`tmp-ops/worktree-graveyard/`); schuetzt aktive codeman-Lanes und REMOTE-Refs; Log `hygiene.log`.
+- `evidence/board-2026-10-19/scripts/workspace-hygiene.sh [ALTER_MIN]` — entfernt taeglich (cron 23:30Z = Tagesende, Alter 1440) nur saubere, stash-freie, inhaltsbasiert integrierte Worktrees nach Bundle-Beweis (`tmp-ops/worktree-graveyard/`); schuetzt aktive codeman-Lanes und REMOTE-Refs; Log `hygiene.log`.
 - `tmp-sweep.sh 24` (cron */12h) — /tmp (tmpfs=RAM) Lane-Restbestände.
 - `prune-watch.sh` (tmp-ops, cron */15m) + `ci-watch.sh` (*/10m) bestehen weiter.
-- Dauerkarte: t-20261029-workspace-hygiene-rotine.
+- Betriebspflicht des Coordinators am Tagesende (AGENTS.md 3.9), keine Produkt-Karte (die fruehere Dauerkarte t-20261029-workspace-hygiene-rotine wurde auf Owner-Anweisung vom Product-Board entfernt).

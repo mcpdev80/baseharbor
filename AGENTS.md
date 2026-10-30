@@ -68,6 +68,9 @@ Planning ist autoritativ für Task-Zustand, Vertrag und Evidence; GitHub-Issues 
 - Planning-/Evidence-only-Änderungen dürfen keine unnötige Produkt-Full-CI erzwingen; technische Triggerregeln bleiben im jeweiligen CI-Repository zu implementieren.
 - Vor jedem gehosteten Lauf einen Kann-jeder-Schritt-Check dokumentieren: Auth-Tokens, Pins und ENV kommen vom System/Owner, niemals von der ausführenden Lane selbst gesetzt; jede Lane, die ihren Prüfeingang selbst setzt, hat nichts erfüllt.
 
+### 3.9 Tagesabschluss-Aufräumen (Coordinator)
+Der Coordinator räumt am Ende jedes Betriebstages den Workspace: Workspace-Hygiene-Lauf ausführen/prüfen (Worktree-Registry, tmp-Reste, Logs — Kommandos: RUNBOOK.md §8.1), beendete Lanes und deren Worktrees freigeben, Kartensicht auf bestätigte Zustände nachziehen. Dies ist eine Betriebspflicht des Coordinators, kein Produkt-Task und keine Karte im Product-Board.
+
 ## 4. Worker-Pflichten
 
 ### 4.1 Realitätsabgleich
