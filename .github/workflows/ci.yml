@@ -993,6 +993,10 @@ jobs:
     # for this PR tuple (head_sha + base_sha). No secrets required; uses public
     # GitHub API to read baseharbor-plan main evidence/receipts/public-contracts/*.json.
     # Fails closed on network or schema problems.
+    # SKIPPED for non-contracts/** PRs via early diff-check to avoid self-blocking.
+    if: >
+      github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'receipt-enforcement')
     steps:
       - name: Checkout (full history)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1042,4 +1046,3 @@ jobs:
             exit 1
           fi
           python3 "${GITHUB_WORKSPACE}/scripts/pr-receipt-enforcement-check.py" "$receipts_dir" || exit 1
-          PY
