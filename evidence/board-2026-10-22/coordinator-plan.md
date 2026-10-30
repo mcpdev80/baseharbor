@@ -755,3 +755,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 03:2xZ TICK: acked; o242 busy (I noch ohne Forward, head 8b03f17d), planning clean, Pool-Flags = Folge der Merge-Kaskade (kein Scheinauftrag).
 - 03:4xZ TICK: acked; o242 weiter beschaeftigt (kein Forward, head 8b03f17d, Run dort weiter success), nothing to delegate.
 - 04:1xZ TICK: acked+currency publiziert; o242c laeuft (Regression-Fix, neuer Head 700662da gepusht, Run prueft im naechsten Event).
+- 04:2xZ KONTEXT-NOTRUF an o242 (§5.5): SNAPSHOT-Block vor Compact pflicht; Zweitgedaechtnis hier: Fix-Historie 60875d84(run 40988176195 FAILURE, writer-Regression) -> 700662da(run 40989210374 SUCCESS terminal); Code fertig, nur Evidence-Ende offen; rv1213h-Kandidat = 700662da falls Lane bricht (Dann: neue Lane nur fuer Evidence-Zeile + Codex-Mission identisch).
