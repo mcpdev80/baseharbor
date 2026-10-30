@@ -93,6 +93,7 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                 'openbao-package-tests',
                 'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
+                'pr-gate-receipt-enforcement',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)

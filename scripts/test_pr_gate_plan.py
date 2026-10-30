@@ -781,9 +781,9 @@ class MappingTests(unittest.TestCase):
         for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
-                self.assertEqual(['integration/static/public-contracts'],
-                                 result['selected_gates'])
-                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['integration/static/public-contracts', 'receipt/enforcement'],
+                                 sorted(result['selected_gates']))
+                self.assertEqual('unresolved', result['coverage_status'])
                 self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
 
     def test_cli_requires_compilation_and_real_targeted_tests(self):
@@ -1197,7 +1197,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
                                   'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_receipt_control_plane_test_script_maps_to_ci_class(self):
         for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
