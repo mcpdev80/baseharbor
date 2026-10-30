@@ -34,6 +34,10 @@ AFTER=$(df -k --output=avail /tmp 2>/dev/null | tail -1)
 # Ephemera auf Disk altern lassen: $TMPDIR (sollte /home/marcel/tmp-ops sein) nur >24h
 DISK_TMP="${TMPDIR:-/home/marcel/tmp-ops}"
 if [[ "$DISK_TMP" == /home/* ]]; then
+  # Keep-Guard: coord-tick.sh hat ein Sweep am 30.10. weggelegt (laufender Daemon verlor seine Datei)
+  for keep in coord-tick.sh coord-tick.log coord-tick.lastfire coord-tick.pid watcher-state.json prune-watch.sh ci-watch.sh; do
+    [ -e "$DISK_TMP/$keep" ] && find "$DISK_TMP/$keep" -exec touch -d "now" {} + 2>/dev/null || true
+  done
   find "$DISK_TMP" -maxdepth 1 -mindepth 1 ! -newermt "-24 hours" -exec rm -rf {} + 2>/dev/null || true
 fi
 echo "tmp-sweep: /tmp avail ${BEFORE}kB -> ${AFTER}kB (age>${AGE_H}h, protected=${#PROTECT_LIST[@]} worktrees)"
