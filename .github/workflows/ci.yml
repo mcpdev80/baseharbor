@@ -1040,7 +1040,8 @@ jobs:
 
           # Step 1: Check if the PR diff contains contracts/** paths.
           # Use the authenticated GitHub compare API to get changed files.
-          changed_files="$(gh api "$(echo "${{ github.event.pull_request.diff_url }}" | sed 's/\/diff$/\/compare/' | sed 's/compare/compare/')" --jq '.files[].filename' 2>/dev/null || echo '')"
+          compare_url="https://api.github.com/repos/${{ github.repository }}/compare/${base_ref}...${head_sha}"
+          changed_files="$(gh api "$compare_url" --jq '.files[].filename' 2>/dev/null || echo '')"
           # Fallback: use git diff if API unavailable.
           if [ -z "$changed_files" ]; then
             changed_files="$(git -C . diff --name-only "origin/${base_ref}...HEAD" 2>/dev/null || echo '')"
