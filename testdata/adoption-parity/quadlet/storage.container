@@ -1,0 +1,2 @@
+[Container]
+Image=quay.io/minio/minio:latest
