@@ -17,7 +17,7 @@ name=""; override="$HOME/.config/opencode/opencode.json"; want="ornith"
 for a in "$@"; do
   case "$a" in
     --qwen) override="$HOME/.config/opencode/qwen36.json"; want="qwen" ;;
-    --flash) override="$HOME/.config/opencode/flash2.json"; want="flash" ;;
+    --flash) override="$HOME/.config/opencode/flash-notthinking.json"; want="flash" ;;
     -*) echo "spawn-lane: unknown flag $a" >&2; exit 2 ;;
     *) name="$a" ;;
   esac
