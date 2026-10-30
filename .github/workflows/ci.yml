@@ -229,8 +229,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
-          "$RUNNER_TEMP/baha" version | grep -F "${GITHUB_SHA::7}"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-X main.commit=$candidate_sha" -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "${candidate_sha:0:7}"
       - name: Package exact candidate runtime image for native integration
         if: github.event_name == 'pull_request'
         shell: bash
@@ -320,8 +321,9 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          CGO_ENABLED=0 go build -trimpath -o "$RUNNER_TEMP/baha" ./cmd/baha
-          "$RUNNER_TEMP/baha" version | grep -F "${GITHUB_SHA::7}"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-X main.commit=$candidate_sha" -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "${candidate_sha:0:7}"
       - name: Package exact candidate runtime image for native integration
         if: github.event_name == 'pull_request'
         shell: bash
