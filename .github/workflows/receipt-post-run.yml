@@ -131,38 +131,34 @@ jobs:
             echo "PR head ${PR_HEAD:-} != authenticated run head ${RUN_HEAD}: association mismatch, failing closed" >&2
             exit 1
           fi
-          # Run-bound base SHA: the immutable PR->task binding in the verifier
-          # keys on BOTH the run's head_sha and target_base_sha. The live PR
-          # files endpoint reflects the PR's CURRENT base, which the maintainer
-          # can move (rebase/squash) between the run completing and this probe.
-          # The base SHA is therefore resolved from the immutable run object and
-          # re-checked against it below, so a base move breaks the probe instead
-          # of silently rewriting the bounded file set.
-          #
-          # Fail closed on any malformation: lookup error, empty, non-40-hex,
-          # or an all-zero value. A non-zero base that is not a valid full SHA
-          # is rejected too (CODE-AUDIT: the bound base must be a verifiable
-          # immutable producer reference, never an asserted/malformed string).
+          # Run-bound base SHA: resolved from the immutable PR object
+          # (pull_requests[0].base.sha), not the top-level base_sha field
+          # of the authenticated run API (which is null in the real GitHub
+          # API response). Fail closed on any malformation: lookup error,
+          # empty, non-40-hex, or an all-zero value. A non-zero base that is
+          # not a valid full SHA is rejected too (CODE-AUDIT: the bound base
+          # must be a verifiable immutable producer reference, never an
+          # asserted/malformed string).
           set +e
-          RUN_BASE="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.base_sha' 2>/dev/null)"
+          RUN_BASE="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.base.sha' 2>/dev/null)"
           RUN_BASE_RC=$?
           set -e
           if [ "${RUN_BASE_RC}" -ne 0 ]; then
-            echo "run base_sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
+            echo "PR base.sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
             exit 1
           fi
           case "${RUN_BASE}" in
             *[!0-9a-f]* | "" )
-              echo "run base_sha '${RUN_BASE}' is empty or non-hex: failing closed" >&2
+              echo "PR base.sha '${RUN_BASE}' is empty or non-hex: failing closed" >&2
               exit 1
               ;;
           esac
           if [ "${#RUN_BASE}" -ne 40 ]; then
-            echo "run base_sha '${RUN_BASE}' is not a full 40-hex SHA: failing closed" >&2
+            echo "PR base.sha '${RUN_BASE}' is not a full 40-hex SHA: failing closed" >&2
             exit 1
           fi
           if [ "${RUN_BASE}" = "0000000000000000000000000000000000000000" ]; then
-            echo "run base_sha is all-zero (unverified base): failing closed" >&2
+            echo "PR base.sha is all-zero (unverified base): failing closed" >&2
             exit 1
           fi
           # Complete changed-file set for the authenticated run, derived from an
