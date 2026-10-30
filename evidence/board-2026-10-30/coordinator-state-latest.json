@@ -1,9 +1,9 @@
 {
- "at": 1793347097,
+ "at": 1793350904,
  "candidates": {
   "mcpdev80/baseharbor": {
    "currency": "ok",
-   "observed_at": 1793347099,
+   "observed_at": 1793350907,
    "prs": {
     "1046": {
      "head": "67f41d8c8",
@@ -34,7 +34,7 @@
   },
   "mcpdev80/baseharbor-console": {
    "currency": "ok",
-   "observed_at": 1793347100,
+   "observed_at": 1793350908,
    "prs": {
     "9": {
      "head": "045ba6d52",
@@ -45,7 +45,7 @@
   },
   "mcpdev80/baseharbor-demo": {
    "currency": "ok",
-   "observed_at": 1793347100,
+   "observed_at": 1793350907,
    "prs": {
     "120": {
      "head": "bd86c7c3c",
@@ -56,7 +56,7 @@
   },
   "mcpdev80/baseharbor-node-connector": {
    "currency": "ok",
-   "observed_at": 1793347100,
+   "observed_at": 1793350908,
    "prs": {
     "10": {
      "head": "c66ff6665",
@@ -68,8 +68,8 @@
  },
  "health": {
   "board_currency": "ok",
-  "mem_available_mb": 14446,
-  "tmp_free_mb": 8992,
+  "mem_available_mb": 7646,
+  "tmp_free_mb": 9019,
   "tmpdir": "/home/marcel/tmp-ops",
   "tmpdir_is_tmpfs": false,
   "watcher": {
@@ -81,10 +81,37 @@
  "lanes": [
   {
    "id": "710a2d64-f6c1-450e-ac2b-4fd4f1d2e1d5",
-   "idle_s": 500,
+   "idle_s": 3251,
    "mode": "codex",
    "model": null,
    "name": "codex-rm1200",
+   "self": false,
+   "status": "idle"
+  },
+  {
+   "id": "0f638e66-a7cc-4e44-8694-62f4cbc427c4",
+   "idle_s": 1153,
+   "mode": "opencode",
+   "model": null,
+   "name": "lane-766",
+   "self": false,
+   "status": "idle"
+  },
+  {
+   "id": "f18c54b3-b600-4b2f-b9c0-615e1be4bfc0",
+   "idle_s": 1621,
+   "mode": "opencode",
+   "model": null,
+   "name": "r390",
+   "self": false,
+   "status": "busy"
+  },
+  {
+   "id": "79440cfd-c59d-4523-b1b2-240871084187",
+   "idle_s": 1150,
+   "mode": "opencode",
+   "model": null,
+   "name": "r750",
    "self": false,
    "status": "idle"
   },
@@ -301,7 +328,7 @@
   },
   "f19": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f19-opsmatcher.md",
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f19-gate-blank.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f19-sync1039.txt",
    "state": "dispatched"
   },
   "f20": {
@@ -341,7 +368,7 @@
   },
   "f27": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f27-appidtest.md",
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f27-appid.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f27.txt",
    "state": "dispatched"
   },
   "f28": {
@@ -356,7 +383,7 @@
   },
   "f29": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/f29-w1final.md",
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f29-w1final.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/f29.txt",
    "state": "dispatched"
   },
   "f29c": {
@@ -740,7 +767,7 @@
    "state": "dispatched"
   },
   "o12": {
-   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o121-demo121evidence.md",
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o125-dagtruth.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o12.txt",
    "state": "DONE"
   },
@@ -795,7 +822,7 @@
    "state": "dispatched"
   },
   "o13": {
-   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o133-review1052fix.md",
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/o139-review1060.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o13.txt",
    "state": "DONE"
   },
@@ -921,7 +948,7 @@
   },
   "o47": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-22/o47-qpr.md",
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o47-followup.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/o47-sync1042.txt",
    "state": "dispatched"
   },
   "o48": {
@@ -1350,9 +1377,9 @@
    "state": "dispatched"
   },
   "q112": {
-   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q112-rebase1060.md",
+   "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q112c-repair1060.md",
    "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q112.txt",
-   "state": "BLOCKED"
+   "state": "DONE"
   },
   "q112c": {
    "evidence": "/home/marcel/dev/baseharbor-ecosystem/evidence/board-2026-10-24/q112c-repair1060.md",
@@ -1531,7 +1558,7 @@
   },
   "q47": {
    "evidence": null,
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q47-lat.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/q47.txt",
    "state": "dispatched"
   },
   "q48": {
@@ -1731,7 +1758,7 @@
   },
   "rw": {
    "evidence": null,
-   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/rw-audit.txt",
+   "mission": "/home/marcel/dev/baseharbor-ecosystem/ops/missions/rw-docs.txt",
    "state": "dispatched"
   }
  },

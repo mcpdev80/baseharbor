@@ -10,7 +10,7 @@
 #
 # Usage:
 #   receipt-suite.sh [WORKTREE] [--list]
-# WORKTREE defaults to /home/marcel/dev/baseharbor-ecosystem/worktrees/o246
+# WORKTREE defaults to /home/marcel/dev/baseharbor-ecosystem/baseharbor
 #
 # Exit codes:
 #   0  all suites passed
@@ -19,7 +19,7 @@
 
 set -uo pipefail
 
-DEFAULT_WORKTREE="/home/marcel/dev/baseharbor-ecosystem/worktrees/o246"
+DEFAULT_WORKTREE="/home/marcel/dev/baseharbor-ecosystem/baseharbor"
 WORKTREE="${1:-$DEFAULT_WORKTREE}"
 LIST_ONLY=0
 if [[ "${1:-}" == "--list" ]]; then

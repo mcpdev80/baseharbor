@@ -1,0 +1,4 @@
+ROLLE: CODEX-REVIEW - PR #1217 (mcpdev80/baseharbor, base develop) FINAL head 3a04457f = rv1217-Rezept umgesetzt (empty-artifact-negative mit valider Baseline + optionales-artifact-akzeptiert-Test; Evidence chain-cycle-1207.md 'rv1217-Fix'). Go vet/test + exact-head Run 41021394575 success; Kette neu durchgewinkt: Receipt 41021394575-1.json approved (Run 41022064363 success, approve+shadow). Diff bleibt eine Testdatei.
+PRUEFPUNKTE AUSSCHLIESSLICH: (1) das rv1217-Rezept ist wörtlich erfuellt (assert auf missing oci_reference; separater accept-Fall) - file:line; (2) Diff-Scope eine Datei. Keine neuen Kriterien; bei Zwang Label 'ESKALATION OWNER'.
+DANN bei ACCEPT - ROLLE: CODEX-MERGE: gh pr merge 1217 --squash -R mcpdev80/baseharbor --match-head-commit 3a04457f...; ls-remote develop + Checks.
+OUTPUT evidence/board-2026-10-29/codex-rv1217b-merge.md, END rv1217b DONE.
