@@ -33,7 +33,7 @@ Kanonischer Ort: `/home/marcel/dev/baseharbor-ecosystem/RUNBOOK.md`
 
 ### 2.3 Coord-Tick (Idle-only-Pflichtwecker)
 
-`/home/marcel/tmp-ops/coord-tick.sh` (nohup/setsid; PID via `ps -eo pid,cmd | grep coord-tick[.]sh`). Prüft alle 600 s den Coordinator-Status über `agent list --json`; sendet den Tick NUR wenn der Coordinator `idle` ist (kein Interrupt bei laufender Arbeit). Tick-Nachricht enthält die vier Coordinator-Grundregeln (AGENTS.md 3.3). Neustart nach Reboot: Skript erneut mit setsid starten.
+`/home/marcel/tmp-ops/coord-tick.sh` (nohup/setsid; PID via `ps -eo pid,cmd | grep coord-tick[.]sh`). Prüft alle 600 s den Coordinator-Status über `agent list --json`; sendet den Tick NUR wenn der Coordinator `idle` ist (kein Interrupt bei laufender Arbeit). Tick-Text enthaelt zwingend Punkt 5: DREIZEILER-MELDUNG an den Owner (Was läuft / Was blockiert+Trigger / Nächste Aktion — genau 3 Zeilen). Tick-Nachricht enthält die vier Coordinator-Grundregeln (AGENTS.md 3.3). Neustart nach Reboot: Skript erneut mit setsid starten.
 
 ### 2.4 Permission-Dialoge auflösen (Coordinator)
 
