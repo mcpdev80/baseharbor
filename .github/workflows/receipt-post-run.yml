@@ -138,14 +138,31 @@ jobs:
           # The base SHA is therefore resolved from the immutable run object and
           # re-checked against it below, so a base move breaks the probe instead
           # of silently rewriting the bounded file set.
+          #
+          # Fail closed on any malformation: lookup error, empty, non-40-hex,
+          # or an all-zero value. A non-zero base that is not a valid full SHA
+          # is rejected too (CODE-AUDIT: the bound base must be a verifiable
+          # immutable producer reference, never an asserted/malformed string).
           set +e
           RUN_BASE="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.base_sha' 2>/dev/null)"
           RUN_BASE_RC=$?
           set -e
-          if [ "${RUN_BASE_RC}" -ne 0 ] || [ -z "${RUN_BASE}" ] || [ "${RUN_BASE}" != "0000000000000000000000000000000000000000" ]; then
-            :
-          else
-            echo "run base_sha lookup failed or empty: failing closed" >&2
+          if [ "${RUN_BASE_RC}" -ne 0 ]; then
+            echo "run base_sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
+            exit 1
+          fi
+          case "${RUN_BASE}" in
+            *[!0-9a-f]* | "" )
+              echo "run base_sha '${RUN_BASE}' is empty or non-hex: failing closed" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${#RUN_BASE}" -ne 40 ]; then
+            echo "run base_sha '${RUN_BASE}' is not a full 40-hex SHA: failing closed" >&2
+            exit 1
+          fi
+          if [ "${RUN_BASE}" = "0000000000000000000000000000000000000000" ]; then
+            echo "run base_sha is all-zero (unverified base): failing closed" >&2
             exit 1
           fi
           # Complete changed-file set for the authenticated run, derived from an
@@ -162,9 +179,10 @@ jobs:
             echo "PR base..head compare API failed (rc=${CONTRACT_RC}) against immutable base ${RUN_BASE}: not absence, failing closed" >&2
             exit 1
           fi
-          # Fail closed when the compare payload is unusable: a missing or
-          # truncated page, or a non-array files field, must never read as a
-          # clean no- contracts file set.
+          # Fail closed when the compare payload is unusable: a missing,
+          # non-array, null, or empty files field, or an API failure, must never
+          # read as a clean no-contracts file set. A truncated page that omits
+          # the files field entirely is treated as unusable, never absent.
           set +e
           CONTRACT_SHAPE="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}?shape=files" --jq '.files' 2>/dev/null)"
           CONTRACT_SHAPE_RC=$?
@@ -173,6 +191,18 @@ jobs:
             echo "compare files field missing/null or API failed (rc=${CONTRACT_SHAPE_RC}): failing closed" >&2
             exit 1
           fi
+          # A non-array files field (object, string, number) is unusable: the
+          # file set cannot be enumerated from it. Reject anything that does
+          # not start with '[' so a malformed compare response fails closed.
+          case "${CONTRACT_SHAPE}" in
+            \[*)
+              :
+              ;;
+            *)
+              echo "compare files field is not an array ('${CONTRACT_SHAPE:0:32}'): failing closed" >&2
+              exit 1
+              ;;
+          esac
           HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"
           if [ "${HAS_ARTIFACT}" = true ]; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"

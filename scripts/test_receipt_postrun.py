@@ -815,10 +815,11 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
 
     def _run_probe(self, *, artifact_stdout, artifact_rc,
-                   files_stdout, files_rc, pr_number="1124",
-                   run_pr_json='[{"number": 1124}]', run_head=None,
-                   pr_head=None, run_base=None, run_rc=0,
-                   compare_files_rc=0, compare_shape_rc=0):
+                    files_stdout, files_rc, pr_number="1124",
+                    run_pr_json='[{"number": 1124}]', run_head=None,
+                    pr_head=None, run_base=None, run_rc=0,
+                    compare_files_rc=0, compare_shape_rc=0,
+                    compare_shape_nonarray=False, compare_shape_missing=False):
         """Run the eligibility probe with an endpoint-accurate gh stub.
 
         The probe issues several authenticated gh calls now: the artifact list,
@@ -836,7 +837,10 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         import tempfile, os
         run_head = run_head if run_head is not None else "deadbeef" * 5
         pr_head = pr_head if pr_head is not None else run_head
-        run_base = run_base if run_base is not None else "abc" * 13
+        # The bound base must be a full 40-hex SHA: the hardened probe rejects
+        # any run-bound base that is not a valid full SHA, so the happy-path
+        # default is a genuine 40-hex value.
+        run_base = run_base if run_base is not None else "0123456789abcdef0123456789abcdef01234567"
 
         def _q(s):
             # Shell single-quote an arbitrary string for safe embedding.
@@ -869,6 +873,16 @@ class ProducerEligibilityGateTests(unittest.TestCase):
             files_json = "[]"
         compare_json = _q('{"base_commit":{"sha":"%s"},"head_commit":{"sha":"%s"},"files":%s}'
                           % (run_base, run_head, files_json))
+        # The shape-check arm emits the raw --jq '.files' result. By default it
+        # is the full compare object so `jq '.files'` resolves to the files
+        # array; the non-array/missing test cases replace it with an object or
+        # an empty string so the probe's array-shape guard fires.
+        if compare_shape_nonarray:
+            shape_out = _q('{"not":"an array"}')
+        elif compare_shape_missing:
+            shape_out = "''"
+        else:
+            shape_out = compare_json
         run_json = _q('{"id":%d,"run_attempt":1,"head_sha":"%s","base_sha":"%s","pull_requests":%s}'
                       % (RUN_ID, run_head, run_base, run_pr_json))
         pr_json = _q('{"head":{"sha":"%s"},"base":{"sha":"%s"}}' % (pr_head, run_base))
@@ -892,9 +906,11 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 "rc=0",
                 'out=""',
                 "ARC=0",
+                'matched=0',
                 'case "$fullurl" in',
-                '*shape=files*) out=' + compare_json + '; ARC=' + str(compare_shape_rc) + ' ;;',
+                '*shape=files*) out=' + shape_out + '; ARC=' + str(compare_shape_rc) + '; matched=1 ;;',
                 'esac',
+                'if [ "$matched" = "0" ]; then',
                 'case "$qurl" in',
                 '*/artifacts) out=' + artifacts_json + '; rc=' + str(artifact_rc) + ' ;;',
                 '*/actions/runs/*) out=' + run_json + '; rc=' + str(run_rc) + ' ;;',
@@ -903,10 +919,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 '*/pulls/*) out=' + pr_json + '; rc=0 ;;',
                 '*) rc=31 ;;',
                 'esac',
-                '# A shape-match short-circuits the qurl dispatch (a compare URL also',
-                '# matches */compare/*); the qurl case sets rc only when the shape',
-                '# arm did not already set ARC.',
-                'if [ "${ARC:-0}" = "0" ]; then ARC=$rc; fi',
+                'fi',
                 "shift 2 2>/dev/null || { shift; shift; }",
             ]
             # Scan remaining args for a --jq filter (may follow --paginate).
@@ -925,7 +938,11 @@ class ProducerEligibilityGateTests(unittest.TestCase):
             body.append('else')
             body.append('  printf "%s" "$out"')
             body.append('fi')
-            body.append('exit $ARC')
+            # A shape-call exits its ARC; any other call exits its rc so the
+            # probe sees the real success/failure (a failed lookup is a nonzero
+            # exit, never a silent empty result).
+            body.append('if [ "$matched" = "1" ]; then exit $ARC; fi')
+            body.append('exit $rc')
             body.append("")
             stub.write_text("\n".join(body))
             stub.chmod(0o755)
@@ -1135,10 +1152,79 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         # uses RUN_HEAD, and the immutable PR head must equal it (existing
         # guard). A run/head mismatch must fail closed under the new path.
         proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
-                                       files_stdout="README.md", files_rc=0,
-                                       run_head="aaaa" * 10, pr_head="bbbb" * 10)
+                                        files_stdout="README.md", files_rc=0,
+                                        run_head="aaaa" * 10, pr_head="bbbb" * 10)
         self.assertNotEqual(proc.returncode, 0,
                             "run/PR head mismatch must fail closed, not skip")
+
+    # rv1221d point 2: the immutable run-bound base must be a verifiable full
+    # SHA; every malformation (error, empty, non-hex, short, all-zero) fails
+    # closed, and the compare response must be a complete array payload.
+
+    def test_run_base_lookup_error_fails_closed(self):
+        # A failed run base_sha lookup is a fail-closed ERROR.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run base lookup failure must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_base_empty_fails_closed(self):
+        # An empty run base_sha fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="", run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "empty run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_base_non_hex_fails_closed(self):
+        # A non-hex run base_sha (e.g. containing 'z') fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+                                       run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "non-hex run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_base_short_fails_closed(self):
+        # A too-short run base_sha (valid hex, wrong length) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="abc123", run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "short run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_base_all_zero_fails_closed(self):
+        # An all-zero run base_sha (unverified base) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="0" * 40, run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "all-zero run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_shape_not_array_fails_closed(self):
+        # A compare files field that is not an array (object) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_rc=0,
+                                       compare_shape_nonarray=True)
+        self.assertNotEqual(proc.returncode, 0,
+                            "non-array compare files field must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_truncated_missing_files_fails_closed(self):
+        # A truncated compare response with no files field fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_missing=True)
+        self.assertNotEqual(proc.returncode, 0,
+                            "truncated compare (missing files) must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
 
     # The four eligibility outcomes against the immutable bound compare.
 
