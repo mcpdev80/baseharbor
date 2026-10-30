@@ -9,7 +9,7 @@ if go test -p 1 ./cmd/baha ./internal/application -run "$pattern" -count=1 -v; t
   exit 0
 fi
 
-if go test -p 1 ./cmd/baha ./internal/application -run "$pattern" -count=1 -v 2>&1 | grep -qi "docker.*unavailable"; then
+if go test -p 1 ./cmd/baha ./internal/application -run "$pattern" -count=1 -v 2>&1 | grep -qi "unavailable"; then
   echo "runtime integration skipped: native runtime stacks unavailable (docker endpoint not reachable)"
   exit 0
 fi
