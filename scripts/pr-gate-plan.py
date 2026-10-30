@@ -409,6 +409,20 @@ RESOLVER_ROUTING_REVIEWED = frozenset([
     'internal/runtime/resolver/resolver.go',
     'internal/runtime/resolver/resolver_test.go',
 ])
+# Permanent lane (core-750 rv1224/rv1225): the exact source files owning the
+# BASEHARBOR_CI_RUNTIME_INTEGRATION-gated cmd/baha lifecycle tests. Their native
+# execution is bound to the existing Targeted HA docker/podman job type (real
+# rootless runtime), never to the validate job (no native runtime context ->
+# 0.1s skips). Changes here resolve to the hosted compile/vet/build checks; the
+# PR-run proof is the Targeted HA native step selected by pr_plan's
+# cli_native_required output and enforced fail-closed in PR Selected Checks.
+# This is an exact file allowlist: renamed, deleted or any other cmd/baha path
+# stays fail-closed unresolved on the branch below.
+NATIVE_INTEGRATION_HA_FILES = frozenset([
+    'cmd/baha/app_repository_integration_test.go',
+    'cmd/baha/app_workload_integration_test.go',
+    'internal/application/runtime_multi_integration_test.go',
+])
 # core-751 prospective scope is explicit but never a path-only qualification.
 # Source review and immutable commit binding must precede resolved coverage.
 INSPECT_IMPORT_CANDIDATE_FILES = {
@@ -1447,6 +1461,13 @@ def plan(diff, requirements, mapping, repository='.',
             selected.update(native_gates)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('wizard component rename/delete/type change needs explicit review: ' + path)
+        elif path in NATIVE_INTEGRATION_HA_FILES:
+            area = 'cli-native-integration-ha-bound'
+            require(CODE_CHECKS)
+            if path.startswith('cmd/baha/'):
+                require(CLI_CHECKS)
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('native integration source rename/delete needs explicit rebinding: ' + path)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
