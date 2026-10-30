@@ -771,3 +771,4 @@ RULESET-ERKENNTNIS: required_status_checks als aktives Ruleset (id 25223521) auf
 - 09:1xZ TICK: acked; o246 mittendrin (2 dirty, noch kein K2-Commit), Gateway-Latenz-Kurzstörung vorueber, planning clean.
 - 09:3xZ K2 Code GELANDET: head 13026f29 (Wrapper + ReceiptError-Rollback), Run 41003634116 SUCCESS terminal. Evidence fehlte -> Nachliefer-Auftrag (§4.6) an Lane; bei END: rv1213j an Codex (Gate erfuellt).
 - 09:5xZ K2 VOLLSTAENDIG (Evidence + END), Lane+WT raus, publiziert. rv1213j dispatched: Wrapper-Konsolidierung explizit benannt, ESKALATION-Klausel aktiv - bei REQUEST auf identischen Punkten ist die naechste Aktion dein Konvergenz-Entscheid, nicht Runde L.
+- 10:1xZ RV1213J: 5. REQUEST auf identischem Trio A/B/C, keine ESKALATION-Markierung durch Codex -> meine harte Kante greift: STOP der Korrekturschleife, Owner-Packet published (konvergenz-entscheid-o246.md, Optionen 1-4). Keine Runde L ohne dich. Kette pausiert vor #1207/Ruleset.
