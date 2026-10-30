@@ -574,8 +574,41 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
 
     # F5 remote-read-back: push to origin/main and fetch back to verify
     # the publication is durable on the remote, not a local-only commit.
-    _git_fn(planning_root, "push", "origin", f"{local_commit}:refs/heads/main")
+    #
+    # A stale local HEAD (remote advanced after our last fetch) produces a
+    # non-fast-forward rejection. A genuine conflict (concurrent unrelated
+    # commit on the remote) therefore fails closed and is NOT silently
+    # reconciled. A purely transient push failure — the remote HEAD is still
+    # our commit, so the rejection was not a divergence — is retried once on the
+    # identical already-written commit SHA (`{local_commit}:refs/heads/main`),
+    # never a second, divergent reference (recipe A).
+    # Push to origin/main. A stale local HEAD (remote advanced after our last
+    # fetch) produces a non-fast-forward rejection; a genuine conflict
+    # (concurrent unrelated commit on the remote) therefore fails closed. A
+    # purely transient push failure — the remote HEAD is still our commit, so
+    # the rejection was not a divergence — is retried once on the identical
+    # already-written commit SHA (`{local_commit}:refs/heads/main`), never a
+    # second, divergent reference (recipe A).
+    push_args = ("push", "origin", f"{local_commit}:refs/heads/main")
+    try:
+        _git_fn(planning_root, *push_args)
+    except TaskLinkError:
+        # Distinguish a transient push failure from a genuine conflict. After a
+        # transient failure the remote HEAD is still an ancestor of our commit
+        # (fast-forwardable); after a genuine conflict it is not. Re-fetch and
+        # check ancestry: if our commit is still on the fast-forward path, retry
+        # the identical-commit push once; otherwise fail closed.
+        live_retry = _git_fetch_remote_head(planning_root, "origin", "main")
+        if _is_ancestor(live_retry, local_commit, planning_root):
+            # No divergence — a purely transient push failure; one bounded
+            # retry of the identical commit, then fail closed.
+            _git_fn(planning_root, *push_args)
+        else:
+            raise
     remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
+    require(remote_head == local_commit,
+            "local publication is stale vs remote main — "
+            "publication was not durably pushed")
     require(remote_head == local_commit,
             "remote HEAD does not match local commit — publication was not durably pushed")
 
@@ -587,6 +620,22 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             "evidence reference not present in the durable publication revision on remote")
 
     return remote_head
+
+
+def _is_ancestor(ancestor_sha, descendant_sha, root, remote="origin", ref="main"):
+    """Return True if ``ancestor_sha`` is an ancestor of ``descendant_sha``.
+
+    Uses ``git merge-base --is-ancestor``. The ancestor ref is fetched live so
+    the ancestry check reflects current remote state, never a stale tracking ref.
+    """
+    _git(root, "fetch", remote, ref)
+    # --is-ancestor exits 0 if ancestor, 1 if not. The generic _git raises on
+    # any non-zero return, so exit 1 propagates as TaskLinkError; a raised
+    # exception therefore means "not an ancestor".
+    _git(
+        root, "merge-base", "--is-ancestor", ancestor_sha, descendant_sha
+    )
+    return True
 
 
 def _current_commit(root, path):

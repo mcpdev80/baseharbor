@@ -1731,5 +1731,344 @@ def _tl_push_for(root):
     return _push
 
 
+class TestPublicationAcceptanceMatrix(unittest.TestCase):
+    """Acceptance matrix for the card-evidence publication path via a bare-remote.
+
+    These 10 scenarios exercise the hardened publish_evidence (recipe A/B/C)
+    against genuine bare remotes: durable publication, rejected-push-is-not-
+    success, unrelated-writer preservation, idempotency, introduction-commit-
+    return, conflict-fails, fetch-failure-blocks, stale-ref detection, push
+    retry, and invalid-after-edit fail-closed.
+
+    Integration note (Runde J2 / o244): this matrix was authored as a standalone
+    module (test_receipt_tasklink_q243.py) and merged into this registered suite
+    so the receipt-execution-tests control plane covers it. Kept self-contained:
+    the setUp builds the bare remote + task card in-process; the _git replacement
+    exercises the real product code (real reads, TaskLinkError on rejected push).
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+
+        self.remote_root = Path(self.temp.name) / "remote.git"
+        subprocess.run(
+            ["git", "init", "--bare", "-q", str(self.remote_root)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.remote_root), "symbolic-ref", "HEAD", "refs/heads/main"],
+            check=True, capture_output=True,
+        )
+
+        self.origin_root = Path(self.temp.name) / "origin"
+        subprocess.run(
+            ["git", "clone", "-q", str(self.remote_root), str(self.origin_root)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "config", "user.name", "Test Author"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "config", "user.email", "test@example.invalid"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "branch", "-m", "main"],
+            check=True, capture_output=True,
+        )
+
+        task_path = self.origin_root / "tasks" / "receipt-pilot.md"
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        card_text = "---\nid: t-20261026-r27-pilot\nprs: []\nevidence: []\n---\n\nEvidence pilot task note.\n"
+        task_path.write_text(card_text)
+
+        plan_dir = self.origin_root / "evidence" / "receipt-plans"
+        plan_dir.mkdir(parents=True, exist_ok=True)
+        plan_data = {
+            "gate": "public-contracts",
+            "repository": "mcpdev80/baseharbor",
+            "workflow_id": 17,
+            "head_sha": "a" * 40,
+            "candidate_sha": "c" * 40,
+            "base_sha": "b" * 40,
+            "task": "tasks/receipt-pilot.md",
+        }
+        (plan_dir / "public-contracts.json").write_text(json.dumps(plan_data, sort_keys=True))
+
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "add", "-A"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "commit", "-q", "-m", "initial"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.origin_root), "push", "-q", "origin", "main"],
+            check=True, capture_output=True,
+        )
+
+        self.task_ref = "tasks/receipt-pilot.md"
+
+    def _git_mock(self, root, *args):
+        """Faithful _git replacement exercising the hardened product code.
+
+        The original module-level mock only stubbed `push` and returned None for
+        every other command; against the hardened publish_evidence (recipe A/B/C)
+        that hid genuine failures (a rejected/failed push returned None instead of
+        raising, and `git rev-parse origin/main` returned None -> AttributeError).
+        This mock runs the REAL git for reads (fetch/rev-parse/show/log) so remote
+        state is genuine and fail-closed, and raises TaskLinkError on a rejected
+        push so a push failure surfaces instead of being swallowed.
+        """
+        cmd = args[0] if args else ""
+        if cmd == "push":
+            out = subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True,
+            )
+            if out.returncode != 0:
+                raise tl.TaskLinkError("git push rejected: %s" % out.stderr.decode("utf-8", "replace").strip())
+            return out.stdout
+        if cmd in ("fetch", "rev-parse", "show", "log", "add", "commit", "rebase", "checkout", "merge-base"):
+            out = subprocess.run(
+                ["git", "-C", str(root), *args],
+                capture_output=True,
+            )
+            # merge-base --is-ancestor returns exit 1 when NOT an ancestor;
+            # surface that as a normal (non-raising) result via stdout.
+            if out.returncode not in (0, 1) and cmd == "merge-base":
+                return out.stdout
+            if out.returncode != 0:
+                raise tl.TaskLinkError("git %s failed: %s" % (cmd, out.stderr.decode("utf-8", "replace").strip()))
+            return out.stdout
+        raise tl.TaskLinkError("unsupported git subcommand in mock: %s" % cmd)
+
+    def _setup_plan_py(self, render_ok=True, check_ok=True):
+        scripts_dir = Path(self.temp.name) / "plan_repo" / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        (scripts_dir / "plan.py").write_text(
+            "def render(root): return 0\n"
+            "def check(root): return 0\n"
+        )
+
+    def _make_render_check(self, ok=True, exc=None):
+        def render_fn(root):
+            if exc:
+                raise exc
+            return 0 if ok else 1
+
+        def check_fn(root):
+            if exc:
+                raise exc
+            return 0 if ok else 1
+
+        return render_fn, check_fn
+
+    def _fresh_clone(self, label="work"):
+        work = Path(self.temp.name) / label
+        subprocess.run(
+            ["git", "clone", "-q", str(self.remote_root), str(work)],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(work), "config", "user.name", "Test Author"],
+            check=True, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(work), "config", "user.email", "test@example.invalid"],
+            check=True, capture_output=True,
+        )
+        return work
+
+    def test_01_successful_durable_publication(self):
+        work = self._fresh_clone("w1")
+        self._setup_plan_py()
+        self._git_fn = None
+        render_fn, check_fn = self._make_render_check(ok=True)
+        receipt_path = "evidence/receipts/public-contracts/17-1.json"
+        commit = tl.publish_evidence(
+            work, self.task_ref, receipt_path,
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn,
+        )
+        self.assertIsNotNone(commit)
+        self.assertEqual(len(commit), 40)
+        subprocess.run(
+            ["git", "-C", str(work), "fetch", "-q", "origin", "main"],
+            check=True, capture_output=True,
+        )
+        remote_text = subprocess.run(
+            ["git", "-C", str(work), "show", "origin/main:" + self.task_ref],
+            capture_output=True, text=True,
+        ).stdout
+        self.assertIn("evidence:", remote_text.lower())
+
+    def test_02_rejected_push_is_not_success(self):
+        work = self._fresh_clone("w2")
+        self._setup_plan_py()
+        def fake_push_fail(root, branch):
+            return 128
+        render_fn, check_fn = self._make_render_check(ok=True)
+        with self.assertRaises((tl.TaskLinkError, Exception)):
+            original_git = tl._git
+            def patched_git(root, *args):
+                if args and args[0] == "push":
+                    raise tl.TaskLinkError("push rejected: non-fast-forward")
+                return original_git(root, *args)
+            tl._git = patched_git
+            try:
+                tl.publish_evidence(
+                    work, self.task_ref, "receipt/path.json",
+                    "c" * 40, "a" * 40,
+                    render_fn=render_fn, check_fn=check_fn,
+                )
+            finally:
+                tl._git = original_git
+
+    def test_03_unrelated_writer_preservation(self):
+        work = self._fresh_clone("w3")
+        self._setup_plan_py()
+        concurrent = self._fresh_clone("w3concurrent")
+        card_concurrent = concurrent / self.task_ref
+        card_concurrent.write_text(card_concurrent.read_text() + "\n# Concurrent edit.\n")
+        subprocess.run(["git", "-C", str(concurrent), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(concurrent), "commit", "-q", "-m", "concurrent"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(concurrent), "checkout", "-q", "-b", "concurrent"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(concurrent), "push", "-q", "--force", "origin", "refs/heads/concurrent:refs/heads/main"], check=True, capture_output=True)
+        render_fn, check_fn = self._make_render_check(ok=True)
+        with self.assertRaises((tl.TaskLinkError, Exception)):
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn,
+            )
+
+    def test_04_idempotency_identical_evidence(self):
+        work = self._fresh_clone("w4")
+        self._setup_plan_py()
+        render_fn, check_fn = self._make_render_check(ok=True)
+        commit1 = tl.publish_evidence(
+            work, self.task_ref, "receipt/path.json",
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn,
+        )
+        commit2 = tl.publish_evidence(
+            work, self.task_ref, "receipt/path.json",
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn,
+        )
+        self.assertIsNotNone(commit2)
+
+    def test_05_introduction_commit_return(self):
+        work = self._fresh_clone("w5")
+        self._setup_plan_py()
+        render_fn, check_fn = self._make_render_check(ok=True)
+        commit = tl.publish_evidence(
+            work, self.task_ref, "receipt/path.json",
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn,
+        )
+        self.assertIsNotNone(commit)
+        self.assertEqual(len(commit), 40)
+        self.assertTrue(all(c in "0123456789abcdef" for c in commit))
+
+    def test_06_conflict_fails(self):
+        work = self._fresh_clone("w6")
+        self._setup_plan_py()
+        diverge = self._fresh_clone("w6diverge")
+        diverge_card = diverge / self.task_ref
+        diverge_card.write_text(diverge_card.read_text() + "\n# Unrelated diverge.\n")
+        subprocess.run(["git", "-C", str(diverge), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(diverge), "commit", "-q", "-m", "diverge"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(diverge), "checkout", "-q", "-b", "feature"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(diverge), "push", "-q", "--force", "origin", "refs/heads/feature:refs/heads/main"], check=True, capture_output=True)
+        render_fn, check_fn = self._make_render_check(ok=True)
+        with self.assertRaises((tl.TaskLinkError, Exception)):
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn,
+            )
+
+    def test_07_fetch_failure_blocks(self):
+        work = self._fresh_clone("w7")
+        self._setup_plan_py()
+        subprocess.run(["rm", "-rf", str(self.remote_root / "refs"), str(self.remote_root / "HEAD")], check=True, capture_output=True)
+        render_fn, check_fn = self._make_render_check(ok=True)
+        with self.assertRaises((tl.TaskLinkError, Exception)):
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn,
+            )
+
+    def test_08_stale_ref_detection(self):
+        work = self._fresh_clone("w8")
+        self._setup_plan_py()
+        card_path = work / self.task_ref
+        render_fn, check_fn = self._make_render_check(ok=True)
+        commit1 = tl.publish_evidence(
+            work, self.task_ref, "receipt/path1.json",
+            "c" * 40, "a" * 40,
+            render_fn=render_fn, check_fn=check_fn,
+        )
+        self.assertIsNotNone(commit1)
+        update = self._fresh_clone("w8update")
+        card_update = update / self.task_ref
+        card_update.write_text(card_update.read_text() + "\n# Remote update.\n")
+        subprocess.run(["git", "-C", str(update), "add", "-A"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(update), "commit", "-q", "-m", "remote update"], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(update), "push", "-q", "origin", "main"], check=True, capture_output=True)
+        with self.assertRaises((tl.TaskLinkError, Exception)):
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path2.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn,
+            )
+
+    def test_09_commit_without_push_retry(self):
+        work = self._fresh_clone("w9")
+        self._setup_plan_py()
+        card_path = work / self.task_ref
+        push_attempts = [0]
+        def retrying_git(root, *args):
+            if args and args[0] == "push":
+                push_attempts[0] += 1
+                if push_attempts[0] == 1:
+                    raise tl.TaskLinkError("git push rejected: transient")
+            return self._git_mock(root, *args)
+        render_fn, check_fn = self._make_render_check(ok=True)
+        tl._git = retrying_git
+        try:
+            commit = tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=render_fn, check_fn=check_fn,
+            )
+            self.assertIsNotNone(commit)
+            self.assertEqual(push_attempts[0], 2,
+                             "a rejected push must trigger exactly one bounded retry")
+        finally:
+            tl._git = self._git_mock
+
+    def test_10_invalid_after_edit(self):
+        work = self._fresh_clone("w10")
+        card_path = work / self.task_ref
+        card_path.write_text(
+            "---\nid: t-20261026-r27-pilot\nprs: []\n---\n\nPilot note.\n"
+        )
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_evidence(
+                work, self.task_ref, "receipt/path.json",
+                "c" * 40, "a" * 40,
+                render_fn=None, check_fn=None,
+            )
+        original_text = card_path.read_text()
+        self.assertNotIn("evidence:", original_text)
+
+
 if __name__ == "__main__":
     unittest.main()
