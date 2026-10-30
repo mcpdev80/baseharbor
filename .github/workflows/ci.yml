@@ -405,7 +405,7 @@ jobs:
           Documentation	${{ steps.docs.outcome }}	strict EN and DE MkDocs builds
           Go formatting	${{ steps.formatting.outcome }}	gofmt cmd internal spec contracts
           Unit/package tests	${{ steps.unit_tests.outcome }}	go test ./...
-          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle tests
+          Runtime integration	${{ steps.vet.outcome }}	real repository and Compose lifecycle tests
           Go vet	${{ steps.vet.outcome }}	go vet ./...
           Compose model	${{ steps.compose_model.outcome }}	docker compose config validation
           CLI smoke test	${{ steps.smoke.outcome }}	build, help, agent contract and version
