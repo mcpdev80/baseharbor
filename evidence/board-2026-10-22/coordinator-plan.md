@@ -824,3 +824,4 @@ Offene Fäden JETZT:
 - #1222 wartet Rebase nach #1225-Merge; #1220 rerun nach #1225; #1160 dependabot post-cutover-Fenster; c390-Queue (core-390 criterion 3, rv390 Rezept) bei freiem Slot.
 Regel-Neu (dieser Turn): Korrekturschleifen NICHT unbegrenzt in derselben Lane — 3 Runden oder Kontext>70% ⇒ frische Lane mit kompaktem Missions-Digest (RUNBOOK §4.4 Muster).
 Owner-Compact: gleich.
+- 23:1xZ §9-Rotation auf #1226 durchgezogen: cutover 88%+interrupted+Null-Output; WIP (Merge 47583ae6 + ci.yml uncommitted) im bestehenden worktrees/cutover konserviert, cutoverb frisch (ornith) übernimmt mit 5-Schritte-Mission (WIP-first-commit → unittest-Repro → Fragment-Auslagerung scripts/receipt-enforcement-check.py → Push nur lokal-belegt). rv1221e REQUEST publiziert (base_sha null im echten API-Read), q252 (qwen, Boot-Stall geheilt mit Erstbefehl) arbeitet Punkt-2-Korrektur #1221. Aktive Lanes: w750b, q252, cutoverb — Codex idle.
