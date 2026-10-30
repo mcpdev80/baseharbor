@@ -41,6 +41,7 @@ Kanonischer Ort: `/home/marcel/dev/baseharbor-ecosystem/RUNBOOK.md`
 2. Legitimer Pfad (Workspace, /tmp/opencode, /home/marcel/dev/* — global vorfreigegeben in `~/.config/opencode/opencode.json` + `qwen36.json` + `flash2.json`: `permission.external_directory`: `/tmp/*`, `/home/marcel/dev/*`, `~/go/pkg/mod/*`, `~/.ssh/*` — die .ssh-Freigabe bleibt für VM-Diagnose-Lanes, aber Secrets gehören NIE in Evidence/Logs, und ssh-Bedarf ist pro Auftrag in dessen Scope-Zeile zu benennen): `tmux -L codeman send-keys -t codeman-<id8> Enter` (Allow once).
 3. Optionsauswahl: Cursor startet auf „Allow once"; Right = nächste Option (Highlight 48;5;215 prüfen, capture -e), Enter. Down/Up funktioniert in diesem Dialog NICHT. „Allow always" schreibt nur in die Lane-Config dieser Session.
 4. Danach Busy prüfen; Lane ggf. mit workspace-lokalen Pfaden weiterschicken.
+0. ROTATIONS-PFLICHT (§9): 3 Runden oder Kontext >70 % ⇒ frische Lane mit Missionsdigest, nicht weiter-nudgen.
 5. **Frage-Dialoge** („Type your own answer", mehrteilig, Tab=Frage Wechsel/Enter=submit): erkennt der Dialog-Scan NICHT (Marker-Strings fehlen) und erscheinen als Ghost-Idle. Vor jedem Nudge bei IDLE-GHOST den Pane-Schwanz auf `?`/`tab  select` prüfen (o246, 29.10.). Antworten: ein Teilbeantworten mit Enter alone reicht nicht (Fragen bleiben „not answered"); sicherer Weg = Escape + reguläres `agent send` mit der ausformulierten Antwort.
 
 ### 2.5 Coordinator-Takeover (Session weggebrochen)
@@ -200,3 +201,6 @@ Nach JEDER Pause/Suspend: `timedatectl` + `git fetch` beider Repos + PR-Status-C
 - `tmp-sweep.sh 24` (cron */12h) — /tmp (tmpfs=RAM) Lane-Restbestände.
 - `prune-watch.sh` (tmp-ops, cron */15m) + `ci-watch.sh` (*/10m) bestehen weiter.
 - Betriebspflicht des Coordinators am Tagesende (AGENTS.md 3.9), keine Produkt-Karte (die fruehere Dauerkarte t-20261029-workspace-hygiene-rotine wurde auf Owner-Anweisung vom Product-Board entfernt).
+
+## 9. Lane-Rotation in Korrekturschleifen (Pflicht, 2026-10-30)
+Kontext-Kosten der Schleifen: Eine Worker-Lane darf für Korrekturrunden desselben PRs höchstens dreimal nachgeladen werden ODER bis Kontext 70 % — dann ist ZWANGSROTATION angesagt: alte Lane rm, frische Lane mit 3–5-Zeilen-Missionsdigest (Branch, letzter guter Head, exaktes offenes Rezept aus dem Codex-Dossier, Verbot-Liste). Grund: endloses Nudgen bläht Sessions auf 80–90 % und produziert genau die Folgen, die Rotation vermeiden soll (Kontextverluste, wiedergelesene Dossiers, langsamere Turns). Reviewer-Kontinuität (§3.6) gilt für die CODEX-Session, nicht für Worker-Lanes.
