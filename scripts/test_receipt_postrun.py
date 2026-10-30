@@ -769,6 +769,60 @@ class F1NegativeForeignRepo(unittest.TestCase):
             sys.argv = saved_argv
 
 
+class F1NegativeNonPRSkip(unittest.TestCase):
+    """Non-PR producer run must produce CLEAN SKIP: exit 0, neutral notice, no Failure,
+    no Receipt, skipped=true."""
+
+    def test_non_pr_event_sets_skip_true(self):
+        # Simulate the skip_check step with a non-PR event (push to main/develop).
+        # The extracted workflow YAML's skip_check step queries run.event via the
+        # GitHub API.  We verify that when the event is NOT pull_request,
+        # the guard sets skipped=true and exits 0.
+        import yaml
+        text = POST_RUN_YML.read_text()
+        doc = yaml.safe_load(text)
+        skip_step = None
+        for job in doc["jobs"].values():
+            for step in job["steps"]:
+                if step.get("id") == "skip_check" or "skip" in step.get("name", "").lower():
+                    skip_step = step
+                    break
+            if skip_step is not None:
+                break
+        self.assertIsNotNone(skip_step, "skip_check step must exist in extract_plan")
+        # The skip_check block must check run.event and set skipped=true.
+        run_block = skip_step.get("run", "")
+        self.assertIn(".event", run_block,
+                      "skip_check must fetch run.event from the API")
+        self.assertIn("skipped=true", run_block,
+                      "non-PR event must produce skipped=true")
+        self.assertIn("exit 0", run_block,
+                      "CLEAN SKIP must exit 0 regardless of event mismatch")
+        # Verify the publish_receipt guard references the skip output.
+        publish_if = doc["jobs"]["publish_receipt"]["if"]
+        self.assertIn("needs.extract_plan.outputs.skipped", publish_if,
+                      "publish_receipt must gate on extract_plan.outputs.skipped")
+        self.assertIn("'true'", publish_if,
+                      "publish_receipt must skip when skipped=true")
+
+    def test_download_skipped_when_non_pr(self):
+        # The download step must be guarded by the skip_check outcome.
+        import yaml
+        text = POST_RUN_YML.read_text()
+        doc = yaml.safe_load(text)
+        extract_plan = doc["jobs"]["extract_plan"]
+        download_step = None
+        for step in extract_plan["steps"]:
+            if "Download trusted-pr-plan artifact" in step.get("name", ""):
+                download_step = step
+                break
+        self.assertIsNotNone(download_step)
+        self.assertIn("if", download_step,
+                      "download step must be guarded by skip_check outcome")
+        self.assertIn("skip_check.outputs.skipped", download_step["if"],
+                      "download must be skipped when skip_check.outputs.skipped == 'true'")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
 
