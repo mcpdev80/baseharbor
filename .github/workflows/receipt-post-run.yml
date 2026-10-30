@@ -91,9 +91,16 @@ jobs:
           # must produce a CLEAN SKIP — exit 0, neutral, no Failure, no Receipt.
           RUN_ID="${{ github.event.workflow_run.id }}"
           echo "Fetching event type for producer run $RUN_ID ..."
-          EVENT=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID" \
-            --jq '.event' 2>/dev/null || echo "")
+          # Fail closed: `set -e` aborts the block on a non-zero lookup (a real
+          # 404/500 or auth error) BEFORE skipped is ever written and BEFORE any
+          # receipt. The old `... 2>/dev/null || echo ""` turned such a failure
+          # into an empty EVENT and thus an effective successful NON-PR skip.
+          EVENT="$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID" \
+            --jq '.event')"
           echo "producer_event=$EVENT" >> "$GITHUB_OUTPUT"
+          # A successful lookup is required; a missing/empty value is not a
+          # legitimate skip signal and fails closed.
+          test -n "$EVENT"
           if [ "$EVENT" != "pull_request" ]; then
             echo "::notice file=.github/workflows/receipt-post-run.yml::Skipping receipt: producer run was triggered by '$EVENT', not 'pull_request'. No receipt will be written."
             echo "skipped=true" >> "$GITHUB_OUTPUT"
@@ -200,6 +207,12 @@ jobs:
           print("run_id=%s" % out["run_id"])
           print("pr_number=%s" % (os.environ.get("PR_NUMBER", "") or ""))
           PY
+          # Fail closed: if the download was skipped (non-PR event) plan.zip is
+          # never written, so plan.zip.open() raises and the block exits
+          # non-zero BEFORE any output is parsed or written. A skipped download
+          # must therefore never yield candidate_sha/base_sha — the plan is
+          # DATA, and a missing artifact yields no facts, not empty facts.
+          test -f plan.txt
           workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"

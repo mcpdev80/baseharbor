@@ -90,6 +90,7 @@ def _extract_run_block(role):
     import yaml  # local import: only this module needs it
     text = POST_RUN_YML.read_text()
     marker = {
+        "skip_check": "Check if this is a pull_request event",
         "download": "Download trusted-pr-plan artifact",
         "decode": "Decode pr-plan and extract candidate_sha",
         "tasklink": "Automatic task-link (plan fixture)",
@@ -121,6 +122,139 @@ def _run(cmd, *, env=None, cwd=None, input=None):
         env=env, cwd=cwd, capture_output=True, text=True,
         input=input,
     )
+
+
+def _gh_stub_script(event):
+    """A gh stub whose /actions/runs lookup returns `event` (or failure).
+
+    event is either the string "pull_request"/"push" (a successful lookup that
+    emits that literal value via `.event`) or the sentinel "__FAIL" (the API
+    call returns a non-zero exit and empty body, as a real 404/500 would). The
+    stub mirrors the real `gh api ... --jq '.event'` contract: exit 401 and
+    stderr on a path it does not recognise.
+    """
+    # The emitted EVENT value is a real literal, so the block's string compare
+    # against "pull_request" is exercised exactly as in production. The
+    # placeholder is substituted into the returned source below.
+    emit = event if event != "__FAIL" else "push"
+    if event == "__FAIL":
+        return r'''#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+i = args.index("api") if "api" in args else -1
+path = args[i + 1] if i + 1 < len(args) else ""
+if "/actions/runs/" in path:
+    # Authenticated lookup fails: exit non-zero, print nothing, like a 404.
+    sys.stderr.write("gh stub: api lookup failed (404)\n")
+    sys.exit(401)
+if "/pulls/" in path or path.endswith("/pulls"):
+    print(json.dumps({"number": 1124, "state": "open",
+                      "body": "Closes #1125"}))
+    sys.exit(0)
+if "/issues/" in path or path.endswith("/issues"):
+    print(json.dumps({"number": 1125,
+                      "title": "t-20261022-r27-evidence-pilot",
+                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
+    sys.exit(0)
+sys.stderr.write("gh stub: unexpected path %s\n" % path)
+sys.exit(401)
+'''
+    return (
+        r'''#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+path = ""
+for i, a in enumerate(args):
+    if a == "api" and i + 1 < len(args):
+        path = args[i + 1]
+        break
+if "/actions/runs/" in path:
+    run_attempt = "1"
+    jq_filter = None
+    for j, a in enumerate(args):
+        if a == "--jq" and j + 1 < len(args):
+            jq_filter = args[j + 1].strip().strip('"')
+            if "run_attempt" in jq_filter:
+                run_attempt = "1"
+            break
+    # Real `gh api ... --jq '.event'` contract: emit the JSON event object,
+    # then apply the caller's jq filter. `.event` extracts the trigger type.
+    # %%EMIT%% is the literal runtime event the caller selected for this stub.
+    obj = {"event": "%%EMIT%%", "run_attempt": run_attempt}
+    text = json.dumps(obj)
+    if jq_filter and jq_filter.lstrip("'\"") in (".event", "event"):
+        # `.event` on a JSON string returns the raw string (no surrounding
+        # quotes), matching real `gh api ... --jq '.event'` output.
+        val = obj["event"]
+        print(val if isinstance(val, str) else json.dumps(val))
+    elif jq_filter:
+        try:
+            parts = jq_filter.split(".", 1)
+            key = parts[1] if len(parts) > 1 else parts[0].lstrip("'\"")
+            val = obj[key]
+            # Numeric JSON fields print without quotes (e.g. run_attempt 1),
+            # matching real gh output; strings print raw, objects print JSON.
+            if isinstance(val, bool):
+                print("true" if val else "false")
+            elif isinstance(val, int):
+                print(val)
+            elif isinstance(val, str):
+                print(val)
+            else:
+                print(json.dumps(val))
+        except (KeyError, IndexError):
+            pass
+    sys.exit(0)
+if "/pulls/" in path or path.endswith("/pulls"):
+    print(json.dumps({"number": 1124, "state": "open",
+                      "body": "Closes #1125"}))
+    sys.exit(0)
+if "/issues/" in path or path.endswith("/issues"):
+    print(json.dumps({"number": 1125,
+                      "title": "t-20261022-r27-evidence-pilot",
+                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
+    sys.exit(0)
+sys.stderr.write("gh stub: unexpected path %s\n" % path)
+sys.exit(401)
+'''
+    ).replace("%%EMIT%%", emit)
+
+
+def _write_gh_stub(root, event):
+    """Write a gh stub into a fresh bin dir on PATH and return the dir.
+
+    `event` selects the stub behaviour: "pull_request"/"push" (a successful
+    authenticated lookup that prints a JSON event), or the sentinel "__FAIL"
+    (the /actions/runs lookup exits 401, as a real 404/500 does).
+    """
+    bin = root / "bin"
+    bin.mkdir(exist_ok=True)
+    stub = bin / "gh"
+    stub.write_text(_gh_stub_script(event))
+    stub.chmod(0o755)
+    return bin
+
+
+def _run_block_executed(role, *, env=None, cwd=None):
+    """Execute one extracted run block with `bash -euo pipefail` (real run).
+
+    Returns the CompletedProcess. The caller decides whether the exit code it
+    observes is correct for the scenario — the block itself is executed
+    verbatim, so a missing fail-closed guard fails the scenario's non-zero
+    assertion.
+    """
+    block = _extract_run_block(role)
+    return _run(["bash", "-euo", "pipefail", "-c", block], env=env, cwd=cwd)
+
+
+def _read_gh_output(path):
+    """Parse a GITHUB_OUTPUT file into a dict (last value wins per key)."""
+    out = {}
+    for line in Path(path).read_text().splitlines():
+        if "=" in line:
+            k, v = line.split("=", 1)
+            out[k] = v
+    return out
 
 
 class FakeApi:
@@ -823,10 +957,6 @@ class F1NegativeNonPRSkip(unittest.TestCase):
                       "download must be skipped when skip_check.outputs.skipped == 'true'")
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class DownloadInvocationTests(unittest.TestCase):
     """Root cause 2026-10-28: the writer must fetch the producer artifact
     through the GitHub artifacts zip endpoint, never via a non-existent
@@ -844,3 +974,152 @@ class DownloadInvocationTests(unittest.TestCase):
         text = self.WORKFLOW.read_text()
         self.assertIn("plan.zip", text)
         self.assertIn("zipfile.ZipFile(\"plan.zip\")", text)
+
+
+class F2ExecutedNonPRSkip(unittest.TestCase):
+    """Finding 2 (rv1230b): the non-PR skip must be PROVEN by an executed
+    skip_check run block, not by a YAML string assertion.
+
+    We run the extracted skip_check `run:` block verbatim against a controlled
+    gh stub whose /actions/runs lookup returns event=push (a real push to
+    main/develop). The block must exit 0, write skipped=true to GITHUB_OUTPUT,
+    and announce the non-PR skip — i.e. an actual CLEAN SKIP happened.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.bin = _write_gh_stub(self.root, "push")
+
+    def test_execute_non_pr_skip_runs_clean_skip(self):
+        block = _extract_run_block("skip_check")
+        gh_out = self.root / "gh_out"
+        gh_out.write_text("")
+        env = dict(os.environ,
+                    GITHUB_OUTPUT=str(gh_out),
+                    GITHUB_TOKEN="fixture-token",
+                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
+        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
+                    cwd=self.root)
+        self.assertEqual(proc.returncode, 0,
+                         f"skip_check must exit 0 on CLEAN SKIP: {proc.stderr}")
+        out = _read_gh_output(gh_out)
+        self.assertEqual(out.get("skipped"), "true",
+                         "non-PR run must set skipped=true")
+        self.assertIn("not 'pull_request'", proc.stdout,
+                       "block must announce the real non-PR trigger, not a string match")
+
+    def test_execute_pr_event_sets_skip_false(self):
+        # Same executed block, but the authenticated lookup returns
+        # event=pull_request: skipped must be false and the block proceeds.
+        self.bin = _write_gh_stub(self.root, "pull_request")
+        block = _extract_run_block("skip_check")
+        gh_out = self.root / "gh_out"
+        gh_out.write_text("")
+        env = dict(os.environ,
+                    GITHUB_OUTPUT=str(gh_out),
+                    GITHUB_TOKEN="fixture-token",
+                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
+        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
+                    cwd=self.root)
+        self.assertEqual(proc.returncode, 0,
+                         f"skip_check must exit 0 on pull_request: {proc.stderr}")
+        out = _read_gh_output(gh_out)
+        self.assertEqual(out.get("skipped"), "false",
+                         "pull_request run must set skipped=false")
+
+
+class F3ExecutedApiErrorFailsClosed(unittest.TestCase):
+    """Finding 3 (rv1230b): a failed authenticated event lookup must fail the
+    block (non-zero) — never be read as a successful non-PR CLEAN SKIP.
+
+    The gh stub's /actions/runs lookup exits 401 (real 404/500), exactly the
+    situation the old `... 2>/dev/null || echo ""` masked into an empty EVENT
+    and an effective "skip". With the fail-closed block, `set -e` aborts on the
+    non-zero stub exit before skipped is ever written and before any receipt.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.bin = _write_gh_stub(self.root, "__FAIL")
+
+    def test_execute_api_error_fails_closed_run(self):
+        block = _extract_run_block("skip_check")
+        gh_out = self.root / "gh_out"
+        gh_out.write_text("")
+        env = dict(os.environ,
+                    GITHUB_OUTPUT=str(gh_out),
+                    GITHUB_TOKEN="fixture-token",
+                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
+        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
+                    cwd=self.root)
+        self.assertNotEqual(proc.returncode, 0,
+                            "failed API lookup must fail the block closed")
+        out = _read_gh_output(gh_out)
+        self.assertNotIn("skipped", out,
+                         "no skipped output may be written on a lookup failure")
+        self.assertNotIn("Skipping receipt", proc.stdout,
+                         "a lookup failure is not a CLEAN SKIP announcement")
+
+
+class F1ExecutedDecodeGuardOnSkip(unittest.TestCase):
+    """Finding 1 (rv1230b): the decode block must not open plan.zip when the
+    download was skipped.
+
+    We reproduce the real skipped-download path: the download block is guarded
+    in YAML by `skip_check.outputs.skipped != 'true'`. Here we run the decode
+    block in isolation with NO plan.zip present (exactly what the runner leaves
+    behind when the download step was skipped), and prove the decoder exits
+    non-zero and writes no candidate_sha — i.e. it cannot open a missing
+    plan.zip and fabricate empty facts. The OLD decode block had no guard here
+    and would raise zipfile.BadZipFile / emit empty candidate_sha.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        # No plan.zip present: the decoder must fail closed, not proceed.
+
+    def test_decode_fails_when_download_skipped_or_missing(self):
+        decode_block = _extract_run_block("decode")
+        env = dict(os.environ,
+                    GITHUB_OUTPUT=str(self.root / "gh_out"),
+                    GH_WORKFLOW_TOKEN="fixture-token",
+                    PYTHONPATH=str(HERE))
+        (self.root / "gh_out").write_text("")
+        proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
+                    cwd=self.root)
+        self.assertNotEqual(proc.returncode, 0,
+                            "decode must not proceed when download was skipped")
+        out = _read_gh_output(self.root / "gh_out")
+        self.assertNotIn("candidate_sha", out,
+                         "no candidate_sha may be emitted after a skipped download")
+
+    def test_decode_opens_plan_when_download_ok(self):
+        # Control: with a valid plan.zip the decoded decode block succeeds and
+        # emits the real candidate_sha — the guard does not over-block a real
+        # artifact.
+        with zipfile.ZipFile(self.root / "plan.zip", "w") as z:
+            z.writestr("pr-plan.json", json.dumps(FAKE_PLAN))
+        decode_block = _extract_run_block("decode")
+        bin = _write_gh_stub(self.root, "pull_request")
+        env = dict(os.environ,
+                    GITHUB_OUTPUT=str(self.root / "gh_out"),
+                    GH_WORKFLOW_TOKEN="fixture-token",
+                    PATH="%s:%s" % (str(bin), os.environ.get("PATH", "")),
+                    PYTHONPATH=str(HERE))
+        (self.root / "gh_out").write_text("")
+        proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
+                    cwd=self.root)
+        self.assertEqual(proc.returncode, 0, f"decode failed: {proc.stderr}")
+        out = _read_gh_output(self.root / "gh_out")
+        self.assertEqual(out.get("candidate_sha"), "c" * 40,
+                         "decode must emit the real candidate_sha")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
