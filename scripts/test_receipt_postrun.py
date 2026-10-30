@@ -914,6 +914,24 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         self.assertEqual(ok_proc.returncode, 0)
         self.assertIn("producer_eligible=false", ok_result)
 
+    def test_probe_lists_pr_files_authenticated_paginated(self):
+        # rv1221 point 1: contracts impact is determined from an AUTHENTICATED,
+        # paginated gh pulls/<n>/files listing before the probe decides to skip.
+        block = self._probe_block()
+        self.assertIn("pulls/", block)
+        self.assertIn("/files", block)
+        self.assertIn("--paginate", block)
+        # The PR number is sourced from the authenticated run's pull_requests,
+        # never a caller-invented value.
+        self.assertIn("pull_requests", block)
+
+    def test_probe_gates_on_gh_exit_code(self):
+        # Every gh API call must gate on gh's own exit code (fail closed on
+        # transport/auth failure), never mask a non-zero rc as absence.
+        block = self._probe_block()
+        self.assertIn("ART_RC=$?", block)
+        self.assertIn("CONTRACT_RC=$?", block)
+
     def test_downstream_jobs_gate_on_eligibility(self):
         text = self.WORKFLOW.read_text()
         for job in ("extract_plan", "publish_receipt"):

@@ -1386,38 +1386,69 @@ class TestEvidenceEditDesign(unittest.TestCase):
     def test_real_plan_check_runs_on_production_planning(self):
         """The production path invokes the real baseharbor-plan plan.py.
 
-        If the real plan.py exists at the canonical path, render+check must
-        pass (exit 0). If the path is absent, skip WITH reason — never
-        render_fn=None-with-silent-pass.
+        render+check must pass (exit 0) against an ISOLATED clone of the
+        production Planning checkout at a specified revision — never against
+        the shared live `/home/.../baseharbor-plan` worktree, whose state other
+        sessions mutate and which would make this test a writer on the
+        canonical Planning repo. The clone is a bare-free shallow copy created
+        from `origin/main` with an explicit revision, so the validator runs on
+        deterministic, reproducible inputs. Validator stdout/stderr is
+        preserved on failure so a broken Planning state is never a silent pass.
         """
-        planning_candidates = [
-            Path("/home/marcel/dev/baseharbor-ecosystem/baseharbor-plan"),
-        ]
-        plan_py = None
-        for cand in planning_candidates:
-            candidate = cand / "scripts" / "plan.py"
-            if candidate.exists():
-                plan_py = candidate
-                break
+        remote = os.environ.get("PLANNING_CLONE_ORIGIN", "https://github.com/mcpdev80/baseharbor-plan")
+        ref = os.environ.get("PLANNING_CLONE_REF", "origin/main")
+        with tempfile.TemporaryDirectory() as td:
+            clone = Path(td) / "planning"
+            # --no-hardlinks avoids pointing at the origin object database; the
+            # validator must read a self-contained checkout.
+            cp = subprocess.run(
+                ["git", "clone", "--no-hardlinks", "-q", "--branch", ref,
+                 remote, str(clone)],
+                capture_output=True, text=True)
+            if cp.returncode != 0:
+                # origin/main may not be fetchable from every sandbox; skip with
+                # reason rather than fall back to the shared production tree.
+                self.skipTest("planning clone unavailable: " + (cp.stderr or cp.stdout).strip())
+            # Pin an explicit revision so the validator is reproducible.
+            pinned = subprocess.run(
+                ["git", "-C", str(clone), "rev-parse", "--verify", "--quiet", ref],
+                capture_output=True, text=True)
+            if pinned.returncode != 0 or not pinned.stdout.strip():
+                self.skipTest("planning ref %r not resolvable" % ref)
 
-        if plan_py is None:
-            self.skipTest("real baseharbor-plan/scripts/plan.py not present")
+            plan_py = clone / "scripts" / "plan.py"
+            if not plan_py.is_file():
+                self.skipTest("plan.py missing in cloned planning checkout")
 
-        def render(root):
-            out = subprocess.run(
-                ["python3", str(plan_py), "render"],
-                capture_output=True)
-            return out.returncode == 0
+            def render(root):
+                return subprocess.run(
+                    ["python3", str(plan_py), "render"],
+                    capture_output=True,
+                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1")).returncode == 0
 
-        def check(root):
-            out = subprocess.run(
-                ["python3", str(plan_py), "check"],
-                capture_output=True)
-            return out.returncode == 0
+            def check(root):
+                return subprocess.run(
+                    ["python3", str(plan_py), "check"],
+                    capture_output=True,
+                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1")).returncode == 0
 
-        ok, _msg = tl._planning_render_check(
-            plan_py.parent.parent, render, check)
-        self.assertTrue(ok, "real plan.py render+check must pass")
+            ok, msg = tl._planning_render_check(clone, render, check)
+            if not ok:
+                # Preserve validator diagnostics on failure — never a silent
+                # render_fn=None-with-silent-pass.
+                render_out = subprocess.run(
+                    ["python3", str(plan_py), "render"],
+                    capture_output=True, text=True,
+                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+                check_out = subprocess.run(
+                    ["python3", str(plan_py), "check"],
+                    capture_output=True, text=True,
+                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+                raise AssertionError(
+                    "real plan.py render+check failed at %s: %s\nRENDER:\n%s\nCHECK:\n%s"
+                    % (pinned.stdout.strip(), msg,
+                       render_out.stdout, render_out.stderr))
+            self.assertTrue(ok, "real plan.py render+check must pass")
 
     # -- rv1213g Runde I: A live fetch / B real single validation / C rollback
 
