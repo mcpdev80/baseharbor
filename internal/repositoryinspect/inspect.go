@@ -212,14 +212,18 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
 	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
-	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
+	if result.SelectedWorkloadSource != nil && result.SelectedWorkloadSource.Kind != WorkloadSourceCompose &&
+		result.WorkloadEvidence != nil {
+		shareProjectSummaryFromComponents(&result, result.WorkloadEvidence)
+	}
+	if manifest == nil && result.SelectedWorkloadSource != nil && len(result.WorkloadServices) > 0 {
 		result.Findings = mergeFindings(result.Findings, []Finding{{
 			Capability: "logs",
 			Direction:  DirectionExport,
 			Confidence: ConfidenceSuggested,
 			Evidence: []Evidence{{
-				Kind:   EvidenceCompose,
-				Path:   result.SelectedCompose,
+				Kind:   sourceEvidenceKindScalar(result.SelectedWorkloadSource.Kind),
+				Path:   result.SelectedWorkloadSource.Path,
 				Detail: "application workload can opt into managed stdout/stderr log collection",
 			}},
 		}})
@@ -448,4 +452,105 @@ func reconcileSelectedComposeInspectionView(result *Result, data []byte) error {
 	result.HealthChecks = uniqueEvidence(health)
 	result.DatabaseBootstrapServices = uniqueSorted(bootstrap)
 	return nil
+}
+
+// shareProjectSummaryFromComponents projects the shared inspection summary
+// (workload vs infrastructure service classification, published ports,
+// readiness/health checks and capability findings implied by normalized
+// infrastructure classes) from the canonical normalized workload evidence.
+//
+// NormalizeWorkloadSource fills WorkloadEvidence.Components for every supported
+// source family (compose, quadlet, kubernetes); gating the shared summary on
+// SelectedCompose only made Quadlet and Kubernetes repositories under-report.
+// This is the non-Compose projection path and never runs for Compose, whose
+// Compose-specific parsing (database bootstrap details, ambiguous-service
+// reconciliation) already populated the summary.
+func shareProjectSummaryFromComponents(result *Result, evidence *WorkloadEvidence) {
+	path := evidence.Source.Path
+	for _, component := range evidence.Components {
+		switch {
+		case component.InfrastructureClass == "database.sql" ||
+			component.InfrastructureClass == "cache.key-value" ||
+			component.InfrastructureClass == "database.document" ||
+			component.InfrastructureClass == "messaging" ||
+			component.InfrastructureClass == "object-storage.s3":
+			result.InfrastructureServices = append(result.InfrastructureServices, component.ID)
+		case len(component.Ports) > 0 || component.Health || component.Image != "" || component.Build != "":
+			result.WorkloadServices = append(result.WorkloadServices, component.ID)
+		}
+		for _, port := range component.Ports {
+			result.Ports = append(result.Ports, PortEvidence{Path: path, Service: component.ID, Value: port})
+		}
+		if component.Health {
+			result.HealthChecks = append(result.HealthChecks, Evidence{
+				Kind: EvidenceHealth, Path: path,
+				Detail: string(evidence.Source.Kind) + " component " + component.ID + " exposes readiness",
+			})
+		}
+		if finding, ok := capabilityFindingForInfrastructureClass(component); ok {
+			result.Findings = mergeFindings(result.Findings, []Finding{finding})
+		}
+	}
+	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
+	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
+}
+
+// capabilityFindingForInfrastructureClass maps a normalized component's
+// infrastructure class to the source-neutral capability finding it implies, so
+// Quadlet and Kubernetes repositories surface the same capability findings as
+// Compose. Empty InfrastructureClass yields no finding.
+func capabilityFindingForInfrastructureClass(component WorkloadComponent) (Finding, bool) {
+	class := component.InfrastructureClass
+	if class == "" {
+		return Finding{}, false
+	}
+	var capability string
+	switch class {
+	case "database.sql":
+		capability = "database.sql"
+	case "cache.key-value":
+		capability = "cache.key-value"
+	case "database.document":
+		capability = "database.document"
+	case "messaging":
+		capability = "messaging"
+	case "object-storage.s3":
+		capability = "object-storage.s3"
+	default:
+		return Finding{}, false
+	}
+	return Finding{
+		Capability: capability,
+		Name:       component.ID,
+		Direction:  DirectionExport,
+		Confidence: ConfidenceDetected,
+		Evidence: []Evidence{{
+			Kind:   sourceEvidenceKind(component.Source),
+			Path:   component.Source[len(component.Source)-1].Path,
+			Detail: component.InfrastructureClass + " implied by normalized workload component",
+		}},
+	}, true
+}
+
+// sourceEvidenceKindScalar maps a source family to the evidence kind that
+// records it. Compose keeps its compose evidence kind; any other source family
+// records config provenance so the evidence never falsely claims Compose
+// provenance.
+func sourceEvidenceKindScalar(kind WorkloadSourceKind) EvidenceKind {
+	if kind == WorkloadSourceCompose {
+		return EvidenceCompose
+	}
+	return EvidenceConfig
+}
+
+// sourceEvidenceKind derives the evidence kind from a component's provenance
+// sources: compose provenance records compose, any other source family records
+// config so the evidence never falsely claims Compose provenance.
+func sourceEvidenceKind(sources []WorkloadSourceReference) EvidenceKind {
+	for _, ref := range sources {
+		if ref.Kind == WorkloadSourceCompose {
+			return EvidenceCompose
+		}
+	}
+	return EvidenceConfig
 }
