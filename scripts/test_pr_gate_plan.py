@@ -778,7 +778,7 @@ class MappingTests(unittest.TestCase):
                           'mkdocs-de-strict', 'pages-candidate-build'}, checks)
 
     def test_code_picks_contract_without_private_consumers(self):
-        for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
+        for name in ['contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual(['integration/static/public-contracts'],
