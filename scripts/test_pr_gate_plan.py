@@ -931,7 +931,7 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
                 self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'},
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                                  {c['id'] for c in result['required_validation_checks']})
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
@@ -999,7 +999,7 @@ class MappingTests(unittest.TestCase):
         self.assertEqual('resolved', complete['coverage_status'])
         self.assertEqual(expected, set(complete['selected_gates']))
         self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests',
-                          'receipt-execution-tests'},
+                          'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                          {c['id'] for c in complete['required_validation_checks']})
         for changed in (reviewed[:-1], reviewed + ['scripts/ci-unknown.py'],
                         ['.github/workflows/ci.yml']):
@@ -1081,8 +1081,8 @@ class MappingTests(unittest.TestCase):
                 qualified = planner.plan(actual, REQ, MAP)
                 self.assertEqual('resolved', qualified['coverage_status'])
                 self.assertEqual([], qualified['selected_gates'])
-                self.assertEqual({'pr-planner-tests','ci-policy','ci-executor-verifier-tests',
-                                  'receipt-execution-tests'},
+                self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests',
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                                  {v['id'] for v in qualified['required_validation_checks']})
                 # Unreviewed source changes, including SAME FIVE PATHS, fail.
                 git('checkout', 'source')
@@ -1213,7 +1213,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
                                   'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_receipt_control_plane_workflow_maps_ci_and_actionlint(self):
         for path in ['.github/workflows/receipt-approval.yml',
@@ -1223,11 +1223,11 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
-                self.assertEqual([], result['selected_gates'])
-                checks = {c['id'] for c in result['required_validation_checks']}
-                self.assertEqual({'ci-policy', 'ci-actionlint', 'pr-planner-tests',
-                                  'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                 self.assertEqual([], result['selected_gates'])
+                 checks = {c['id'] for c in result['required_validation_checks']}
+                 self.assertEqual({'ci-policy', 'ci-actionlint', 'pr-planner-tests',
+                                   'ci-executor-verifier-tests',
+                                   'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_ci_workflow_policy_script_maps_to_ci_class(self):
         path = 'scripts/ci-workflow-policy.sh'
@@ -1236,9 +1236,9 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
         self.assertEqual([], result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
         checks = {c['id'] for c in result['required_validation_checks']}
-        self.assertEqual({'pr-planner-tests', 'ci-policy',
-                          'ci-executor-verifier-tests',
-                          'receipt-execution-tests'}, checks)
+                self.assertEqual({'pr-planner-tests', 'ci-policy',
+                                  'ci-executor-verifier-tests',
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_unlisted_receipt_source_stays_unresolved(self):
         result = planner.plan(diff(paths('scripts/receipt_producer.py')), REQ, MAP)
