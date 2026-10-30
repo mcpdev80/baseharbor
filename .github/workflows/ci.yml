@@ -355,11 +355,21 @@ jobs:
         id: unit_tests
         run: go test ./...
 
-      - name: Run runtime integration tests serially
+      - name: Run cmd/baha native integration tests
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: bash scripts/skip-unavailable-runtime-integration.sh
+        run: |
+          if docker info >/dev/null 2>&1; then
+            echo "docker available: running cmd/baha native integration tests"
+            go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+          else
+            echo "ERROR: cmd/baha native integration tests require a reachable docker endpoint (docker info unavailable)."
+            echo "       These integration tests belong to the Targeted-HA docker/podman job (native runtime present)."
+            echo "       This validate job has no docker context — context gap, not a test failure."
+            echo "       Run them in a Targeted-HA docker/podman job."
+            exit 1
+          fi
 
       - name: Run Go vet
         id: vet
