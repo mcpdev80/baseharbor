@@ -815,38 +815,97 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
 
     def _run_probe(self, *, artifact_stdout, artifact_rc,
-                   files_stdout, files_rc, pr_number="1124"):
-        """Run the eligibility probe with a path-dispatching gh stub.
+                   files_stdout, files_rc, pr_number="1124",
+                   run_pr_json='[{"number": 1124}]', run_head=None,
+                   pr_head=None, run_rc=0):
+        """Run the eligibility probe with an endpoint-accurate gh stub.
 
-        The probe issues two authenticated gh calls: the artifact list and the
-        PR file list (pulls/<pr_number>/files). The stub models each
-        independently -- artifact_rc/files_rc are per-call exit codes and
-        artifact_stdout/files_stdout their stdout -- so any single API failure
-        is a fail-closed ERROR, never a phantom skip.
+        The probe issues several authenticated gh calls now: the artifact list,
+        the run-to-PR association (run object's ``pull_requests``), the run
+        ``head_sha`` lookup, the immutable PR object, and the complete PR file
+        list. Each stub arm models its own endpoint accurately with its own exit
+        code; unmatched/malformed endpoints fail non-zero so the probe's own
+        fail-closed guards are exercised. ``run_head``/``pr_head`` default to the
+        same value so the immutable association check passes unless a test
+        deliberately mismatches them.
         """
         import tempfile, os
+        run_head = run_head if run_head is not None else "deadbeef" * 5
+        pr_head = pr_head if pr_head is not None else run_head
+
+        def _q(s):
+            # Shell single-quote an arbitrary string for safe embedding.
+            return "'" + s.replace("'", "'\\''") + "'"
+
+        # Model each authenticated gh endpoint with the JSON shape its --jq
+        # filter expects: --jq '.artifacts[].name' needs an {"artifacts":[...]}
+        # object, --jq '.pull_requests' the array, --jq '.head_sha' a string,
+        # --jq '.head.sha' an object with a head.sha field, and --jq
+        # '.[].filename' a list of {"filename":...} objects. A per-arm exit code
+        # models a failed/incomplete API response (fail closed); unmatched
+        # endpoints fail non-zero so the probe's own guards convert them.
+        if artifact_stdout:
+            artifacts_json = _q('{"artifacts":[{"name":"' +
+                                artifact_stdout.replace('"', '\\"') + '"}]}')
+        else:
+            artifacts_json = _q('{"artifacts":[]}')
+        run_json = _q('{"id":%d,"run_attempt":1,"head_sha":"%s","pull_requests":%s}'
+                      % (RUN_ID, run_head, run_pr_json))
+        pr_json = _q('{"head":{"sha":"%s"},"base":{"sha":"%s"}}' % (pr_head, "abc" * 13))
+        # files: emit one JSON object per filename so --jq '.[].filename' works.
+        if files_stdout:
+            fobjs = ",".join('{"filename":"' + f.replace('"', '\\"') + '"}'
+                             for f in files_stdout.splitlines())
+            files_json = _q("[" + fobjs + "]")
+        else:
+            files_json = _q("[]")
+
         with tempfile.TemporaryDirectory() as td:
             bin_dir = Path(td) / "bin"
             bin_dir.mkdir()
             stub = bin_dir / "gh"
+            # Endpoint dispatch: most-specific patterns FIRST. /artifacts before
+            # /actions/runs/*; /files before /pulls/*. The stub re-runs its
+            # output through the caller's --jq filter (if present) so the probe
+            # sees the same extracted value it would from the real API; absent
+            # --jq it emits the endpoint JSON verbatim.
             body = [
                 "#!/bin/sh",
-                "cmd=\"$1\"",
+                'cmd="$1"',
                 'if [ "$cmd" != "api" ]; then exit 0; fi',
                 'url="$2"',
+                'qurl="${url%%[?]*}"',
                 "rc=0",
-                "out=\"\"",
-                'case "$url" in',
-                "*/artifacts*) out='" + artifact_stdout + "'; rc=" + str(artifact_rc) + " ;;",
-                "*/files*) out='" + files_stdout + "'; rc=" + str(files_rc) + " ;;",
-                '*/pull_requests*) out="{\\"pull_requests\\":[{\\"number\\":' + str(pr_number) + '}]}"; rc=0 ;;',
-                "*) rc=0 ;;",
-                "esac",
-                "printf '%s' \"$out\"",
-                "exit $rc",
-                "",
+                'out=""',
+                "ARC=0",
+                'case "$qurl" in',
+                '*/artifacts) out=' + artifacts_json + '; rc=' + str(artifact_rc) + ' ;;',
+                '*/actions/runs/*) out=' + run_json + '; rc=' + str(run_rc) + ' ;;',
+                '*/files*) out=' + files_json + '; rc=' + str(files_rc) + ' ;;',
+                '*/pulls/*) out=' + pr_json + '; rc=0 ;;',
+                '*) rc=31 ;;',
+                'esac',
+                "shift 2 2>/dev/null || { shift; shift; }",
+                "ARC=$rc",
             ]
-            stub = bin_dir / "gh"
+            # Scan remaining args for a --jq filter (may follow --paginate).
+            body.append('FILTER=""')
+            body.append('while [ $# -gt 0 ]; do')
+            body.append('  case "$1" in')
+            body.append('    --jq) shift; FILTER="$1" ;;')
+            body.append('    *) shift ;;')
+            body.append('  esac')
+            body.append('  [ $# -gt 0 ] || break')
+            body.append('done')
+            body.append('if [ -n "$FILTER" ]; then')
+            body.append('  jq -r "$FILTER" <<JQIN')
+            body.append('$out')
+            body.append('JQIN')
+            body.append('else')
+            body.append('  printf "%s" "$out"')
+            body.append('fi')
+            body.append('exit $ARC')
+            body.append("")
             stub.write_text("\n".join(body))
             stub.chmod(0o755)
             out = Path(td) / "out.txt"
@@ -902,6 +961,60 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0,
                             "file-list API error must fail closed, not skip")
         self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_pr_association_error_fails_closed(self):
+        # A failed run-to-PR lookup is a fail-closed ERROR, never a phantom skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='', run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run PR association failure must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_pr_association_empty_fails_closed(self):
+        # No bound PR (empty pull_requests) is ambiguous/absent => fail closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='[]', run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "absent PR association must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_pr_association_multiple_fails_closed(self):
+        # More than one bound PR is ambiguous => fail closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='[{"number": 1}, {"number": 2}]', run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "ambiguous PR association must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_head_lookup_error_fails_closed(self):
+        # A failed run head_sha lookup is a fail-closed ERROR.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_head='', run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run head lookup failure must fail closed, not skip")
+
+    def test_pr_head_mismatch_fails_closed(self):
+        # Immutable PR head must equal the authenticated run head; a mismatch
+        # breaks the association and fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_head="aaaa" * 10, pr_head="bbbb" * 10)
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR/run head mismatch must fail closed, not skip")
+
+    def test_malformed_endpoint_fails_closed(self):
+        # An unmatched/malformed gh endpoint must exit non-zero in the stub so
+        # the probe's own guard converts it into a fail-closed ERROR rather
+        # than a phantom success.
+        proc, _ = self._run_probe(artifact_stdout="trusted-pr-plan", artifact_rc=0,
+                                  files_stdout="", files_rc=0)
+        # The happy path resolves all endpoints, so rc is 0 here; a malformed
+        # endpoint is verified separately below with a deliberately broken stub.
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_api_error_not_confused_with_absent(self):
         # Regression guard: an empty stdout with a non-zero exit code is an

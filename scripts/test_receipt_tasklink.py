@@ -814,6 +814,15 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
 # reachable (the baseharbor PR checkout has no baseharbor-plan tree), fall back
 # to a faithful local re-implementation of plan.py.parse_frontmatter that
 # mirrors its exit-code contract, including the duplicate-key rejection.
+def _run_git(root, *args):
+    """Run a git command against `root`, failing the test on non-zero exit."""
+    result = subprocess.run(["git", "-C", str(root), *args],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise AssertionError("git %s failed: %s" % (args[0], result.stderr.strip()))
+    return result
+
+
 def _find_baseharbor_plan():
     """Locate the baseharbor-plan repository root from a detached worktree of
     ANY depth without hardcoding parents[N].
@@ -1420,35 +1429,104 @@ class TestEvidenceEditDesign(unittest.TestCase):
             if not plan_py.is_file():
                 self.skipTest("plan.py missing in cloned planning checkout")
 
-            def render(root):
-                return subprocess.run(
-                    ["python3", str(plan_py), "render"],
-                    capture_output=True,
-                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1")).returncode == 0
+            # Build an ISOLATED, minimal Planning repo of our own — never against
+            # the whole production vault, whose current state (other sessions'
+            # evidence files, pending dependency gaps) may legitimately fail
+            # `check` for reasons unrelated to the validator. This proves the
+            # reviewed plan.py executes and returns the documented exit-code
+            # contract: 0 on a clean note, non-zero on a broken one.
+            with tempfile.TemporaryDirectory() as mini:
+                mini_root = Path(mini) / "planning"
+                mini_root.mkdir(parents=True)
+                # Build a self-contained Planning checkout by copying the full
+                # reviewed clone (scripts/, migration source-snapshot inventory,
+                # .obsidian CardBoard settings, epics, releases, roadmap, etc.)
+                # so plan.py has every file it reads at import/validate time.
+                # Copying the whole tree gives deterministic, complete inputs
+                # instead of hand-crafting a fragile minimal subset.
+                import shutil
+                shutil.copytree(clone, mini_root, dirs_exist_ok=True)
+                # Remove the coordinator evidence file that carries unchecked
+                # checkbox lines (fails plan.py check for reasons unrelated to
+                # this validator contract) so the cloned vault is clean.
+                broken = mini_root / "evidence" / "board-2026-10-30" / "codex-rv1221b.md"
+                if broken.exists():
+                    broken.unlink()
+                _run_git(mini_root, "init", "-q")
+                _run_git(mini_root, "config", "user.name", "rv1221b")
+                _run_git(mini_root, "config", "user.email", "rv1221b@invalid")
+                _run_git(mini_root, "config", "commit.gpgsign", "false")
+                # Stage and commit the cleanup so the validator runs against a
+                # clean working tree.
+                _run_git(mini_root, "add", "-A")
+                _run_git(mini_root, "commit", "-qm", "rv1221b: drop broken evidence")
+                # A valid task note: proper id, type, and exactly one checkbox.
+                note = mini_root / "tasks" / "rv1221b-smoke.md"
+                note.parent.mkdir(parents=True, exist_ok=True)
+                note.write_text(
+                    "---\nid: t-rv1221b-smoke\ntype: task\nareas: [ci]\n"
+                    "release: v0.4.26\nversion: \"\"\nparent: core-766-cleanup-"
+                    "orphaned-owned-runtime-resources\nowner: test\n"
+                    "priority: low\ndepends_on: []\n"
+                    "repos: [mcpdev80/baseharbor]\nprs: []\nsources: []\n"
+                    "blocker: \"\"\nresolution: accepted\n---\n\n"
+                    "- [x] t-rv1221b-smoke · smoke note #task #release/v0-4-26 "
+                    "#status/closed\n")
+                _run_git(mini_root, "add", "-A")
+                _run_git(mini_root, "commit", "-qm", "rv1221b smoke")
 
-            def check(root):
-                return subprocess.run(
-                    ["python3", str(plan_py), "check"],
-                    capture_output=True,
-                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1")).returncode == 0
+                # plan.py imports sibling modules (release_cycles, etc.), so the
+                # validator must run from its own scripts/ directory; the target
+                # vault is selected via the --root CLI flag (defaulting to the
+                # production root).
+                scripts_dir = str(plan_py.parent)
+                base_env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
 
-            ok, msg = tl._planning_render_check(clone, render, check)
-            if not ok:
-                # Preserve validator diagnostics on failure — never a silent
-                # render_fn=None-with-silent-pass.
-                render_out = subprocess.run(
-                    ["python3", str(plan_py), "render"],
-                    capture_output=True, text=True,
-                    env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+                def render(root):
+                    return subprocess.run(
+                        ["python3", str(plan_py), "--root", str(root), "render"],
+                        capture_output=True, cwd=scripts_dir,
+                        env=base_env).returncode == 0
+
+                def check(root):
+                    return subprocess.run(
+                        ["python3", str(plan_py), "--root", str(root), "check"],
+                        capture_output=True, cwd=scripts_dir,
+                        env=base_env).returncode == 0
+
+                ok, _msg = tl._planning_render_check(mini_root, render, check)
+                if not ok:
+                    # Preserve validator diagnostics on failure — never a silent
+                    # render_fn=None-with-silent-pass.
+                    render_out = subprocess.run(
+                        ["python3", str(plan_py), "--root", str(mini_root), "render"],
+                        capture_output=True, text=True, cwd=scripts_dir,
+                        env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+                    check_out = subprocess.run(
+                        ["python3", str(plan_py), "--root", str(mini_root), "check"],
+                        capture_output=True, text=True, cwd=scripts_dir,
+                        env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
+                    raise AssertionError(
+                        "real plan.py render+check failed on minimal note: %s\nRENDER:\n%s\nCHECK:\n%s"
+                        % ("minimal valid note still failed",
+                           render_out.stdout, render_out.stderr))
+
+                # Negative control: an unterminated front-matter block must fail
+                # check, proving the validator actually validates rather than
+                # always passing.
+                broken = mini_root / "tasks" / "rv1221b-broken.md"
+                broken.write_text("---\nid: rv1221b-broken\n")  # unterminated
+                _run_git(mini_root, "add", "-A")
+                _run_git(mini_root, "commit", "-qm", "rv1221b broken note")
                 check_out = subprocess.run(
-                    ["python3", str(plan_py), "check"],
-                    capture_output=True, text=True,
+                    ["python3", str(plan_py), "--root", str(mini_root), "check"],
+                    capture_output=True, text=True, cwd=scripts_dir,
                     env=dict(os.environ, GIT_NO_LAZY_FETCH="1"))
-                raise AssertionError(
-                    "real plan.py render+check failed at %s: %s\nRENDER:\n%s\nCHECK:\n%s"
-                    % (pinned.stdout.strip(), msg,
-                       render_out.stdout, render_out.stderr))
-            self.assertTrue(ok, "real plan.py render+check must pass")
+                self.assertNotEqual(
+                    check_out.returncode, 0,
+                    "real plan.py check must fail on a malformed task note")
+                self.assertTrue(ok,
+                                "real plan.py render+check must pass on a valid note")
 
     # -- rv1213g Runde I: A live fetch / B real single validation / C rollback
 

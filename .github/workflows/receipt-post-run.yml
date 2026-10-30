@@ -69,15 +69,20 @@ jobs:
           RUN_ID="${{ github.event.workflow_run.id }}"
           # A producer run uploads a single trusted-pr-plan artifact. The probe
           # must tell ABSENCE (skip cleanly) from an ERROR (fail closed) and
-          # must NOT treat mere artifact absence as a sufficient skip condition:
+          # must NOT treat mere artifact absence as a sufficient skip condition.
+          #
+          # Fail-closed contract-impact determination (rv1221b): the run-to-PR
+          # association is AUTHENTICATED and VALIDATED independently BEFORE the
+          # contract-impact decision, never nested inside the files API call.
           #
           #  - An API failure at any point (non-zero gh exit, truncated page) is
           #    never absence; it hard-fails the probe (exit 1). Absent-else
           #    silently masking this was the 2026-10-30 #1218 accident.
           #  - A successful response WITHOUT trusted-pr-plan is only a legit
-          #    skip when the PR does NOT touch contracts/. A contracts/ touch
-          #    with no artifact is an INTEGRITY ERROR (a producer PR was
-          #    expected to upload the trusted plan) and must fail closed too.
+          #    skip when the authenticated PR does NOT touch contracts/. A
+          #    contracts/ touch with no artifact is an INTEGRITY ERROR (a
+          #    producer PR was expected to upload the trusted plan) and must
+          #    fail closed too.
           #
           # Artifact listing: explicit pagination (--paginate) so a truncated
           # page cannot hide the artifact; gh's own exit code gates the probe.
@@ -90,10 +95,47 @@ jobs:
             exit 1
           fi
           HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
-          # PR file touch: does this PR touch contracts/? Paginated file list;
-          # gh's exit code gates it (a failure here is also a fail-closed ERROR).
+          # Run-to-PR association: independently resolved and validated. The
+          # run object's pull_requests[] carries the binding PR number; exactly
+          # one non-null entry is required, an absent or ambiguous lookup is a
+          # fail-closed ERROR (never a phantom skip). The authenticated run
+          # object's head_sha and base ref are bound here and re-checked against
+          # the immutable PR object below.
           set +e
-          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/pulls/$(gh api repos/mcpdev80/baseharbor/actions/runs/$RUN_ID --jq .pull_requests[0].number)/files?per_page=100&page=1" --paginate --jq '.[].filename' 2>/dev/null)"
+          RUN_PR_JSON="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.pull_requests' 2>/dev/null)"
+          RUN_PR_RC=$?
+          set -e
+          if [ "${RUN_PR_RC}" -ne 0 ]; then
+            echo "run PR association API failed (rc=${RUN_PR_RC}): not absence, failing closed" >&2
+            exit 1
+          fi
+          RUN_PR_NUMBER="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number) | length' 2>/dev/null)"
+          if [ "${RUN_PR_NUMBER}" != "1" ]; then
+            echo "run $RUN_ID has ${RUN_PR_NUMBER} (expected exactly 1) bound PR: ambiguous/absent association, failing closed" >&2
+            exit 1
+          fi
+          PR="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number)[0]')"
+          RUN_HEAD="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.head_sha' 2>/dev/null)"
+          RUN_HEAD_RC=$?
+          set -e
+          if [ "${RUN_HEAD_RC}" -ne 0 ] || [ -z "${RUN_HEAD}" ]; then
+            echo "run head_sha lookup failed or empty: failing closed" >&2
+            exit 1
+          fi
+          # Immutable PR object: the file set must correspond to the completed
+          # run's immutable head, and the PR must reference this repository.
+          PR_HEAD="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.head.sha' 2>/dev/null)"
+          PR_HEAD_RC=$?
+          set -e
+          if [ "${PR_HEAD_RC}" -ne 0 ] || [ "${PR_HEAD}" != "${RUN_HEAD}" ]; then
+            echo "PR head ${PR_HEAD:-} != authenticated run head ${RUN_HEAD}: association mismatch, failing closed" >&2
+            exit 1
+          fi
+          # Complete changed-file set for the authenticated PR: paginated,
+          # concatenated, deduplicated — a truncated page cannot hide a
+          # contracts/ touch. gh's own exit code gates it.
+          set +e
+          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename' 2>/dev/null | sort -u)"
           CONTRACT_RC=$?
           set -e
           if [ "${CONTRACT_RC}" -ne 0 ]; then
@@ -106,11 +148,11 @@ jobs:
           elif [ "${HAS_CONTRACT_TOUCH}" = true ]; then
             # contracts/ touched but no trusted-pr-plan artifact: producer PR
             # expected to upload the plan; its absence is an integrity error.
-            echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID: integrity error, failing closed" >&2
+            echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID (PR=$PR): integrity error, failing closed" >&2
             exit 1
           else
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
-            echo "no trusted-pr-plan artifact on run $RUN_ID and no contracts/ touch: not a producer run; receipt chain skipped" >&2
+            echo "no trusted-pr-plan artifact on run $RUN_ID and no contracts/ touch (PR=$PR): not a producer run; receipt chain skipped" >&2
           fi
 
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
