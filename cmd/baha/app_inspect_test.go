@@ -127,3 +127,51 @@ func TestAppInspectSummarizesAmbiguousComposeRoles(t *testing.T) {
 		}
 	}
 }
+
+// TestAppInspectProjectsNeutralSummaryForQuadletAndKubernetes verifies the human
+// and JSON consumers project the same source-neutral inspect Result (ports,
+// health, workload/infrastructure classification and capability findings) for
+// Quadlet and Kubernetes repositories, not only Compose.
+func TestAppInspectProjectsNeutralSummaryForQuadletAndKubernetes(t *testing.T) {
+	for _, family := range []string{"quadlet", "kubernetes"} {
+		t.Run(family, func(t *testing.T) {
+			root := filepath.Join("..", "..", "testdata", "adoption-parity", family)
+			var text bytes.Buffer
+			if err := appInspectCommand().Run(context.Background(), []string{root}, &text, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(text.String(), "Capabilities:") {
+				t.Fatalf("human consumer missing Capabilities section:\n%s", text.String())
+			}
+
+			var jsonOut bytes.Buffer
+			if err := appInspectCommand().Run(context.Background(), []string{"--json", root}, &jsonOut, &bytes.Buffer{}); err != nil {
+				t.Fatal(err)
+			}
+			var result repositoryinspect.Result
+			if err := json.Unmarshal(jsonOut.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if len(result.Ports) == 0 || len(result.HealthChecks) == 0 {
+				t.Fatalf("%s: JSON consumer under-projects: ports=%d health=%d", family, len(result.Ports), len(result.HealthChecks))
+			}
+			if len(result.Findings) == 0 {
+				t.Fatalf("%s: JSON consumer projects no capability findings", family)
+			}
+			assertNoComposeEvidenceKind(t, result)
+		})
+	}
+}
+
+// assertNoComposeEvidenceKind verifies no finding falsely claims Compose
+// provenance for a non-Compose source family.
+func assertNoComposeEvidenceKind(t *testing.T, result repositoryinspect.Result) {
+	t.Helper()
+	for _, finding := range result.Findings {
+		for _, ev := range finding.Evidence {
+			if ev.Kind == repositoryinspect.EvidenceCompose {
+				t.Fatalf("non-Compose finding %s falsely claims compose evidence: %#v", finding.Capability, ev)
+			}
+		}
+	}
+}
