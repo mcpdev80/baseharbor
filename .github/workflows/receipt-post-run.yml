@@ -131,20 +131,40 @@ jobs:
             echo "PR head ${PR_HEAD:-} != authenticated run head ${RUN_HEAD}: association mismatch, failing closed" >&2
             exit 1
           fi
-          # Run-bound base SHA: resolved from the immutable PR object
-          # (pull_requests[0].base.sha), not the top-level base_sha field
-          # of the authenticated run API (which is null in the real GitHub
-          # API response). Fail closed on any malformation: lookup error,
-          # empty, non-40-hex, or an all-zero value. A non-zero base that is
-          # not a valid full SHA is rejected too (CODE-AUDIT: the bound base
-          # must be a verifiable immutable producer reference, never an
-          # asserted/malformed string).
+          # Run-bound base SHA: extracted from the authenticated run's
+          # pull_requests[0].base.sha — the same immutable association used
+          # for the PR number above. The live PR object (.base.sha on
+          # pulls/$PR) may have drifted after the run completed; base movement
+          # without a head change would produce a wrong compare. Fail closed
+          # on any malformation: lookup error, empty, non-40-hex, or an all-zero
+          # value. A non-zero base that is not a valid full SHA is rejected too
+          # (CODE-AUDIT: the bound base must be a verifiable immutable producer
+          # reference, never an asserted/malformed string).
           set +e
-          RUN_BASE="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.base.sha' 2>/dev/null)"
+          RUN_BASE="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .base.sha // empty)[0]' 2>/dev/null)"
           RUN_BASE_RC=$?
           set -e
           if [ "${RUN_BASE_RC}" -ne 0 ]; then
-            echo "PR base.sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
+            echo "run pull_requests[0].base.sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
+            exit 1
+          fi
+          # Drift-wächter: compare the run-bound base against the live PR base.
+          # If the PR maintainer rebased after the run completed, the live base
+          # diverges from the immutable run-bound base. The compare endpoint
+          # must use the run-bound base (not the live PR base) to avoid
+          # classifying the wrong diff. If they differ, fail closed — the
+          # run's association is with an older base, and the live PR has
+          # drifted.
+          set +e
+          LIVE_BASE="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.base.sha' 2>/dev/null)"
+          LIVE_BASE_RC=$?
+          set -e
+          if [ "${LIVE_BASE_RC}" -ne 0 ]; then
+            echo "live PR base.sha lookup failed (rc=${LIVE_BASE_RC}): failing closed" >&2
+            exit 1
+          fi
+          if [ "${RUN_BASE}" != "${LIVE_BASE}" ]; then
+            echo "base drift detected: run-bound base ${RUN_BASE} != live PR base ${LIVE_BASE}: fail closed" >&2
             exit 1
           fi
           case "${RUN_BASE}" in
@@ -163,10 +183,10 @@ jobs:
           fi
           # Complete changed-file set for the authenticated run, derived from an
           # IMMUTABLE run-bound head+base pair via the authenticated compare
-          # endpoint (HEAD base..head): paginated, concatenated, deduplicated — a
-          # truncated page cannot hide a contracts/ touch. gh's own exit code
-          # gates it, and the returned files correspond to this exact immutable
-          # base..head diff, never the mutable live PR base.
+          # endpoint (${RUN_BASE}..${RUN_HEAD}): paginated, concatenated,
+          # deduplicated — a truncated page cannot hide a contracts/ touch.
+          # gh's own exit code gates it, and the returned files correspond to
+          # this exact immutable base..head diff, never the mutable live PR base.
           set +e
           CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}" --paginate --jq '.files[].filename' 2>/dev/null | sort -u)"
           CONTRACT_RC=$?

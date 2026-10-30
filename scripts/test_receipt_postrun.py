@@ -820,7 +820,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
 
     def _run_probe(self, *, artifact_stdout, artifact_rc,
                     files_stdout, files_rc, pr_number="1124",
-                    run_pr_json='[{"number": 1124}]', run_head=None,
+                    run_pr_json=None, run_head=None,
                     pr_head=None, pr_base=_PR_BASE_NULL, run_base=None, run_rc=0,
                     pr_api_rc=0,
                     compare_files_rc=0, compare_shape_rc=0,
@@ -847,6 +847,32 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         if pr_base is _PR_BASE_NULL:
             pr_base = "0123456789abcdef0123456789abcdef01234567"
         run_base = run_base if run_base is not None else "0123456789abcdef0123456789abcdef01234567"
+        # Build run_pr_json from the run_base value so the run's pull_requests
+        # array carries .base.sha — this is the immutable association the probe
+        # reads for the run-bound base. Default: one PR entry with the numeric
+        # base.sha; pass _RUN_BASE_NULL explicitly to test null base.
+        if run_pr_json is None:
+            if run_base is None:
+                run_pr_json = '[{"number": 1124, "base": null}]'
+            else:
+                run_pr_json = '[{"number": 1124, "base": {"sha": "%s"}}]' % run_base
+        else:
+            # Explicitly passed run_pr_json without .base.sha — wrap it to
+            # carry the run_base value so the probe can extract it.
+            if run_base is not None:
+                # Insert base.sha into each entry that has a number.
+                try:
+                    entries = json.loads(run_pr_json)
+                except (json.JSONDecodeError, TypeError):
+                    entries = []
+                if isinstance(entries, list):
+                    for entry in entries:
+                        if isinstance(entry, dict) and entry.get("number") is not None:
+                            entry["base"] = {"sha": run_base}
+                        else:
+                            entries.append({"number": 1124, "base": {"sha": run_base}})
+                            break
+                    run_pr_json = json.dumps(entries)
 
         def _q(s):
             # Shell single-quote an arbitrary string for safe embedding.
@@ -1115,7 +1141,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         # endpoint.
         block = self._probe_block()
         self.assertIn("compare/", block)
-        self.assertIn("base_sha", block)
+        self.assertIn(".base.sha", block)
         self.assertIn(".files[].filename", block)
         self.assertNotIn("pulls/$PR/files", block)
 
@@ -1344,23 +1370,21 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         self.assertNotIn("producer_eligible=", result)
 
     def test_pr_base_drift_fails_closed(self):
-        # The PR base.sha differs from the authenticated run head: the
-        # immutable PR object's base points to a different commit than the
-        # run that completed. The probe reads from the PR object and must
-        # fail closed when the base is not a valid SHA that can be compared.
+        # The run-bound base.sha (from pull_requests[0]) differs from the live
+        # PR base.sha. The drift-wächter detects this divergence and fails
+        # closed — the immutable run-bound base and the mutable live PR base
+        # must match, otherwise base movement without a head change would
+        # produce a wrong compare.
         proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
                                        artifact_rc=0, files_stdout="README.md",
                                        files_rc=0,
                                        pr_base="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
                                        run_base="cafebabe00000000cafebabe00000000cafebabe")
-        # The base resolves from the PR object; compare uses the PR base.
-        # This exercises the PR-object path with a different base value.
-        # The probe succeeds here because pr_base is a valid 40-hex SHA;
-        # drift is detected by the compare API (returns different files),
-        # not by the base lookup. The eligibility gate passes only if the
-        # compare returns valid files.
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("producer_eligible=true", result)
+        # The drift-wächter compares run-bound base against live PR base;
+        # a mismatch fails closed.
+        self.assertNotEqual(proc.returncode, 0,
+                            "base drift (run-bound != live PR) must fail closed, not pass")
+        self.assertNotIn("producer_eligible=true", result)
 
     def test_pr_object_api_error_fails_closed(self):
         # The PR object API call itself fails — the probe must hard-fail.
