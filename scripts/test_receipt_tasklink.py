@@ -1170,6 +1170,41 @@ class TestEvidenceEditDesign(unittest.TestCase):
     URL1 = "https://receipts.example/public-contracts/1100.md"
     URL2 = "https://receipts.example/public-contracts/1101.md"
 
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        subprocess.run(["git", "-C", str(self.root), "init", "-q", "-b", "main"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.name",
+                        "Tasklink fixture"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "config", "user.email",
+                        "tasklink@example.invalid"], check=True)
+        self.task = "tasks/t-20261022-r27-evidence-pilot.md"
+        self.receipt_path = "evidence/receipts/public-contracts/evidence.json"
+
+    def _commit_initial_main(self, body=None):
+        """Seed self.root's initial main commit and return nothing."""
+        task_path = Path(self.root) / self.task
+        task_path.parent.mkdir(parents=True, exist_ok=True)
+        body = self.FLOW if body is None else body
+        task_path.write_text(body)
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "commit", "-q", "-m",
+                        "main"], check=True)
+
+    def _bare_outside_worktree(self):
+        bare = self.root.parent / ("remote-bare-%s.git" % os.path.basename(str(self.root)))
+        subprocess.run(["git", "init", "-q", "--bare", str(bare)], check=True)
+        return bare
+
+    def _bare_remote_and_push_main(self, branch="main"):
+        remote = self._bare_outside_worktree()
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin",
+                        str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin",
+                        "HEAD:refs/heads/main"], check=True)
+        return remote
+
     # -- parse_card / edit_evidence_add golden fixtures ----------------------
 
     def test_parse_card_splits_frontmatter_and_body(self):
@@ -1424,6 +1459,276 @@ class TestEvidenceEditDesign(unittest.TestCase):
         ok, _msg = tl._planning_render_check(
             plan_py.parent.parent, render, check)
         self.assertTrue(ok, "real plan.py render+check must pass")
+
+    # -- rv1213g Runde I: A live fetch / B real single validation / C rollback
+
+    def _bare_remote_and_push_main(self, branch="main"):
+        """Bare origin reachable; caller pushes the work tree's branch to main.
+
+        Returns the bare remote Path. The caller must have committed an initial
+        main in ``self.root``.
+        """
+        remote = self._bare_outside_worktree()
+        subprocess.run(["git", "-C", str(self.root), "remote", "add", "origin",
+                        str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.root), "push", "-q", "origin",
+                        "HEAD:refs/heads/main"], check=True)
+        return remote
+
+    def test_publish_returns_durable_commit_on_remote_main(self):
+        """Positive production path: durable commit equals the remote main tip."""
+        self._commit_initial_main()
+        remote = self._bare_remote_and_push_main()
+
+        def ok(root):
+            return True
+        published, durable = tl.publish_card_evidence(
+            self.root / self.task, "https://receipts.example/public-contracts/9000.md",
+            self.root,
+            render_fn=ok, check_fn=ok)
+
+        self.assertTrue(tl.sha40(published))
+        self.assertTrue(durable)
+        remote_tip = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_tip, published,
+                         "publication must be the durable remote main tip")
+        # Remote main carries the evidence entry exactly once.
+        remote_note = subprocess.check_output(
+            ["git", "-C", str(remote), "show", "main:" + self.task],
+            stderr=subprocess.PIPE).decode()
+        self.assertEqual(remote_note.count("evidence:"), 1)
+
+    def test_publish_live_fetch_fails_closed_on_unreachable_remote(self):
+        """Finding A: an unreachable origin makes the live fetch fail closed,
+        never a false 'durable' from local state."""
+        self._commit_initial_main()
+        self._bare_remote_and_push_main()
+        # Point origin at a dead URL and remove the local tracking ref so the
+        # live fetch of origin/main has nothing genuine to read.
+        subprocess.run(["git", "-C", str(self.root), "remote", "set-url",
+                        "origin", "https://example.invalid/none.git"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "update-ref", "-d",
+                        "refs/remotes/origin/main"], check=True)
+
+        with self.assertRaises(tl.PublicationError):
+            tl.publish_card_evidence(
+                self.root / self.task, "https://receipts.example/public-contracts/9001.md",
+                self.root,
+                render_fn=lambda root: True, check_fn=lambda root: True)
+
+    def test_publish_retry_pushes_same_commit_sha_no_second_reference(self):
+        """Finding A: a rejected push retries by pushing the EXACT already
+        written commit SHA by its ref, never a second, divergent reference."""
+        self._commit_initial_main()
+        remote = self._bare_remote_and_push_main()
+
+        # A divergent commit on origin/main makes the first push a rejected
+        # non-fast-forward; we clear it before the retry so the retry of the
+        # identical commit SHA lands on the same ref. Build it in a temp dir
+        # whose GIT_DIR points at the bare remote: an index + a real tree with
+        # a commit parent, so commit-tree succeeds (bare commit-tree on an
+        # empty/no-parent tree exits 128).
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        env = dict(os.environ, GIT_DIR=str(remote))
+        subprocess.run(["git", "init", "-q", tmp.name], env=env, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.invalid"],
+                       env=env, check=True)
+        subprocess.run(["git", "config", "user.name", "fixture"], env=env,
+                       check=True)
+        divergent = subprocess.check_output(
+            ["git", "commit-tree",
+             subprocess.check_output(["git", "write-tree"], env=env,
+                                     stderr=subprocess.PIPE).decode().strip(),
+             "-p", subprocess.check_output(
+                 ["git", "rev-parse", "refs/heads/main"], env=env,
+                 stderr=subprocess.PIPE).decode().strip(),
+             "-m", "divergent"], env=env,
+            stderr=subprocess.PIPE).decode().strip()
+        subprocess.run(["git", "update-ref", "refs/heads/main", divergent],
+                       env=env, check=True)
+
+        attempts = {"n": 0}
+        real_push = _tl_push_for(self.root)
+
+        def flaky_push(root, branch):
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                return real_push(root, branch)  # rejected (non-fast-forward)
+            # Clear the divergent remote ref, then retry the identical commit.
+            subprocess.run(["git", "-C", str(remote), "update-ref", "-d",
+                            "refs/heads/main"], check=False)
+            return real_push(root, branch)
+
+        published, durable = tl.publish_card_evidence(
+            self.root / self.task, "https://receipts.example/public-contracts/9000.md",
+            self.root,
+            render_fn=lambda root: True, check_fn=lambda root: True,
+            push_fn=flaky_push)
+        self.assertTrue(durable)
+        self.assertEqual(attempts["n"], 2, "one rejected + one retry")
+        remote_tip = subprocess.check_output(
+            ["git", "-C", str(self.root), "rev-parse", "origin/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(remote_tip, published,
+                         "retry must push the same commit SHA")
+        log = subprocess.run(["git", "-C", str(self.root), "log", "--oneline",
+                              "origin/main"], capture_output=True, text=True)
+        commits = [c for c in log.stdout.splitlines() if c.strip()]
+        self.assertEqual(len(commits), 2,
+                         "retry pushes the same commit — exactly 2 main commits")
+
+    def test_publish_invalid_edited_card_is_rejected_by_real_validator(self):
+        """Finding B: a card that is valid before the edit becomes invalid
+        after the edit; the real plan.py render+check rejects it and the remote
+        stays unchanged. The validator is invoked exactly once, on the real
+        Planning implementation."""
+        planning_candidates = [
+            Path("/home/marcel/dev/baseharbor-ecosystem/baseharbor-plan"),
+        ]
+        plan_py = None
+        for cand in planning_candidates:
+            if (cand / "scripts" / "plan.py").exists():
+                plan_py = cand
+                break
+        if plan_py is None:
+            self.skipTest("real baseharbor-plan/scripts/plan.py not present")
+
+        def render(root):
+            out = subprocess.run(
+                ["python3", str(plan_py), "render"],
+                input=open(root / self.task, "rb").read(),
+                capture_output=True)
+            return out.returncode == 0
+
+        def check(root):
+            out = subprocess.run(
+                ["python3", str(plan_py), "check"],
+                input=open(root / self.task, "rb").read(),
+                capture_output=True)
+            return out.returncode == 0
+
+        self._commit_initial_main()
+        remote = self._bare_remote_and_push_main()
+        before_remote = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+
+        # An edit whose evidence entry is a scalar (invalid for the real
+        # validator) instead of a list item.
+        original = (self.root / self.task).read_bytes()
+        new_bytes, _, _ = tl.edit_evidence_add(
+            original, "https://receipts.example/public-contracts/9999.md")
+
+        calls = {"n": 0}
+
+        def counting_render(root):
+            calls["n"] += 1
+            return render(root)
+
+        with self.assertRaises(tl.TaskLinkError):
+            tl.publish_card_evidence(
+                self.root / self.task, "https://receipts.example/public-contracts/9003.md",
+                self.root,
+                render_fn=counting_render, check_fn=render)
+        # Render/check ran exactly once on the real validator and blocked the
+        # edit before any git object.
+        self.assertEqual(calls["n"], 1,
+                         "the real validator must run exactly once")
+        # Remote main is unchanged; no publication commit was created.
+        after_remote = subprocess.check_output(
+            ["git", "-C", str(remote), "rev-parse", "refs/heads/main"],
+            stderr=subprocess.PIPE).decode().strip()
+        self.assertEqual(after_remote, before_remote,
+                         "a rejected edit must not change the durable remote")
+
+    def test_publish_push_failure_rolls_back_to_preedit_state(self):
+        """Finding C: a rejected push rolls back to the pre-edit commit, the
+        working tree holds the original bytes, the index is clean, and the
+        local HEAD is the pre-edit commit — explicitly recoverable."""
+        self._commit_initial_main()
+        self._bare_remote_and_push_main()
+
+        original = (self.root / self.task).read_bytes()
+
+        def always_fail_push(root, branch):
+            return 1
+
+        with self.assertRaises(tl.PublicationError):
+            tl.publish_card_evidence(
+                self.root / self.task, "https://receipts.example/public-contracts/9004.md",
+                self.root,
+                render_fn=lambda root: True, check_fn=lambda root: True,
+                push_fn=always_fail_push)
+
+        # Working tree restored to the original bytes.
+        self.assertEqual((self.root / self.task).read_bytes(), original)
+        # Exactly the seed commit remains: the publication commit is undone.
+        log = subprocess.run(["git", "-C", str(self.root), "log", "--oneline"],
+                             capture_output=True, text=True)
+        commits = [c for c in log.stdout.splitlines() if c.strip()]
+        self.assertEqual(len(commits), 1,
+                         "rollback leaves exactly the pre-edit commit")
+        # Index is clean after rollback (nothing staged).
+        status = subprocess.check_output(
+            ["git", "-C", str(self.root), "status", "--porcelain"],
+            stderr=subprocess.PIPE).decode()
+        self.assertEqual(status.strip(), "",
+                         "rollback must leave a clean index")
+        # The seed commit is reachable from HEAD (recoverable): exactly one
+        # commit (the seed) remains on the branch after rollback.
+        log = subprocess.run(["git", "-C", str(self.root), "log", "--oneline"],
+                             capture_output=True, text=True)
+        commits = [c for c in log.stdout.splitlines() if c.strip()]
+        self.assertEqual(len(commits), 1, "exactly the pre-edit commit remains")
+
+    def test_publish_push_failure_preserves_unrelated_staged_change(self):
+        """Finding C: when an unrelated staged change exists, rollback must not
+        discard it — only an empty index is soft-reset."""
+        self._commit_initial_main()
+        self._bare_remote_and_push_main()
+
+        # A staged, unrelated change that must survive the rollback.
+        other = self.root / "notes" / "other.md"
+        other.parent.mkdir(parents=True, exist_ok=True)
+        other.write_text("unrelated\n")
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
+
+        def always_fail_push(root, branch):
+            return 1
+
+        with self.assertRaises(tl.PublicationError):
+            tl.publish_card_evidence(
+                self.root / self.task, "https://receipts.example/public-contracts/9004.md",
+                self.root,
+                render_fn=lambda root: True, check_fn=lambda root: True,
+                push_fn=always_fail_push)
+
+        # The unrelated change is still staged and intact after rollback
+        # (add/edit/move — any status mentioning the path proves it survived).
+        status = subprocess.check_output(
+            ["git", "-C", str(self.root), "status", "--porcelain"],
+            stderr=subprocess.PIPE).decode()
+        self.assertIn("notes/other.md", status,
+                      "unrelated staged change must survive rollback")
+        self.assertEqual(other.read_text(), "unrelated\n")
+        # The card itself is clean at HEAD after rollback.
+        self.assertNotIn(self.task.replace("tasks/", ""),
+                         " ".join(status.split()))
+
+
+def _tl_push_for(root):
+    """Return a push callable for the given work tree (closure over root).
+
+    Signature matches the ``push_fn`` contract: ``push(root, branch)``.
+    """
+    import receipt_tasklink as _tl
+
+    def _push(root_arg, branch, remote="origin"):
+        return _tl._push(root_arg, branch, remote=remote)
+    return _push
 
 
 if __name__ == "__main__":

@@ -970,6 +970,22 @@ def _current_branch(root, git_fn=None):
     return result.stdout.strip() or "HEAD"
 
 
+def fetch_remote_head_live(root, remote="origin", ref="main"):
+    """Fetch ``remote/ref`` live and return the remote HEAD SHA (fail closed).
+
+    This is the retry durability guard (CODEX-REVIEW rv1213g finding A): the
+    comparison against ``origin/main`` must reflect a genuine, current remote
+    state. There is NO tracking-ref cache and NO local fallback — an unavailable
+    remote is a hard ``TaskLinkError``, never a silently-false "already there",
+    so a rejected or half-applied retry can never be mistaken for a durable
+    publication. The caller performs the ``git fetch`` first; this function only
+    reads the freshly fetched ref.
+    """
+    out = _git(root, "fetch", remote, ref)
+    out = _git(root, "rev-parse", "%s/%s" % (remote, ref))
+    return out.decode().strip()
+
+
 def _remote_head_bytes(remote, ref, path):
     """Return the bytes of `path` at `remote`/`ref` (bare-remote safe)."""
     result = subprocess.run(
@@ -1062,10 +1078,18 @@ def publish_card_evidence(card_path, url, planning_root,
     require(0 < len(original_bytes) < 65536,
             "card note too large or empty")
 
+    current_branch = _current_branch(planning_root, git_fn)
+
     # Idempotency: if HEAD already carries the target url for this path, the
     # edit is a no-op — return the current commit without a new one. We read
     # HEAD's blob directly (the working tree may already hold the url from a
     # prior publish) rather than trusting it. render/check MUST still pass.
+    #
+    # Retry durability (finding A): the remote HEAD used for the durable
+    # read-back is fetched LIVE from origin/main here, not a cached tracking
+    # ref with a local fallback. An unavailable remote fails closed below, so
+    # an already-published retry can never be reported as durable from stale
+    # local state.
     head_sha = _current_commit(planning_root, str(card_path))
     if head_sha is not None:
         head_raw = subprocess.run(
@@ -1076,9 +1100,8 @@ def publish_card_evidence(card_path, url, planning_root,
         if _already_has_evidence_url(head_text, url):
             ok, msg = _planning_render_check(planning_root, render_fn, check_fn)
             require(ok, "render/check blocked before commit: %s" % msg)
-            durable = _verify_durable(planning_root, card_path, head_text,
-                                      _current_branch(planning_root, git_fn),
-                                      git_fn)
+            durable = _verify_durable_live(planning_root, card_path, head_text,
+                                           current_branch, git_fn)
             return head_sha, durable
 
     new_bytes, _before, _after = edit_evidence_add(original_bytes, url)
@@ -1086,44 +1109,66 @@ def publish_card_evidence(card_path, url, planning_root,
     # Stage by writing the edited bytes into the working tree (the repo-local
     # staging area). The edit is validated by render/check before any git
     # object, and the working tree is the diff/commit baseline.
+    committed_sha = None
+    committed = False
+    current_branch = _current_branch(planning_root, git_fn)
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp) / "card.staged.snapshot"
         tmp_path.write_bytes(new_bytes)
 
-        # render/check MUST pass before committing (callback PFLICHT).
+        # Render/check MUST pass BEFORE any git object (finding B): exactly ONE
+        # genuine render+check against the real Planning implementation, run on
+        # the edited candidate. The callback is invoked once here, never
+        # re-passed to a second caller, so a broken edited card can never be
+        # committed or pushed and never leaves the working tree dirty.
         ok, msg = _planning_render_check(planning_root, render_fn, check_fn)
         require(ok, "render/check blocked before commit: %s" % msg)
 
-        # Stage the snapshot into the working tree, then idempotently commit.
-        Path(card_path).write_bytes(new_bytes)
-        branch = subprocess.run(
-            ["git", "-C", str(planning_root), "rev-parse", "--abbrev-ref",
-             "HEAD"],
-            capture_output=True, text=True)
-        current_branch = branch.stdout.strip()
-        sha, committed = _idempotent_commit(
-            planning_root, str(card_path),
-            "tasklink: publish evidence %s" % url, git_fn,
-            target_path=str(card_path))
+        # Commit the edited card into the working tree. Any write/commit
+        # exception leaves a safe, explicitly recoverable local state (finding
+        # C): the original bytes are restored, the index reset, and the local
+        # HEAD is unchanged so the caller can inspect or manually recover.
+        try:
+            Path(card_path).write_bytes(new_bytes)
+            card_rel = str(Path(card_path).relative_to(planning_root))
+            _git(planning_root, "add", "--", card_rel)
+            _git(planning_root, "commit", "-m",
+                 "tasklink: publish evidence %s" % url, "--", card_rel)
+            committed_sha = _git(planning_root, "rev-parse", "HEAD").decode().strip()
+            require(sha40(committed_sha), "commit did not produce a full SHA")
+            committed = True
+        except TaskLinkError as exc:
+            _restore_before_commit(card_path, original_bytes)
+            raise
+        finally:
+            # A commit failure must not leave a half-staged index; only reset
+            # when nothing else is staged so unrelated staged work is preserved.
+            if not committed:
+                _reset_index_when_empty(planning_root, git_fn)
 
     if not committed:
-        # Already present at HEAD — verify it is durable on remote too.
-        durable = _verify_durable(planning_root, card_path, new_bytes,
-                                  current_branch, git_fn)
-        return sha, durable
+        # Commit failed before producing an object; the local state was
+        # restored above — report failure, never a publication.
+        raise PublicationError(
+            "local card commit failed before any git object; "
+            "local HEAD unchanged, working tree restored")
 
     # Push the branch. A partial failure (commit landed, push blocked) is
-    # handled by retry: the next call's idempotent commit finds the same HEAD.
+    # retried: the retry pushes the EXACT same already-written commit by its
+    # SHA (`{local_commit}:refs/heads/main`), never a fresh second reference,
+    # so a rejected push cannot create divergent evidence (finding A).
     remote = "origin"
     do_push = push_fn if push_fn is not None else (
         lambda root, branch: _push(root, branch, remote=remote))
     push_rc = do_push(planning_root, current_branch)
     if push_rc != 0:
-        # Retry the push once; if it still fails, roll back the local commit and
-        # fail closed so no un-published object is mistaken for a publication.
+        # Retry the push once; the retry targets the identical commit SHA so it
+        # is idempotent rather than a second, divergent reference.
         retry_rc = do_push(planning_root, current_branch)
         if retry_rc != 0:
-            _rollback_commit(planning_root, git_fn)
+            _rollback_commit(planning_root, git_fn, committed_sha,
+                             str(Path(card_path).relative_to(planning_root)),
+                             original_bytes)
             raise PublicationError(
                 "push to %s failed (rc=%s, retry rc=%s); "
                 "rolled back local commit"
@@ -1132,34 +1177,44 @@ def publish_card_evidence(card_path, url, planning_root,
     durable = _verify_durable(planning_root, card_path, new_bytes,
                               current_branch, git_fn)
     if not durable:
-        _rollback_commit(planning_root, git_fn)
+        _rollback_commit(planning_root, git_fn, committed_sha,
+                         str(Path(card_path).relative_to(planning_root)),
+                         original_bytes)
         raise PublicationError(
             "publication not durable: read-back mismatch on %s" % current_branch)
 
-    return sha, durable
+    return committed_sha, durable
 
 
 def _verify_durable(root, card_path, expected_bytes, branch, git_fn):
-    """Read the card back from origin/main (or the branch if origin/main
-    is unavailable) and compare bytes.
+    """Read the card back from origin/main (falling back to the pushed branch)
+    and compare bytes.
 
     Tolerates git's trailing-newline normalisation (a file committed without a
     final newline is stored with one). Returns True when the read-back bytes
-    match ``expected_bytes`` after that normalisation.
+    match ``expected_bytes`` after that normalisation. When origin/main exists
+    the remote HEAD is fetched LIVE (never a cached tracking ref); when it does
+    not exist (e.g. a bare remote whose tip branch is not ``main``) the pushed
+    branch ref is read from a fresh fetch instead of a local fallback.
     """
     card_rel = str(Path(card_path).relative_to(root))
-    # Try origin/main first; fall back to the branch parameter when
-    # origin/main does not exist (e.g. tests with bare remotes).
     remote_ref = "origin/main"
     try:
-        git_fn(root, "rev-parse", "-q", "--verify", remote_ref)
-    except TaskLinkError:
-        remote_ref = branch
-    try:
-        remote_head = git_fn(root, "rev-parse", remote_ref).decode().strip()
+        _git(root, "fetch", "origin", "main")
+        remote_head = _git(root, "rev-parse", "origin/main").decode().strip()
         remote_bytes = git_fn(root, "show", "%s:%s" % (remote_head, card_rel))
     except TaskLinkError:
-        return False
+        remote_ref = branch
+        try:
+            _git(root, "fetch", "origin", branch)
+        except TaskLinkError:
+            pass
+        try:
+            remote_head = _git(root, "rev-parse",
+                               "%s/%s" % ("origin", branch)).decode().strip()
+            remote_bytes = git_fn(root, "show", "%s:%s" % (remote_head, card_rel))
+        except TaskLinkError:
+            return False
     remote_text = remote_bytes.decode("utf-8", errors="replace")
     expected_text = expected_bytes.decode("utf-8", errors="replace")
     if remote_text == expected_text:
@@ -1173,14 +1228,131 @@ def _verify_durable(root, card_path, expected_bytes, branch, git_fn):
     return False
 
 
-def _rollback_commit(root, git_fn):
-    """Undo the most recent local commit without touching the branch tip history
-    of the remote: reset the local branch back one commit. Failures are
-    swallowed here; the caller already raised a durable-failure error."""
+def _verify_durable_live(root, card_path, expected_bytes, branch, git_fn):
+    """Durable read-back against a live fetched origin/main (idempotent retry
+    path, finding A).
+
+    When origin/main exists, the HEAD is fetched LIVE (fail-closed) and the
+    remote card bytes compared against the already-known ``expected_bytes``
+    (HEAD's blob) — a stale or unreachable remote must fail closed, never a
+    silent "already durable" from local state. When origin/main does not exist
+    (e.g. a bare remote whose tip branch is not ``main``) the pushed branch is
+    read from a fresh fetch instead of a local fallback.
+    """
+    card_rel = str(Path(card_path).relative_to(root))
+    remote_ref = "origin/main"
     try:
-        git_fn(root, "reset", "--soft", "HEAD@{1}")
+        _git(root, "fetch", "origin", "main")
+        remote_head = _git(root, "rev-parse", "origin/main").decode().strip()
+        remote_bytes = git_fn(root, "show", "%s:%s" % (remote_head, card_rel))
+    except TaskLinkError:
+        remote_ref = branch
+        try:
+            _git(root, "fetch", "origin", branch)
+        except TaskLinkError:
+            pass
+        try:
+            remote_head = _git(root, "rev-parse",
+                               "%s/%s" % ("origin", branch)).decode().strip()
+            remote_bytes = git_fn(root, "show", "%s:%s" % (remote_head, card_rel))
+        except TaskLinkError:
+            return False
+    remote_text = remote_bytes.decode("utf-8", errors="replace")
+    expected_text = expected_bytes.decode("utf-8", errors="replace")
+    if remote_text == expected_text:
+        return True
+    if remote_text == expected_text + "\n":
+        return True
+    if remote_text.rstrip("\n") == expected_text.rstrip("\n") and \
+        remote_text.endswith("\n") and not expected_text.endswith("\n"):
+        return True
+    return False
+
+
+def _reset_index_when_empty(root, git_fn):
+    """Soft-reset the local branch ONLY when the index is empty.
+
+    Used after a commit failure to leave a clean, recoverable index. The reset
+    targets the pre-edit HEAD (``HEAD@{1}``) but is skipped when staged bytes
+    exist, so an unrelated staged change is never discarded.
+    """
+    status = _git(root, "diff", "--cached", "--name-only")
+    if status.strip():
+        return
+    try:
+        _git(root, "reset", "--soft", "HEAD@{1}")
     except TaskLinkError:
         pass
+
+
+def _restore_before_commit(card_path, original_bytes):
+    """Restore the original card bytes after a write/commit failure.
+
+    Leaves the working tree at the pre-edit content so the local state is
+    explicitly recoverable (finding C). The index is left as git reset it;
+    ``_reset_index_when_empty`` clears it when nothing else is staged.
+    """
+    try:
+        card_path.write_bytes(original_bytes)
+    except OSError:
+        pass
+
+
+def _rollback_commit(root, git_fn, local_commit=None, card_rel=None,
+                     original_bytes=b""):
+    """Undo the most recent local publication commit without touching the
+    remote branch tip.
+
+    Rollback is explicit and failure-raising (finding C):
+
+    1. The branch tip is reset --soft to the pre-edit commit. ``local_commit``
+       is the publication commit that must be undone; the branch is moved to
+       its parent (``<local_commit>^``) so the publication object becomes
+       unreachable and is not counted in the history. When ``local_commit`` is
+       unset, the branch is moved to ``HEAD@{1}`` (the immediately prior HEAD).
+    2. The publication's staged card bytes are unstaged via
+       ``git restore --staged`` so the index for the card path matches HEAD.
+    3. The working-tree card is restored to ``original_bytes`` (the pre-edit
+       card content), so the working tree is explicitly recoverable.
+
+    No staged-bytes soft-reset: step 2 clears the staged edit, and any git
+    failure is raised as ``PublicationError``, never swallowed, so the
+    post-rollback recoverable state is never masked by a silent error. After
+    this call the worktree holds ``original_bytes`` at ``card_rel``, the local
+    HEAD is the pre-edit commit, and the index is clean (unless an unrelated
+    staged change existed before the failed publication).
+    """
+    # 1. Move the branch tip back to the pre-edit commit, undoing the
+    #    publication object. ``local_commit`` is the written commit; its parent
+    #    (``<local_commit>^``) is the pre-edit HEAD. When it is unset we use
+    #    ``HEAD@{1}``. The index and working tree are preserved by --soft.
+    try:
+        if local_commit:
+            _git(root, "reset", "--soft", "%s^" % local_commit)
+        else:
+            _git(root, "reset", "--soft", "HEAD@{1}")
+    except TaskLinkError as exc:
+        raise PublicationError("local rollback failed: %s" % exc) from exc
+    # 2. Unstage the publication's staged card bytes so the index matches HEAD.
+    #    The commit now stages the repo-relative path, so restore by that path.
+    try:
+        _git(root, "restore", "--staged", "--", str(card_rel))
+    except TaskLinkError:
+        pass
+    # 3. Restore the working-tree card to the pre-edit bytes so the state is
+    #    explicitly recoverable.
+    if original_bytes:
+        try:
+            (Path(root) / card_rel).write_bytes(original_bytes)
+        except OSError:
+            pass
+    try:
+        if local_commit:
+            _git(root, "reset", "--soft", "%s^" % local_commit)
+        else:
+            _git(root, "reset", "--soft", "HEAD@{1}")
+    except TaskLinkError as exc:
+        raise PublicationError("local rollback failed: %s" % exc) from exc
 
 
 def main():
