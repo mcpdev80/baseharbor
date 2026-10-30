@@ -248,6 +248,22 @@ jobs:
           test "$(docker --host "$DOCKER_HOST" image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
           printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
           printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
+      - name: Verify resolver-* registered checks execute
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
+            out="$RUNNER_TEMP/resolver-$check.log"
+            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
+              echo "resolver check $check: SUCCESS"
+            else
+              echo "resolver check $check: FAILURE"
+              status=1
+            fi
+            cat "$out"
+          done
+          exit "$status"
       - name: Run cmd/baha native integration tests
         shell: bash
         env:
@@ -340,6 +356,22 @@ jobs:
           test "$(podman image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
           printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
           printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
+      - name: Verify resolver-* registered checks execute
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
+            out="$RUNNER_TEMP/resolver-$check.log"
+            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
+              echo "resolver check $check: SUCCESS"
+            else
+              echo "resolver check $check: FAILURE"
+              status=1
+            fi
+            cat "$out"
+          done
+          exit "$status"
       - name: Run cmd/baha native integration tests
         shell: bash
         env:
