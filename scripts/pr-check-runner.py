@@ -95,6 +95,8 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
+                'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+                'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 # R27-F2: the exact receipt control-plane suites this check must execute. This
