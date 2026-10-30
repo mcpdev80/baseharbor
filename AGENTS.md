@@ -94,6 +94,9 @@ Wer einen gehosteten Lauf auslöst (PR-Push, workflow_dispatch, Rerun), überwac
 ### 4.7 Korrekturen
 Review-Befunde einzeln reproduzieren und triagieren, gezielt korrigieren, passende Regressionen ausführen und denselben Review-Kontext soweit möglich erneut nutzen. Keine pauschale Wiederholung bereits gültiger, unveränderter Tests.
 
+### 4.8 Keine Subagenten (Owner-Direktive 2026-10-30)
+Worker führen ihre Arbeit ausschließlich in ihrer eigenen Session aus. Das Task-/Subagent-Tool (z. B. subagent_type `explore`/`general`) ist verboten – auch read-only Recon zählt; jeder Lese- und Suchschritt gehört ins eigene Transcript der Lane. Begründung: Arbeitsfaden und Evidence müssen für Coordinator und Reviewer vollständig im Pane nachvollziehbar bleiben. Nur der Coordinator darf die Task-Tool-Funktion für eigene Recherche verwenden. Ein Worker, der dennoch einen Subagenten öffnet, hält an und meldet den Vorfall in seiner Evidence.
+
 ## 5. Gemeinsames Protokoll (Coordinator UND Worker)
 
 ### 5.1 Task-Zustände (Planning-Schema)
