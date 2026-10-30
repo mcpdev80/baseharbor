@@ -29,6 +29,7 @@ jobs:
       actions: read
       contents: read
     outputs:
+      producer_eligible: ${{ steps.eligibility.outputs.producer_eligible }}
       workflow_id: ${{ steps.facts.outputs.workflow_id }}
       head_sha: ${{ steps.facts.outputs.head_sha }}
       candidate_sha: ${{ steps.facts.outputs.candidate_sha }}
@@ -59,11 +60,31 @@ jobs:
           echo "pr_number=" >> "$GITHUB_OUTPUT"
           echo "Producer context captured: workflow_id=${WORKFLOW_ID} head=${HEAD_SHA} run=${RUN_ID}"
 
+      - name: Probe producer eligibility (trusted-pr-plan artifact present)
+        id: eligibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          # Forward-port PRs, docs-only and non-contract CI completions carry no
+          # trusted-pr-plan artifact; they are NOT producer runs. Absence means
+          # the receipt chain is not eligible and must SKIP cleanly (the 2026-10-30
+          # #1218 accident: absence previously hard-failed extract_plan red).
+          # Presence means eligible; integrity failures downstream still fail closed.
+          if gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" \
+               --jq '.artifacts[].name' 2>/dev/null | grep -qx "trusted-pr-plan"; then
+            echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            echo "no trusted-pr-plan artifact on run $RUN_ID: not a producer run; receipt chain skipped" >&2
+          fi
+
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
   # extract candidate_sha/integration_sha, and determine the PR->task mapping.
   extract_plan:
     name: "Extract Trusted Plan & Map PR->Task"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true'
     needs: producer_context
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -199,7 +220,7 @@ jobs:
   # controller Python from the reviewed CI repo, NOT PR-controlled code.
   publish_receipt:
     name: "Publish Receipt to Planning"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true'
     needs: [producer_context, extract_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 10

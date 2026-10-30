@@ -790,3 +790,45 @@ class DownloadInvocationTests(unittest.TestCase):
         text = self.WORKFLOW.read_text()
         self.assertIn("plan.zip", text)
         self.assertIn("zipfile.ZipFile(\"plan.zip\")", text)
+
+
+class ProducerEligibilityGateTests(unittest.TestCase):
+    """Root cause 2026-10-30 (#1218 red post-run): workflow_run triggers fire
+    for EVERY successful CI completion, including forward-port PRs whose CI
+    never uploads trusted-pr-plan. Absence of the artifact must SKIP the
+    receipt chain cleanly; only a present-but-broken plan may fail closed."""
+
+    WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
+
+    def _probe_block(self):
+        import yaml
+        doc = yaml.safe_load(self.WORKFLOW.read_text())
+        steps = doc["jobs"]["producer_context"]["steps"]
+        block = [s for s in steps if s.get("id") == "eligibility"][0]["run"]
+        return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
+
+    def _run_probe(self, gh_stub_stdout):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as td:
+            gh = Path(td) / "gh"
+            gh.write_text("#!/bin/sh\nprintf '%s\\n' '%s'\nexit 0\n" % (gh_stub_stdout, "trusted-pr-plan" if gh_stub_stdout == "trusted-pr-plan" else ""))
+            gh.chmod(0o755)
+            out = Path(td) / "out.txt"
+            env = dict(os.environ, GITHUB_OUTPUT=str(out), PATH=td + os.pathsep + os.environ["PATH"])
+            proc = subprocess.run(["bash", "-c", self._probe_block()], env=env, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return out.read_text()
+
+    def test_missing_artifact_yields_not_eligible_without_failure(self):
+        result = self._run_probe("")
+        self.assertIn("producer_eligible=false", result)
+
+    def test_present_artifact_yields_eligible(self):
+        result = self._run_probe("trusted-pr-plan")
+        self.assertIn("producer_eligible=true", result)
+
+    def test_downstream_jobs_gate_on_eligibility(self):
+        text = self.WORKFLOW.read_text()
+        for job in ("extract_plan", "publish_receipt"):
+            seg = text.split("  %s:" % job, 1)[1].split("\n    if:", 1)[1].split("\n", 1)[0]
+            self.assertIn("producer_eligible == 'true'", seg, job)
