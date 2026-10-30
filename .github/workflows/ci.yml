@@ -190,11 +190,10 @@ jobs:
 
   targeted_ha_docker:
     name: Targeted HA · docker
-    needs: [pr_plan, pr_native_gate]
     concurrency:
       group: baseharbor-release-qualification
       cancel-in-progress: false
-    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))) || needs.pr_native_gate.outputs.cli_native_required == 'true'
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -298,11 +297,10 @@ jobs:
 
   targeted_ha_podman:
     name: Targeted HA · podman
-    needs: [pr_plan, pr_native_gate]
     concurrency:
       group: baseharbor-release-qualification
       cancel-in-progress: false
-    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))) || needs.pr_native_gate.outputs.cli_native_required == 'true'
+    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
@@ -980,9 +978,226 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: pr-exact-candidate-${{ github.event.pull_request.head.sha }}
 
+  targeted_ha_pr_docker:
+    name: Targeted HA · docker
+    needs: [pr_plan, pr_native_gate]
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_native_gate.outputs.cli_native_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        if: github.event_name == 'push'
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|control-plane|valkey|rabbitmq|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Docker runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+      - name: Build exact candidate for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-X main.commit=$candidate_sha" -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "${candidate_sha:0:7}"
+      - name: Package exact candidate runtime image for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          build_dir="$RUNNER_TEMP/native-integration-build"
+          image="localhost/baseharbor-runtime:ha-native-docker-$candidate_sha"
+          mkdir -p "$build_dir"
+          cp "$RUNNER_TEMP/baha" "$build_dir/baha"
+          cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
+          docker --host "$DOCKER_HOST" build --pull \
+            --label "org.opencontainers.image.revision=$candidate_sha" -t "$image" "$build_dir"
+          test "$(docker --host "$DOCKER_HOST" image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+          printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
+      - name: Verify resolver-* registered checks execute
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
+            out="$RUNNER_TEMP/resolver-$check.log"
+            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
+              echo "resolver check $check: SUCCESS"
+            else
+              echo "resolver check $check: FAILURE"
+              status=1
+            fi
+            cat "$out"
+          done
+          exit "$status"
+      - name: Run cmd/baha native integration tests
+        shell: bash
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/native-integration-docker"
+          rm -rf "$out" && mkdir -p "$out"
+          status=0
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v > "$out/tests.log" 2>&1 || status=$?
+          test -s "$out/tests.log"
+          echo "native integration capture is non-empty"
+          exit "$status"
+      - name: Upload native integration capture
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-integration-docker-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-integration-docker
+          if-no-files-found: error
+          retention-days: 30
+      - name: Run targeted HA acceptance
+        if: github.event_name == 'push'
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Docker runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  targeted_ha_pr_podman:
+    name: Targeted HA · podman
+    needs: [pr_plan, pr_native_gate]
+    concurrency:
+      group: baseharbor-release-qualification
+      cancel-in-progress: false
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_native_gate.outputs.cli_native_required == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Resolve HA group
+        if: github.event_name == 'push'
+        id: group
+        shell: bash
+        run: |
+          set -euo pipefail
+          rest="${GITHUB_REF_NAME#runtime-validation/ha/}"
+          group="${rest%%/*}"
+          case "$group" in data|control-plane|valkey|rabbitmq|seaweedfs|identity|observability|routing) ;; *) exit 2 ;; esac
+          echo "value=$group" >> "$GITHUB_OUTPUT"
+      - name: Reset Podman runtime
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+      - name: Build exact candidate for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          candidate_sha="$(git rev-parse HEAD)"
+          CGO_ENABLED=0 go build -trimpath -ldflags="-X main.commit=$candidate_sha" -o "$RUNNER_TEMP/baha" ./cmd/baha
+          "$RUNNER_TEMP/baha" version | grep -F "${candidate_sha:0:7}"
+      - name: Package exact candidate runtime image for native integration
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate_sha="$(git rev-parse HEAD)"
+          build_dir="$RUNNER_TEMP/native-integration-build"
+          image="localhost/baseharbor-runtime:ha-native-podman-$candidate_sha"
+          mkdir -p "$build_dir"
+          cp "$RUNNER_TEMP/baha" "$build_dir/baha"
+          cp deploy/control-plane/Dockerfile.binary "$build_dir/Dockerfile"
+          podman build --pull=always \
+            --label "org.opencontainers.image.revision=$candidate_sha" -t "$image" "$build_dir"
+          test "$(podman image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$image")" = "$candidate_sha"
+          printf 'BASEHARBOR_RUNTIME_IMAGE=%s\n' "$image" >> "$GITHUB_ENV"
+          printf 'BAHA=%s\n' "$RUNNER_TEMP/baha" >> "$GITHUB_ENV"
+      - name: Verify resolver-* registered checks execute
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
+            out="$RUNNER_TEMP/resolver-$check.log"
+            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
+              echo "resolver check $check: SUCCESS"
+            else
+              echo "resolver check $check: FAILURE"
+              status=1
+            fi
+            cat "$out"
+          done
+          exit "$status"
+      - name: Run cmd/baha native integration tests
+        shell: bash
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          out="$RUNNER_TEMP/native-integration-podman"
+          rm -rf "$out" && mkdir -p "$out"
+          status=0
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v > "$out/tests.log" 2>&1 || status=$?
+          test -s "$out/tests.log"
+          echo "native integration capture is non-empty"
+          exit "$status"
+      - name: Upload native integration capture
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-integration-podman-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-integration-podman
+          if-no-files-found: error
+          retention-days: 30
+      - name: Run targeted HA acceptance
+        if: github.event_name == 'push'
+        shell: bash
+        run: bash scripts/v0.4.21-ha-acceptance.sh "${{ steps.group.outputs.value }}"
+      - name: Cleanup Podman runtime
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, targeted_ha_docker, targeted_ha_podman]
+    needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, targeted_ha_pr_docker, targeted_ha_pr_podman]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -1014,8 +1229,8 @@ jobs:
           PUBLIC_CONTRACTS_REQUIRED: ${{ needs.pr_plan.outputs.public_contracts_required }}
           PUBLIC_CONTRACTS_JOB: ${{ needs.pr_public_contracts.result }}
           CLI_NATIVE_REQUIRED: ${{ needs.pr_plan.outputs.cli_native_required }}
-          TARGETED_HA_DOCKER_JOB: ${{ needs.targeted_ha_docker.result }}
-          TARGETED_HA_PODMAN_JOB: ${{ needs.targeted_ha_podman.result }}
+          TARGETED_HA_DOCKER_JOB: ${{ needs.targeted_ha_pr_docker.result }}
+          TARGETED_HA_PODMAN_JOB: ${{ needs.targeted_ha_pr_podman.result }}
           VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
