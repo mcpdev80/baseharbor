@@ -189,6 +189,88 @@ func cloneObject(m map[string]any) map[string]any {
 	return out
 }
 
+func newSchema(data []byte) (*jsonschema.Schema, error) {
+	var s jsonschema.Schema
+	if err := s.UnmarshalJSON(data); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// TestExtensionDescriptorArtifactEmptyObjectRejectsOciReference qualifies the
+// extension/v1 artifact contract: artifact is optional, but once present its
+// oci_reference is required. A schema-valid baseline is asserted once, then the
+// artifact is replaced by an empty object while keeping a valid configuration
+// schema dialect; the packaged schema must reject it for the missing
+// oci_reference.
+func TestExtensionDescriptorArtifactEmptyObjectRejectsOciReference(t *testing.T) {
+	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := newSchema(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"artifact":             map[string]any{"oci_reference": "ghcr.io/example/org.example-extension@sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
+	}
+	if err := resolved.Validate(base); err != nil {
+		t.Fatalf("schema-valid extension descriptor rejected by the packaged schema: %v", err)
+	}
+
+	// The artifact object is present but empty: with oci_reference absent the
+	// packaged schema must reject it for that reason.
+	emptyArtifact := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"artifact":             map[string]any{},
+		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
+	}
+	if err := resolved.Validate(emptyArtifact); err == nil {
+		t.Fatal("descriptor schema accepted an artifact object without the required oci_reference")
+	}
+}
+
+// TestExtensionDescriptorArtifactIsOptional qualifies the extension/v1 artifact
+// contract in the positive direction: artifact is optional, so a schema-valid
+// descriptor that omits it entirely must be accepted by the packaged schema.
+func TestExtensionDescriptorArtifactIsOptional(t *testing.T) {
+	descriptor, err := contracts.ReadSchema("https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/extension/v1/extension-descriptor.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := newSchema(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	omittedArtifact := map[string]any{
+		"schema_version":       "baseharbor.extension/v1",
+		"id":                   "example.com/org.example-extension",
+		"family":               "provider",
+		"version":              "0.1.0",
+		"configuration_schema": map[string]any{"dialect": "https://json-schema.org/draft/2020-12/schema"},
+	}
+	if err := resolved.Validate(omittedArtifact); err != nil {
+		t.Fatalf("schema rejected a descriptor missing the optional artifact: %v", err)
+	}
+}
+
 func profileResolve(data []byte) (*jsonschema.Resolved, error) {
 	var s jsonschema.Schema
 	if err := s.UnmarshalJSON(data); err != nil {
