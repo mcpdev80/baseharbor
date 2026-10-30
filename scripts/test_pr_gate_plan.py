@@ -781,9 +781,11 @@ class MappingTests(unittest.TestCase):
         for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
-                self.assertEqual(['integration/static/public-contracts', 'receipt/enforcement'],
+                self.assertEqual(['integration/static/public-contracts'],
                                  sorted(result['selected_gates']))
                 self.assertEqual('unresolved', result['coverage_status'])
+                self.assertIn('receipt/enforcement',
+                              ' '.join(result['unresolved_coverage']))
                 self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
 
     def test_cli_requires_compilation_and_real_targeted_tests(self):
