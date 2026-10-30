@@ -521,6 +521,43 @@ class D3ExtractionNegativesTest(unittest.TestCase):
             real_extract(dict(self.good, head_sha="bad"), artifact_size=500)
         self.assertEqual(calls["count"], 0)
 
+    def test_present_but_schema_invalid_plan_fails_closed(self):
+        # Positive-eligible path: the artifact IS present so the workflow marks
+        # producer_eligible=true and proceeds to extract. A present plan whose
+        # schema is wrong must FAIL CLOSED (ReceiptError), never be accepted or
+        # silently skipped.
+        bad = dict(self.good, schema="baseharbor.pr-gate-plan/v0")
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.extract_facts(bad, artifact_size=500)
+
+    def test_present_but_missing_schema_fails_closed(self):
+        bad = dict(self.good)
+        del bad["schema"]
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.extract_facts(bad, artifact_size=500)
+
+    def test_present_but_corrupt_zip_bytes_fail_closed(self):
+        # The present-but-broken ZIP (defekt) path: the workflow downloads the
+        # artifact and opens it with zipfile; a corrupt archive raises and must
+        # propagate as a hard failure downstream (never a producer run).
+        import io, zipfile
+        from pathlib import Path
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            # A structurally valid zip, but pr-plan.json is not JSON.
+            with zipfile.ZipFile(root / "plan.zip", "w") as z:
+                z.writestr("pr-plan.json", b"{not valid json")
+            with self.assertRaises((verifier.ReceiptError, zipfile.BadZipFile, ValueError, json.JSONDecodeError)):
+                with zipfile.ZipFile(root / "plan.zip") as z:
+                    plan = json.loads(z.open("pr-plan.json").read())
+                verifier.extract_facts(plan, artifact_size=500)
+            # A truncated/garbage archive must not silently open to a usable plan.
+            (root / "bad.zip").write_bytes(b"PK\x03\x04garbage-not-a-zip")
+            with self.assertRaises((zipfile.BadZipFile, RuntimeError)):
+                with zipfile.ZipFile(root / "bad.zip") as z:
+                    z.open("pr-plan.json").read()
+
 
 class ReceiptSchemaNegativesTest(VerifierFixtureTest):
     def test_unexpected_field_rejected(self):

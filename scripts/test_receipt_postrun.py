@@ -795,8 +795,11 @@ class DownloadInvocationTests(unittest.TestCase):
 class ProducerEligibilityGateTests(unittest.TestCase):
     """Root cause 2026-10-30 (#1218 red post-run): workflow_run triggers fire
     for EVERY successful CI completion, including forward-port PRs whose CI
-    never uploads trusted-pr-plan. Absence of the artifact must SKIP the
-    receipt chain cleanly; only a present-but-broken plan may fail closed."""
+    never uploads trusted-pr-plan. The probe must tell ABSENCE (skip cleanly)
+    from an ERROR (fail closed): a failed/incomplete API response must hard-fail
+    (exit 1), never read as a phantom producer run. Only a successful API
+    response WITHOUT trusted-pr-plan yields producer_eligible=false; a
+    present-but-broken plan fails closed downstream in extract_facts."""
 
     WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
 
@@ -807,25 +810,63 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         block = [s for s in steps if s.get("id") == "eligibility"][0]["run"]
         return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
 
-    def _run_probe(self, gh_stub_stdout):
+    def _run_probe(self, *, gh_returncode, gh_stdout="", gh_command="gh"):
+        """Run the eligibility probe with a stub that returns gh_returncode and
+        emits gh_stdout. A non-zero return code models a real API transport
+        failure; the probe must NOT read that as 'artifact absent'."""
         import tempfile, os
         with tempfile.TemporaryDirectory() as td:
-            gh = Path(td) / "gh"
-            gh.write_text("#!/bin/sh\nprintf '%s\\n' '%s'\nexit 0\n" % (gh_stub_stdout, "trusted-pr-plan" if gh_stub_stdout == "trusted-pr-plan" else ""))
+            printf_line = "  printf '%s' '" + gh_stdout + "'"
+            exit_line = "  exit " + str(gh_returncode)
+            lines = [
+                "#!/bin/sh",
+                "if [ \"$1\" = \"api\" ]; then",
+                printf_line,
+                exit_line,
+                "fi",
+                "exit 0",
+                "",
+            ]
+            gh = Path(td) / gh_command
+            gh.write_text("\n".join(lines))
             gh.chmod(0o755)
             out = Path(td) / "out.txt"
+            out.write_text("")
             env = dict(os.environ, GITHUB_OUTPUT=str(out), PATH=td + os.pathsep + os.environ["PATH"])
-            proc = subprocess.run(["bash", "-c", self._probe_block()], env=env, capture_output=True, text=True)
-            self.assertEqual(proc.returncode, 0, proc.stderr)
-            return out.read_text()
+            proc = subprocess.run(["bash", "-c", self._probe_block()], env=env,
+                                  capture_output=True, text=True)
+            return proc, out.read_text()
 
     def test_missing_artifact_yields_not_eligible_without_failure(self):
-        result = self._run_probe("")
+        # Successful API response, empty name list => artifact absent => skip.
+        proc, result = self._run_probe(gh_returncode=0, gh_stdout="")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("producer_eligible=false", result)
 
     def test_present_artifact_yields_eligible(self):
-        result = self._run_probe("trusted-pr-plan")
+        # Successful API response carrying trusted-pr-plan => eligible.
+        proc, result = self._run_probe(gh_returncode=0, gh_stdout="trusted-pr-plan")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("producer_eligible=true", result)
+
+    def test_api_error_yields_fail_closed_not_absent(self):
+        # A non-zero gh exit (transport/API error) must NOT be read as absence:
+        # the probe hard-fails (exit 1), never emits producer_eligible=false and
+        # never a phantom skip (the #1218 regression).
+        proc, result = self._run_probe(gh_returncode=1, gh_stdout="")
+        self.assertNotEqual(proc.returncode, 0,
+                            "API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+        self.assertNotIn("skipped", result)
+
+    def test_api_error_not_confused_with_absent(self):
+        # Regression guard: an empty stdout with a non-zero exit code is an
+        # ERROR, distinguishable from a zero-exit empty response (ABSENCE).
+        err_proc, _ = self._run_probe(gh_returncode=2, gh_stdout="")
+        self.assertNotEqual(err_proc.returncode, 0)
+        ok_proc, ok_result = self._run_probe(gh_returncode=0, gh_stdout="")
+        self.assertEqual(ok_proc.returncode, 0)
+        self.assertIn("producer_eligible=false", ok_result)
 
     def test_downstream_jobs_gate_on_eligibility(self):
         text = self.WORKFLOW.read_text()

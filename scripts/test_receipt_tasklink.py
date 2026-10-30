@@ -814,22 +814,49 @@ class PublishEvidenceYamlFormat(unittest.TestCase):
 # reachable (the baseharbor PR checkout has no baseharbor-plan tree), fall back
 # to a faithful local re-implementation of plan.py.parse_frontmatter that
 # mirrors its exit-code contract, including the duplicate-key rejection.
+def _find_baseharbor_plan():
+    """Locate the baseharbor-plan repository root from a detached worktree of
+    ANY depth without hardcoding parents[N].
+
+    The receipt control-plane suite runs out of a product checkout that may sit
+    at arbitrary depth inside a git worktree (e.g. baseharbor-ecosystem/worktrees
+    /<lane>/baseharbor). A fixed parents[N] is brittle: it breaks the moment the
+    layout changes. Instead we resolve the owning git repository top-level and
+    walk upward until a directory literally named "baseharbor-plan" (carrying
+    scripts/plan.py) is found — the only correct, depth-independent anchor.
+    Returns the Path to baseharbor-plan, or None when it is not a parent.
+    """
+    import subprocess
+    try:
+        root = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            stderr=subprocess.DEVNULL, text=True).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        root = None
+    if not root:
+        return None
+    cur = Path(root).resolve()
+    for ancestor in [cur, *cur.parents]:
+        candidate = ancestor / "baseharbor-plan"
+        if (candidate / "scripts" / "plan.py").is_file():
+            return candidate
+        if ancestor == Path("/"):
+            break
+    return None
+
+
 def _load_plan_parser():
     import importlib.util
-    candidates = [
-        Path(__file__).resolve().parents[3] / "baseharbor-plan" / "scripts" / "plan.py",
-        Path(__file__).resolve().parents[2] / "baseharbor-plan" / "scripts" / "plan.py",
-        Path(__file__).resolve().parents[4] / "baseharbor-plan" / "scripts" / "plan.py",
-    ]
-    for cand in candidates:
-        if cand.is_file():
-            try:
-                spec = importlib.util.spec_from_file_location("plan_under_test", cand)
-                mod = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(mod)
-                return mod, True
-            except Exception:
-                break
+    plan_root = _find_baseharbor_plan()
+    if plan_root is not None:
+        cand = plan_root / "scripts" / "plan.py"
+        try:
+            spec = importlib.util.spec_from_file_location("plan_under_test", cand)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            return mod, True
+        except Exception:
+            pass
     return None, False
 
 
@@ -2002,8 +2029,9 @@ class TestPublicationAcceptanceMatrix(unittest.TestCase):
             "---\nid: t-20261026-r27-pilot\nprs: [unclosed\nrelease: v9\n---\n\nPilot note.\n"
         )
 
-        real_plan = Path(__file__).resolve().parents[3] / "baseharbor-plan" / "scripts" / "plan.py"
-        if not real_plan.is_file():
+        real_plan = (_find_baseharbor_plan() / "scripts" / "plan.py") \
+            if _find_baseharbor_plan() is not None else None
+        if real_plan is None or not real_plan.is_file():
             # No real plan.py reachable — fall back to a failing check.
             render_fn, check_fn = self._make_render_check(ok=False)
         else:

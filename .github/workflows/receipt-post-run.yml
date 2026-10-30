@@ -67,13 +67,31 @@ jobs:
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
-          # Forward-port PRs, docs-only and non-contract CI completions carry no
-          # trusted-pr-plan artifact; they are NOT producer runs. Absence means
-          # the receipt chain is not eligible and must SKIP cleanly (the 2026-10-30
-          # #1218 accident: absence previously hard-failed extract_plan red).
-          # Presence means eligible; integrity failures downstream still fail closed.
-          if gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" \
-               --jq '.artifacts[].name' 2>/dev/null | grep -qx "trusted-pr-plan"; then
+          # A producer run uploads a single trusted-pr-plan artifact; a
+          # forward-port PR, docs-only or non-contract CI completion carries no
+          # such artifact and is NOT a producer run. The probe must tell
+          # ABSENCE (skip cleanly) from an ERROR (fail closed): a failed or
+          # incomplete API response is NOT absence, so it must hard-fail, not
+          # read as eligible=false (the 2026-10-30 #1218 accident: the previous
+          # grep swallowed the API failure via 2>/dev/null and reported a
+          # phantom skip).
+          #
+          # List artifact names with explicit pagination so a truncated page
+          # cannot hide the artifact; --jq applies per page, yielding a plain
+          # newline-separated list of names. gh's own exit code is the signal:
+          # a non-zero exit (auth/network/transport failure) exits the probe 1
+          # (ERROR, never a skip); a successful (0) response with an empty name
+          # list is a genuine ABSENCE and skips cleanly; a successful response
+          # carrying trusted-pr-plan is eligible.
+          set +e
+          API_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name')"
+          API_RC=$?
+          set -e
+          if [ "${API_RC}" -ne 0 ]; then
+            echo "trusted-pr-plan API call failed (rc=${API_RC}): not absence, failing closed" >&2
+            exit 1
+          fi
+          if printf '%s\n' "${API_LIST}" | grep -qx "trusted-pr-plan"; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
           else
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
