@@ -72,3 +72,14 @@ projection). These resolve to the focused repositoryinspect package tests,
 `internal/repositoryinspect/*.go` production or test file stays
 `unresolved` pending scoped native qualification; no blanket package
 resolution is claimed.
+
+The only `internal/runtime/resolver/` resolved paths are the audited
+`resolver.go` production source and its `resolver_test.go` conformance test
+(core-1220 resolver routing qualification). These resolve to the focused
+resolver package tests, `go vet ./internal/runtime/resolver`,
+`gofmt ./internal/runtime/resolver`, and the `cmd/baha` consumer build with
+**zero** selected release gates. Every other
+`internal/runtime/resolver/*.go` production or test file stays
+`unresolved` pending scoped native qualification; no blanket package
+resolution is claimed. Both the inspect and resolver narrow lanes are exact
+reviewed-path allowlists, never prefix or name heuristics.

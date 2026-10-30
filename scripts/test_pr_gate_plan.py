@@ -893,6 +893,38 @@ class MappingTests(unittest.TestCase):
                 commands = {c['command'] for c in result['required_validation_checks']}
                 self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
 
+    def test_resolver_routing_allowlist_runs_focused_resolver_checks_resolved(self):
+        # core-1220 permanent lane: only the exact reviewed resolver files resolve
+        # to the focused package checks, with zero native release gates.
+        for name in ['internal/runtime/resolver/resolver.go',
+                     'internal/runtime/resolver/resolver_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'resolver-gofmt', 'resolver-package-tests',
+                                  'resolver-vet', 'resolver-consumer-build'}, ids)
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/runtime/resolver/ -count=1', commands)
+                self.assertIn('go build -o "$RUNNER_TEMP/baha-resolver" ./cmd/baha', commands)
+
+    def test_unreviewed_resolver_routing_stays_fail_closed(self):
+        # A blanket resolution of every resolver file must never be claimed:
+        # any unreviewed production file stays unresolved, exactly like the
+        # inspect/capability/application implementation paths.
+        for name in ['internal/runtime/resolver/extra.go',
+                     'internal/runtime/resolver/plan.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/runtime/resolver/ -count=1', commands)
+
     def test_reconcile_with_other_package_source_stays_fail_closed(self):
         # A reviewed reconcile change bundled with an unreviewed inspect file
         # must never inherit the narrow resolved coverage.

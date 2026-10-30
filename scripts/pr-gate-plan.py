@@ -384,6 +384,31 @@ INSPECT_PROJECTION_REVIEWED = frozenset([
     'internal/repositoryinspect/inspect.go',
     'internal/repositoryinspect/workload_source_parity_test.go',
 ])
+# Focused, package-scoped checks for the runtime resolver routing surface.
+# The resolver is pure in-memory target routing with a thin cmd/baha consumer,
+# so package unit tests, vet and the consumer build cover its actual risk
+# without a native runtime gate. They never exempt the whole package: any
+# other internal/runtime/resolver/*.go stays unresolved below.
+RESOLVER_CHECKS = [
+    {'id': 'resolver-gofmt', 'owner': 'internal/runtime/resolver formatting',
+     'command': 'test -z "$(gofmt -l internal/runtime/resolver)"'},
+    {'id': 'resolver-package-tests', 'owner': 'internal/runtime/resolver',
+     'command': 'go test ./internal/runtime/resolver/ -count=1'},
+    {'id': 'resolver-vet', 'owner': 'internal/runtime/resolver',
+     'command': 'go vet ./internal/runtime/resolver/'},
+    {'id': 'resolver-consumer-build', 'owner': 'cmd/baha package',
+     'command': 'go build -o "$RUNNER_TEMP/baha-resolver" ./cmd/baha'},
+]
+# core-1220 permanent lane: exact reviewed source of the resolver routing
+# qualification. Like INSPECT_PROJECTION_REVIEWED and INSPECT_RECONCILE_REVIEWED
+# this is an exact reviewed path allowlist, never a prefix or name heuristic:
+# the package tests at internal/runtime/resolver/ cover this production file,
+# with zero native release gates. Every other internal/runtime/resolver/*.go
+# file stays fail-closed unresolved on the branch below.
+RESOLVER_ROUTING_REVIEWED = frozenset([
+    'internal/runtime/resolver/resolver.go',
+    'internal/runtime/resolver/resolver_test.go',
+])
 # core-751 prospective scope is explicit but never a path-only qualification.
 # Source review and immutable commit binding must precede resolved coverage.
 INSPECT_IMPORT_CANDIDATE_FILES = {
@@ -1454,6 +1479,13 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'inspect-implementation-unresolved'
             require(INSPECT_CHECKS)
             unresolved.append('unreviewed repository inspection file needs targeted qualification: ' + path)
+        elif path in RESOLVER_ROUTING_REVIEWED:
+            area = 'resolver-routing-resolved'
+            require(RESOLVER_CHECKS)
+        elif path.startswith('internal/runtime/resolver/') and path.endswith('.go'):
+            area = 'resolver-routing-unresolved'
+            require(RESOLVER_CHECKS)
+            unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
