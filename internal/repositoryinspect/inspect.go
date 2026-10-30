@@ -190,6 +190,8 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 				result.DatabaseBootstrapServices = append(result.DatabaseBootstrapServices, service.Name)
 			}
 		}
+	} else if result.WorkloadEvidence != nil {
+		shareProjectSummaryFromComponents(&result, result.WorkloadEvidence)
 	}
 	for _, rel := range artifactPaths(artifacts, "dockerfile") {
 		ports, health := inspectDockerfile(snapshot.Files[rel], rel)
@@ -212,14 +214,14 @@ func (e Engine) Inspect(ctx context.Context, root string) (Result, error) {
 	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
 	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
 	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
-	if manifest == nil && result.SelectedCompose != "" && len(result.WorkloadServices) > 0 {
+	if manifest == nil && len(result.WorkloadServices) > 0 {
 		result.Findings = mergeFindings(result.Findings, []Finding{{
 			Capability: "logs",
 			Direction:  DirectionExport,
 			Confidence: ConfidenceSuggested,
 			Evidence: []Evidence{{
 				Kind:   EvidenceCompose,
-				Path:   result.SelectedCompose,
+				Path:   result.SelectedWorkloadSource.Path,
 				Detail: "application workload can opt into managed stdout/stderr log collection",
 			}},
 		}})
@@ -448,4 +450,53 @@ func reconcileSelectedComposeInspectionView(result *Result, data []byte) error {
 	result.HealthChecks = uniqueEvidence(health)
 	result.DatabaseBootstrapServices = uniqueSorted(bootstrap)
 	return nil
+}
+
+func shareProjectSummaryFromComponents(result *Result, evidence *WorkloadEvidence) {
+	if evidence == nil || result.WorkloadEvidence == nil {
+		return
+	}
+	path := ""
+	if result.SelectedWorkloadSource != nil {
+		path = result.SelectedWorkloadSource.Path
+	}
+	for _, component := range evidence.Components {
+		if component.InfrastructureClass != "" {
+			result.InfrastructureServices = append(result.InfrastructureServices, component.ID)
+		} else {
+			result.WorkloadServices = append(result.WorkloadServices, component.ID)
+		}
+		for _, port := range component.Ports {
+			result.Ports = append(result.Ports, PortEvidence{
+				Path: path, Service: component.ID, Value: port,
+			})
+		}
+		if component.Health {
+			result.HealthChecks = append(result.HealthChecks, Evidence{
+				Kind: EvidenceHealth, Path: path,
+				Detail: "normalized " + strings.ToLower(string(result.SelectedWorkloadSource.Kind)) + " workload " + component.ID + " reports readiness/liveness probes",
+			})
+		}
+	}
+	result.WorkloadServices = uniqueSorted(result.WorkloadServices)
+	result.InfrastructureServices = uniqueSorted(result.InfrastructureServices)
+	result.AmbiguousServices = uniqueSorted(result.AmbiguousServices)
+	seenPorts := map[string]PortEvidence{}
+	var ordered []PortEvidence
+	for _, port := range result.Ports {
+		key := port.Service + "|" + port.Value
+		if _, ok := seenPorts[key]; ok {
+			continue
+		}
+		seenPorts[key] = port
+		ordered = append(ordered, port)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Service != ordered[j].Service {
+			return ordered[i].Service < ordered[j].Service
+		}
+		return ordered[i].Value < ordered[j].Value
+	})
+	result.Ports = ordered
+	result.HealthChecks = uniqueEvidence(result.HealthChecks)
 }

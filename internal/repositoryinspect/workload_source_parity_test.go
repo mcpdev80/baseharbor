@@ -3,6 +3,7 @@ package repositoryinspect
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,4 +63,59 @@ func TestWorkloadSourceCrossSourceSemanticParity(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInspectProjectsNeutralSummaryForAllSourceFamilies(t *testing.T) {
+	fixtures := map[string]struct {
+		expectWorkload   []string
+		expectInfra      []string
+		wantPorts        int
+		wantHealthChecks int
+	}{
+		"compose":    {expectWorkload: []string{"api", "worker"}, expectInfra: []string{"cache", "db"}, wantPorts: 1, wantHealthChecks: 1},
+		"quadlet":    {expectWorkload: []string{"api", "worker"}, expectInfra: []string{"cache", "db"}, wantPorts: 1, wantHealthChecks: 1},
+		"kubernetes": {expectWorkload: []string{"api", "worker"}, expectInfra: []string{"cache", "db"}, wantPorts: 1, wantHealthChecks: 1},
+	}
+
+	for name, fx := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			root := filepath.Join("..", "..", "testdata", "adoption-parity", name)
+			result, err := Inspect(context.Background(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if strings.Join(result.WorkloadServices, ",") != strings.Join(fx.expectWorkload, ",") {
+				t.Fatalf("workload_services = %#v, want %#v", result.WorkloadServices, fx.expectWorkload)
+			}
+			if strings.Join(result.InfrastructureServices, ",") != strings.Join(fx.expectInfra, ",") {
+				t.Fatalf("infrastructure_services = %#v, want %#v", result.InfrastructureServices, fx.expectInfra)
+			}
+			if len(result.Ports) < fx.wantPorts {
+				t.Fatalf("ports = %d, want at least %d", len(result.Ports), fx.wantPorts)
+			}
+			if len(result.HealthChecks) < fx.wantHealthChecks {
+				t.Fatalf("health_checks = %d, want at least %d", len(result.HealthChecks), fx.wantHealthChecks)
+			}
+			if !hasFindingCap(result, "logs") {
+				t.Fatalf("expected workload log suggestion for %s: %#v", name, result.Findings)
+			}
+			if len(result.WorkloadEvidence.Components) == 0 {
+				t.Fatal("no normalized components")
+			}
+		})
+	}
+}
+
+func joinList(values []string) string {
+	return strings.Join(values, ",")
+}
+
+func hasFindingCap(result Result, capability string) bool {
+	for _, finding := range result.Findings {
+		if finding.Capability == capability {
+			return true
+		}
+	}
+	return false
 }
