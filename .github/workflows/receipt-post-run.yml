@@ -1,3 +1,4 @@
+# trigger ci re-run
 name: "Receipt · Post-Run Writer"
 
 # Production wiring: after a successful producer CI run, automatically
