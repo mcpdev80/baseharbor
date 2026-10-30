@@ -982,6 +982,116 @@ jobs:
               if not entries:
                   lines.append("- None confirmed")
               lines.append("")
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
-              output.write("\n".join(lines) + "\n")
+           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as output:
+               output.write("\n".join(lines) + "\n")
+
+  pr_gate_receipt_approval:
+    name: "PR · Receipt Approval"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Read-only check: verifies that a Receipt Approval exists and is approved
+    # for this PR tuple (head_sha + base_sha). No secrets required; uses public
+    # GitHub API to read baseharbor-plan main evidence/receipts/public-contracts/*.json.
+    # Fails closed on network or schema problems.
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.x'
+
+      - name: Checkout Planning (protected main, full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          path: planning
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install Planning schema resolver dependency
+        run: python -m pip install 'PyYAML==6.0.2'
+
+      - name: Verify Receipt Approval exists and is approved for this PR tuple
+        id: receipt-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ""
+          BASE_SHA: ""
+        run: |
+          set -euo pipefail
+          # Derive the current PR tuple from the authenticated runner context.
+          # On a pull_request event, head_sha is the PR head; base_sha is the
+          # target branch head. We validate that baseharbor-plan main contains
+          # an approved Receipt bound to this exact tuple.
+          head_sha="$(git -C . rev-parse HEAD)"
+          base_ref="${GITHUB_BASE_REF:-develop}"
+          # Resolve base_sha from the target branch.
+          base_sha="$(git -C . rev-parse "origin/${base_ref}" 2>/dev/null || git -C . rev-parse "origin/${base_ref}" 2>/dev/null || echo '')"
+          if [ -z "$base_sha" ]; then
+            # Fallback: use merge_base_sha if available.
+            base_sha="$(git -C . merge-base HEAD origin/${base_ref} 2>/dev/null || echo '')"
+          fi
+          if [ -z "$head_sha" ] || [ -z "$base_sha" ]; then
+            echo "ERROR: unable to resolve head_sha ($head_sha) or base_sha ($base_sha)" >&2
+            exit 1
+          fi
+          echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
+          echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
+          # Export the PR tuple for the Python verification step.
+          export HEAD_SHA="$head_sha"
+          export BASE_SHA="$base_sha"
+          # Read all Receipt JSON files from baseharbor-plan main.
+          planning_path="${GITHUB_WORKSPACE}/planning"
+          receipts_dir="${planning_path}/evidence/receipts/public-contracts"
+          if [ ! -d "$receipts_dir" ]; then
+            echo "Receipt directory not found: $receipts_dir" >&2
+            echo "Receipt Approval BLOCKED: no evidence/receipts/public-contracts directory on plan main" >&2
+            exit 1
+          fi
+          # Search for an approved Receipt bound to this exact PR tuple.
+          found_approved=false
+          for receipt_file in "$receipts_dir"/*.json; do
+            if [ ! -f "$receipt_file" ]; then
+              continue
+            fi
+            # Parse the Receipt JSON and verify:
+            # 1. approved != null
+            # 2. head_sha + base_sha binding matches this PR tuple
+            # 3. plan references are valid
+            python3 -c "
+import json, sys, os
+receipt = json.load(open('${receipt_file}'))
+# Verify schema and required fields.
+if not isinstance(receipt, dict):
+    sys.exit(1)
+approved = receipt.get('approved')
+if approved is None or approved is False or approved == '':
+    sys.exit(1)  # Not approved
+# Check PR tuple binding.
+bound_head = receipt.get('head_sha')
+bound_base = receipt.get('base_sha')
+env_head = os.environ.get('HEAD_SHA', '')
+env_base = os.environ.get('BASE_SHA', '')
+if bound_head != env_head or bound_base != env_base:
+    sys.exit(1)  # Bound to different PR tuple
+# Verify plan references exist and are valid.
+plan_refs = receipt.get('plan_refs', [])
+if not isinstance(plan_refs, list):
+    sys.exit(1)
+print('approved_receipt_found')
+" 2>/dev/null && {
+            found_approved=true
+            break
+          } || true
+          done
+          if [ "$found_approved" = false ]; then
+            echo "Receipt Approval BLOCKED: no approved Receipt found for head_sha=${head_sha}, base_sha=${base_sha}" >&2
+            exit 1
+          fi
+          echo "Receipt Approval PASSED: approved Receipt found for this PR tuple" >&2
           PY

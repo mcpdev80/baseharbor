@@ -3637,5 +3637,55 @@ def runner_validations():
     return mod.VALIDATIONS
 
 
+class ReceiptEnforcementCheckTests(unittest.TestCase):
+    """Receipt Enforcement for contracts/**: verified that the new check is emitted
+    and that contracts/** changes require an approved Receipt bound to this PR tuple.
+    """
+
+    def check_ids(self, result):
+        return {check['id'] for check in result['required_validation_checks']}
+
+    def test_contracts_path_selects_receipt_enforcement_gate(self):
+        """A single contracts/** change selects integration/static/public-contracts
+        AND receipt/enforcement; the latter is absent from the catalog and blocks
+        the PR until the CI job passes."""
+        path = 'contracts/machine/v1/control.go'
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        # The coverage_status is unresolved because receipt/enforcement requires
+        # the CI job to pass - the test verifies the gate is selected.
+        self.assertIn('integration/static/public-contracts', result['selected_gates'])
+        # receipt/enforcement is added to selected but filtered out as absent.
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_contracts_path_adds_pr_gate_receipt_enforcement_check(self):
+        """The pr-gate-receipt-enforcement check is now part of CI_CHECKS and
+        appears in required_validation_checks when contracts/** are changed."""
+        self.assertIn('pr-gate-receipt-enforcement', {c['id'] for c in planner.CI_CHECKS})
+        path = 'contracts/machine/v1/control.json'
+        result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+        emitted = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('pr-gate-receipt-enforcement', emitted)
+
+    def test_unknown_contract_path_still_selects_enforcement(self):
+        """Any contracts/** path triggers the Receipt Enforcement check, even
+        if the path itself is unknown."""
+        path = 'contracts/unknown/path.go'
+        result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+        self.assertIn('integration/static/public-contracts', result['selected_gates'])
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_multiple_contracts_changes_include_enforcement(self):
+        """Multiple contracts/** files still select the receipt/enforcement gate."""
+        paths = [
+            {'status': 'modified', 'path': 'contracts/machine/v1/control.go'},
+            {'status': 'added', 'path': 'contracts/machine/v1/operation.schema.json'},
+        ]
+        result = planner.plan(diff(paths), REQ, MAP)
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
+
+
 if __name__ == '__main__':
     unittest.main()
