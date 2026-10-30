@@ -211,3 +211,47 @@ func TestFailedRuntimeInventoryCannotRemoveOwnedHostTrust(t *testing.T) {
 		t.Fatalf("corrupt registry did not block full destroy: %s", out.String())
 	}
 }
+
+func TestFullDestroyWithNoDeploymentsInvokesOrphanCleanup(t *testing.T) {
+	configHome := t.TempDir()
+	dataHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "runtime-state"))
+
+	targetRoot, err := deployment.TargetStateRoot("orphan-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(targetRoot, "runtime"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	original := removeHostTrustForFullDestroy
+	removeHostTrustForFullDestroy = func(_ context.Context, _ string) (hosttrust.RemovalResult, error) {
+		return hosttrust.RemovalResult{Removed: []hosttrust.AnchorRecord{}}, nil
+	}
+	defer func() { removeHostTrustForFullDestroy = original }()
+
+	var out bytes.Buffer
+	if err := runtimeDestroyAll(currentInstallationDestroyConsent(t), []string{"--all", "--yes"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Registered deployments: 0") {
+		t.Fatalf("expected zero deployments, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Cleanup report") {
+		t.Fatalf("expected cleanup report, got:\n%s", output)
+	}
+	if !strings.Contains(output, "SKIPPED") {
+		t.Fatalf("expected orphan cleanup path to run (SKIPPED target-state for unknown provider), got:\n%s", output)
+	}
+	if !strings.Contains(output, "REMOVED") {
+		t.Fatalf("expected local state removal, got:\n%s", output)
+	}
+	if !strings.Contains(output, "orphan-test") {
+		t.Fatalf("expected orphan-test target in results, got:\n%s", output)
+	}
+}

@@ -235,6 +235,14 @@ func destroyInstallation(parent context.Context, confirmed bool, out, errOut io.
 		destroyTargetBestEffort(parent, target, &results, plans[i])
 	}
 
+	if len(deployments) == 0 {
+		for _, target := range targets {
+			if strings.TrimSpace(target.RuntimeProvider) == "" {
+				cleanupOrphanedRuntimeProjectsByFallback(parent, target.Name, &results)
+			}
+		}
+	}
+
 	blockers := countFullDestroyBlockers(results)
 	if blockers == 0 {
 		// Host-wide trust ownership is stored in the shared runtime data root,
