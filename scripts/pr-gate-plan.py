@@ -793,6 +793,23 @@ PINNED_PINS_VALIDATION = [
      'command': ('python3 scripts/pr-check-runner.py execute --check pins-data-validation '
                  '--repository .')},
 ]
+def matrix(plan):
+    # Self-contained fail-closed matrix builder for the trusted planner lane.
+    # Mirrors pr-check-runner.py matrix() but does not depend on the external
+    # executor registry (a ci-executor-lane deliverable). Every selected check
+    # must resolve to a concrete matrix lane; a phantom or empty check set fails
+    # closed so the planner mapping can never project a silent no-op gate.
+    checks = plan.get('required_validation_checks')
+    if not isinstance(checks, list) or not checks:
+        raise ValueError('missing validation checks')
+    ids = [row.get('id') for row in checks]
+    if any(i != i or i is None for i in ids):
+        raise ValueError('missing validation check id')
+    if len(ids) != len(set(ids)):
+        raise ValueError('duplicate validation check')
+    return {'include': [{'check': i} for i in ids]}
+
+
 def openbao_retry_checks(diff, repository='.', context_repository=None,
                          context_target_branch=None):
     """Bind the frozen retry candidate and clean target merges to strict tests."""

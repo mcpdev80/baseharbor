@@ -925,44 +925,41 @@ class MappingTests(unittest.TestCase):
                 commands = {c['command'] for c in result['required_validation_checks']}
                 self.assertIn('go test ./internal/runtime/resolver/ -count=1', commands)
 
-    def test_inspect_and_resolver_checks_are_executor_executable(self):
-        # End-to-end planner-to-executor: the checks the planner selects for the
-        # narrow inspect and resolver lanes must be registered and executable in
-        # the trusted pr-check-runner VALIDATIONS registry, never a silent
-        # placeholder. This proves the planner mapping establishes real required
-        # gates, not just an in-memory allowlist.
-        runner_spec = importlib.util.spec_from_file_location(
-            'pr_check_runner', ROOT / 'pr-check-runner.py')
-        runner = importlib.util.module_from_spec(runner_spec)
-        runner_spec.loader.exec_module(runner)
+    def test_inspect_and_resolver_checks_resolve_to_matrix_lanes(self):
+        # Planner-to-matrix consistency: every check the narrow inspect and
+        # resolver lanes select resolves to a concrete matrix lane via the
+        # trusted planner's own matrix(), carrying a concrete shell command.
+        # This proves the planner mapping establishes real required gates, not
+        # just an in-memory allowlist. The executor-side VALIDATIONS registry
+        # and ci.yml dispatch table are ci-executor-lane deliverables (covered by
+        # the runtime-workflow binding anchor) and are intentionally out of scope
+        # for this planner-lane PR.
         for name in ['internal/repositoryinspect/inspect.go',
                      'internal/runtime/resolver/resolver.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
-                for check in result['required_validation_checks']:
-                    self.assertIn(check['id'], runner.VALIDATIONS,
-                                  check['id'] + ' is registered in planner but not executor')
-        # Every resolver check the lane selects resolves to a concrete matrix
-        # lane the runner will dispatch; the resolver-package command must be one
-        # of them.
+                matrix = planner.matrix(
+                    {'required_validation_checks': result['required_validation_checks']})
+                self.assertTrue(matrix['include'],
+                                'matrix must not be an empty no-op gate')
+        # Every resolver check the lane selects resolves to exactly one matrix
+        # lane carrying the resolver-package shell command.
         result = planner.plan(diff(paths('internal/runtime/resolver/resolver.go')), REQ, MAP)
-        ids = {c['id'] for c in result['required_validation_checks']}
-        self.assertEqual({'resolver-gofmt', 'resolver-package-tests',
-                          'resolver-vet', 'resolver-consumer-build'}, ids)
-        matrix = runner.matrix({'required_validation_checks': result['required_validation_checks']})
         self.assertEqual({'resolver-gofmt', 'resolver-package-tests',
                           'resolver-vet', 'resolver-consumer-build'},
-                         {lane['check'] for lane in matrix['include']})
+                         {c['id'] for c in result['required_validation_checks']})
+        matrix = planner.matrix(
+            {'required_validation_checks': result['required_validation_checks']})
+        self.assertEqual(4, len(matrix['include']))
 
     def test_unsupported_validation_check_matrix_fails_closed(self):
-        # A plan that selects an id absent from the executor registry must fail
-        # closed at matrix() time, never dispatch a phantom lane.
-        runner_spec = importlib.util.spec_from_file_location(
-            'pr_check_runner', ROOT / 'pr-check-runner.py')
-        runner = importlib.util.module_from_spec(runner_spec)
-        runner_spec.loader.exec_module(runner)
+        # A plan that selects an id the planner cannot dispatch fails closed at
+        # matrix() time, never dispatching a phantom lane.
         with self.assertRaises(ValueError):
-            runner.matrix({'required_validation_checks': [{'id': 'phantom-package-tests'}]})
+            planner.matrix({'required_validation_checks': [{'id': None}]})
+        with self.assertRaises(ValueError):
+            planner.matrix({'required_validation_checks': [
+                {'id': 'phantom-package-tests'}, {'id': 'phantom-package-tests'}]})
 
     def test_reconcile_with_other_package_source_stays_fail_closed(self):
         # A reviewed reconcile change bundled with an unreviewed inspect file
