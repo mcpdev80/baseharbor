@@ -300,6 +300,11 @@ func BuildPlan(application string, requests []Request) (Plan, error) {
 			}
 			binding.Security = &value
 		}
+		for _, projected := range projectedServiceBindingNames(binding) {
+			if err := ValidateServiceBindingName(projected); err != nil {
+				return Plan{}, fmt.Errorf("capability binding for %s/%s: %w", application, request.Requirement.Name, err)
+			}
+		}
 		plan.Items = append(plan.Items, PlanItem{Resource: resource, Binding: binding})
 	}
 	return plan, nil
