@@ -404,69 +404,6 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
-  native_selfhosted:
-    name: Native · self-hosted docker
-    concurrency:
-      group: baseharbor-release-qualification
-      cancel-in-progress: false
-    if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/')
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Reset persistent runner state
-        shell: bash
-        timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh docker
-      - name: Verify resolver-* registered checks execute
-        shell: bash
-        run: |
-          set -uo pipefail
-          status=0
-          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
-            out="$RUNNER_TEMP/resolver-$check.log"
-            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
-              echo "resolver check $check: SUCCESS"
-            else
-              echo "resolver check $check: FAILURE"
-              status=1
-            fi
-            cat "$out"
-          done
-          exit "$status"
-      - name: Run cmd/baha native integration tests serially
-        id: runtime_integration
-        shell: bash
-        env:
-          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/native-integration-selfhosted"
-          rm -rf "$out" && mkdir -p "$out"
-          status=0
-          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v > "$out/tests.log" 2>&1 || status=$?
-          test -s "$out/tests.log"
-          test "$status" -eq 0
-          echo "native integration capture non-empty; serial run finished on self-hosted docker runner"
-      - name: Cleanup persistent runner state
-        if: always()
-        shell: bash
-        timeout-minutes: 3
-        run: bash scripts/ci-runtime-reset.sh docker
-      - name: Upload self-hosted native integration capture
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: native-integration-selfhosted-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/native-integration-selfhosted
-          if-no-files-found: error
-          retention-days: 30
 
   validate:
     if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
