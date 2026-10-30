@@ -21,6 +21,7 @@ import (
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
+	runtimesolver "github.com/mcpdev80/baseharbor/internal/runtime/resolver"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/telemetry"
 	tracesprovider "github.com/mcpdev80/baseharbor/internal/traces"
@@ -702,6 +703,117 @@ func cleanupOrphanedTargetRuntimeProjects(ctx context.Context, runtime bhruntime
 			Target:   target,
 			Resource: "orphan-runtime " + project,
 			Detail:   "removed using provider ownership labels",
+		})
+	}
+}
+
+func cleanupOrphanedRuntimeProjectsByFallback(ctx context.Context, target string, results *[]fullDestroyResult) {
+	providers, err := runtimesolver.TryAllRuntimeProvidersForOrphans(ctx)
+	if err != nil {
+		*results = append(*results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   target,
+			Resource: "orphan-runtime-discovery",
+			Detail:   "no runtime engine available; orphan cleanup requires a live container engine",
+		})
+		return
+	}
+	if len(providers) == 0 {
+		*results = append(*results, fullDestroyResult{
+			Status:   "SKIPPED",
+			Target:   target,
+			Resource: "orphan-runtime-discovery",
+			Detail:   "no runtime engine available; orphan cleanup requires a live container engine",
+		})
+		return
+	}
+	var lastErr error
+	var lastProviderName string
+	for _, provider := range providers {
+		lastErr = nil
+		lastProviderName = string(provider.Kind())
+		containers, err := provider.ListRuntimeContainers(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		projects := map[string]struct{}{}
+		for _, container := range targetOwnedRuntimeContainers(target, containers) {
+			project := strings.TrimSpace(container.Project)
+			if project != "" {
+				projects[project] = struct{}{}
+			}
+		}
+		names := make([]string, 0, len(projects))
+		for project := range projects {
+			names = append(names, project)
+		}
+		sort.Strings(names)
+		if len(names) > 0 {
+			for _, project := range names {
+				resources, err := provider.ListOwnedProjectResources(ctx, project)
+				if err != nil {
+					*results = append(*results, fullDestroyResult{
+						Status:   "FAILED",
+						Target:   target,
+						Resource: "orphan-runtime " + project,
+						Detail:   "inventory owned resources (" + lastProviderName + "): " + err.Error(),
+					})
+					continue
+				}
+				if len(resources) == 0 {
+					continue
+				}
+				if err := provider.DestroyOwnedProjectResources(ctx, project, resources); err != nil {
+					*results = append(*results, fullDestroyResult{
+						Status:   "FAILED",
+						Target:   target,
+						Resource: "orphan-runtime " + project,
+						Detail:   lastProviderName + " remove failed: " + err.Error(),
+					})
+					continue
+				}
+				remaining, err := provider.ListOwnedProjectResources(ctx, project)
+				if err != nil {
+					*results = append(*results, fullDestroyResult{
+						Status:   "FAILED",
+						Target:   target,
+						Resource: "orphan-runtime " + project,
+						Detail:   lastProviderName + " verify failed: " + err.Error(),
+					})
+					continue
+				}
+				if len(remaining) > 0 {
+					var residual []string
+					for _, resource := range remaining {
+						residual = append(residual, resource.Kind+" "+resource.Name)
+					}
+					sort.Strings(residual)
+					*results = append(*results, fullDestroyResult{
+						Status:   "FAILED",
+						Target:   target,
+						Resource: "orphan-runtime " + project,
+						Detail:   lastProviderName + " owned resources remain: " + strings.Join(residual, ", "),
+					})
+					continue
+				}
+				*results = append(*results, fullDestroyResult{
+					Status:   "REMOVED",
+					Target:   target,
+					Resource: "orphan-runtime " + project,
+					Detail:   "removed using " + lastProviderName + " ownership labels",
+				})
+			}
+			return
+		}
+		lastErr = nil
+	}
+	if lastErr != nil {
+		*results = append(*results, fullDestroyResult{
+			Status:   "FAILED",
+			Target:   target,
+			Resource: "orphan-runtime-discovery",
+			Detail:   "all fallback providers exhausted (" + lastProviderName + "): " + lastErr.Error(),
 		})
 	}
 }
