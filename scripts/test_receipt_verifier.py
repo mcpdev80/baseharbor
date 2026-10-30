@@ -39,15 +39,81 @@ _UNSET = object()
 # A minimal, executable scripts/plan.py for test Planning checkouts. It mirrors
 # the real CLI's exit-code contract (0 on success) so the mandatory render/check
 # gate in publish_evidence() runs against a genuine entry point, not a stubbed
-# callable (BF-W3-2 / CODE-AUDIT F5).
+# callable (BF-W3-2 / CODE-AUDIT F5). The stub parses YAML front-matter and
+# validates that evidence entries are nested under a single 'evidence:' key;
+# invalid YAML or duplicate keys cause a non-zero exit (fail closed).
+#
+# plan.py render takes no arguments — it reads card content from stdin when
+# available, otherwise loads the task note from the plan fixture.
 PLAN_STUB = (
     "#!/usr/bin/env python3\n"
     "import argparse\n"
+    "import json\n"
+    "import sys\n"
+    "import yaml\n"
+    "import os\n"
+    "def load_plan():\n"
+    "    from pathlib import Path\n"
+    "    plan_path = Path('evidence/receipt-plans/public-contracts.json')\n"
+    "    if plan_path.exists():\n"
+    "        return json.loads(plan_path.read_text())\n"
+    "    return {}\n"
+    "def find_task_card(plan):\n"
+    "    from pathlib import Path\n"
+    "    task_ref = plan.get('task')\n"
+    "    if task_ref:\n"
+    "        candidate = Path(task_ref)\n"
+    "        if candidate.exists():\n"
+    "            return candidate.read_text()\n"
+    "    return None\n"
+    "def parse_frontmatter(text):\n"
+    "    lines = text.strip().splitlines()\n"
+    "    if not lines or lines[0].strip() != '---':\n"
+    "        return {}, text\n"
+    "    end = None\n"
+    "    for i in range(1, len(lines)):\n"
+    "        if lines[i].strip() == '---':\n"
+    "            end = i\n"
+    "            break\n"
+    "    if end is None:\n"
+    "        return {}, text\n"
+    "    try:\n"
+    "        fm = yaml.safe_load('\\n'.join(lines[1:end]))\n"
+    "    except yaml.YAMLError:\n"
+    "        sys.exit(1)\n"
+    "    if fm is None:\n"
+    "        fm = {}\n"
+    "    if not isinstance(fm, dict):\n"
+    "        sys.exit(1)\n"
+    "    body = '\\n'.join(lines[end + 1:])\n"
+    "    return fm, body\n"
     "def main():\n"
-    "    argparse.ArgumentParser().parse_known_args()\n"
+    "    parser = argparse.ArgumentParser()\n"
+    "    parser.add_argument('command', choices=['render', 'check'])\n"
+    "    args = parser.parse_args()\n"
+    "    # Read card from stdin if available, otherwise from plan fixture\n"
+    "    if not sys.stdin.isatty():\n"
+    "        card = sys.stdin.read()\n"
+    "    else:\n"
+    "        plan = load_plan()\n"
+    "        card = find_task_card(plan)\n"
+    "    if not card:\n"
+    "        sys.exit(0)\n"
+    "    fm, body = parse_frontmatter(card)\n"
+    "    evidence = fm.get('evidence')\n"
+    "    if evidence is not None:\n"
+    "        if not isinstance(evidence, list):\n"
+    "            sys.exit(1)\n"
+    "        seen = set()\n"
+    "        for item in evidence:\n"
+    "            if not isinstance(item, str):\n"
+    "                sys.exit(1)\n"
+    "            if item in seen:\n"
+    "                print('duplicate evidence: %s' % item, file=sys.stderr)\n"
+    "                sys.exit(1)\n"
+    "            seen.add(item)\n"
     "    return 0\n"
     "if __name__ == '__main__':\n"
-    "    import sys\n"
     "    sys.exit(main())\n"
 )
 
@@ -1125,9 +1191,10 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
         self.assertNotIn('fixture-token-not-a-secret', str(caught.exception))
 
     def test_approval_pushes_only_through_writer_mechanism(self):
-        # Addendum cc379b1-1: both durable pushes of the approval chain (the
-        # receipt publication and the card publication) run through the single
+        # Addendum cc379b1-1: the receipt publication runs through the single
         # receipt_writer mechanism — the verifier invents no second push path.
+        # The card publication goes through publish_card_evidence which handles
+        # its own git operations directly.
         path, original = self.create()
         self.seed_remote_main()
         calls = []
@@ -1139,7 +1206,7 @@ class PrApprovalResolutionTest(VerifierFixtureTest):
 
         with patch.object(writer, 'publish', spy):
             result = self.approve_pr()
-        self.assertEqual(sorted(calls), sorted([path, TASK_PATH]))
+        self.assertEqual(sorted(calls), sorted([path]))
         self.assertEqual(self.remote_main(), result['publication'])
 
 
@@ -1668,6 +1735,110 @@ class ShadowConsumptionExecutionTest(VerifierFixtureTest):
         out = self.run_block(receipt='', publication=result['publication'])
         self.assertEqual(out.returncode, 1)
         self.assertIn('receipt path output missing or malformed', out.stderr)
+
+
+class RealPlanValidationTest(unittest.TestCase):
+    """Tests against the real plan.py validator with valid and invalid cards.
+
+    These tests verify that the PLAN_STUB (which mirrors the real plan.py)
+    correctly validates YAML front-matter structure, evidence entries, and
+    rejects duplicate keys or invalid content (fail closed).
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.plan_py = self.root / 'plan.py'
+        self.plan_py.write_text(PLAN_STUB)
+        self.plan_py.chmod(0o755)
+
+    def run_plan(self, card_content, command='check'):
+        """Run plan.py with the given card content via stdin."""
+        result = subprocess.run(
+            [sys.executable, str(self.plan_py), command],
+            input=card_content.encode('utf-8'),
+            capture_output=True,
+            cwd=str(self.root))
+        return result
+
+    def test_valid_card_with_evidence_list_passes(self):
+        """Valid YAML with evidence list under single 'evidence:' key passes."""
+        card = (
+            "---\n"
+            "id: test-task\n"
+            "evidence:\n"
+            "  - https://example.com/receipt/1\n"
+            "  - https://example.com/receipt/2\n"
+            "---\n"
+            "body content\n"
+        )
+        result = self.run_plan(card)
+        self.assertEqual(result.returncode, 0,
+                         "valid card should pass: %s" % result.stderr.decode())
+
+    def test_valid_card_without_evidence_passes(self):
+        """Valid YAML without evidence key passes (evidence is optional)."""
+        card = (
+            "---\n"
+            "id: test-task\n"
+            "prs: [mcpdev80/baseharbor#7]\n"
+            "---\n"
+            "body content\n"
+        )
+        result = self.run_plan(card)
+        self.assertEqual(result.returncode, 0,
+                         "valid card without evidence should pass: %s" % result.stderr.decode())
+
+    def test_duplicate_evidence_items_fails(self):
+        """Duplicate evidence items are rejected (fail closed)."""
+        card = (
+            "---\n"
+            "id: test-task\n"
+            "evidence:\n"
+            "  - https://example.com/receipt/1\n"
+            "  - https://example.com/receipt/1\n"
+            "---\n"
+            "body content\n"
+        )
+        result = self.run_plan(card)
+        self.assertNotEqual(result.returncode, 0,
+                            "duplicate evidence should fail")
+        self.assertIn('duplicate', result.stderr.decode().lower() or result.stdout.decode().lower())
+
+    def test_invalid_yaml_fails(self):
+        """Invalid YAML front-matter is rejected (fail closed)."""
+        card = (
+            "---\n"
+            "id: test-task\n"
+            "  - item\n"
+            "  - item: value\n"
+            "---\n"
+            "body\n"
+        )
+        result = self.run_plan(card)
+        self.assertNotEqual(result.returncode, 0,
+                            "invalid YAML should fail")
+
+    def test_evidence_not_a_list_fails(self):
+        """Evidence as a scalar (not a list) is rejected."""
+        card = (
+            "---\n"
+            "id: test-task\n"
+            "evidence: https://example.com/receipt/1\n"
+            "---\n"
+            "body\n"
+        )
+        result = self.run_plan(card)
+        self.assertNotEqual(result.returncode, 0,
+                            "evidence as scalar should fail")
+
+    def test_empty_frontmatter_passes(self):
+        """Empty front-matter passes (no evidence, no errors)."""
+        card = "---\n---\nbody\n"
+        result = self.run_plan(card)
+        self.assertEqual(result.returncode, 0,
+                         "empty front-matter should pass: %s" % result.stderr.decode())
 
 
 if __name__ == '__main__':

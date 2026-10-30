@@ -1233,10 +1233,13 @@ class TestEvidenceEditDesign(unittest.TestCase):
         with self.assertRaises(tl.TaskLinkError):
             tl.edit_evidence_add(b"# no frontmatter\nbody\n", self.URL2)
 
-    def test_edit_missing_evidence_key_blocks(self):
+    def test_edit_missing_evidence_key_blocks_creates_key(self):
         card = "---\nid: t-x\nrelease: v1\n---\nbody\n"
-        with self.assertRaises(tl.TaskLinkError):
-            tl.edit_evidence_add(card.encode(), self.URL2)
+        new_bytes, _, after = tl.edit_evidence_add(card.encode(), self.URL2)
+        reparsed = tl.parse_card(after)
+        self.assertIn("evidence", reparsed["frontmatter"])
+        self.assertEqual(reparsed["frontmatter"]["evidence"], [self.URL2])
+        self.assertEqual(after.count("evidence:"), 1)
 
     def test_edit_non_https_url_blocks(self):
         with self.assertRaises(tl.TaskLinkError):

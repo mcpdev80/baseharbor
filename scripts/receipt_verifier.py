@@ -747,17 +747,13 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
         require(len(receipt_commit) == 1 and full_sha(receipt_commit[0]),
                 "receipt edit is not reachable in the durable publication history")
         reference = evidence_reference(receipt_commit[0], path)
-        card_publication = receipt_tasklink.publish_evidence(
-            planning, task, reference, candidate_sha, plan_revision,
-            render_fn=plan_render_check, check_fn=plan_render_check,
-            _git_fn=writer_push_git(planning, task))
-        require(full_sha(card_publication),
+        card_path = Path(planning) / task
+        sha, durable = receipt_tasklink.publish_card_evidence(
+            card_path, reference, planning,
+            render_fn=plan_render_check, check_fn=plan_render_check)
+        require(full_sha(sha) and durable,
                 "tasklink returned no durable card publication SHA")
-        durable = git(planning, "show",
-                      f"{card_publication}:{task}").decode(errors="replace")
-        require(reference in durable,
-                "immutable evidence reference is not present at the card publication")
-        return card_publication
+        return sha
     return publication
 
 

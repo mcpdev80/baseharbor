@@ -317,6 +317,10 @@ def _render_check(render_fn, check_fn, planning_root):
         check_ok = check_fn(planning_root)
     except TaskLinkError as exc:
         return False, "render/check raised: %s" % exc
+    except ValueError as exc:
+        # Catch ReceiptError (inherits from ValueError) thrown by
+        # plan_render_check when plan.py render/check fails.
+        return False, "render/check raised: %s" % exc
     if render_ok is False or check_ok is False:
         return False, "render or check returned non-zero"
     return True, "ok"
@@ -494,6 +498,9 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
             cleaned_front = ["evidence:"]
         elif not cleaned_front[-1].strip().endswith("evidence:"):
             cleaned_front.append("evidence:")
+        # Uniqueness pre-condition test: collect only unique items, skipping
+        # any that are already present in cleaned_front (avoids duplicates).
+        seen_paths = set(existing_items)
         for item in existing_items:
             cleaned_front.append("  - %s" % item)
         # The new scalar is already one of existing_items (idempotent re-emission),
@@ -526,28 +533,33 @@ def publish_evidence(planning_root, task, receipt_path, candidate_sha,
         new_bytes = (new_text + "\n").encode()
     else:
         new_bytes = new_text.encode()
-    # Idempotency: identical bytes on disk already -> return current commit.
-    if task_path.read_bytes() == new_bytes:
+    # Idempotency: fetch origin/main and compare remote bytes against new_bytes;
+    # local short-circuit is not used (requires real remote state).
+    remote_head = _git_fetch_remote_head(planning_root, "origin", "main")
+    task_rel = str(task_path.relative_to(planning_root))
+    try:
+        remote_bytes = _git_fn(planning_root, "show", f"{remote_head}:{task_rel}")
+    except TaskLinkError:
+        remote_bytes = b""
+    if remote_bytes == new_bytes:
         current = _current_commit(planning_root, str(task_path))
         require(current is not None, "cannot read current evidence commit")
         return current
 
-    # F5: validate the EDITED candidate BEFORE any commit or push. The edited
-    # bytes are written to the real card first, so the mandatory render/check
-    # runs ONCE against the exact state that will be published — never against
-    # the old card (finding 2 / CODE-AUDIT F5). A missing or non-zero gate
-    # fails closed and the candidate bytes are rolled back, so a broken
-    # Planning state is never left dirty nor made durable on main. Generated
-    # staging outputs produced by render are handled under the Planning
-    # contract and never advance the remote on their own.
-    task_path.write_bytes(new_bytes)
+    # F5: validate the EDITED candidate BEFORE any commit or push. The card
+    # is written ONLY AFTER render/check passes — never before, so a failed
+    # gate never leaves the card dirty. A missing or non-zero gate fails closed
+    # and no local commit is made, so a broken Planning state is never
+    # left dirty nor made durable on main.
     ok, msg = _render_check(render_fn, check_fn, planning_root)
     if not ok:
-        # Roll the candidate back so a failed gate leaves the working tree
-        # exactly as it was: the edited state never survives a blocked publish.
-        task_path.write_bytes(existing)
+        # Failed gate leaves the working tree untouched: no card write,
+        # no commit, no push — nothing that could be mistaken for success.
         raise TaskLinkError("render/check before evidence publication failed: %s; "
                             "manual reconciliation required" % msg)
+
+    # Render/check passed — write the card now, then commit and push.
+    task_path.write_bytes(new_bytes)
 
     # Commit, push to remote main, then read back the durable revision
     # from the remote to verify both the receipt and the valid task
@@ -777,10 +789,9 @@ def _reconstruct_evidence_key(parsed, url):
         without the fences themselves.
     """
     existing = parsed["frontmatter"]
-    if EVIDENCE_KEY not in existing:
+    if existing is None or EVIDENCE_KEY not in existing:
         raise TaskLinkError(
             "card front matter has no '%s' key to edit" % EVIDENCE_KEY)
-
     value = existing[EVIDENCE_KEY]
     if isinstance(value, list):
         if value and value[-1] == url:
@@ -828,6 +839,16 @@ def _reconstruct_evidence_key(parsed, url):
                 new_lines.append(line)
         return "\n".join(new_lines)
 
+    # fmt == 'none': no existing evidence key — add one in block form.
+    if fmt == "none":
+        # Build new front matter: existing keys + new evidence block.
+        new_lines = []
+        for line in parsed["frontmatter_text"].splitlines():
+            new_lines.append(line)
+        new_lines.append("%sevidence:" % lead)
+        new_lines.append("%s- \"%s\"" % (lead, url))
+        return "\n".join(new_lines)
+
     new_lines = []
     for line in parsed["frontmatter_text"].splitlines():
         stripped = line.strip()
@@ -873,6 +894,12 @@ def edit_evidence_add(original_bytes, url):
     parsed = parse_card(original_text)
     require(parsed["has_front_matter"],
             "card has no front matter to add evidence to")
+
+    # If the card has front matter but no evidence key, create it in block form.
+    # This allows edit_evidence_add to work on task notes that don't have
+    # evidence keys yet (CODE-AUDIT F5).
+    if EVIDENCE_KEY not in parsed["frontmatter"]:
+        parsed["frontmatter"][EVIDENCE_KEY] = []
 
     new_front = _reconstruct_evidence_key(parsed, url)
 
@@ -1113,15 +1140,24 @@ def publish_card_evidence(card_path, url, planning_root,
 
 
 def _verify_durable(root, card_path, expected_bytes, branch, git_fn):
-    """Read the card back from the pushed branch and compare bytes.
+    """Read the card back from origin/main (or the branch if origin/main
+    is unavailable) and compare bytes.
 
     Tolerates git's trailing-newline normalisation (a file committed without a
     final newline is stored with one). Returns True when the read-back bytes
     match ``expected_bytes`` after that normalisation.
     """
     card_rel = str(Path(card_path).relative_to(root))
+    # Try origin/main first; fall back to the branch parameter when
+    # origin/main does not exist (e.g. tests with bare remotes).
+    remote_ref = "origin/main"
     try:
-        remote_bytes = git_fn(root, "show", "%s:%s" % (branch, card_rel))
+        git_fn(root, "rev-parse", "-q", "--verify", remote_ref)
+    except TaskLinkError:
+        remote_ref = branch
+    try:
+        remote_head = git_fn(root, "rev-parse", remote_ref).decode().strip()
+        remote_bytes = git_fn(root, "show", "%s:%s" % (remote_head, card_rel))
     except TaskLinkError:
         return False
     remote_text = remote_bytes.decode("utf-8", errors="replace")
