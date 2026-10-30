@@ -69,34 +69,35 @@ func TestWorkloadSourceCrossSourceSemanticParity(t *testing.T) {
 // classification and capability findings) is projected from normalized workload
 // evidence for every supported source family, not only Compose. This is the
 // core-750 contract: Quadlet and Kubernetes repositories must not under-report.
+// The object-storage variants additionally prove that the normalized
+// infrastructure class storage.object (MinIO/SeaweedFS) maps to infrastructure
+// classification and the object-storage.s3 capability in all three families.
 func TestInspectProjectsNeutralSummaryForAllSourceFamilies(t *testing.T) {
 	fixtures := map[string]struct {
-		composePath    string
-		paths          []string
+		root           string
 		components     []string
 		infrastructure map[string]string
 	}{
 		"compose": {
-			composePath:    "compose.yaml",
-			components:     []string{"api", "worker", "db", "cache"},
-			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value"},
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "compose"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
 		},
 		"quadlet": {
-			paths:          []string{"api.container", "worker.container", "db.container", "cache.container"},
-			components:     []string{"api", "worker", "db", "cache"},
-			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value"},
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "quadlet"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
 		},
 		"kubernetes": {
-			paths:          []string{"app.yaml"},
-			components:     []string{"api", "worker", "db", "cache"},
-			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value"},
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "kubernetes"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
 		},
 	}
 
 	for name, fx := range fixtures {
 		t.Run(name, func(t *testing.T) {
-			root := filepath.Join("..", "..", "testdata", "adoption-parity", name)
-			result, err := Inspect(context.Background(), root)
+			result, err := Inspect(context.Background(), fx.root)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -107,17 +108,20 @@ func TestInspectProjectsNeutralSummaryForAllSourceFamilies(t *testing.T) {
 						name, id, result.WorkloadServices, result.InfrastructureServices)
 				}
 			}
+			for id, class := range fx.infrastructure {
+				if !contains(result.InfrastructureServices, id) {
+					t.Fatalf("%s: infrastructure component %q (%s) not projected: infra=%v", name, id, class, result.InfrastructureServices)
+				}
+				if contains(result.WorkloadServices, id) {
+					t.Fatalf("%s: infrastructure component %q (%s) must not be classified workload: workload=%v", name, id, class, result.WorkloadServices)
+				}
+				assertFindingConfidence(t, result, class, ConfidenceDetected)
+			}
 			if len(result.Ports) == 0 {
 				t.Fatalf("%s: ports not projected from normalized component evidence", name)
 			}
 			if len(result.HealthChecks) == 0 {
 				t.Fatalf("%s: health/readiness not projected from normalized component evidence", name)
-			}
-			for id, class := range fx.infrastructure {
-				if !contains(result.InfrastructureServices, id) {
-					t.Fatalf("%s: infrastructure component %q (%s) not projected: infra=%v", name, id, class, result.InfrastructureServices)
-				}
-				assertFindingConfidence(t, result, class, ConfidenceDetected)
 			}
 			logFinding := resultFindByCapability(result, "logs")
 			if logFinding == nil {
@@ -125,6 +129,58 @@ func TestInspectProjectsNeutralSummaryForAllSourceFamilies(t *testing.T) {
 			}
 			assertSourceEvidenceKind(t, name, *logFinding)
 		})
+	}
+}
+
+// TestInspectObjectStorageParityAcrossSourceFamilies compares the shared
+// classification semantics for the same logical application expressed in
+// Compose, Quadlet and Kubernetes: the MinIO storage component must land in
+// InfrastructureServices (never WorkloadServices) and carry a detected
+// object-storage.s3 capability finding in every family. The finding Name stays
+// empty for the aggregate Compose detector finding and names the providing
+// component for per-component projections; that source-native naming is
+// provenance, not shared semantics, and is therefore excluded from the
+// cross-family equality.
+func TestInspectObjectStorageParityAcrossSourceFamilies(t *testing.T) {
+	families := []string{"compose", "quadlet", "kubernetes"}
+	type projection struct {
+		infrastructure bool
+		workload       bool
+		capability     string
+		confidence     Confidence
+	}
+	projected := map[string]projection{}
+	for _, name := range families {
+		root := filepath.Join("..", "..", "testdata", "adoption-parity", name)
+		result, err := Inspect(context.Background(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := projection{
+			infrastructure: contains(result.InfrastructureServices, "storage"),
+			workload:       contains(result.WorkloadServices, "storage"),
+		}
+		if finding := resultFindByCapability(result, "object-storage.s3"); finding != nil {
+			p.capability = finding.Capability
+			p.confidence = finding.Confidence
+		}
+		projected[name] = p
+	}
+	for _, name := range families {
+		p := projected[name]
+		if !p.infrastructure {
+			t.Fatalf("%s: object-storage component not classified infrastructure while %v are", name, projected)
+		}
+		if p.workload {
+			t.Fatalf("%s: object-storage component misclassified as workload: %#v", name, p)
+		}
+		if p.capability != "object-storage.s3" || p.confidence != ConfidenceDetected {
+			t.Fatalf("%s: object-storage capability finding mismatch: %#v", name, p)
+		}
+	}
+	if projected["compose"] != projected["quadlet"] ||
+		projected["compose"] != projected["kubernetes"] {
+		t.Fatalf("object-storage semantics differ across families: %#v", projected)
 	}
 }
 

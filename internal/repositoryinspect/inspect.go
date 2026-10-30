@@ -462,9 +462,10 @@ func reconcileSelectedComposeInspectionView(result *Result, data []byte) error {
 // NormalizeWorkloadSource fills WorkloadEvidence.Components for every supported
 // source family (compose, quadlet, kubernetes); gating the shared summary on
 // SelectedCompose only made Quadlet and Kubernetes repositories under-report.
-// This is the non-Compose projection path and never runs for Compose, whose
-// Compose-specific parsing (database bootstrap details, ambiguous-service
-// reconciliation) already populated the summary.
+// This is the non-Compose projection path; Compose keeps its dedicated parser
+// (database bootstrap details, ambiguous-service reconciliation), which already
+// classifies infrastructure services and emits capability findings, so running
+// the projection for Compose too would duplicate reconciled findings.
 func shareProjectSummaryFromComponents(result *Result, evidence *WorkloadEvidence) {
 	path := evidence.Source.Path
 	for _, component := range evidence.Components {
@@ -473,7 +474,7 @@ func shareProjectSummaryFromComponents(result *Result, evidence *WorkloadEvidenc
 			component.InfrastructureClass == "cache.key-value" ||
 			component.InfrastructureClass == "database.document" ||
 			component.InfrastructureClass == "messaging" ||
-			component.InfrastructureClass == "object-storage.s3":
+			component.InfrastructureClass == "storage.object":
 			result.InfrastructureServices = append(result.InfrastructureServices, component.ID)
 		case len(component.Ports) > 0 || component.Health || component.Image != "" || component.Build != "":
 			result.WorkloadServices = append(result.WorkloadServices, component.ID)
@@ -514,7 +515,7 @@ func capabilityFindingForInfrastructureClass(component WorkloadComponent) (Findi
 		capability = "database.document"
 	case "messaging":
 		capability = "messaging"
-	case "object-storage.s3":
+	case "storage.object":
 		capability = "object-storage.s3"
 	default:
 		return Finding{}, false
