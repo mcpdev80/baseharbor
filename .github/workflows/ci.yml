@@ -190,11 +190,11 @@ jobs:
 
   targeted_ha_docker:
     name: Targeted HA · docker
-    needs: pr_plan
+    needs: [pr_plan, pr_native_gate]
     concurrency:
       group: baseharbor-release-qualification
       cancel-in-progress: false
-    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))) || (github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.cli_native_required == 'true')
+    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/docker/') || contains(github.ref_name, '/both/'))) || needs.pr_native_gate.outputs.cli_native_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -298,11 +298,11 @@ jobs:
 
   targeted_ha_podman:
     name: Targeted HA · podman
-    needs: pr_plan
+    needs: [pr_plan, pr_native_gate]
     concurrency:
       group: baseharbor-release-qualification
       cancel-in-progress: false
-    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))) || (github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.cli_native_required == 'true')
+    if: (github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/ha/') && (contains(github.ref_name, '/podman/') || contains(github.ref_name, '/both/'))) || needs.pr_native_gate.outputs.cli_native_required == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
@@ -627,6 +627,29 @@ jobs:
           name: trusted-pr-plan
           path: pr-plan.json
           retention-days: 30
+
+  pr_native_gate:
+    name: PR · Native Gate Flag
+    needs: pr_plan
+    if: (!cancelled())
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      cli_native_required: ${{ steps.flag.outputs.cli_native_required }}
+    steps:
+      - name: Resolve native binding flag
+        id: flag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base_ref }}
+          PLAN_REQUIRED: ${{ needs.pr_plan.outputs.cli_native_required }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = pull_request ] && [ "$BASE_REF" = develop ] && [ "$PLAN_REQUIRED" = true ]; then
+            echo "cli_native_required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cli_native_required=false" >> "$GITHUB_OUTPUT"
+          fi
 
   pr_runner_interface:
     name: PR · Runner Interface
