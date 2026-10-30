@@ -59,6 +59,26 @@ def require(condition, reason):
         raise ReceiptError(reason)
 
 
+def plan_render_check(planning_root):
+    """Run the mandatory Planning validator (plan.py render + check).
+
+    Both sub-commands must exit 0. A missing scripts/plan.py, a non-zero exit
+    or any other failure is reported as a failed gate — this is NEVER a silent
+    pass, so a broken Planning state can never be made durable on main
+    (CODE-AUDIT F5).
+    """
+    render = Path(planning_root) / "scripts" / "plan.py"
+    require(render.is_file(), "mandatory plan.py validator missing in Planning checkout")
+    for sub in ("render", "check"):
+        env = dict(os.environ, GIT_NO_LAZY_FETCH="1")
+        result = subprocess.run(
+            ["python3", str(render), sub], capture_output=True, text=True, env=env)
+        require(result.returncode == 0,
+                "mandatory plan.py %s failed closed: %s"
+                % (sub, result.stderr.strip() or result.stdout.strip()))
+    return True
+
+
 def canonical(value):
     return (json.dumps(value, sort_keys=True, separators=(",", ":"),
                        ensure_ascii=True, allow_nan=False) + "\n").encode()
@@ -727,16 +747,13 @@ def publish_approval(planning, path, approval_commit, task=None, candidate_sha=N
         require(len(receipt_commit) == 1 and full_sha(receipt_commit[0]),
                 "receipt edit is not reachable in the durable publication history")
         reference = evidence_reference(receipt_commit[0], path)
-        card_publication = receipt_tasklink.publish_evidence(
-            planning, task, reference, candidate_sha, plan_revision,
-            _git_fn=writer_push_git(planning, task))
-        require(full_sha(card_publication),
+        card_path = Path(planning) / task
+        sha, durable = receipt_tasklink.publish_card_evidence(
+            card_path, reference, planning,
+            render_fn=plan_render_check, check_fn=plan_render_check)
+        require(full_sha(sha) and durable,
                 "tasklink returned no durable card publication SHA")
-        durable = git(planning, "show",
-                      f"{card_publication}:{task}").decode(errors="replace")
-        require(reference in durable,
-                "immutable evidence reference is not present at the card publication")
-        return card_publication
+        return sha
     return publication
 
 
