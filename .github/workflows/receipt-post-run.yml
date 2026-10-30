@@ -67,35 +67,50 @@ jobs:
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
-          # A producer run uploads a single trusted-pr-plan artifact; a
-          # forward-port PR, docs-only or non-contract CI completion carries no
-          # such artifact and is NOT a producer run. The probe must tell
-          # ABSENCE (skip cleanly) from an ERROR (fail closed): a failed or
-          # incomplete API response is NOT absence, so it must hard-fail, not
-          # read as eligible=false (the 2026-10-30 #1218 accident: the previous
-          # grep swallowed the API failure via 2>/dev/null and reported a
-          # phantom skip).
+          # A producer run uploads a single trusted-pr-plan artifact. The probe
+          # must tell ABSENCE (skip cleanly) from an ERROR (fail closed) and
+          # must NOT treat mere artifact absence as a sufficient skip condition:
           #
-          # List artifact names with explicit pagination so a truncated page
-          # cannot hide the artifact; --jq applies per page, yielding a plain
-          # newline-separated list of names. gh's own exit code is the signal:
-          # a non-zero exit (auth/network/transport failure) exits the probe 1
-          # (ERROR, never a skip); a successful (0) response with an empty name
-          # list is a genuine ABSENCE and skips cleanly; a successful response
-          # carrying trusted-pr-plan is eligible.
+          #  - An API failure at any point (non-zero gh exit, truncated page) is
+          #    never absence; it hard-fails the probe (exit 1). Absent-else
+          #    silently masking this was the 2026-10-30 #1218 accident.
+          #  - A successful response WITHOUT trusted-pr-plan is only a legit
+          #    skip when the PR does NOT touch contracts/. A contracts/ touch
+          #    with no artifact is an INTEGRITY ERROR (a producer PR was
+          #    expected to upload the trusted plan) and must fail closed too.
+          #
+          # Artifact listing: explicit pagination (--paginate) so a truncated
+          # page cannot hide the artifact; gh's own exit code gates the probe.
           set +e
-          API_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name')"
-          API_RC=$?
+          ART_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name' 2>/dev/null)"
+          ART_RC=$?
           set -e
-          if [ "${API_RC}" -ne 0 ]; then
-            echo "trusted-pr-plan API call failed (rc=${API_RC}): not absence, failing closed" >&2
+          if [ "${ART_RC}" -ne 0 ]; then
+            echo "trusted-pr-plan artifact API failed (rc=${ART_RC}): not absence, failing closed" >&2
             exit 1
           fi
-          if printf '%s\n' "${API_LIST}" | grep -qx "trusted-pr-plan"; then
+          HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
+          # PR file touch: does this PR touch contracts/? Paginated file list;
+          # gh's exit code gates it (a failure here is also a fail-closed ERROR).
+          set +e
+          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/pulls/$(gh api repos/mcpdev80/baseharbor/actions/runs/$RUN_ID --jq .pull_requests[0].number)/files?per_page=100&page=1" --paginate --jq '.[].filename' 2>/dev/null)"
+          CONTRACT_RC=$?
+          set -e
+          if [ "${CONTRACT_RC}" -ne 0 ]; then
+            echo "PR file list API failed (rc=${CONTRACT_RC}): not absence, failing closed" >&2
+            exit 1
+          fi
+          HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"
+          if [ "${HAS_ARTIFACT}" = true ]; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
+          elif [ "${HAS_CONTRACT_TOUCH}" = true ]; then
+            # contracts/ touched but no trusted-pr-plan artifact: producer PR
+            # expected to upload the plan; its absence is an integrity error.
+            echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID: integrity error, failing closed" >&2
+            exit 1
           else
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
-            echo "no trusted-pr-plan artifact on run $RUN_ID: not a producer run; receipt chain skipped" >&2
+            echo "no trusted-pr-plan artifact on run $RUN_ID and no contracts/ touch: not a producer run; receipt chain skipped" >&2
           fi
 
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,

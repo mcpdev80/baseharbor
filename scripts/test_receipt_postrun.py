@@ -797,9 +797,13 @@ class ProducerEligibilityGateTests(unittest.TestCase):
     for EVERY successful CI completion, including forward-port PRs whose CI
     never uploads trusted-pr-plan. The probe must tell ABSENCE (skip cleanly)
     from an ERROR (fail closed): a failed/incomplete API response must hard-fail
-    (exit 1), never read as a phantom producer run. Only a successful API
-    response WITHOUT trusted-pr-plan yields producer_eligible=false; a
-    present-but-broken plan fails closed downstream in extract_facts."""
+    (exit 1), never read as a phantom producer run.
+
+    Mere artifact absence is NOT sufficient for a skip (Owner 2026-10-30): a
+    contracts/ touch with no trusted-pr-plan artifact is an integrity error and
+    fails closed; only no contracts/ touch + no artifact skips cleanly. Only a
+    present-but-broken plan fails closed downstream in extract_facts.
+    """
 
     WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
 
@@ -810,61 +814,103 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         block = [s for s in steps if s.get("id") == "eligibility"][0]["run"]
         return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
 
-    def _run_probe(self, *, gh_returncode, gh_stdout="", gh_command="gh"):
-        """Run the eligibility probe with a stub that returns gh_returncode and
-        emits gh_stdout. A non-zero return code models a real API transport
-        failure; the probe must NOT read that as 'artifact absent'."""
+    def _run_probe(self, *, artifact_stdout, artifact_rc,
+                   files_stdout, files_rc, pr_number="1124"):
+        """Run the eligibility probe with a path-dispatching gh stub.
+
+        The probe issues two authenticated gh calls: the artifact list and the
+        PR file list (pulls/<pr_number>/files). The stub models each
+        independently -- artifact_rc/files_rc are per-call exit codes and
+        artifact_stdout/files_stdout their stdout -- so any single API failure
+        is a fail-closed ERROR, never a phantom skip.
+        """
         import tempfile, os
         with tempfile.TemporaryDirectory() as td:
-            printf_line = "  printf '%s' '" + gh_stdout + "'"
-            exit_line = "  exit " + str(gh_returncode)
-            lines = [
+            bin_dir = Path(td) / "bin"
+            bin_dir.mkdir()
+            stub = bin_dir / "gh"
+            body = [
                 "#!/bin/sh",
-                "if [ \"$1\" = \"api\" ]; then",
-                printf_line,
-                exit_line,
-                "fi",
-                "exit 0",
+                "cmd=\"$1\"",
+                'if [ "$cmd" != "api" ]; then exit 0; fi',
+                'url="$2"',
+                "rc=0",
+                "out=\"\"",
+                'case "$url" in',
+                "*/artifacts*) out='" + artifact_stdout + "'; rc=" + str(artifact_rc) + " ;;",
+                "*/files*) out='" + files_stdout + "'; rc=" + str(files_rc) + " ;;",
+                '*/pull_requests*) out="{\\"pull_requests\\":[{\\"number\\":' + str(pr_number) + '}]}"; rc=0 ;;',
+                "*) rc=0 ;;",
+                "esac",
+                "printf '%s' \"$out\"",
+                "exit $rc",
                 "",
             ]
-            gh = Path(td) / gh_command
-            gh.write_text("\n".join(lines))
-            gh.chmod(0o755)
+            stub = bin_dir / "gh"
+            stub.write_text("\n".join(body))
+            stub.chmod(0o755)
             out = Path(td) / "out.txt"
             out.write_text("")
-            env = dict(os.environ, GITHUB_OUTPUT=str(out), PATH=td + os.pathsep + os.environ["PATH"])
+            env = dict(os.environ, GITHUB_OUTPUT=str(out), PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
             proc = subprocess.run(["bash", "-c", self._probe_block()], env=env,
                                   capture_output=True, text=True)
             return proc, out.read_text()
 
-    def test_missing_artifact_yields_not_eligible_without_failure(self):
-        # Successful API response, empty name list => artifact absent => skip.
-        proc, result = self._run_probe(gh_returncode=0, gh_stdout="")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("producer_eligible=false", result)
-
     def test_present_artifact_yields_eligible(self):
         # Successful API response carrying trusted-pr-plan => eligible.
-        proc, result = self._run_probe(gh_returncode=0, gh_stdout="trusted-pr-plan")
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan", artifact_rc=0,
+                                       files_stdout="", files_rc=0)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("producer_eligible=true", result)
 
-    def test_api_error_yields_fail_closed_not_absent(self):
-        # A non-zero gh exit (transport/API error) must NOT be read as absence:
-        # the probe hard-fails (exit 1), never emits producer_eligible=false and
-        # never a phantom skip (the #1218 regression).
-        proc, result = self._run_probe(gh_returncode=1, gh_stdout="")
+    def test_no_contract_touch_no_artifact_skips_cleanly(self):
+        # Successful calls, no artifact, no contracts/ file => legit skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md\nscripts/foo.py", files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
+        # The skip rationale is diagnostic on stderr; the machine-readable
+        # skip signal (producer_eligible=false) is on GITHUB_OUTPUT.
+        self.assertIn("not a producer run", proc.stderr)
+
+    def test_contract_touch_without_artifact_fails_closed(self):
+        # The Owner-precise rule: a contracts/ touch with no trusted-pr-plan
+        # artifact is an integrity error, NOT a skip. Probe must exit non-zero.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/service/v1/x.schema.json\nREADME.md",
+                                       files_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "contracts/ touch without artifact must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+        self.assertNotIn("skipped", result)
+
+    def test_artifact_api_error_fails_closed(self):
+        # A non-zero gh exit on the artifact call (transport/API error) must
+        # NOT be read as absence: the probe hard-fails (exit 1).
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=1,
+                                       files_stdout="", files_rc=0)
         self.assertNotEqual(proc.returncode, 0,
                             "API error must fail closed, not skip")
         self.assertNotIn("producer_eligible=", result)
         self.assertNotIn("skipped", result)
 
+    def test_files_api_error_fails_closed(self):
+        # Even when the artifact call succeeds, a failing PR-file-list call is
+        # an ERROR, never a skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "file-list API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
     def test_api_error_not_confused_with_absent(self):
         # Regression guard: an empty stdout with a non-zero exit code is an
         # ERROR, distinguishable from a zero-exit empty response (ABSENCE).
-        err_proc, _ = self._run_probe(gh_returncode=2, gh_stdout="")
+        err_proc, _ = self._run_probe(artifact_stdout="", artifact_rc=2,
+                                      files_stdout="", files_rc=0)
         self.assertNotEqual(err_proc.returncode, 0)
-        ok_proc, ok_result = self._run_probe(gh_returncode=0, gh_stdout="")
+        ok_proc, ok_result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                             files_stdout="", files_rc=0)
         self.assertEqual(ok_proc.returncode, 0)
         self.assertIn("producer_eligible=false", ok_result)
 
