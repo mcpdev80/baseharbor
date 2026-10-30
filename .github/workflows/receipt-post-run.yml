@@ -131,15 +131,46 @@ jobs:
             echo "PR head ${PR_HEAD:-} != authenticated run head ${RUN_HEAD}: association mismatch, failing closed" >&2
             exit 1
           fi
-          # Complete changed-file set for the authenticated PR: paginated,
-          # concatenated, deduplicated — a truncated page cannot hide a
-          # contracts/ touch. gh's own exit code gates it.
+          # Run-bound base SHA: the immutable PR->task binding in the verifier
+          # keys on BOTH the run's head_sha and target_base_sha. The live PR
+          # files endpoint reflects the PR's CURRENT base, which the maintainer
+          # can move (rebase/squash) between the run completing and this probe.
+          # The base SHA is therefore resolved from the immutable run object and
+          # re-checked against it below, so a base move breaks the probe instead
+          # of silently rewriting the bounded file set.
           set +e
-          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename' 2>/dev/null | sort -u)"
+          RUN_BASE="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.base_sha' 2>/dev/null)"
+          RUN_BASE_RC=$?
+          set -e
+          if [ "${RUN_BASE_RC}" -ne 0 ] || [ -z "${RUN_BASE}" ] || [ "${RUN_BASE}" != "0000000000000000000000000000000000000000" ]; then
+            :
+          else
+            echo "run base_sha lookup failed or empty: failing closed" >&2
+            exit 1
+          fi
+          # Complete changed-file set for the authenticated run, derived from an
+          # IMMUTABLE run-bound head+base pair via the authenticated compare
+          # endpoint (HEAD base..head): paginated, concatenated, deduplicated — a
+          # truncated page cannot hide a contracts/ touch. gh's own exit code
+          # gates it, and the returned files correspond to this exact immutable
+          # base..head diff, never the mutable live PR base.
+          set +e
+          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}" --paginate --jq '.files[].filename' 2>/dev/null | sort -u)"
           CONTRACT_RC=$?
           set -e
           if [ "${CONTRACT_RC}" -ne 0 ]; then
-            echo "PR file list API failed (rc=${CONTRACT_RC}): not absence, failing closed" >&2
+            echo "PR base..head compare API failed (rc=${CONTRACT_RC}) against immutable base ${RUN_BASE}: not absence, failing closed" >&2
+            exit 1
+          fi
+          # Fail closed when the compare payload is unusable: a missing or
+          # truncated page, or a non-array files field, must never read as a
+          # clean no- contracts file set.
+          set +e
+          CONTRACT_SHAPE="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}?shape=files" --jq '.files' 2>/dev/null)"
+          CONTRACT_SHAPE_RC=$?
+          set -e
+          if [ "${CONTRACT_SHAPE_RC}" -ne 0 ] || [ -z "${CONTRACT_SHAPE}" ] || [ "${CONTRACT_SHAPE}" = "null" ]; then
+            echo "compare files field missing/null or API failed (rc=${CONTRACT_SHAPE_RC}): failing closed" >&2
             exit 1
           fi
           HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"

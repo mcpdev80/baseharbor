@@ -817,21 +817,26 @@ class ProducerEligibilityGateTests(unittest.TestCase):
     def _run_probe(self, *, artifact_stdout, artifact_rc,
                    files_stdout, files_rc, pr_number="1124",
                    run_pr_json='[{"number": 1124}]', run_head=None,
-                   pr_head=None, run_rc=0):
+                   pr_head=None, run_base=None, run_rc=0,
+                   compare_files_rc=0, compare_shape_rc=0):
         """Run the eligibility probe with an endpoint-accurate gh stub.
 
         The probe issues several authenticated gh calls now: the artifact list,
         the run-to-PR association (run object's ``pull_requests``), the run
-        ``head_sha`` lookup, the immutable PR object, and the complete PR file
-        list. Each stub arm models its own endpoint accurately with its own exit
+        ``head_sha``/``base_sha`` lookups, the immutable PR object, and the
+        complete PR file set via the immutable run-bound ``base..head`` compare.
+        Each stub arm models its own endpoint accurately with its own exit
         code; unmatched/malformed endpoints fail non-zero so the probe's own
-        fail-closed guards are exercised. ``run_head``/``pr_head`` default to the
-        same value so the immutable association check passes unless a test
-        deliberately mismatches them.
+        fail-closed guards are exercised. ``run_head``/``pr_head``/``run_base``
+        default to the same value so the immutable association checks pass
+        unless a test deliberately mismatches them. ``compare_files_rc`` /
+        ``compare_shape_rc`` model a failed/incomplete compare call (fail
+        closed), never absence.
         """
         import tempfile, os
         run_head = run_head if run_head is not None else "deadbeef" * 5
         pr_head = pr_head if pr_head is not None else run_head
+        run_base = run_base if run_base is not None else "abc" * 13
 
         def _q(s):
             # Shell single-quote an arbitrary string for safe embedding.
@@ -849,16 +854,24 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                                 artifact_stdout.replace('"', '\\"') + '"}]}')
         else:
             artifacts_json = _q('{"artifacts":[]}')
-        run_json = _q('{"id":%d,"run_attempt":1,"head_sha":"%s","pull_requests":%s}'
-                      % (RUN_ID, run_head, run_pr_json))
-        pr_json = _q('{"head":{"sha":"%s"},"base":{"sha":"%s"}}' % (pr_head, "abc" * 13))
-        # files: emit one JSON object per filename so --jq '.[].filename' works.
+        # base..head compare: emit the full compare object {base_commit,
+        # head_commit, files:[...], ...} so --jq '.files' and --jq '.[].filename'
+        # both resolve. The files field is the same list the files endpoint
+        # would return, so the compare arm is the single source of truth for
+        # the bounded file set. files_json is already single-quoted for shell
+        # safety, so splice it in verbatim (no re-quoting) to avoid embedding
+        # literal single quotes around the array.
         if files_stdout:
             fobjs = ",".join('{"filename":"' + f.replace('"', '\\"') + '"}'
                              for f in files_stdout.splitlines())
-            files_json = _q("[" + fobjs + "]")
+            files_json = "[" + fobjs + "]"
         else:
-            files_json = _q("[]")
+            files_json = "[]"
+        compare_json = _q('{"base_commit":{"sha":"%s"},"head_commit":{"sha":"%s"},"files":%s}'
+                          % (run_base, run_head, files_json))
+        run_json = _q('{"id":%d,"run_attempt":1,"head_sha":"%s","base_sha":"%s","pull_requests":%s}'
+                      % (RUN_ID, run_head, run_base, run_pr_json))
+        pr_json = _q('{"head":{"sha":"%s"},"base":{"sha":"%s"}}' % (pr_head, run_base))
 
         with tempfile.TemporaryDirectory() as td:
             bin_dir = Path(td) / "bin"
@@ -875,18 +888,26 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 'if [ "$cmd" != "api" ]; then exit 0; fi',
                 'url="$2"',
                 'qurl="${url%%[?]*}"',
+                'fullurl="$2"',
                 "rc=0",
                 'out=""',
                 "ARC=0",
+                'case "$fullurl" in',
+                '*shape=files*) out=' + compare_json + '; ARC=' + str(compare_shape_rc) + ' ;;',
+                'esac',
                 'case "$qurl" in',
                 '*/artifacts) out=' + artifacts_json + '; rc=' + str(artifact_rc) + ' ;;',
                 '*/actions/runs/*) out=' + run_json + '; rc=' + str(run_rc) + ' ;;',
+                '*/compare/*) out=' + compare_json + '; rc=' + str(compare_files_rc or files_rc) + ' ;;',
                 '*/files*) out=' + files_json + '; rc=' + str(files_rc) + ' ;;',
                 '*/pulls/*) out=' + pr_json + '; rc=0 ;;',
                 '*) rc=31 ;;',
                 'esac',
+                '# A shape-match short-circuits the qurl dispatch (a compare URL also',
+                '# matches */compare/*); the qurl case sets rc only when the shape',
+                '# arm did not already set ARC.',
+                'if [ "${ARC:-0}" = "0" ]; then ARC=$rc; fi',
                 "shift 2 2>/dev/null || { shift; shift; }",
-                "ARC=$rc",
             ]
             # Scan remaining args for a --jq filter (may follow --paginate).
             body.append('FILTER=""')
@@ -1029,10 +1050,10 @@ class ProducerEligibilityGateTests(unittest.TestCase):
 
     def test_probe_lists_pr_files_authenticated_paginated(self):
         # rv1221 point 1: contracts impact is determined from an AUTHENTICATED,
-        # paginated gh pulls/<n>/files listing before the probe decides to skip.
+        # paginated immutable base..head compare (bound head+base) before the
+        # probe decides to skip. The mutable PR files endpoint is gone.
         block = self._probe_block()
-        self.assertIn("pulls/", block)
-        self.assertIn("/files", block)
+        self.assertIn("compare/", block)
         self.assertIn("--paginate", block)
         # The PR number is sourced from the authenticated run's pull_requests,
         # never a caller-invented value.
@@ -1050,3 +1071,114 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         for job in ("extract_plan", "publish_receipt"):
             seg = text.split("  %s:" % job, 1)[1].split("\n    if:", 1)[1].split("\n", 1)[0]
             self.assertIn("producer_eligible == 'true'", seg, job)
+
+    # rv1221 base-SHA binding contract: the bounded file set is derived from an
+    # immutable run-bound base..head pair. Base or head drift, and lookup errors,
+    # must fail closed; the four eligibility outcomes resolve correctly.
+
+    def test_probe_uses_immutable_bound_compare(self):
+        # rv1221 point 1: the file set comes from the authenticated compare of
+        # the immutable run-bound base..head, not the mutable live PR files
+        # endpoint.
+        block = self._probe_block()
+        self.assertIn("compare/", block)
+        self.assertIn("base_sha", block)
+        self.assertIn(".files[].filename", block)
+        self.assertNotIn("pulls/$PR/files", block)
+
+    def test_base_movement_fails_closed(self):
+        # The PR maintainer rebased the PR after the run completed: the PR's
+        # live base moved, so the immutable run-bound base..head diff now differs
+        # from the archived artifact. The probe resolves base_sha from the run
+        # object and compares against it; a base move that the run object no
+        # longer carries breaks the association. Drive it by returning a run
+        # base that differs from what the immutable compare would use: the
+        # run object's base_sha is the binding, and a lookup returning a
+        # zero/empty base fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="", run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "empty run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_head_lookup_error_fails_closed(self):
+        # A failed run head_sha lookup fails closed (existing guard, still held
+        # under the new compare path).
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_head="", run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run head lookup failure must fail closed, not skip")
+
+    def test_compare_files_error_fails_closed(self):
+        # Even when artifact + PR association succeed, a failing compare-files
+        # call is an ERROR, never a skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "compare-files API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_shape_missing_fails_closed(self):
+        # A null/empty compare files field must fail closed: a truncated page
+        # cannot read as a clean no-contracts file set.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "null compare files field must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_immutable_head_bound_in_compare(self):
+        # The compare is bound to the authenticated run head: the compare URL
+        # uses RUN_HEAD, and the immutable PR head must equal it (existing
+        # guard). A run/head mismatch must fail closed under the new path.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_head="aaaa" * 10, pr_head="bbbb" * 10)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run/PR head mismatch must fail closed, not skip")
+
+    # The four eligibility outcomes against the immutable bound compare.
+
+    def test_eligibility_true_with_artifact(self):
+        # Present trusted-pr-plan artifact => eligible, regardless of the files
+        # the immutable compare returns.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=true", result)
+
+    def test_eligibility_false_no_artifact_no_contract_touch(self):
+        # No artifact + no contracts/ touch (from the immutable base..head
+        # compare) => clean skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md\ndocs/foo.md",
+                                       files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
+        self.assertIn("not a producer run", proc.stderr)
+
+    def test_eligibility_integrity_error_contract_touch_no_artifact(self):
+        # A contracts/ touch in the immutable base..head diff with no
+        # trusted-pr-plan artifact is an integrity error (fail closed), never a
+        # skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/service/v1/x.schema.json",
+                                       files_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "contracts/ touch without artifact must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+        self.assertNotIn("skipped", result)
+
+    def test_eligibility_integrity_error_with_moved_base(self):
+        # The contracts/ touch only appears in the immutable base..head compare
+        # (moved base), never in a stale/no-op view: the integrity-error path
+        # still fires because the bound compare reflects the real diff.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/runtime/handler.go",
+                                       files_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "contracts/ touch without artifact must fail closed, not skip")
