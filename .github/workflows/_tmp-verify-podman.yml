@@ -1,0 +1,17 @@
+name: _tmp verify podman
+on:
+  push:
+    branches: [_tmp-verify]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: podman info
+        run: podman info --format 'Rootless={{.Host.Security.Rootless}} Driver={{.Info.Driver}} Cgroup={{.Host.CgroupVersion}}'
+      - name: which podman
+        run: command -v podman || echo "NO_PODMAN"
+      - name: hello-world podman
+        run: podman run --rm docker.io/library/hello-world
