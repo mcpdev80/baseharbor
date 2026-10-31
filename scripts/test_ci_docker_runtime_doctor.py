@@ -1,7 +1,9 @@
-"""Exercise the actual Docker workflow's structured Doctor prerequisite checks."""
+"""Exercise the actual Docker workflow's structured Doctor prerequisite checks
+and the GitHub-hosted (ubuntu-latest) rootless-runtime script contract."""
 import copy
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -280,6 +282,57 @@ else:
         self.assertNotIn('-f deploy/control-plane/Dockerfile ', workflow)
         reset_source = (WORKFLOW.parent.parent.parent / 'scripts/ci-runtime-reset.sh').read_text()
         self.assertNotRegex(reset_source, r'(?m)^\s*(?:docker|\$engine|"\$engine")\s+(?:image|system)\s+(?:prune|rm)')
+
+
+class GitHubHostedRootlessRuntime(unittest.TestCase):
+    """The rootless-runtime setup must run on GitHub-hosted ubuntu-latest.
+
+    GH-hosted runners are ephemeral, run as the non-root 'runner' user, ship
+    Docker and (for podman) slirp4netns preinstalled, and have no passwordless
+    sudo and no persistent linger/user-service host state. The script must keep
+    the host-agnostic isolation (rootless XDG socket, public-image cache,
+    registry mirrors) and drop the host-specific RUNNER assumptions.
+    """
+
+    def script(self):
+        return (
+            Path(__file__).resolve().parent.parent
+            / 'scripts' / 'ci-core-rootless-runtime.sh'
+        ).read_text()
+
+    def test_no_host_specific_runner_assumptions(self):
+        body = self.script()
+        # Removed: privilege wrappers, linger/user-service, shared-host apparmor.
+        self.assertNotRegex(body, r'(?m)^\s*sudo\b')
+        self.assertNotIn('loginctl enable-linger', body)
+        self.assertNotIn('apparmor', body)
+
+    def test_keeps_rootless_isolation_setup(self):
+        body = self.script()
+        self.assertIn('id -u', body)
+        self.assertIn('XDG_RUNTIME_DIR', body)
+        self.assertIn('DBUS_SESSION_BUS_ADDRESS', body)
+        self.assertIn('GITHUB_ENV', body)
+        self.assertIn('ci-public-image-cache.py', body)
+        self.assertIn('BASEHARBOR_CI_PUBLIC_IMAGE_CACHE', body)
+        self.assertIn('registry-mirrors', body)
+        self.assertIn('mirror.gcr.io', body)
+
+    def test_docker_branch_installs_rootless_extras_without_sudo(self):
+        body = self.script()
+        self.assertIn('docker-ce-rootless-extras', body)
+        self.assertIn('dockerd-rootless-setuptool.sh', body)
+        self.assertIn('DOCKER_HOST', body)
+        # A real apt install exists (docker extras) but never via sudo.
+        self.assertRegex(body, r'(?m)^\s*apt-get\s+(?:update|install)')
+        self.assertNotRegex(body, r'(?m)^\s*sudo\b')
+
+    def test_podman_branch_skips_apt_install(self):
+        body = self.script()
+        # podman ships on ubuntu-latest; the script must not apt-install it.
+        self.assertNotRegex(body, r'(?m)^\s*apt-get\s+install.*\bpodman\b')
+        self.assertIn('registries.conf.d', body)
+        self.assertIn('podman info', body)
 
 
 if __name__ == '__main__':

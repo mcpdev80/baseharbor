@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   nextjs-docker:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       GOTOOLCHAIN: local

@@ -274,7 +274,7 @@ jobs:
 
   validate:
     if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
