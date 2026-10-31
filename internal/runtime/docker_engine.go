@@ -42,7 +42,7 @@ func dockerEngineOutput(ctx context.Context, command string, args []string, env 
 	// test-ENV switch belongs to the Podman provider boundary, not to the Docker
 	// engine probe. Selecting the binary from an environment variable lets a
 	// test runtime override the verified production engine and would route a
-	// docker Target at podman.
+	// docker Target at podman. This is the o1242/#1232 regression guard.
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = env
 	return cmd.Output()
