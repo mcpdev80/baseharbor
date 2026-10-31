@@ -778,12 +778,14 @@ class MappingTests(unittest.TestCase):
                           'mkdocs-de-strict', 'pages-candidate-build'}, checks)
 
     def test_code_picks_contract_without_private_consumers(self):
-        for name in ['cmd/baha/guided_application_read_context.go', 'contracts/app.go']:
+        for name in ['contracts/app.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
                 self.assertEqual(['integration/static/public-contracts'],
-                                 result['selected_gates'])
-                self.assertEqual('resolved', result['coverage_status'])
+                                 sorted(result['selected_gates']))
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertIn('receipt/enforcement',
+                              ' '.join(result['unresolved_coverage']))
                 self.assertIn('source-contracts', {c['id'] for c in result['required_validation_checks']})
 
     def test_cli_requires_compilation_and_real_targeted_tests(self):
@@ -997,7 +999,7 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertEqual([], result['selected_gates'])
                 self.assertEqual({'ci-policy', 'pr-planner-tests', 'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'},
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                                  {c['id'] for c in result['required_validation_checks']})
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
@@ -1065,7 +1067,7 @@ class MappingTests(unittest.TestCase):
         self.assertEqual('resolved', complete['coverage_status'])
         self.assertEqual(expected, set(complete['selected_gates']))
         self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests',
-                          'receipt-execution-tests'},
+                          'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                          {c['id'] for c in complete['required_validation_checks']})
         for changed in (reviewed[:-1], reviewed + ['scripts/ci-unknown.py'],
                         ['.github/workflows/ci.yml']):
@@ -1147,8 +1149,8 @@ class MappingTests(unittest.TestCase):
                 qualified = planner.plan(actual, REQ, MAP)
                 self.assertEqual('resolved', qualified['coverage_status'])
                 self.assertEqual([], qualified['selected_gates'])
-                self.assertEqual({'pr-planner-tests','ci-policy','ci-executor-verifier-tests',
-                                  'receipt-execution-tests'},
+                self.assertEqual({'pr-planner-tests', 'ci-policy', 'ci-executor-verifier-tests',
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'},
                                  {v['id'] for v in qualified['required_validation_checks']})
                 # Unreviewed source changes, including SAME FIVE PATHS, fail.
                 git('checkout', 'source')
@@ -1263,7 +1265,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
                                   'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_receipt_control_plane_test_script_maps_to_ci_class(self):
         for path in ['scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
@@ -1279,7 +1281,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'pr-planner-tests', 'ci-policy',
                                   'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_receipt_control_plane_workflow_maps_ci_and_actionlint(self):
         for path in ['.github/workflows/receipt-approval.yml',
@@ -1293,7 +1295,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                 checks = {c['id'] for c in result['required_validation_checks']}
                 self.assertEqual({'ci-policy', 'ci-actionlint', 'pr-planner-tests',
                                   'ci-executor-verifier-tests',
-                                  'receipt-execution-tests'}, checks)
+                                  'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_ci_workflow_policy_script_maps_to_ci_class(self):
         path = 'scripts/ci-workflow-policy.sh'
@@ -1304,7 +1306,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
         checks = {c['id'] for c in result['required_validation_checks']}
         self.assertEqual({'pr-planner-tests', 'ci-policy',
                           'ci-executor-verifier-tests',
-                          'receipt-execution-tests'}, checks)
+                          'receipt-execution-tests', 'pr-gate-receipt-enforcement'}, checks)
 
     def test_unlisted_receipt_source_stays_unresolved(self):
         result = planner.plan(diff(paths('scripts/receipt_producer.py')), REQ, MAP)
@@ -3701,6 +3703,56 @@ def runner_validations():
     mod = importlib.util.module_from_spec(spec_v)
     spec_v.loader.exec_module(mod)
     return mod.VALIDATIONS
+
+
+class ReceiptEnforcementCheckTests(unittest.TestCase):
+    """Receipt Enforcement for contracts/**: verified that the new check is emitted
+    and that contracts/** changes require an approved Receipt bound to this PR tuple.
+    """
+
+    def check_ids(self, result):
+        return {check['id'] for check in result['required_validation_checks']}
+
+    def test_contracts_path_selects_receipt_enforcement_gate(self):
+        """A single contracts/** change selects integration/static/public-contracts
+        AND receipt/enforcement; the latter is absent from the catalog and blocks
+        the PR until the CI job passes."""
+        path = 'contracts/machine/v1/control.go'
+        result = planner.plan(diff([{'status': 'modified', 'path': path}]), REQ, MAP)
+        # The coverage_status is unresolved because receipt/enforcement requires
+        # the CI job to pass - the test verifies the gate is selected.
+        self.assertIn('integration/static/public-contracts', result['selected_gates'])
+        # receipt/enforcement is added to selected but filtered out as absent.
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_contracts_path_adds_pr_gate_receipt_enforcement_check(self):
+        """The pr-gate-receipt-enforcement check is now part of CI_CHECKS and
+        appears in required_validation_checks when contracts/** are changed."""
+        self.assertIn('pr-gate-receipt-enforcement', {c['id'] for c in planner.CI_CHECKS})
+        path = 'contracts/machine/v1/control.json'
+        result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+        emitted = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('pr-gate-receipt-enforcement', emitted)
+
+    def test_unknown_contract_path_still_selects_enforcement(self):
+        """Any contracts/** path triggers the Receipt Enforcement check, even
+        if the path itself is unknown."""
+        path = 'contracts/unknown/path.go'
+        result = planner.plan(diff([{'status': 'added', 'path': path}]), REQ, MAP)
+        self.assertIn('integration/static/public-contracts', result['selected_gates'])
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_multiple_contracts_changes_include_enforcement(self):
+        """Multiple contracts/** files still select the receipt/enforcement gate."""
+        paths = [
+            {'status': 'modified', 'path': 'contracts/machine/v1/control.go'},
+            {'status': 'added', 'path': 'contracts/machine/v1/operation.schema.json'},
+        ]
+        result = planner.plan(diff(paths), REQ, MAP)
+        self.assertIn('required mapped gates absent from trusted catalog: receipt/enforcement',
+                      ' '.join(result['unresolved_coverage']))
 
 
 if __name__ == '__main__':

@@ -764,6 +764,8 @@ CI_CHECKS = [
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py'},
+    {'id': 'pr-gate-receipt-enforcement', 'owner': '.github/workflows/ci.yml:pr_gate_receipt_approval',
+     'command': 'github workflow ci.yml pr_gate_receipt_approval --watch'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
@@ -1488,8 +1490,13 @@ def plan(diff, requirements, mapping, repository='.',
             unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
+            require(CI_CHECKS)
             require(CODE_CHECKS)
             selected.add('integration/static/public-contracts')
+            # Receipt Enforcement: contracts/** changes require an approved
+            # Receipt bound to this exact PR tuple (head_sha + base_sha).
+            # Without it, the PR cannot become merge-ready.
+            selected.add('receipt/enforcement')
         elif path.startswith('deploy/docker/'):
             area = 'docker-deployment-unresolved'
             require(CODE_CHECKS)
