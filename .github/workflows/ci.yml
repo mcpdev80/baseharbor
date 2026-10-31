@@ -641,7 +641,7 @@ jobs:
         id: flag
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.event.pull_request.base_ref }}
+          BASE_REF: ${{ github.base_ref }}
           PLAN_REQUIRED: ${{ needs.pr_plan.outputs.cli_native_required }}
         run: |
           set -euo pipefail
