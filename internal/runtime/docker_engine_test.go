@@ -113,3 +113,53 @@ printf 'observed\n'
 		}
 	}
 }
+
+// The Docker engine probe must run exactly the binary the provider selected
+// (command). It must never derive the binary from BASEHARBOR_TEST_RUNTIME: that
+// test-ENV switch belongs to the Podman provider boundary, not to the Docker
+// engine probe. A docker Target therefore stays on docker even when a test sets
+// BASEHARBOR_TEST_RUNTIME=podman, and no context/socket probe runs on podman.
+func TestResolveDockerEngineNeverDerivesBinaryFromTestRuntime(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		testRuntime      string
+		wantProbeCommand string
+	}{
+		{name: "docker-target-uses-selected-binary", testRuntime: "podman", wantProbeCommand: "docker"},
+		{name: "unset-runtime-uses-selected-binary", testRuntime: "", wantProbeCommand: "docker"},
+		{name: "docker-runtime-uses-selected-binary", testRuntime: "docker", wantProbeCommand: "docker"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var commands []string
+			run := func(_ context.Context, command string, args []string, env []string) ([]byte, error) {
+				commands = append(commands, command)
+				switch {
+				case args[0] == "context" && args[1] == "show":
+					return []byte("rootless"), nil
+				case args[0] == "context" && args[1] == "inspect":
+					return []byte(`"unix:///run/user/1000/docker.sock"`), nil
+				case args[0] == "--host" && args[2] == "info":
+					return []byte(`{"ID":"docker-daemon","SecurityOptions":["name=rootless"]}`), nil
+				}
+				return nil, nil
+			}
+			got, err := resolveDockerEngine(context.Background(), "docker", DockerEngineSelection{}, run, func(k string) string {
+				if k == "BASEHARBOR_TEST_RUNTIME" {
+					return tc.testRuntime
+				}
+				return ""
+			}, 1000)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !got.Verified || got.Endpoint != "unix:///run/user/1000/docker.sock" {
+				t.Fatalf("docker target not resolved on its own socket: %+v", got)
+			}
+			for _, command := range commands {
+				if command != "docker" {
+					t.Fatalf("docker engine probe ran %q; it must never derive the binary from BASEHARBOR_TEST_RUNTIME=%q", command, tc.testRuntime)
+				}
+			}
+		})
+	}
+}
