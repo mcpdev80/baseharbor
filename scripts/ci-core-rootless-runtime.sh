@@ -91,17 +91,25 @@ PY
     # GH-hosted runner, so `setuptool.sh install` cannot be used). It only listens
     # on the XDG_RUNTIME_DIR socket, never the system socket. A fresh D-Bus session
     # is required for the rootless daemon to initialise; `dbus-run-session` provides
-    # one so the ephemeral runner does not need a persistent user bus.
+    # one so the ephemeral runner does not need a persistent user bus. The daemon
+    # is double-backgrounded (`&`) so it detaches from this script and keeps running
+    # after it returns; the wait loop polls for its socket.
     if command -v dbus-run-session >/dev/null; then
       ( dbus-run-session -- dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
     else
       ( dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
     fi
+    disown || true
+    started=0
     for _ in $(seq 1 60); do
-      [ -S "$XDG_RUNTIME_DIR/docker.sock" ] && break
+      [ -S "$XDG_RUNTIME_DIR/docker.sock" ] && { started=1; break; }
       sleep 0.5
     done
-    test -S "$XDG_RUNTIME_DIR/docker.sock"
+    test -S "$XDG_RUNTIME_DIR/docker.sock" || {
+      echo "rootless Docker daemon did not open $XDG_RUNTIME_DIR/docker.sock" >&2
+      sed 's/^/[dockerd-rootless] /' "$RUNNER_TEMP/dockerd-rootless.log" 2>/dev/null || true
+      exit 1
+    }
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
     printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{.SecurityOptions}}'
