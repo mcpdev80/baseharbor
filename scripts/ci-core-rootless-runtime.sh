@@ -29,22 +29,42 @@ case "$runtime" in
     # KEEP: docker-rootless extras (dockerd-rootless-setuptool.sh) is NOT
     # preinstalled on ubuntu-latest. It ships only via download.docker.com, and
     # the APT keyring install needs to write /etc/apt (locked down on the shared
-    # GH-hosted runner). Instead fetch the matching .deb and extract the tool
-    # into a user-local bin ($HOME/.local/bin), avoiding any /etc write.
+    # GH-hosted runner). Instead fetch the matching .deb directly from the apt
+    # Packages index and extract the tool into a user-local bin
+    # ($HOME/.local/bin), avoiding any /etc write. The .deb path is
+    # dists/<codename>/pool/stable/<arch>/<pkg>_<ver>_<arch>.deb; the package
+    # version embeds the Ubuntu codename (e.g. 29.9.2-1~ubuntu.22.04~jammy), so
+    # match it to the running engine and fall back to the newest index entry.
     if ! command -v dockerd-rootless-setuptool.sh >/dev/null; then
       docker_engine_version="$(docker version --format '{{.Server.Version}}')"
       arch="$(dpkg --print-architecture)"
-      extras_version="$(apt-cache madison docker-ce-rootless-extras 2>/dev/null | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 {print $3; exit}')"
-      extras_version="${extras_version:-5:${docker_engine_version}-1ubuntu.${arch}}"
       . /etc/os-release || true
       codename="${UBUNTU_CODENAME:-}"
       test -n "$codename" || codename="${VERSION_CODENAME:-}"
       test -n "$codename" || codename="jammy"
-      deb_url="https://download.docker.com/linux/ubuntu/dists/${codename}/stable/${arch}/docker-ce-rootless-extras_${extras_version}_${arch}.deb"
+      pkg_index="$RUNNER_TEMP/docker-packages.txt"
+      curl -fsSL "https://download.docker.com/linux/ubuntu/dists/${codename}/stable/binary-${arch}/Packages" -o "$pkg_index"
+      test -s "$pkg_index"
+      # Packages order is Package -> Version -> ... -> Filename; capture the
+      # version of the current block and emit it when its Filename matches.
+      extras_version="$(awk '/^Package: docker-ce-rootless-extras$/{pkg=1} /^Version:/{ver=$2} /^Filename:.*docker-ce-rootless-extras_/{if(pkg){print ver; exit}}' "$pkg_index")"
+      test -n "$extras_version"
+      extras_basename="$(basename "$(awk '/^Filename:.*docker-ce-rootless-extras_/{print $2; exit}' "$pkg_index")")"
+      test -n "$extras_basename"
+      deb_url="https://download.docker.com/linux/ubuntu/dists/${codename}/pool/stable/${arch}/${extras_basename}"
       mkdir -p "$HOME/.local/bin"
       curl -fsSL "$deb_url" -o "$RUNNER_TEMP/extras.deb"
+      test -s "$RUNNER_TEMP/extras.deb"
       mkdir -p "$RUNNER_TEMP/extras-root"
-      ( cd "$RUNNER_TEMP/extras-root" && ar x "$RUNNER_TEMP/extras.deb" && tar xf data.tar.gz )
+      ( cd "$RUNNER_TEMP/extras-root" && ar x "$RUNNER_TEMP/extras.deb"
+        # The data payload is xz, zst or gz depending on the Ubuntu release;
+        # extract whichever the .deb actually carries.
+        case "$RUNNER_TEMP/extras-root/data.tar.*" in
+          data.tar.xz)  tar xfJ data.tar.xz  ;;
+          data.tar.zst) tar xfZ data.tar.zst ;;
+          data.tar.gz)  tar xzf data.tar.gz  ;;
+          *) echo "unknown .deb data payload" >&2; exit 1 ;;
+        esac )
       find "$RUNNER_TEMP/extras-root" -name 'dockerd-rootless-setuptool.sh' -exec cp -v {} "$HOME/.local/bin/" \;
     fi
     export PATH="$HOME/.local/bin:$PATH"
