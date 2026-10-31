@@ -251,10 +251,12 @@ services:
     volumes:
       - ./providers/postgresql/runtime/ca.pem:/run/baseharbor/postgres-ca/ca.pem:ro
       - ./providers/postgresql/runtime/openbao-init.sh:/run/baseharbor/openbao-init.sh:ro
+      - ./runtime.env:/run/baseharbar/env:ro
     command:
       - /bin/sh
       - -ec
       - |
+        . /run/baseharbar/env 2>/dev/null || true
         attempts=0
         until /bin/sh /run/baseharbor/openbao-init.sh; do
           attempts=$$((attempts+1))
