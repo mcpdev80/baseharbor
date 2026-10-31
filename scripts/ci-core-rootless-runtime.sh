@@ -36,7 +36,11 @@ case "$runtime" in
       arch="$(dpkg --print-architecture)"
       extras_version="$(apt-cache madison docker-ce-rootless-extras 2>/dev/null | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 {print $3; exit}')"
       extras_version="${extras_version:-5:${docker_engine_version}-1ubuntu.${arch}}"
-      deb_url="https://download.docker.com/linux/ubuntu/dists/${UBUNTU_CODENAME:-$VERSION_CODENAME}/stable/${arch}/docker-ce-rootless-extras_${extras_version}_${arch}.deb"
+      . /etc/os-release || true
+      codename="${UBUNTU_CODENAME:-}"
+      test -n "$codename" || codename="${VERSION_CODENAME:-}"
+      test -n "$codename" || codename="jammy"
+      deb_url="https://download.docker.com/linux/ubuntu/dists/${codename}/stable/${arch}/docker-ce-rootless-extras_${extras_version}_${arch}.deb"
       mkdir -p "$HOME/.local/bin"
       curl -fsSL "$deb_url" -o "$RUNNER_TEMP/extras.deb"
       mkdir -p "$RUNNER_TEMP/extras-root"
