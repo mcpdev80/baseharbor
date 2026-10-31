@@ -1,15 +1,18 @@
-name: VerifyRootful
+name: _tmp verify rootful
 on:
   workflow_dispatch:
+  push:
+    branches: [_tmp-verify]
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: docker version
         run: docker version
-      - name: docker info (security)
-        run: docker info --format '{{json .SecurityOptions}} {{.Driver}} {{.CgroupVersion}}'
+      - name: docker info
+        run: docker info --format 'Driver={{.Driver}} Cgroup={{.CgroupVersion}} Sec={{.SecurityOptions}}'
       - name: hello-world
         run: docker run --rm hello-world
