@@ -1,0 +1,15 @@
+name: VerifyRootful
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: docker version
+        run: docker version
+      - name: docker info (security)
+        run: docker info --format '{{json .SecurityOptions}} {{.Driver}} {{.CgroupVersion}}'
+      - name: hello-world
+        run: docker run --rm hello-world
