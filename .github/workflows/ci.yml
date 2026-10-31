@@ -987,7 +987,7 @@ jobs:
       group: baseharbor-release-qualification
       cancel-in-progress: false
     if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_native_gate.outputs.cli_native_required == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: docker
@@ -1096,7 +1096,7 @@ jobs:
       group: baseharbor-release-qualification
       cancel-in-progress: false
     if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_native_gate.outputs.cli_native_required == 'true'
-    runs-on: ubuntu-26.04
+    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
     timeout-minutes: 60
     env:
       BASEHARBOR_TEST_RUNTIME: podman
