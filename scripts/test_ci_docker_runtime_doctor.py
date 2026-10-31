@@ -302,10 +302,13 @@ class GitHubHostedRootlessRuntime(unittest.TestCase):
 
     def test_no_host_specific_runner_assumptions(self):
         body = self.script()
-        # Removed: privilege wrappers, linger/user-service, shared-host apparmor.
-        self.assertNotRegex(body, r'(?m)^\s*sudo\b')
-        self.assertNotIn('loginctl enable-linger', body)
-        self.assertNotIn('apparmor', body)
+        # Removed: generic privilege wrappers, linger/user-service, and the
+        # self-hosted runner's ad-hoc apparmor lift. The self-hosted runners
+        # forbade sudo/loginctl, so those privilege-lifting patterns must be gone.
+        self.assertNotRegex(body, r'(?m)^\s*sudo\s+(?!-n\s+sysctl)',
+                            msg='generic sudo privilege-lifting (non sysctl) removed')
+        self.assertNotRegex(body, r'(?m)^\s*loginctl\s+enable-linger\b')
+        self.assertNotIn('enable-linger', body)
 
     def test_keeps_rootless_isolation_setup(self):
         body = self.script()

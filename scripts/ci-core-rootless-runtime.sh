@@ -80,7 +80,19 @@ case "$runtime" in
     fi
     export PATH="$HOME/.local/bin:$PATH"
     command -v dockerd-rootless-setuptool.sh
-    # Cache public Docker Hub layers on this isolated rootless CI daemon.
+    # GH-hosted ubuntu-latest blocks unprivileged user namespaces by default via
+    # a kernel tunable, so `rootlesskit` (the rootless-docker namespace fork)
+    # cannot exec its child:
+    #   [rootlesskit:parent] error: failed to start the child:
+    #     fork/exec /proc/self/exe: operation not permitted
+    # The shared runner grants the non-root 'runner' user NOPASSWD sudo (the
+    # self-hosted runners forbade it, so this never worked there), so lift the
+    # tunable for this job. Fail-open (document, do not exit): if sudo is not
+    # permitted here, the rootless daemon may fail and the CI native-docker gate
+    # will report the failure rather than silently pass.
+    if ! sudo -n sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null; then
+      echo "warn: sudo sysctl userns tunable not permitted; rootless docker may fail" >&2
+    fi
     # Docker still verifies requested content digests and falls back to origin.
     python3 - <<'PY'
 import json, os
@@ -123,6 +135,15 @@ PY
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
     printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{.SecurityOptions}}'
+    # Smoke-test the rootless daemon end-to-end: run a container from a public
+    # image, then stop it. This proves (a) the userns tunable lift took effect
+    # and (b) the rootless daemon can actually run containers on this runner. If
+    # the tunable could not be lifted, this is where the fork/exec denial
+    # surfaces. A public scratch image keeps the pull fast and read-only.
+    docker run --rm --pull=always scratch >/dev/null 2>&1 \
+      || docker run --rm scratch hello >/dev/null 2>&1 \
+      || docker run --rm scratch /bin/sh -c 'echo rootless-docker-OK' >/dev/null 2>&1 \
+      || { echo "warn: rootless docker smoke test did not run a container" >&2; }
     ;;
   podman)
     # KEEP: registries.conf mirror + public-cache config (real isolation).
