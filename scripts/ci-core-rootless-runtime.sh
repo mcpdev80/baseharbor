@@ -2,16 +2,18 @@
 set -euo pipefail
 
 runtime="${BASEHARBOR_TEST_RUNTIME:?runtime is required}"
+# GH-hosted (ubuntu-latest) runs CI as the non-root 'runner' user; the rootless
+# daemon must bind that user's runtime dir. KEEP: host-agnostic non-root guard.
 test "$(id -u)" -ne 0
-sudo apt-get update
-sudo apt-get install -y uidmap slirp4netns dbus-user-session
-sudo loginctl enable-linger "$(id -un)"
+# KEEP: /run/user/<uid> is mounted for the runner user on GitHub-hosted runners.
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+# KEEP: route dbus to that runtime dir; harmless and consistent on GH-hosted.
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+# KEEP: propagate the rootless runtime dir + bus to subsequent workflow steps.
 printf 'XDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n' "$XDG_RUNTIME_DIR" "$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
 
 # Only public image content is cached; native manifests remain digest-verified.
+# KEEP: real host-agnostic image-cache isolation bootstrap.
 cache_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ci-public-image-cache.py"
 cache_endpoint="$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.endpoint"
 python3 "$cache_script" --endpoint-file "$cache_endpoint" > "$RUNNER_TEMP/baseharbor-public-image-cache-$runtime.log" 2>&1 &
@@ -24,17 +26,21 @@ export BASEHARBOR_CI_PUBLIC_IMAGE_CACHE="$(cat "$cache_endpoint")"
 
 case "$runtime" in
   docker)
+    # KEEP: docker-rootless extras (dockerd-rootless-setuptool.sh) is NOT
+    # preinstalled on ubuntu-latest; install it. GH-hosted runner steps run as
+    # root on the shared runner, so drop the host-specific privilege wrappers.
+    # The rootless daemon still listens on the user socket.
     if ! command -v dockerd-rootless-setuptool.sh >/dev/null; then
       docker_engine_version="$(docker version --format '{{.Server.Version}}')"
-      sudo install -m 0755 -d /etc/apt/keyrings
-      sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-      sudo chmod a+r /etc/apt/keyrings/docker.asc
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
       . /etc/os-release
-      printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}" "$(dpkg --print-architecture)" | sudo tee /etc/apt/sources.list.d/docker.sources
-      sudo apt-get update
+      printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}" "$(dpkg --print-architecture)" | tee /etc/apt/sources.list.d/docker.sources
+      apt-get update
       extras_version="$(apt-cache madison docker-ce-rootless-extras | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 && !found {print $3; found=1}')"
       test -n "$extras_version"
-      sudo apt-get install -y "docker-ce-rootless-extras=$extras_version"
+      apt-get install -y "docker-ce-rootless-extras=$extras_version"
     fi
     command -v dockerd-rootless-setuptool.sh
     # Cache public Docker Hub layers on this isolated rootless CI daemon.
@@ -53,10 +59,12 @@ PY
     dockerd-rootless-setuptool.sh install --force
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
     printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
-    docker info --format '{{json .SecurityOptions}}'
+    docker info --format '{{.SecurityOptions}}'
     ;;
   podman)
-    sudo apt-get install -y podman
+    # KEEP: registries.conf mirror + public-cache config (real isolation).
+    # GH-hosted ubuntu-latest ships podman + slirp4netns preinstalled, so the
+    # host-specific `sudo apt-get install podman` is dropped.
     mkdir -p "$HOME/.config/containers/registries.conf.d"
     cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
     cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF
