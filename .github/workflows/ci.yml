@@ -311,6 +311,13 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Prepare isolated hosted rootless Docker
+        id: runtime_setup
+        timeout-minutes: 10
+        env:
+          BASEHARBOR_TEST_RUNTIME: docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+
       - name: Reset persistent runner state
         id: reset
         shell: bash
