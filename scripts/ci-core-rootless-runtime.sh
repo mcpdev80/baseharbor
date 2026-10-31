@@ -94,10 +94,13 @@ PY
     # one so the ephemeral runner does not need a persistent user bus. The daemon
     # is double-backgrounded (`&`) so it detaches from this script and keeps running
     # after it returns; the wait loop polls for its socket.
+    rootless_launcher="$(command -v dockerd-rootless.sh || true)"
     if command -v dbus-run-session >/dev/null; then
-      ( dbus-run-session -- dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
+      # dbus-run-session execs into a fresh session without inheriting PATH, so
+      # pass the absolute launcher path.
+      ( dbus-run-session -- "$rootless_launcher" >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
     else
-      ( dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
+      ( "$rootless_launcher" >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
     fi
     disown || true
     started=0
