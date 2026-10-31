@@ -273,7 +273,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh podman
 
   validate:
-    if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
+    if: (github.event_name == 'pull_request' && github.base_ref == 'develop') || (github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
