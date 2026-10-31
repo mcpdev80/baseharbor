@@ -18,6 +18,7 @@ workload components
 embedded infrastructure
   db       -> database.sql
   cache    -> cache.key-value
+  storage  -> object-storage.s3 (S3-compatible, e.g. MinIO)
 
 api
   exposed on port 8080
