@@ -69,7 +69,14 @@ case "$runtime" in
           */data.tar.gz)  tar xzf "${payloads[0]}" ;;
           *) echo "unknown .deb data payload: ${payloads[0]:-none}" >&2; exit 1 ;;
         esac )
-      find "$RUNNER_TEMP/extras-root" -name 'dockerd-rootless-setuptool.sh' -exec cp -v {} "$HOME/.local/bin/" \;
+      # The .deb ships the rootless toolchain (dockerd-rootless.sh,
+      # dockerd-rootless-setuptool.sh, rootlesskit, rootlesskit-docker-proxy).
+      # Copy the whole usr/bin tree into the user-local bin so the daemon and
+      # its rootlesskit dependencies resolve without a system path.
+      cp -av "$RUNNER_TEMP/extras-root/usr/bin"/* "$HOME/.local/bin/" 2>/dev/null || \
+      for f in dockerd-rootless.sh dockerd-rootless-setuptool.sh rootlesskit rootlesskit-docker-proxy; do
+        cp -v "$RUNNER_TEMP/extras-root/usr/bin/$f" "$HOME/.local/bin/" 2>/dev/null || true
+      done
     fi
     export PATH="$HOME/.local/bin:$PATH"
     command -v dockerd-rootless-setuptool.sh
