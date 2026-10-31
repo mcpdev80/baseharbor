@@ -1235,8 +1235,6 @@ jobs:
           CLI_NATIVE_REQUIRED: ${{ needs.pr_plan.outputs.cli_native_required }}
           TARGETED_HA_DOCKER_JOB: ${{ needs.targeted_ha_pr_docker.result }}
           TARGETED_HA_PODMAN_JOB: ${{ needs.targeted_ha_pr_podman.result }}
-          TARGETED_HA_DOCKER_RUNNER: ${{ jobs."Targeted HA · docker".runner.name }}
-          TARGETED_HA_PODMAN_RUNNER: ${{ jobs."Targeted HA · podman".runner.name }}
           VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
@@ -1259,7 +1257,8 @@ jobs:
           # built from the run's real jobs via github.token, never PR content.
           python3 "$RUNNER_TEMP/pr-authenticated-results.py" native-record --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" --repository mcpdev80/baseharbor > "$RUNNER_TEMP/native-record.json"
           NATIVE_VERIFIED="$(python3 -c 'import json;print(str(json.load(open(sys.argv[1]))["verified"]).lower())' "$RUNNER_TEMP/native-record.json")"
-          echo "authenticated native execution verified=$NATIVE_VERIFIED (docker=${TARGETED_HA_DOCKER_RUNNER} podman=${TARGETED_HA_PODMAN_RUNNER})"
+          NATIVE_RUNNERS="$(python3 -c 'import json;r=json.load(open(sys.argv[1]));print("docker="+str(r["docker"]["runner"])+" podman="+str(r["podman"]["runner"]))' "$RUNNER_TEMP/native-record.json")"
+          echo "authenticated native execution verified=$NATIVE_VERIFIED ($NATIVE_RUNNERS)"
           [ "$NATIVE_VERIFIED" = "true" ] || { echo "BLOCKED: Targeted HA docker/podman did not EXECUTE green on self-hosted rootless runners with verified daemon identity (see native-record.json)" >&2; cat "$RUNNER_TEMP/native-record.json"; exit 1; }
           if { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
