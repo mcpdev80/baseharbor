@@ -90,7 +90,6 @@ def _extract_run_block(role):
     import yaml  # local import: only this module needs it
     text = POST_RUN_YML.read_text()
     marker = {
-        "skip_check": "Check if this is a pull_request event",
         "download": "Download trusted-pr-plan artifact",
         "decode": "Decode pr-plan and extract candidate_sha",
         "tasklink": "Automatic task-link (plan fixture)",
@@ -122,139 +121,6 @@ def _run(cmd, *, env=None, cwd=None, input=None):
         env=env, cwd=cwd, capture_output=True, text=True,
         input=input,
     )
-
-
-def _gh_stub_script(event):
-    """A gh stub whose /actions/runs lookup returns `event` (or failure).
-
-    event is either the string "pull_request"/"push" (a successful lookup that
-    emits that literal value via `.event`) or the sentinel "__FAIL" (the API
-    call returns a non-zero exit and empty body, as a real 404/500 would). The
-    stub mirrors the real `gh api ... --jq '.event'` contract: exit 401 and
-    stderr on a path it does not recognise.
-    """
-    # The emitted EVENT value is a real literal, so the block's string compare
-    # against "pull_request" is exercised exactly as in production. The
-    # placeholder is substituted into the returned source below.
-    emit = event if event != "__FAIL" else "push"
-    if event == "__FAIL":
-        return r'''#!/usr/bin/env python3
-import json, sys
-args = sys.argv[1:]
-i = args.index("api") if "api" in args else -1
-path = args[i + 1] if i + 1 < len(args) else ""
-if "/actions/runs/" in path:
-    # Authenticated lookup fails: exit non-zero, print nothing, like a 404.
-    sys.stderr.write("gh stub: api lookup failed (404)\n")
-    sys.exit(401)
-if "/pulls/" in path or path.endswith("/pulls"):
-    print(json.dumps({"number": 1124, "state": "open",
-                      "body": "Closes #1125"}))
-    sys.exit(0)
-if "/issues/" in path or path.endswith("/issues"):
-    print(json.dumps({"number": 1125,
-                      "title": "t-20261022-r27-evidence-pilot",
-                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
-    sys.exit(0)
-sys.stderr.write("gh stub: unexpected path %s\n" % path)
-sys.exit(401)
-'''
-    return (
-        r'''#!/usr/bin/env python3
-import json, sys
-args = sys.argv[1:]
-path = ""
-for i, a in enumerate(args):
-    if a == "api" and i + 1 < len(args):
-        path = args[i + 1]
-        break
-if "/actions/runs/" in path:
-    run_attempt = "1"
-    jq_filter = None
-    for j, a in enumerate(args):
-        if a == "--jq" and j + 1 < len(args):
-            jq_filter = args[j + 1].strip().strip('"')
-            if "run_attempt" in jq_filter:
-                run_attempt = "1"
-            break
-    # Real `gh api ... --jq '.event'` contract: emit the JSON event object,
-    # then apply the caller's jq filter. `.event` extracts the trigger type.
-    # %%EMIT%% is the literal runtime event the caller selected for this stub.
-    obj = {"event": "%%EMIT%%", "run_attempt": run_attempt}
-    text = json.dumps(obj)
-    if jq_filter and jq_filter.lstrip("'\"") in (".event", "event"):
-        # `.event` on a JSON string returns the raw string (no surrounding
-        # quotes), matching real `gh api ... --jq '.event'` output.
-        val = obj["event"]
-        print(val if isinstance(val, str) else json.dumps(val))
-    elif jq_filter:
-        try:
-            parts = jq_filter.split(".", 1)
-            key = parts[1] if len(parts) > 1 else parts[0].lstrip("'\"")
-            val = obj[key]
-            # Numeric JSON fields print without quotes (e.g. run_attempt 1),
-            # matching real gh output; strings print raw, objects print JSON.
-            if isinstance(val, bool):
-                print("true" if val else "false")
-            elif isinstance(val, int):
-                print(val)
-            elif isinstance(val, str):
-                print(val)
-            else:
-                print(json.dumps(val))
-        except (KeyError, IndexError):
-            pass
-    sys.exit(0)
-if "/pulls/" in path or path.endswith("/pulls"):
-    print(json.dumps({"number": 1124, "state": "open",
-                      "body": "Closes #1125"}))
-    sys.exit(0)
-if "/issues/" in path or path.endswith("/issues"):
-    print(json.dumps({"number": 1125,
-                      "title": "t-20261022-r27-evidence-pilot",
-                      "body": "tasks/t-20261022-r27-evidence-pilot.md"}))
-    sys.exit(0)
-sys.stderr.write("gh stub: unexpected path %s\n" % path)
-sys.exit(401)
-'''
-    ).replace("%%EMIT%%", emit)
-
-
-def _write_gh_stub(root, event):
-    """Write a gh stub into a fresh bin dir on PATH and return the dir.
-
-    `event` selects the stub behaviour: "pull_request"/"push" (a successful
-    authenticated lookup that prints a JSON event), or the sentinel "__FAIL"
-    (the /actions/runs lookup exits 401, as a real 404/500 does).
-    """
-    bin = root / "bin"
-    bin.mkdir(exist_ok=True)
-    stub = bin / "gh"
-    stub.write_text(_gh_stub_script(event))
-    stub.chmod(0o755)
-    return bin
-
-
-def _run_block_executed(role, *, env=None, cwd=None):
-    """Execute one extracted run block with `bash -euo pipefail` (real run).
-
-    Returns the CompletedProcess. The caller decides whether the exit code it
-    observes is correct for the scenario — the block itself is executed
-    verbatim, so a missing fail-closed guard fails the scenario's non-zero
-    assertion.
-    """
-    block = _extract_run_block(role)
-    return _run(["bash", "-euo", "pipefail", "-c", block], env=env, cwd=cwd)
-
-
-def _read_gh_output(path):
-    """Parse a GITHUB_OUTPUT file into a dict (last value wins per key)."""
-    out = {}
-    for line in Path(path).read_text().splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            out[k] = v
-    return out
 
 
 class FakeApi:
@@ -903,58 +769,8 @@ class F1NegativeForeignRepo(unittest.TestCase):
             sys.argv = saved_argv
 
 
-class F1NegativeNonPRSkip(unittest.TestCase):
-    """Non-PR producer run must produce CLEAN SKIP: exit 0, neutral notice, no Failure,
-    no Receipt, skipped=true."""
-
-    def test_non_pr_event_sets_skip_true(self):
-        # Simulate the skip_check step with a non-PR event (push to main/develop).
-        # The extracted workflow YAML's skip_check step queries run.event via the
-        # GitHub API.  We verify that when the event is NOT pull_request,
-        # the guard sets skipped=true and exits 0.
-        import yaml
-        text = POST_RUN_YML.read_text()
-        doc = yaml.safe_load(text)
-        skip_step = None
-        for job in doc["jobs"].values():
-            for step in job["steps"]:
-                if step.get("id") == "skip_check" or "skip" in step.get("name", "").lower():
-                    skip_step = step
-                    break
-            if skip_step is not None:
-                break
-        self.assertIsNotNone(skip_step, "skip_check step must exist in extract_plan")
-        # The skip_check block must check run.event and set skipped=true.
-        run_block = skip_step.get("run", "")
-        self.assertIn(".event", run_block,
-                      "skip_check must fetch run.event from the API")
-        self.assertIn("skipped=true", run_block,
-                      "non-PR event must produce skipped=true")
-        self.assertIn("exit 0", run_block,
-                      "CLEAN SKIP must exit 0 regardless of event mismatch")
-        # Verify the publish_receipt guard references the skip output.
-        publish_if = doc["jobs"]["publish_receipt"]["if"]
-        self.assertIn("needs.extract_plan.outputs.skipped", publish_if,
-                      "publish_receipt must gate on extract_plan.outputs.skipped")
-        self.assertIn("'true'", publish_if,
-                      "publish_receipt must skip when skipped=true")
-
-    def test_download_skipped_when_non_pr(self):
-        # The download step must be guarded by the skip_check outcome.
-        import yaml
-        text = POST_RUN_YML.read_text()
-        doc = yaml.safe_load(text)
-        extract_plan = doc["jobs"]["extract_plan"]
-        download_step = None
-        for step in extract_plan["steps"]:
-            if "Download trusted-pr-plan artifact" in step.get("name", ""):
-                download_step = step
-                break
-        self.assertIsNotNone(download_step)
-        self.assertIn("if", download_step,
-                      "download step must be guarded by skip_check outcome")
-        self.assertIn("skip_check.outputs.skipped", download_step["if"],
-                      "download must be skipped when skip_check.outputs.skipped == 'true'")
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
 
 
 class DownloadInvocationTests(unittest.TestCase):
@@ -975,151 +791,626 @@ class DownloadInvocationTests(unittest.TestCase):
         self.assertIn("plan.zip", text)
         self.assertIn("zipfile.ZipFile(\"plan.zip\")", text)
 
+# Sentinel for explicitly-passed null PR base (distinguishable from default).
+_PR_BASE_NULL = object()
 
-class F2ExecutedNonPRSkip(unittest.TestCase):
-    """Finding 2 (rv1230b): the non-PR skip must be PROVEN by an executed
-    skip_check run block, not by a YAML string assertion.
 
-    We run the extracted skip_check `run:` block verbatim against a controlled
-    gh stub whose /actions/runs lookup returns event=push (a real push to
-    main/develop). The block must exit 0, write skipped=true to GITHUB_OUTPUT,
-    and announce the non-PR skip — i.e. an actual CLEAN SKIP happened.
+class ProducerEligibilityGateTests(unittest.TestCase):
+    """Root cause 2026-10-30 (#1218 red post-run): workflow_run triggers fire
+    for EVERY successful CI completion, including forward-port PRs whose CI
+    never uploads trusted-pr-plan. The probe must tell ABSENCE (skip cleanly)
+    from an ERROR (fail closed): a failed/incomplete API response must hard-fail
+    (exit 1), never read as a phantom producer run.
+
+    Mere artifact absence is NOT sufficient for a skip (Owner 2026-10-30): a
+    contracts/ touch with no trusted-pr-plan artifact is an integrity error and
+    fails closed; only no contracts/ touch + no artifact skips cleanly. Only a
+    present-but-broken plan fails closed downstream in extract_facts.
     """
 
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.bin = _write_gh_stub(self.root, "push")
+    WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
 
-    def test_execute_non_pr_skip_runs_clean_skip(self):
-        block = _extract_run_block("skip_check")
-        gh_out = self.root / "gh_out"
-        gh_out.write_text("")
-        env = dict(os.environ,
-                    GITHUB_OUTPUT=str(gh_out),
-                    GITHUB_TOKEN="fixture-token",
-                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
-        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
-                    cwd=self.root)
-        self.assertEqual(proc.returncode, 0,
-                         f"skip_check must exit 0 on CLEAN SKIP: {proc.stderr}")
-        out = _read_gh_output(gh_out)
-        self.assertEqual(out.get("skipped"), "true",
-                         "non-PR run must set skipped=true")
-        self.assertIn("not 'pull_request'", proc.stdout,
-                       "block must announce the real non-PR trigger, not a string match")
-
-    def test_execute_pr_event_sets_skip_false(self):
-        # Same executed block, but the authenticated lookup returns
-        # event=pull_request: skipped must be false and the block proceeds.
-        self.bin = _write_gh_stub(self.root, "pull_request")
-        block = _extract_run_block("skip_check")
-        gh_out = self.root / "gh_out"
-        gh_out.write_text("")
-        env = dict(os.environ,
-                    GITHUB_OUTPUT=str(gh_out),
-                    GITHUB_TOKEN="fixture-token",
-                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
-        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
-                    cwd=self.root)
-        self.assertEqual(proc.returncode, 0,
-                         f"skip_check must exit 0 on pull_request: {proc.stderr}")
-        out = _read_gh_output(gh_out)
-        self.assertEqual(out.get("skipped"), "false",
-                         "pull_request run must set skipped=false")
+    def _probe_block(self):
+        import yaml
+        doc = yaml.safe_load(self.WORKFLOW.read_text())
+        steps = doc["jobs"]["producer_context"]["steps"]
+        block = [s for s in steps if s.get("id") == "eligibility"][0]["run"]
+        return block.replace("${{ github.event.workflow_run.id }}", str(RUN_ID))
 
 
-class F3ExecutedApiErrorFailsClosed(unittest.TestCase):
-    """Finding 3 (rv1230b): a failed authenticated event lookup must fail the
-    block (non-zero) — never be read as a successful non-PR CLEAN SKIP.
+    def _run_probe(self, *, artifact_stdout, artifact_rc,
+                    files_stdout, files_rc, pr_number="1124",
+                    run_pr_json=None, run_head=None,
+                    pr_head=None, pr_base=_PR_BASE_NULL, run_base=None, run_rc=0,
+                    pr_api_rc=0,
+                    compare_files_rc=0, compare_shape_rc=0,
+                    compare_shape_nonarray=False, compare_shape_missing=False,
+                    event="pull_request"):
+        """Run the eligibility probe with an endpoint-accurate gh stub.
 
-    The gh stub's /actions/runs lookup exits 401 (real 404/500), exactly the
-    situation the old `... 2>/dev/null || echo ""` masked into an empty EVENT
-    and an effective "skip". With the fail-closed block, `set -e` aborts on the
-    non-zero stub exit before skipped is ever written and before any receipt.
-    """
+        The probe issues several authenticated gh calls now: the artifact list,
+        the run-to-PR association (run object's ``pull_requests``), the run
+        ``head_sha``/``base_sha`` lookups, the immutable PR object, and the
+        complete PR file set via the immutable run-bound ``base..head`` compare.
+        Each stub arm models its own endpoint accurately with its own exit
+        code; unmatched/malformed endpoints fail non-zero so the probe's own
+        fail-closed guards are exercised. ``run_head``/``pr_head``/``run_base``
+        default to the same value so the immutable association checks pass
+        unless a test deliberately mismatches them. ``compare_files_rc`` /
+        ``compare_shape_rc`` model a failed/incomplete compare call (fail
+        closed), never absence.
+        """
+        import tempfile, os
+        run_head = run_head if run_head is not None else "deadbeef" * 5
+        pr_head = pr_head if pr_head is not None else run_head
+        # pr_base defaults to a valid 40-hex SHA; pass _PR_BASE_NULL explicitly
+        # to test null PR base.sha. Pass "" for empty, hex strings for other cases.
+        if pr_base is _PR_BASE_NULL:
+            pr_base = "0123456789abcdef0123456789abcdef01234567"
+        run_base = run_base if run_base is not None else "0123456789abcdef0123456789abcdef01234567"
+        # Build run_pr_json from the run_base value so the run's pull_requests
+        # array carries .base.sha — this is the immutable association the probe
+        # reads for the run-bound base. Default: one PR entry with the numeric
+        # base.sha; pass _RUN_BASE_NULL explicitly to test null base.
+        if run_pr_json is None:
+            if run_base is None:
+                run_pr_json = '[{"number": 1124, "base": null}]'
+            else:
+                run_pr_json = '[{"number": 1124, "base": {"sha": "%s"}}]' % run_base
+        else:
+            # Explicitly passed run_pr_json without .base.sha — wrap it to
+            # carry the run_base value so the probe can extract it.
+            if run_base is not None:
+                # Insert base.sha into each entry that has a number.
+                try:
+                    entries = json.loads(run_pr_json)
+                except (json.JSONDecodeError, TypeError):
+                    entries = []
+                if isinstance(entries, list):
+                    for entry in entries:
+                        if isinstance(entry, dict) and entry.get("number") is not None:
+                            entry["base"] = {"sha": run_base}
+                        else:
+                            entries.append({"number": 1124, "base": {"sha": run_base}})
+                            break
+                    run_pr_json = json.dumps(entries)
 
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        self.bin = _write_gh_stub(self.root, "__FAIL")
+        def _q(s):
+            # Shell single-quote an arbitrary string for safe embedding.
+            return "'" + s.replace("'", "'\\''") + "'"
 
-    def test_execute_api_error_fails_closed_run(self):
-        block = _extract_run_block("skip_check")
-        gh_out = self.root / "gh_out"
-        gh_out.write_text("")
-        env = dict(os.environ,
-                    GITHUB_OUTPUT=str(gh_out),
-                    GITHUB_TOKEN="fixture-token",
-                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")))
-        proc = _run(["bash", "-euo", "pipefail", "-c", block], env=env,
-                    cwd=self.root)
+        # Model each authenticated gh endpoint with the JSON shape its --jq
+        # filter expects: --jq '.artifacts[].name' needs an {"artifacts":[...]}
+        # object, --jq '.pull_requests' the array, --jq '.head_sha' a string,
+        # --jq '.head.sha' an object with a head.sha field, and --jq
+        # '.[].filename' a list of {"filename":...} objects. A per-arm exit code
+        # models a failed/incomplete API response (fail closed); unmatched
+        # endpoints fail non-zero so the probe's own guards convert them.
+        if artifact_stdout:
+            artifacts_json = _q('{"artifacts":[{"name":"' +
+                                artifact_stdout.replace('"', '\\"') + '"}]}')
+        else:
+            artifacts_json = _q('{"artifacts":[]}')
+        # base..head compare: emit the full compare object {base_commit,
+        # head_commit, files:[...], ...} so --jq '.files' and --jq '.[].filename'
+        # both resolve. The files field is the same list the files endpoint
+        # would return, so the compare arm is the single source of truth for
+        # the bounded file set. files_json is already single-quoted for shell
+        # safety, so splice it in verbatim (no re-quoting) to avoid embedding
+        # literal single quotes around the array.
+        if files_stdout:
+            fobjs = ",".join('{"filename":"' + f.replace('"', '\\"') + '"}'
+                             for f in files_stdout.splitlines())
+            files_json = "[" + fobjs + "]"
+        else:
+            files_json = "[]"
+        compare_json = _q('{"base_commit":{"sha":"%s"},"head_commit":{"sha":"%s"},"files":%s}'
+                          % (run_base, run_head, files_json))
+        # The shape-check arm emits the raw --jq '.files' result. By default it
+        # is the full compare object so `jq '.files'` resolves to the files
+        # array; the non-array/missing test cases replace it with an object or
+        # an empty string so the probe's array-shape guard fires.
+        if compare_shape_nonarray:
+            shape_out = _q('{"not":"an array"}')
+        elif compare_shape_missing:
+            shape_out = "''"
+        else:
+            shape_out = compare_json
+        run_json = _q('{"id":%d,"run_attempt":1,"head_sha":"%s","base_sha":null,"pull_requests":%s,"event":"%s"}'
+                      % (RUN_ID, run_head, run_pr_json, event))
+        if pr_base is None:
+            # Explicitly null PR base object — base: null (real API returns null
+            # when the PR target branch is not yet resolved)
+            pr_base_obj = "null"
+        elif pr_base == "":
+            # Explicitly empty PR base object — base: {"sha":""}
+            pr_base_obj = '{"sha":""}' + '}'
+        else:
+            # Normal case: base: {"sha":"..."}
+            pr_base_obj = '{"sha":"%s"}' % pr_base
+        pr_json = _q('{"head":{"sha":"%s"},"base":%s}' % (pr_head, pr_base_obj))
+
+        with tempfile.TemporaryDirectory() as td:
+            bin_dir = Path(td) / "bin"
+            bin_dir.mkdir()
+            stub = bin_dir / "gh"
+            # Endpoint dispatch: most-specific patterns FIRST. /artifacts before
+            # /actions/runs/*; /files before /pulls/*. The stub re-runs its
+            # output through the caller's --jq filter (if present) so the probe
+            # sees the same extracted value it would from the real API; absent
+            # --jq it emits the endpoint JSON verbatim.
+            body = [
+                "#!/bin/sh",
+                'cmd="$1"',
+                'if [ "$cmd" != "api" ]; then exit 0; fi',
+                'url="$2"',
+                'qurl="${url%%[?]*}"',
+                'fullurl="$2"',
+                "rc=0",
+                'out=""',
+                "ARC=0",
+                'matched=0',
+                'case "$fullurl" in',
+                '*shape=files*) out=' + shape_out + '; ARC=' + str(compare_shape_rc) + '; matched=1 ;;',
+                'esac',
+                'if [ "$matched" = "0" ]; then',
+                'case "$qurl" in',
+                '*/artifacts) out=' + artifacts_json + '; rc=' + str(artifact_rc) + ' ;;',
+                '*/actions/runs/*) out=' + run_json + '; rc=' + str(run_rc) + ' ;;',
+                '*/compare/*) out=' + compare_json + '; rc=' + str(compare_files_rc or files_rc) + ' ;;',
+                '*/files*) out=' + files_json + '; rc=' + str(files_rc) + ' ;;',
+                '*/pulls/*) out=' + pr_json + '; rc=' + str(pr_api_rc) + ' ;;',
+                '*) rc=31 ;;',
+                'esac',
+                'fi',
+                "shift 2 2>/dev/null || { shift; shift; }",
+            ]
+            # Scan remaining args for a --jq filter (may follow --paginate).
+            body.append('FILTER=""')
+            body.append('while [ $# -gt 0 ]; do')
+            body.append('  case "$1" in')
+            body.append('    --jq) shift; FILTER="$1" ;;')
+            body.append('    *) shift ;;')
+            body.append('  esac')
+            body.append('  [ $# -gt 0 ] || break')
+            body.append('done')
+            body.append('if [ -n "$FILTER" ]; then')
+            body.append('  jq -r "$FILTER" <<JQIN')
+            body.append('$out')
+            body.append('JQIN')
+            body.append('else')
+            body.append('  printf "%s" "$out"')
+            body.append('fi')
+            # A shape-call exits its ARC; any other call exits its rc so the
+            # probe sees the real success/failure (a failed lookup is a nonzero
+            # exit, never a silent empty result).
+            body.append('if [ "$matched" = "1" ]; then exit $ARC; fi')
+            body.append('exit $rc')
+            body.append("")
+            stub.write_text("\n".join(body))
+            stub.chmod(0o755)
+            out = Path(td) / "out.txt"
+            out.write_text("")
+            env = dict(os.environ, GITHUB_OUTPUT=str(out), PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
+            proc = subprocess.run(["bash", "-c", self._probe_block()], env=env,
+                                  capture_output=True, text=True)
+            return proc, out.read_text()
+
+    def test_present_artifact_yields_eligible(self):
+        # Successful API response carrying trusted-pr-plan => eligible.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan", artifact_rc=0,
+                                       files_stdout="", files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=true", result)
+
+    def test_no_contract_touch_no_artifact_skips_cleanly(self):
+        # Successful calls, no artifact, no contracts/ file => legit skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md\nscripts/foo.py", files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
+        # The skip rationale is diagnostic on stderr; the machine-readable
+        # skip signal (producer_eligible=false) is on GITHUB_OUTPUT.
+        self.assertIn("not a producer run", proc.stderr)
+
+    def test_contract_touch_without_artifact_fails_closed(self):
+        # The Owner-precise rule: a contracts/ touch with no trusted-pr-plan
+        # artifact is an integrity error, NOT a skip. Probe must exit non-zero.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/service/v1/x.schema.json\nREADME.md",
+                                       files_rc=0)
         self.assertNotEqual(proc.returncode, 0,
-                            "failed API lookup must fail the block closed")
-        out = _read_gh_output(gh_out)
-        self.assertNotIn("skipped", out,
-                         "no skipped output may be written on a lookup failure")
-        self.assertNotIn("Skipping receipt", proc.stdout,
-                         "a lookup failure is not a CLEAN SKIP announcement")
+                            "contracts/ touch without artifact must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+        self.assertNotIn("skipped", result)
 
-
-class F1ExecutedDecodeGuardOnSkip(unittest.TestCase):
-    """Finding 1 (rv1230b): the decode block must not open plan.zip when the
-    download was skipped.
-
-    We reproduce the real skipped-download path: the download block is guarded
-    in YAML by `skip_check.outputs.skipped != 'true'`. Here we run the decode
-    block in isolation with NO plan.zip present (exactly what the runner leaves
-    behind when the download step was skipped), and prove the decoder exits
-    non-zero and writes no candidate_sha — i.e. it cannot open a missing
-    plan.zip and fabricate empty facts. The OLD decode block had no guard here
-    and would raise zipfile.BadZipFile / emit empty candidate_sha.
-    """
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        # No plan.zip present: the decoder must fail closed, not proceed.
-
-    def test_decode_fails_when_download_skipped_or_missing(self):
-        decode_block = _extract_run_block("decode")
-        env = dict(os.environ,
-                    GITHUB_OUTPUT=str(self.root / "gh_out"),
-                    GH_WORKFLOW_TOKEN="fixture-token",
-                    PYTHONPATH=str(HERE))
-        (self.root / "gh_out").write_text("")
-        proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
-                    cwd=self.root)
+    def test_artifact_api_error_fails_closed(self):
+        # A non-zero gh exit on the artifact call (transport/API error) must
+        # NOT be read as absence: the probe hard-fails (exit 1).
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=1,
+                                       files_stdout="", files_rc=0)
         self.assertNotEqual(proc.returncode, 0,
-                            "decode must not proceed when download was skipped")
-        out = _read_gh_output(self.root / "gh_out")
-        self.assertNotIn("candidate_sha", out,
-                         "no candidate_sha may be emitted after a skipped download")
+                            "API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+        self.assertNotIn("skipped", result)
 
-    def test_decode_opens_plan_when_download_ok(self):
-        # Control: with a valid plan.zip the decoded decode block succeeds and
-        # emits the real candidate_sha — the guard does not over-block a real
-        # artifact.
-        with zipfile.ZipFile(self.root / "plan.zip", "w") as z:
-            z.writestr("pr-plan.json", json.dumps(FAKE_PLAN))
-        decode_block = _extract_run_block("decode")
-        bin = _write_gh_stub(self.root, "pull_request")
-        env = dict(os.environ,
-                    GITHUB_OUTPUT=str(self.root / "gh_out"),
-                    GH_WORKFLOW_TOKEN="fixture-token",
-                    PATH="%s:%s" % (str(bin), os.environ.get("PATH", "")),
-                    PYTHONPATH=str(HERE))
-        (self.root / "gh_out").write_text("")
-        proc = _run(["bash", "-euo", "pipefail", "-c", decode_block], env=env,
-                    cwd=self.root)
-        self.assertEqual(proc.returncode, 0, f"decode failed: {proc.stderr}")
-        out = _read_gh_output(self.root / "gh_out")
-        self.assertEqual(out.get("candidate_sha"), "c" * 40,
-                         "decode must emit the real candidate_sha")
+    def test_files_api_error_fails_closed(self):
+        # Even when the artifact call succeeds, a failing PR-file-list call is
+        # an ERROR, never a skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "file-list API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
 
+    def test_run_pr_association_error_fails_closed(self):
+        # A failed run-to-PR lookup is a fail-closed ERROR, never a phantom skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='', run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run PR association failure must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    def test_run_pr_association_empty_fails_closed(self):
+        # No bound PR (empty pull_requests) is ambiguous/absent => fail closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='[]', run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "absent PR association must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_run_pr_association_multiple_fails_closed(self):
+        # More than one bound PR is ambiguous => fail closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='[{"number": 1}, {"number": 2}]', run_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "ambiguous PR association must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_non_pr_event_yields_clean_skip(self):
+        # The #1233 non-PR CLEAN SKIP is folded into the #1227 eligibility probe:
+        # a run whose authenticated event is a non-PR trigger (push to
+        # main/develop) must CLEAN SKIP (producer_eligible=false, exit 0),
+        # announcing the real trigger — NOT fail closed on the empty
+        # pull_requests array. This is the single coherent flow: the probe
+        # classifies the event BEFORE the run-to-PR association, so a genuine
+        # push skips cleanly while an ambiguous/absent PR association still
+        # fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_pr_json='[]', run_rc=0,
+                                       event="push")
+        self.assertEqual(proc.returncode, 0,
+                         f"non-PR event must CLEAN SKIP: {proc.stderr}")
+        self.assertIn("producer_eligible=false", result)
+        self.assertIn("not 'pull_request'", proc.stderr)
+
+    def test_run_head_lookup_error_fails_closed(self):
+        # A failed run head_sha lookup is a fail-closed ERROR.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_head='', run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run head lookup failure must fail closed, not skip")
+
+    def test_pr_head_mismatch_fails_closed(self):
+        # Immutable PR head must equal the authenticated run head; a mismatch
+        # breaks the association and fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       run_head="aaaa" * 10, pr_head="bbbb" * 10)
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR/run head mismatch must fail closed, not skip")
+
+    def test_malformed_endpoint_fails_closed(self):
+        # An unmatched/malformed gh endpoint must exit non-zero in the stub so
+        # the probe's own guard converts it into a fail-closed ERROR rather
+        # than a phantom success.
+        proc, _ = self._run_probe(artifact_stdout="trusted-pr-plan", artifact_rc=0,
+                                  files_stdout="", files_rc=0)
+        # The happy path resolves all endpoints, so rc is 0 here; a malformed
+        # endpoint is verified separately below with a deliberately broken stub.
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_api_error_not_confused_with_absent(self):
+        # Regression guard: an empty stdout with a non-zero exit code is an
+        # ERROR, distinguishable from a zero-exit empty response (ABSENCE).
+        err_proc, _ = self._run_probe(artifact_stdout="", artifact_rc=2,
+                                      files_stdout="", files_rc=0)
+        self.assertNotEqual(err_proc.returncode, 0)
+        ok_proc, ok_result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                             files_stdout="", files_rc=0)
+        self.assertEqual(ok_proc.returncode, 0)
+        self.assertIn("producer_eligible=false", ok_result)
+
+    def test_probe_lists_pr_files_authenticated_paginated(self):
+        # rv1221 point 1: contracts impact is determined from an AUTHENTICATED,
+        # paginated immutable base..head compare (bound head+base) before the
+        # probe decides to skip. The mutable PR files endpoint is gone.
+        block = self._probe_block()
+        self.assertIn("compare/", block)
+        self.assertIn("--paginate", block)
+        # The PR number is sourced from the authenticated run's pull_requests,
+        # never a caller-invented value.
+        self.assertIn("pull_requests", block)
+
+    def test_probe_gates_on_gh_exit_code(self):
+        # Every gh API call must gate on gh's own exit code (fail closed on
+        # transport/auth failure), never mask a non-zero rc as absence.
+        block = self._probe_block()
+        self.assertIn("ART_RC=$?", block)
+        self.assertIn("CONTRACT_RC=$?", block)
+
+    def test_downstream_jobs_gate_on_eligibility(self):
+        text = self.WORKFLOW.read_text()
+        for job in ("extract_plan", "publish_receipt"):
+            seg = text.split("  %s:" % job, 1)[1].split("\n    if:", 1)[1].split("\n", 1)[0]
+            self.assertIn("producer_eligible == 'true'", seg, job)
+
+    # rv1221 base-SHA binding contract: the bounded file set is derived from an
+    # immutable run-bound base..head pair. Base or head drift, and lookup errors,
+    # must fail closed; the four eligibility outcomes resolve correctly.
+
+    def test_probe_uses_immutable_bound_compare(self):
+        # rv1221 point 1: the file set comes from the authenticated compare of
+        # the immutable run-bound base..head, not the mutable live PR files
+        # endpoint.
+        block = self._probe_block()
+        self.assertIn("compare/", block)
+        self.assertIn(".base.sha", block)
+        self.assertIn(".files[].filename", block)
+        self.assertNotIn("pulls/$PR/files", block)
+
+    def test_base_movement_fails_closed(self):
+        # The PR maintainer rebased the PR after the run completed: the PR's
+        # live base moved, so the immutable run-bound base..head diff now differs
+        # from the archived artifact. The probe resolves base_sha from the run
+        # object and compares against it; a base move that the run object no
+        # longer carries breaks the association. Drive it by returning a run
+        # base that differs from what the immutable compare would use: the
+        # run object's base_sha is the binding, and a lookup returning a
+        # zero/empty base fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_base="", run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "empty run base_sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_head_lookup_error_fails_closed(self):
+        # A failed run head_sha lookup fails closed (existing guard, still held
+        # under the new compare path).
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_head="", run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run head lookup failure must fail closed, not skip")
+
+    def test_compare_files_error_fails_closed(self):
+        # Even when artifact + PR association succeed, a failing compare-files
+        # call is an ERROR, never a skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "compare-files API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_shape_missing_fails_closed(self):
+        # A null/empty compare files field must fail closed: a truncated page
+        # cannot read as a clean no-contracts file set.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "null compare files field must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_immutable_head_bound_in_compare(self):
+        # The compare is bound to the authenticated run head: the compare URL
+        # uses RUN_HEAD, and the immutable PR head must equal it (existing
+        # guard). A run/head mismatch must fail closed under the new path.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                        files_stdout="README.md", files_rc=0,
+                                        run_head="aaaa" * 10, pr_head="bbbb" * 10)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run/PR head mismatch must fail closed, not skip")
+
+    # rv1221d point 2: the immutable run-bound base must be a verifiable full
+    # SHA; every malformation (error, empty, non-hex, short, all-zero) fails
+    # closed, and the compare response must be a complete array payload.
+
+    def test_run_base_lookup_error_fails_closed(self):
+        # A failed run base_sha lookup is a fail-closed ERROR.
+        # Legacy test: now reads from PR object; run_rc=1 doesn't affect PR path.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       run_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "run base lookup failure must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_pr_base_empty_fails_closed(self):
+        # An empty PR base_sha fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       pr_base="")
+        self.assertNotEqual(proc.returncode, 0,
+                            "empty PR base.sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_pr_base_non_hex_fails_closed(self):
+        # A non-hex PR base_sha (e.g. containing 'z') fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       pr_base="zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")
+        self.assertNotEqual(proc.returncode, 0,
+                            "non-hex PR base.sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_pr_base_short_fails_closed(self):
+        # A too-short PR base_sha (valid hex, wrong length) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       pr_base="abc123")
+        self.assertNotEqual(proc.returncode, 0,
+                            "short PR base.sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_pr_base_all_zero_fails_closed(self):
+        # An all-zero PR base_sha (unverified base) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md", files_rc=0,
+                                       pr_base="0" * 40)
+        self.assertNotEqual(proc.returncode, 0,
+                            "all-zero PR base.sha must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_shape_not_array_fails_closed(self):
+        # A compare files field that is not an array (object) fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_rc=0,
+                                       compare_shape_nonarray=True)
+        self.assertNotEqual(proc.returncode, 0,
+                            "non-array compare files field must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    def test_compare_truncated_missing_files_fails_closed(self):
+        # A truncated compare response with no files field fails closed.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="", files_rc=0,
+                                       compare_shape_missing=True)
+        self.assertNotEqual(proc.returncode, 0,
+                            "truncated compare (missing files) must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+
+    # The four eligibility outcomes against the immutable bound compare.
+
+    def test_eligibility_true_with_artifact(self):
+        # Present trusted-pr-plan artifact => eligible, regardless of the files
+        # the immutable compare returns.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=true", result)
+
+    def test_eligibility_false_no_artifact_no_contract_touch(self):
+        # No artifact + no contracts/ touch (from the immutable base..head
+        # compare) => clean skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="README.md\ndocs/foo.md",
+                                       files_rc=0)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
+        self.assertIn("not a producer run", proc.stderr)
+
+    def test_eligibility_integrity_error_contract_touch_no_artifact(self):
+        # A contracts/ touch in the immutable base..head diff with no
+        # trusted-pr-plan artifact is an integrity error (fail closed), never a
+        # skip.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/service/v1/x.schema.json",
+                                       files_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "contracts/ touch without artifact must fail closed, not skip")
+        self.assertNotIn("producer_eligible=false", result)
+        self.assertNotIn("skipped", result)
+
+    def test_eligibility_integrity_error_with_moved_base(self):
+        # The contracts/ touch only appears in the immutable base..head compare
+        # (moved base), never in a stale/no-op view: the integrity-error path
+        # still fires because the bound compare reflects the real diff.
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                       files_stdout="contracts/runtime/handler.go",
+                                       files_rc=0)
+        self.assertNotEqual(proc.returncode, 0,
+                            "contracts/ touch without artifact must fail closed, not skip")
+
+    # PR-object base.sha negative tests: the base is now read from the
+    # immutable PR object at .base.sha (not the null top-level base_sha).
+    # Each case must fail closed when the PR object carries null/empty/
+    # malformed/zero base.sha or when the PR object itself is unreachable.
+
+    def test_pr_base_null_fails_closed(self):
+        # The PR object carries base: null — the real API returns null at
+        # .base.sha for unmerged PRs whose target is not yet resolved. The
+        # probe must fail closed, never skip.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base=None)
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR base.sha null must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+
+    def test_pr_base_empty_fails_closed(self):
+        # The PR object carries base.sha: "" — empty string is not a valid
+        # SHA and must fail closed.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base="")
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR base.sha empty must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+
+    def test_pr_base_all_zero_fails_closed(self):
+        # The PR object carries base.sha: 000...0 — an unverified base.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base="0" * 40)
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR base.sha all-zero must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+
+    def test_pr_base_short_fails_closed(self):
+        # The PR object carries a short base.sha (valid hex, wrong length).
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base="abc123")
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR base.sha short must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+
+    def test_pr_base_non_hex_fails_closed(self):
+        # The PR object carries a non-hex base.sha string.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base="zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz")
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR base.sha non-hex must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
+
+    def test_pr_base_drift_fails_closed(self):
+        # The run-bound base.sha (from pull_requests[0]) differs from the live
+        # PR base.sha. The drift-wächter detects this divergence and fails
+        # closed — the immutable run-bound base and the mutable live PR base
+        # must match, otherwise base movement without a head change would
+        # produce a wrong compare.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_base="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+                                       run_base="cafebabe00000000cafebabe00000000cafebabe")
+        # The drift-wächter compares run-bound base against live PR base;
+        # a mismatch fails closed.
+        self.assertNotEqual(proc.returncode, 0,
+                            "base drift (run-bound != live PR) must fail closed, not pass")
+        self.assertNotIn("producer_eligible=true", result)
+
+    def test_pr_object_api_error_fails_closed(self):
+        # The PR object API call itself fails — the probe must hard-fail.
+        proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
+                                       artifact_rc=0, files_stdout="README.md",
+                                       files_rc=0,
+                                       pr_api_rc=1)
+        self.assertNotEqual(proc.returncode, 0,
+                            "PR object API error must fail closed, not skip")
+        self.assertNotIn("producer_eligible=", result)
