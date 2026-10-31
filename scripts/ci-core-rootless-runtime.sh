@@ -2,13 +2,19 @@
 set -euo pipefail
 
 runtime="${BASEHARBOR_TEST_RUNTIME:?runtime is required}"
+# Rootless CI: this job already runs as the unprivileged runner user (uid != 0).
+# sudo is NOT available and NOT needed: rootless docker/podman run without it.
 test "$(id -u)" -ne 0
-sudo apt-get update
-sudo apt-get install -y uidmap slirp4netns dbus-user-session
-sudo loginctl enable-linger "$(id -un)"
+# Absence/functionality checks (sudo-free) for the rootless toolchain that is
+# already present on the runner image (see REPAIR.md, baseharbor-plan evidence).
+command -v dockerd-rootless-setuptool.sh
+command -v podman
+command -v slirp4netns
+# Linger is host persistence (not a per-job step); only verify it is set.
+loginctl show-user "$(id -un)" | grep -q Linger=yes
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+# Rootless runtimes do not need (and cannot run) sudo appctl apparmor toggles.
 printf 'XDG_RUNTIME_DIR=%s\nDBUS_SESSION_BUS_ADDRESS=%s\n' "$XDG_RUNTIME_DIR" "$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
 
 # Only public image content is cached; native manifests remain digest-verified.
@@ -24,17 +30,11 @@ export BASEHARBOR_CI_PUBLIC_IMAGE_CACHE="$(cat "$cache_endpoint")"
 
 case "$runtime" in
   docker)
+    # docker-ce-rootless-extras + dockerd-rootless-setuptool.sh are already on the
+    # rootless runner image (command -v above succeeded). Only re-install as a
+    # sudo-free fallback if the binary is somehow missing.
     if ! command -v dockerd-rootless-setuptool.sh >/dev/null; then
-      docker_engine_version="$(docker version --format '{{.Server.Version}}')"
-      sudo install -m 0755 -d /etc/apt/keyrings
-      sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-      sudo chmod a+r /etc/apt/keyrings/docker.asc
-      . /etc/os-release
-      printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "${UBUNTU_CODENAME:-$VERSION_CODENAME}" "$(dpkg --print-architecture)" | sudo tee /etc/apt/sources.list.d/docker.sources
-      sudo apt-get update
-      extras_version="$(apt-cache madison docker-ce-rootless-extras | awk -v wanted="$docker_engine_version" 'index($3, "5:" wanted "-")==1 && !found {print $3; found=1}')"
-      test -n "$extras_version"
-      sudo apt-get install -y "docker-ce-rootless-extras=$extras_version"
+      dockerd-rootless-setuptool.sh install
     fi
     command -v dockerd-rootless-setuptool.sh
     # Cache public Docker Hub layers on this isolated rootless CI daemon.
@@ -50,13 +50,13 @@ added = ['https://mirror.gcr.io', os.environ['BASEHARBOR_CI_PUBLIC_IMAGE_CACHE']
 settings['registry-mirrors'] = added + [v for v in mirrors if v not in added]
 config.write_text(json.dumps(settings) + '\n')
 PY
-    dockerd-rootless-setuptool.sh install --force
+    dockerd-rootless-setuptool.sh install
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
     printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{json .SecurityOptions}}'
     ;;
   podman)
-    sudo apt-get install -y podman
+    # podman is already present on the rootless runner image (command -v above).
     mkdir -p "$HOME/.config/containers/registries.conf.d"
     cache_location="${BASEHARBOR_CI_PUBLIC_IMAGE_CACHE#http://}"
     cat > "$HOME/.config/containers/registries.conf.d/99-baseharbor-ci-public-cache.conf" <<EOF
