@@ -58,12 +58,16 @@ case "$runtime" in
       mkdir -p "$RUNNER_TEMP/extras-root"
       ( cd "$RUNNER_TEMP/extras-root" && ar x "$RUNNER_TEMP/extras.deb"
         # The data payload is xz, zst or gz depending on the Ubuntu release;
-        # extract whichever the .deb actually carries.
-        case "$RUNNER_TEMP/extras-root/data.tar.*" in
-          data.tar.xz)  tar xfJ data.tar.xz  ;;
-          data.tar.zst) tar xfZ data.tar.zst ;;
-          data.tar.gz)  tar xzf data.tar.gz  ;;
-          *) echo "unknown .deb data payload" >&2; exit 1 ;;
+        # extract whichever the .deb actually carries. Glob-expand unquoted
+        # (a partially quoted pattern would not expand) with nullglob so an
+        # empty match does not pass the literal pattern to tar.
+        shopt -s nullglob
+        payloads=( "$RUNNER_TEMP/extras-root"/data.tar.* )
+        case "${payloads[0]:-}" in
+          */data.tar.xz) tar xfJ "${payloads[0]}" ;;
+          */data.tar.zst) tar xfZ "${payloads[0]}" ;;
+          */data.tar.gz)  tar xzf "${payloads[0]}" ;;
+          *) echo "unknown .deb data payload: ${payloads[0]:-none}" >&2; exit 1 ;;
         esac )
       find "$RUNNER_TEMP/extras-root" -name 'dockerd-rootless-setuptool.sh' -exec cp -v {} "$HOME/.local/bin/" \;
     fi
