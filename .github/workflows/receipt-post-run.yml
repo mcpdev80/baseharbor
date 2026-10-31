@@ -77,7 +77,38 @@ jobs:
       base_sha: ${{ steps.plan.outputs.base_sha }}
       run_id: ${{ steps.plan.outputs.run_id }}
       pr_number: ${{ steps.plan.outputs.pr_number }}
+      skipped: ${{ steps.skip_check.outputs.skipped }}
     steps:
+      - name: Check if this is a pull_request event
+        id: skip_check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Fetch the trigger event from the producer workflow run via the
+          # authenticated GitHub API.  Non-PR runs (e.g. push to main/develop)
+          # must produce a CLEAN SKIP — exit 0, neutral, no Failure, no Receipt.
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          echo "Fetching event type for producer run $RUN_ID ..."
+          # Fail closed: `set -e` aborts the block on a non-zero lookup (a real
+          # 404/500 or auth error) BEFORE skipped is ever written and BEFORE any
+          # receipt. The old `... 2>/dev/null || echo ""` turned such a failure
+          # into an empty EVENT and thus an effective successful NON-PR skip.
+          EVENT="$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID" \
+            --jq '.event')"
+          echo "producer_event=$EVENT" >> "$GITHUB_OUTPUT"
+          # A successful lookup is required; a missing/empty value is not a
+          # legitimate skip signal and fails closed.
+          test -n "$EVENT"
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "::notice file=.github/workflows/receipt-post-run.yml::Skipping receipt: producer run was triggered by '$EVENT', not 'pull_request'. No receipt will be written."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            echo "skipped=false" >> "$GITHUB_OUTPUT"
+            echo "Producer run triggered by pull_request — proceeding."
+          fi
+
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -87,6 +118,7 @@ jobs:
           persist-credentials: false
 
       - name: Download trusted-pr-plan artifact
+        if: steps.skip_check.outputs.skipped != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -174,6 +206,12 @@ jobs:
           print("run_id=%s" % out["run_id"])
           print("pr_number=%s" % (os.environ.get("PR_NUMBER", "") or ""))
           PY
+          # Fail closed: if the download was skipped (non-PR event) plan.zip is
+          # never written, so plan.zip.open() raises and the block exits
+          # non-zero BEFORE any output is parsed or written. A skipped download
+          # must therefore never yield candidate_sha/base_sha — the plan is
+          # DATA, and a missing artifact yields no facts, not empty facts.
+          test -f plan.txt
           workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
@@ -199,7 +237,7 @@ jobs:
   # controller Python from the reviewed CI repo, NOT PR-controlled code.
   publish_receipt:
     name: "Publish Receipt to Planning"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.extract_plan.outputs.skipped != 'true'
     needs: [producer_context, extract_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
