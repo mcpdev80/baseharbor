@@ -323,9 +323,14 @@ class GitHubHostedRootlessRuntime(unittest.TestCase):
         self.assertIn('docker-ce-rootless-extras', body)
         self.assertIn('dockerd-rootless-setuptool.sh', body)
         self.assertIn('DOCKER_HOST', body)
-        # A real apt install exists (docker extras) but never via sudo.
-        self.assertRegex(body, r'(?m)^\s*apt-get\s+(?:update|install)')
+        # Runner steps run as root and /etc/apt is locked down on the shared
+        # GH-hosted runner, so the rootless extras tool is fetched from
+        # download.docker.com and extracted into a user-local bin (no /etc write,
+        # no sudo). The tool is still resolved on PATH before use.
+        self.assertIn('download.docker.com', body)
+        self.assertIn('.local/bin', body)
         self.assertNotRegex(body, r'(?m)^\s*sudo\b')
+        self.assertNotRegex(body, r'(?m)^\s*(?:sudo\s+)?apt-get\b')
 
     def test_podman_branch_skips_apt_install(self):
         body = self.script()
