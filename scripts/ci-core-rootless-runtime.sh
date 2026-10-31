@@ -89,9 +89,15 @@ PY
     # Start the rootless dockerd on the user socket. `dockerd-rootless.sh` is the
     # direct launcher (systemd linger/user-service is unavailable on the ephemeral
     # GH-hosted runner, so `setuptool.sh install` cannot be used). It only listens
-    # on the XDG_RUNTIME_DIR socket, never the system socket.
-    ( dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
-    for _ in $(seq 1 40); do
+    # on the XDG_RUNTIME_DIR socket, never the system socket. A fresh D-Bus session
+    # is required for the rootless daemon to initialise; `dbus-run-session` provides
+    # one so the ephemeral runner does not need a persistent user bus.
+    if command -v dbus-run-session >/dev/null; then
+      ( dbus-run-session -- dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
+    else
+      ( dockerd-rootless.sh >"$RUNNER_TEMP/dockerd-rootless.log" 2>&1 & )
+    fi
+    for _ in $(seq 1 60); do
       [ -S "$XDG_RUNTIME_DIR/docker.sock" ] && break
       sleep 0.5
     done
