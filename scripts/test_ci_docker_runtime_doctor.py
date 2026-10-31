@@ -326,9 +326,13 @@ class GitHubHostedRootlessRuntime(unittest.TestCase):
         # Runner steps run as root and /etc/apt is locked down on the shared
         # GH-hosted runner, so the rootless extras tool is fetched from
         # download.docker.com and extracted into a user-local bin (no /etc write,
-        # no sudo). The tool is still resolved on PATH before use.
+        # no sudo). The whole toolchain (dockerd-rootless.sh + rootlesskit) is
+        # copied to $HOME/.local/bin so dbus-run-session resolves it on an
+        # absolute path, then resolved on PATH before use.
         self.assertIn('download.docker.com', body)
         self.assertIn('.local/bin', body)
+        self.assertIn('dockerd-rootless.sh', body)
+        self.assertIn('rootlesskit', body)
         self.assertNotRegex(body, r'(?m)^\s*sudo\b')
         self.assertNotRegex(body, r'(?m)^\s*(?:sudo\s+)?apt-get\b')
 
