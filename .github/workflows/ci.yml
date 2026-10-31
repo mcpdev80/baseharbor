@@ -621,7 +621,7 @@ jobs:
           # trusted plan gate (integration/ha/**) or the exact native test source
           # paths in the reviewed diff activate that binding. No runtime-validation
           # branch push is needed for a PR to carry its native proof.
-          echo "cli_native_required=$(python3 -c 'import json,sys; plan=json.load(open("pr-plan.json")); diff=json.load(open(sys.argv[1])); native={"cmd/baha/app_repository_integration_test.go","cmd/baha/app_workload_integration_test.go","internal/application/runtime_multi_integration_test.go"}; gates=any(str(g).startswith("integration/ha/") for g in plan.get("selected_gates",[])); paths=any(str(c.get("path","")) in native for c in diff.get("changes",[])); print(str(gates or paths).lower())' "$RUNNER_TEMP/pr-diff.json")" >> "$GITHUB_OUTPUT"
+          echo "cli_native_required=$(python3 -c 'import json,sys; plan=json.load(open("pr-plan.json")); diff=json.load(open(sys.argv[1])); native={"cmd/baha/app_repository_integration_test.go","cmd/baha/app_workload_integration_test.go","internal/application/runtime_multi_integration_test.go"}; gates=any(str(g).startswith("integration/ha/") for g in plan.get("selected_gates",[])); paths=sorted(c.get("path","") for c in diff.get("changes",[])); executor=any((p.startswith("scripts/pr-") or p.startswith("scripts/ci-") or p.startswith("scripts/test_pr_") or p.startswith(".github/workflows/")) for p in paths); print(str((gates or any(p in native for p in paths)) or executor).lower())' "$RUNNER_TEMP/pr-diff.json")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: trusted-pr-plan
@@ -1235,6 +1235,8 @@ jobs:
           CLI_NATIVE_REQUIRED: ${{ needs.pr_plan.outputs.cli_native_required }}
           TARGETED_HA_DOCKER_JOB: ${{ needs.targeted_ha_pr_docker.result }}
           TARGETED_HA_PODMAN_JOB: ${{ needs.targeted_ha_pr_podman.result }}
+          TARGETED_HA_DOCKER_RUNNER: ${{ jobs."Targeted HA · docker".runner.name }}
+          TARGETED_HA_PODMAN_RUNNER: ${{ jobs."Targeted HA · podman".runner.name }}
           VERIFIED_DEMO_SHA: ${{ needs.pr_demo_pin.outputs.demo_ref || needs.pr_consumer_pins.outputs.demo_ref }}
         run: |
           set -euo pipefail
@@ -1250,6 +1252,15 @@ jobs:
             [ "$TARGETED_HA_DOCKER_JOB" = success ] || { echo "BLOCKED: Targeted HA docker native integration did not succeed" >&2; exit 1; }
             [ "$TARGETED_HA_PODMAN_JOB" = success ] || { echo "BLOCKED: Targeted HA podman native integration did not succeed" >&2; exit 1; }
           fi
+          # o1240: fail-closed native EXECUTION proof. cli_native_required=true
+          # only RUNS the Targeted HA jobs; coverage resolves to `resolved`
+          # ONLY when these jobs genuinely EXECUTED green on self-hosted
+          # rootless runners with a verified daemon identity. The record is
+          # built from the run's real jobs via github.token, never PR content.
+          python3 "$RUNNER_TEMP/pr-authenticated-results.py" native-record --run-id "$ACTIONS_RUN_ID" --attempt "$ACTIONS_RUN_ATTEMPT" --head-sha "$EXPECTED_HEAD" --repository mcpdev80/baseharbor > "$RUNNER_TEMP/native-record.json"
+          NATIVE_VERIFIED="$(python3 -c 'import json;print(str(json.load(open(sys.argv[1]))["verified"]).lower())' "$RUNNER_TEMP/native-record.json")"
+          echo "authenticated native execution verified=$NATIVE_VERIFIED (docker=${TARGETED_HA_DOCKER_RUNNER} podman=${TARGETED_HA_PODMAN_RUNNER})"
+          [ "$NATIVE_VERIFIED" = "true" ] || { echo "BLOCKED: Targeted HA docker/podman did not EXECUTE green on self-hosted rootless runners with verified daemon identity (see native-record.json)" >&2; cat "$RUNNER_TEMP/native-record.json"; exit 1; }
           if { [ "$SELECTED_RUNTIME_REQUIRED" = true ] && [ "$SELECTED_RUNTIME_JOB" = success ]; } || { [ "$PUBLIC_CONTRACTS_REQUIRED" = true ] && [ "$PUBLIC_CONTRACTS_JOB" = success ]; }; then
             [[ "$VERIFIED_DEMO_SHA" =~ ^[0-9a-f]{40}$ ]]
             git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe

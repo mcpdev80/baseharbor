@@ -61,6 +61,93 @@ def authenticated_results(plan, run, jobs, run_id, attempt, head_sha):
             "results": results}  # NO GATE PASS without verified runtime evidence
 
 
+# o1240: authenticated native-execution proof. The classifier resolves a
+# ci-executor/runtime-workflow change ONLY when this record is verified, and a
+# verified record requires that BOTH Targeted HA docker and podman jobs actually
+# EXECUTED (never skipped) GREEN on self-hosted rootless runners with a verified
+# rootless daemon identity. The evidence is read from the run's real Actions
+# jobs through github.token, never from PR content, and is bound to the exact
+# PR head SHA so a stale or cross-run record cannot be reused.
+NATIVE_HA_JOB_NAMES = ("Targeted HA · docker", "Targeted HA · podman")
+SELF_HOSTED_ROOTLESS_RUNNERS = (
+    "baha-runner-docker-2", "baha-runner-podman-2", "baha-k3s-runner-01")
+
+
+def native_execution_record(plan, run, jobs, run_id, attempt, head_sha):
+    """Build the fail-closed native-execution evidence record, or raise.
+
+    Raises PermissionError on any forged/stale/cross-run input. Returns the
+    record dict. The record is verified (docker AND podman both executed green
+    on a self-hosted rootless runner with verified daemon identity) via
+    native_execution_verified(); a run that never ran the native jobs yields a
+    verified=False record, never a fabricated success.
+    """
+    if (str(run.get("id")) != str(run_id) or run.get("run_attempt") != attempt
+            or run.get("event") != "pull_request" or run.get("head_sha") != head_sha):
+        raise PermissionError("Actions run/head/attempt does not match immutable PR")
+    by_name = {}
+    for job in jobs:
+        if job.get("run_id") != run_id or job.get("run_attempt", attempt) != attempt:
+            raise PermissionError("cross-run or stale Actions job")
+        by_name.setdefault(job.get("name"), []).append(job)
+    record = {"schema": "baseharbor.native-ha-execution/v1",
+              "head_sha": head_sha, "run_id": int(run_id)}
+    for name in NATIVE_HA_JOB_NAMES:
+        candidates = by_name.get(name, [])
+        if not candidates:
+            record[name] = {"executed": False, "conclusion": None,
+                            "runner": None, "daemon_verified": False,
+                            "skipped": True, "reason": "job-absent"}
+            continue
+        job = candidates[0]
+        conclusion = job.get("conclusion")
+        runner = (job.get("runner") or {}).get("name")
+        rootless = runner in SELF_HOSTED_ROOTLESS_RUNNERS
+        record[name] = {
+            "executed": conclusion == "success",
+            "conclusion": conclusion,
+            "runner": runner,
+            "daemon_verified": bool(rootless and conclusion == "success"),
+            "skipped": conclusion in ("skipped", "failure", "cancelled", None),
+            "reason": "job-absent" if not candidates else
+                      ("runner-not-rootless" if not rootless else None),
+        }
+    return record
+
+
+def native_execution_verified(record):
+    """Return True ONLY when a genuine native gate executed green on rootless runners.
+
+    docker and podman must BOTH have executed (conclusion 'success'), BOTH on a
+    self-hosted rootless runner, with a verified rootless daemon identity, and
+    the record must be bound to the exact PR head SHA and a valid run id. Any
+    skip, failure, absence, non-rootless runner, or missing field returns False.
+    """
+    if not isinstance(record, dict) or \
+            record.get("schema") != "baseharbor.native-ha-execution/v1":
+        return False
+    head = record.get("head_sha")
+    run_id = record.get("run_id")
+    if not (isinstance(head, str) and len(head) == 40 and
+            all(c in "0123456789abcdef" for c in head)):
+        return False
+    if not (isinstance(run_id, int) and run_id > 0):
+        return False
+    for name in NATIVE_HA_JOB_NAMES:
+        info = record.get(name)
+        if not isinstance(info, dict):
+            return False
+        if info.get("skipped") or not info.get("executed"):
+            return False
+        if info.get("conclusion") != "success":
+            return False
+        if info.get("runner") not in SELF_HOSTED_ROOTLESS_RUNNERS:
+            return False
+        if info.get("daemon_verified") is not True:
+            return False
+    return True
+
+
 def api_json(url, token, timeout=20):
     if not token:
         raise PermissionError("read-only GitHub Actions token required")
@@ -125,8 +212,40 @@ def read_authenticated_results(plan, repository, run_id, attempt, head_sha, toke
         time.sleep(min(3, remaining))
 
 
+def read_authenticated_native_record(repository, run_id, attempt, head_sha, token):
+    """Build and authenticate the native-execution record, waiting for the HA jobs.
+
+    Like read_authenticated_results, but only the two Targeted HA native jobs
+    are the required nonterminal jobs. Every snapshot is authenticated anew; a
+    missing/duplicate/forged job or transport error fails immediately, and a
+    nonterminal negative result never acquires a successful record.
+    """
+    deadline = time.monotonic() + 45
+    while True:
+        run, jobs = read_run(repository, run_id, attempt, token, deadline=deadline)
+        record = native_execution_record(None, run, jobs, run_id, attempt, head_sha)
+        record["verified"] = native_execution_verified(record)
+        by_name = {job.get("name"): job for job in jobs}
+        required = [by_name[name] for name in NATIVE_HA_JOB_NAMES]
+        if any(job.get("conclusion") not in (None, "success") or
+               (job.get("status") == "completed" and job.get("conclusion") != "success")
+               for job in required):
+            return record
+        if any(job.get("status") not in
+               ("queued", "in_progress", "waiting", "pending", "requested", "completed")
+               for job in required):
+            raise PermissionError("unknown required Actions job lifecycle")
+        if all(job.get("status") == "completed" for job in required):
+            return record
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("native HA jobs did not become terminal within 45 seconds")
+        time.sleep(min(3, remaining))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("mode", choices=["results", "native-record"], default="results")
     p.add_argument("--plan", type=Path, required=True)
     p.add_argument("--repository", required=True)
     p.add_argument("--run-id", type=int, required=True)
@@ -134,6 +253,12 @@ def main():
     p.add_argument("--head-sha", required=True)
     args = p.parse_args()
     plan = json.loads(args.plan.read_text())
+    if args.mode == "native-record":
+        record = read_authenticated_native_record(
+            args.repository, args.run_id, args.attempt, args.head_sha,
+            os.environ.get("GH_TOKEN", ""))
+        print(json.dumps(record, indent=2, sort_keys=True))
+        return
     print(json.dumps(read_authenticated_results(
         plan, args.repository, args.run_id, args.attempt, args.head_sha,
         os.environ.get("GH_TOKEN", "")), indent=2))

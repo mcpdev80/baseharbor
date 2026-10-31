@@ -216,5 +216,69 @@ class AuthenticatedReadinessTests(unittest.TestCase):
         self.assertEqual([7, 7], [call.kwargs['timeout'] for call in api.call_args_list])
 
 
+class NativeExecutionEvidenceTests(unittest.TestCase):
+    """o1240: the native-execution record is evidence-driven and fail-closed."""
+
+    HEAD = 'b' * 40
+
+    def _ha_jobs(self, docker='success', podman='success', docker_runner='baha-runner-docker-2',
+                 podman_runner='baha-runner-podman-2'):
+        def job(name, conclusion, runner):
+            return {'name': name, 'run_id': 123, 'run_attempt': 1, 'conclusion': conclusion,
+                    'status': 'completed', 'runner': {'name': runner}}
+        return [job('Targeted HA · docker', docker, docker_runner),
+                job('Targeted HA · podman', podman, podman_runner)]
+
+    def test_both_green_on_rootless_runners_resolves(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD},
+            self._ha_jobs(), 123, 1, self.HEAD)
+        self.assertTrue(mod.native_execution_verified(record))
+
+    def test_skipped_native_job_not_verified(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD},
+            self._ha_jobs(docker='skipped'), 123, 1, self.HEAD)
+        self.assertFalse(mod.native_execution_verified(record))
+
+    def test_non_rootless_runner_not_verified(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD},
+            self._ha_jobs(docker_runner='ubuntu-latest',
+                          podman_runner='ubuntu-26.04'), 123, 1, self.HEAD)
+        self.assertFalse(mod.native_execution_verified(record))
+
+    def test_failure_not_verified(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD},
+            self._ha_jobs(podman='failure'), 123, 1, self.HEAD)
+        self.assertFalse(mod.native_execution_verified(record))
+
+    def test_record_bound_to_exact_head_sha(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD},
+            self._ha_jobs(), 123, 1, self.HEAD)
+        self.assertEqual(self.HEAD, record['head_sha'])
+        self.assertEqual(123, record['run_id'])
+
+    def test_stale_or_forged_run_blocks(self):
+        for run in (dict(id=999, head_sha='f' * 40), dict(run_attempt=2)):
+            with self.subTest(run=run):
+                with self.assertRaises(PermissionError):
+                    mod.native_execution_record(
+                        None, run, self._ha_jobs(), 123, 1, self.HEAD)
+
+    def test_missing_ha_jobs_not_verified(self):
+        record = mod.native_execution_record(
+            None, {'id': 123, 'run_attempt': 1, 'event': 'pull_request',
+                   'head_sha': self.HEAD}, [], 123, 1, self.HEAD)
+        self.assertFalse(mod.native_execution_verified(record))
+
+
 if __name__ == '__main__':
     unittest.main()

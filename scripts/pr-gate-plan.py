@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -824,6 +825,132 @@ def matrix(plan):
     return {'include': [{'check': i} for i in ids]}
 
 
+# Native-execution evidence for the ci-executor/runtime-workflow classification.
+#
+# o1240 (2026-10-31): the classifier previously appended `unresolved`
+# UNCONDITIONALLY for `.github/workflows/*` and `scripts/pr-*.py`, so a
+# genuinely executed native runtime gate on a self-hosted rootless runner could
+# never flip the coverage status. That gap is filled here by an evidence-driven
+# qualifier: coverage resolves ONLY when a trusted native-execution record
+# proves that the Targeted HA docker AND podman jobs actually EXECUTED (not
+# skipped, not absent, not errored) GREEN on self-hosted rootless runners with
+# a verified daemon identity. Any skip/absent/error/unverified record stays
+# fail-closed unresolved.
+#
+# The record is produced by the trusted plan job from the run's real Actions
+# jobs (queried through github.token, never PR-controlled). It is bound to the
+# exact PR head SHA and run ID so a stale or cross-run record cannot be reused.
+NATIVE_HA_EXECUTION_RECORD = {
+    'schema': 'baseharbor.native-ha-execution/v1',
+    'head_sha': None,          # exact 40-hex PR head the proof was taken for
+    'run_id': None,            # authenticated GitHub Actions run id
+    'docker': {'executed': False, 'conclusion': None,
+               'runner': None, 'daemon_verified': False, 'skipped': True},
+    'podman': {'executed': False, 'conclusion': None,
+               'runner': None, 'daemon_verified': False, 'skipped': True},
+}
+
+
+def native_execution_verified(record, head_sha=None):
+    """Return True ONLY when a genuine native gate executed green on rootless runners.
+
+    Fail-closed by construction: docker and podman must BOTH have executed on a
+    self-hosted rootless runner, BOTH report conclusion 'success', BOTH carry a
+    verified rootless daemon identity, and the record must be bound to the exact
+    PR head SHA and run id. Any skip, absence, error, unverified daemon, missing
+    field, wrong schema, wrong head SHA or wrong run id returns False. When
+    `head_sha` is provided the record's head_sha must equal it.
+    """
+    if not isinstance(record, dict):
+        return False
+    if record.get('schema') != 'baseharbor.native-ha-execution/v1':
+        return False
+    head = record.get('head_sha')
+    run_id = record.get('run_id')
+    if not (isinstance(head, str) and len(head) == 40 and
+            all(c in '0123456789abcdef' for c in head)):
+        return False
+    if head_sha is not None and head != head_sha:
+        return False
+    if not (isinstance(run_id, int) and run_id > 0):
+        return False
+    for runtime in ('docker', 'podman'):
+        info = record.get(runtime)
+        if not isinstance(info, dict):
+            return False
+        if info.get('skipped') or not info.get('executed'):
+            return False
+        if info.get('conclusion') != 'success':
+            return False
+        if not (isinstance(info.get('runner'), str) and info['runner']):
+            return False
+        if info.get('daemon_verified') is not True:
+            return False
+    return True
+
+
+def native_ha_execution_record_from_env(env):
+    """Build the execution record from trusted plan-job env, fail-closed.
+
+    `env` maps the GitHub Actions expressions the plan job resolves from the run's
+    real jobs. The plan job MUST derive every field from the authenticated run
+    (github.token), never from PR content. A missing/unverified field yields the
+    empty fail-closed record (unresolved), never a fabricated success.
+    """
+    record = copy.deepcopy(NATIVE_HA_EXECUTION_RECORD)
+    try:
+        head = (env.get('NATIVE_PROOF_HEAD_SHA') or '').strip()
+        run_id = (env.get('NATIVE_PROOF_RUN_ID') or '').strip()
+        docker_conclusion = (env.get('TARGETED_HA_DOCKER_JOB') or '').strip()
+        podman_conclusion = (env.get('TARGETED_HA_PODMAN_JOB') or '').strip()
+        docker_runner = (env.get('TARGETED_HA_DOCKER_RUNNER') or '').strip()
+        podman_runner = (env.get('TARGETED_HA_PODMAN_RUNNER') or '').strip()
+        docker_daemon = str(env.get('TARGETED_HA_DOCKER_DAEMON_VERIFIED', '')).strip().lower()
+        podman_daemon = str(env.get('TARGETED_HA_PODMAN_DAEMON_VERIFIED', '')).strip().lower()
+        if (len(head) == 40 and all(c in '0123456789abcdef' for c in head)
+                and run_id.isdigit() and int(run_id) > 0):
+            record['head_sha'] = head
+            record['run_id'] = int(run_id)
+            for key, info, conclusion, runner, daemon in (
+                    ('docker', record['docker'], docker_conclusion, docker_runner, docker_daemon),
+                    ('podman', record['podman'], podman_conclusion, podman_runner, podman_daemon)):
+                executed = conclusion not in ('', 'skipped')
+                info.update(executed=executed, conclusion=conclusion or None,
+                            runner=runner or None,
+                            daemon_verified=daemon == 'true',
+                            skipped=not executed)
+    except (OSError, TypeError, ValueError):
+        return copy.deepcopy(NATIVE_HA_EXECUTION_RECORD)
+    return record
+
+
+def resolve_runtime_workflow_area(path, native_record):
+    """Classify a `.github/workflows/*` change as resolved or unresolved.
+
+    Resolved requires a verified native-execution record (docker AND podman
+    executed green on self-hosted rootless runners). Absence of any record is a
+    conservative unresolved, so an unauthenticated caller can never resolve.
+    """
+    if native_record is None:
+        return 'runtime-workflow-unresolved'
+    if native_execution_verified(native_record):
+        return 'runtime-workflow-native-resolved'
+    return 'runtime-workflow-unresolved'
+
+
+def resolve_executor_area(path, native_record):
+    """Classify a CI-executor change as resolved or unresolved.
+
+    Same fail-closed evidence gate as the workflow branch: only a verified
+    native-execution record resolves, otherwise unresolved.
+    """
+    if native_record is None:
+        return 'ci-executor-unresolved'
+    if native_execution_verified(native_record):
+        return 'ci-executor-native-resolved'
+    return 'ci-executor-unresolved'
+
+
 def openbao_retry_checks(diff, repository='.', context_repository=None,
                          context_target_branch=None):
     """Bind the frozen retry candidate and clean target merges to strict tests."""
@@ -975,7 +1102,8 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
 
 
 def plan(diff, requirements, mapping, repository='.',
-         context_repository=None, context_target_branch=None):
+         context_repository=None, context_target_branch=None,
+         native_record=None):
     if mapping.get('schema') != 'baseharbor.pr-gate-map/v1':
         raise ValueError('unsupported mapping schema')
     release = mapping['release']
@@ -987,6 +1115,16 @@ def plan(diff, requirements, mapping, repository='.',
     available = set(catalog)
     identifiers = {key: diff.get(key) for key in
                    ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha')}
+    # o1240: the native-execution record is the ONLY way to resolve a
+    # ci-executor/runtime-workflow change. It is built exclusively from the
+    # authenticated plan-job env (github.token), never from PR content, so a
+    # malicious PR cannot fabricate native proof. Absence of the record (an
+    # unauthenticated caller) stays fail-closed unresolved. plan() only ever
+    # consumes an env-derived record, so a caller cannot inject proof through
+    # the diff; tests drive it through native_ha_execution_record_from_env().
+    native_record = native_ha_execution_record_from_env(
+        {k: os.environ[k] for k in os.environ
+         if k.startswith('NATIVE_PROOF_') or k.startswith('TARGETED_HA_')})
     valid, problems = validated_diff(diff)
     unresolved = ['invalid diff-base input: ' + p for p in problems]
     reasons = []
@@ -1551,16 +1689,36 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
-            area = 'runtime-workflow-unresolved'
+            # o1240: evidence-driven native qualification. A workflow change is
+            # resolved ONLY when the authenticated run actually EXECUTED the
+            # Targeted HA docker AND podman native gates green on a self-hosted
+            # rootless runner with verified daemon identity; any skip/absent/
+            # error stays fail-closed unresolved.
+            area = resolve_runtime_workflow_area(path, native_record)
             require(CI_CHECKS)
             require(WORKFLOW_SYNTAX_CHECKS)
-            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+            if native_record is not None and native_execution_verified(native_record, identifiers['head_sha']):
+                reasons.append('native runtime gate executed green on rootless '
+                               'runners: ' + path)
+            else:
+                unresolved.append('workflow execution/cleanup/evidence impact '
+                                  'requires native qualification: ' + path)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
               path.startswith('scripts/verify-') or 'evidence' in path):
-            area = 'ci-executor-unresolved'
+            # o1240: evidence-driven native qualification. A CI executor change
+            # is resolved ONLY when the authenticated run actually EXECUTED the
+            # Targeted HA docker AND podman native gates green on a self-hosted
+            # rootless runner with verified daemon identity; any skip/absent/
+            # error stays fail-closed unresolved.
+            area = resolve_executor_area(path, native_record)
             require(CI_CHECKS)
-            unresolved.append('CI execution/evidence impact requires specific qualification: ' + path)
+            if native_record is not None and native_execution_verified(native_record, identifiers['head_sha']):
+                reasons.append('native executor gate executed green on rootless '
+                               'runners: ' + path)
+            else:
+                unresolved.append('CI execution/evidence impact requires specific '
+                                  'qualification: ' + path)
         else:
             area = 'unresolved'
             unresolved.append('unknown impact for ' + path)

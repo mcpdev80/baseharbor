@@ -3814,6 +3814,129 @@ class RuntimeProjectionPathMappingTests(unittest.TestCase):
                       ' '.join(result['unresolved_coverage']))
 
 
+# o1240: evidence-driven native-execution qualifier. A ci-executor /
+# runtime-workflow change resolves ONLY when a verified native-execution record
+# proves the Targeted HA docker AND podman jobs executed green on self-hosted
+# rootless runners with verified daemon identity; any skip/absent/error/unverified
+# record (or no record) stays fail-closed unresolved. The record is built from
+# trusted plan-job env, never from the diff.
+def _native_env(head='b' * 40, docker='success', podman='success',
+                docker_runner='baha-runner-docker-2',
+                podman_runner='baha-runner-podman-2',
+                docker_daemon='true', podman_daemon='true'):
+    return {'NATIVE_PROOF_HEAD_SHA': head, 'NATIVE_PROOF_RUN_ID': '42',
+            'TARGETED_HA_DOCKER_JOB': docker, 'TARGETED_HA_PODMAN_JOB': podman,
+            'TARGETED_HA_DOCKER_RUNNER': docker_runner,
+            'TARGETED_HA_PODMAN_RUNNER': podman_runner,
+            'TARGETED_HA_DOCKER_DAEMON_VERIFIED': docker_daemon,
+            'TARGETED_HA_PODMAN_DAEMON_VERIFIED': podman_daemon}
+
+
+class NativeExecutionEvidenceQualificationTests(unittest.TestCase):
+    def _plan_with_env(self, changes, env):
+        saved = dict(os.environ)
+        os.environ.clear()
+        os.environ.update({'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+                           'GITHUB_BASE_REF': 'develop'})
+        os.environ.update(env)
+        try:
+            return planner.plan(diff(changes), REQ, MAP)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+
+    def test_verified_native_execution_resolves_workflow_change(self):
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': '.github/workflows/ci.yml'}],
+            _native_env())
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+
+    def test_verified_native_execution_resolves_executor_change(self):
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': 'scripts/pr-check-runner.py'}],
+            _native_env())
+        self.assertEqual('resolved', result['coverage_status'])
+
+    def test_no_native_record_stays_unresolved(self):
+        # No trusted env at all -> fail-closed unresolved.
+        saved = dict(os.environ)
+        os.environ.clear()
+        os.environ.update({'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+                           'GITHUB_BASE_REF': 'develop'})
+        try:
+            result = planner.plan(
+                diff([{'status': 'modified', 'path': '.github/workflows/ci.yml'}]),
+                REQ, MAP)
+        finally:
+            os.environ.clear()
+            os.environ.update(saved)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('workflow execution/cleanup/evidence impact requires native qualification',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_skipped_native_job_stays_unresolved(self):
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': '.github/workflows/ci.yml'}],
+            _native_env(docker='skipped', docker_daemon='false'))
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_failed_native_job_stays_unresolved(self):
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': 'scripts/pr-check-runner.py'}],
+            _native_env(podman='failure'))
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('CI execution/evidence impact requires specific qualification',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_non_rootless_runner_stays_unresolved(self):
+        # Jobs ran, but on the hosted ubuntu runner, not a rootless self-hosted
+        # runner -> daemon identity cannot be trusted -> unresolved.
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': '.github/workflows/ci.yml'}],
+            _native_env(docker_runner='ubuntu-latest',
+                        docker_daemon='false'))
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_unverified_daemon_identity_stays_unresolved(self):
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': 'scripts/pr-check-runner.py'}],
+            _native_env(docker_daemon='false'))
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_record_bound_to_wrong_head_sha_stays_unresolved(self):
+        # The proof must be bound to the exact PR head SHA.
+        result = self._plan_with_env(
+            [{'status': 'modified', 'path': '.github/workflows/ci.yml'}],
+            _native_env(head='a' * 40))
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_native_execution_verified_helper_fails_closed(self):
+        # docker executed but podman skipped -> not verified.
+        record = planner.NATIVE_HA_EXECUTION_RECORD.copy()
+        record['head_sha'] = 'b' * 40
+        record['run_id'] = 42
+        record['docker'] = {'executed': True, 'conclusion': 'success',
+                            'runner': 'baha-runner-docker-2',
+                            'daemon_verified': True, 'skipped': False}
+        record['podman'] = {'executed': False, 'conclusion': 'skipped',
+                            'runner': 'baha-runner-podman-2',
+                            'daemon_verified': False, 'skipped': True}
+        self.assertFalse(planner.native_execution_verified(record))
+
+    def test_native_execution_verified_helper_passes_when_both_green(self):
+        record = planner.NATIVE_HA_EXECUTION_RECORD.copy()
+        record['head_sha'] = 'b' * 40
+        record['run_id'] = 42
+        for runtime in ('docker', 'podman'):
+            record[runtime] = {'executed': True, 'conclusion': 'success',
+                               'runner': 'baha-runner-docker-2' if runtime == 'docker'
+                               else 'baha-runner-podman-2',
+                               'daemon_verified': True, 'skipped': False}
+        self.assertTrue(planner.native_execution_verified(record))
+
+
 def runner_validations():
     import importlib.util
     spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')
