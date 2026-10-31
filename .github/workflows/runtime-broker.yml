@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   acceptance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'acceptance'
     timeout-minutes: 30
     env:
@@ -230,7 +230,7 @@ jobs:
 
 
   performance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'performance'
     timeout-minutes: 20
     env:

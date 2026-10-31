@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   runtime-s3:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     env:
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:runtime-s3-acceptance
     steps:
