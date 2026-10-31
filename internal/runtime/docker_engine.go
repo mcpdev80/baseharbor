@@ -37,6 +37,12 @@ func ResolveDockerEngine(ctx context.Context, command string) (DockerEngineObser
 }
 
 func dockerEngineOutput(ctx context.Context, command string, args []string, env []string) ([]byte, error) {
+	// The Docker production path runs exactly the engine the provider selected
+	// (command). It never derives the binary from BASEHARBOR_TEST_RUNTIME: that
+	// test-ENV switch belongs to the Podman provider boundary, not to the Docker
+	// engine probe. Selecting the binary from an environment variable lets a
+	// test runtime override the verified production engine and would route a
+	// docker Target at podman.
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Env = env
 	return cmd.Output()
