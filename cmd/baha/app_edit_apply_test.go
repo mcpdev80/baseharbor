@@ -735,9 +735,10 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
-	// Hosted CI provides an explicitly selected rootful Docker daemon, not the
-	// default rootless socket. Never fall back after a failed engine selection.
-	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	// Hosted CI provides an explicitly selected rootless Docker daemon via
+	// DOCKER_HOST. An active CLI context beats DOCKER_HOST in the engine
+	// resolver, so neutralize it and never fall back after a failed selection.
+	t.Setenv("DOCKER_CONTEXT", "")
 	target := configureTestTarget(t)
 	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -801,9 +802,10 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
-	// Hosted CI provides an explicitly selected rootful Docker daemon, not the
-	// default rootless socket. Never fall back after a failed engine selection.
-	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	// Hosted CI provides an explicitly selected rootless Docker daemon via
+	// DOCKER_HOST. An active CLI context beats DOCKER_HOST in the engine
+	// resolver, so neutralize it and never fall back after a failed selection.
+	t.Setenv("DOCKER_CONTEXT", "")
 	target := configureTestTarget(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {

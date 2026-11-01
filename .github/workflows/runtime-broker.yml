@@ -36,6 +36,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
       - name: Prepare verified rootless runtime
+        # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
+        # time; clear the job-pinned state dirs so docker.service lands in
+        # ~/.config/systemd/user where the user manager loads it.
+        env:
+          XDG_CONFIG_HOME: ''
+          XDG_DATA_HOME: ''
         run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -243,6 +249,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
       - name: Prepare verified rootless runtime
+        # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
+        # time; clear the job-pinned state dirs so docker.service lands in
+        # ~/.config/systemd/user where the user manager loads it.
+        env:
+          XDG_CONFIG_HOME: ''
+          XDG_DATA_HOME: ''
         run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:

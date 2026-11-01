@@ -64,7 +64,9 @@ jobs:
       # the podman prepare path), which makes 'baha doctor' fail with
       # 'cannot resolve active Docker context'. Pin the plain default context.
       - name: Reset Docker CLI context for podman runtime
-        run: docker context use default
+        run: |
+          docker context use default
+          printf 'DOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
 
       - name: Validate workflow syntax
         id: workflow_syntax

@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 
@@ -38,6 +39,14 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			return
 		}
 		_ = os.Unsetenv("BASEHARBOR_TARGET")
+		// The trust plane is a single fresh rootless control plane. A stale
+		// CLI context (the prepare step's "rootless" registration or a host
+		// remnant) would beat DOCKER_HOST in the engine resolver, so pin the
+		// context neutral and publish the runner's rootless socket explicitly.
+		_ = os.Setenv("DOCKER_CONTEXT", "")
+		if os.Getenv("DOCKER_HOST") == "" {
+			_ = os.Setenv("DOCKER_HOST", "unix:///run/user/"+strconv.Itoa(os.Getuid())+"/docker.sock")
+		}
 
 		var out bytes.Buffer
 		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {

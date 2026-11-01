@@ -363,6 +363,9 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+          BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+          BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+          BASEHARBOR_PROVIDER_OPENBAO_SCOPE: application
         run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
       - name: Run Go vet
