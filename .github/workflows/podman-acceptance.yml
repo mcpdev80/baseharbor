@@ -33,7 +33,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    runs-on: ubuntu-26.04
     timeout-minutes: 75
 
     steps:
@@ -54,6 +54,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Validate workflow syntax
         id: workflow_syntax

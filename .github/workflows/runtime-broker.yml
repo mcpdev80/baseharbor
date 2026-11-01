@@ -24,10 +24,11 @@ permissions:
 
 jobs:
   acceptance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'acceptance'
     timeout-minutes: 30
     env:
+      BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
       XDG_CONFIG_HOME: /tmp/baseharbor-broker-xdg/config
       XDG_DATA_HOME: /tmp/baseharbor-broker-xdg/data
@@ -40,6 +41,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Build BaseHarbor and package exact tested binary
         run: |
@@ -230,10 +233,11 @@ jobs:
 
 
   performance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'performance'
     timeout-minutes: 20
     env:
+      BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
       XDG_CONFIG_HOME: /tmp/baseharbor-perf-xdg/config
       XDG_DATA_HOME: /tmp/baseharbor-perf-xdg/data
@@ -246,6 +250,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Build exact static broker binary
         run: |
