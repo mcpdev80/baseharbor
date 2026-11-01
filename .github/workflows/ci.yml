@@ -293,12 +293,14 @@ jobs:
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
       # GH-hosted ubuntu-latest ships a working rootful SYSTEM docker daemon that
-      # the unprivileged 'runner' user can use out-of-the-box. The integration
-      # gate defaults mode=rootless and would hard-reject that rootful daemon
-      # (docker_engine.go:51,121); declare the mode so ResolveDockerEngine probes
-      # the real system daemon instead. Coverage is preserved: the native
-      # integration tests still run end-to-end against a genuine daemon.
-      DOCKER_MODE: rootful
+      # the unprivileged 'runner' user can use out-of-the-box. On GH-hosted the
+      # integration gate resolves the active (default) docker context -> the
+      # preinstalled system daemon automatically (no explicit docker-mode needed);
+      # the resolver falls back to unix:///var/run/docker.sock when no rootless
+      # socket is configured, which is exactly this runner. Coverage is
+      # preserved: the native integration tests still run end-to-end against a
+      # genuine daemon. (No DOCKER_MODE override here by design: the resolver
+      # reads no such env and selects the system context on GH-hosted on its own.)
 
     steps:
       - name: Checkout

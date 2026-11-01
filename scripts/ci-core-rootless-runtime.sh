@@ -29,7 +29,10 @@ case "$runtime" in
     #
     # GH-hosted ubuntu-latest ships a working SYSTEM docker daemon (rootful,
     # preinstalled, usable by the unprivileged 'runner' user out-of-the-box:
-    # `docker run --rm hello-world` succeeds on a fresh runner). The earlier
+    # `docker run --rm hello-world` succeeds on a fresh runner). The integration
+    # gate resolves the active (default) docker context on GH-hosted to this
+    # system daemon automatically (no rootless socket exists on the shared
+    # runner, so the resolver falls back to the system daemon). The earlier
     # rootless docker provisioning (the extra user-space daemon packages fetched
     # from the docker apt index, the sudo sysctl userns-tunable lift, and the
     # dbus-run-session rootless daemon start on the user XDG socket) was only
@@ -37,10 +40,10 @@ case "$runtime" in
     # to the system socket. On the shared GH-hosted runner it is provably
     # redundant AND actively harmful: standing up a rootless dockerd there hits
     # an unprivileged cgroup/lo-fi unit-activation denial (D-Bus systemd1 /
-    # polkit interactive auth), which broke the gate. Per Owner Rule 4 (drop
-    # provably-redundant runner-specific logic) we DROP all rootless setup for
-    # the CI path and verify the preinstalled system daemon instead. Keep the
-    # public registry-mirror + image-cache config (real isolation, digest-verified
+    # polkit interactive auth). Per Owner Rule 4 (drop provably-redundant
+    # runner-specific logic) we DROP all rootless setup for the CI path and
+    # verify the preinstalled system daemon instead. Keep the public
+    # registry-mirror + image-cache config (real isolation, digest-verified
     # content).
     python3 - <<'PY'
 import json, os
