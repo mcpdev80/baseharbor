@@ -129,7 +129,39 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		_ = runWithIO(context.Background(), []string{"app", "destroy", "--yes"}, &out, &out)
 	}()
 
-	if err := runWithIO(ctx, []string{"app", "apply"}, &out, &out); err != nil {
+	// The provider-change consent guard requires a plan→apply flow.
+	// On first apply the impact plan is complete=false → confirmations=2,
+	// so a direct "app apply" without consent fails with
+	// "impact-confirmation-required". Build the impact plan, provide the
+	// required two-stage consent, and carry it through with
+	// withProviderChangeConsent so the apply lifecycle can honour the
+	// prescribed plan→apply acknowledgement.
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve application for plan build: %v", err)
+	}
+	plan, err := buildResolvedApplicationPlan(ctx, resolved)
+	if err != nil {
+		t.Fatalf("build resolved application plan: %v", err)
+	}
+	if plan.ProviderPlan.Impact == nil {
+		t.Fatal("app apply requires a provider-impact plan")
+	}
+	impact := plan.ProviderPlan.Impact
+
+	// Construct the two-stage consent required by the impact plan.
+	// Complete=false or confirmations==2 both require First+Second.
+	consent := &application.ProviderChangeConsent{
+		PlanID:     impact.PlanID,
+		First:      true,
+		Second:     impact.ConfirmationsRequired == 2,
+		DeleteData: false,
+	}
+	if err := application.ValidateProviderChangeConsent(*impact, *consent); err != nil {
+		t.Fatalf("impact consent validation failed: %v", err)
+	}
+
+	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"app", "apply"}, &out, &out); err != nil {
 		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
@@ -156,15 +188,15 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		capability.ProviderRuntimeExecutor,
 	})
 
-	resolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
+	statusResolved, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest)
+	files, err := application.ExistingRuntimeFiles(statusResolved.Store, statusResolved.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	workload, found, err := application.MaterializeWorkload(root, resolved.Manifest, files)
+	workload, found, err := application.MaterializeWorkload(root, statusResolved.Manifest, files)
 	if err != nil || !found {
 		t.Fatalf("materialize workload: found=%v err=%v", found, err)
 	}
@@ -183,7 +215,7 @@ curl "$@" -H "Content-Type: application/x-protobuf" --data-binary @- "${OTEL_EXP
 	if _, err := compose.ExecProjectFilesInput(ctx, workload.Project, root, "trace-probe", composeFiles, payload, "sh", "-ec", tracePost); err != nil {
 		t.Fatalf("workload OTLP export through injected binding failed: %v", err)
 	}
-	if err := tracesprovider.VerifyTraceAt(ctx, resolved.Manifest, traceID, resolved.TargetStateRoot, resolved.Target.Name); err != nil {
+	if err := tracesprovider.VerifyTraceAt(ctx, statusResolved.Manifest, traceID, statusResolved.TargetStateRoot, statusResolved.Target.Name); err != nil {
 		t.Fatalf("workload OTLP trace was not queryable from Tempo: %v", err)
 	}
 }
