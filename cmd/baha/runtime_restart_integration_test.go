@@ -66,14 +66,21 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	// Both engines need an explicit protected Target record. An implicit local
 	// Docker default is sufficient for initial start, not for mutation admission.
-	// We detect the active engine mode and pass it as --docker-mode so the
-	// target verifies the actual daemon on the host (rootless where available,
-	// rootful on GitHub-hosted runners where AppArmor blocks unprivileged
-	// user namespaces).
-	dockerMode := activeDockerMode(ctx, runtimeCommand)
+	// For Docker targets we detect the active engine mode and pass it as
+	// --docker-mode so the target verifies the actual daemon on the host
+	// (rootless where available, rootful on GitHub-hosted runners where
+	// AppArmor blocks unprivileged user namespaces). Podman targets do not
+	// use Docker engine configuration.
+	var targetArgs []string
+	if runtimeCommand == "docker" {
+		dockerMode := activeDockerMode(ctx, runtimeCommand)
+		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default", "--docker-mode", dockerMode}
+	} else {
+		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}
+	}
 	var targetOut bytes.Buffer
 	targetName := runtimeCommand + "-restart-ci"
-	if err := runWithIO(ctx, []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default", "--docker-mode", dockerMode}, &targetOut, &targetOut); err != nil {
+	if err := runWithIO(ctx, targetArgs, &targetOut, &targetOut); err != nil {
 		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
 	if output, err := exec.CommandContext(
