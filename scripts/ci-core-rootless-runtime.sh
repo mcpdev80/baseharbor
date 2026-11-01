@@ -89,7 +89,11 @@ EOF
     # always-present "default" (the setuptool may also have activated a
     # "rootless" context whose daemon is never started on this path).
     docker context use default
-    printf 'DOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
+    # The podman path never starts a rootless dockerd, so the Docker engine
+    # prerequisite resolves through the host's System Docker: publish
+    # DOCKER_HOST explicitly (the resolver honours DOCKER_HOST over any CLI
+    # context) and keep DOCKER_CONTEXT neutral.
+    printf 'DOCKER_HOST=unix:///var/run/docker.sock\nDOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
 esac
