@@ -55,7 +55,7 @@ PY
     # The setuptool activates its 'rootless' CLI context as a side effect. An
     # active context beats DOCKER_HOST in the engine resolver, so neutralize
     # it and let the published endpoint decide; $GITHUB_ENV mirrors both.
-    docker --context default use default
+    docker context use default
     printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{json .SecurityOptions}}'
     ;;
@@ -88,7 +88,7 @@ EOF
     # DOCKER_HOST / the default context) and keep the CLI context on default.
     printf 'DOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
     if docker context ls --format '{{.Name}}' 2>/dev/null | grep -qx rootless; then
-      docker --context default use default >/dev/null 2>&1 || true
+      docker context use default >/dev/null 2>&1 || true
     fi
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
