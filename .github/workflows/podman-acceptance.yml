@@ -33,7 +33,7 @@ jobs:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-    runs-on: [self-hosted, Linux, X64, baseharbor, podman]
+    runs-on: ubuntu-latest
     timeout-minutes: 75
 
     steps:
@@ -47,6 +47,10 @@ jobs:
         id: tested_ref
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare verified rootful podman
+        id: setup_podman
+        run: bash scripts/ci-podman-gh-runtime.sh
 
       - name: Set up Go
         id: setup_go
