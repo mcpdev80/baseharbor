@@ -1002,7 +1002,7 @@ class MappingTests(unittest.TestCase):
                                  {c['id'] for c in result['required_validation_checks']})
 
     def test_unknown_never_auto_selects_full_release_catalog(self):
-        for name in ['go.mod', 'Dockerfile', 'internal/operatorauth/policy.go',
+        for name in ['Dockerfile', 'internal/operatorauth/policy.go',
                      'config/deleted.yaml', 'spec/generated.pb.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
@@ -1012,13 +1012,19 @@ class MappingTests(unittest.TestCase):
                 self.assertNotEqual(set(GATES), set(result['selected_gates']))
 
     def test_rename_and_delete_paths_are_not_lost(self):
+        # go.mod now resolves via the Go build/test checks (#1160); the renamed
+        # source is not lost and a deleted doc routes to the docs checks. The
+        # go.mod no longer appears as an 'unknown impact' unresolved entry.
         result = planner.plan(diff([
             {'status': 'renamed', 'old_path': 'docs/a.md', 'new_path': 'go.mod'},
             {'status': 'deleted', 'path': 'docs/deleted.md'}]), REQ, MAP)
-        self.assertEqual('unresolved', result['coverage_status'])
-        self.assertEqual(4, len(result['required_validation_checks']))
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
         self.assertEqual([], result['selected_gates'])
-        self.assertIn('go.mod', str(result['unresolved_coverage']))
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('cli-build', checks)
+        self.assertIn('source-contracts', checks)
+        self.assertNotIn('go.mod', str(result['unresolved_coverage']))
 
     def test_invalid_and_empty_inputs_fail_closed_without_matrix(self):
         base = diff(paths('docs/readme.md'))
@@ -1169,7 +1175,7 @@ class MappingTests(unittest.TestCase):
         self.assertEqual('resolved', docs['coverage_status'])
         self.assertEqual([], docs['selected_gates'])
         self.assertEqual(4, len(docs['required_validation_checks']))
-        unknown = planner.plan(diff(paths('go.mod')), requirements, MAP)
+        unknown = planner.plan(diff(paths('config/deleted.yaml')), requirements, MAP)
         self.assertEqual('unresolved', unknown['coverage_status'])
         self.assertNotEqual(65, len(unknown['selected_gates']))
 
@@ -1481,6 +1487,47 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('CLI runtime impact', result['unresolved_coverage'][0])
         self.assertNotIn('atomic/docker/observability', result['selected_gates'])
+    def test_dependabot_only_go_mod_go_sum_resolves_with_go_build_test_checks(self):
+        # deps-gatemap / #1160: a Dependabot-only go.mod/go.sum diff must NOT fall
+        # into the 'unknown impact' catch-all. It resolves and requires the Go
+        # build/test validation checks the CI matrix runs for a Go change.
+        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        self.assertEqual([], result['selected_gates'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+        self.assertIn('cli-build', checks)
+        self.assertIn('cli-vet', checks)
+
+    def test_go_mod_go_sum_bundled_with_unreviewed_stays_unresolved(self):
+        # fail-closed: resolved go.mod/go.sum + an unreviewed product file keeps
+        # the whole PR unresolved.
+        result = planner.plan(diff(paths('go.mod', 'go.sum',
+                                        'internal/application/thing.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_go_mod_alone_still_resolves(self):
+        # A single go.mod modify resolves the same way (dependabot bump).
+        result = planner.plan(diff(paths('go.mod')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+
+    def test_go_sum_alone_still_resolves(self):
+        result = planner.plan(diff(paths('go.sum')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+
+    def test_dependabot_go_mod_go_sum_missing_gate_fails_closed(self):
+        # Fail-closed on an incomplete catalog is not required here: Go build/test
+        # checks are validations only, but the module file must still route to the
+        # go-module-dependency area rather than a broad unresolved catch-all.
+        result = planner.plan(diff(paths('go.mod', 'go.sum')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        reasons = ' '.join(result['reasons'])
+        self.assertIn('go-module-dependency', reasons)
 
 
 class ReceiptControlPlaneMappingTests(unittest.TestCase):

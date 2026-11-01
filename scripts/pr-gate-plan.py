@@ -1628,6 +1628,17 @@ def plan(diff, requirements, mapping, repository='.',
             require(CI_CHECKS)
             require(WORKFLOW_SYNTAX_CHECKS)
             unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+        elif path in ('go.mod', 'go.sum'):
+            # Module and dependency files: a bump changes exactly the Go build and
+            # test surface, never product or gate behaviour. Bind it to the same
+            # Go build/test validation checks the CI matrix runs for a Go change
+            # (source-contracts, cli-build, cli-vet, cli-guided-tests, cli-gofmt)
+            # -- no new gate, no widening. Without this branch a Dependabot-only
+            # go.mod/go.sum diff fell to the 'unknown impact' catch-all and left
+            # PR Selected Checks coverage-unresolved (#1160).
+            area = 'go-module-dependency'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
               path.startswith('scripts/verify-') or 'evidence' in path):
