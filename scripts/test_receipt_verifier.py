@@ -384,6 +384,21 @@ class VerifierFixtureTest(unittest.TestCase):
             return self.api(path, binary=binary)
         return api
 
+    def bogus_noop_coverage_api(self):
+        """Noop coverage: coverage_status != 'resolved' AND selected_gates
+        omits the pilot gate path => is_pilot_unmapped=True => No-op success."""
+        def api(path, *, binary=False):
+            if binary:
+                buffer = io.BytesIO()
+                with zipfile.ZipFile(buffer, 'w') as archive:
+                    archive.writestr('pr-plan.json', verifier.canonical(dict(
+                        schema='baseharbor.pr-gate-plan/v1', coverage_status='failed',
+                        selected_gates=[], head_sha=self.head_sha,
+                        target_base_sha=self.base_sha, integration_sha=self.candidate)))
+                return buffer.getvalue()
+            return self.api(path, binary=binary)
+        return api
+
 
 class D3ExtractionNegativesTest(unittest.TestCase):
     """D3 recipe: strict, bounded, typed extraction from a producer plan object.
@@ -631,6 +646,16 @@ class LiveNegativeNegativesTest(VerifierFixtureTest):
         value = verifier.receipt((self.root / path).read_bytes())
         with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
             verifier.live(value, self.plan, api=self.bogus_selected_gates_api([]))
+
+    def test_non_pilot_unmapped_pr_noop_success(self):
+        """PR #1252 Praezedenz: non-pilot + unmapped PR => No-op success.
+        coverage_status != 'resolved' AND selected_gates omits the gate path.
+        The live() verifier must return without raising ReceiptError."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        # bogus_noop_coverage_api returns coverage_status='failed' AND empty selected_gates
+        # => is_pilot_unmapped=True => live() returns None (success, No-op)
+        verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
 
     def test_negative_second_attempt_rejected(self):
         path, original = self.create()
