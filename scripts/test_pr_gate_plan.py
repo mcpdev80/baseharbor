@@ -1257,7 +1257,6 @@ class MappingTests(unittest.TestCase):
         # execution is bound to the existing Targeted HA docker/podman job type
         # via pr_plan cli_native_required, with zero new selected release gates.
         for name in ['cmd/baha/app_repository_integration_test.go',
-                     'cmd/baha/app_workload_integration_test.go',
                      'internal/application/runtime_multi_integration_test.go']:
             with self.subTest(path=name):
                 result = planner.plan(diff(paths(name)), REQ, MAP)
@@ -1280,8 +1279,10 @@ class MappingTests(unittest.TestCase):
     def test_native_integration_binding_is_exact_not_prefix(self):
         # A rename/delete of a bound file needs explicit rebinding, and any
         # other cmd/baha or internal/application file stays fail-closed.
+        # Note: cmd/baha/app_workload_integration_test.go is NOT in NATIVE_INTEGRATION_HA_FILES
+        # because it is also in APPID_FIX_REVIEWED_FILES and requires full fixture context.
         renamed = [{'status': 'deleted',
-                    'path': 'cmd/baha/app_workload_integration_test.go'}]
+                    'path': 'internal/application/runtime_multi_integration_test.go'}]
         result = planner.plan(diff(renamed), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(any('rebinding' in str(item)

@@ -420,7 +420,6 @@ RESOLVER_ROUTING_REVIEWED = frozenset([
 # stays fail-closed unresolved on the branch below.
 NATIVE_INTEGRATION_HA_FILES = frozenset([
     'cmd/baha/app_repository_integration_test.go',
-    'cmd/baha/app_workload_integration_test.go',
     'internal/application/runtime_multi_integration_test.go',
 ])
 # core-751 prospective scope is explicit but never a path-only qualification.
@@ -1489,6 +1488,11 @@ def plan(diff, requirements, mapping, repository='.',
                 require(CLI_CHECKS)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('native integration source rename/delete needs explicit rebinding: ' + path)
+            elif len(APPID_FIX_REVIEWED_FILES) > 1 and len(diff['changes']) == 1 and path in APPID_FIX_REVIEWED_FILES:
+                # Single NATIVE_INTEGRATION_HA_FILES path without full reviewed
+                # fixture context stays unresolved — the exact fixture rule
+                # requires the complete reviewed set, not a single file.
+                unresolved.append('native integration file needs full reviewed fixture context, not single-file change: ' + path)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
