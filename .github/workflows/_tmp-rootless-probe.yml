@@ -1,0 +1,32 @@
+name: _tmp rootless probe
+on:
+  push:
+    branches: [_tmp-verify]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: userns allowed?
+        run: |
+          set -x
+          unshare --user --map-root-user echo "USERNS_OK" || echo "USERNS_DENIED"
+      - name: sysctl tunable
+        run: |
+          set -x
+          sudo -n sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 2>&1 || echo "SYSCTL_DENIED"
+          cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns
+      - name: rootless daemon
+        run: |
+          set -x
+          export XDG_RUNTIME_DIR=/run/user/$(id -u)
+          dbus-run-session -- dockerd-rootless.sh >/tmp/dr.log 2>&1 &
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/docker.sock" ] && break; sleep 0.5; done
+          if [ -S "$XDG_RUNTIME_DIR/docker.sock" ]; then
+            echo "SOCKET_UP"; docker info --format '{{.SecurityOptions}}'
+            docker run --rm hello-world 2>&1 | tail -3 || echo "RUN_DENIED"
+          else
+            echo "SOCKET_DOWN"; tail -20 /tmp/dr.log
+          fi
