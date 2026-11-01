@@ -64,7 +64,13 @@ jobs:
           rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
           /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
-          /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          # 'baha up' already bootstraps an uninitialized managed trust plane
+          # (repository_up.go:198). Gate the explicit bootstrap on the ACTUAL
+          # initialization state; a second initialize would hit the write-once
+          # guard ("OpenBao is already initialized").
+          if /tmp/baha openbao status --json 2>/dev/null | grep -q '"initialized":false'; then
+            /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          fi
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
       - name: Create two isolated secret applications
@@ -277,7 +283,13 @@ jobs:
           rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
           /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
-          /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          # 'baha up' already bootstraps an uninitialized managed trust plane
+          # (repository_up.go:198). Gate the explicit bootstrap on the ACTUAL
+          # initialization state; a second initialize would hit the write-once
+          # guard ("OpenBao is already initialized").
+          if /tmp/baha openbao status --json 2>/dev/null | grep -q '"initialized":false'; then
+            /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          fi
           /tmp/baha app create perf-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1

@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
-	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -52,24 +51,29 @@ func openBaoStatusCommand() *cli.Command {
 			if format == outputJSON {
 				return writeJSON(out, report)
 			}
-			state := platformopenbao.State{Initialized: report.Initialized, Sealed: !report.Unsealed}
 			fmt.Fprintln(out, "OpenBao trust plane")
-			if !state.Initialized {
-				fmt.Fprintln(out, "[FAIL] initialized        no")
-				return errors.New("OpenBao is not initialized")
+			// Every phase line is printed before the exit-code signal, so a
+			// failed state shows the complete plane picture instead of
+			// stopping at the first failing phase.
+			failure := error(nil)
+			fmt.Fprintf(out, "%s initialized        %s\n", report.StatusMarker(report.Initialized), report.Answer(report.Initialized))
+			if !report.Initialized {
+				failure = errors.New("OpenBao is not initialized")
 			}
-			fmt.Fprintln(out, "[OK] initialized        yes")
-			if state.Sealed {
-				fmt.Fprintln(out, "[FAIL] unsealed           no")
-				return errors.New("OpenBao is sealed")
+			fmt.Fprintf(out, "%s unsealed           %s\n", report.StatusMarker(report.Unsealed), report.Answer(report.Unsealed))
+			if report.Initialized && !report.Unsealed {
+				failure = errors.New("OpenBao is sealed")
 			}
-			fmt.Fprintln(out, "[OK] unsealed           yes")
-			if !report.ManagerReady {
-				fmt.Fprintln(out, "[FAIL] manager auth       unavailable")
-				return errors.New("OpenBao manager authentication is not ready")
+			fmt.Fprintf(out, "%s manager auth       ", report.StatusMarker(report.ManagerReady))
+			if report.ManagerReady {
+				fmt.Fprintln(out, "AppRole login succeeded")
+			} else {
+				fmt.Fprintln(out, "unavailable")
+				if failure == nil && report.Initialized {
+					failure = errors.New("OpenBao manager authentication is not ready")
+				}
 			}
-			fmt.Fprintln(out, "[OK] manager auth       AppRole login succeeded")
-			return nil
+			return failure
 		},
 	}
 }

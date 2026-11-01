@@ -76,7 +76,14 @@ jobs:
           trap cleanup EXIT
 
           /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
-          /tmp/baha openbao bootstrap --recovery-file "$recovery"
+          # 'baha up' already bootstraps an uninitialized managed trust plane
+          # (repository_up.go:198). Gate the explicit bootstrap on the plan's
+          # ACTUAL initialization state; a second initialize would hit the
+          # write-once guard ("OpenBao is already initialized", runs
+          # 41344157140/41354601797 at the same line).
+          if /tmp/baha openbao status --json 2>/dev/null | grep -q '"initialized":false'; then
+            /tmp/baha openbao bootstrap --recovery-file "$recovery"
+          fi
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
           mkdir -p "$workdir/app-a"

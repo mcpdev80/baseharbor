@@ -13,6 +13,20 @@ type openBaoOperationResult struct {
 	ManagerReady bool `json:"manager_ready"`
 }
 
+func (openBaoOperationResult) Answer(ok bool) string {
+	if ok {
+		return "yes"
+	}
+	return "no"
+}
+
+func (openBaoOperationResult) StatusMarker(ok bool) string {
+	if ok {
+		return "[OK]  "
+	}
+	return "[FAIL]"
+}
+
 func inspectManagedOpenBao(ctx context.Context) (openBaoOperationResult, error) {
 	if err := authorizeCurrentMCPContext(ctx, "openbao.status", "", "", ""); err != nil {
 		return openBaoOperationResult{}, err
