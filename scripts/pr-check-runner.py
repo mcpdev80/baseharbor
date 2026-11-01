@@ -95,6 +95,8 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
+                'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+                'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
 # R27-F2: the exact receipt control-plane suites this check must execute. This
@@ -115,6 +117,49 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
+    if check == 'resolver-gofmt':
+        repo = Path(repository)
+        fmt = subprocess.run(['gofmt', '-l', 'internal/runtime/resolver'],
+                             cwd=repo, text=True, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        if fmt.returncode or fmt.stdout.strip():
+            raise RuntimeError('resolver gofmt failed: ' + fmt.stdout)
+        return ['resolver-gofmt']
+    if check == 'resolver-package-tests':
+        repo = Path(repository)
+        listed = subprocess.run(
+            ['go', 'test', './internal/runtime/resolver/...', '-list', '.'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('resolver test discovery failed: ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+        ]
+        if not matches:
+            raise RuntimeError('resolver-package-tests: no resolver test executed')
+        executed = subprocess.run(
+            ['go', 'test', './internal/runtime/resolver/...', '-count=1'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('resolver package tests failed: ' + executed.stdout)
+        return ['resolver-package-tests']
+    if check == 'resolver-vet':
+        repo = Path(repository)
+        vet = subprocess.run(['go', 'vet', './internal/runtime/resolver/...'],
+                             cwd=repo, text=True, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        if vet.returncode:
+            raise RuntimeError('resolver vet failed: ' + vet.stdout + vet.stderr)
+        return ['resolver-vet']
+    if check == 'resolver-consumer-build':
+        repo = Path(repository)
+        build = subprocess.run(['go', 'build', '-o', '/tmp/baha-resolver-test', './cmd/baha'],
+                               cwd=repo, text=True, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
+        if build.returncode:
+            raise RuntimeError('resolver consumer build failed: ' + build.stdout)
+        return ['resolver-consumer-build']
     if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'receipt-execution-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'openbao-package-tests':

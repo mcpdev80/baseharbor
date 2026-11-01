@@ -223,6 +223,23 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh podman
 
+      - name: Verify resolver-* registered checks execute
+        shell: bash
+        run: |
+          set -uo pipefail
+          status=0
+          for check in resolver-gofmt resolver-package-tests resolver-vet resolver-consumer-build; do
+            out="$RUNNER_TEMP/resolver-$check.log"
+            if python3 scripts/pr-check-runner.py execute --check "$check" --repository . > "$out" 2>&1; then
+              echo "resolver check $check: SUCCESS"
+            else
+              echo "resolver check $check: FAILURE"
+              status=1
+            fi
+            cat "$out"
+          done
+          exit "$status"
+
       - name: Run runtime integration tests serially
         id: runtime_integration
         env:
