@@ -139,6 +139,122 @@ func TestHostDefaultEndpointUsesTheActiveEngineOfTheHost(t *testing.T) {
 	}
 }
 
+func TestGHHostedSimulationRootlessIncapable(t *testing.T) {
+	originalCapable := rootlessCapable
+	t.Cleanup(func() { rootlessCapable = originalCapable })
+
+	// Simulate GitHub-hosted runner:
+	// - AppArmor blocks unprivileged user namespaces → rootlessCapable = false
+	// - rootless socket does NOT exist → rootlessSocketExists(false)
+	// - System daemon socket exists and is rootful
+	// Expected: hostDefaultEndpoint returns System Docker, resolveDockerEngine selects it
+	rootlessCapable = func() bool { return false }
+
+	uid := 1000
+	rootlessSocketExists = func(path string) bool {
+		if path == rootlessSocketPath(uid) {
+			return false // no rootless socket on GH-hosted
+		}
+		return false
+	}
+
+	var probes []string
+	run := func(_ context.Context, _ string, args []string, env []string) ([]byte, error) {
+		if args[0] == "context" {
+			if args[1] == "show" {
+				return []byte("default"), nil
+			}
+			// context inspect → should NOT be called for active-default
+			t.Fatalf("unexpected context inspect: %v", args)
+			return nil, nil
+		}
+		if len(args) < 4 || args[0] != "--host" || args[2] != "info" {
+			t.Fatalf("unexpected command: %v", args)
+		}
+		probes = append(probes, args[1])
+		if tc := env[0]; strings.Contains(tc, "DOCKER_CONTEXT") {
+			t.Fatal("ambient context remained effective")
+		}
+		// System Docker probe — this is expected on GH-hosted
+		if args[1] != "unix://"+systemSocketPath {
+			t.Fatalf("expected system socket probe but got %s", args[1])
+		}
+		return []byte(`{"ID":"gh-hosted-daemon","SecurityOptions":[]}`), nil
+	}
+
+	got, err := resolveDockerEngine(context.Background(), "docker", DockerEngineSelection{}, run, func(k string) string { return "" }, uid)
+	if err != nil {
+		t.Fatalf("unexpected error on GH-hosted: %v", err)
+	}
+	if len(probes) != 1 {
+		t.Fatalf("expected exactly one probe but got %d", len(probes))
+	}
+	if got.Endpoint != "unix://"+systemSocketPath {
+		t.Fatalf("expected system socket endpoint but got %s", got.Endpoint)
+	}
+	if got.SelectionOrigin != "active-default" {
+		t.Fatalf("expected active-default origin but got %s", got.SelectionOrigin)
+	}
+	if got.Mode != "rootful" {
+		t.Fatalf("expected rootful mode but got %s", got.Mode)
+	}
+	if !got.Verified {
+		t.Fatal("expected verified=true")
+	}
+}
+
+func TestGHHostedRootlessSocketPresentButIncapable(t *testing.T) {
+	originalCapable := rootlessCapable
+	originalSocket := rootlessSocketExists
+	t.Cleanup(func() {
+		rootlessCapable = originalCapable
+		rootlessSocketExists = originalSocket
+	})
+
+	// Simulate a host that CAN run rootless (AppArmor allows) but has no
+	// rootless daemon running — it should still fail-closed on the rootless
+	// socket rather than falling back to System Docker.
+	rootlessCapable = func() bool { return true }
+
+	uid := 1000
+	rootlessSocketExists = func(path string) bool {
+		if path == rootlessSocketPath(uid) {
+			return false // rootless socket absent but host IS capable
+		}
+		return false
+	}
+
+	var probes []string
+	run := func(_ context.Context, _ string, args []string, env []string) ([]byte, error) {
+		if args[0] == "context" {
+			if args[1] == "show" {
+				return []byte("default"), nil
+			}
+			t.Fatalf("unexpected context inspect: %v", args)
+			return nil, nil
+		}
+		if len(args) < 4 || args[0] != "--host" || args[2] != "info" {
+			t.Fatalf("unexpected command: %v", args)
+		}
+		probes = append(probes, args[1])
+		// Rootless-capable host without rootless socket → fails closed on
+		// rootless socket (fail-closed, NOT system socket fallback)
+		if args[1] != "unix://"+rootlessSocketPath(uid) {
+			t.Fatalf("expected rootless socket probe but got %s", args[1])
+		}
+		return nil, errors.New("rootless socket unreachable — fail closed")
+	}
+
+	_, err := resolveDockerEngine(context.Background(), "docker", DockerEngineSelection{}, run, func(k string) string { return "" }, uid)
+	if err == nil {
+		t.Fatal("expected error (fail-closed) when rootless socket is absent on capable host")
+	}
+	// Should probe exactly one endpoint: the rootless socket
+	if len(probes) != 1 || probes[0] != "unix://"+rootlessSocketPath(uid) {
+		t.Fatalf("wrong probes: %v", probes)
+	}
+}
+
 func TestBoundDockerAllCommandPathsIgnoreChangedAmbientContext(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "docker")
