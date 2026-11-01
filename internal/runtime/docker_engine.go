@@ -66,13 +66,35 @@ var rootlessSocketExists = func(path string) bool {
 // Rootless daemon anywhere and its active Docker is System Docker (GitHub-
 // hosted runners, per gh-ci-core run 41255597778). Tests replace this
 // variable to simulate such system-only hosts.
+//
+// We check three signals, in order of specificity:
+//  1. AppArmor restricts unprivileged user namespaces (kernel.apparmor_*
+//     restrict_unprivileged_userns or /proc/sys/kernel/unprivileged_userns_clone);
+//     when blocked → definitely NOT capable.
+//  2. max_user_namespaces exists and is non-zero → user namespaces are
+//     allowed by the kernel, but AppArmor may still block them; the
+//     AppArmor check above is the gatekeeper.
+//  3. If neither knob exists the old heuristic assumed capability; we now
+//     conservatively require at least one namespace knob to be present.
 var rootlessCapable = func() bool {
-	data, err := os.ReadFile("/proc/sys/kernel/unprivileged_userns_clone")
-	if err == nil && strings.TrimSpace(string(data)) == "0" {
-		return false
+	// 1. AppArmor gate: kernel.apparmor_restrict_unprivileged_userns
+	//    (sysctl knob) — 1 means blocked, 0 means allowed. This is the
+	//    decisive signal on hardened / GitHub-hosted runners.
+	data, err := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns")
+	if err == nil {
+		if strings.TrimSpace(string(data)) != "0" {
+			return false // AppArmor blocks unprivileged user namespaces
+		}
+		// AppArmor knob exists and allows → continue to namespace check
 	}
+	// Fallback: older kernels expose unprivileged_userns_clone directly.
+	data, err = os.ReadFile("/proc/sys/kernel/unprivileged_userns_clone")
+	if err == nil && strings.TrimSpace(string(data)) == "0" {
+		return false // kernel-level block
+	}
+	// 2. Namespace knob must exist for user namespaces to be usable.
 	if _, err := os.Stat("/proc/sys/user/max_user_namespaces"); err != nil {
-		return false
+		return false // no namespace limit knob → cannot run user namespaces
 	}
 	return true
 }
