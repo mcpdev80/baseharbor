@@ -71,6 +71,7 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	// (rootless where available, rootful on GitHub-hosted runners where
 	// AppArmor blocks unprivileged user namespaces). Podman targets do not
 	// use Docker engine configuration.
+	targetName := runtimeCommand + "-restart-ci"
 	var targetArgs []string
 	if runtimeCommand == "docker" {
 		dockerMode := activeDockerMode(ctx, runtimeCommand)
@@ -79,7 +80,6 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 		targetArgs = []string{"target", "create", targetName, "--provider", runtimeCommand, "--access", targetName, "--reference", "local", "--default"}
 	}
 	var targetOut bytes.Buffer
-	targetName := runtimeCommand + "-restart-ci"
 	if err := runWithIO(ctx, targetArgs, &targetOut, &targetOut); err != nil {
 		t.Fatalf("create restart target: %v\n%s", err, targetOut.String())
 	}
