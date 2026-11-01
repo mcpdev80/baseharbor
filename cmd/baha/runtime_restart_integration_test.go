@@ -32,14 +32,22 @@ func TestSingleControlPlaneRestartRotationAndCleanup(t *testing.T) {
 	runControlPlaneRestartAcceptance(t, false)
 }
 
-// activeDockerMode detects the mode of the Docker daemon that the active
+// activeDockerMode detects the mode of the container daemon that the active
 // context resolves to. On GitHub-hosted runners (AppArmor blocks unprivileged
 // user namespaces) the system daemon is rootful; on a real rootless-capable
 // host it may be rootless. The target inherits this mode so the integration
 // test verifies the actual engine on the host, not a hardcoded rootless
-// assumption.
+// assumption. Falls back to rootless when the engine cannot be probed
+// (e.g. podman not installed on the runner).
 func activeDockerMode(ctx context.Context, command string) string {
-	selection, _ := bhruntime.ResolveDockerEngine(ctx, command)
+	selection, err := bhruntime.ResolveDockerEngine(ctx, command)
+	if err != nil {
+		// Engine unreachable or not installed — fall back to the documented
+		// default. On GitHub-hosted runners this means the system daemon will
+		// be selected (rootful) because hostDefaultEndpoint falls back there
+		// when rootless is impossible.
+		return "rootless"
+	}
 	return selection.Mode
 }
 
