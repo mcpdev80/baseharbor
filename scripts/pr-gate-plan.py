@@ -1482,6 +1482,16 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in RESOLVER_ROUTING_REVIEWED:
             area = 'resolver-routing-resolved'
             require(RESOLVER_CHECKS)
+        elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
+            # Container-runtime files: docker_engine.go and openbao_runtime_prepare.go
+            # are explicit runtime-mutation surfaces that must exercise the real atomic
+            # docker lifecycle gate.  This path prefix classification targets the known
+            # concrete files (see the test case below) — any future internal/runtime/*.go
+            # that does not match an explicit reviewed-source clause stays unresolved.
+            area = 'runtime-docker-engine'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
         elif path.startswith('internal/runtime/resolver/') and path.endswith('.go'):
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)

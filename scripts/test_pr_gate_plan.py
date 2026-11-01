@@ -1251,6 +1251,54 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+class RuntimeDockerEngineMappingTests(unittest.TestCase):
+    def test_docker_engine_path_classifies_to_lifecycle_gate(self):
+        # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
+        # must resolve with the real atomic docker lifecycle gate.  This is the exact
+        # regression that was broken by the unknown-impact fallback — the path
+        # previously fell to `area='unresolved'` at line ~1526 and produced
+        # `unknown impact for internal/runtime/docker_engine.go`, which kept
+        # every PR that touched docker_engine ROT despite correct code.
+        result = planner.plan(diff(paths('internal/runtime/docker_engine.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+        self.assertIn('cli-build', checks)
+        self.assertNotIn('unknown impact', str(result['unresolved_coverage']))
+
+    def test_openbao_runtime_prepare_selects_same_lifecycle_gate(self):
+        # openbao_runtime_prepare.go provisions TLS and PostgreSQL storage for the
+        # OpenBao stack — same mutation surface as the CORE_917/CORE_918 lifecycle
+        # files.  Verify it maps to the same gate.
+        result = planner.plan(diff(paths('internal/runtime/openbao_runtime_prepare.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+
+    def test_docker_engine_test_file_selects_lifecycle_gate(self):
+        result = planner.plan(diff(paths('internal/runtime/docker_engine_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+
+    def test_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
+        # Even if docker_engine is resolved, a second unreviewed file must
+        # keep the whole PR unresolved — fail-closed.
+        result = planner.plan(diff(paths('internal/runtime/docker_engine.go',
+                                          'internal/application/manifest.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_resolver_files_remain_separate_and_unresolved(self):
+        # internal/runtime/resolver/*.go must NOT match the runtime-docker-engine
+        # classification — the resolver branch must stay unresolved.
+        result = planner.plan(diff(paths('internal/runtime/resolver/extra.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+
 class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_script_maps_to_ci_class(self):
         for path in ['scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
