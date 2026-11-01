@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -83,8 +84,10 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	defer clientSession.Close()
 
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.inspect", map[string]any{"path": root})
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
-	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.apply", map[string]any{})
+	planResult := callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.plan", map[string]any{})
+	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.apply", map[string]any{
+		"provider_change_consent": mcpAcceptanceProviderChangeConsent(t, planResult),
+	})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.observe", map[string]any{})
@@ -143,6 +146,39 @@ func TestMCPGenericClientRealApplicationLifecycle(t *testing.T) {
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.status", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.doctor", map[string]any{})
 	callMCPAcceptanceTool(t, ctx, clientSession, "baseharbor.destroy", map[string]any{"approval": true})
+}
+
+func mcpAcceptanceProviderChangeConsent(t *testing.T, planResult *mcp.CallToolResult) map[string]any {
+	t.Helper()
+	raw := formatMCPAcceptanceContent(planResult)
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("plan result is not JSON: %v\n%s", err, raw)
+	}
+	planID := ""
+	var walk func(any)
+	walk = func(v any) {
+		switch value := v.(type) {
+		case map[string]any:
+			for k, child := range value {
+				if k == "plan_id" {
+					if s, ok := child.(string); ok && s != "" {
+						planID = s
+					}
+				}
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(payload)
+	if planID == "" {
+		t.Fatalf("plan result lacks a plan_id for consent: %s", raw)
+	}
+	return map[string]any{"plan_id": planID, "first": true, "second": true}
 }
 
 func callMCPAcceptanceTool(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {

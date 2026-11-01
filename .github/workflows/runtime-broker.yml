@@ -37,12 +37,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
-      - name: Prepare verified rootless runtime
-        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Build BaseHarbor and package exact tested binary
         run: |
@@ -246,12 +246,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
-      - name: Prepare verified rootless runtime
-        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Build exact static broker binary
         run: |
