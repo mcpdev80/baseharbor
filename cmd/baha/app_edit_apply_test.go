@@ -630,7 +630,7 @@ func TestAppEditCommandReview918SpaceAndEnterBytesAreDistinct(t *testing.T) {
 }
 
 func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(os.Getenv("XDG_DATA_HOME"), "baseharbor"))
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -733,7 +733,7 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 }
 
 func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(os.Getenv("XDG_DATA_HOME"), "baseharbor"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	target := configureTestTarget(t)
 	stateRoot, err := deployment.TargetStateRoot(target.Name)
@@ -796,7 +796,7 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
-	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(os.Getenv("XDG_DATA_HOME"), "baseharbor"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	target := configureTestTarget(t)
 	cfg, err := deployment.LoadConfig()

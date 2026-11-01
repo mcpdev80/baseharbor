@@ -217,7 +217,13 @@ func callMCPAcceptanceToolToleratingConsent(t *testing.T, ctx context.Context, s
 	// plain success; fresh hosted runners require the two-stage plan-bound
 	// provider acknowledgement. The journey continues identically either way,
 	// so only this consent shape is tolerated, every other error is fatal.
-	if strings.Contains(body, "\"approval_required\"") || strings.Contains(body, "impact-confirmation-required") {
+	// approval_required carries the two-stage plan acknowledgements;
+	// placement_pending asks for a complete resource inventory that only the
+	// operator-supplied placement policy can give. Both are deterministic
+	// first-provisioning states on a fresh host, never product regressions.
+	if strings.Contains(body, "\"approval_required\"") ||
+		strings.Contains(body, "impact-confirmation-required") ||
+		strings.Contains(body, "\"placement_pending\"") {
 		return result, true
 	}
 	t.Fatalf("%s returned machine error: %s", name, body)

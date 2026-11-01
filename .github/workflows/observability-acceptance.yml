@@ -45,9 +45,6 @@ jobs:
       # journey cannot give. Pin application placement (update_core_isolated_test.go:34).
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-      BASEHARBOR_PROVIDER_LOKI_SCOPE: application
-      BASEHARBOR_PROVIDER_TEMPO_SCOPE: application
-      BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
@@ -118,9 +115,6 @@ jobs:
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
       BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
-      BASEHARBOR_PROVIDER_LOKI_SCOPE: application
-      BASEHARBOR_PROVIDER_TEMPO_SCOPE: application
-      BASEHARBOR_PROVIDER_PROMETHEUS_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
