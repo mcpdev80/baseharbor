@@ -1251,6 +1251,81 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+    def test_native_integration_files_bind_to_targeted_ha_jobs_resolved(self):
+        # rv1224/rv1225 permanent lane: the exact BASEHARBOR_CI_RUNTIME_INTEGRATION
+        # test sources resolve to hosted compile/vet/build checks; their native
+        # execution is bound to the existing Targeted HA docker/podman job type
+        # via pr_plan cli_native_required, with zero new selected release gates.
+        for name in ['cmd/baha/app_repository_integration_test.go',
+                     'cmd/baha/app_workload_integration_test.go',
+                     'internal/application/runtime_multi_integration_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('source-contracts', ids)
+                self.assertIn('go test ./internal/application/... ./contracts/...', commands)
+                if name.startswith('cmd/baha/'):
+                    self.assertIn('cli-vet', ids)
+                    self.assertIn('cli-build', ids)
+                    self.assertIn('go vet ./cmd/baha', commands)
+                    self.assertIn('go build ./cmd/baha', commands)
+                else:
+                    self.assertNotIn('cli-vet', ids)
+
+    def test_native_integration_binding_is_exact_not_prefix(self):
+        # A rename/delete of a bound file needs explicit rebinding, and any
+        # other cmd/baha or internal/application file stays fail-closed.
+        renamed = [{'status': 'deleted',
+                    'path': 'cmd/baha/app_workload_integration_test.go'}]
+        result = planner.plan(diff(renamed), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(any('rebinding' in str(item)
+                            for item in result['unresolved_coverage']))
+        for name in ['cmd/baha/app_registry_helpers.go',
+                     'internal/application/provider_placement.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertEqual([], result['selected_gates'])
+
+    def test_inspect_and_resolver_checks_resolve_to_matrix_lanes(self):
+         # Planner-to-matrix consistency: every check the narrow inspect and
+         # resolver lanes select resolves to a concrete matrix lane via the
+         # trusted planner's own matrix(), carrying a concrete shell command.
+         # This proves the planner mapping establishes real required gates, not
+         # just an in-memory allowlist.
+         for name in ['internal/repositoryinspect/inspect.go',
+                      'internal/runtime/resolver/resolver.go']:
+             with self.subTest(path=name):
+                 result = planner.plan(diff(paths(name)), REQ, MAP)
+                 matrix_result = planner.matrix(
+                     {'required_validation_checks': result['required_validation_checks']})
+                 self.assertTrue(matrix_result['include'],
+                                 'matrix must not be an empty no-op gate')
+         # Every resolver check the lane selects resolves to exactly one matrix
+         # lane carrying the resolver-package shell command.
+         result = planner.plan(diff(paths('internal/runtime/resolver/resolver.go')), REQ, MAP)
+         self.assertEqual({'resolver-gofmt', 'resolver-package-tests',
+                           'resolver-vet', 'resolver-consumer-build'},
+                          {c['id'] for c in result['required_validation_checks']})
+         matrix_result = planner.matrix(
+             {'required_validation_checks': result['required_validation_checks']})
+         self.assertEqual(4, len(matrix_result['include']))
+
+    def test_unsupported_validation_check_matrix_fails_closed(self):
+        # A plan that selects an id the planner cannot dispatch fails closed at
+        # matrix() time, never dispatching a phantom lane.
+        with self.assertRaises(ValueError):
+            planner.matrix({'required_validation_checks': [{'id': None}]})
+        with self.assertRaises(ValueError):
+            planner.matrix({'required_validation_checks': [
+                {'id': 'phantom-package-tests'}, {'id': 'phantom-package-tests'}]})
+
 class RuntimeDockerEngineMappingTests(unittest.TestCase):
     def test_docker_engine_path_classifies_to_lifecycle_gate(self):
         # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
