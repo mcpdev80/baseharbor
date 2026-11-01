@@ -30,8 +30,6 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
-      XDG_CONFIG_HOME: /tmp/baseharbor-broker-xdg/config
-      XDG_DATA_HOME: /tmp/baseharbor-broker-xdg/data
       BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -239,8 +237,6 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
-      XDG_CONFIG_HOME: /tmp/baseharbor-perf-xdg/config
-      XDG_DATA_HOME: /tmp/baseharbor-perf-xdg/data
       BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

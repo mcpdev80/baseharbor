@@ -58,6 +58,14 @@ jobs:
       - name: Prepare verified rootless runtime
         run: bash scripts/ci-core-rootless-runtime.sh
 
+      # The rootless setup tool registers and activates a 'rootless' CLI
+      # context as a side effect. This job's runtime is Podman; the Docker CLI
+      # must not later resolve that context (its daemon is never started in
+      # the podman prepare path), which makes 'baha doctor' fail with
+      # 'cannot resolve active Docker context'. Pin the plain default context.
+      - name: Reset Docker CLI context for podman runtime
+        run: docker context use default
+
       - name: Validate workflow syntax
         id: workflow_syntax
         shell: bash

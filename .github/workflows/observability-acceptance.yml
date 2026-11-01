@@ -40,6 +40,11 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      # Fresh hosted runners have no pre-provisioned shared backends; a first-time
+      # shared backend needs two-stage operator consent an unattended acceptance
+      # journey cannot give. Pin application placement (update_core_isolated_test.go:34).
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
@@ -108,6 +113,8 @@ jobs:
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_OBSERVABILITY_ACCEPTANCE: "1"
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:observability-ci
 
     steps:
