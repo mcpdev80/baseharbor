@@ -84,7 +84,7 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 	text := string(config)
 	for _, want := range []string{
 		`storage "postgresql"`,
-		"sslmode=verify-full",
+		"sslmode=verify-ca",
 		"tls_auto_reload          = true",
 		"X25519MLKEM768",
 	} {
@@ -111,9 +111,9 @@ func TestEnsureFilesPreparesPostgreSQLBackedOpenBao27(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql`,
+		`PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql`,
 		`--username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB"`,
-		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql`,
+		`PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql`,
 		`--username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao`,
 	} {
 		if !strings.Contains(string(initScript), want) {
@@ -225,7 +225,7 @@ func TestEnsureServiceAccessMaterializesNativeTLSForPostgresAndOpenBao(t *testin
 	configText := string(config)
 	for _, wanted := range []string{
 		`storage "postgresql"`,
-		"sslmode=verify-full",
+		"sslmode=verify-ca",
 		"tls_auto_reload          = true",
 		"X25519MLKEM768",
 	} {
