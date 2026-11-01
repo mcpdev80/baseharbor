@@ -1299,6 +1299,59 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         self.assertTrue(result['unresolved_coverage'])
 
 
+class CliEngineMappingTests(unittest.TestCase):
+    def test_cli_docker_engine_selects_both_lifecycle_gates(self):
+        # round2 A: cmd/baha/docker_engine.go is the CLI endpoint that calls the
+        # runtime and binds Docker/Podman engine observations to the Compose backend.
+        # Changing ONLY this file must resolve with BOTH atomic lifecycle gates —
+        # the engine code affects both runners (Docker and Podman/Quadlet).
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+        self.assertIn('cli-build', checks)
+        self.assertIn('cli-vet', checks)
+
+    def test_cli_docker_engine_podman_test_selects_both_lifecycle_gates(self):
+        # round2 B: the new dedicated test file for CLI-side docker engine binding
+        # exercises both Docker and Podman lifecycles.  Must map to both gates.
+        result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+
+    def test_cli_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
+        # round2 fail-closed: even if docker_engine.go is resolved, a second
+        # unreviewed file must keep the whole PR unresolved.
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go',
+                                          'internal/application/manifest.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_cli_engine_other_files_not_glob_resolved(self):
+        # Only *_engine.go files are matched — other cmd/baha/*.go that are NOT
+        # in the wizard dict (like main.go) remain unresolved.
+        # The wizard dict maps specific known files; anything else falls to the
+        # catch-all unresolved branch.
+        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_cli_engine_missing_lifecycle_gate_fails_closed(self):
+        # If the catalog is missing one lifecycle gate (e.g. podman), the result
+        # must stay unresolved — fail-closed on incomplete gate availability.
+        incomplete = {'releases': ['v0.4.26'],
+                       'gates': [{'id': 'atomic/docker/lifecycle',
+                                  'required_for': ['v0.4.26']}]}
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), incomplete, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
 class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_script_maps_to_ci_class(self):
         for path in ['scripts/receipt_writer.py', 'scripts/receipt_verifier.py',

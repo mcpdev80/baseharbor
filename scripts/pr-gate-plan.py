@@ -1430,6 +1430,27 @@ def plan(diff, requirements, mapping, repository='.',
             selected.update(native_gates)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('wizard component rename/delete/type change needs explicit review: ' + path)
+        elif path.startswith('cmd/baha/') and path.endswith('_engine.go'):
+            # CLI-side docker_engine.go and similar *_engine.go files that call the
+            # runtime and bind Docker/Podman engine observations to the Compose backend.
+            # These are true runtime-mutation surfaces that affect BOTH runner backends
+            # (Docker and Podman/Quadlet) and must exercise the real atomic lifecycle
+            # gates on both.  Only the specific *_engine.go files are matched — no
+            # directory-level blanket resolution of all cmd/baha/*.go.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/docker_engine_podman_test.go':
+            # Dedicated test for the CLI-side docker engine binding that exercises
+            # both Docker and Podman lifecycles in a single test file.  Maps to both
+            # lifecycle gates to ensure neither runner is left untested.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1492,6 +1513,27 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
+        elif path.startswith('cmd/baha/') and path.endswith('_engine.go'):
+            # CLI-side docker_engine.go and similar *_engine.go files that call the
+            # runtime and bind Docker/Podman engine observations to the Compose backend.
+            # These are true runtime-mutation surfaces that affect BOTH runner backends
+            # (Docker and Podman/Quadlet) and must exercise the real atomic lifecycle
+            # gates on both.  Only the specific *_engine.go files are matched — no
+            # directory-level blanket resolution of all cmd/baha/*.go.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/docker_engine_podman_test.go':
+            # Dedicated test for the CLI-side docker engine binding that exercises
+            # both Docker and Podman lifecycles in a single test file.  Maps to both
+            # lifecycle gates to ensure neither runner is left untested.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/runtime/resolver/') and path.endswith('.go'):
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)
