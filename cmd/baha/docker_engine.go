@@ -114,7 +114,10 @@ func validateTargetDockerBinding(ctx context.Context, target deployment.Resolved
 }
 
 func ensureTargetDockerBinding(ctx context.Context, target deployment.ResolvedTarget) error {
-	if target.RuntimeProvider != "docker" || (target.AccessProvider != "" && target.AccessProvider != "local") {
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
+		return nil
+	}
+	if target.RuntimeProvider != "docker" && target.RuntimeProvider != "podman" {
 		return nil
 	}
 	provider, err := detectRuntimeForTarget(ctx, target)
@@ -125,11 +128,20 @@ func ensureTargetDockerBinding(ctx context.Context, target deployment.ResolvedTa
 }
 
 func inspectTargetDockerEngine(ctx context.Context, target deployment.ResolvedTarget) (*bhruntime.DockerEngineObservation, error) {
-	if target.RuntimeProvider != "docker" || (target.AccessProvider != "" && target.AccessProvider != "local") {
+	if target.AccessProvider != "" && target.AccessProvider != "local" {
 		return nil, nil
 	}
-	engine, err := bhruntime.ResolveDockerEngine(targetDockerEngineContext(ctx, target), "docker")
+	engine, err := bhruntime.ResolveDockerEngine(targetDockerEngineContext(ctx, target), engineBinaryName(target.RuntimeProvider))
 	return &engine, err
+}
+
+func engineBinaryName(provider string) string {
+	switch provider {
+	case "podman":
+		return "podman"
+	default:
+		return "docker"
+	}
 }
 
 func renderDockerEngine(out io.Writer, engine *bhruntime.DockerEngineObservation) {
