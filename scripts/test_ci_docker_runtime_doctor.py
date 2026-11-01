@@ -285,13 +285,17 @@ else:
 
 
 class GitHubHostedRootlessRuntime(unittest.TestCase):
-    """The rootless-runtime setup must run on GitHub-hosted ubuntu-latest.
+    """The runtime setup runs on GitHub-hosted ubuntu-latest.
 
-    GH-hosted runners are ephemeral, run as the non-root 'runner' user, ship
-    Docker and (for podman) slirp4netns preinstalled, and have no passwordless
-    sudo and no persistent linger/user-service host state. The script must keep
-    the host-agnostic isolation (rootless XDG socket, public-image cache,
-    registry mirrors) and drop the host-specific RUNNER assumptions.
+    GH-hosted runners are ephemeral, run as the non-root 'runner' user, and ship
+    Docker (rootful system daemon, preinstalled, usable out-of-the-box) and
+    Podman (preinstalled, rootless). Rootless docker provisioning was only ever
+    needed on our self-hosted runners; on the shared GH-hosted runner it is
+    provably redundant and harmful (an unprivileged rootless dockerd hits a
+    cgroup/lo-fi unit-activation denial). So the CI path verifies the preinstalled
+    system daemon and drops all rootless docker provisioning. The script must keep
+    the host-agnostic isolation (public-image cache, registry mirrors) and the
+    non-root guard, and must not assume any rootless user socket.
     """
 
     def script(self):
@@ -302,42 +306,44 @@ class GitHubHostedRootlessRuntime(unittest.TestCase):
 
     def test_no_host_specific_runner_assumptions(self):
         body = self.script()
-        # Removed: generic privilege wrappers, linger/user-service, and the
-        # self-hosted runner's ad-hoc apparmor lift. The self-hosted runners
-        # forbade sudo/loginctl, so those privilege-lifting patterns must be gone.
-        self.assertNotRegex(body, r'(?m)^\s*sudo\s+(?!-n\s+sysctl)',
-                            msg='generic sudo privilege-lifting (non sysctl) removed')
+        # Removed: generic privilege wrappers, linger/user-service, apparmor
+        # lifting, and the rootless docker provisioning. The self-hosted runners
+        # forbade sudo/loginctl, so those privilege-lifting patterns must be gone,
+        # and no sysctl tunable lift is needed on GH-hosted either.
+        self.assertNotRegex(body, r'(?m)^\s*sudo\b')
         self.assertNotRegex(body, r'(?m)^\s*loginctl\s+enable-linger\b')
         self.assertNotIn('enable-linger', body)
+        self.assertNotRegex(body, r'(?m)sysctl\s+-w\s+kernel\.apparmor')
 
-    def test_keeps_rootless_isolation_setup(self):
+    def test_keeps_host_agnostic_isolation_setup(self):
         body = self.script()
+        # The non-root guard stays (system docker + rootless podman both need a
+        # non-root caller on GH-hosted). The rootless user-socket env is gone
+        # (no rootless daemon binds the runner's user socket on the CI path).
         self.assertIn('id -u', body)
-        self.assertIn('XDG_RUNTIME_DIR', body)
-        self.assertIn('DBUS_SESSION_BUS_ADDRESS', body)
-        self.assertIn('GITHUB_ENV', body)
+        self.assertNotIn('XDG_RUNTIME_DIR', body)
+        self.assertNotIn('DBUS_SESSION_BUS_ADDRESS', body)
+        self.assertNotIn('GITHUB_ENV', body)
         self.assertIn('ci-public-image-cache.py', body)
         self.assertIn('BASEHARBOR_CI_PUBLIC_IMAGE_CACHE', body)
         self.assertIn('registry-mirrors', body)
         self.assertIn('mirror.gcr.io', body)
 
-    def test_docker_branch_installs_rootless_extras_without_sudo(self):
+    def test_docker_branch_verifies_system_daemon_not_rootless(self):
         body = self.script()
-        self.assertIn('docker-ce-rootless-extras', body)
-        self.assertIn('dockerd-rootless-setuptool.sh', body)
-        self.assertIn('DOCKER_HOST', body)
-        # Runner steps run as root and /etc/apt is locked down on the shared
-        # GH-hosted runner, so the rootless extras tool is fetched from
-        # download.docker.com and extracted into a user-local bin (no /etc write,
-        # no sudo). The whole toolchain (dockerd-rootless.sh + rootlesskit) is
-        # copied to $HOME/.local/bin so dbus-run-session resolves it on an
-        # absolute path, then resolved on PATH before use.
-        self.assertIn('download.docker.com', body)
-        self.assertIn('.local/bin', body)
-        self.assertIn('dockerd-rootless.sh', body)
-        self.assertIn('rootlesskit', body)
+        # No rootless extras provisioning on the CI path: the preinstalled system
+        # rootful daemon is used out-of-the-box.
+        self.assertNotIn('docker-ce-rootless-extras', body)
+        self.assertNotIn('dockerd-rootless-setuptool.sh', body)
+        self.assertNotIn('dockerd-rootless.sh', body)
+        self.assertNotIn('rootlesskit', body)
+        self.assertNotIn('download.docker.com', body)
         self.assertNotRegex(body, r'(?m)^\s*sudo\b')
         self.assertNotRegex(body, r'(?m)^\s*(?:sudo\s+)?apt-get\b')
+        # Real, fail-closed smoke gate on the preinstalled system daemon.
+        self.assertIn('docker version', body)
+        self.assertIn('docker run --rm', body)
+        self.assertIn('hello-world', body)
 
     def test_podman_branch_skips_apt_install(self):
         body = self.script()
@@ -345,6 +351,8 @@ class GitHubHostedRootlessRuntime(unittest.TestCase):
         self.assertNotRegex(body, r'(?m)^\s*apt-get\s+install.*\bpodman\b')
         self.assertIn('registries.conf.d', body)
         self.assertIn('podman info', body)
+        self.assertIn('podman run --rm', body)
+        self.assertIn('hello-world', body)
 
 
 if __name__ == '__main__':
