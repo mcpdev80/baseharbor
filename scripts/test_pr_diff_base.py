@@ -38,6 +38,14 @@ class GitFixture(unittest.TestCase):
         self.git('commit', '-qm', message)
         return self.git('rev-parse', 'HEAD')
 
+    def commit_with(self, path, content, message):
+        self.write(path, content)
+        return self.commit(message)
+
+    def is_ancestor(self, ancestor, descendant):
+        return self.git('merge-base', '--is-ancestor', ancestor, descendant,
+                        check=False) == ''
+
     def branch(self, name, start='HEAD'):
         self.git('switch', '-qc', name, start)
 
@@ -180,7 +188,13 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
 
 
-    def test_stale_event_base_rejected_and_normal_target_integration_restores_diff(self):
+    def test_stale_event_base_proceeds_to_tree_check_and_normal_restores_diff(self):
+        # The develop-ci contract calls pr-diff-base.py WITHOUT --base-tip. With
+        # no fetched base tip, the resolver anchors on the event base.sha and
+        # ACCEPTS a merge-ref whose base parent is a DESCENDANT of the event
+        # base (the stale-event case: develop moved forward). It then verifies
+        # the integration tree against the exact event-base..head merge; a tree
+        # built against a forward target fails the tree check (fail closed).
         self.branch('feature')
         self.write('feature.txt', 'reviewed feature\\n')
         head = self.commit('feature')
@@ -192,7 +206,10 @@ class GitFixture(unittest.TestCase):
                                input_data='GitHub exact integration\\n')
         stale = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
         self.assertTrue(stale['broad_required'])
-        self.assertEqual('integration_sha_mismatch', stale['reasons'][0]['code'])
+        # stale event base now resolves the PARENT lineage (no sha mismatch);
+        # the integration tree was built against the advanced target, so the
+        # fail-closed tree check blocks it here instead.
+        self.assertEqual('integration_tree_mismatch', stale['reasons'][0]['code'])
         self.git('switch', '-q', 'feature')
         self.git('merge', '--no-ff', '-qm', 'normal trusted target merge', target)
         merged = self.git('rev-parse', 'HEAD')
@@ -205,16 +222,20 @@ class GitFixture(unittest.TestCase):
         self.assertEqual([{'path': 'feature.txt', 'status': 'added'}],
                          actual['changes'])
 
-    def test_reversed_exact_parents_rejected_even_with_clean_tree(self):
+    def test_reversed_exact_parents_accepted_order_agnostic(self):
+        # The authoritative-basis decision relaxes parent ORDER: a merge whose
+        # two parents are exactly the known target base and PR head (either
+        # order) is accepted; only unknown/divergent parents or wrong history
+        # fail closed.
         self.branch('feature')
         self.write('feature.txt', 'feature\\n')
         head = self.commit('feature')
         tree = self.git('merge-tree', '--write-tree', self.initial, head).splitlines()[0]
         reversed_merge = self.git('commit-tree', tree, '-p', head, '-p', self.initial,
-                                  input_data='reversed parents\\n')
+                                   input_data='reversed parents\\n')
         result = resolver.resolve_pr_diff(self.root, self.initial, head, reversed_merge)
-        self.assertTrue(result['broad_required'])
-        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+        self.assertFalse(result['broad_required'], result['reasons'])
+        self.assertEqual([{'path': 'feature.txt', 'status': 'added'}], result['changes'])
 
     def test_extra_parent_rejected_even_with_clean_tree(self):
         self.branch('feature')
@@ -226,6 +247,103 @@ class GitFixture(unittest.TestCase):
         integration = self.git('commit-tree', tree, '-p', self.initial, '-p', head,
                                '-p', extra, input_data='extra parent\\n')
         result = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+
+
+
+    def test_linear_rebased_head_resolves_with_base_tip(self):
+        # Mission case (i): a rebased head is a linear descendant of the base
+        # branch tip; GitHub exposes github.sha == head with a single parent.
+        # With the fetched base tip, the resolver accepts the linear head and
+        # diffs merge_base(==base)..head over the unchanged merge-tree check.
+        self.branch('feature')
+        self.write('feature.txt', 'rebased feature\n')
+        head = self.commit('feature')
+        self.git('switch', '-q', 'main')
+        base_tip = self.commit_with('target-only.txt', 'trusted target advance\n',
+                                    'trusted target advance')
+        # A rebased/squashed head lands directly on base_tip with a single parent.
+        rebased_head = self.git('commit-tree',
+                                self.git('rev-parse', head + '^{tree}'),
+                                '-p', base_tip, input_data='rebased onto base tip')
+        self.assertTrue(self.is_ancestor(base_tip, rebased_head))
+
+        result = resolver.resolve_pr_diff(self.root, self.initial, rebased_head,
+                                          rebased_head, base_tip_sha=base_tip)
+
+        self.assertFalse(result['broad_required'], result['reasons'])
+        self.assertEqual(rebased_head, result['integration_sha'])
+        self.assertEqual(base_tip, result['base_tip_sha'])
+        self.assertEqual(self.initial, result['merge_base_sha'])
+        self.assertEqual([{'status': 'added', 'path': 'feature.txt'}], result['changes'])
+
+    def test_develop_forward_moved_merge_ref_resolves_with_fetched_tip(self):
+        # Mission case (ii): the event merge-ref was built against an OLD target
+        # (event base.sha), develop has moved forward, and CI now fetches the new
+        # base branch tip. The base parent (old base) is an ancestor of the
+        # fetched tip and a descendant of event base.sha -> resolved.
+        self.branch('feature')
+        self.write('feature.txt', 'reviewed feature\n')
+        head = self.commit('feature')
+        self.git('switch', '-q', 'main')
+        old_base = self.commit_with('old.txt', 'old base state\n', 'old base state')
+        tree = self.git('merge-tree', '--write-tree', old_base, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', old_base, '-p', head,
+                               input_data='GitHub build against old base\n')
+        self.git('switch', '-q', 'main')
+        new_base_tip = self.commit_with('more-target.txt', 'develop kept moving\n',
+                                        'develop moved forward')
+        self.assertTrue(self.is_ancestor(old_base, new_base_tip))
+
+        result = resolver.resolve_pr_diff(self.root, old_base, head, integration,
+                                          base_tip_sha=new_base_tip)
+
+        self.assertFalse(result['broad_required'], result['reasons'])
+        self.assertEqual(old_base, result['target_base_sha'])
+        self.assertEqual([{'status': 'added', 'path': 'feature.txt'}], result['changes'])
+
+    def test_third_parent_on_integration_still_fails_closed(self):
+        # Mission case (iii): a forged integration with three parents -> blocked.
+        self.branch('feature')
+        self.write('feature.txt', 'feature\n')
+        head = self.commit('feature')
+        self.git('switch', '-q', 'main')
+        base_tip = self.commit_with('base.txt', 'base tip advance\n', 'base tip advance')
+        self.git('switch', '-q', 'feature')
+        self.write('side.txt', 'intruder\n')
+        side = self.commit('side input')
+        self.git('switch', '-q', 'main')
+        self.git('merge', '--no-ff', '-qm', 'forged', 'feature')
+        forged = self.git('rev-parse', 'HEAD')
+        forged = self.git('commit-tree', self.git('rev-parse', forged + '^{tree}'),
+                          '-p', base_tip, '-p', forged, '-p', side,
+                          input_data='three parents')
+
+        result = resolver.resolve_pr_diff(self.root, base_tip, forged, forged,
+                                          base_tip_sha=base_tip)
+
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+
+    def test_head_missing_from_integration_still_fails_closed(self):
+        # Mission case (iii): the base parent is present but the second parent is
+        # an unrelated SHA, not the PR head -> blocked.
+        self.branch('feature')
+        self.write('feature.txt', 'feature\n')
+        head = self.commit('feature')
+        self.git('switch', '-q', 'main')
+        base_tip = self.commit_with('base.txt', 'base tip\n', 'base tip')
+        self.git('switch', '-q', 'feature')
+        self.write('other.txt', 'other branch\n')
+        other_head = self.commit('other branch')
+        tree = self.git('merge-tree', '--write-tree', base_tip, other_head).splitlines()[0]
+        forged = self.git('commit-tree', tree, '-p', base_tip, '-p', other_head,
+                          input_data='wrong head')
+
+        result = resolver.resolve_pr_diff(self.root, base_tip, head, forged,
+                                          base_tip_sha=base_tip)
+
         self.assertTrue(result['broad_required'])
         self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
 
