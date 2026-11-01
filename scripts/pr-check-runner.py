@@ -209,6 +209,7 @@ def execute_validation(check, repository):
         # orthogonal to receipt execution — their failures cause false-positive
         # RuntimeError here. Skip RealPlanValidationTest by filtering test
         # classes, not by weakening any test.
+        sys.path.insert(0, str(repo / 'scripts'))
 
         suite = unittest.TestSuite()
         loader = unittest.TestLoader()
