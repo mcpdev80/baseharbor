@@ -309,6 +309,25 @@ jobs:
             echo "authenticated run_attempt ${ATTEMPT} is not 1; refusing non-attempt-1 producer run" >&2
             exit 1
           fi
+          # Non-PR producer runs (push to main/develop, e.g. runtime-validation
+          # probe runs) carry no bound PR and never upload a trusted-pr-plan
+          # artifact. Their 'Trusted Plan' job is skipped, so no plan fixture
+          # exists to download. This is a CLEAN SKIP, never a failure: emit the
+          # bounded no-op and let the publication job stay a no-op too. This is
+          # the ONLY artifact-absence case that skips cleanly — a real PR run
+          # (pull_request, base_ref PR-resolvable, exactly one bound PR) without
+          # the artifact is an INTEGRITY ERROR and keeps the hard exit below
+          # (rv1221b / #1218 fail-closed contract-impact guard).
+          set +e
+          SOURCE_EVENT="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.event' 2>/dev/null)"
+          SOURCE_EVENT_RC=$?
+          set -e
+          if [ "${SOURCE_EVENT_RC}" -eq 0 ] && [ -n "${SOURCE_EVENT}" ] && [ "${SOURCE_EVENT}" != "pull_request" ]; then
+            echo "source run $RUN_ID triggered by '${SOURCE_EVENT}' (not 'pull_request'): no receipt, non-PR producer run; CLEAN SKIP" >&2
+            echo "no receipt: non-PR source run" >> "$GITHUB_STEP_SUMMARY"
+            echo "workflow_definition_id=$WORKFLOW_DEFINITION_ID" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           # Download with an explicit token, repository and artifact name; the
           # producer uploads pr-plan.json directly as the artifact; gh run
           # download unpacks the artifact zip, yielding pr-plan.json.
@@ -522,6 +541,31 @@ jobs:
            echo "  run_id=$RUN_ID"
            echo "  attempt=1"
            echo "  plan_revision=$PLAN_REVISION"
+           # receipt_writer.py HARDCODES GATE='public-contracts' and live()
+           # REQUIRES the 'PR · Public Contracts' gate job to be SUCCESSFUL. The
+           # receipt chain is therefore a producer PILOT: only runs whose plan
+           # registered a public-contracts plan entry (integration/static/
+           # public-contracts.json) may publish. A non-pilot run (e.g. an
+           # internal/ PR whose resolved gate is not public-contracts) has no
+           # entry here and must be a CLEAN NO-OP, never a hard failure.
+           #
+           # Read the pilot plan entry from the checked-out Planning repo; if no
+           # entry matches this run's head_sha, skip cleanly WITHOUT touching the
+           # product checkout or the verifier. The pilot path (entry present)
+           # keeps its existing fail-closed behaviour UNCHANGED below.
+           set +e
+           PILOT_ENTRY="$(jq -r --arg head "$HEAD_SHA" \
+             'if (.head_sha == $head) then "pilot" else "none" end' \
+             "$PLANNING_ROOT/evidence/receipt-plans/public-contracts.json" 2>/dev/null)"
+           PILOT_RC=$?
+           set -e
+           if [ "${PILOT_RC}" -eq 0 ] && [ "${PILOT_ENTRY}" = "pilot" ]; then
+             echo "receipt-pilot plan entry found for head $HEAD_SHA: publishing as pilot."
+           else
+             echo "no receipt-pilot plan entry for head $HEAD_SHA: not a public-contracts producer pilot; CLEAN NO-OP, no receipt." >&2
+             echo "- **No Receipt:** non-pilot producer run (resolved gate is not public-contracts); no-op instead of fail." >> "$GITHUB_STEP_SUMMARY"
+             exit 0
+           fi
            # The writer invokes the immutable controller Python.
            # It creates a canonical 6-field receipt, verifies it live WITH the
            # product checkout (producer-definition check at issuance), and
