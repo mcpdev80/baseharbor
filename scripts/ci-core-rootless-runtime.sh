@@ -82,14 +82,14 @@ location = "$cache_location/library"
 insecure = true
 EOF
     podman info --format '{{.Host.Security.Rootless}}'
-    # Podman jobs must leave no active Docker CLI context: the engine probe
-    # runs 'docker context show', which errors when the context was pruned or
-    # was never set. Neutralize DOCKER_CONTEXT (endpoint then falls back to
-    # DOCKER_HOST / the default context) and keep the CLI context on default.
+    # Podman jobs must leave a resolvable Docker CLI context: the engine
+    # probe runs 'docker context show', which errors when the current-context
+    # pointer references a context that does not exist on this host. GH
+    # ubuntu-26.04 images pre-register a "ci" context; pin the pointer to the
+    # always-present "default" (the setuptool may also have activated a
+    # "rootless" context whose daemon is never started on this path).
+    docker context use default
     printf 'DOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
-    if docker context ls --format '{{.Name}}' 2>/dev/null | grep -qx rootless; then
-      docker context use default >/dev/null 2>&1 || true
-    fi
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
 esac
