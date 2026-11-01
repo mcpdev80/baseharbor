@@ -83,7 +83,7 @@ def parse_name_status(raw):
     return changes
 
 
-def resolve_pr_diff(repository, target_base, head, integration=None):
+def resolve_pr_diff(repository, target_base, head, integration=None, base_tip_sha=None):
     repository = pathlib.Path(repository)
     result = {
         'target_base_sha': None,
@@ -98,9 +98,11 @@ def resolve_pr_diff(repository, target_base, head, integration=None):
     target_sha = resolve_commit(repository, target_base)
     head_sha = resolve_commit(repository, head)
     integration_sha = resolve_commit(repository, integration) if integration else None
+    base_tip = resolve_commit(repository, base_tip_sha) if base_tip_sha else None
     result['target_base_sha'] = target_sha
     result['head_sha'] = head_sha
     result['integration_sha'] = integration_sha
+    result['base_tip_sha'] = base_tip
 
     if target_sha is None:
         return fallback(result, 'missing_target_base_history',
@@ -130,19 +132,81 @@ def resolve_pr_diff(repository, target_base, head, integration=None):
         return fallback(result, 'integration_check_unavailable', conflict_message)
 
     if integration_sha:
-        # An ancestor-only check would also accept arbitrary later commits.
-        # The synthetic integration must merge exactly these two inputs,
-        # with precisely the tree Git would produce for a clean merge.
         commit = git(repository, 'rev-list', '--parents', '-n', '1',
                      integration_sha, check=False)
         if commit.returncode != 0:
             return fallback(result, 'integration_check_unavailable',
                             'cannot inspect integration commit parents')
         parents = commit.stdout.strip().split()
-        if parents != [integration_sha, target_sha, head_sha]:
+        # Authoritative base is the target branch tip GitHub actually built the
+        # event merge-ref against -- not the stale event base.sha field. The
+        # event base.sha is still the ancestry anchor (a known-good ancestor),
+        # the fetched branch tip proves which concrete commit is the base now.
+        #
+        # Two valid integration shapes, everything else fails closed:
+        #  (A) MERGE-REF: github.sha is a real merge commit with exactly two
+        #      parents, one of which is head. The other parent (B) must be a
+        #      fetchable descendant-aware base tip (B == tip or B is an ancestor
+        #      of it) AND still a descendant of the event base.sha, so a sideways
+        #      or divergent base is never accepted.
+        #  (B) LINEAR: github.sha == head (head is a descendant of the base tip),
+        #      so no synthetic merge exists. Forcing a merge commit is
+        #      meaningless; ancestry already proves nothing is lost. Diff runs
+        #      merge_base(==base)..head over the unchanged merge-tree check.
+        # Any case outside (A)/(B) -- three-plus parents, head absent, divergent
+        # base, or incomplete history -- keeps blocking with integration_sha_mismatch.
+        commit_sha, *rest = parents
+        if commit_sha != integration_sha:
             return fallback(result, 'integration_sha_mismatch',
-                            'integration commit must have exactly target base and PR head '
-                            'as its first and second parents, with no extra parents or commits')
+                            'integration commit must be the listed commit with its '
+                            'parents, with no extra parents or commits')
+        if len(rest) == 2:
+            parent_one, parent_two = rest
+            if head_sha not in (parent_one, parent_two):
+                return fallback(result, 'integration_sha_mismatch',
+                                'integration merge must include PR head as one of its '
+                                'exactly two parents')
+            head_parent = head_sha
+            other_parent = parent_two if parent_one == head_sha else parent_one
+            if base_tip is not None:
+                if other_parent != base_tip and not is_ancestor(
+                        repository, other_parent, base_tip):
+                    return fallback(result, 'integration_sha_mismatch',
+                                    'integration base parent must be the fetched '
+                                    'base branch tip or an ancestor of it')
+                if not is_ancestor(repository, target_sha, other_parent):
+                    return fallback(result, 'integration_sha_mismatch',
+                                    'integration base parent must be a descendant '
+                                    'of the event target base; a divergent base is '
+                                    'rejected')
+            else:
+                # No fetched base tip supplied: fall back to the exact event
+                # target base. Accept only the exact base.sha or an ANCESTOR of
+                # it (a base that moved backwards). A base that moved forwards
+                # past base.sha -- the stale-event case -- must still fail
+                # closed, so a descendant of target_sha is rejected here.
+                if other_parent != target_sha and not is_ancestor(
+                        repository, other_parent, target_sha):
+                    return fallback(result, 'integration_sha_mismatch',
+                                    'integration base parent must be the event '
+                                    'target base or an ancestor of it')
+        elif len(rest) == 1:
+            single_parent = rest[0]
+            if integration_sha != head_sha:
+                return fallback(result, 'integration_sha_mismatch',
+                                'single-parent integration must be the head itself')
+            if base_tip is None or not is_ancestor(repository, base_tip, head_sha):
+                return fallback(result, 'integration_sha_mismatch',
+                                'linear head must descend from the fetched base '
+                                'branch tip')
+            if not is_ancestor(repository, target_sha, head_sha):
+                return fallback(result, 'integration_sha_mismatch',
+                                'linear head must descend from the event target '
+                                'base; nothing may be dropped from the base')
+        else:
+            return fallback(result, 'integration_sha_mismatch',
+                            'integration commit must have exactly two parents or '
+                            'be the head itself, with no extra parents or commits')
         actual_tree = git(repository, 'rev-parse', '--verify',
                           integration_sha + '^{tree}', check=False)
         if actual_tree.returncode != 0:
@@ -173,9 +237,11 @@ def main():
     parser.add_argument('--head', required=True, help='PR head commit SHA from the PR event')
     parser.add_argument('--integration',
                         help='Integration/synthetic merge commit SHA, when supplied by CI')
+    parser.add_argument('--base-tip',
+                        help='Target base branch tip currently fetched by CI (authoritative base)')
     args = parser.parse_args()
     print(json.dumps(resolve_pr_diff(args.repository, args.target_base, args.head,
-                                     args.integration), indent=2, sort_keys=True))
+                                      args.integration, args.base_tip), indent=2, sort_keys=True))
 
 
 if __name__ == '__main__':
