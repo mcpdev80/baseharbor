@@ -180,16 +180,24 @@ def resolve_pr_diff(repository, target_base, head, integration=None, base_tip_sh
                                     'of the event target base; a divergent base is '
                                     'rejected')
             else:
-                # No fetched base tip supplied: fall back to the exact event
-                # target base. Accept only the exact base.sha or an ANCESTOR of
-                # it (a base that moved backwards). A base that moved forwards
-                # past base.sha -- the stale-event case -- must still fail
-                # closed, so a descendant of target_sha is rejected here.
-                if other_parent != target_sha and not is_ancestor(
-                        repository, other_parent, target_sha):
+                # No fetched base tip supplied (the develop-ci contract calls
+                # pr-diff-base.py without --base-tip). Fall back to the event
+                # base.sha as the ancestry anchor. The merge-ref base parent B
+                # may be the exact event base, a DESCENDANT of it (develop moved
+                # FORWARD since the event fired -- the stale-event case the
+                # resolver must resolve), or an ANCESTOR of it (base moved
+                # backwards). Reject only a B that DIVERGES from the event base
+                # -- neither ancestor nor descendant -- which is a sideways base
+                # that must fail closed. This proves nothing is dropped: the
+                # event base remains a provable ancestor of the integration.
+                b_anc_of_event = is_ancestor(repository, target_sha, other_parent)
+                b_desc_of_event = is_ancestor(repository, other_parent, target_sha)
+                if other_parent != target_sha and not b_anc_of_event and not b_desc_of_event:
                     return fallback(result, 'integration_sha_mismatch',
-                                    'integration base parent must be the event '
-                                    'target base or an ancestor of it')
+                                    'integration base parent must be lineage-linked to '
+                                    'the event target base (ancestor, the base itself, '
+                                    'or a forward-moved descendant); a divergent base '
+                                    'is rejected')
         elif len(rest) == 1:
             single_parent = rest[0]
             if integration_sha != head_sha:
@@ -237,11 +245,9 @@ def main():
     parser.add_argument('--head', required=True, help='PR head commit SHA from the PR event')
     parser.add_argument('--integration',
                         help='Integration/synthetic merge commit SHA, when supplied by CI')
-    parser.add_argument('--base-tip',
-                        help='Target base branch tip currently fetched by CI (authoritative base)')
     args = parser.parse_args()
     print(json.dumps(resolve_pr_diff(args.repository, args.target_base, args.head,
-                                      args.integration, args.base_tip), indent=2, sort_keys=True))
+                                      args.integration), indent=2, sort_keys=True))
 
 
 if __name__ == '__main__':

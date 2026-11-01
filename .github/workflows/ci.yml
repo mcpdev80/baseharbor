@@ -451,16 +451,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
-          # Authoritative base is the target branch tip GitHub built the event
-          # merge-ref against -- not the stale event base.sha field. Fetch the
-          # current base branch tip so the diff resolver can prove the base
-          # parent against a fresh ref, and keep the base ref locally reachable.
-          git fetch --no-tags origin "refs/heads/${{ github.event.pull_request.base.ref }}"
-          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" --base-tip "origin/${{ github.event.pull_request.base.ref }}" > "$RUNNER_TEMP/pr-diff.json"
+          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
           python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
           # Run the check-runner from the same trusted base checkout as the
           # planner, so a validation id emitted by the planner is always an id

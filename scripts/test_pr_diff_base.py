@@ -188,7 +188,13 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
 
 
-    def test_stale_event_base_rejected_and_normal_target_integration_restores_diff(self):
+    def test_stale_event_base_proceeds_to_tree_check_and_normal_restores_diff(self):
+        # The develop-ci contract calls pr-diff-base.py WITHOUT --base-tip. With
+        # no fetched base tip, the resolver anchors on the event base.sha and
+        # ACCEPTS a merge-ref whose base parent is a DESCENDANT of the event
+        # base (the stale-event case: develop moved forward). It then verifies
+        # the integration tree against the exact event-base..head merge; a tree
+        # built against a forward target fails the tree check (fail closed).
         self.branch('feature')
         self.write('feature.txt', 'reviewed feature\\n')
         head = self.commit('feature')
@@ -200,7 +206,10 @@ class GitFixture(unittest.TestCase):
                                input_data='GitHub exact integration\\n')
         stale = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
         self.assertTrue(stale['broad_required'])
-        self.assertEqual('integration_sha_mismatch', stale['reasons'][0]['code'])
+        # stale event base now resolves the PARENT lineage (no sha mismatch);
+        # the integration tree was built against the advanced target, so the
+        # fail-closed tree check blocks it here instead.
+        self.assertEqual('integration_tree_mismatch', stale['reasons'][0]['code'])
         self.git('switch', '-q', 'feature')
         self.git('merge', '--no-ff', '-qm', 'normal trusted target merge', target)
         merged = self.git('rev-parse', 'HEAD')
