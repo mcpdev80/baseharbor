@@ -1451,6 +1451,25 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/runtime_restart_integration_test.go':
+            # Control-plane restart integration test (TestExistingControlPlane
+            # RestartRequiresAndUsesRecoveryFile / TestSingleControlPlaneRestart
+            # RotationAndCleanup).  This boots a real Postgres/OpenBao control-plane
+            # on a native container runtime, performs an OpenBao recovery-file
+            # restart, credential rotations and HA failover.  It is the exact
+            # restart-after-crash proof the Lifecycle-Gates drive and runs on BOTH
+            # runners (the targeted-integration.yml v0421_ha matrix dispatches this
+            # file to the control-plane / control-plane-single cases for docker and
+            # podman).  Bind it to the SAME existing native lifecycle gates as the
+            # other cmd/baha runtime-mutation files (atomic/docker/lifecycle,
+            # atomic/podman/lifecycle) — no new gate, no weakening.  Without this
+            # branch the file fell to the cli-unresolved-runtime-impact catch-all
+            # and blocked PR Selected checks (#1245).
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1471,6 +1490,30 @@ def plan(diff, requirements, mapping, repository='.',
             require(PROJECTION_CHECKS)
             if path_status.get(path) != 'modified' and path_status.get(path) != 'added':
                 unresolved.append('runtime native binding projection source status requires exact reviewed candidate: ' + path)
+        elif path.startswith('internal/application/shared_backends') or \
+                path.startswith('internal/application/shared_backend_dependency') or \
+                'shared_backend' in path and path.endswith('.go'):
+            # Shared-backend provider resolution (shared_backends.go and its
+            # sisters: shared_backend_dependency.go / selectSharedBackendDependency).
+            # A consumer Manifest's SQL/Valkey providers resolve to a shared
+            # Postgres/Valkey backend; service identity, credentials, TLS and
+            # readiness all key off the resolved backend.  This is genuine
+            # Provider-Resolution-Impact (see PR #1255: a clobbered
+            # state.Environment routed readiness probes to a non-existent
+            # shared-postgres-core).  The qualification gate is the hosted
+            # runtime-validation/ha/shared-postgres targeted run, which runs the
+            # ./internal/application TestSharedPostgres family on both runners.
+            # The aggregator only recognises the eight catalog tokens; there is no
+            # `integration/shared-postgres` token and the mission forbids inventing
+            # one.  Map to the existing atomic/podman/lifecycle lifecycle gate — a
+            # real catalog token that already maps to a real native lifecycle run
+            # covering this shared Postgres service-identity/credential path.
+            # Without this branch the files fell to application-implementation
+            # -unresolved and blocked PR Selected checks (#1255).  This branch must
+            # sit BEFORE the internal/application/ catch-all.
+            area = 'application-shared-provider-resolution'
+            require(CODE_CHECKS)
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)

@@ -1352,6 +1352,92 @@ class CliEngineMappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
 
 
+class RestartIntegrationMappingTests(unittest.TestCase):
+    def test_runtime_restart_integration_test_maps_both_lifecycle_gates(self):
+        # gatemap-r2 Gap 1 (blocks #1245).  cmd/baha/runtime_restart_integration_test.go
+        # is the control-plane restart proof the Lifecycle-Gates drive (targeted
+        # integration.yml dispatches its TestExistingControlPlaneRestartRequiresAndUses
+        # RecoveryFile / TestSingleControlPlaneRestartRotationAndCleanup to the
+        # control-plane / control-plane-single cases on BOTH docker and podman).
+        # It must resolve to BOTH atomic lifecycle gates, exactly like the other
+        # cmd/baha runtime-mutation files — not the cli-unresolved-runtime-impact
+        # catch-all that previously blocked PR Selected checks.
+        result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+        self.assertIn('cli-build', checks)
+        self.assertIn('cli-vet', checks)
+
+    def test_restart_integration_bundled_with_unreviewed_stays_unresolved(self):
+        # fail-closed: resolved restart test + an unreviewed second file keeps
+        # the whole PR unresolved.
+        result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go',
+                                          'cmd/baha/main.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+
+class SharedBackendResolutionMappingTests(unittest.TestCase):
+    def test_shared_backends_maps_to_existing_lifecycle_gate(self):
+        # gatemap-r2 Gap 2 (blocks #1255).  internal/application/shared_backends.go
+        # is genuine Provider-Resolution-Impact; its qualification gate is the
+        # hosted runtime-validation/ha/shared-postgres targeted run.  The
+        # aggregator only recognises the eight catalog tokens and the mission
+        # forbids inventing an `integration/shared-postgres` token, so this file
+        # maps to the existing atomic/podman/lifecycle lifecycle gate — a real
+        # catalog token covering this shared Postgres service-identity/credential
+        # path — NOT the application-implementation-unresolved catch-all that
+        # previously blocked PR Selected checks.
+        result = planner.plan(diff(paths('internal/application/shared_backends.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+
+    def test_shared_backend_dependency_sister_maps_to_lifecycle_gate(self):
+        # The sister resolution file named in the mission (shared_backend_dependency.go)
+        # must resolve via the same classification.
+        result = planner.plan(diff(paths('internal/application/shared_backend_dependency.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+
+    def test_shared_backend_state_sister_maps_to_lifecycle_gate(self):
+        result = planner.plan(diff(paths('internal/application/shared_backends_state.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/podman/lifecycle'], result['selected_gates'])
+
+    def test_shared_backends_bundled_with_unreviewed_stays_unresolved(self):
+        # fail-closed: resolved shared-backend file + an unreviewed second file
+        # keeps the whole PR unresolved.
+        result = planner.plan(diff(paths('internal/application/shared_backends.go',
+                                          'internal/application/manifest.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_unrelated_application_file_stays_unresolved(self):
+        # A non shared_backend application file must NOT pick up the new
+        # classification; it stays in application-implementation-unresolved.
+        result = planner.plan(diff(paths('internal/application/manifest.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('application lifecycle', result['unresolved_coverage'][0])
+        self.assertNotIn('atomic/podman/lifecycle', result['selected_gates'])
+
+    def test_shared_backend_missing_lifecycle_gate_fails_closed(self):
+        # Fail-closed on incomplete catalog: no atomic/podman/lifecycle => unresolved.
+        incomplete = {'releases': ['v0.4.26'],
+                        'gates': [{'id': 'integration/static/public-contracts',
+                                   'required_for': ['v0.4.26']}]}
+        result = planner.plan(diff(paths('internal/application/shared_backends.go')), incomplete, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
 class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_script_maps_to_ci_class(self):
         for path in ['scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
