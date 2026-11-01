@@ -19,7 +19,8 @@ wizard_check = planner.wizard_check
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
 GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
          'integration/static/public-contracts', 'atomic/docker/lifecycle',
-         'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data']
+         'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data',
+          'atomic/docker/observability', 'atomic/podman/observability']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
@@ -1436,6 +1437,50 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
                                    'required_for': ['v0.4.26']}]}
         result = planner.plan(diff(paths('internal/application/shared_backends.go')), incomplete, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_app_observability_acceptance_maps_both_observability_gates(self):
+        # p1242diag gate-map follow-up (blocks #1242).  cmd/baha/app_observability
+        # _acceptance_test.go is the full-stack observability acceptance proof the
+        # observability acceptance gates drive (observability-acceptance.yml
+        # dispatches TestObservabilityFullStackAcceptanceInCI to the docker and
+        # podman blocks).  It must resolve to BOTH observability gates, exactly
+        # like the other cmd/baha runtime-acceptance files — not the
+        # cli-unresolved-runtime-impact catch-all that previously blocked PR
+        # Selected checks.
+        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/observability', 'atomic/podman/observability'],
+                         result['selected_gates'])
+        self.assertFalse(result['unresolved_coverage'])
+        self.assertFalse(result['broad_required'])
+        checks = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('source-contracts', checks)
+        self.assertIn('cli-build', checks)
+        self.assertIn('cli-vet', checks)
+
+    def test_app_observability_acceptance_bundled_with_unreviewed_stays_unresolved(self):
+        # fail-closed: resolved observability test + an unreviewed second file
+        # keeps the whole PR unresolved.
+        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go',
+                                          'cmd/baha/main.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_app_observability_acceptance_missing_gate_fails_closed(self):
+        # Fail-closed on incomplete catalog: only atomic/docker/observability => unresolved.
+        incomplete = {'releases': ['v0.4.26'],
+                        'gates': [{'id': 'atomic/docker/observability',
+                                   'required_for': ['v0.4.26']}]}
+        result = planner.plan(diff(paths('cmd/baha/app_observability_acceptance_test.go')), incomplete, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_unrelated_cli_test_file_stays_unresolved(self):
+        # A non-observability cmd/baha/*.go test must NOT pick up the new
+        # classification; it stays in cli-unresolved-runtime-impact.
+        result = planner.plan(diff(paths('cmd/baha/main.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('CLI runtime impact', result['unresolved_coverage'][0])
+        self.assertNotIn('atomic/docker/observability', result['selected_gates'])
 
 
 class ReceiptControlPlaneMappingTests(unittest.TestCase):

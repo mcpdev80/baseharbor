@@ -1470,6 +1470,22 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/app_observability_acceptance_test.go':
+            # Full-stack observability acceptance for the CLI (TestObservabilityFullStack
+            # AcceptanceInCI).  This boots a real native container runtime (Docker and
+            # Podman/Quadlet) and runs the observability full-stack acceptance end to
+            # end.  It is the exact proof the observability acceptance gates drive and
+            # runs on BOTH runners (the observability-acceptance.yml dispatches this
+            # test to the docker and podman blocks).  Bind it to the SAME catalog
+            # observability gates as the runtime acceptance family (atomic/docker/
+            # observability, atomic/podman/observability) — no new gate, no weakening.
+            # Without this branch the file fell to the cli-unresolved-runtime-impact
+            # catch-all and blocked PR Selected checks (#1242).
+            area = 'observability-acceptance'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/observability')
+            selected.add('atomic/podman/observability')
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
