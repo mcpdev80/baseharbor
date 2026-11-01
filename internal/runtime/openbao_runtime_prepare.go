@@ -72,6 +72,11 @@ func writeOpenBaoPostgresInit(stateDir string) error {
 	}
 	const script = `#!/bin/sh
 set -eu
+# Enforce TLS on every psql connection through the postgres HAProxy.
+# verify-ca trusts the CA that signed Spilo's server cert but does not
+# require hostname match (the proxy changes the network path).
+export PGSSLMODE=verify-ca
+export PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
   --set=baseharbor_user="$BASEHARBOR_POSTGRES_USER" \
   --set=baseharbor_secret="$BASEHARBOR_POSTGRES_PASSWORD" \
@@ -106,11 +111,11 @@ SELECT format('GRANT CONNECT ON DATABASE openbao TO %I', :'openbao_user')
 \gexec
 EOSQL
 
-PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 \
+PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql -v ON_ERROR_STOP=1 \
   --username "$BASEHARBOR_POSTGRES_USER" --dbname "$BASEHARBOR_POSTGRES_DB" \
   -Atqc 'SELECT 1' >/dev/null
 
-PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" psql -v ON_ERROR_STOP=1 \
+PGPASSWORD="$BASEHARBOR_OPENBAO_DB_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql -v ON_ERROR_STOP=1 \
   --username "$BASEHARBOR_OPENBAO_DB_USER" --dbname openbao \
   -Atqc 'SELECT 1' >/dev/null
 `
@@ -166,7 +171,7 @@ func writeOpenBaoRuntimeConfig(stateDir, user, secret string, ha bool) error {
 		User:   url.UserPassword(user, secret),
 		Host:   "postgres:5432",
 		Path:   "/openbao",
-		RawQuery: "sslmode=verify-full&sslrootcert=" +
+		RawQuery: "sslmode=verify-ca&sslrootcert=" +
 			url.QueryEscape("/run/baseharbor/postgres-ca/ca.pem"),
 	}).String()
 	config := fmt.Sprintf(`ui = true
