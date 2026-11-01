@@ -1127,6 +1127,11 @@ jobs:
           esac
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare verified rootless runtime
+        if: matrix.runtime == 'docker' && startsWith(github.ref_name, 'runtime-validation/ha/')
+        shell: bash
+        run: bash scripts/ci-core-rootless-runtime.sh
+
       - name: Prepare hosted Podman runtime
         if: matrix.runtime == 'podman'
         shell: bash
