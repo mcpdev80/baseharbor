@@ -462,8 +462,20 @@ jobs:
           INTEGRATION_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
-          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip
+          target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          # Resolve the actual integration parent using the event-base policy;
+          # the fetched target tip must prove that parent belongs to develop.
+          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" --base-tip "$target_tip" > "$RUNNER_TEMP/pr-diff-bootstrap.json"
+          effective_base="$(python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); print(p["target_base_sha"] if not p["broad_required"] else "")' "$RUNNER_TEMP/pr-diff-bootstrap.json")"
+          if [ -n "$effective_base" ]; then
+            [[ "$effective_base" =~ ^[0-9a-f]{40}$ ]]
+            git checkout --detach "$effective_base"
+            # Re-resolve with the actual base's planner and executor policy.
+            python3 scripts/pr-diff-base.py --target-base "$effective_base" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" --base-tip "$target_tip" > "$RUNNER_TEMP/pr-diff.json"
+          else
+            cp "$RUNNER_TEMP/pr-diff-bootstrap.json" "$RUNNER_TEMP/pr-diff.json"
+          fi
           python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
           echo "trusted_base_sha=$(python3 -c 'import json; print(json.load(open("pr-plan.json"))["target_base_sha"])')" >> "$GITHUB_OUTPUT"
           # Run the check-runner from the same trusted base checkout as the
@@ -500,7 +512,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Verify integrated #896 isolation interface from trusted base
@@ -524,7 +536,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           persist-credentials: false
       - name: Resolve verified immutable v0.4.26 consumer graph
         id: resolve
@@ -665,8 +677,8 @@ jobs:
           # R27-F2: execute the receipt control-plane suites with the TRUSTED
           # base-runner selecting the exact registered modules; candidate code
           # must not define its own receipt discovery.
-          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
-          git show "${{ github.event.pull_request.base.sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
+          git fetch --no-tags origin "${{ needs.pr_plan.outputs.trusted_base_sha }}"
+          git show "${{ needs.pr_plan.outputs.trusted_base_sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
           python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
 
   pr_validations:
@@ -691,7 +703,7 @@ jobs:
       - name: Execute existing validation owner without publication
         env:
           VALIDATION: ${{ matrix.check }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ needs.pr_plan.outputs.trusted_base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -849,7 +861,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.pr_plan.outputs.trusted_base_sha || github.event.pull_request.base.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         if: needs.pr_plan.result == 'success'
@@ -858,7 +870,7 @@ jobs:
       - name: Enforce every required check (unqualified runtime remains blocked)
         env:
           PLAN_JOB: ${{ needs.pr_plan.result }}
-          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EXPECTED_BASE: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           EXPECTED_INTEGRATION: ${{ github.sha }}
           FOCUSED_JOB: ${{ needs.pr_focused.result }}
