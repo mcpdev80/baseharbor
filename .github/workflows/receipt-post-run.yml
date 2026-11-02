@@ -118,7 +118,7 @@ jobs:
             helper_dir="$(mktemp -d)"
             trap 'rm -rf "$helper_dir"' EXIT
             gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=${GITHUB_SHA}" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
-            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=dd8fb61d614b59252c9d29121380b5893d006828" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=32eaaa116eedd929a47537152c27157b2720d8ed" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
             git init -q "$helper_dir/product"
             git -C "$helper_dir/product" remote add origin "https://github.com/mcpdev80/baseharbor.git"
             PYTHONPATH="$helper_dir" python3 "$helper_dir/receipt_closed_run.py" "$RUN_ID" "$helper_dir/product"
@@ -262,7 +262,7 @@ jobs:
         with:
           # Same reviewed controller pin as the publication job; scripts are
           # read-only here so receipt_verifier resolves at import time.
-          ref: dd8fb61d614b59252c9d29121380b5893d006828
+          ref: 32eaaa116eedd929a47537152c27157b2720d8ed
           persist-credentials: false
 
       - name: Download trusted-pr-plan artifact
@@ -458,7 +458,7 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: dd8fb61d614b59252c9d29121380b5893d006828
+          ref: 32eaaa116eedd929a47537152c27157b2720d8ed
           fetch-depth: 0
           persist-credentials: false
 
