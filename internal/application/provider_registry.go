@@ -400,12 +400,17 @@ func registerReferenceProvidersAt(dataDir string, registry *capability.Registry,
 // application manifest is available but the shared baseharbor-owned realization
 // must still be recorded in the provider registry.
 func ReferenceProviderInstanceForRegistration(resource capability.Resource) (capability.ProviderInstance, error) {
-	placement, err := ResolveConfiguredProviderPlacement(Manifest{}, resource.Provider)
+	// Control-plane provider instances describe the managed platform itself;
+	// application placement overrides must not change that identity.
+	placement, err := DefaultProviderPlacement(resource.Provider)
 	if err != nil {
 		return capability.ProviderInstance{}, err
 	}
 	bundled, err := builtin.Lookup(resource.Provider)
 	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+	if err := capability.ValidateProviderPlacement(bundled.Integration, placement); err != nil {
 		return capability.ProviderInstance{}, err
 	}
 	instance := capability.ProviderInstance{
