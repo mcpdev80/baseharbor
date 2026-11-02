@@ -29,7 +29,7 @@ def gh(path, *, pages=False, binary=False):
     return json.loads(result.stdout)
 
 
-def closed_run(run_id, product, api=gh):
+def closed_run(run_id, product, api=gh, *, planning=None):
     prefix = f"repos/{REPOSITORY}/actions/runs/{run_id}"
     run = api(prefix)
     head = run.get("head_sha")
@@ -108,28 +108,41 @@ def closed_run(run_id, product, api=gh):
     require(facts["head_sha"] == head and plan.get("coverage_status") == "resolved"
             and isinstance(plan.get("selected_gates"), list)
             and all(isinstance(x, str) for x in plan["selected_gates"]), "invalid producer plan")
-    require("integration/static/public-contracts" not in plan["selected_gates"],
-            "public-contracts producer requires receipt handling")
+    pilot = "integration/static/public-contracts" in plan["selected_gates"]
+    require(not pilot or planning is not None, "public-contracts producer requires receipt handling")
     require(pr.get("state") == "closed" and pr.get("base", {}).get("ref") == "develop"
-            and pr.get("base", {}).get("sha") == facts["base_sha"]
+            and (pilot or pr.get("base", {}).get("sha") == facts["base_sha"])
             and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),
             "closed PR source tuple mismatch")
+    sources = [head, facts["base_sha"], facts["candidate_sha"]]
+    if pilot:
+        merge = pr.get("merge_commit_sha") or ""
+        require(rv.full_sha(merge), "missing merged commit")
+        sources.append(merge)
     subprocess.run(["git", "-C", str(product), "fetch", "--no-tags", "--depth=2", "origin",
-                    head, facts["base_sha"], facts["candidate_sha"]], check=True,
+                    *sources], check=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     parents = subprocess.run(["git", "-C", str(product), "rev-list", "--parents", "-n", "1",
                               facts["candidate_sha"]], capture_output=True, check=True, text=True).stdout.split()
     require(len(parents) == 3 and parents[0] == facts["candidate_sha"]
             and set(parents[1:]) == {head, facts["base_sha"]}, "candidate parent mismatch")
     rv.producer_identity(product, {"head_sha": head, "base_sha": facts["base_sha"]})
+    if pilot:
+        from receipt_writer import write_merge
+        writer_plan = dict(head_sha=head, base_sha=facts['base_sha'],
+                           candidate_sha=facts['candidate_sha'], workflow_id=run['workflow_id'])
+        path, _, publication = write_merge(Path(planning), pr['number'], run_id, writer_plan,
+                                           product=product, api=api)
+        print(f"receipt: {publication}:{path}")
     return pr["number"]
 
 
 if __name__ == "__main__":
     try:
-        require(len(sys.argv) == 3 and sys.argv[1].isdigit(), "invalid arguments")
-        number = closed_run(int(sys.argv[1]), Path(sys.argv[2]))
-        print(f"Authenticated closed PR #{number}; no receipt required")
+        require(len(sys.argv) in (3, 4) and sys.argv[1].isdigit(), "invalid arguments")
+        planning = Path(sys.argv[3]) if len(sys.argv) == 4 else None
+        number = closed_run(int(sys.argv[1]), Path(sys.argv[2]), planning=planning)
+        print(f"Authenticated closed PR #{number}" + ('; no receipt required' if planning is None else ''))
     except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, subprocess.CalledProcessError, rv.ReceiptError):
         print("Unable to authenticate a unique closed PR; failing closed", file=sys.stderr)
         sys.exit(1)
