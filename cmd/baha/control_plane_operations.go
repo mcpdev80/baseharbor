@@ -157,6 +157,18 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 		}
 		checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
 	}
+	// Native runtime readiness is probed explicitly for the target's provider.
+	// The dropped health.Doctor() legacy probes never emitted a named runtime
+	// check, so a Podman-target doctor never reported podman/quadlet
+	// availability — and on a fresh Podman runner with an absent Core the early
+	// core-deployment return below would skip any runtime probe entirely. Probe
+	// here, before that early return, so the checks always appear. They are
+	// emitted only for a Podman target, keeping Docker-target doctor output
+	// untouched (Docker assertions require every check ready and never expect a
+	// podman check).
+	if target.RuntimeProvider == "podman" {
+		checks = append(checks, PodmanRuntimeDoctorChecks(ctx, target)...)
+	}
 	if target.AccessProvider == "" || target.AccessProvider == "local" {
 		state, stateErr := managedTrustCoreState(ctx)
 		if stateErr == nil && state == "not_installed" {
