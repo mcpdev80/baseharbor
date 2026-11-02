@@ -1,7 +1,10 @@
 import copy
 import io
 import json
+import os
+from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 import zipfile
 from unittest.mock import patch
@@ -37,6 +40,167 @@ def fixture():
 
 
 class ClosedRunTests(unittest.TestCase):
+    def test_cursor_requires_real_successful_consumer_job(self):
+        run = dict(id=88, event='schedule', run_attempt=1,
+                   path='.github/workflows/receipt-post-run.yml', repository=dict(id=REPO))
+        job = dict(name='Receipt · Reconcile Consumer', run_id=88,
+                   status='completed', conclusion='success')
+        def api(path, *, pages=False, binary=False):
+            return [dict(total_count=1, jobs=[job])] if pages else run
+        with patch.dict(os.environ, {'GITHUB_RUN_ID': '88'}):
+            helper.require_replay_consumer(api)
+            for conclusion in ('failure', 'skipped', None):
+                job['conclusion'] = conclusion
+                with self.subTest(conclusion=conclusion), self.assertRaises(ValueError):
+                    helper.require_replay_consumer(api)
+
+    def test_strict_replay_rejects_wrong_merger_or_parent_order(self):
+        _, _, _, pr, _ = fixture()
+        merge = 'd' * 40
+        pr.update(merged=True, merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z',
+                  merged_by=dict(id=helper.rv.OWNER_ID, login=helper.rv.OWNER))
+        def api(path, *, pages=False, binary=False):
+            return [[pr]] if pages else pr
+        with patch.object(helper.rv, 'git', return_value=f'{HEAD} {BASE}'.encode()):
+            with self.assertRaisesRegex(ValueError, 'parents'):
+                helper.reconcile_commit(merge, '.', 'planning', api=api, strict=True)
+        pr['merged_by']['id'] = 1
+        with self.assertRaisesRegex(ValueError, 'Owner merge'):
+            helper.reconcile_commit(merge, '.', 'planning', api=api, strict=True)
+
+    def test_first_parent_replay_advances_cursor_only_after_all_commits(self):
+        def git(*args):
+            return subprocess.run(['git', *map(str, args)], check=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            product_remote, plan_remote = root / 'product.git', root / 'plan.git'
+            product, planning = root / 'product', root / 'planning'
+            for remote, checkout, branch in ((product_remote, product, 'develop'),
+                                             (plan_remote, planning, 'main')):
+                git('init', '--bare', '--initial-branch=' + branch, remote)
+                git('clone', remote, checkout)
+                git('-C', checkout, 'config', 'user.name', 'Test')
+                git('-C', checkout, 'config', 'user.email', 'test@example.invalid')
+                (checkout / 'README').write_text('initial\n')
+                git('-C', checkout, 'add', 'README')
+                git('-C', checkout, 'commit', '-m', 'initial')
+                git('-C', checkout, 'push', '-u', 'origin', branch)
+            anchor = git('-C', product, 'rev-parse', 'HEAD')
+            for i in range(2):
+                (product / 'README').write_text(f'{i}\n')
+                git('-C', product, 'commit', '-am', f'commit {i}')
+            git('-C', product, 'push', 'origin', 'develop')
+            tip = git('-C', product, 'rev-parse', 'HEAD')
+            seen = []
+            def fail_second(commit, *_args, **_kwargs):
+                seen.append(commit)
+                if len(seen) == 2: raise ValueError('not yet ready')
+                return 42
+            cursor = planning / 'evidence/receipts/merge-reconciliation-cursor.json'
+            with patch.object(helper, 'reconcile_commit', side_effect=fail_second):
+                with self.assertRaises(ValueError):
+                    helper.reconcile_history(anchor, product, planning)
+            self.assertFalse(cursor.exists())
+            seen.clear()
+            with patch.object(helper, 'reconcile_commit', side_effect=lambda c, *_a, **_k: seen.append(c)):
+                replay = helper.reconcile_history(anchor, product, planning)
+            self.assertEqual(len(seen), 2)
+            self.assertFalse(cursor.exists())
+            with self.assertRaises(ValueError):
+                helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
+                                      verify_consumer=lambda: (_ for _ in ()).throw(ValueError('consumer failed')))
+            self.assertFalse(cursor.exists())
+            helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
+                                  verify_consumer=lambda: None)
+            self.assertEqual(json.loads(cursor.read_text())['commit'], tip)
+            self.assertIn(tip, git('--git-dir', plan_remote, 'show',
+                                   'main:evidence/receipts/merge-reconciliation-cursor.json'))
+            tree = git('-C', product, 'rev-parse', 'HEAD^{tree}')
+            nonlinear = git('-C', product, 'commit-tree', tree, '-p', tip, '-p', anchor,
+                            '-m', 'unexpected merge')
+            git('-C', product, 'reset', '--hard', nonlinear)
+            git('-C', product, 'push', 'origin', 'develop')
+            with patch.object(helper, 'reconcile_commit', return_value=42) as reconcile:
+                replay = helper.reconcile_history(anchor, product, planning)
+                self.assertEqual(reconcile.call_args.args[0], nonlinear)
+                self.assertTrue(reconcile.call_args.kwargs['strict'])
+            helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
+                                  verify_consumer=lambda: None)
+            self.assertEqual(json.loads(cursor.read_text())['commit'], nonlinear)
+
+    def test_push_wakes_completed_pr_and_defers_pending(self):
+        run, _, artifact, pr, archive = fixture()
+        merge = 'd' * 40
+        pr.update(state='closed', merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z')
+        push = dict(run, id=999, event='push', head_branch='develop', head_sha=merge)
+        def api(path, *, pages=False, binary=False):
+            if binary: return archive
+            if '/commits/' in path: return [[pr]]
+            if '/actions/workflows/' in path: return [{'workflow_runs': [run]}]
+            if path.endswith('/artifacts?per_page=100'): return [{'artifacts': [artifact]}]
+            return push
+        with patch.object(helper, 'closed_run', return_value=42) as closed, \
+             patch.object(helper.subprocess, 'run'), patch.object(helper.rv, 'producer_identity'):
+            self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
+            self.assertEqual(closed.call_args.args[0], RUN)
+            run['status'] = 'in_progress'
+            self.assertIsNone(helper.push_run(999, '.', 'planning', api=api))
+            run.update(status='completed', conclusion='failure')
+            with self.assertRaises(ValueError):
+                helper.push_run(999, '.', 'planning', api=api)
+
+    def test_push_ignores_newer_run_for_different_base(self):
+        run, _, artifact, pr, archive = fixture()
+        merge = 'd' * 40
+        pr.update(merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z')
+        push = dict(run, id=999, event='push', head_branch='develop', head_sha=merge)
+        newer = dict(run, id=124)
+        newer_artifact = copy.deepcopy(artifact)
+        newer_artifact['id'] = 6
+        newer_artifact['workflow_run']['id'] = 124
+        with zipfile.ZipFile(io.BytesIO(archive)) as source:
+            plan = json.loads(source.read('pr-plan.json'))
+        plan['target_base_sha'] = 'e' * 40
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as target:
+            target.writestr('pr-plan.json', json.dumps(plan))
+        def api(path, *, pages=False, binary=False):
+            if binary: return stream.getvalue() if '/artifacts/6/' in path else archive
+            if '/commits/' in path: return [[pr]]
+            if '/actions/workflows/' in path: return [{'workflow_runs': [run, newer]}]
+            if '/actions/runs/124/artifacts?' in path: return [{'artifacts': [newer_artifact]}]
+            if '/actions/runs/123/artifacts?' in path: return [{'artifacts': [artifact]}]
+            return push
+        with patch.object(helper, 'closed_run', return_value=42) as closed, \
+             patch.object(helper.subprocess, 'run'), patch.object(helper.rv, 'producer_identity'):
+            self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
+            self.assertEqual(closed.call_args.args[0], RUN)
+
+    def test_pilot_is_forwarded_to_existing_writer_only_with_planning(self):
+        run, jobs, artifact, pr, archive = fixture()
+        pr['merge_commit_sha'] = 'd' * 40
+        with zipfile.ZipFile(io.BytesIO(archive)) as source:
+            plan = json.loads(source.read('pr-plan.json'))
+        plan['selected_gates'] = ['integration/static/public-contracts']
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, 'w') as target:
+            target.writestr('pr-plan.json', json.dumps(plan))
+        def api(path, *, pages=False, binary=False):
+            if binary: return output.getvalue()
+            if '/attempts/1/jobs' in path: return [{'jobs': jobs}]
+            if path.endswith('/artifacts?per_page=100'): return [{'artifacts': [artifact]}]
+            if '/commits/' in path: return [[pr]]
+            return run
+        def command(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, stdout=f'{CANDIDATE} {BASE} {HEAD}\n')
+        with patch.object(helper.subprocess, 'run', side_effect=command), \
+             patch.object(helper.rv, 'producer_identity'), \
+             patch.object(helper.rv, 'retained_merge'), \
+             patch('receipt_writer.write_merge', return_value=('path', 'intro', 'durable')) as write:
+            self.assertEqual(helper.closed_run(RUN, '.', api, planning='planning'), 42)
+            self.assertEqual(write.call_args.args[1:3], (42, RUN))
+
     def test_authenticated_tuple_and_fail_closed_negatives(self):
         original = fixture()
         cases = ("ok", "associated", "wrong_association", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",
