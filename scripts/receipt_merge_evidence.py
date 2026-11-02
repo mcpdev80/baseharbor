@@ -98,6 +98,33 @@ def _head_pulls(api, head):
     raise verifier.ReceiptError("PR association inventory exceeds limit")
 
 
+def wakeup_pr(run_id, *, api):
+    """Resolve a PR/run-completion or develop-push wakeup from GitHub data."""
+    verifier.require(type(run_id) is int and run_id > 0, 'invalid wakeup run')
+    run = api(f'{PREFIX}/actions/runs/{run_id}')
+    verifier.require(run.get('id') == run_id and run.get('status') == 'completed'
+                     and run.get('path') == '.github/workflows/ci.yml'
+                     and (run.get('repository') or {}).get('id') == verifier.REPOSITORY_ID,
+                     'untrusted wakeup run')
+    event = run.get('event')
+    verifier.require(event in ('pull_request', 'push'), 'unsupported wakeup event')
+    if event == 'push' and run.get('head_branch') != 'develop':
+        return None
+    head = _sha(run.get('head_sha'), 'missing wakeup head')
+    prs = _head_pulls(api, head)
+    relevant = [pr for pr in prs if pr.get('merged_at') and pr.get('state') == 'closed'
+                and (pr.get('base') or {}).get('ref') == 'develop'
+                and ((pr.get('base') or {}).get('repo') or {}).get('id') == verifier.REPOSITORY_ID
+                and ((pr.get('head') or {}).get('sha') == head if event == 'pull_request'
+                     else pr.get('merge_commit_sha') == head)]
+    verifier.require(len(relevant) <= 1, 'ambiguous merged PR wakeup')
+    if not relevant:
+        return None
+    number = relevant[0].get('number')
+    verifier.require(type(number) is int and number > 0, 'invalid wakeup PR')
+    return number
+
+
 def build(pr_number, run_id, *, api, product, fetch_sources=None):
     """Authenticate a completed PR run and actual Owner merge, then return evidence.
 
@@ -235,6 +262,19 @@ def validate_record(raw):
     return value
 
 
+def verify_record(raw, *, api, product, fetch_sources=None):
+    """Authenticate persisted evidence live; a canonical JSON file is not proof.
+
+    This deliberately does not claim offline verification after GitHub expires
+    the source artifact. Missing or changed evidence fails closed.
+    """
+    recorded = validate_record(raw)
+    actual = build(recorded['pr'], recorded['run_id'], api=api, product=product,
+                   fetch_sources=fetch_sources)
+    verifier.require(recorded == actual, 'stored evidence differs from live provenance')
+    return actual
+
+
 def publish(pr, run, *, api, product, planning, fetch_sources=None):
     # Verification is repeated on every invocation, including idempotent retries.
     import receipt_writer
@@ -324,18 +364,24 @@ def matches_merged_candidate(run, pr, *, api, product):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pr', type=int, required=True)
+    selection = parser.add_mutually_exclusive_group(required=True)
+    selection.add_argument('--pr', type=int)
+    selection.add_argument('--wakeup-run', type=int)
     parser.add_argument('--product', type=Path, required=True)
     parser.add_argument('--planning', type=Path, required=True)
     args = parser.parse_args()
-    pr = github(f"{PREFIX}/pulls/{args.pr}")
+    pr_number = args.pr if args.pr is not None else wakeup_pr(args.wakeup_run, api=github)
+    if pr_number is None:
+        print('no merged develop PR for authenticated wakeup')
+        return
+    pr = github(f"{PREFIX}/pulls/{pr_number}")
     head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
     runs = _inventory(github,
                       f"{PREFIX}/actions/workflows/ci.yml/runs?head_sha={head}&event=pull_request",
                       'workflow_runs')
     run = select_run(runs, head, lambda run: matches_merged_candidate(
         run, pr, api=github, product=args.product))
-    path, introduction, publication = publish(args.pr, run, api=github,
+    path, introduction, publication = publish(pr_number, run, api=github,
                                                   product=args.product, planning=args.planning,
                                                   fetch_sources=fetch_sources)
     print(f'publication: {publication}\nevidence: {path}\nintroduction: {introduction}')
