@@ -1603,6 +1603,28 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path.endswith('_test.go') and path.startswith('cmd/baha/') and \
+                all(p.endswith('_test.go') for p in paths):
+            # Pure cmd/baha test-only source (gatemap-r6): a PR that changes ONLY
+            # unit tests in the CLI package exercises existing CLI behaviour only
+            # and cannot mutate runtime/registration/authorizer semantics, so the
+            # relevant CLI-side qualification is the existing cli-gofmt formatting
+            # gate that the CI matrix already runs for every cmd/baha change
+            # (scripts/pr-gate-plan.py WIZARD_BASE_CHECKS['cli-gofmt'],
+            # .github/workflows/ci.yml cli-gofmt handler, 'gofmt -l cmd/baha').
+            # Bind the whole cmd/baha/*_test.go family to that EXISTING gate plus
+            # the standard Go build/vet/contract checks — no new gate, no
+            # widening.  This clause is restricted to test-only PRs so an exact
+            # reviewed test-candidate (APPID_FIX) bundled with a non-test path is
+            # NOT swept in and stays on its own reviewed-source contract.  Any
+            # other cmd/baha/*.go that is not a test stays on the
+            # cli-unresolved-runtime-impact catch-all below (fail-closed).  This
+            # branch must sit BEFORE that catch-all and AFTER the mcp_/registration
+            # clauses above so mcp_ and registration-mixed source is NOT swept in.
+            area = 'cli-test-gofmt-binding'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            require(WIZARD_BASE_CHECKS)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
