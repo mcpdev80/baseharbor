@@ -244,7 +244,7 @@ jobs:
           client_before=$(sha256sum "$client_cert" | awk '{print $1}')
           down_plan_file=$(mktemp)
           chmod 600 "$down_plan_file"
-          if /tmp/baha --no-input app down broker-demo >"$down_plan_file" 2>/tmp/broker-down-plan-error.txt; then
+          if env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app down broker-demo >"$down_plan_file" 2>/tmp/broker-down-plan-error.txt; then
             echo "app down unexpectedly succeeded without typed provider consent" >&2
             exit 1
           fi
@@ -261,12 +261,16 @@ jobs:
           up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$up_plan_file")
           rm -f "$up_plan_file"
           if [ "$up_consent" = none ]; then
-            env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app up broker-demo | grep -q "runtime and requested infrastructure verified"
+            env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app up broker-demo | tee /tmp/broker-up.out
           else
-            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha --no-input app up broker-demo | grep -q "runtime and requested infrastructure verified"
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha --no-input app up broker-demo | tee /tmp/broker-up.out
           fi
           unset up_consent
-          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
+          grep -Fq 'application and requested infrastructure verified' /tmp/broker-up.out
+          /tmp/baha app status broker-demo > /tmp/broker-up-status.out
+          grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-up-status.out
+          current_project=$(/tmp/baha app status broker-demo -o json | python3 "$GITHUB_WORKSPACE/scripts/ci-broker-project.py" broker-demo)
+          test "$current_project" = "$project"
           client_after=$(sha256sum "$client_cert" | awk '{print $1}')
           test "$client_before" = "$client_after"
 

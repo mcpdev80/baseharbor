@@ -36,7 +36,7 @@ def main() -> int:
         error_text = Path(error).read_text()
         success = rejected(target, int(code), metadata_text, error_text)
         remote, verify, http = metadata_text.strip().split("|")
-        diagnosis = (f"exit-allowed={int(code) in (35, 56)} "
+        diagnosis = (f"exit-code={int(code)} exit-allowed={int(code) in (35, 56)} "
                      f"target-matched={ipaddress.ip_address(remote) == ipaddress.ip_address(target)} "
                      f"server-verified={verify == '0'} http-unanswered={http == '000'} "
                      f"client-cert-alert={CLIENT_CERT_ALERT.search(error_text) is not None} "
