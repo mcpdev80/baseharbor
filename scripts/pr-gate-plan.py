@@ -1735,12 +1735,15 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
-        elif path == 'internal/logs/render.go':
+        elif path in ('internal/logs/render.go', 'internal/logs/journal_provider_render_test.go'):
             # Rendering changes affect runtime log collection as well as Go behavior.
             area = 'logs-rendering'
             require(LOGS_CHECKS)
             selected.add('atomic/docker/observability')
             selected.add('atomic/podman/observability')
+            if (path == 'internal/logs/journal_provider_render_test.go' and
+                    path_status.get(path) not in ('added', 'modified')):
+                unresolved.append('journal provider regression removal requires review: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
