@@ -282,7 +282,10 @@ def github(path, *, binary=False):
     require(path.startswith((f"repos/{REPOSITORY}/actions/runs/",
                               f"repos/{REPOSITORY}/actions/artifacts/",
                               f"repos/{REPOSITORY}/pulls/",
-                              f"repos/{REPOSITORY}/issues/")), "unsupported API path")
+                              f"repos/{REPOSITORY}/issues/"))
+            or path == f"repos/{REPOSITORY}/git/ref/heads/develop"
+            or re.fullmatch(rf"repos/{re.escape(REPOSITORY)}/git/ref/pull/[1-9][0-9]*/merge", path),
+            "unsupported API path")
     result = subprocess.run(["gh", "api", "--method", "GET", "-H",
                              f"X-GitHub-Api-Version: {API_VERSION}", path], capture_output=True)
     require(result.returncode == 0, "GitHub witness unavailable: " + witness_failure(result))
@@ -335,6 +338,32 @@ def producer_identity(product, plan):
             "producer workflow definition differs from reviewed protected base")
 
 
+def candidate_producer_identity(product, plan, event_base, live_base):
+    """Prove a forward-moved base and the exact candidate before trusting its CI.
+
+    The event and live base values must come from authenticated GitHub API
+    responses, not from a producer-controlled plan.  The caller must also
+    verify the run/PR association and that GitHub's live merge ref is candidate.
+    """
+    head, base, candidate = (plan.get(k) for k in
+                             ("head_sha", "base_sha", "candidate_sha"))
+    require(all(full_sha(x) for x in (head, base, candidate, event_base, live_base)),
+            "invalid candidate source tuple")
+    require(base == live_base, "candidate base differs from current target")
+    rc, _, _ = git_stderr(product, "merge-base", "--is-ancestor", event_base, base)
+    require(rc == 0, "candidate base is not a forward descendant of event base")
+    parents = git(product, "rev-list", "--parents", "-n", "1", candidate).decode().split()
+    require(parents == [candidate, base, head], "candidate parents do not match target and head")
+    merge_rc, merged_tree, _ = git_stderr(product, "merge-tree", "--write-tree", base, head)
+    require(merge_rc == 0 and full_sha(merged_tree.decode().strip()),
+            "candidate cannot be produced by a clean merge")
+    actual_tree = git(product, "rev-parse", candidate + "^{tree}").decode().strip()
+    require(actual_tree == merged_tree.decode().strip(), "candidate merge tree mismatch")
+    require(source_blob(product, candidate, PRODUCT_WORKFLOW)
+            == source_blob(product, base, PRODUCT_WORKFLOW),
+            "candidate workflow differs from reviewed protected base")
+
+
 def pinned_source(product, revision):
     """Honest trusted-source check: the running verifier and the approval
     workflow bytes must equal the reviewed pinned definition; the executing
@@ -360,6 +389,7 @@ def live(value, plan, api=None, product=None):
     run = api(prefix)
     require(run.get("id") == value["run"]["id"]
             and run.get("run_attempt") == value["run"]["attempt"], "wrong run/attempt")
+    run_event = run
     run = api(f"{prefix}/attempts/{value['run']['attempt']}")
     require(run.get("id") == value["run"]["id"]
             and run.get("run_attempt") == value["run"]["attempt"]
@@ -437,7 +467,33 @@ def live(value, plan, api=None, product=None):
             and witnessed.get("target_base_sha") == plan["base_sha"]
             and witnessed.get("integration_sha") == value["sha"], "producer plan/source mismatch")
     if product is not None:
-        producer_identity(product, plan)
+        associations = run_event.get("pull_requests") or []
+        require(isinstance(associations, list) and len(associations) <= 1,
+                "ambiguous producer PR association")
+        event_base = ((associations[0].get("base") or {}).get("sha")
+                      if associations and isinstance(associations[0], dict) else None)
+        if event_base and event_base != plan["base_sha"]:
+            pr_number = associations[0].get("number")
+            require(type(pr_number) is int and pr_number > 0, "invalid producer PR association")
+            pull = api(f"repos/{REPOSITORY}/pulls/{pr_number}")
+            require(pull.get("number") == pr_number and pull.get("state") == "open"
+                    and (pull.get("head") or {}).get("sha") == plan["head_sha"]
+                    and (pull.get("base") or {}).get("ref") == "develop"
+                    and ((pull.get("base") or {}).get("repo") or {}).get("id") == REPOSITORY_ID,
+                    "invalid current producer PR")
+            ref = api(f"repos/{REPOSITORY}/git/ref/heads/develop")
+            require(ref.get("ref") == "refs/heads/develop"
+                    and (ref.get("object") or {}).get("type") == "commit",
+                    "invalid current target ref")
+            merge_ref = api(f"repos/{REPOSITORY}/git/ref/pull/{pr_number}/merge")
+            require(merge_ref.get("ref") == f"refs/pull/{pr_number}/merge"
+                    and (merge_ref.get("object") or {}).get("type") == "commit"
+                    and (merge_ref.get("object") or {}).get("sha") == plan["candidate_sha"],
+                    "candidate SHA does not match authenticated merge ref")
+            candidate_producer_identity(product, plan, event_base,
+                                        (ref.get("object") or {}).get("sha"))
+        else:
+            producer_identity(product, plan)
 
 
 def verify_file(root, revision, path, candidate, plan_revision):
