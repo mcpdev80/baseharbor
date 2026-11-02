@@ -3,6 +3,7 @@
   "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/binding/v1/service-binding.schema.json",
   "title": "BaseHarbor Service Binding 1.1-aligned representation",
   "type": "object",
+  "description": "Service Binding 1.1 well-known output names are authoritative; non-standard entries must be namespaced (see spec/bindings/service-binding-1.1.md). BaseHarbor security/lifecycle extensions stay under the versioned baha.* namespace. additionalProperties:true reserves open, namespaced-only top-level extensions; unknown non-namespaced output keys are rejected by the well-known-output-name guard (contracts/contracts_test.go) and by capability.ValidateServiceBindingName.",
   "additionalProperties": true,
   "properties": {
     "type": {
