@@ -48,6 +48,28 @@ func TestPersistControlPlaneOpenBaoReference(t *testing.T) {
 	}
 }
 
+func TestPersistControlPlaneOpenBaoIgnoresApplicationScope(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	t.Setenv(application.ProviderScopeEnv(capability.ProviderOpenBao), "application")
+	target := configureTestTarget(t)
+	root, err := targetDataRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := persistControlPlaneOpenBaoReference(context.Background()); err != nil {
+		t.Fatalf("application scope must not override control-plane OpenBao: %v", err)
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Instances) != 1 || registry.Instances[0].ID != "openbao/control-plane" ||
+		registry.Instances[0].Scope != capability.ScopeShared ||
+		registry.Instances[0].Ownership != capability.OwnershipBaseHarbor {
+		t.Fatalf("unexpected control-plane identity: %+v", registry.Instances)
+	}
+}
+
 func TestPersistControlPlaneRejectsIncompatibleReference(t *testing.T) {
 	t.Setenv("BASEHARBOR_TARGET", "")
 	target := configureTestTarget(t)
