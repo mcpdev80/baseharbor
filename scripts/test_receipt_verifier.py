@@ -285,12 +285,12 @@ class VerifierFixtureTest(unittest.TestCase):
                     workflow_run=dict(id=self.run["id"], head_sha=self.head_sha))])
             if '/jobs?' in path:
                 run_id = self.run.get('id', 123)
-                required = [dict(self.job, run_id=run_id, head_sha=self.head_sha),
-                            dict(self.job, id=458, run_id=run_id, head_sha=self.head_sha,
+                required = [dict(self.job, id=456, run_id=run_id),
+                            dict(self.job, id=458, run_id=run_id,
                                  name='PR · Focused Python'),
-                            dict(self.job, id=459, run_id=run_id, head_sha=self.head_sha,
+                            dict(self.job, id=459, run_id=run_id,
                                  name='Workflow policy')]
-                producer = dict(self.job, id=457, run_id=run_id, head_sha=self.head_sha,
+                producer = dict(self.job, id=457, run_id=run_id,
                                 name='PR · Trusted Plan')
                 return dict(total_count=4, jobs=required + [producer])
             return copy.deepcopy(self.run)
