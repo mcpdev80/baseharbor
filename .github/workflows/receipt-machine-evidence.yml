@@ -1,0 +1,63 @@
+# Draft only: protect/review this default-branch workflow and its immutable
+# controller before registering it. A machine record is not Owner approval.
+name: Receipt · Machine Evidence
+
+on:
+  workflow_run:
+    workflows: ["CI · Source & Quality"]
+    types: [completed]
+  schedule:
+    - cron: '17 */6 * * *'
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: receipt-machine-evidence
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout reviewed immutable controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e4f802b3ecf0188e1895b358c626385d652e1d2e
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Checkout Planning
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mcpdev80/baseharbor-plan
+          ref: main
+          path: planning
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+      - name: Reconcile authenticated evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
+          TRIGGER_EVENT: ${{ github.event_name }}
+          SOURCE_RUN: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          git -C planning config user.name "codeman-runtime"
+          git -C planning config user.email "codeman-runtime@users.noreply.github.com"
+          case "$TRIGGER_EVENT" in
+            workflow_run)
+              [[ "$SOURCE_RUN" =~ ^[0-9]+$ ]]
+              python3 scripts/receipt_merge_evidence.py --wakeup-run "$SOURCE_RUN" \
+                --product "$GITHUB_WORKSPACE" --planning "$GITHUB_WORKSPACE/planning"
+              ;;
+            schedule)
+              python3 scripts/receipt_merge_evidence.py --reconcile-watermark \
+                --watermark-start 2026-11-02T20:00:00Z \
+                --product "$GITHUB_WORKSPACE" --planning "$GITHUB_WORKSPACE/planning"
+              ;;
+            *) exit 1 ;;
+          esac
