@@ -253,6 +253,19 @@ def fetch_sources(product, head, base):
                    check=True, stdout=subprocess.DEVNULL)
 
 
+def latest_run(runs, head):
+    """Never fall back to a stale success when a newer candidate run failed."""
+    candidates = [r for r in runs if r.get('head_sha') == head
+                  and r.get('event') == 'pull_request'
+                  and type(r.get('id')) is int and r['id'] > 0]
+    verifier.require(candidates, 'no candidate run available')
+    latest = max(candidates, key=lambda r: r['id'])
+    verifier.require(latest.get('run_attempt') == 1 and latest.get('status') == 'completed'
+                     and latest.get('conclusion') == 'success',
+                     'latest candidate run has not succeeded')
+    return latest['id']
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pr', type=int, required=True)
@@ -264,12 +277,7 @@ def main():
     runs = _inventory(github,
                       f"{PREFIX}/actions/workflows/ci.yml/runs?head_sha={head}&event=pull_request",
                       'workflow_runs')
-    eligible = [r for r in runs if r.get('head_sha') == head
-                and r.get('event') == 'pull_request' and r.get('run_attempt') == 1
-                and r.get('status') == 'completed' and r.get('conclusion') == 'success'
-                and type(r.get('id')) is int and r['id'] > 0]
-    verifier.require(eligible, 'no successful candidate run available')
-    run = max(eligible, key=lambda r: r['id'])['id']
+    run = latest_run(runs, head)
     path, introduction, publication = publish(args.pr, run, api=github,
                                                   product=args.product, planning=args.planning,
                                                   fetch_sources=fetch_sources)
