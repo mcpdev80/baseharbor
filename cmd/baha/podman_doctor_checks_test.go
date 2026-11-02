@@ -40,3 +40,37 @@ func TestCollectControlPlaneDoctorChecksOmitsPodmanForDockerTarget(t *testing.T)
 		}
 	}
 }
+
+// The control-plane doctor must NOT emit a Docker engine check when the
+// target runtime provider is not docker. On a pure Podman host there is no
+// Docker socket, so an unconditional Docker-engine probe would fail and
+// corrupt the doctor output. The fix gates the Docker-engine check on
+// target.RuntimeProvider == "docker".
+func TestCollectControlPlaneDoctorChecksOmitsDockerEngineForPodmanTarget(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: "podman-ci",
+		Access: map[string]deployment.AccessDefinition{
+			"local-podman": {Provider: "local", Reference: "local"},
+		},
+		Targets: map[string]deployment.TargetDefinition{
+			"podman-ci": {
+				Runtime:   deployment.RuntimeDefinition{Provider: "podman"},
+				Access:    deployment.TargetAccess{Reference: "local-podman"},
+				Scope:     "local",
+			},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	checks := collectControlPlaneDoctorChecks(context.Background())
+	for _, c := range checks {
+		if c.Name == "Docker engine" {
+			t.Fatalf("podman-target doctor emitted a Docker-engine check: %+v (Docker sockets do not exist on pure Podman hosts)", checks)
+		}
+	}
+}
