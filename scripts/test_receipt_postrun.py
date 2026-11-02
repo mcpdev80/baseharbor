@@ -1031,6 +1031,9 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 'url="$2"',
                 'qurl="${url%%[?]*}"',
                 'fullurl="$2"',
+                # GitHub REST requires exactly three dots between the two
+                # immutable SHAs; two dots return 404 in production.
+                'case "$qurl" in */compare/*) [ "$qurl" = ' + _q('repos/mcpdev80/baseharbor/compare/' + run_base + '...' + run_head) + ' ] || exit 31 ;; esac',
                 "rc=0",
                 'out=""',
                 "ARC=0",
