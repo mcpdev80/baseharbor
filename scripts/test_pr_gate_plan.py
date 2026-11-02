@@ -1883,7 +1883,7 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
 class ReceiptControlPlaneMappingTests(unittest.TestCase):
     def test_receipt_control_plane_script_maps_to_ci_class(self):
         for path in ['scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
-                     'scripts/receipt_tasklink.py']:
+                     'scripts/receipt_tasklink.py', 'scripts/receipt_closed_run.py']:
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -1899,7 +1899,7 @@ class ReceiptControlPlaneMappingTests(unittest.TestCase):
                      'scripts/test_receipt_chain.py',
                      'scripts/test_ci_workflow_policy_receipts.py',
                      'scripts/test_receipt_tasklink.py',
-                     'scripts/test_receipt_postrun.py']:
+                     'scripts/test_receipt_postrun.py', 'scripts/test_receipt_closed_run.py']:
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('resolved', result['coverage_status'])
@@ -4297,7 +4297,7 @@ class ReceiptControlPlaneExecutionTests(unittest.TestCase):
         self.assertEqual(
             ['test_receipt_writer.py', 'test_receipt_verifier.py',
              'test_receipt_chain.py', 'test_ci_workflow_policy_receipts.py',
-             'test_receipt_tasklink.py', 'test_receipt_postrun.py'], executed)
+             'test_receipt_tasklink.py', 'test_receipt_postrun.py', 'test_receipt_closed_run.py'], executed)
 
 
 class RuntimeProjectionPathMappingTests(unittest.TestCase):

@@ -750,13 +750,14 @@ PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
 # fallthroughs so it is not masked by them.
 RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
     'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
-    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+    'scripts/receipt_tasklink.py', 'scripts/receipt_closed_run.py', 'scripts/ci-workflow-policy.sh',
 })
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
     'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
     'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
     'scripts/test_receipt_tasklink.py',
     'scripts/test_receipt_postrun.py',
+    'scripts/test_receipt_closed_run.py',
 })
 RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
 RECEIPT_CANDIDATE_REVIEWED_FILES = {
@@ -821,7 +822,7 @@ CI_CHECKS = [
     {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
      'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
-     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py'},
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py scripts/test_receipt_closed_run.py'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
