@@ -195,7 +195,8 @@ class VerifierFixtureTest(unittest.TestCase):
                     workflow_run=dict(id=self.run["id"], head_sha=self.head_sha))])
             if '/jobs?' in path:
                 producer = dict(self.job, id=457, name='PR · Trusted Plan')
-                return dict(total_count=2, jobs=[copy.deepcopy(self.job), producer])
+                final = dict(self.job, id=458, name='PR Selected Checks')
+                return dict(total_count=3, jobs=[copy.deepcopy(self.job), producer, final])
             return copy.deepcopy(self.run)
         raise verifier.ReceiptError("GitHub witness unavailable: run or resource not found")
 
@@ -505,6 +506,46 @@ class LiveNegativeNegativesTest(VerifierFixtureTest):
         value = verifier.receipt((self.root / path).read_bytes())
         with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
             verifier.live(value, self.plan, api=self.bogus_selected_gates_api([]))
+
+    def test_final_required_and_optional_skip(self):
+        path, _ = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        def witness(mode):
+            def api(path, **kwargs):
+                result = self.api(path, **kwargs)
+                if '/jobs?' in path:
+                    final = result['jobs'][-1]
+                    if mode == 'missing':
+                        result['jobs'].pop()
+                    elif mode == 'duplicate':
+                        result['jobs'].append(dict(final, id=999))
+                    elif mode in ('skipped', 'failure'):
+                        final['conclusion'] = mode
+                    elif mode == 'optional_skip':
+                        result['jobs'].append(dict(final, id=999, name='Optional', conclusion='skipped'))
+                    result['total_count'] = len(result['jobs'])
+                return result
+            return api
+        for mode in ('missing', 'duplicate', 'skipped', 'failure'):
+            with self.subTest(mode=mode), self.assertRaisesRegex(verifier.ReceiptError, 'required final job'):
+                verifier.live(value, self.plan, api=witness(mode))
+        verifier.live(value, self.plan, api=witness('optional_skip'))
+
+    def test_unresolved_nonpilot_fails_closed(self):
+        path, _ = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        def api(path, *, binary=False):
+            if binary:
+                buffer = io.BytesIO()
+                with zipfile.ZipFile(buffer, 'w') as archive:
+                    archive.writestr('pr-plan.json', verifier.canonical(dict(
+                        schema='baseharbor.pr-gate-plan/v1', coverage_status='failed',
+                        selected_gates=[], head_sha=self.head_sha,
+                        target_base_sha=self.base_sha, integration_sha=self.candidate)))
+                return buffer.getvalue()
+            return self.api(path, binary=binary)
+        with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
+            verifier.live(value, self.plan, api=api)
 
     def test_negative_second_attempt_rejected(self):
         path, original = self.create()
@@ -1270,8 +1311,9 @@ class ProductionPathCliTest(VerifierFixtureTest):
                    "body": TASK_PATH},
                   open(fix + '/issue.json', 'w'))
         producer_job = copy.deepcopy(self.job)
-        json.dump(dict(total_count=2, jobs=[producer_job, dict(
-            producer_job, id=producer_job['id'] + 1, name='PR · Trusted Plan')]),
+        json.dump(dict(total_count=3, jobs=[producer_job, dict(
+            producer_job, id=producer_job['id'] + 1, name='PR · Trusted Plan'), dict(
+            producer_job, id=producer_job['id'] + 2, name='PR Selected Checks')]),
             open(fix + '/jobs.json', 'w'))
         json.dump(dict(total_count=1, artifacts=[dict(
             id=789, name='trusted-pr-plan', expired=False, size_in_bytes=500,

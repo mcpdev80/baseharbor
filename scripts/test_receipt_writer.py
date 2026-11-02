@@ -272,7 +272,8 @@ class ReceiptWriterTest(BaseWriterTest):
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            final = dict(job, id=458, name='PR Selected Checks')
+            return dict(total_count=3, jobs=[copy.deepcopy(job), producer, final])
         return copy.deepcopy(run)
 
 
@@ -369,7 +370,8 @@ class PublishRemoteTest(TestCase):
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            final = dict(job, id=458, name='PR Selected Checks')
+            return dict(total_count=3, jobs=[copy.deepcopy(job), producer, final])
         return copy.deepcopy(run)
 
     def test_publish_first_receipt_pushes_successfully(self):
@@ -804,7 +806,8 @@ class PublishRemoteTest(TestCase):
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            final = dict(job, id=458, name='PR Selected Checks')
+            return dict(total_count=3, jobs=[copy.deepcopy(job), producer, final])
         return copy.deepcopy(run)
 
 

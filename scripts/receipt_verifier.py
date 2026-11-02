@@ -398,6 +398,13 @@ def live(value, plan, api=None, product=None):
             and producer[0].get("conclusion") == "success"
             and producer[0].get("run_id") == value["run"]["id"]
             and producer[0].get("head_sha") == plan["head_sha"], "trusted plan job missing")
+    # This protected job evaluates the trusted plan's complete required set.
+    final = [j for j in jobs if j.get("name") == "PR Selected Checks"]
+    require(len(final) == 1 and final[0].get("run_id") == value["run"]["id"]
+            and final[0].get("head_sha") == plan["head_sha"]
+            and final[0].get("status") == "completed"
+            and final[0].get("conclusion") == "success",
+            "required final job missing, ambiguous, or unsuccessful")
     inventory = api(prefix + "/artifacts?per_page=100")
     artifacts = inventory.get("artifacts")
     require(isinstance(artifacts, list) and len(artifacts) <= 100
