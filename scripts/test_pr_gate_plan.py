@@ -1469,6 +1469,20 @@ class PodmanHealthPackageBindingTests(unittest.TestCase):
                          'new_path': 'internal/unknown/doctor.go'}]):
             with self.subTest(change=change):
                 self.assertEqual('unresolved', planner.plan(diff(change), REQ, MAP)['coverage_status'])
+class NativeIntegrationSourceTests(unittest.TestCase):
+    def test_native_sources_select_real_lifecycle_gates(self):
+        for name in ('cmd/baha/app_repository_integration_test.go',
+                     'cmd/baha/app_workload_integration_test.go',
+                     'internal/application/runtime_multi_integration_test.go'):
+            with self.subTest(name=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'},
+                                 set(result['selected_gates']))
+                deleted = planner.plan(diff([{'status': 'deleted', 'path': name}]), REQ, MAP)
+                self.assertEqual('unresolved', deleted['coverage_status'])
+
+
 class LogsRenderingBindingTests(unittest.TestCase):
     def test_render_requires_package_and_native_observability(self):
         result = planner.plan(diff(paths('internal/logs/render.go')), REQ, MAP)

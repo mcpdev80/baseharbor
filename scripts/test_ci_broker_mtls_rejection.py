@@ -1,0 +1,29 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location("broker_mtls_rejection", Path(__file__).with_name("ci-broker-mtls-rejection.py"))
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class MTLSRejectionTest(unittest.TestCase):
+    def test_client_cert_alert_from_verified_target(self):
+        self.assertTrue(module.rejected("172.17.0.2", 56, "172.17.0.2|0|000", "curl: (56) OpenSSL: tlsv1 alert unknown ca"))
+
+    def test_unrelated_failures_do_not_pass(self):
+        for code, meta, error in [
+            (7, "172.17.0.2|0|000", "connection refused"),
+            (60, "172.17.0.2|20|000", "SSL certificate problem"),
+            (56, "172.17.0.3|0|000", "tlsv1 alert bad certificate"),
+            (56, "172.17.0.2|0|401", "tlsv1 alert bad certificate"),
+            (0, "172.17.0.2|0|000", "tlsv1 alert bad certificate"),
+            (56, "", "tlsv1 alert bad certificate"),
+            (56, "172.17.0.2|0|000", "connection reset by peer"),
+        ]:
+            with self.subTest(code=code, metadata=meta, error=error):
+                self.assertFalse(module.rejected("172.17.0.2", code, meta, error))
+
+
+if __name__ == "__main__":
+    unittest.main()

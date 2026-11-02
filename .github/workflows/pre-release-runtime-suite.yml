@@ -88,7 +88,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        if: inputs.candidate_artifact == '' || inputs.gate == 'observability' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
+        if: inputs.candidate_artifact == '' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -230,7 +230,7 @@ jobs:
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
         # Security starts the complete provider set; budget cold builds and
         # teardown after acceptance without changing service readiness limits.
-        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || inputs.gate == 'observability' && 25 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
+        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || inputs.gate == 'observability' && 25 || inputs.gate == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
@@ -252,6 +252,46 @@ jobs:
           fi
           cd "$workdir"
           env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+          if [ "$GATE" = lifecycle ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cd "$GITHUB_WORKSPACE"
+            test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+            [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
+            git fetch --no-tags origin "$PR_BASE_SHA"
+            changed="$RUNNER_TEMP/native-integration-changed.txt"
+            git diff --no-renames --name-only "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
+              cmd/baha/app_repository_integration_test.go \
+              cmd/baha/app_workload_integration_test.go \
+              internal/application/runtime_multi_integration_test.go > "$changed"
+            if [ -s "$changed" ]; then
+              bash scripts/ci-runtime-reset.sh "$RUNTIME"
+              unset BASEHARBOR_TARGET
+              export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-native-xdg/config"
+              export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-native-xdg/data"
+              export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-native-xdg/cache"
+              export BASEHARBOR_CI_RUNTIME_INTEGRATION=1
+              export BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application
+              export BASEHARBOR_PROVIDER_VALKEY_SCOPE=application
+              export BASEHARBOR_PROVIDER_OPENBAO_SCOPE=application
+              run_native_test() {
+                local package="$1" name="$2" output="$RUNNER_TEMP/${2}.log"
+                go test -p 1 "$package" -run "^${name}$" -count=1 -v | tee "$output"
+                grep -Fq "=== RUN   ${name}" "$output"
+                grep -Eq "^--- PASS: ${name}([[:space:]]|$)" "$output"
+              }
+              if grep -Fxq 'cmd/baha/app_repository_integration_test.go' "$changed"; then
+                run_native_test ./cmd/baha TestRepositoryWorkflowRealLifecycle
+              fi
+              if grep -Fxq 'cmd/baha/app_workload_integration_test.go' "$changed"; then
+                run_native_test ./cmd/baha TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI
+                run_native_test ./cmd/baha TestRepositoryComposeWorkloadOnlyLifecycleInCI
+                run_native_test ./cmd/baha TestRepositoryBuildWorkloadRebuildsSourceChangesInCI
+              fi
+              if grep -Fxq 'internal/application/runtime_multi_integration_test.go' "$changed"; then
+                run_native_test ./internal/application TestMultiInstanceComposeLifecycleInCI
+              fi
+            fi
+          fi
           if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             cd "$GITHUB_WORKSPACE"
             test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"

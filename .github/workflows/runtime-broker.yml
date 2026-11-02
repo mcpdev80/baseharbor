@@ -49,7 +49,7 @@ jobs:
           cache: false
 
       - name: Validate broker fixture helpers
-        run: python3 -m unittest scripts/test_ci_broker_project.py scripts/test_ci_broker_docs_url.py scripts/test_ci_broker_typed_consent.py scripts/test_ci_podman_typed_consent.py -q
+        run: python3 -m unittest scripts/test_ci_broker_project.py scripts/test_ci_broker_docs_url.py scripts/test_ci_broker_typed_consent.py scripts/test_ci_broker_mtls_rejection.py scripts/test_ci_podman_typed_consent.py -q
 
       - name: Build BaseHarbor and package exact tested binary
         run: |
@@ -91,10 +91,10 @@ jobs:
             rm -f "$plan"
             if [ "$consent" = none ]; then
               unset consent
-              /tmp/baha app apply "$1"
+              env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app apply "$1"
               return $?
             fi
-            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha --no-input app apply "$1" || { result=$?; unset consent; return "$result"; }
             unset consent
           }
           record_project() {
@@ -196,17 +196,36 @@ jobs:
           test -n "$target_id"
           test -n "$other_id"
           target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
+          other_ip=$(docker inspect "$other_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
           test -n "$target_ip"
+          test -n "$other_ip"
+          test "$target_ip" != "$other_ip"
+          for entry in "$target_id:$target_ip" "$other_id:$other_ip"; do
+            id=${entry%%:*}
+            ip=${entry#*:}
+            docker exec "$id" curl --fail --silent --show-error \
+              --resolve "baseharbor-secrets:8443:$ip" \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key \
+              https://baseharbor-secrets:8443/readyz >/dev/null
+          done
+          docker cp "$target_id:/run/baseharbor/identity/ca.pem" /tmp/broker-target-ca.pem
+          docker cp /tmp/broker-target-ca.pem "$other_id:/tmp/broker-target-ca.pem"
+          docker cp "$target_id:/run/secrets/probe-client-cert" /tmp/broker-target-cert.pem
+          docker cp "$other_id:/run/secrets/probe-client-cert" /tmp/broker-other-cert.pem
+          ! cmp -s /tmp/broker-target-cert.pem /tmp/broker-other-cert.pem
           set +e
-          docker exec "$other_id" sh -ec "curl --fail --silent --show-error \
-            --resolve baseharbor-secrets:8443:$target_ip \
-            --cacert /run/baseharbor/identity/ca.pem \
+          docker exec "$other_id" curl --fail --silent --show-error \
+            --resolve "baseharbor-secrets:8443:$target_ip" \
+            --cacert /tmp/broker-target-ca.pem \
             --cert /run/secrets/probe-client-cert \
             --key /run/secrets/probe-client-key \
-            https://baseharbor-secrets:8443/readyz >/tmp/cross-app.out 2>/tmp/cross-app.err"
+            --output /dev/null --write-out '%{remote_ip}|%{ssl_verify_result}|%{http_code}' \
+            https://baseharbor-secrets:8443/readyz >/tmp/cross-app-meta 2>/tmp/cross-app.err
           code=$?
           set -e
-          test "$code" -ne 0
+          python3 "$GITHUB_WORKSPACE/scripts/ci-broker-mtls-rejection.py" \
+            "$target_ip" "$code" /tmp/cross-app-meta /tmp/cross-app.err
 
       - name: Prove broker lifecycle and same dynamic secret ref survives restart
         run: |
@@ -240,9 +259,9 @@ jobs:
           up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$up_plan_file")
           rm -f "$up_plan_file"
           if [ "$up_consent" = none ]; then
-            /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+            env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app up broker-demo | grep -q "runtime and requested infrastructure verified"
           else
-            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha --no-input app up broker-demo | grep -q "runtime and requested infrastructure verified"
           fi
           unset up_consent
           /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
@@ -339,10 +358,10 @@ jobs:
             rm -f "$plan"
             if [ "$consent" = none ]; then
               unset consent
-              /tmp/baha app apply "$1"
+              env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app apply "$1"
               return $?
             fi
-            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha --no-input app apply "$1" || { result=$?; unset consent; return "$result"; }
             unset consent
           }
           workdir=$(mktemp -d)

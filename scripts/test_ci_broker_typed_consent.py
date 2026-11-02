@@ -11,8 +11,8 @@ spec.loader.exec_module(helper)
 
 
 def plan(**updates):
-    value = {"version": "baseharbor.provider-plan/v1", "complete": True,
-             "changes": [{"action": "reuse"}, {"action": "preserve"}]}
+    value = {"version": "baseharbor.provider-plan/v1", "target": "ci", "complete": True,
+             "consumers": {}, "required": [], "released_bindings": [], "changes": []}
     value.update(updates)
     return {"provider_plan": value}
 
@@ -21,10 +21,12 @@ class BrokerConsentTests(unittest.TestCase):
     def test_complete_non_mutating_plan_needs_no_synthetic_consent(self):
         self.assertIsNone(helper.consent_from_plan(plan()))
 
-    def test_missing_impact_never_hides_incomplete_or_mutating_plan(self):
-        for value in (plan(complete=False), plan(version="unknown"),
-                      plan(changes=None), plan(changes=[{"action": "add"}]),
-                      plan(impact=None), {}):
+    def test_no_impact_does_not_fabricate_consent_for_incomplete_plan(self):
+        self.assertIsNone(helper.consent_from_plan(plan(complete=False, impact=None)))
+
+    def test_invalid_plans_are_rejected(self):
+        for value in (plan(complete=None), plan(version="unknown"), plan(target=""),
+                      plan(changes=None), plan(changes=[{"action": "add"}]), {}):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 helper.consent_from_plan(value)
 

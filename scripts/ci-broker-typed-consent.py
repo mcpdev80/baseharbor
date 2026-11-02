@@ -18,16 +18,30 @@ def consent_from_plan(document):
     plan = document["provider_plan"]
     if plan.get("version") != "baseharbor.provider-plan/v1":
         raise ValueError("unsupported provider-plan version")
+    if not isinstance(plan.get("target"), str) or not plan["target"].strip():
+        raise ValueError("provider target is missing")
+    if type(plan.get("complete")) is not bool:
+        raise ValueError("provider completeness is missing")
+    if not isinstance(plan.get("consumers"), dict):
+        raise ValueError("provider consumers are missing")
+    if not isinstance(plan.get("required"), list) or not all(isinstance(x, str) for x in plan["required"]):
+        raise ValueError("provider requirements are invalid")
+    if not isinstance(plan.get("released_bindings"), list):
+        raise ValueError("provider released bindings are missing")
     changes = plan.get("changes")
     if not isinstance(changes, list):
         raise ValueError("provider changes are missing")
-    if "impact" in plan:
+    if any(not isinstance(item, dict) or not isinstance(item.get("instance_id"), str)
+           or not item["instance_id"] or item.get("action") not in
+           {"reuse", "preserve", "add", "restart", "stop", "remove-runtime"}
+           or not isinstance(item.get("reason"), str)
+           or not isinstance(item.get("ownership"), str)
+           or not isinstance(item.get("consumers"), list)
+           or not all(isinstance(x, str) for x in item["consumers"])
+           or type(item.get("preserve_data")) is not bool for item in changes):
+        raise ValueError("provider change is invalid")
+    if plan.get("impact") is not None:
         return native_consent.consent_from_plan(document, "provider-plan")
-    if plan.get("complete") is not True:
-        raise ValueError("incomplete provider plan without impact")
-    if any(not isinstance(item, dict) or item.get("action") not in {"reuse", "preserve"}
-           for item in changes):
-        raise ValueError("provider changes require an impact")
     return None
 
 
