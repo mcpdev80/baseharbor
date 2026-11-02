@@ -418,19 +418,21 @@ func TestComposeYAMLBrokerHealthcheckTimingConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Healthcheck timing must allow OpenBao and broker enough time to initialize
-	// before the first /readyz probe. start_period 2s was too aggressive.
-	// 30s gives OpenBao ~30s to come up before the healthcheck loop starts.
-	if !strings.Contains(got, "start_period: 30s") {
-		t.Errorf("healthcheck start_period should be 30s to avoid premature /readyz failures; got:\n%s", got)
+	// before the first /readyz probe. The established repo pattern
+	// (internal/application/mongodb_runtime.go) uses interval:5s timeout:10s
+	// retries:18 start_period:15s; the broker readiness mission widens this to
+	// retries:24 (grace ~135s) with the same start_period/timeout shape.
+	if !strings.Contains(got, "start_period: 15s") {
+		t.Errorf("healthcheck start_period should be 15s to avoid premature /readyz failures; got:\n%s", got)
 	}
 	if !strings.Contains(got, "interval: 5s") {
 		t.Errorf("healthcheck interval should be 5s; got:\n%s", got)
 	}
-	if !strings.Contains(got, "retries: 12") {
-		t.Errorf("healthcheck retries should be 12; got:\n%s", got)
+	if !strings.Contains(got, "retries: 24") {
+		t.Errorf("healthcheck retries should be 24; got:\n%s", got)
 	}
-	if !strings.Contains(got, "timeout: 5s") {
-		t.Errorf("healthcheck timeout should be 5s; got:\n%s", got)
+	if !strings.Contains(got, "timeout: 10s") {
+		t.Errorf("healthcheck timeout should be 10s; got:\n%s", got)
 	}
 }
 
