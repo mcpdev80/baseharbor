@@ -145,7 +145,12 @@ func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwo
 // repository authoring metadata and never to portable application intent.
 type WorkloadConfig struct {
 	Components []string
-	Compose    string
+	// Compose is repository-source provenance (a compose/quadlet/k8s source path)
+	// and MUST NOT be required as portable Application Intent. The omitempty json
+	// tag keeps it out of the generated MCP intent schema's "required" list; the
+	// authoring intent is portable, source provenance stays optional and
+	// parseable. See spec/application-contract-v1.md workload section.
+	Compose string `json:"compose,omitempty"`
 }
 
 // HTTPExposureRequirement is provider-neutral public HTTP exposure intent.

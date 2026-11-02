@@ -149,3 +149,25 @@ func TestMCPAuthoringAuthorizationDenialPrecedesIdentityPersistence(t *testing.T
 		}
 	}
 }
+
+func TestMCPAuthoringWorkloadComposeIsOptional(t *testing.T) {
+	// Regression: #1265 made Workload.Compose required in the generated MCP intent
+	// schema, rejecting valid authoring intent that omits it. Source provenance is
+	// optional portable intent (spec/application-contract-v1.md). A valid adopt
+	// intent with only workload.components must pass schema validation without it.
+	target := configureTestTarget(t)
+	root := t.TempDir()
+	session := workspaceMutationClient(t)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/workload:fixed\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"repository": root, "intent": map[string]any{"Version": 1, "Name": "coreless", "Environment": "dev", "Workload": map[string]any{"Components": []string{"api"}}}}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.app.adopt", Arguments: args})
+	if err != nil || result.IsError {
+		failure, _ := json.Marshal(result)
+		t.Fatalf("valid intent without Compose rejected: %v %s", err, failure)
+	}
+	if _, err := deployment.ListDeployments(target.Name); err != nil {
+		t.Fatalf("deployment lookup after valid adopt failed: %v", err)
+	}
+}
