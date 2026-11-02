@@ -384,6 +384,56 @@ func TestComposeYAMLBrokerHealthcheckPinsTLSHostnameToLoopback(t *testing.T) {
 	}
 }
 
+func TestComposeYAMLBrokerHealthcheckTimingConfiguration(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	m := application.New("demo", "dev", false, false, true)
+	mtls := openbao.RuntimeMTLSFiles{
+		CA:         write("ca.pem"),
+		BrokerCert: write("broker-cert.pem"),
+		BrokerKey:  write("broker-key.pem"),
+		ClientCert: write("client-cert.pem"),
+		ClientKey:  write("client-key.pem"),
+	}
+	got, err := composeYAML(
+		m,
+		mtls,
+		write("runtime-token"),
+		write("openbao.env"),
+		write("openbao-ca.pem"),
+		write("permissions.json"),
+		write("service-tokens.json"),
+		"baseharbor-runtime:test",
+		"",
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Healthcheck timing must allow OpenBao and broker enough time to initialize
+	// before the first /readyz probe. start_period 2s was too aggressive.
+	// 30s gives OpenBao ~30s to come up before the healthcheck loop starts.
+	if !strings.Contains(got, "start_period: 30s") {
+		t.Errorf("healthcheck start_period should be 30s to avoid premature /readyz failures; got:\n%s", got)
+	}
+	if !strings.Contains(got, "interval: 5s") {
+		t.Errorf("healthcheck interval should be 5s; got:\n%s", got)
+	}
+	if !strings.Contains(got, "retries: 12") {
+		t.Errorf("healthcheck retries should be 12; got:\n%s", got)
+	}
+	if !strings.Contains(got, "timeout: 5s") {
+		t.Errorf("healthcheck timeout should be 5s; got:\n%s", got)
+	}
+}
+
 func TestProjectOwnerOnlyFilePreservesCanonicalPrivateKeyProtection(t *testing.T) {
 	root := t.TempDir()
 	files := application.RuntimeFiles{

@@ -262,7 +262,7 @@ func (c runtimeBrokerComposeConfig) writeHealthcheck(b *strings.Builder) {
 	b.WriteString("      interval: 5s\n")
 	b.WriteString("      timeout: 5s\n")
 	b.WriteString("      retries: 12\n")
-	b.WriteString("      start_period: 2s\n")
+	b.WriteString("      start_period: 30s\n")
 }
 
 func (c runtimeBrokerComposeConfig) writeServiceNetworks(b *strings.Builder) {
