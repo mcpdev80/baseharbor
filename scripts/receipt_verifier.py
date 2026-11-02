@@ -471,8 +471,12 @@ def live(value, plan, api=None, product=None):
                              "integration/docker/", "integration/podman/")
     selected_gates = list(witnessed.get("selected_gates") or [])
     required_names = ["PR · Focused Python", "Workflow policy"]
-    for check_id in witnessed.get("required_validation_checks") or []:
-        required_names.append("PR · Validation · " + str(check_id))
+    for check in witnessed.get("required_validation_checks") or []:
+        require(isinstance(check, dict) and "id" in check,
+                "invalid required_validation_checks entry (need {'id': ...})")
+        check_id = check["id"]
+        require(isinstance(check_id, str), "required_validation_checks id must be a string")
+        required_names.append("PR · Validation · " + check_id)
     if any(isinstance(g, str) and g.startswith(NATIVE_EXACT_PREFIXES)
            for g in selected_gates):
         required_names += ["PR · Exact Candidate", "PR · Runner Interface"]
@@ -503,15 +507,23 @@ def live(value, plan, api=None, product=None):
                 and job.get("status") == "completed"
                 and job.get("conclusion") == "success",
                 "required gate job is not successful: " + name)
-    # Fail-closed for executed-and-failed non-required jobs (rcptverfix #1):
-    # a job the plan does NOT require is accepted when it is simply absent
-    # (skipped), but if it RAN and FAILED it must block — a shadow success on a
-    # required name would otherwise hide this (covered by the uniqueness check
-    # above), and a genuine optional failure must not be silently whitelisted.
+    # Fail-closed for executed-and-failed jobs (rcptverfix #1): a job the plan
+    # does NOT require is accepted when it is simply absent (skipped) or has no
+    # conclusion yet, but if it RAN with a negative TERMINAL conclusion
+    # (failure/timed_out/action_required) it must block. `skipped` is a normal
+    # "not selected" outcome GitHub returns and is NOT an executed failure —
+    # treating it as such would re-block exactly the case this fix resolves.
+    # Any executed-and-failed job blocks even when it is not a required name:
+    # the only other way a required name is satisfied is by a distinct success
+    # job, and a duplicate required name (a shadow success) is still caught by
+    # the uniqueness check above — so a genuine optional failure must not be
+    # silently whitelisted and a failed required job cannot hide behind a
+    # shadow success.
+    EXECUTED_FAILURES = {"failure", "timed_out", "action_required"}
     for job in jobs:
-        if job.get("conclusion") not in (None, "success"):
-            require(job.get("name") in required_names,
-                    "executed-and-failed job not in trusted plan: "
+        if job.get("conclusion") in EXECUTED_FAILURES:
+            require(False,
+                    "executed-and-failed job in trusted plan: "
                     + str(job.get("name")))
     require(witnessed.get("schema") == "baseharbor.pr-gate-plan/v1"
             and witnessed.get("coverage_status") == "resolved"
