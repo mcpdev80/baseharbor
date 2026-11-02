@@ -1127,6 +1127,14 @@ jobs:
           esac
           echo "gate=$gate" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare verified rootless Docker runtime
+        if: matrix.runtime == 'docker'
+        shell: bash
+        run: bash scripts/ci-core-rootless-runtime.sh
+
       - name: Prepare hosted Podman runtime
         if: matrix.runtime == 'podman'
         shell: bash
@@ -1135,9 +1143,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y podman
           podman version
-
-      - name: Checkout exact candidate
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
