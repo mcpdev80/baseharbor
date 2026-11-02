@@ -112,7 +112,14 @@ class AppIDFixtureExactQualificationTests(unittest.TestCase):
         self.assertTrue({'source-contracts', 'cli-build', 'cli-vet',
                          'cli-guided-tests'}.issubset(
             {c['id'] for c in result['required_validation_checks']}))
-        variants = [reviewed[:1], reviewed + paths('cmd/baha/mcp_tools.go'),
+        # A changed workload integration test is now covered by both native
+        # lifecycle gates independently of this historical reviewed bundle.
+        with patch.object(planner, 'core752_reviewed_merge_chain', return_value=True):
+            native = planner.plan(diff(paths('cmd/baha/app_workload_integration_test.go')), REQ, MAP)
+        self.assertEqual('resolved', native['coverage_status'])
+        self.assertTrue({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+                        .issubset(set(native['selected_gates'])))
+        variants = [reviewed + paths('cmd/baha/mcp_tools.go'),
                     [{'path': reviewed[0]['path'], 'status': 'deleted'}, reviewed[1]],
                     paths('cmd/baha/unreviewed_test.go',
                           'internal/application/manifest_test.go')]
