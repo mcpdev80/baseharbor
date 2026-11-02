@@ -659,6 +659,27 @@ PR1272_REGISTRATION_MIXED_FILES = {
 }
 PR1272_REGISTRATION_MIXED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
+# cmd/baha test files that are bound by an EXACT reviewed-test-candidate clause
+# (APPID_FIX and its follow-ups). A PR whose head does NOT match that exact
+# reviewed SHA keeps the fail-closed ancestry contract and must stay unresolved
+# rather than inherit the generic cmd/baha/*_test.go cli-gofmt binding. Any
+# OTHER cmd/baha/*_test.go (not in this set) is eligible for the generic
+# test-only binding below.
+REVIEWED_TEST_FILES = frozenset({
+    'cmd/baha/app_workload_integration_test.go',
+    'internal/application/manifest_test.go',
+    'internal/application/external_provider_registry_test.go',
+    'internal/application/external_provider_removal_retry_test.go',
+    'internal/application/external_provider_scope_test.go',
+    'internal/application/protected_tempdir_test.go',
+    'internal/application/runtime_binding_projection_reset_test.go',
+    'internal/application/telemetry_authorization_test.go',
+})
+
+def _is_reviewed_test_file(path):
+    """True for cmd/baha/*_test.go paths bound by an exact reviewed-test clause."""
+    return path.endswith('_test.go') and path in REVIEWED_TEST_FILES
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -1603,6 +1624,33 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path.endswith('_test.go') and path.startswith('cmd/baha/') and \
+                all(p.endswith('_test.go') for p in paths) and \
+                not any(_is_reviewed_test_file(path) for path in paths):
+            # Pure cmd/baha test-only source (gatemap-r6): a PR that changes ONLY
+            # unit tests in the CLI package exercises existing CLI behaviour only
+            # and cannot mutate runtime/registration/authorizer semantics, so the
+            # relevant CLI-side qualification is the existing cli-gofmt formatting
+            # gate that the CI matrix already runs for every cmd/baha change
+            # (scripts/pr-gate-plan.py WIZARD_BASE_CHECKS['cli-gofmt'],
+            # .github/workflows/ci.yml cli-gofmt handler, 'gofmt -l cmd/baha').
+            # Bind the whole cmd/baha/*_test.go family to that EXISTING gate plus
+            # the standard Go build/vet/contract checks — no new gate, no
+            # widening.  Restricted to (a) test-only PRs and (b) test files that
+            # are NOT part of an exact reviewed test-candidate: an exact-HEAD
+            # reviewed test-candidate (e.g. APPID_FIX, a lone cmd/baha/
+            # app_workload_integration_test.go) keeps its own fail-closed
+            # ancestry contract and must stay unresolved for any other head, so
+            # such files fall through to the catch-all below instead of being
+            # swept into the generic gofmt binding.  Any other cmd/baha/*.go that
+            # is not a test stays on the cli-unresolved-runtime-impact catch-all
+            # below (fail-closed).  This branch must sit BEFORE that catch-all and
+            # AFTER the mcp_/registration clauses above so mcp_ and
+            # registration-mixed source is NOT swept in.
+            area = 'cli-test-gofmt-binding'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            require(WIZARD_BASE_CHECKS)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
