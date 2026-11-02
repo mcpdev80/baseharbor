@@ -24,18 +24,25 @@ permissions:
 
 jobs:
   acceptance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'acceptance'
     timeout-minutes: 30
     env:
+      BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:ci
-      XDG_CONFIG_HOME: /tmp/baseharbor-broker-xdg/config
-      XDG_DATA_HOME: /tmp/baseharbor-broker-xdg/data
       BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+      - name: Prepare verified rootless runtime
+        # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
+        # time; clear the job-pinned state dirs so docker.service lands in
+        # ~/.config/systemd/user where the user manager loads it.
+        env:
+          XDG_CONFIG_HOME: ''
+          XDG_DATA_HOME: ''
+        run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -57,7 +64,13 @@ jobs:
           rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
           /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
-          /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          # 'baha up' already bootstraps an uninitialized managed trust plane
+          # (repository_up.go:198). Gate the explicit bootstrap on the ACTUAL
+          # initialization state; a second initialize would hit the write-once
+          # guard ("OpenBao is already initialized").
+          if /tmp/baha openbao status --json 2>/dev/null | grep -q '"initialized":false'; then
+            /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          fi
           /tmp/baha openbao status | grep -q "AppRole login succeeded"
 
       - name: Create two isolated secret applications
@@ -230,18 +243,25 @@ jobs:
 
 
   performance:
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     if: inputs.mode == 'performance'
     timeout-minutes: 20
     env:
+      BASEHARBOR_TEST_RUNTIME: docker
       BASEHARBOR_RUNTIME_IMAGE: baseharbor-runtime:perf
-      XDG_CONFIG_HOME: /tmp/baseharbor-perf-xdg/config
-      XDG_DATA_HOME: /tmp/baseharbor-perf-xdg/data
       BASEHARBOR_TARGET: ci
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.ref }}
+      - name: Prepare verified rootless runtime
+        # The setuptool's systemd unit follows XDG_CONFIG_HOME at generation
+        # time; clear the job-pinned state dirs so docker.service lands in
+        # ~/.config/systemd/user where the user manager loads it.
+        env:
+          XDG_CONFIG_HOME: ''
+          XDG_DATA_HOME: ''
+        run: bash scripts/ci-core-rootless-runtime.sh
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -263,7 +283,13 @@ jobs:
           rm -rf "$XDG_CONFIG_HOME/baseharbor" "$XDG_DATA_HOME/baseharbor"
           /tmp/baha target create ci --provider docker --access local-docker --reference local --scope default --default >/dev/null
           /tmp/baha up --control-plane-only --yes --postgres-port 15432 --openbao-port 18200
-          /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          # 'baha up' already bootstraps an uninitialized managed trust plane
+          # (repository_up.go:198). Gate the explicit bootstrap on the ACTUAL
+          # initialization state; a second initialize would hit the write-once
+          # guard ("OpenBao is already initialized").
+          if /tmp/baha openbao status --json 2>/dev/null | grep -q '"initialized":false'; then
+            /tmp/baha openbao bootstrap --recovery-file "$workdir/openbao-recovery.json"
+          fi
           /tmp/baha app create perf-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
           /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1

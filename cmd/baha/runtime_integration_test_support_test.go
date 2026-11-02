@@ -38,6 +38,11 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			return
 		}
 		_ = os.Unsetenv("BASEHARBOR_TARGET")
+		// The shared rootless daemon is the integration endpoint. An active
+		// CLI context (the prepare step's setuptool registers "rootless")
+		// takes precedence over DOCKER_HOST inside the engine resolver, so
+		// make the endpoint authoritative and neutralize the context.
+		_ = os.Unsetenv("DOCKER_CONTEXT")
 
 		var out bytes.Buffer
 		if os.Getenv("BASEHARBOR_TEST_RUNTIME") == "podman" {

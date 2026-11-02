@@ -52,7 +52,11 @@ config.write_text(json.dumps(settings) + '\n')
 PY
     dockerd-rootless-setuptool.sh install --force
     export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/docker.sock"
-    printf 'DOCKER_HOST=%s\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
+    # The setuptool activates its 'rootless' CLI context as a side effect. An
+    # active context beats DOCKER_HOST in the engine resolver, so neutralize
+    # it and let the published endpoint decide; $GITHUB_ENV mirrors both.
+    docker context use default
+    printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$DOCKER_HOST" >> "$GITHUB_ENV"
     docker info --format '{{json .SecurityOptions}}'
     ;;
   podman)
@@ -78,6 +82,18 @@ location = "$cache_location/library"
 insecure = true
 EOF
     podman info --format '{{.Host.Security.Rootless}}'
+    # Podman jobs must leave a resolvable Docker CLI context: the engine
+    # probe runs 'docker context show', which errors when the current-context
+    # pointer references a context that does not exist on this host. GH
+    # ubuntu-26.04 images pre-register a "ci" context; pin the pointer to the
+    # always-present "default" (the setuptool may also have activated a
+    # "rootless" context whose daemon is never started on this path).
+    docker context use default
+    # The podman path never starts a rootless dockerd, so the Docker engine
+    # prerequisite resolves through the host's System Docker: publish
+    # DOCKER_HOST explicitly (the resolver honours DOCKER_HOST over any CLI
+    # context) and keep DOCKER_CONTEXT neutral.
+    printf 'DOCKER_HOST=unix:///var/run/docker.sock\nDOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
     ;;
   *) echo "unsupported Core qualification runtime" >&2; exit 2 ;;
 esac

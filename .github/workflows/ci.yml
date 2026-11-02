@@ -274,7 +274,7 @@ jobs:
 
   validate:
     if: github.event_name != 'pull_request' && !startsWith(github.ref_name, 'runtime-validation/source-preflight/') && !startsWith(github.ref_name, 'runtime-validation/ha/')
-    runs-on: [self-hosted, Linux, X64, baseharbor, docker]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
@@ -292,6 +292,7 @@ jobs:
           --health-retries 10
     env:
       BASEHARBOR_TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/baseharbor_test?sslmode=disable
+      BASEHARBOR_TEST_RUNTIME: docker
 
     steps:
       - name: Checkout
@@ -310,6 +311,9 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: '3.14'
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
 
       - name: Reset persistent runner state
         id: reset
@@ -359,6 +363,9 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+          BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+          BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+          BASEHARBOR_PROVIDER_OPENBAO_SCOPE: application
         run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
 
       - name: Run Go vet
