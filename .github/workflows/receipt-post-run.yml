@@ -29,6 +29,8 @@ jobs:
       actions: read
       contents: read
     outputs:
+      producer_eligible: ${{ steps.eligibility.outputs.producer_eligible }}
+      run_base_sha: ${{ steps.eligibility.outputs.run_base_sha }}
       workflow_id: ${{ steps.facts.outputs.workflow_id }}
       head_sha: ${{ steps.facts.outputs.head_sha }}
       candidate_sha: ${{ steps.facts.outputs.candidate_sha }}
@@ -59,11 +61,168 @@ jobs:
           echo "pr_number=" >> "$GITHUB_OUTPUT"
           echo "Producer context captured: workflow_id=${WORKFLOW_ID} head=${HEAD_SHA} run=${RUN_ID}"
 
+      - name: Probe producer eligibility (trusted-pr-plan artifact present)
+        id: eligibility
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          # Non-PR producer runs (push to main/develop) are a CLEAN SKIP, never a
+          # failure. This #1233 early-guard is folded into the #1227 eligibility
+          # probe so the single coherent flow keeps it. It runs AFTER the
+          # authenticated artifact lookup (so a failed/incomplete API — the
+          # #1218 accident class — still hard-fails before any event
+          # classification), but BEFORE the run-to-PR association: a non-PR run
+          # carries no bound PR, so the probe would otherwise fail closed on the
+          # empty pull_requests array.
+          set +e
+          EVENT="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.event' 2>/dev/null)"
+          EVENT_RC=$?
+          set -e
+          if [ "${EVENT_RC}" -ne 0 ]; then
+            echo "producer run event lookup failed (rc=${EVENT_RC}): not classifiable, failing closed" >&2
+            exit 1
+          fi
+          # Only a POSITIVE, authenticated non-PR trigger (e.g. push/schedule) is
+          # a CLEAN SKIP. An empty/missing value (a malformed or partially
+          # truncated run object) is NOT a classifiable event — it must not be
+          # treated as a non-PR run. It falls through to the authenticated
+          # run-to-PR association below, which fails closed on an empty or
+          # ambiguous pull_requests array. This preserves the #1233 non-PR skip
+          # without re-introducing the #1218 class of phantom-skip on a
+          # non-classifiable event.
+          if [ -n "${EVENT}" ] && [ "${EVENT}" != "pull_request" ]; then
+            echo "producer run triggered by '${EVENT}' (not 'pull_request'): CLEAN SKIP, producer_eligible=false" >&2
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Run-to-PR association: independently resolved and validated. The
+          # run object's pull_requests[] carries the binding PR number; exactly
+          # one non-null entry is required, an absent or ambiguous lookup is a
+          # fail-closed ERROR (never a phantom skip). The authenticated run
+          # object's head_sha and base ref are bound here and re-checked against
+          # the immutable PR object below.
+          set +e
+          RUN_PR_JSON="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.pull_requests' 2>/dev/null)"
+          RUN_PR_RC=$?
+          set -e
+          if [ "${RUN_PR_RC}" -ne 0 ]; then
+            echo "run PR association API failed (rc=${RUN_PR_RC}): not absence, failing closed" >&2
+            exit 1
+          fi
+          RUN_PR_NUMBER="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number) | length' 2>/dev/null)"
+          if [ "${RUN_PR_NUMBER}" != "1" ]; then
+            echo "run $RUN_ID has ${RUN_PR_NUMBER} (expected exactly 1) bound PR: ambiguous/absent association, failing closed" >&2
+            exit 1
+          fi
+          PR="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number)[0]')"
+          if [[ ! "${PR}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "invalid run PR number: failing closed" >&2
+            exit 1
+          fi
+          # Authenticate the original and current PR identities before any
+          # ineligibility/superseded outcome. Missing facts are never a skip.
+          RUN_HEAD="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.head_sha')"
+          RUN_BASE="$(printf '%s' "${RUN_PR_JSON}" | jq -er '.[0].base.sha')"
+          RUN_TARGET="$(printf '%s' "${RUN_PR_JSON}" | jq -er '.[0].base.ref')"
+          PR_DATA="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR")"
+          PR_STATE="$(printf '%s' "$PR_DATA" | jq -er '.state')"
+          PR_HEAD="$(printf '%s' "$PR_DATA" | jq -er '.head.sha')"
+          LIVE_BASE="$(printf '%s' "$PR_DATA" | jq -er '.base.sha')"
+          LIVE_TARGET="$(printf '%s' "$PR_DATA" | jq -er '.base.ref')"
+          for sha in "$RUN_HEAD" "$RUN_BASE" "$PR_HEAD" "$LIVE_BASE"; do
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$sha" == 0000000000000000000000000000000000000000 ]]; then
+              echo "missing or malformed run/PR SHA: failing closed" >&2
+              exit 1
+            fi
+          done
+          if [[ "$PR_STATE" != open && "$PR_STATE" != closed ]] ||
+             [[ -z "$RUN_TARGET" || -z "$LIVE_TARGET" ]]; then
+            echo "invalid run/PR state or target: failing closed" >&2
+            exit 1
+          fi
+          if [[ "$PR_STATE" == closed || "$PR_HEAD" != "$RUN_HEAD" ||
+                "$LIVE_BASE" != "$RUN_BASE" || "$LIVE_TARGET" != "$RUN_TARGET" ]]; then
+            echo "authenticated PR run has been superseded; no receipt" >&2
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$RUN_TARGET" != develop ]]; then
+            echo "PR target $RUN_TARGET is outside develop receipt production" >&2
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Every PR run needs its trusted plan. Without it we cannot determine
+          # whether the receipt gate applies, so API errors and absence fail closed.
+          # Resolve the run/PR association before examining the plan.
+          # Artifact listing: explicit pagination (--paginate) so a truncated
+          # page cannot hide the artifact; gh's own exit code gates the probe.
+          set +e
+          ART_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name' 2>/dev/null)"
+          ART_RC=$?
+          set -e
+          if [ "${ART_RC}" -ne 0 ]; then
+            echo "trusted-pr-plan artifact API failed (rc=${ART_RC}): not absence, failing closed" >&2
+            exit 1
+          fi
+          HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
+          # Complete changed-file set for the authenticated run, derived from an
+          # IMMUTABLE run-bound head+base pair via the authenticated compare
+          # endpoint (${RUN_BASE}..${RUN_HEAD}): paginated, concatenated,
+          # deduplicated — a truncated page cannot hide a contracts/ touch.
+          # gh's own exit code gates it, and the returned files correspond to
+          # this exact immutable base..head diff, never the mutable live PR base.
+          set +e
+          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}" --paginate --jq '.files[].filename' 2>/dev/null | sort -u)"
+          CONTRACT_RC=$?
+          set -e
+          if [ "${CONTRACT_RC}" -ne 0 ]; then
+            echo "PR base..head compare API failed (rc=${CONTRACT_RC}) against immutable base ${RUN_BASE}: not absence, failing closed" >&2
+            exit 1
+          fi
+          # Fail closed when the compare payload is unusable: a missing,
+          # non-array, null, or empty files field, or an API failure, must never
+          # read as a clean no-contracts file set. A truncated page that omits
+          # the files field entirely is treated as unusable, never absent.
+          set +e
+          CONTRACT_SHAPE="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}..${RUN_HEAD}?shape=files" --jq '.files' 2>/dev/null)"
+          CONTRACT_SHAPE_RC=$?
+          set -e
+          if [ "${CONTRACT_SHAPE_RC}" -ne 0 ] || [ -z "${CONTRACT_SHAPE}" ] || [ "${CONTRACT_SHAPE}" = "null" ]; then
+            echo "compare files field missing/null or API failed (rc=${CONTRACT_SHAPE_RC}): failing closed" >&2
+            exit 1
+          fi
+          # A non-array files field (object, string, number) is unusable: the
+          # file set cannot be enumerated from it. Reject anything that does
+          # not start with '[' so a malformed compare response fails closed.
+          case "${CONTRACT_SHAPE}" in
+            \[*)
+              :
+              ;;
+            *)
+              echo "compare files field is not an array ('${CONTRACT_SHAPE:0:32}'): failing closed" >&2
+              exit 1
+              ;;
+          esac
+          HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"
+          if [ "${HAS_ARTIFACT}" = true ]; then
+            echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
+            echo "run_base_sha=${RUN_BASE}" >> "$GITHUB_OUTPUT"
+          elif [ "${HAS_CONTRACT_TOUCH}" = true ]; then
+            # A contracts change without a trusted plan is an integrity error.
+            echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID (PR=$PR): integrity error, failing closed" >&2
+            exit 1
+          else
+            echo "trusted-pr-plan artifact missing on PR run $RUN_ID (PR=$PR); cannot determine selected gates, failing closed" >&2
+            exit 1
+          fi
+
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
   # extract candidate_sha/integration_sha, and determine the PR->task mapping.
   extract_plan:
     name: "Extract Trusted Plan & Map PR->Task"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true'
     needs: producer_context
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -77,6 +236,7 @@ jobs:
       base_sha: ${{ steps.plan.outputs.base_sha }}
       run_id: ${{ steps.plan.outputs.run_id }}
       pr_number: ${{ steps.plan.outputs.pr_number }}
+      public_contracts_selected: ${{ steps.plan.outputs.public_contracts_selected }}
     steps:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -129,6 +289,8 @@ jobs:
         env:
           GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONPATH: ${{ github.workspace }}/scripts
+          RUN_HEAD: ${{ github.event.workflow_run.head_sha }}
+          RUN_BASE: ${{ needs.producer_context.outputs.run_base_sha }}
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
@@ -153,11 +315,14 @@ jobs:
           export GH_TOKEN="${GH_WORKFLOW_TOKEN}"
           ATTEMPT_RESOLVED="$(gh api repos/mcpdev80/baseharbor/actions/runs/${RUN_ID} --jq .run_attempt)"
           RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT_RESOLVED}" python3 - <<'PY' > plan.txt
-          import json, zipfile, sys, os
+          import zipfile, os
           import receipt_verifier as rv
           with zipfile.ZipFile("plan.zip") as z:
-              with z.open("pr-plan.json") as f:
-                  plan = json.loads(f.read())
+              entries = z.infolist()
+              if (len(entries) != 1 or entries[0].filename != "pr-plan.json"
+                      or not 0 < entries[0].file_size <= 65536):
+                  raise ValueError("invalid trusted plan archive")
+              plan = rv.decode(z.read(entries[0]), 65536)
           # Authoritative run/workflow ids come from the authenticated Actions
           # context (env), not from the producer plan; extract_facts forwards the
           # supplied values (never the plan's own spoofed id) and derives the
@@ -167,6 +332,16 @@ jobs:
                                  run_id=int(os.environ["RUN_ID"]),
                                  workflow_id=int(os.environ["WORKFLOW_DEFINITION_ID"]),
                                  attempt=int(os.environ.get("RUN_ATTEMPT", "1")))
+          # A no-receipt decision is allowed only on a complete, resolved
+          # trusted plan bound to the authenticated run head and base.
+          if (plan.get("coverage_status") != "resolved"
+                  or not isinstance(plan.get("selected_gates"), list)
+                  or any(not isinstance(g, str) for g in plan["selected_gates"])
+                  or out["head_sha"] != os.environ["RUN_HEAD"]
+                  or out["base_sha"] != os.environ["RUN_BASE"]):
+              raise ValueError("unresolved, malformed or mismatched trusted plan")
+          print("public_contracts_selected=%s" % str(
+              "integration/static/public-contracts" in plan["selected_gates"]).lower())
           print("workflow_id=%s" % out["workflow_id"])
           print("head_sha=%s" % out["head_sha"])
           print("candidate_sha=%s" % out["candidate_sha"])
@@ -174,18 +349,51 @@ jobs:
           print("run_id=%s" % out["run_id"])
           print("pr_number=%s" % (os.environ.get("PR_NUMBER", "") or ""))
           PY
+          public_contracts_selected="$(grep '^public_contracts_selected=' plan.txt | cut -d= -f2-)"
           workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
           base_sha="$(grep '^base_sha=' plan.txt | cut -d= -f2-)"
           run_id="$(grep '^run_id=' plan.txt | cut -d= -f2-)"
           pr_number="$(grep '^pr_number=' plan.txt | cut -d= -f2-)"
+          # Bind the candidate to GitHub's current synthetic merge ref. Head
+          # and base were authenticated above; drift or an unavailable ref must
+          # block publication rather than classify a different candidate.
+          if [[ ! "${pr_number}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "invalid run-bound PR number" >&2
+              exit 1
+          fi
+          set +e
+          merge_sha="$(gh api "repos/mcpdev80/baseharbor/git/ref/pull/${pr_number}/merge" --jq '.object.sha')"
+          merge_rc=$?
+          set -e
+          if [ "$merge_rc" -ne 0 ] || [ "${candidate_sha}" != "${merge_sha}" ]; then
+              current="$(gh api "repos/mcpdev80/baseharbor/pulls/${pr_number}")"
+              state="$(printf '%s' "$current" | jq -er '.state')"
+              head="$(printf '%s' "$current" | jq -er '.head.sha')"
+              base="$(printf '%s' "$current" | jq -er '.base.sha')"
+              target="$(printf '%s' "$current" | jq -er '.base.ref')"
+              for sha in "$head" "$base"; do
+                  if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$sha" == 0000000000000000000000000000000000000000 ]]; then
+                      echo "invalid current PR identity" >&2; exit 1
+                  fi
+              done
+              if [[ ( "$state" == closed || ( "$state" == open &&
+                  ( "$head" != "$RUN_HEAD" || "$base" != "$RUN_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
+                  echo "authenticated PR run has been superseded; no receipt" >&2
+                  echo "public_contracts_selected=false" >> "$GITHUB_OUTPUT"
+                  exit 0
+              fi
+              echo "merge ref unavailable or candidate mismatch for current PR" >&2
+              exit 1
+          fi
           # Bind the artifact workflow_id to the authenticated Actions API value;
           # they must be equal, so a spoofed/absent definition id fails closed.
           if [ "${workflow_id}" != "${WORKFLOW_DEFINITION_ID}" ]; then
               echo "artifact workflow_id ${workflow_id} != authenticated ${WORKFLOW_DEFINITION_ID}" >&2
               exit 1
           fi
+          echo "public_contracts_selected=${public_contracts_selected}" >> "$GITHUB_OUTPUT"
           echo "workflow_id=${workflow_id}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
@@ -199,7 +407,7 @@ jobs:
   # controller Python from the reviewed CI repo, NOT PR-controlled code.
   publish_receipt:
     name: "Publish Receipt to Planning"
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true' && needs.extract_plan.outputs.public_contracts_selected == 'true'
     needs: [producer_context, extract_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 10
