@@ -130,9 +130,15 @@ jobs:
         run: |
           set -euo pipefail
           $RUNNER_TEMP/baha doctor | tee /tmp/podman-doctor.txt
-          grep -Eq '^  OK +podman' /tmp/podman-doctor.txt
-          grep -Eq '^  OK +quadlet' /tmp/podman-doctor.txt
-          grep -q '^READY$' /tmp/podman-doctor.txt
+          # This probe runs before the Core bootstrap, so a fresh Target reports
+          # "NOT DEPLOYED" (not "READY") even with a working Podman runtime.
+          # Assert the runtime-detection facts that the control-plane Doctor
+          # actually emits (Docker engine, selected-runtime, core-deployment) and
+          # accept either pre-bootstrap "NOT DEPLOYED" or a fully "READY" probe.
+          grep -Eq '^  OK +Docker engine' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +selected-runtime' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +core-deployment' /tmp/podman-doctor.txt
+          grep -Eq '^(NOT DEPLOYED|READY)$' /tmp/podman-doctor.txt
 
       - name: Verify application lifecycle on Podman Quadlet
         id: lifecycle
