@@ -1447,6 +1447,35 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+class LogsRenderingBindingTests(unittest.TestCase):
+    def test_render_requires_package_and_native_observability(self):
+        result = planner.plan(diff(paths('internal/logs/render.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('logs-package-tests', {c['id'] for c in result['required_validation_checks']})
+        self.assertEqual({'atomic/docker/observability', 'atomic/podman/observability'},
+                         set(result['selected_gates']))
+
+    def test_other_logs_files_remain_unresolved(self):
+        for path in ('internal/logs/sub/render.go', 'internal/logs/other.go'):
+            with self.subTest(path=path):
+                result = planner.plan(diff(paths(path)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_executor_rejects_failure_and_empty_test_run(self):
+        from types import SimpleNamespace
+        spec = importlib.util.spec_from_file_location('logs_runner', ROOT / 'pr-check-runner.py')
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        for result in (SimpleNamespace(returncode=1, stdout='failed'),
+                       SimpleNamespace(returncode=0, stdout='[no test files]')):
+            with self.subTest(result=result), patch.object(runner.subprocess, 'run', return_value=result):
+                with self.assertRaises(RuntimeError):
+                    runner.execute_validation('logs-package-tests', '.')
+        with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
+                returncode=0, stdout='=== RUN   TestRender\n--- PASS: TestRender\n')):
+            self.assertEqual(['internal/logs'], runner.execute_validation('logs-package-tests', '.'))
+
+
 class CliGofmtTestBindingTests(unittest.TestCase):
     """gatemap-r6: cmd/baha/*_test.go bound to EXISTING cli-gofmt gate.
 
