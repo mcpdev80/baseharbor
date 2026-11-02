@@ -281,17 +281,19 @@ class ExtractBlocksTest(unittest.TestCase):
             "${{ secrets.GITHUB_TOKEN }}",
         )
 
-    def test_controller_pins_bumped_to_dd8fb61d(self):
-        # The e13f157 controller lacks --product in argparse; dd8fb61d
-        # fixes this (commit dd8fb61d: wire --product through CLI).
-        # Both checkout pins must reference dd8fb61d.
+    def test_controller_pins_use_reviewed_final_check_verifier(self):
+        # All verifier loads must use the reviewed final-check controller.
         text = POST_RUN_YML.read_text()
         pin_matches = re.findall(
-            r"ref:\s+dd8fb61d614b59252c9d29121380b5893d006828\s*$",
+            r"ref:\s+32eaaa116eedd929a47537152c27157b2720d8ed\s*$",
             text, re.MULTILINE,
         )
         self.assertEqual(len(pin_matches), 2,
-            f"Expected exactly 2 controller pins at dd8fb61d, found {len(pin_matches)}")
+            f"Expected exactly 2 controller checkout pins, found {len(pin_matches)}")
+        self.assertIn(
+            "contents/scripts/receipt_verifier.py?ref=32eaaa116eedd929a47537152c27157b2720d8ed",
+            text,
+        )
 
 
 class F1PositiveRun(unittest.TestCase):
