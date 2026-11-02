@@ -363,6 +363,10 @@ OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
 ]
+LOGS_CHECKS = [
+    {'id': 'logs-package-tests', 'owner': 'internal/logs',
+     'command': 'python3 scripts/pr-check-runner.py execute --check logs-package-tests --repository .'},
+]
 OPENBAO_RETRY_HEAD = '9f715184af7b89ca3011aa4a0636c45138fe2c6b'
 OPENBAO_RETRY_FILES = {'internal/openbao/bootstrap.go': 'modified',
                        'internal/openbao/bootstrap_test.go': 'modified'}
@@ -1744,6 +1748,15 @@ def plan(diff, requirements, mapping, repository='.',
                 unresolved.append('unsupported runtime package change: ' + path)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path in ('internal/logs/render.go', 'internal/logs/journal_provider_render_test.go'):
+            # Rendering changes affect runtime log collection as well as Go behavior.
+            area = 'logs-rendering'
+            require(LOGS_CHECKS)
+            selected.add('atomic/docker/observability')
+            selected.add('atomic/podman/observability')
+            if (path == 'internal/logs/journal_provider_render_test.go' and
+                    path_status.get(path) not in ('added', 'modified')):
+                unresolved.append('journal provider regression removal requires review: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)

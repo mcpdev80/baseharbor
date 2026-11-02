@@ -90,7 +90,7 @@ OPENBAO_REQUIRED_TESTS = (
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
-                'openbao-package-tests', 'runtime-provider-package-tests',
+                'openbao-package-tests', 'logs-package-tests', 'runtime-provider-package-tests',
                 'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
@@ -115,8 +115,17 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'receipt-execution-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests'):
         raise ValueError('unsupported executable validation')
+    if check == 'logs-package-tests':
+        executed = subprocess.run(
+            ['go', 'test', './internal/logs', '-count=1', '-v'],
+            cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        if executed.returncode:
+            raise RuntimeError('Logs package tests failed: ' + executed.stdout)
+        if not re.search(r'(?m)^=== RUN   Test\w+', executed.stdout):
+            raise RuntimeError('Logs package tests did not execute')
+        return ['internal/logs']
     if check == 'openbao-package-tests':
         # Require the frozen bootstrap unit families; native opt-in acceptance
         # tests keep their separate runtime gates. Discover once and run once.
