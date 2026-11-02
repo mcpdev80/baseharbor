@@ -1,5 +1,7 @@
 """Focused Git fixtures for safe pull-request diff-base resolution."""
 import importlib.util
+import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -104,6 +106,13 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('missing_target_base_history', result['reasons'][0]['code'])
         self.assertEqual([], result['changes'])
 
+    def test_unavailable_fetched_target_tip_fails_closed(self):
+        result = resolver.resolve_pr_diff(self.root, self.initial, self.initial,
+                                          base_tip_sha='f' * 40)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('missing_target_tip_history', result['reasons'][0]['code'])
+        self.assertEqual([], result['changes'])
+
     def test_conflict_requires_broad_checks(self):
         self.branch('feature')
         self.write('shared.txt', 'feature\n')
@@ -189,12 +198,8 @@ class GitFixture(unittest.TestCase):
 
 
     def test_stale_event_base_proceeds_to_tree_check_and_normal_restores_diff(self):
-        # The develop-ci contract calls pr-diff-base.py WITHOUT --base-tip. With
-        # no fetched base tip, the resolver anchors on the event base.sha and
-        # ACCEPTS a merge-ref whose base parent is a DESCENDANT of the event
-        # base (the stale-event case: develop moved forward). It then verifies
-        # the integration tree against the exact event-base..head merge; a tree
-        # built against a forward target fails the tree check (fail closed).
+        # Existing no-tip calls still compare the event-base tree. Supplying a
+        # proven target tip opts in to the actual integration base.
         self.branch('feature')
         self.write('feature.txt', 'reviewed feature\\n')
         head = self.commit('feature')
@@ -206,10 +211,12 @@ class GitFixture(unittest.TestCase):
                                input_data='GitHub exact integration\\n')
         stale = resolver.resolve_pr_diff(self.root, self.initial, head, integration)
         self.assertTrue(stale['broad_required'])
-        # stale event base now resolves the PARENT lineage (no sha mismatch);
-        # the integration tree was built against the advanced target, so the
-        # fail-closed tree check blocks it here instead.
         self.assertEqual('integration_tree_mismatch', stale['reasons'][0]['code'])
+        actual = resolver.resolve_pr_diff(self.root, self.initial, head, integration,
+                                          base_tip_sha=target)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        self.assertEqual(target, actual['target_base_sha'])
+        self.assertEqual([{'path': 'feature.txt', 'status': 'added'}], actual['changes'])
         self.git('switch', '-q', 'feature')
         self.git('merge', '--no-ff', '-qm', 'normal trusted target merge', target)
         merged = self.git('rev-parse', 'HEAD')
@@ -221,6 +228,58 @@ class GitFixture(unittest.TestCase):
         self.assertEqual(target, actual['merge_base_sha'])
         self.assertEqual([{'path': 'feature.txt', 'status': 'added'}],
                          actual['changes'])
+
+    def test_legacy_no_tip_accepts_forward_parent_with_same_tree(self):
+        self.branch('feature')
+        head = self.commit_with('feature.txt', 'feature\n', 'feature')
+        self.git('switch', '-q', 'main')
+        self.git('commit', '--allow-empty', '-qm', 'target advance without tree change')
+        target = self.git('rev-parse', 'HEAD')
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        candidate = self.git('commit-tree', tree, '-p', target, '-p', head,
+                             input_data='candidate\n')
+        legacy = resolver.resolve_pr_diff(self.root, self.initial, head, candidate)
+        self.assertFalse(legacy['broad_required'], legacy['reasons'])
+        self.assertEqual(self.initial, legacy['target_base_sha'])
+        verified = resolver.resolve_pr_diff(self.root, self.initial, head, candidate,
+                                            base_tip_sha=target)
+        self.assertFalse(verified['broad_required'], verified['reasons'])
+        self.assertEqual(target, verified['target_base_sha'])
+
+    def test_advanced_base_must_belong_to_fetched_target_branch(self):
+        self.branch('feature')
+        head = self.commit_with('feature.txt', 'feature\n', 'feature')
+        self.git('switch', '-q', 'main')
+        target = self.commit_with('trusted.txt', 'trusted\n', 'trusted')
+        self.branch('side', self.initial)
+        side = self.commit_with('side.txt', 'untrusted\n', 'side')
+        tree = self.git('merge-tree', '--write-tree', side, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', side, '-p', head,
+                               input_data='forged integration\n')
+        result = resolver.resolve_pr_diff(self.root, self.initial, head, integration,
+                                          base_tip_sha=target)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_sha_mismatch', result['reasons'][0]['code'])
+        self.assertEqual([], result['changes'])
+
+    def test_advanced_base_requires_exact_clean_integration_tree(self):
+        self.branch('feature')
+        head = self.commit_with('feature.txt', 'feature\n', 'feature')
+        self.git('switch', '-q', 'main')
+        target = self.commit_with('trusted.txt', 'trusted\n', 'trusted')
+        self.write('injected.txt', 'not in either input\n')
+        self.git('add', '-A')
+        forged_tree = self.git('write-tree')
+        integration = self.git('commit-tree', forged_tree, '-p', target, '-p', head,
+                               input_data='forged integration tree\n')
+        result = resolver.resolve_pr_diff(self.root, self.initial, head, integration,
+                                          base_tip_sha=target)
+        self.assertTrue(result['broad_required'])
+        self.assertEqual('integration_tree_mismatch', result['reasons'][0]['code'])
+        self.assertEqual([], result['changes'])
+
+
+
 
     def test_reversed_exact_parents_accepted_order_agnostic(self):
         # The authoritative-basis decision relaxes parent ORDER: a merge whose
@@ -275,8 +334,9 @@ class GitFixture(unittest.TestCase):
         self.assertFalse(result['broad_required'], result['reasons'])
         self.assertEqual(rebased_head, result['integration_sha'])
         self.assertEqual(base_tip, result['base_tip_sha'])
-        self.assertEqual(self.initial, result['merge_base_sha'])
-        self.assertEqual([{'status': 'added', 'path': 'feature.txt'}], result['changes'])
+        self.assertEqual(base_tip, result['merge_base_sha'])
+        self.assertEqual([{'status': 'added', 'path': 'feature.txt'},
+                          {'status': 'deleted', 'path': 'target-only.txt'}], result['changes'])
 
     def test_develop_forward_moved_merge_ref_resolves_with_fetched_tip(self):
         # Mission case (ii): the event merge-ref was built against an OLD target
