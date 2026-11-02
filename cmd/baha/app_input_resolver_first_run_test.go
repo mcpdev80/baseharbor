@@ -14,7 +14,7 @@ import (
 )
 
 func TestRepositoryRuntimeInitRecordsPendingDeploymentBeforeStateMutation(t *testing.T) {
-	target := configureTestTarget(t)
+	target := configureTestTargetWithOwner(t)
 	repo := t.TempDir()
 	m := application.Manifest{
 		Version:       application.CurrentVersion,

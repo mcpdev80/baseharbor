@@ -21,6 +21,16 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
 	}
+	// One-installation-owner binding: authoritative deployment state may only be
+	// written when the Target's Core installation owns its state directory. The
+	// production write path asserts ownership; a missing or foreign installation
+	// fails closed. The record identity is never rewritten to carry an
+	// installation reference.
+	if resolved.TargetStateRoot != "" {
+		if err := deployment.VerifyDeploymentOwner(resolved.DeploymentIdentity.Target, installationRootFor(resolved.TargetStateRoot), resolved.DeploymentIdentity.DeploymentID); err != nil {
+			return deployment.DeploymentRecord{}, err
+		}
+	}
 	remoteProject, err := retainedRemoteProject(resolved)
 	if err != nil {
 		return deployment.DeploymentRecord{}, err
@@ -159,4 +169,20 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 		record.Observed.VerifiedAt = time.Now().UTC()
 	}
 	return deployment.SaveDeploymentRecord(record)
+}
+
+// installationRootFor resolves the Core installation runtime root
+// (targets/<target>/runtime) that VerifyDeploymentOwner reads, from a resolved
+// Target state root (targets/<target>). It derives the Target name from the
+// resolved path and reuses deployment.TargetStateRoot so the shared
+// "baseharbor/" data prefix is applied consistently. It returns "" when the
+// Target name cannot be recovered or validated, so a caller without a
+// resolvable Target is not gated.
+func installationRootFor(targetStateRoot string) string {
+	name := filepath.Base(targetStateRoot)
+	root, err := deployment.TargetStateRoot(name)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(root, "runtime")
 }

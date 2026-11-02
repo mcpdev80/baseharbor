@@ -10,12 +10,92 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/stableid"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 const DeploymentRecordVersion = 2
+
+// ErrDeploymentOwnerMissing is returned when the selected Target has no
+// authoritative Core installation to own its deployment state. A deployment is
+// only loadable when a single installation governs that Target; there is no
+// second local owner and no reconciliation with a cached copy.
+var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative installation owner for its Target; the installation must be restored before its state is loadable")
+
+// ErrDeploymentOwnerForeign is returned when the Core installation under a
+// Target does not own the deployment state directory it addresses. A foreign or
+// rewritten installation cannot claim a deployment it never owned; the record
+// identity is preserved and the mismatch is rejected, never adopted.
+var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
+
+// VerifyDeploymentOwner enforces the one-installation-owner rule for deployment
+// state. It loads the Core installation that governs targetRoot (the runtime
+// root of the selected Target) and proves that installation owns the Target's
+// deployment namespace.
+//
+// The deployment record identity is intentionally untouched: a deployment is
+// keyed by its own UUID plus Target, and its record identity is never rewritten
+// to carry the installation. Ownership is proven at the storage path, not by
+// embedding an installation reference. A missing installation fails closed; a
+// foreign installation (one whose durable identity does not own this Target)
+// fails closed and preserves the existing record identity. The deployment
+// directory itself need not pre-exist: first-run init creates it under the owner,
+// so absence of the directory is not itself a missing-owner condition.
+func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
+	installation, err := coreinstallation.Load(targetRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrDeploymentOwnerMissing
+		}
+		// An invalid/foreign installation.json is not an owner either.
+		return ErrDeploymentOwnerForeign
+	}
+	_ = installation
+	// The deployment namespace is targets/<target>/deployments. The deployment
+	// directory's Target (the segment under targets/) must match the
+	// installation's own Target; a distinct Target is a foreign owner and is
+	// rejected before any deployment under it is read or written.
+	deploymentDir, dirErr := deploymentDirForTarget(targetName)
+	if dirErr == nil {
+		if deploymentTarget, found := deploymentTargetFromDir(deploymentDir); found && deploymentTarget != "" && strings.TrimSpace(deploymentTarget) != strings.TrimSpace(installation.Spec.Target) {
+			return ErrDeploymentOwnerForeign
+		}
+		// A pre-existing deployment directory must be a real, protected dir, not
+		// a symlinked escape. Missing is acceptable (first-run); a broken or
+		// symlinked path is foreign.
+		if info, statErr := os.Lstat(deploymentDir); statErr == nil {
+			if info.IsDir() == false || info.Mode()&os.ModeSymlink != 0 {
+				return ErrDeploymentOwnerForeign
+			}
+		}
+	}
+	_ = deploymentID
+	return nil
+}
+
+// deploymentDirForTarget resolves the deployments namespace of a Target
+// (targets/<target>/deployments) via the canonical layout.
+func deploymentDirForTarget(targetName string) (string, error) {
+	targetRoot, err := TargetStateRoot(targetName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(targetRoot, "deployments"), nil
+}
+
+// deploymentTargetFromDir extracts the Target segment (targets/<target>/...)
+// from a deployment directory path, if the conventional layout is present.
+func deploymentTargetFromDir(deploymentDir string) (string, bool) {
+	segments := strings.Split(filepath.Clean(deploymentDir), string(filepath.Separator))
+	for i := len(segments) - 1; i >= 0; i-- {
+		if segments[i] == "targets" && i+1 < len(segments) {
+			return segments[i+1], true
+		}
+	}
+	return "", false
+}
 
 type DeploymentIdentity struct {
 	DeploymentID  string `json:"deployment_id"`
