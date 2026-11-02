@@ -1,7 +1,6 @@
 import copy
 import io
 import json
-import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -40,20 +39,6 @@ def fixture():
 
 
 class ClosedRunTests(unittest.TestCase):
-    def test_cursor_requires_real_successful_consumer_job(self):
-        run = dict(id=88, event='schedule', run_attempt=1,
-                   path='.github/workflows/receipt-post-run.yml', repository=dict(id=REPO))
-        job = dict(name='Receipt · Reconcile Consumer', run_id=88,
-                   status='completed', conclusion='success')
-        def api(path, *, pages=False, binary=False):
-            return [dict(total_count=1, jobs=[job])] if pages else run
-        with patch.dict(os.environ, {'GITHUB_RUN_ID': '88'}):
-            helper.require_replay_consumer(api)
-            for conclusion in ('failure', 'skipped', None):
-                job['conclusion'] = conclusion
-                with self.subTest(conclusion=conclusion), self.assertRaises(ValueError):
-                    helper.require_replay_consumer(api)
-
     def test_strict_replay_rejects_wrong_merger_or_parent_order(self):
         _, _, _, pr, _ = fixture()
         merge = 'd' * 40
@@ -103,16 +88,13 @@ class ClosedRunTests(unittest.TestCase):
                     helper.reconcile_history(anchor, product, planning)
             self.assertFalse(cursor.exists())
             seen.clear()
+            with patch.object(helper, 'reconcile_commit', side_effect=helper.rv.ReceiptError('consumer failed')):
+                with self.assertRaisesRegex(helper.rv.ReceiptError, 'consumer failed'):
+                    helper.reconcile_history(anchor, product, planning)
+            self.assertFalse(cursor.exists())
             with patch.object(helper, 'reconcile_commit', side_effect=lambda c, *_a, **_k: seen.append(c)):
-                replay = helper.reconcile_history(anchor, product, planning)
+                self.assertEqual(helper.reconcile_history(anchor, product, planning), tip)
             self.assertEqual(len(seen), 2)
-            self.assertFalse(cursor.exists())
-            with self.assertRaises(ValueError):
-                helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
-                                      verify_consumer=lambda: (_ for _ in ()).throw(ValueError('consumer failed')))
-            self.assertFalse(cursor.exists())
-            helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
-                                  verify_consumer=lambda: None)
             self.assertEqual(json.loads(cursor.read_text())['commit'], tip)
             self.assertIn(tip, git('--git-dir', plan_remote, 'show',
                                    'main:evidence/receipts/merge-reconciliation-cursor.json'))
@@ -122,11 +104,9 @@ class ClosedRunTests(unittest.TestCase):
             git('-C', product, 'reset', '--hard', nonlinear)
             git('-C', product, 'push', 'origin', 'develop')
             with patch.object(helper, 'reconcile_commit', return_value=42) as reconcile:
-                replay = helper.reconcile_history(anchor, product, planning)
+                self.assertEqual(helper.reconcile_history(anchor, product, planning), nonlinear)
                 self.assertEqual(reconcile.call_args.args[0], nonlinear)
                 self.assertTrue(reconcile.call_args.kwargs['strict'])
-            helper.advance_cursor(anchor, replay['previous'], replay['tip'], product, planning,
-                                  verify_consumer=lambda: None)
             self.assertEqual(json.loads(cursor.read_text())['commit'], nonlinear)
 
     def test_push_wakes_completed_pr_and_defers_pending(self):
@@ -176,6 +156,8 @@ class ClosedRunTests(unittest.TestCase):
              patch.object(helper.subprocess, 'run'), patch.object(helper.rv, 'producer_identity'):
             self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
             self.assertEqual(closed.call_args.args[0], RUN)
+            newer['status'] = 'in_progress'
+            self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
 
     def test_pilot_is_forwarded_to_existing_writer_only_with_planning(self):
         run, jobs, artifact, pr, archive = fixture()

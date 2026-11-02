@@ -2,7 +2,6 @@
 """Recognize an authenticated completed run for one already-closed PR."""
 import io
 import json
-import os
 import subprocess
 import sys
 import zipfile
@@ -30,7 +29,7 @@ def gh(path, *, pages=False, binary=False):
     return json.loads(result.stdout)
 
 
-def closed_run(run_id, product, api=gh, *, planning=None, classify_only=False, receipt_sink=None):
+def closed_run(run_id, product, api=gh, *, planning=None, classify_only=False):
     prefix = f"repos/{REPOSITORY}/actions/runs/{run_id}"
     run = api(prefix)
     head = run.get("head_sha")
@@ -141,9 +140,6 @@ def closed_run(run_id, product, api=gh, *, planning=None, classify_only=False, r
                                                product=product, api=api)
             rv.retained_merge(Path(planning), publication, path, facts['candidate_sha'],
                               product=product, api=api)
-            if receipt_sink is not None:
-                receipt_sink.append(dict(receipt=path, publication=publication,
-                                         candidate=facts['candidate_sha']))
             print('decision: receipt')
             print(f"receipt: {publication}:{path}")
             print(f"candidate: {facts['candidate_sha']}")
@@ -164,7 +160,7 @@ def push_run(push_id, product, planning, api=gh):
     return reconcile_commit(merge, product, planning, api=api)
 
 
-def reconcile_commit(merge, product, planning, *, api=gh, strict=False, receipt_sink=None):
+def reconcile_commit(merge, product, planning, *, api=gh, strict=False):
     """Resolve one immutable develop commit; strict mode cannot drop a commit."""
     require(rv.full_sha(merge), 'invalid develop commit')
     pages = api(f'repos/{REPOSITORY}/commits/{merge}/pulls?per_page=100', pages=True)
@@ -205,16 +201,17 @@ def reconcile_commit(merge, product, planning, *, api=gh, strict=False, receipt_
     expected_base = prs[0].get('base', {}).get('sha') or ''
     require(rv.full_sha(expected_base), 'missing merged PR base')
     for latest in sorted(runs, key=lambda r: r['id'], reverse=True):
-        if latest.get('status') != 'completed':
-            require(not strict, 'candidate run still pending')
-            print('Candidate run still pending; completion event will retry')
-            print('decision: pending')
-            return None
+        pending = latest.get('status') != 'completed'
         inventories = api(f"repos/{REPOSITORY}/actions/runs/{latest['id']}/artifacts?per_page=100", pages=True)
         require(isinstance(inventories, list) and all(isinstance(p, dict) for p in inventories),
                 'invalid candidate artifact inventory')
         artifacts = [a for page in inventories for a in page.get('artifacts', [])
                      if a.get('name') == 'trusted-pr-plan']
+        if pending and not artifacts:
+            require(not strict, 'candidate run still pending without classifiable plan')
+            print('Candidate run still pending; completion event will retry')
+            print('decision: pending')
+            return None
         require(len(artifacts) == 1 and artifacts[0].get('expired') is False
                 and artifacts[0].get('workflow_run', {}).get('id') == latest['id']
                 and artifacts[0].get('workflow_run', {}).get('head_sha') == head
@@ -234,9 +231,14 @@ def reconcile_commit(merge, product, planning, *, api=gh, strict=False, receipt_
         rv.producer_identity(product, {'head_sha': head, 'base_sha': base})
         if base != expected_base:
             continue
+        if pending:
+            require(not strict, 'matching candidate run still pending')
+            print('Candidate run still pending; completion event will retry')
+            print('decision: pending')
+            return None
         require(latest.get('conclusion') == 'success' and latest.get('run_attempt') == 1,
                 'latest matching candidate run did not succeed')
-        return closed_run(latest['id'], product, api, planning=planning, receipt_sink=receipt_sink)
+        return closed_run(latest['id'], product, api, planning=planning)
     raise ValueError('merged candidate has no matching run')
 
 
@@ -263,65 +265,17 @@ def reconcile_history(initial, product, planning, *, api=gh):
     history = rv.git(product, 'rev-list', '--first-parent', tip).decode().splitlines()
     require(rv.full_sha(tip) and initial in history and cursor in history
             and history.index(cursor) <= history.index(initial), 'cursor is not on protected develop history')
-    receipts = []
     for commit in reversed(history[:history.index(cursor)]):
         parents = rv.git(product, 'show', '-s', '--format=%P', commit).decode().split()
         require(len(parents) in (1, 2), 'unsupported develop commit parent count')
-        reconcile_commit(commit, product, planning, api=api, strict=True, receipt_sink=receipts)
-    return dict(previous=cursor, tip=tip, receipts=receipts)
-
-
-def require_replay_consumer(api=gh):
-    run_id = os.environ.get('GITHUB_RUN_ID') or ''
-    require(run_id.isdigit(), 'missing reconciliation run')
-    run = api(f'repos/{REPOSITORY}/actions/runs/{int(run_id)}')
-    require(run.get('id') == int(run_id) and run.get('event') == 'schedule'
-            and run.get('run_attempt') == 1
-            and run.get('path') == '.github/workflows/receipt-post-run.yml'
-            and run.get('repository', {}).get('id') == REPOSITORY_ID,
-            'untrusted reconciliation workflow')
-    pages = api(f'repos/{REPOSITORY}/actions/runs/{int(run_id)}/attempts/1/jobs?per_page=100',
-                pages=True)
-    require(isinstance(pages, list) and pages and all(isinstance(p, dict) for p in pages),
-            'invalid reconciliation job inventory')
-    jobs = [j for page in pages for j in page.get('jobs', [])]
-    require(all(isinstance(p.get('jobs'), list) and p.get('total_count') == len(jobs) for p in pages),
-            'incomplete reconciliation job inventory')
-    consumers = [j for j in jobs if j.get('name') == 'Receipt · Reconcile Consumer']
-    require(len(consumers) == 1 and consumers[0].get('run_id') == int(run_id)
-            and consumers[0].get('status') == 'completed' and consumers[0].get('conclusion') == 'success',
-            'reconciliation consumer did not succeed')
-
-
-def advance_cursor(initial, expected, tip, product, planning, *, verify_consumer=require_replay_consumer):
-    """Persist a replay cursor only after the independent consumer succeeds."""
-    from receipt_writer import _push_authed, _scrub_secret, commit_file
-    require(all(rv.full_sha(x) for x in (initial, expected, tip)), 'invalid cursor input')
-    verify_consumer()
-    product, planning = Path(product), Path(planning)
-    rv.git(planning, 'fetch', 'origin', 'main')
-    rv.git(planning, 'merge', '--ff-only', 'origin/main')
-    path = 'evidence/receipts/merge-reconciliation-cursor.json'
-    cursor_file = planning / path
-    previous = cursor_file.read_bytes() if cursor_file.exists() else None
-    if previous is None:
-        current = initial
-    else:
-        state = rv.decode(previous, 4096)
-        require(previous == rv.canonical(state) and set(state) == {'schema', 'commit'}
-                and state['schema'] == 'baseharbor.merge-cursor/v1'
-                and rv.full_sha(state['commit']), 'invalid reconciliation cursor')
-        current = state['commit']
-    require(current == expected, 'reconciliation cursor changed concurrently')
-    rv.git(product, 'fetch', '--no-tags', 'origin',
-           '+refs/heads/develop:refs/remotes/origin/develop')
-    remote_tip = rv.git(product, 'rev-parse', 'refs/remotes/origin/develop').decode().strip()
-    history = rv.git(product, 'rev-list', '--first-parent', remote_tip).decode().splitlines()
-    require(initial in history and expected in history and tip in history
-            and history.index(tip) <= history.index(expected) <= history.index(initial),
-            'cursor target is not on protected develop history')
-    if current == tip:
+        # Pilot publication calls retained_merge synchronously. Any failure
+        # propagates before the cursor is written.
+        reconcile_commit(commit, product, planning, api=api, strict=True)
+    if cursor == tip:
         return tip
+    current = cursor_file.read_bytes() if cursor_file.exists() else None
+    require(current == previous, 'reconciliation cursor changed concurrently')
+    from receipt_writer import _push_authed, _scrub_secret, commit_file
     raw = rv.canonical({'schema': 'baseharbor.merge-cursor/v1', 'commit': tip})
     commit_file(planning, path, raw, expected=previous)
     rc, _, stderr = _push_authed(planning, ['push', 'origin', 'HEAD:refs/heads/main'])
@@ -334,15 +288,9 @@ if __name__ == "__main__":
         push = len(sys.argv) == 5 and sys.argv[1] == '--push'
         classify = len(sys.argv) == 4 and sys.argv[1] == '--classify'
         reconcile = len(sys.argv) == 5 and sys.argv[1] == '--reconcile'
-        advance = len(sys.argv) == 7 and sys.argv[1] == '--advance-cursor'
-        if advance:
-            print('cursor advanced: ' + advance_cursor(sys.argv[2], sys.argv[3], sys.argv[4],
-                                                       Path(sys.argv[5]), Path(sys.argv[6])))
-            sys.exit(0)
         args = sys.argv[2:] if push or classify or reconcile else sys.argv[1:]
         if reconcile:
-            print('reconcile: ' + json.dumps(reconcile_history(args[0], Path(args[1]), Path(args[2])),
-                                            separators=(',', ':')))
+            print('reconciled through: ' + reconcile_history(args[0], Path(args[1]), Path(args[2])))
             sys.exit(0)
         require(len(args) in (2, 3) and args[0].isdigit() and (not push or len(args) == 3),
                 "invalid arguments")
