@@ -68,6 +68,17 @@ class GitHubAdapterTest(unittest.TestCase):
         with self.assertRaises(verifier.ReceiptError):
             evidence.select_run([match, other], head, lambda _: True)
 
+    def test_newer_verified_match_does_not_inspect_superseded_run(self):
+        head = 'a' * 40
+        newer = dict(id=2, head_sha=head, event='pull_request', run_attempt=1,
+                     status='completed', conclusion='success')
+        older = dict(newer, id=1, conclusion='cancelled')
+        def classify(run):
+            if run['id'] == 1:
+                raise verifier.ReceiptError('old artifact absent')
+            return True
+        self.assertEqual(evidence.select_run([older, newer], head, classify), 2)
+
 
 class MergeEvidenceTest(unittest.TestCase):
     def setUp(self):
@@ -143,11 +154,11 @@ class MergeEvidenceTest(unittest.TestCase):
 
     def test_nonpilot_noop_requires_resolved_plan_and_selected_checks(self):
         self.plan['selected_gates'] = []
-        plan = evidence.scope_for_run(123, self.head, api=self.api)
-        evidence.verify_nonpilot(self.pr, 123, plan, api=self.api)
-        self.job['conclusion'] = 'failure'
-        with self.assertRaisesRegex(verifier.ReceiptError, 'selected checks'):
-            evidence.verify_nonpilot(self.pr, 123, plan, api=self.api)
+        with patch.object(evidence, 'fetch_sources'), patch.object(verifier, 'producer_identity'):
+            evidence.verify_nonpilot(self.pr, 123, api=self.api, product='reviewed-checkout')
+            self.job['conclusion'] = 'failure'
+            with self.assertRaisesRegex(verifier.ReceiptError, 'selected checks'):
+                evidence.verify_nonpilot(self.pr, 123, api=self.api, product='reviewed-checkout')
         self.plan['coverage_status'] = 'unresolved'
         with self.assertRaisesRegex(verifier.ReceiptError, 'unresolved'):
             evidence.scope_for_run(123, self.head, api=self.api)
