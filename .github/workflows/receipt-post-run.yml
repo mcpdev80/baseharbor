@@ -30,6 +30,7 @@ jobs:
       contents: read
     outputs:
       producer_eligible: ${{ steps.eligibility.outputs.producer_eligible }}
+      run_base_sha: ${{ steps.eligibility.outputs.run_base_sha }}
       workflow_id: ${{ steps.facts.outputs.workflow_id }}
       head_sha: ${{ steps.facts.outputs.head_sha }}
       candidate_sha: ${{ steps.facts.outputs.candidate_sha }}
@@ -96,23 +97,9 @@ jobs:
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # A producer run uploads a single trusted-pr-plan artifact. The probe
-          # must tell ABSENCE (skip cleanly) from an ERROR (fail closed) and
-          # must NOT treat mere artifact absence as a sufficient skip condition.
-          #
-          # Fail-closed contract-impact determination (rv1221b): the run-to-PR
-          # association is AUTHENTICATED and VALIDATED independently BEFORE the
-          # contract-impact decision, never nested inside the files API call.
-          #
-          #  - An API failure at any point (non-zero gh exit, truncated page) is
-          #    never absence; it hard-fails the probe (exit 1). Absent-else
-          #    silently masking this was the 2026-10-30 #1218 accident.
-          #  - A successful response WITHOUT trusted-pr-plan is only a legit
-          #    skip when the authenticated PR does NOT touch contracts/. A
-          #    contracts/ touch with no artifact is an INTEGRITY ERROR (a
-          #    producer PR was expected to upload the trusted plan) and must
-          #    fail closed too.
-          #
+          # Every PR run needs its trusted plan. Without it we cannot determine
+          # whether the receipt gate applies, so API errors and absence fail closed.
+          # Resolve the run/PR association before examining the plan.
           # Artifact listing: explicit pagination (--paginate) so a truncated
           # page cannot hide the artifact; gh's own exit code gates the probe.
           set +e
@@ -251,14 +238,14 @@ jobs:
           HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"
           if [ "${HAS_ARTIFACT}" = true ]; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
+            echo "run_base_sha=${RUN_BASE}" >> "$GITHUB_OUTPUT"
           elif [ "${HAS_CONTRACT_TOUCH}" = true ]; then
-            # contracts/ touched but no trusted-pr-plan artifact: producer PR
-            # expected to upload the plan; its absence is an integrity error.
+            # A contracts change without a trusted plan is an integrity error.
             echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID (PR=$PR): integrity error, failing closed" >&2
             exit 1
           else
-            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
-            echo "no trusted-pr-plan artifact on run $RUN_ID and no contracts/ touch (PR=$PR): not a producer run; receipt chain skipped" >&2
+            echo "trusted-pr-plan artifact missing on PR run $RUN_ID (PR=$PR); cannot determine selected gates, failing closed" >&2
+            exit 1
           fi
 
   # Step 2: Download the trusted-pr-plan artifact from the producer CI,
@@ -279,6 +266,7 @@ jobs:
       base_sha: ${{ steps.plan.outputs.base_sha }}
       run_id: ${{ steps.plan.outputs.run_id }}
       pr_number: ${{ steps.plan.outputs.pr_number }}
+      public_contracts_selected: ${{ steps.plan.outputs.public_contracts_selected }}
     steps:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -350,6 +338,8 @@ jobs:
         env:
           GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PYTHONPATH: ${{ github.workspace }}/scripts
+          RUN_HEAD: ${{ github.event.workflow_run.head_sha }}
+          RUN_BASE: ${{ needs.producer_context.outputs.run_base_sha }}
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
@@ -374,11 +364,14 @@ jobs:
           export GH_TOKEN="${GH_WORKFLOW_TOKEN}"
           ATTEMPT_RESOLVED="$(gh api repos/mcpdev80/baseharbor/actions/runs/${RUN_ID} --jq .run_attempt)"
           RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT_RESOLVED}" python3 - <<'PY' > plan.txt
-          import json, zipfile, sys, os
+          import zipfile, os
           import receipt_verifier as rv
           with zipfile.ZipFile("plan.zip") as z:
-              with z.open("pr-plan.json") as f:
-                  plan = json.loads(f.read())
+              entries = z.infolist()
+              if (len(entries) != 1 or entries[0].filename != "pr-plan.json"
+                      or not 0 < entries[0].file_size <= 65536):
+                  raise ValueError("invalid trusted plan archive")
+              plan = rv.decode(z.read(entries[0]), 65536)
           # Authoritative run/workflow ids come from the authenticated Actions
           # context (env), not from the producer plan; extract_facts forwards the
           # supplied values (never the plan's own spoofed id) and derives the
@@ -388,6 +381,16 @@ jobs:
                                  run_id=int(os.environ["RUN_ID"]),
                                  workflow_id=int(os.environ["WORKFLOW_DEFINITION_ID"]),
                                  attempt=int(os.environ.get("RUN_ATTEMPT", "1")))
+          # A no-receipt decision is allowed only on a complete, resolved
+          # trusted plan bound to the authenticated run head and base.
+          if (plan.get("coverage_status") != "resolved"
+                  or not isinstance(plan.get("selected_gates"), list)
+                  or any(not isinstance(g, str) for g in plan["selected_gates"])
+                  or out["head_sha"] != os.environ["RUN_HEAD"]
+                  or out["base_sha"] != os.environ["RUN_BASE"]):
+              raise ValueError("unresolved, malformed or mismatched trusted plan")
+          print("public_contracts_selected=%s" % str(
+              "integration/static/public-contracts" in plan["selected_gates"]).lower())
           print("workflow_id=%s" % out["workflow_id"])
           print("head_sha=%s" % out["head_sha"])
           print("candidate_sha=%s" % out["candidate_sha"])
@@ -395,18 +398,32 @@ jobs:
           print("run_id=%s" % out["run_id"])
           print("pr_number=%s" % (os.environ.get("PR_NUMBER", "") or ""))
           PY
+          public_contracts_selected="$(grep '^public_contracts_selected=' plan.txt | cut -d= -f2-)"
           workflow_id="$(grep '^workflow_id=' plan.txt | cut -d= -f2-)"
           head_sha="$(grep '^head_sha=' plan.txt | cut -d= -f2-)"
           candidate_sha="$(grep '^candidate_sha=' plan.txt | cut -d= -f2-)"
           base_sha="$(grep '^base_sha=' plan.txt | cut -d= -f2-)"
           run_id="$(grep '^run_id=' plan.txt | cut -d= -f2-)"
           pr_number="$(grep '^pr_number=' plan.txt | cut -d= -f2-)"
+          # Bind the candidate to GitHub's current synthetic merge ref. Head
+          # and base were authenticated above; drift or an unavailable ref must
+          # block publication rather than classify a different candidate.
+          if [[ ! "${pr_number}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "invalid run-bound PR number" >&2
+              exit 1
+          fi
+          merge_sha="$(gh api "repos/mcpdev80/baseharbor/git/ref/pull/${pr_number}/merge" --jq '.object.sha')"
+          if [ "${candidate_sha}" != "${merge_sha}" ]; then
+              echo "trusted plan candidate differs from authenticated merge ref" >&2
+              exit 1
+          fi
           # Bind the artifact workflow_id to the authenticated Actions API value;
           # they must be equal, so a spoofed/absent definition id fails closed.
           if [ "${workflow_id}" != "${WORKFLOW_DEFINITION_ID}" ]; then
               echo "artifact workflow_id ${workflow_id} != authenticated ${WORKFLOW_DEFINITION_ID}" >&2
               exit 1
           fi
+          echo "public_contracts_selected=${public_contracts_selected}" >> "$GITHUB_OUTPUT"
           echo "workflow_id=${workflow_id}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${head_sha}" >> "$GITHUB_OUTPUT"
           echo "candidate_sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
@@ -420,7 +437,7 @@ jobs:
   # controller Python from the reviewed CI repo, NOT PR-controlled code.
   publish_receipt:
     name: "Publish Receipt to Planning"
-    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true'
+    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true' && needs.extract_plan.outputs.public_contracts_selected == 'true'
     needs: [producer_context, extract_plan]
     runs-on: ubuntu-latest
     timeout-minutes: 10

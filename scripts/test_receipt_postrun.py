@@ -374,6 +374,7 @@ class F1PositiveRun(unittest.TestCase):
         env = dict(os.environ,
                    GITHUB_OUTPUT=str(self.root / "gh_out"),
                    GH_WORKFLOW_TOKEN="fixture-token",
+                   RUN_HEAD=FAKE_PLAN["head_sha"], RUN_BASE=FAKE_PLAN["target_base_sha"],
                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
                    PYTHONPATH=str(HERE))
         (self.root / "gh_out").write_text("")
@@ -387,6 +388,7 @@ class F1PositiveRun(unittest.TestCase):
                 k, v = line.split("=", 1)
                 out[k] = v
 
+        self.assertEqual(out.get("public_contracts_selected"), "true")
         self.assertEqual(out.get("workflow_id"), str(FAKE_PLAN["workflow_id"]))
         self.assertEqual(out.get("candidate_sha"), "c" * 40)
         self.assertEqual(out.get("head_sha"), HEAD_SHA)
@@ -425,6 +427,29 @@ class F1PositiveRun(unittest.TestCase):
         self.assertNotEqual(int(RUN_ID), workflow_id)  # run != definition
         self.assertEqual(value["status"], "pass")
         self.assertIsNone(value["approved"])
+
+    def test_decode_nonpilot_and_invalid_plans(self):
+        env = dict(os.environ, GITHUB_OUTPUT=str(self.root / "gh_out"),
+                   GH_WORKFLOW_TOKEN="fixture-token", RUN_HEAD=FAKE_PLAN["head_sha"],
+                   RUN_BASE=FAKE_PLAN["target_base_sha"],
+                   PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
+                   PYTHONPATH=str(HERE))
+        cases = [({"selected_gates": []}, 0, "public_contracts_selected=false"),
+                 ({"coverage_status": "unresolved"}, 1, None),
+                 ({"selected_gates": None}, 1, None),
+                 ({"head_sha": "d" * 40}, 1, None),
+                 ({"integration_sha": "f" * 40}, 1, None),
+                 ({"target_base_sha": "e" * 40}, 1, None)]
+        for updates, expected, output in cases:
+            with self.subTest(updates=updates):
+                with zipfile.ZipFile(self.root / "plan.zip", "w") as archive:
+                    archive.writestr("pr-plan.json", json.dumps(dict(FAKE_PLAN, **updates)))
+                (self.root / "gh_out").write_text("")
+                proc = _run(["bash", "-euo", "pipefail", "-c", self._decode_block()],
+                            env=env, cwd=self.root)
+                self.assertEqual(proc.returncode == 0, expected == 0, proc.stderr)
+                if output:
+                    self.assertIn(output, (self.root / "gh_out").read_text())
 
     class _env:
         def __init__(self, env):
@@ -535,6 +560,9 @@ for i, a in enumerate(args):
     if a == "api" and i + 1 < len(args):
         path = args[i + 1]
         break
+if "/git/ref/pull/" in path and path.endswith("/merge"):
+    print("c" * 40)
+    sys.exit(0)
 if "/pulls/" in path or path.endswith("/pulls"):
     print(json.dumps({"number": 1124, "state": "open",
                       "body": "Closes #1125"}))
@@ -796,17 +824,7 @@ _PR_BASE_NULL = object()
 
 
 class ProducerEligibilityGateTests(unittest.TestCase):
-    """Root cause 2026-10-30 (#1218 red post-run): workflow_run triggers fire
-    for EVERY successful CI completion, including forward-port PRs whose CI
-    never uploads trusted-pr-plan. The probe must tell ABSENCE (skip cleanly)
-    from an ERROR (fail closed): a failed/incomplete API response must hard-fail
-    (exit 1), never read as a phantom producer run.
-
-    Mere artifact absence is NOT sufficient for a skip (Owner 2026-10-30): a
-    contracts/ touch with no trusted-pr-plan artifact is an integrity error and
-    fails closed; only no contracts/ touch + no artifact skips cleanly. Only a
-    present-but-broken plan fails closed downstream in extract_facts.
-    """
+    """Verify authenticated PR association and fail closed on absent plans."""
 
     WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "receipt-post-run.yml"
 
@@ -1003,15 +1021,11 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("producer_eligible=true", result)
 
-    def test_no_contract_touch_no_artifact_skips_cleanly(self):
-        # Successful calls, no artifact, no contracts/ file => legit skip.
+    def test_no_contract_touch_no_artifact_fails_closed(self):
         proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
-                                       files_stdout="README.md\nscripts/foo.py", files_rc=0)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("producer_eligible=false", result)
-        # The skip rationale is diagnostic on stderr; the machine-readable
-        # skip signal (producer_eligible=false) is on GITHUB_OUTPUT.
-        self.assertIn("not a producer run", proc.stderr)
+                                       files_stdout="README.md", files_rc=0)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("producer_eligible=false", result)
 
     def test_contract_touch_without_artifact_fails_closed(self):
         # The Owner-precise rule: a contracts/ touch with no trusted-pr-plan
@@ -1123,8 +1137,9 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         self.assertNotEqual(err_proc.returncode, 0)
         ok_proc, ok_result = self._run_probe(artifact_stdout="", artifact_rc=0,
                                              files_stdout="", files_rc=0)
-        self.assertEqual(ok_proc.returncode, 0)
-        self.assertIn("producer_eligible=false", ok_result)
+        self.assertNotEqual(ok_proc.returncode, 0)
+        self.assertIn("artifact missing", ok_proc.stderr)
+        self.assertNotIn("producer_eligible=false", ok_result)
 
     def test_probe_lists_pr_files_authenticated_paginated(self):
         # rv1221 point 1: contracts impact is determined from an AUTHENTICATED,
@@ -1297,16 +1312,6 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                                        files_rc=0)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("producer_eligible=true", result)
-
-    def test_eligibility_false_no_artifact_no_contract_touch(self):
-        # No artifact + no contracts/ touch (from the immutable base..head
-        # compare) => clean skip.
-        proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
-                                       files_stdout="README.md\ndocs/foo.md",
-                                       files_rc=0)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("producer_eligible=false", result)
-        self.assertIn("not a producer run", proc.stderr)
 
     def test_eligibility_integrity_error_contract_touch_no_artifact(self):
         # A contracts/ touch in the immutable base..head diff with no
