@@ -33,6 +33,16 @@ class GitHubAdapterTest(unittest.TestCase):
             with self.assertRaises(verifier.ReceiptError):
                 evidence.github(path + '/../../secrets')
 
+    def test_newer_failed_or_running_run_never_falls_back_to_old_success(self):
+        head = 'a' * 40
+        success = dict(id=1, head_sha=head, event='pull_request', run_attempt=1,
+                       status='completed', conclusion='success')
+        self.assertEqual(evidence.latest_run([success], head), 1)
+        for status, conclusion in [('completed', 'failure'), ('in_progress', None)]:
+            newer = dict(success, id=2, status=status, conclusion=conclusion)
+            with self.subTest(status=status), self.assertRaises(verifier.ReceiptError):
+                evidence.latest_run([success, newer], head)
+
 
 class MergeEvidenceTest(unittest.TestCase):
     def setUp(self):
