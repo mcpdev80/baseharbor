@@ -224,71 +224,8 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		app.Cache = map[string]sharedValkeyResource{}
 	}
 
-	if UsesSharedPostgreSQL(m) {
-		if state.CoreSQL == nil {
-			if state.PostgresAdminCredential == "" {
-				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-admin", "")
-				if err != nil {
-					return false, err
-				}
-				state.PostgresAdminCredential = ref
-			}
-			if state.PostgresSuperuserCredential == "" {
-				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-superuser", "")
-				if err != nil {
-					return false, err
-				}
-				state.PostgresSuperuserCredential = ref
-			}
-			if state.PostgresMembers > 1 && state.PostgresReplicationCredential == "" {
-				ref, err := ensureSharedPostgresCredential(shared.Dir, "provider-replication", "")
-				if err != nil {
-					return false, err
-				}
-				state.PostgresReplicationCredential = ref
-			}
-			if state.PostgresHostPort == 0 {
-				state.PostgresHostPort, err = allocateLoopbackPort(nil)
-				if err != nil {
-					return false, err
-				}
-			}
-		} else {
-			coreValues, err := bhruntime.RuntimeEnvironment(core)
-			if err != nil {
-				return false, err
-			}
-			state.PostgresHostPort, err = strconv.Atoi(coreValues["BASEHARBOR_POSTGRES_PORT"])
-			if err != nil {
-				return false, errors.New("shared Core SQL endpoint is invalid")
-			}
-		}
-		for _, instance := range SQLInstanceNames(m) {
-			database := sharedPostgresDatabaseName(m, instance)
-			username := sharedPostgresRoleName(m, instance)
-			ref, err := ensureSharedPostgresCredential(shared.Dir, sharedBackendApplicationKey(m), instance)
-			if err != nil {
-				return false, err
-			}
-			password, err := readSharedBackendCredential(shared.Dir, ref)
-			if err != nil {
-				return false, err
-			}
-			resource := sharedPostgresResource{
-				Database:            database,
-				Username:            username,
-				CredentialReference: ref,
-			}
-			app.SQL[instance] = resource
-			values[postgresRuntimeKey(instance, "DB")] = database
-			values[postgresRuntimeKey(instance, "USER")] = username
-			values[postgresRuntimeKey(instance, "PASSWORD")] = password
-			values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
-			values[postgresContainerHostKey(instance)] = "postgres"
-			if state.CoreSQL == nil {
-				values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
-			}
-		}
+	if err := reconcileSharedPostgresConfig(ctx, compose, core, m, shared.Dir, &state, &app, values); err != nil {
+		return false, err
 	}
 
 	if err := bindSharedValkeyApplication(&state, shared, m, &app, values); err != nil {
@@ -358,6 +295,78 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 		return false, fmt.Errorf("refresh application contract for shared backends: %w", err)
 	}
 	return true, nil
+}
+
+func reconcileSharedPostgresConfig(ctx context.Context, compose bhruntime.RuntimeProvider, core bhruntime.Files, m Manifest, dir string, state *sharedBackendState, app *sharedBackendAppState, values map[string]string) error {
+	if !UsesSharedPostgreSQL(m) {
+		return nil
+	}
+	if state.CoreSQL == nil {
+		if state.PostgresAdminCredential == "" {
+			ref, err := ensureSharedPostgresCredential(dir, "provider-admin", "")
+			if err != nil {
+				return err
+			}
+			state.PostgresAdminCredential = ref
+		}
+		if state.PostgresSuperuserCredential == "" {
+			ref, err := ensureSharedPostgresCredential(dir, "provider-superuser", "")
+			if err != nil {
+				return err
+			}
+			state.PostgresSuperuserCredential = ref
+		}
+		if state.PostgresMembers > 1 && state.PostgresReplicationCredential == "" {
+			ref, err := ensureSharedPostgresCredential(dir, "provider-replication", "")
+			if err != nil {
+				return err
+			}
+			state.PostgresReplicationCredential = ref
+		}
+		if state.PostgresHostPort == 0 {
+			var err error
+			state.PostgresHostPort, err = allocateLoopbackPort(nil)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		coreValues, err := bhruntime.RuntimeEnvironment(core)
+		if err != nil {
+			return err
+		}
+		state.PostgresHostPort, err = strconv.Atoi(coreValues["BASEHARBOR_POSTGRES_PORT"])
+		if err != nil {
+			return errors.New("shared Core SQL endpoint is invalid")
+		}
+	}
+	for _, instance := range SQLInstanceNames(m) {
+		database := sharedPostgresDatabaseName(m, instance)
+		username := sharedPostgresRoleName(m, instance)
+		ref, err := ensureSharedPostgresCredential(dir, sharedBackendApplicationKey(m), instance)
+		if err != nil {
+			return err
+		}
+		password, err := readSharedBackendCredential(dir, ref)
+		if err != nil {
+			return err
+		}
+		resource := sharedPostgresResource{
+			Database:            database,
+			Username:            username,
+			CredentialReference: ref,
+		}
+		app.SQL[instance] = resource
+		values[postgresRuntimeKey(instance, "DB")] = database
+		values[postgresRuntimeKey(instance, "USER")] = username
+		values[postgresRuntimeKey(instance, "PASSWORD")] = password
+		values[postgresRuntimeKey(instance, "HOST_PORT")] = strconv.Itoa(state.PostgresHostPort)
+		values[postgresContainerHostKey(instance)] = "postgres"
+		if state.CoreSQL == nil {
+			values[postgresContainerHostKey(instance)] = sharedPostgresAlias()
+		}
+	}
+	return nil
 }
 
 func bindSharedValkeyApplication(state *sharedBackendState, shared SharedBackendFiles, m Manifest, app *sharedBackendAppState, values map[string]string) error {
