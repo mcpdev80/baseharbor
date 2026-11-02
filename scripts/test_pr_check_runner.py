@@ -39,9 +39,16 @@ class RunnerTests(unittest.TestCase):
         for group in (planner.DOC_CHECKS, planner.CODE_CHECKS, planner.CLI_CHECKS,
                       planner.WIZARD_BASE_CHECKS, planner.CAPABILITY_CHECKS,
                       planner.CI_CHECKS, planner.WORKFLOW_SYNTAX_CHECKS,
-                      planner.INSPECT_CHECKS):
+                      planner.INSPECT_CHECKS, planner.RESOLVER_CHECKS):
             emitted |= {check['id'] for check in group}
         self.assertEqual(set(), emitted - runner.VALIDATIONS)
+
+    def test_resolver_checks_have_workflow_dispatch(self):
+        workflow = (Path(__file__).parent.parent / '.github' / 'workflows' / 'ci.yml').read_text()
+        for check_id in ('resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+                         'resolver-consumer-build'):
+            with self.subTest(check_id=check_id):
+                self.assertIn(check_id + ')', workflow)
 
     def test_empty_validation_never_claims_pass(self):
         self.assertEqual([{'check': 'not-required'}],
