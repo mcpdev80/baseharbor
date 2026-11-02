@@ -39,12 +39,15 @@ def fixture():
 class ClosedRunTests(unittest.TestCase):
     def test_authenticated_tuple_and_fail_closed_negatives(self):
         original = fixture()
-        cases = ("ok", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",
-                 "artifact_expired", "wrong_parents", "wrong_identity", "missing_plan", "pilot")
+        cases = ("ok", "associated", "wrong_association", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",
+                 "artifact_expired", "wrong_parents", "wrong_identity", "missing_plan", "pilot", "associated_pilot")
         for case in cases:
             with self.subTest(case=case):
                 run, jobs, artifact, pr, archive = copy.deepcopy(original)
                 prs = [pr]
+                if case in ("associated", "wrong_association", "associated_pilot"):
+                    run["pull_requests"] = [{"number": 43 if case == "wrong_association" else 42,
+                                             "head": {"sha": HEAD}, "base": {"sha": BASE, "ref": "develop"}}]
                 if case == "open": pr["state"] = "open"
                 if case == "ambiguous": prs.append(copy.deepcopy(pr))
                 if case == "wrong_base": pr["base"]["sha"] = "d" * 40
@@ -52,7 +55,7 @@ class ClosedRunTests(unittest.TestCase):
                 if case == "wrong_run": artifact["workflow_run"]["id"] = 456
                 if case == "artifact_expired": artifact["expired"] = True
                 if case == "missing_plan": archive = b"invalid"
-                if case == "pilot":
+                if case in ("pilot", "associated_pilot"):
                     with zipfile.ZipFile(io.BytesIO(archive)) as source:
                         plan = json.loads(source.read("pr-plan.json"))
                     plan["selected_gates"] = ["integration/static/public-contracts"]
@@ -73,7 +76,7 @@ class ClosedRunTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0)
                 with patch.object(helper.subprocess, "run", side_effect=command), patch.object(
                         helper.rv, "producer_identity", side_effect=ValueError() if case == "wrong_identity" else None):
-                    if case == "ok":
+                    if case in ("ok", "associated"):
                         self.assertEqual(helper.closed_run(RUN, ".", api), 42)
                     else:
                         with self.assertRaises((ValueError, zipfile.BadZipFile)):

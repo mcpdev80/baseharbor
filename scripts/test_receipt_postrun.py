@@ -460,7 +460,7 @@ class F1PositiveRun(unittest.TestCase):
                    RUN_BASE=FAKE_PLAN["target_base_sha"], FAKE_MERGE_MISSING="1",
                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
                    PYTHONPATH=str(HERE))
-        for state, head, success in (("closed", "a" * 40, True),
+        for state, head, success in (("closed", "a" * 40, False),
                                      ("open", "d" * 40, True),
                                      ("open", "a" * 40, False),
                                      ("closed", "bad", False)):
@@ -1094,13 +1094,18 @@ class ProducerEligibilityGateTests(unittest.TestCase):
 
     def test_non_develop_and_superseded_prs_do_not_need_artifact(self):
         for kwargs in ({"run_target": "main", "pr_target": "main"},
-                       {"pr_state": "closed"},
                        {"pr_target": "main"}):
             with self.subTest(kwargs=kwargs):
                 proc, result = self._run_probe(artifact_stdout="", artifact_rc=2,
                                                files_stdout="", files_rc=0, **kwargs)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertIn("producer_eligible=false", result)
+
+    def test_closed_develop_pr_without_verifiable_plan_never_succeeds(self):
+        proc, result = self._run_probe(artifact_stdout="", artifact_rc=2,
+                                       files_stdout="", files_rc=0, pr_state="closed")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn("producer_eligible=false", result)
 
     def test_unidentifiable_target_or_state_fails_closed(self):
         for kwargs in ({"run_target": ""}, {"pr_target": ""},
