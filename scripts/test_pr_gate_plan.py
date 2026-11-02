@@ -4086,6 +4086,36 @@ class RuntimeProjectionPathMappingTests(unittest.TestCase):
                       ' '.join(result['unresolved_coverage']))
 
 
+class PodmanDoctorRuntimeImpactMappingTests(unittest.TestCase):
+    """gatemap-r5: the three PR #1267 podman-doctor files bind to the existing
+    atomic lifecycle gates; a genuinely unrelated new cmd/baha file stays
+    unresolved (the catch-all is unchanged)."""
+
+    def test_three_podman_doctor_files_resolve_on_both_lifecycle_gates(self):
+        reviewed = [
+            {'status': 'modified', 'path': 'cmd/baha/control_plane_operations.go'},
+            {'status': 'added', 'path': 'cmd/baha/podman_doctor_checks.go'},
+            {'status': 'added', 'path': 'cmd/baha/podman_doctor_checks_test.go'},
+        ]
+        result = planner.plan(diff(reviewed), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'], result)
+        self.assertEqual([], result['unresolved_coverage'], result)
+        self.assertFalse(result['broad_required'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        required = planner.CODE_CHECKS + planner.CLI_CHECKS
+        self.assertEqual({c['id'] for c in result['required_validation_checks']},
+                         {c['id'] for c in required})
+
+    def test_unrelated_new_cmd_baha_file_stays_unresolved(self):
+        result = planner.plan(
+            diff([{'status': 'added', 'path': 'cmd/baha/brand_new_command.go'}]),
+            REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('CLI runtime impact needs qualified targeted native coverage',
+                      ' '.join(result['unresolved_coverage']))
+
+
 def runner_validations():
     import importlib.util
     spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')

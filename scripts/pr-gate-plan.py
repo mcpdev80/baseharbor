@@ -1483,6 +1483,46 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path in (
+                'cmd/baha/podman_doctor_checks.go',
+                'cmd/baha/podman_doctor_checks_test.go'):
+            # Podman-target doctor readiness checks (PodmanRuntimeDoctorChecks and
+            # its regression test).  collectControlPlaneDoctorChecks in
+            # cmd/baha/control_plane_operations.go appends podman + quadlet
+            # readiness checks here BEFORE the core-deployment early return, but
+            # ONLY for target.RuntimeProvider == "podman"; the Docker-target
+            # doctor output is intentionally untouched.  These three files are a
+            # single runtime-mutation surface that affects BOTH runner backends
+            # (Docker doctor output must stay clean, Podman doctor output gains
+            # two named checks) and must exercise the real atomic lifecycle gates
+            # on both, exactly like the other cmd/baha runtime-mutation files.
+            # Bind to the SAME existing native lifecycle gates (atomic/docker/
+            # lifecycle, atomic/podman/lifecycle) — no new gate, no weakening.
+            # Without this branch the three files fell to the
+            # cli-unresolved-runtime-impact catch-all and blocked PR Selected
+            # checks (#1267).  This branch must sit BEFORE the
+            # cli-unresolved-runtime-impact catch-all.
+            area = 'cli-podman-doctor-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/control_plane_operations.go' and path_status.get(path) == 'modified':
+            # The control-plane doctor path that appends the podman/quadlet
+            # readiness checks for a Podman target.  It is the exact mutation the
+            # new PodmanRuntimeDoctorChecks wires into, affects both runner
+            # backends (Docker output stays clean, Podman output gains two checks)
+            # and binds to the SAME existing native lifecycle gates as the runtime
+            # acceptance family (atomic/docker/lifecycle, atomic/podman/lifecycle)
+            # — no new gate, no weakening.  Without this branch this file fell to
+            # the cli-unresolved-runtime-impact catch-all and blocked PR Selected
+            # checks (#1267).  This branch must sit BEFORE the
+            # cli-unresolved-runtime-impact catch-all.
+            area = 'cli-podman-doctor-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path == 'cmd/baha/app_observability_acceptance_test.go':
             # Full-stack observability acceptance for the CLI (TestObservabilityFullStack
             # AcceptanceInCI).  This boots a real native container runtime (Docker and
