@@ -341,6 +341,19 @@ PROJECTION_REVIEWED_FILES = frozenset({
     'internal/application/runtime_environment.go',
     'internal/application/runtime_placement_retention_test.go',
 })
+# #1265 application-implementation-unresolved (gatemap-r4): the manifest parser
+# drives the real App-Apply/Promotion path.  manifest.go renders the concrete
+# Manifest with its Provider/SQL/Valkey/Identity/TLS/readiness resolution;
+# manifest_parse.go parses and validates it.  Bind these EXACT three files to
+# the two EXISTING native lifecycle gates (atomic/docker/lifecycle,
+# atomic/podman/lifecycle) — the #1259/#1262 pattern: reference existing gates,
+# NO new gate, no wildcard over internal/application/*. Every other
+# internal/application/* source stays on the conservative unresolved branch.
+GATEMAP_R4_MANIFEST_FILES = frozenset({
+    'internal/application/manifest.go',
+    'internal/application/manifest_parse.go',
+    'internal/application/v0425_contract_test.go',
+})
 PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
@@ -1568,6 +1581,19 @@ def plan(diff, requirements, mapping, repository='.',
             # sit BEFORE the internal/application/ catch-all.
             area = 'application-shared-provider-resolution'
             require(CODE_CHECKS)
+            selected.add('atomic/podman/lifecycle')
+        elif path in GATEMAP_R4_MANIFEST_FILES:
+            # #1265 application-implementation-unresolved: the manifest parser
+            # drives the real App-Apply/Promotion path.  manifest.go renders the
+            # concrete Manifest and its Provider/SQL/Valkey/Identity/TLS/readiness
+            # resolution; manifest_parse.go parses/validates it.  Binding to the
+            # two EXISTING native lifecycle gates (#1259/#1262 pattern: reference
+            # existing gates, NO new gate, no wildcard over internal/application/*)
+            # proves the real provider-resolution + readiness path on BOTH runners.
+            # v0425_contract_test.go pins the v0.4.25 contract for both lifecycles.
+            area = 'application-manifest-lifecycle'
+            require(CODE_CHECKS)
+            selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
