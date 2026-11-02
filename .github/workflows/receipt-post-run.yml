@@ -118,8 +118,8 @@ jobs:
             # the actual Owner merge and candidate before any publication.
             helper_dir="$(mktemp -d)"
             trap 'rm -rf "$helper_dir"' EXIT
-            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=4aac3fceaae8557e69886526b20d8cb1c8248872" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
-            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=4aac3fceaae8557e69886526b20d8cb1c8248872" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=eab14539140a4a732a46711954f5a0f7ec2df5f2" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=eab14539140a4a732a46711954f5a0f7ec2df5f2" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
             git init -q "$helper_dir/product"
             git -C "$helper_dir/product" remote add origin "https://github.com/mcpdev80/baseharbor.git"
             PYTHONPATH="$helper_dir" python3 "$helper_dir/receipt_closed_run.py" --classify "$RUN_ID" "$helper_dir/product"
@@ -631,7 +631,7 @@ jobs:
       - name: Checkout reviewed controller
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: 4aac3fceaae8557e69886526b20d8cb1c8248872
+          ref: eab14539140a4a732a46711954f5a0f7ec2df5f2
           fetch-depth: 0
           persist-credentials: false
       - name: Checkout Planning
