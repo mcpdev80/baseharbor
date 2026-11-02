@@ -29,7 +29,7 @@ def gh(path, *, pages=False, binary=False):
     return json.loads(result.stdout)
 
 
-def closed_run(run_id, product, api=gh, *, planning=None):
+def closed_run(run_id, product, api=gh, *, planning=None, classify_only=False):
     prefix = f"repos/{REPOSITORY}/actions/runs/{run_id}"
     run = api(prefix)
     head = run.get("head_sha")
@@ -109,7 +109,8 @@ def closed_run(run_id, product, api=gh, *, planning=None):
             and isinstance(plan.get("selected_gates"), list)
             and all(isinstance(x, str) for x in plan["selected_gates"]), "invalid producer plan")
     pilot = "integration/static/public-contracts" in plan["selected_gates"]
-    require(not pilot or planning is not None, "public-contracts producer requires receipt handling")
+    require(not pilot or planning is not None or classify_only,
+            "public-contracts producer requires receipt handling")
     require(pr.get("state") == "closed" and pr.get("base", {}).get("ref") == "develop"
             and (pilot or pr.get("base", {}).get("sha") == facts["base_sha"])
             and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),
@@ -128,14 +129,17 @@ def closed_run(run_id, product, api=gh, *, planning=None):
             and set(parents[1:]) == {head, facts["base_sha"]}, "candidate parent mismatch")
     rv.producer_identity(product, {"head_sha": head, "base_sha": facts["base_sha"]})
     if pilot:
-        from receipt_writer import write_merge
         writer_plan = dict(head_sha=head, base_sha=facts['base_sha'],
                            candidate_sha=facts['candidate_sha'], workflow_id=run['workflow_id'])
-        path, _, publication = write_merge(Path(planning), pr['number'], run_id, writer_plan,
-                                           product=product, api=api)
-        rv.retained_merge(Path(planning), publication, path, facts['candidate_sha'],
-                          product=product, api=api)
-        print(f"receipt: {publication}:{path}")
+        if classify_only:
+            rv.merge_evidence(pr['number'], run_id, writer_plan, product=product, api=api)
+        else:
+            from receipt_writer import write_merge
+            path, _, publication = write_merge(Path(planning), pr['number'], run_id, writer_plan,
+                                               product=product, api=api)
+            rv.retained_merge(Path(planning), publication, path, facts['candidate_sha'],
+                              product=product, api=api)
+            print(f"receipt: {publication}:{path}")
     return pr["number"]
 
 
@@ -180,12 +184,13 @@ def push_run(push_id, product, planning, api=gh):
 if __name__ == "__main__":
     try:
         push = len(sys.argv) == 5 and sys.argv[1] == '--push'
-        args = sys.argv[2:] if push else sys.argv[1:]
+        classify = len(sys.argv) == 4 and sys.argv[1] == '--classify'
+        args = sys.argv[2:] if push or classify else sys.argv[1:]
         require(len(args) in (2, 3) and args[0].isdigit() and (not push or len(args) == 3),
                 "invalid arguments")
         planning = Path(args[2]) if len(args) == 3 else None
         number = (push_run(int(args[0]), Path(args[1]), planning) if push
-                  else closed_run(int(args[0]), Path(args[1]), planning=planning))
+                  else closed_run(int(args[0]), Path(args[1]), planning=planning, classify_only=classify))
         if number is not None:
             print(f"Authenticated closed PR #{number}" + ('; no receipt required' if planning is None else ''))
     except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, subprocess.CalledProcessError, rv.ReceiptError):
