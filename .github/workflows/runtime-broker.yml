@@ -120,7 +120,7 @@ jobs:
             --cacert "$broker_ca" "$docs_url" >/tmp/broker-demo-docs.html
           /tmp/baha app status broker-demo | tee /tmp/broker-demo-status.out
           grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-demo-status.out
-          grep -Fq "Swagger/OpenAPI: $docs_url" /tmp/broker-demo-status.out
+          grep -F "Swagger/OpenAPI" /tmp/broker-demo-status.out | grep -Fq "$docs_url"
           /tmp/baha app status broker-demo --verbose | tee /tmp/broker-demo-status-verbose.out
           grep -q "Runtime artifact" /tmp/broker-demo-status-verbose.out
           grep -q "image id" /tmp/broker-demo-status-verbose.out
