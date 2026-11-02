@@ -105,11 +105,12 @@ jobs:
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
           apply_with_current_consent broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
-          docs_url="$(sed -n 's/.*Swagger\/OpenAPI: \(https:\/\/127\.0\.0\.1:[0-9][0-9]*\/\).*/\1/p' /tmp/broker-demo-apply.out | tail -n1)"
-          test -n "$docs_url"
-          curl --fail --silent --show-error \
-            --cacert $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/ca.pem \
-            "$docs_url" >/tmp/broker-demo-docs.html
+          docs_url=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-docs-url.py" /tmp/broker-demo-apply.out)
+          docs_port=$(python3 -c 'from urllib.parse import urlsplit; import sys; print(urlsplit(sys.argv[1]).port or 443)' "$docs_url")
+          gateway_ca="${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor/targets/ci/developer-access/dev/gateway/runtime/ca.pem"
+          curl --fail --silent --show-error --noproxy broker-demo.baha.localhost \
+            --resolve "broker-demo.baha.localhost:${docs_port}:127.0.0.1" \
+            --cacert "$gateway_ca" "$docs_url" >/tmp/broker-demo-docs.html
           /tmp/baha app status broker-demo | tee /tmp/broker-demo-status.out
           grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-demo-status.out
           grep -Fq "Swagger/OpenAPI: $docs_url" /tmp/broker-demo-status.out
