@@ -327,6 +327,9 @@ class F1PositiveRun(unittest.TestCase):
         stub = self.bin / "gh"
         stub.write_text(FAKE_GH_STUB)
         stub.chmod(0o755)
+        git_stub = self.bin / "git"
+        git_stub.write_text(FAKE_PRODUCER_GIT_STUB)
+        git_stub.chmod(0o755)
 
     def _init_planning(self, root: Path):
         _run(["git", "init", "-q", str(root)])
@@ -469,6 +472,22 @@ class F1PositiveRun(unittest.TestCase):
                 self.assertEqual("public_contracts_selected=false" in
                                  (self.root / "gh_out").read_text(), success)
 
+    def test_nonpilot_requires_producer_workflow_identity(self):
+        with zipfile.ZipFile(self.root / "plan.zip", "w") as archive:
+            archive.writestr("pr-plan.json", json.dumps(dict(FAKE_PLAN, selected_gates=[])))
+        env = dict(os.environ, GITHUB_OUTPUT=str(self.root / "gh_out"),
+                   GH_WORKFLOW_TOKEN="fixture-token", RUN_HEAD=FAKE_PLAN["head_sha"],
+                   RUN_BASE=FAKE_PLAN["target_base_sha"],
+                   PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
+                   PYTHONPATH=str(HERE))
+        for failure in ("FAKE_PRODUCER_CHANGED", "FAKE_FETCH_FAILURE"):
+            with self.subTest(failure=failure):
+                (self.root / "gh_out").write_text("")
+                proc = _run(["bash", "-euo", "pipefail", "-c", self._decode_block()],
+                            env=dict(env, **{failure: "1"}), cwd=self.root)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertNotIn("public_contracts_selected=false", (self.root / "gh_out").read_text())
+
     class _env:
         def __init__(self, env):
             self.env = env
@@ -563,6 +582,29 @@ class F1WorkflowShellEndToEnd(unittest.TestCase):
         local_head = _run(["git", "-C", self.planning, "rev-parse", "HEAD"]).stdout.strip()
         self.assertNotEqual(local_head, self.plan_commit,
                             "plan revision did not advance the local checkout")
+
+
+FAKE_PRODUCER_GIT_STUB = r'''#!/usr/bin/env python3
+import os
+import sys
+
+args = sys.argv[1:]
+if args and args[0] == "fetch":
+    sys.exit(1 if os.getenv("FAKE_FETCH_FAILURE") else 0)
+if args[:2] == ["-C", "."]:
+    args = args[2:]
+    if args[0] == "ls-tree":
+        oid = "1" * 40 if args[1] == "a" * 40 else "2" * 40
+        print("100644 blob %s\t.github/workflows/ci.yml" % oid)
+        sys.exit(0)
+    if args[:2] == ["cat-file", "-s"]:
+        print("12")
+        sys.exit(0)
+    if args[0] == "show":
+        print("changed" if args[1] == "1" * 40 and os.getenv("FAKE_PRODUCER_CHANGED") else "trusted")
+        sys.exit(0)
+sys.exit(1)
+'''
 
 
 FAKE_GH_STUB = r'''#!/usr/bin/env python3
