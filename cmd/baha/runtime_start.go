@@ -42,14 +42,6 @@ func persistControlPlaneOpenBaoReference(ctx context.Context) error {
 	}
 	store := capability.RegistryStore{Path: filepath.Join(dataRoot, "provider-registry.json")}
 	return store.Update(func(registry *capability.Registry) error {
-		for _, existing := range registry.Instances {
-			if existing.ID == "openbao/control-plane" {
-				if existing.Provider.Kind != capability.ProviderOpenBao || existing.Scope != capability.ScopeShared || existing.Ownership != capability.OwnershipBaseHarbor {
-					return fmt.Errorf("control-plane OpenBao provider reference has incompatible identity")
-				}
-				return nil
-			}
-		}
 		// Mirror registerReferenceProvidersAt's OpenBao registration: a shared,
 		// baseharbor-owned realization with no sharing boundary. No manifest is
 		// required because the shared placement is the default for OpenBao.

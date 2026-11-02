@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,8 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
       - |
         import os
         import ssl
+        import threading
+        import time
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
         body = b"baseharbor_acceptance_metric 1\n# EOF\n"
@@ -105,7 +108,12 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
             def log_message(self, format, *args):
                 return
 
-        print("baseharbor-observability-acceptance-api", flush=True)
+        def emit_logs():
+            while True:
+                print("baseharbor-observability-acceptance-api", flush=True)
+                time.sleep(1)
+
+        threading.Thread(target=emit_logs, daemon=True).start()
         server = HTTPServer(("0.0.0.0", 8080), Handler)
         cert_file = os.environ.get("TLS_CERT_FILE", "").strip()
         key_file = os.environ.get("TLS_KEY_FILE", "").strip()
@@ -114,10 +122,28 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
             context.load_cert_chain(certfile=cert_file, keyfile=key_file)
             server.socket = context.wrap_socket(server.socket, server_side=True)
         server.serve_forever()
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
   trace-probe:
     image: docker.io/curlimages/curl:8.16.0
     entrypoint: ["sh", "-c"]
-    command: ["echo baseharbor-observability-acceptance-trace-probe; sleep 3600"]
+    command: ["while :; do echo baseharbor-observability-acceptance-trace-probe; sleep 1; done"]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          set -- --silent --show-error --max-time 3 --cacert "$$OTEL_EXPORTER_OTLP_CERTIFICATE";
+          if [ -n "$${OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE:-}" ]; then
+          set -- "$$@" --cert "$$OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE" --key "$$OTEL_EXPORTER_OTLP_CLIENT_KEY";
+          fi;
+          code=$$(curl "$$@" -o /dev/null -w '%{http_code}' "$${OTEL_EXPORTER_OTLP_ENDPOINT%/}/") &&
+          case "$$code" in 200|204|404|405) exit 0;; *) exit 1;; esac
+      interval: 2s
+      timeout: 5s
+      retries: 30
 `
 	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
 		t.Fatal(err)
@@ -161,12 +187,17 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 		t.Fatalf("impact consent validation failed: %v", err)
 	}
 
-	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"app", "apply"}, &out, &out); err != nil {
-		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
+		t.Fatal("full-stack observability apply failed")
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
-		t.Fatalf("apply output missing final verified-ready state:\n%s", out.String())
+		t.Fatal("apply output missing final verified-ready state")
 	}
+	providerEvidence := regexp.MustCompile(`(?m)^\[VERIFIED\] logs\s+[0-9]+ workload stream\(s\), [1-9][0-9]* provider stream\(s\) ingested for ` + regexp.QuoteMeta(m.Name) + `$`).FindString(out.String())
+	if providerEvidence == "" {
+		t.Fatal("apply did not verify ingestion of any provider log streams")
+	}
+	t.Log(providerEvidence)
 
 	assertSignalProviders(t, m, observability.SignalMetrics, []capability.ProviderKind{
 		capability.ProviderOTelCollector,

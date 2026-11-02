@@ -283,7 +283,7 @@ func alloyJournalConfig(registrations []Registration, providerSources []observab
 				continue
 			}
 		}
-		pattern := "^(?:" + regexp.QuoteMeta(project+"_"+service+"_") + "[0-9]+|" + regexp.QuoteMeta(project+"-"+service) + ")$"
+		pattern := "^(?:" + regexp.QuoteMeta(project+"_"+service+"_") + "[0-9]+|" + regexp.QuoteMeta(project+"-"+service) + "(?:-[0-9]+)?)$"
 		label := fmt.Sprintf("application_provider_%d", i)
 		fmt.Fprintf(&b, "\nloki.relabel %s {\n", strconv.Quote(label))
 		b.WriteString("  forward_to = []\n\n")

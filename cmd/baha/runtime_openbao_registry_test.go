@@ -65,3 +65,25 @@ func TestPersistControlPlaneRejectsIncompatibleReference(t *testing.T) {
 		t.Fatal("accepted an incompatible control-plane registry identity")
 	}
 }
+
+func TestPersistControlPlaneRejectsMismatchedSharingBoundary(t *testing.T) {
+	t.Setenv("BASEHARBOR_TARGET", "")
+	target := configureTestTarget(t)
+	root, err := targetDataRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}
+	if err := store.Update(func(registry *capability.Registry) error {
+		return registry.Register(capability.ProviderInstance{
+			ID: "openbao/control-plane", Provider: capability.OpenBao,
+			Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor,
+			SharingBoundary: "other-tenant",
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistControlPlaneOpenBaoReference(context.Background()); err == nil {
+		t.Fatal("accepted a control-plane reference with a different sharing boundary")
+	}
+}
