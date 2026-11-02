@@ -96,7 +96,7 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 1
-          grep -q "required secrets check failed" /tmp/broker-demo-required.out
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/broker-demo-required.out
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
           apply_with_current_consent broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
@@ -119,7 +119,7 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 1
-          grep -q "required secrets check failed" /tmp/other-demo-required.out
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/other-demo-required.out
           printf '%s' 'bootstrap-b' | /tmp/baha app secret set other-demo BOOTSTRAP_SECRET --stdin
           apply_with_current_consent other-demo | grep -q "application and requested infrastructure verified"
 
@@ -335,6 +335,7 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 1
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/perf-required.out
           printf '%s' 'bootstrap' | /tmp/baha app secret set perf-demo BOOTSTRAP_SECRET --stdin
           apply_with_current_consent perf-demo | grep -q "application and requested infrastructure verified"
 
