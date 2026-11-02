@@ -209,7 +209,7 @@ jobs:
               https://baseharbor-secrets:8443/readyz >/dev/null
           done
           docker cp "$target_id:/run/baseharbor/identity/ca.pem" /tmp/broker-target-ca.pem
-          docker cp /tmp/broker-target-ca.pem "$other_id:/tmp/broker-target-ca.pem"
+          docker exec -i "$other_id" sh -c 'cat > /tmp/broker-target-ca.pem' </tmp/broker-target-ca.pem
           docker cp "$target_id:/run/secrets/probe-client-cert" /tmp/broker-target-cert.pem
           docker cp "$other_id:/run/secrets/probe-client-cert" /tmp/broker-other-cert.pem
           ! cmp -s /tmp/broker-target-cert.pem /tmp/broker-other-cert.pem
