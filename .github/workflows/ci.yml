@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - develop
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
@@ -748,6 +749,11 @@ jobs:
               python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
               ;;
             openbao-package-tests)
+              git fetch --no-tags origin "$BASE_SHA"
+              git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
+              python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"
+              ;;
+            logs-package-tests)
               git fetch --no-tags origin "$BASE_SHA"
               git show "$BASE_SHA":scripts/pr-check-runner.py > "$RUNNER_TEMP/pr-check-runner.py"
               python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check "$VALIDATION" --repository "$GITHUB_WORKSPACE"

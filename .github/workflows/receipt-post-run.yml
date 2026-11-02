@@ -112,6 +112,20 @@ jobs:
             exit 1
           fi
           RUN_PR_NUMBER="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number) | length' 2>/dev/null)"
+          if [ "${RUN_PR_NUMBER}" = "0" ]; then
+            # GitHub can remove the run association once a PR is merged. Only
+            # a uniquely authenticated closed PR with the same run, plan and
+            # merge parents may be classified as superseded without a receipt.
+            helper_dir="$(mktemp -d)"
+            trap 'rm -rf "$helper_dir"' EXIT
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=${GITHUB_SHA}" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=dd8fb61d614b59252c9d29121380b5893d006828" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
+            git init -q "$helper_dir/product"
+            git -C "$helper_dir/product" remote add origin "https://github.com/mcpdev80/baseharbor.git"
+            PYTHONPATH="$helper_dir" python3 "$helper_dir/receipt_closed_run.py" "$RUN_ID" "$helper_dir/product"
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "${RUN_PR_NUMBER}" != "1" ]; then
             echo "run $RUN_ID has ${RUN_PR_NUMBER} (expected exactly 1) bound PR: ambiguous/absent association, failing closed" >&2
             exit 1
@@ -553,31 +567,6 @@ jobs:
            echo "  run_id=$RUN_ID"
            echo "  attempt=1"
            echo "  plan_revision=$PLAN_REVISION"
-           # receipt_writer.py HARDCODES GATE='public-contracts' and live()
-           # REQUIRES the 'PR · Public Contracts' gate job to be SUCCESSFUL. The
-           # receipt chain is therefore a producer PILOT: only runs whose plan
-           # registered a public-contracts plan entry (integration/static/
-           # public-contracts.json) may publish. A non-pilot run (e.g. an
-           # internal/ PR whose resolved gate is not public-contracts) has no
-           # entry here and must be a CLEAN NO-OP, never a hard failure.
-           #
-           # Read the pilot plan entry from the checked-out Planning repo; if no
-           # entry matches this run's head_sha, skip cleanly WITHOUT touching the
-           # product checkout or the verifier. The pilot path (entry present)
-           # keeps its existing fail-closed behaviour UNCHANGED below.
-           set +e
-           PILOT_ENTRY="$(jq -r --arg head "$HEAD_SHA" \
-             'if (.head_sha == $head) then "pilot" else "none" end' \
-             "$PLANNING_ROOT/evidence/receipt-plans/public-contracts.json" 2>/dev/null)"
-           PILOT_RC=$?
-           set -e
-           if [ "${PILOT_RC}" -eq 0 ] && [ "${PILOT_ENTRY}" = "pilot" ]; then
-             echo "receipt-pilot plan entry found for head $HEAD_SHA: publishing as pilot."
-           else
-             echo "no receipt-pilot plan entry for head $HEAD_SHA: not a public-contracts producer pilot; CLEAN NO-OP, no receipt." >&2
-             echo "- **No Receipt:** non-pilot producer run (resolved gate is not public-contracts); no-op instead of fail." >> "$GITHUB_STEP_SUMMARY"
-             exit 0
-           fi
            # The writer invokes the immutable controller Python.
            # It creates a canonical 6-field receipt, verifies it live WITH the
            # product checkout (producer-definition check at issuance), and
