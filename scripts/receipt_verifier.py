@@ -392,9 +392,12 @@ def merge_evidence(pr_number, run_id, plan, *, product, api=None):
             'run PR association missing or ambiguous')
     live({'approved': None, 'run': {'id': run_id, 'attempt': 1},
           'sha': plan['candidate_sha']}, plan, api=api, product=product)
-    jobs = api(f'repos/{REPOSITORY}/actions/runs/{run_id}/attempts/1/jobs?per_page=100&page=1')
-    rows = jobs.get('jobs')
-    require(isinstance(rows, list) and jobs.get('total_count') == len(rows), 'incomplete jobs')
+    pages = api(f'repos/{REPOSITORY}/actions/runs/{run_id}/attempts/1/jobs?per_page=100', pages=True)
+    require(isinstance(pages, list) and pages and all(isinstance(p, dict) for p in pages),
+            'invalid job inventory')
+    rows = [j for page in pages for j in page.get('jobs', [])]
+    require(all(isinstance(p.get('jobs'), list) and p.get('total_count') == len(rows) for p in pages),
+            'incomplete jobs')
     final = [j for j in rows if j.get('name') == 'PR Selected Checks']
     try:
         merged_at = dt.datetime.strptime(pr.get('merged_at') or '', '%Y-%m-%dT%H:%M:%SZ')
