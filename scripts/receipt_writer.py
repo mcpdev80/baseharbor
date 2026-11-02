@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create one canonical, unapproved pilot receipt, commit it to Planning, and publish."""
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -29,7 +30,7 @@ def _is_rejected_push(rc: int, stderr: str) -> bool:
     return needle in stderr or "failed to push" in stderr
 
 
-def commit_file(root, path, raw, *, expected=None) -> str:
+def commit_file(root, path, raw, *, expected=None, message=None) -> str:
     """Commit exactly one file in the local working tree.
 
     Returns the commit SHA of the new or existing commit. A caller publishes
@@ -63,7 +64,7 @@ def commit_file(root, path, raw, *, expected=None) -> str:
         require(target.is_file() and target.read_bytes() == expected, "receipt changed before approval")
         target.write_bytes(raw)
     git(root, "add", "--", path)
-    git(root, "commit", "-m", f"receipt: {GATE} {'approve' if expected else 'record'}", "--", path)
+    git(root, "commit", "-m", message or f"receipt: {GATE} {'approve' if expected else 'record'}", "--", path)
     return git(root, "rev-parse", "HEAD").decode().strip()
 
 
@@ -178,7 +179,7 @@ def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
 
 
 def publish(root: Path, path: str, local_commit: str, *,
-            dry_run: bool = False) -> Tuple[str, str, str]:
+            dry_run: bool = False, canonical_validator=_check_canonical) -> Tuple[str, str, str]:
     """Publish a local receipt commit to the Planning remote via fast-forward push.
 
     Implements bounded re-apply with idempotent retry under an unrelated
@@ -277,7 +278,7 @@ def publish(root: Path, path: str, local_commit: str, *,
         remote_bytes = _current_remote_bytes(root, path)
         # Durable receipt exists on the fresh remote.
         if remote_bytes is not None:
-            _check_canonical(remote_bytes)
+            canonical_validator(remote_bytes)
             if remote_bytes == raw:
                 # Identical canonical bytes — return idempotently.
                 after = git(root, "rev-parse", "origin/main").decode().strip()
@@ -298,7 +299,7 @@ def publish(root: Path, path: str, local_commit: str, *,
             # idempotent return only if the fresh remote now carries our own bytes.
             remote_bytes2 = _current_remote_bytes(root, path)
             if remote_bytes2 is not None and remote_bytes2 == raw:
-                _check_canonical(remote_bytes2)
+                canonical_validator(remote_bytes2)
                 after2 = git(root, "rev-parse", "origin/main").decode().strip()
                 return path, _find_introduction(root, path, after2), after2
             raise ReceiptError("conflicting receipt on remote after re-apply; blocked")
@@ -361,12 +362,60 @@ def write_and_publish(root, plan_revision, run_id, attempt, api=None,
     return publish(root, path, commit)
 
 
+def commit_record(pr_number, api):
+    """Identify a merged commit from GitHub, without interpreting CI results."""
+    require(type(pr_number) is int and pr_number > 0, "invalid pull request")
+    pr = api(pr_number)
+    require(pr.get("number") == pr_number and pr.get("state") == "closed"
+            and pr.get("merged") is True and (pr.get("base") or {}).get("ref") == "develop"
+            and ((pr.get("base") or {}).get("repo") or {}).get("id") == 1360667669
+            and (pr.get("merged_by") or {}).get("id") == 22537373,
+            "authenticated Owner merge into develop required")
+    sha = pr.get("merge_commit_sha")
+    require(full_sha(sha), "invalid merge commit")
+    return {"commit": sha, "pull_request": pr_number}
+
+
+def _check_commit_record(raw):
+    value = json.loads(raw)
+    require(isinstance(value, dict) and set(value) == {"commit", "pull_request"}
+            and full_sha(value["commit"]) and type(value["pull_request"]) is int
+            and value["pull_request"] > 0 and raw == canonical(value),
+            "invalid canonical commit receipt")
+
+
+def publish_commit(root, product, pr_number, api):
+    value = commit_record(pr_number, api)
+    sha = value["commit"]
+    # The protected develop branch is the authority for the actual merge commit.
+    git(product, "cat-file", "-e", sha + "^{commit}")
+    git(product, "merge-base", "--is-ancestor", sha, "refs/remotes/origin/develop")
+    raw = canonical(value)
+    _check_commit_record(raw)
+    path = "evidence/receipts/commits/" + sha + ".json"
+    commit = commit_file(root, path, raw, message="receipt: record merged commit")
+    return publish(root, path, commit, canonical_validator=_check_commit_record)
+
+
+def github_pr(pr_number):
+    result = subprocess.run(["gh", "api", f"repos/mcpdev80/baseharbor/pulls/{pr_number}"],
+                            capture_output=True, check=False)
+    require(result.returncode == 0, "cannot authenticate pull request")
+    try:
+        value = json.loads(result.stdout)
+    except (ValueError, UnicodeError) as exc:
+        raise ReceiptError("invalid pull request response") from exc
+    require(isinstance(value, dict), "invalid pull request response")
+    return value
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--planning", type=Path, required=True)
-    parser.add_argument("--plan", required=True)
-    parser.add_argument("--run", type=int, required=True)
-    parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--plan")
+    parser.add_argument("--run", type=int)
+    parser.add_argument("--attempt", type=int)
+    parser.add_argument("--commit-pr", type=int)
     parser.add_argument("--product", type=Path, default=None,
                         help="reviewed controller checkout for pinned-source checks")
     parser.add_argument("--publish", action="store_true",
@@ -375,6 +424,17 @@ def main():
                         help="Write locally without pushing")
     args = parser.parse_args()
     try:
+        if args.commit_pr is not None:
+            require(os.environ.get("GITHUB_EVENT_NAME") == "pull_request_target"
+                    and os.environ.get("GITHUB_REPOSITORY") == "mcpdev80/baseharbor"
+                    and os.environ.get("GITHUB_REF") == "refs/heads/main"
+                    and args.product is not None and args.publish and not args.dry_run,
+                    "trusted merged-PR action on protected main required")
+            path, intro, pub = publish_commit(args.planning, args.product, args.commit_pr, github_pr)
+            print(f"receipt: {pub}:{path} (intro:{intro})")
+            return
+        require(args.plan is not None and args.run is not None and args.attempt is not None,
+                "plan, run and attempt required")
         require(os.environ.get("GITHUB_EVENT_NAME") == "workflow_run"
                 and os.environ.get("GITHUB_REPOSITORY") == "mcpdev80/baseharbor"
                 and os.environ.get("GITHUB_REF") == "refs/heads/main",
