@@ -43,6 +43,38 @@ def closed_run(run_id, product, api=gh):
     require(run.get("pull_requests") == [], "run is not missing its PR association")
     pages = api(f"{prefix}/attempts/1/jobs?per_page=100", pages=True)
     jobs = [j for page in pages for j in page.get("jobs", [])]
+    pr_pages = api(f"repos/{REPOSITORY}/commits/{head}/pulls?per_page=100", pages=True)
+    prs = [p for page in pr_pages for p in page
+           if p.get("head", {}).get("sha") == head
+           and p.get("head", {}).get("ref") == branch
+           and p.get("base", {}).get("repo", {}).get("id") == REPOSITORY_ID]
+    require(len(prs) == 1, "missing or ambiguous PR for producer head")
+    pr = prs[0]
+    require(pr.get("state") == "closed"
+            and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),
+            "closed PR identity mismatch")
+    if pr.get("base", {}).get("ref") == "main":
+        # Main PRs do not run the develop-only planner. Accept that case only
+        # with authenticated job outcomes, no plan, and an unchanged producer.
+        for name, conclusion in (("Workflow policy", "success"),
+                                 ("PR · Trusted Plan", "skipped"),
+                                 ("PR Selected Checks", "skipped")):
+            found = [j for j in jobs if j.get("name") == name]
+            require(len(found) == 1 and found[0].get("run_id") == run_id
+                    and found[0].get("run_attempt") == 1 and found[0].get("head_sha") == head
+                    and found[0].get("status") == "completed"
+                    and found[0].get("conclusion") == conclusion, "invalid main PR jobs")
+        inventories = api(f"{prefix}/artifacts?per_page=100", pages=True)
+        require(not any(a.get("name") == "trusted-pr-plan"
+                        for page in inventories for a in page.get("artifacts", [])),
+                "main PR unexpectedly has a trusted plan")
+        base = pr.get("base", {}).get("sha")
+        require(isinstance(base, str) and rv.full_sha(base), "invalid main PR base")
+        subprocess.run(["git", "-C", str(product), "fetch", "--no-tags", "--depth=1",
+                        "origin", head, base], check=True,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        rv.producer_identity(product, {"head_sha": head, "base_sha": base})
+        return pr["number"]
     for name in ("PR · Trusted Plan", "PR Selected Checks"):
         found = [j for j in jobs if j.get("name") == name]
         require(len(found) == 1 and found[0].get("run_id") == run_id
@@ -69,13 +101,6 @@ def closed_run(run_id, product, api=gh):
             and all(isinstance(x, str) for x in plan["selected_gates"]), "invalid producer plan")
     require("integration/static/public-contracts" not in plan["selected_gates"],
             "public-contracts producer requires receipt handling")
-    pages = api(f"repos/{REPOSITORY}/commits/{head}/pulls?per_page=100", pages=True)
-    prs = [p for page in pages for p in page
-           if p.get("head", {}).get("sha") == head
-           and p.get("head", {}).get("ref") == branch
-           and p.get("base", {}).get("repo", {}).get("id") == REPOSITORY_ID]
-    require(len(prs) == 1, "missing or ambiguous PR for producer head")
-    pr = prs[0]
     require(pr.get("state") == "closed" and pr.get("base", {}).get("ref") == "develop"
             and pr.get("base", {}).get("sha") == facts["base_sha"]
             and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),

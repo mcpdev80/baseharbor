@@ -79,6 +79,39 @@ class ClosedRunTests(unittest.TestCase):
                         with self.assertRaises((ValueError, zipfile.BadZipFile)):
                             helper.closed_run(RUN, ".", api)
 
+    def test_closed_main_pr_requires_authenticated_non_pilot_shape(self):
+        for case in ("ok", "open", "ambiguous", "failed_policy", "planner_ran",
+                     "final_missing", "unexpected_plan", "bad_base", "wrong_identity"):
+            with self.subTest(case=case):
+                run, _, artifact, pr, _ = copy.deepcopy(fixture())
+                pr["base"]["ref"] = "main"
+                prs = [pr]
+                jobs = [{"name": name, "run_id": RUN, "run_attempt": 1, "head_sha": HEAD,
+                         "status": "completed", "conclusion": conclusion}
+                        for name, conclusion in (("Workflow policy", "success"),
+                                                 ("PR · Trusted Plan", "skipped"),
+                                                 ("PR Selected Checks", "skipped"))]
+                artifacts = []
+                if case == "open": pr["state"] = "open"
+                if case == "ambiguous": prs.append(copy.deepcopy(pr))
+                if case == "failed_policy": jobs[0]["conclusion"] = "failure"
+                if case == "planner_ran": jobs[1]["conclusion"] = "success"
+                if case == "final_missing": jobs.pop()
+                if case == "unexpected_plan": artifacts.append(artifact)
+                if case == "bad_base": pr["base"]["sha"] = "bad"
+                def api(path, *, pages=False, binary=False):
+                    if "/attempts/1/jobs" in path: return [{"jobs": jobs}]
+                    if path.endswith("/artifacts?per_page=100"): return [{"artifacts": artifacts}]
+                    if "/commits/" in path: return [prs]
+                    return run
+                with patch.object(helper.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)), patch.object(
+                        helper.rv, "producer_identity", side_effect=ValueError() if case == "wrong_identity" else None):
+                    if case == "ok":
+                        self.assertEqual(helper.closed_run(RUN, ".", api), 42)
+                    else:
+                        with self.assertRaises(ValueError):
+                            helper.closed_run(RUN, ".", api)
+
 
 if __name__ == "__main__":
     unittest.main()
