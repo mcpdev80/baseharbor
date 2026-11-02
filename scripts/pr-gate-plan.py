@@ -354,6 +354,53 @@ GATEMAP_R4_MANIFEST_FILES = frozenset({
     'internal/application/manifest_parse.go',
     'internal/application/v0425_contract_test.go',
 })
+# #1273 runtime-broker provider mapping (s1273-map lane): cmd/baha/runtime_start.go
+# is the 'baha up --control-plane-only' entry point and
+# internal/application/provider_registry.go exports
+# ReferenceProviderInstanceForRegistration, which runtime_start.go calls after a
+# control-plane 'up' to persist the shared baseharbor-owned OpenBao/control-plane
+# realization into the persisted provider registry (resolves #1278: a fresh host
+# left the persisted registry empty, so the runtime broker / destroy paths failed
+# with 'openbao/control-plane is not registered').  These two files are a single
+# runtime-mutation surface that drives BOTH runner backends (Docker Compose and
+# rootless Podman/Quadlet) via the real 'baha up' acceptance path (the existing
+# runtime-broker.yml Job 'acceptance' runs '/tmp/baha up --control-plane-only'),
+# so they bind to the SAME EXISTING native lifecycle gates as the other cmd/baha
+# runtime-mutation files (atomic/docker/lifecycle, atomic/podman/lifecycle) —
+# #1259/#1262 pattern: reference existing gates, NO new gate, no weakening, no
+# cmd/baha or internal/application wildcard.  This is a simple reviewed-path
+# binding (the #1265 manifest / #1246 internal/runtimebroker precedent), NOT a
+# CI-infra native-gate-registration bundle, so no reviewed-head register.
+# Only these two EXACT paths resolve; every other runtime path stays fail-closed.
+BROKER_RUNTIME_REVIEWED_FILES = frozenset({
+    'cmd/baha/runtime_start.go',
+    'internal/application/provider_registry.go',
+})
+# #1286 logsmap (s1273-map mission, Owner-approved minimal registration): the
+# native Logs gate (logs-package-tests) is the real required validation the CI
+# matrix runs on an internal/logs change — same pattern as
+# openbao-package-tests / the runtime lifecycle gates.  Registered here and
+# executed via pr-check-runner.py execute (mirrors the #1289 logsmap
+# registration).  The plan() binding below is GENERIC to internal/logs/*.go
+# (analog to the startswith runtime binding) so that ANY internal/logs change
+# including other render.go variants (#1283) resolves — NOT the earlier exact
+# single-file-only #1289 bundle that left #1283 unknown-impact.  Fail-closed
+# for subpackages and non-.go files.
+LOGS_PACKAGE_TESTS = [
+    {'id': 'logs-package-tests', 'owner': 'internal/logs',
+     'command': 'python3 scripts/pr-check-runner.py execute --check logs-package-tests --repository .'},
+]
+LOGS_REVIEWED_HEAD = '0000000000000000000000000000000000000000'
+# ^set to the FINAL integration head SHA (after pr-check-runner.py registration
+# lands) so the LOGS_INVENTORY register binds to the authenticated reviewed
+# candidate, never an old develop commit.
+LOGS_INVENTORY = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'internal/logs/render.go': 'modified',
+}
 PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
@@ -927,14 +974,18 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
         workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
         pinbump_files = PINBUMP_INVENTORY
+        logs_files = LOGS_INVENTORY
         records = []
         for block in blocks:
             record = json.loads(block, object_pairs_hook=unique_object)
             if not isinstance(record, dict):
                 return None
-            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                      if record.get('files') in (workflow_files, pinbump_files)
-                      else CI_CHECKS)
+            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS + [c for c in LOGS_PACKAGE_TESTS
+                      if c['id'] not in {cc['id'] for cc in CI_CHECKS}]
+                      if record.get('files') == logs_files
+                      else (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
+                            if record.get('files') in (workflow_files, pinbump_files)
+                            else CI_CHECKS))
             expected_ids = {check['id'] for check in checks}
             if (not isinstance(record, dict) or set(record) != {
                     'repository', 'target_branch', 'reviewed_head', 'files',
@@ -943,7 +994,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     record['target_branch'] != context_target_branch or
                     not isinstance(record['reviewed_head'], str) or
                     re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
+                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files, logs_files) or
                     not isinstance(record['file_hashes'], dict) or
                     set(record['file_hashes']) != set(record['files']) or
                     any(not isinstance(value, str) or
@@ -985,6 +1036,10 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                                            record['reviewed_head'] + ':' + path)).hexdigest() != digest):
                     break
             else:
+                if record['files'] == logs_files:
+                    return CI_CHECKS + WORKFLOW_SYNTAX_CHECKS + [
+                        c for c in LOGS_PACKAGE_TESTS
+                        if c['id'] not in {cc['id'] for cc in CI_CHECKS}]
                 return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
                         if record['files'] in (workflow_files, pinbump_files)
                         else CI_CHECKS)
@@ -1132,6 +1187,11 @@ def plan(diff, requirements, mapping, repository='.',
         (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
+         (LOGS_REVIEWED_HEAD, LOGS_INVENTORY,
+          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS + [
+              c for c in LOGS_PACKAGE_TESTS
+              if c['id'] not in {cc['id'] for cc in CI_CHECKS}],
+          'reviewed exact logsmap CI + classifier + native Logs candidate'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
@@ -1651,6 +1711,29 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             require(WIZARD_BASE_CHECKS)
+        elif path in BROKER_RUNTIME_REVIEWED_FILES:
+            # #1273 runtime-broker provider mapping (s1273-map lane): changing
+            # ONLY cmd/baha/runtime_start.go and/or
+            # internal/application/provider_registry.go is covered by the real
+            # 'baha up' runtime-broker acceptance path, which persists/drives the
+            # shared baseharbor-owned OpenBao/control-plane realization into the
+            # persisted provider registry on BOTH runners (Docker Compose and
+            # rootless Podman/Quadlet).  Bind to the SAME two EXISTING native
+            # lifecycle gates as the other cmd/baha runtime-mutation files
+            # (atomic/docker/lifecycle, atomic/podman/lifecycle) — #1259/#1262
+            # pattern: reference existing gates, NO new gate, no weakening, NO
+            # cmd/baha or internal/application wildcard.  This branch must sit
+            # BEFORE the cmd/baha runtime-mutation catch-all and the
+            # internal/application/ catch-all so these two exact reviewed paths
+            # resolve instead of falling to the fail-closed catch-alls.  Any
+            # other runtime path (a new cmd/baha runtime file, an unreviewed
+            # provider_registry edit, or a nested package) stays unresolved
+            # below: no prefix/name heuristic, no prefix wildcard.
+            area = 'runtime-broker-provider-mapping'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1731,6 +1814,22 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path.startswith('internal/logs/') and path.endswith('.go'):
+            # #1286 logsmap (s1273-map mission, Owner-approved minimal
+            # registration): changing internal/logs/*.go (including any render.go
+            # variant, i.e. #1283) is covered by the native Logs package
+            # validation `logs-package-tests` — the real required validation the
+            # CI matrix runs on a logs change (same pattern as
+            # openbao-package-tests / the runtime lifecycle gates).  Bind the WHOLE
+            # internal/logs/* package to that EXISTING native validation only —
+            # no invented gate, no cmd/baha substitution, no coverage widening.
+            # This is GENERIC (startswith, like the runtime binding) so ANY
+            # internal/logs/*.go resolves — NOT an exact single-file-only bundle.
+            # Fail-closed for subpackages (a/b/c/...) and non-.go files, which
+            # fall through to the unknown-impact catch-all below.  This branch
+            # must sit BEFORE the internal/application/ catch-all.
+            area = 'logs-package-resolved'
+            require(LOGS_PACKAGE_TESTS)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)

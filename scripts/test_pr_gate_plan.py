@@ -1752,6 +1752,97 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('CLI runtime impact', result['unresolved_coverage'][0])
         self.assertNotIn('atomic/docker/observability', result['selected_gates'])
+    def test_gatemap_r4_runtime_broker_provider_mapping_maps_lifecycle_gates(self):
+        # #1273 runtime-broker provider mapping (s1273-map lane): cmd/baha/
+        # runtime_start.go (the 'baha up --control-plane-only' entry) and
+        # internal/application/provider_registry.go (exports
+        # ReferenceProviderInstanceForRegistration, called after 'up' to persist
+        # the shared OpenBao/control-plane realization) bind to the two EXISTING
+        # native lifecycle gates via the BROKER_RUNTIME_REVIEWED_FILES set — the
+        # same gates as the other cmd/baha runtime-mutation files.  Coverage
+        # resolved, selected_gates exactly those two catalog tokens (no new gate).
+        for name in ['cmd/baha/runtime_start.go',
+                     'internal/application/provider_registry.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual([], result['unresolved_coverage'])
+                self.assertEqual({'atomic/docker/lifecycle',
+                                  'atomic/podman/lifecycle'},
+                                 set(result['selected_gates']))
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/application/... ./contracts/...',
+                              commands)
+                self.assertTrue(any('cmd/baha' in c and 'go test' in c for c in commands))
+
+    def test_gatemap_r4_runtime_broker_two_file_candidate_resolves(self):
+        # The actual PR #1273 two-file candidate (runtime_start.go +
+        # provider_registry.go) resolves; both lifecycle gates are selected and
+        # there is no unresolved coverage.
+        result = planner.plan(diff(paths('cmd/baha/runtime_start.go',
+                                         'internal/application/provider_registry.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['unresolved_coverage'])
+        self.assertEqual({'atomic/docker/lifecycle',
+                          'atomic/podman/lifecycle'},
+                         set(result['selected_gates']))
+
+    def test_gatemap_r4_runtime_broker_unknown_runtime_stays_unresolved(self):
+        # A new/unreviewed cmd/baha runtime file that is NOT in the exact
+        # BROKER_RUNTIME_REVIEWED_FILES set stays fail-closed unresolved: the
+        # two-file binding does NOT widen to a cmd/baha wildcard.
+        for name in ['cmd/baha/runtime_something_new.go',
+                     'cmd/baha/runtime_control.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual({'atomic/docker/lifecycle',
+                                     'atomic/podman/lifecycle'},
+                                    set(result['selected_gates']))
+
+    def test_gatemap_r4_runtime_broker_bundled_with_unreviewed_stays_unresolved(self):
+        # fail-closed: resolved runtime file + an unreviewed second file keeps
+        # the whole PR unresolved.
+        result = planner.plan(diff(paths('cmd/baha/runtime_start.go',
+                                         'cmd/baha/main.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_gatemap_r4_runtime_broker_missing_lifecycle_gate_fails_closed(self):
+        # Fail-closed on incomplete catalog: no lifecycle gate => unresolved.
+        incomplete = {'releases': ['v0.4.26'],
+                      'gates': [{'id': 'integration/static/public-contracts',
+                                 'required_for': ['v0.4.26']}]}
+        result = planner.plan(diff(paths('cmd/baha/runtime_start.go')), incomplete, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+    def test_gatemap_r4_logs_generic_prefix_maps_logs_package_tests(self):
+        # #1286 logsmap (s1273-map mission, Owner-approved minimal registration):
+        # ANY internal/logs/*.go (including other render.go variants, i.e. #1283)
+        # binds to the EXISTING native logs-package-tests validation via the
+        # generic internal/logs/* prefix — not an exact single-file-only bundle.
+        for name in ['internal/logs/render.go',
+                     'internal/logs/render_extra.go',
+                     'internal/logs/new_render.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual([], result['unresolved_coverage'])
+                self.assertEqual([], result['selected_gates'])
+                checks = {c['id'] for c in result['required_validation_checks']}
+                self.assertIn('logs-package-tests', checks)
+
+    def test_gatemap_r4_logs_non_go_and_subpackage_stay_unresolved(self):
+        # Fail-closed for non-.go and non-package scoped logs files: render.md
+        # and a nested subpackage file stay unknown-impact unresolved.  Only the
+        # internal/logs/* package of .go files resolves.
+        for name in ['internal/logs/render.md',
+                     'internal/logs/render.go.txt']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
     def test_dependabot_only_go_mod_go_sum_resolves_with_go_build_test_checks(self):
         # deps-gatemap / #1160: a Dependabot-only go.mod/go.sum diff must NOT fall
         # into the 'unknown impact' catch-all. It resolves and requires the Go
