@@ -132,9 +132,11 @@ def wakeup_pr(run_id, *, api):
     return number
 
 
-def recent_merged_prs(since, *, api):
+def recent_merged_prs(since, *, api, until=None):
     """Enumerate the bounded reconciliation interval without silently truncating."""
     cutoff = _time(since)
+    ceiling = _time(until) if until is not None else None
+    verifier.require(ceiling is None or cutoff <= ceiling, 'invalid reconciliation interval')
     latest = None
     matches = []
     for page in range(1, 101):
@@ -155,7 +157,8 @@ def recent_merged_prs(since, *, api):
                 continue
             merged_at = _time(merged)
             verifier.require(merged_at <= updated, 'invalid PR timestamps')
-            if merged_at >= cutoff and (pr.get('base') or {}).get('ref') == 'develop':
+            if (merged_at >= cutoff and (ceiling is None or merged_at < ceiling)
+                    and (pr.get('base') or {}).get('ref') == 'develop'):
                 number = pr.get('number')
                 verifier.require(type(number) is int and number > 0 and number not in matches,
                                  'invalid or duplicate merged PR')
@@ -163,6 +166,49 @@ def recent_merged_prs(since, *, api):
         if len(rows) < 100:
             return matches
     raise verifier.ReceiptError('reconciliation inventory exceeds limit')
+
+
+def reconcile_with_watermark(planning, initial, until, *, api, process):
+    """Advance a durable cursor only after every PR in the interval succeeds.
+
+    A concurrent Planning write or failed push leaves the remote cursor as-is;
+    a later invocation retries the same interval. Only normal FF pushes occur.
+    """
+    import receipt_writer
+    root = Path(planning)
+    cursor_path = 'evidence/ci-runs/reconciliation-watermark.json'
+    verifier.require(not verifier.git(root, 'status', '--porcelain'), 'clean Planning checkout required')
+    verifier.git(root, 'fetch', 'origin', 'main')
+    verifier.git(root, 'merge', '--ff-only', 'origin/main')
+    target = root / cursor_path
+    before = target.read_bytes() if target.exists() else None
+    if before is None:
+        since = initial
+    else:
+        state = verifier.decode(before, 4096)
+        verifier.require(before == verifier.canonical(state)
+                         and set(state) == {'schema', 'through'}
+                         and state['schema'] == 'baseharbor.reconciliation-watermark/v1',
+                         'invalid reconciliation watermark')
+        since = state['through']
+    verifier.require(_time(initial) <= _time(since) <= _time(until), 'invalid watermark interval')
+    failures = []
+    for pr_number in recent_merged_prs(since, api=api, until=until):
+        try:
+            process(pr_number)
+        except (verifier.ReceiptError, subprocess.CalledProcessError) as exc:
+            failures.append(pr_number)
+            print(f'PR {pr_number}: reconciliation failed: {exc}')
+    verifier.require(not failures, f'reconciliation incomplete for PRs: {failures}')
+    if since == until:
+        return since
+    raw = verifier.canonical({'schema': 'baseharbor.reconciliation-watermark/v1',
+                              'through': until})
+    receipt_writer.commit_file(root, cursor_path, raw, expected=before)
+    rc, _, stderr = receipt_writer._push_authed(root, ['push', 'origin', 'HEAD:refs/heads/main'])
+    verifier.require(rc == 0, 'watermark push failed: ' + receipt_writer._scrub_secret(
+        stderr.decode(errors='replace')))
+    return until
 
 
 def build(pr_number, run_id, *, api, product, fetch_sources=None):
@@ -475,9 +521,18 @@ def main():
     selection.add_argument('--pr', type=int)
     selection.add_argument('--wakeup-run', type=int)
     selection.add_argument('--reconcile-since')
+    selection.add_argument('--reconcile-watermark', action='store_true')
+    parser.add_argument('--watermark-start')
     parser.add_argument('--product', type=Path, required=True)
     parser.add_argument('--planning', type=Path, required=True)
     args = parser.parse_args()
+    if args.reconcile_watermark:
+        verifier.require(args.watermark_start is not None, 'watermark start is required')
+        until = dt.datetime.now(dt.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+        reconcile_with_watermark(args.planning, args.watermark_start, until, api=github,
+                                 process=lambda n: reconcile_pr(n, product=args.product,
+                                                                planning=args.planning))
+        return
     if args.reconcile_since is not None:
         prs = recent_merged_prs(args.reconcile_since, api=github)
         failures = []
