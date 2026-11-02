@@ -643,6 +643,22 @@ CORE_918_REVIEWED_FILES = {
 }
 CORE_918_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
+# PR #1272 exact reviewed candidate (registration-mixed fix, head 72c14450):
+# three modified sources — a negative-schema regression test, the Workload.Compose
+# omitempty authoring fix, and the restored CHANGELOG note. No production authoring
+# or mutation semantics beyond the omitempty tag; no generic cmd/baha/mcp_ or
+# internal/application exemption. Coverage resolves only for this exact three-file
+# candidate with a clean trusted-target integration, and only if the two native
+# lifecycle gates actually execute the new cmd/baha tests (core-754/mcp pattern),
+# not merely path-prefix or generic test coverage.
+PR1272_REGISTRATION_MIXED_HEAD = '72c14450e13f63b05f3d29bd2c4e87c65b11488c'
+PR1272_REGISTRATION_MIXED_FILES = {
+    'cmd/baha/mcp_application_authoring_test.go': 'modified',
+    'internal/application/manifest.go': 'modified',
+    'CHANGELOG.md': 'modified',
+}
+PR1272_REGISTRATION_MIXED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -1175,6 +1191,38 @@ def plan(diff, requirements, mapping, repository='.',
                                         'results fail closed.'),
                 'reasons': ['Exact 21-file core-918 candidate, reviewed source SHA and '
                             'clean trusted-target integration only; no file-wide exemption']}
+    # PR #1272 registration-mixed authoring fix: three modified files only. No
+    # generic cmd/baha/mcp_ or internal/application exemption. Coverage resolves
+    # only for this exact three-file candidate with a clean trusted-target merge
+    # and only if both native lifecycle gates are present and actually run the new
+    # cmd/baha tests; any other head, path set or status, or a missing lifecycle
+    # gate keeps the registration-mixed fallthrough unresolved.
+    if (valid and not diff['broad_required'] and not unresolved and
+            identifiers['integration_sha'] is not None and
+            len(paths) == len(PR1272_REGISTRATION_MIXED_FILES) and
+            set(paths) == set(PR1272_REGISTRATION_MIXED_FILES) and
+            all(ch.get('status') == PR1272_REGISTRATION_MIXED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'],
+                                         PR1272_REGISTRATION_MIXED_HEAD)):
+        require(WIZARD_BASE_CHECKS)
+        absent = sorted(PR1272_REGISTRATION_MIXED_GATES - available)
+        if absent:
+            unresolved.append('reviewed registration-mixed lifecycle gates absent: ' + ', '.join(absent))
+        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
+                'mapping_schema': mapping['schema'], 'release': release,
+                'coverage_status': 'unresolved' if unresolved else 'resolved',
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(PR1272_REGISTRATION_MIXED_GATES & available),
+                'required_validation_checks': [validations[k] for k in sorted(validations)],
+                'validation_contract': ('Every listed validation and both native lifecycle '
+                    'gates must execute and pass for the exact reviewed candidate; missing, '
+                    'skipped and failed results fail closed. Not a path-wide registration-mixed '
+                    'exemption.'),
+                'reasons': ['PR #1272 exact three-file registration-mixed candidate at '
+                            '72c14450 with clean trusted-target integration; both native '
+                            'lifecycle gates must run the new cmd/baha authoring tests']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
     if (valid and not diff['broad_required'] and

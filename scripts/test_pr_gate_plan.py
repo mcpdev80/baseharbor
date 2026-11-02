@@ -323,6 +323,116 @@ class Core917ExactQualificationTests(unittest.TestCase):
         self.assertEqual(planner.CORE_917_REQUIRED_GATES, set(result['selected_gates']))
 
 
+class Pr1272RegistrationMixedExactQualificationTests(unittest.TestCase):
+    """PR #1272 registration-mixed candidate: exact three-file reviewed source.
+
+    The cmd/baha authoring fix plus its regression test and CHANGELOG note must
+    resolve only for the exact reviewed HEAD with a clean trusted-target merge and
+    must require both native lifecycle gates; any other head, path set or status,
+    or missing lifecycle gate stays unresolved.
+    """
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.repository = Path(temporary.name)
+        self.git('init', '-q')
+        self.git('config', 'user.name', 'pr1272 fixture')
+        self.git('config', 'user.email', 'fixture@example.test')
+        for name in planner.PR1272_REGISTRATION_MIXED_FILES:
+            path = self.repository / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text('baseline\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'trusted base')
+        self.git('branch', 'trusted')
+        self.git('checkout', '-qb', 'source')
+        for name in planner.PR1272_REGISTRATION_MIXED_FILES:
+            (self.repository / name).write_text('reviewed source\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'reviewed three-file registration-mixed source')
+        self.reviewed = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'trusted')
+        (self.repository / 'trusted-policy.txt').write_text('accepted policy\n')
+        self.git('add', '.')
+        self.git('commit', '-qm', 'advance trusted target')
+        self.target = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'source')
+        self.git('merge', '--no-ff', '-qm', 'clean target integration', 'trusted')
+        self.head = self.git('rev-parse', 'HEAD')
+        rspec = importlib.util.spec_from_file_location('new_owner_diff', ROOT / 'pr-diff-base.py')
+        self.resolver = importlib.util.module_from_spec(rspec)
+        rspec.loader.exec_module(self.resolver)
+        self.proof = planner.core752_reviewed_merge_chain
+
+    def git(self, *args):
+        result = subprocess.run(['git', '-C', str(self.repository), *args],
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def resolved_diff(self, head):
+        tree = self.git('merge-tree', '--write-tree', self.target, head).splitlines()[0]
+        integration = self.git('commit-tree', tree, '-p', self.target, '-p', head,
+                               '-m', 'exact PR integration')
+        actual = self.resolver.resolve_pr_diff(self.repository, self.target, head, integration)
+        self.assertFalse(actual['broad_required'], actual['reasons'])
+        return actual
+
+    def qualify(self, actual, requirements=REQ):
+        def proof(target, head, reviewed=None):
+            return self.proof(target, head, reviewed, self.repository)
+        with patch.object(planner, 'PR1272_REGISTRATION_MIXED_HEAD', self.reviewed), \
+             patch.object(planner, 'core752_reviewed_merge_chain', side_effect=proof):
+            return planner.plan(actual, requirements, MAP)
+
+    def test_exact_source_and_clean_trusted_merge_select_both_lifecycle_gates(self):
+        for head in (self.reviewed, self.head):
+            with self.subTest(head=head):
+                actual = self.resolved_diff(head)
+                self.assertEqual(set(planner.PR1272_REGISTRATION_MIXED_FILES),
+                                 {change['path'] for change in actual['changes']})
+                self.assertEqual('resolved', self.qualify(actual)['coverage_status'])
+                self.assertEqual(planner.PR1272_REGISTRATION_MIXED_GATES,
+                                 set(self.qualify(actual)['selected_gates']))
+        self.assertEqual(self.target, self.resolved_diff(self.head)['merge_base_sha'])
+
+    def test_wrong_head_stays_unresolved(self):
+        # Same three files but a different, unreviewed merge into the target.
+        other = self.git('commit-tree', self.git('merge-tree', '--write-tree',
+                                                 self.target, self.reviewed).splitlines()[0],
+                         '-p', self.target, '-p', self.reviewed, '-m', 'unreviewed followup')
+        actual = self.resolved_diff(other)
+        self.assertEqual('unresolved', self.qualify(actual)['coverage_status'])
+
+    def test_extra_renamed_deleted_paths_and_status_mismatch_stay_unresolved(self):
+        actual = self.resolved_diff(self.head)
+        added = json.loads(json.dumps(actual))
+        added['changes'].append({'path': 'internal/application/extra.go', 'status': 'modified'})
+        variants = [added]
+        for change in ({'path': 'internal/application/manifest.go', 'status': 'deleted'},
+                       {'path': 'internal/application/manifest.go', 'status': 'added'},
+                       {'old_path': 'internal/application/manifest.go',
+                        'new_path': 'internal/application/manifest_renamed.go', 'status': 'renamed'}):
+            bad = json.loads(json.dumps(actual))
+            index = next(i for i, row in enumerate(bad['changes'])
+                         if row.get('path') == 'internal/application/manifest.go')
+            bad['changes'][index] = change
+            variants.append(bad)
+        for bad in variants:
+            with self.subTest(changes=bad['changes']):
+                self.assertEqual('unresolved', self.qualify(bad)['coverage_status'])
+
+    def test_missing_or_wrong_lifecycle_gate_fails_closed(self):
+        actual = self.resolved_diff(self.head)
+        for missing in ('atomic/docker/lifecycle', 'atomic/podman/lifecycle'):
+            with self.subTest(missing=missing):
+                catalog = json.loads(json.dumps(REQ))
+                catalog['gates'] = [gate for gate in catalog['gates']
+                                    if gate['id'] != missing]
+                self.assertEqual('unresolved', self.qualify(actual, catalog)['coverage_status'])
+
+
 class WizardBootstrapPolicyTests(unittest.TestCase):
     def test_real_trusted_merge_and_unreviewed_followup(self):
         rspec = importlib.util.spec_from_file_location('wizard_diff', ROOT / 'pr-diff-base.py')
