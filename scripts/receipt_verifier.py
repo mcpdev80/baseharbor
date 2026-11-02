@@ -29,6 +29,7 @@ REPOSITORY = "mcpdev80/baseharbor"
 PLAN_REPOSITORY = "mcpdev80/baseharbor-plan"
 REPOSITORY_ID = 1360667669
 OWNER = "mcpdev80"
+OWNER_ID = 22537373
 API_VERSION = "2026-03-10"
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 PLAN_PATH = "evidence/receipt-plans/public-contracts.json"
@@ -353,6 +354,110 @@ def producer_identity(product, plan):
     base_definition = source_blob(product, plan["base_sha"], PRODUCT_WORKFLOW)
     require(head_definition == base_definition,
             "producer workflow definition differs from reviewed protected base")
+
+
+def merge_evidence(pr_number, run_id, plan, *, product, api=None):
+    """Verify a real Owner merge and tested tree without inventing approval."""
+    if api is None:
+        from receipt_closed_run import gh
+        api = gh
+    require(type(pr_number) is int and pr_number > 0 and type(run_id) is int and run_id > 0,
+            "invalid merge evidence identity")
+    pr = api(f"repos/{REPOSITORY}/pulls/{pr_number}")
+    require(pr.get('number') == pr_number and pr.get('state') == 'closed'
+            and pr.get('merged') is True and (pr.get('merged_by') or {}).get('id') == OWNER_ID
+            and (pr.get('merged_by') or {}).get('login') == OWNER
+            and (pr.get('base') or {}).get('ref') == 'develop'
+            and ((pr.get('base') or {}).get('repo') or {}).get('id') == REPOSITORY_ID
+            and (pr.get('head') or {}).get('sha') == plan['head_sha'], 'invalid Owner merge')
+    merge = pr.get('merge_commit_sha') or ''
+    require(full_sha(merge), 'missing merge commit')
+    run = api(f'repos/{REPOSITORY}/actions/runs/{run_id}')
+    pr_head = pr.get('head') or {}
+    require(run.get('head_sha') == plan['head_sha'] and run.get('event') == 'pull_request'
+            and run.get('head_branch') == pr_head.get('ref')
+            and (run.get('head_repository') or {}).get('id') == (pr_head.get('repo') or {}).get('id')
+            and type((pr_head.get('repo') or {}).get('id')) is int,
+            'run and PR head mismatch')
+    pages = api(f"repos/{REPOSITORY}/commits/{plan['head_sha']}/pulls?per_page=100", pages=True)
+    require(isinstance(pages, list) and all(isinstance(page, list) for page in pages),
+            'invalid PR association inventory')
+    associated = [p for page in pages for p in page
+                  if (p.get('head') or {}).get('sha') == plan['head_sha']
+                  and (p.get('head') or {}).get('ref') == pr_head.get('ref')
+                  and ((p.get('head') or {}).get('repo') or {}).get('id') == pr_head['repo']['id']
+                  and (p.get('base') or {}).get('ref') == 'develop'
+                  and ((p.get('base') or {}).get('repo') or {}).get('id') == REPOSITORY_ID]
+    require(len(associated) == 1 and associated[0].get('number') == pr_number,
+            'run PR association missing or ambiguous')
+    live({'approved': None, 'run': {'id': run_id, 'attempt': 1},
+          'sha': plan['candidate_sha']}, plan, api=api, product=product)
+    jobs = api(f'repos/{REPOSITORY}/actions/runs/{run_id}/attempts/1/jobs?per_page=100&page=1')
+    rows = jobs.get('jobs')
+    require(isinstance(rows, list) and jobs.get('total_count') == len(rows), 'incomplete jobs')
+    final = [j for j in rows if j.get('name') == 'PR Selected Checks']
+    try:
+        merged_at = dt.datetime.strptime(pr.get('merged_at') or '', '%Y-%m-%dT%H:%M:%SZ')
+        completed_at = dt.datetime.strptime(final[0].get('completed_at') or '', '%Y-%m-%dT%H:%M:%SZ')
+    except (ValueError, IndexError, AttributeError) as exc:
+        raise ReceiptError('invalid merge/check time') from exc
+    require(len(final) == 1 and completed_at <= merged_at, 'required checks finished after merge')
+    candidate, base, head = plan['candidate_sha'], plan['base_sha'], plan['head_sha']
+    require(all(full_sha(x) for x in (candidate, base, head)), 'invalid candidate sources')
+    candidate_parents = git(product, 'show', '-s', '--format=%P', candidate).decode().split()
+    merge_parents = git(product, 'show', '-s', '--format=%P', merge).decode().split()
+    tree = git(product, 'rev-parse', candidate + '^{tree}').decode().strip()
+    merge_tree = git(product, 'rev-parse', merge + '^{tree}').decode().strip()
+    require(candidate_parents == [base, head] and merge_parents in ([base], [base, head])
+            and full_sha(tree) and tree == merge_tree, 'tested candidate differs from merged tree')
+    return {'schema': 'baseharbor.merge-receipt/v2', 'pr': pr_number,
+            'run': {'id': run_id, 'attempt': 1}, 'head': head, 'base': base,
+            'candidate': candidate, 'merge': merge, 'tree': tree,
+            'merged_by_id': OWNER_ID, 'merged_at': pr['merged_at']}
+
+
+def merge_receipt(raw):
+    """Parse the distinct merge-attested schema, never a v1 approval object."""
+    value = decode(raw, 4096)
+    require(set(value) == {'schema', 'pr', 'run', 'head', 'base', 'candidate', 'merge',
+                           'tree', 'merged_by_id', 'merged_at'}
+            and value['schema'] == 'baseharbor.merge-receipt/v2'
+            and type(value['pr']) is int and value['pr'] > 0
+            and value['merged_by_id'] == OWNER_ID and isinstance(value['run'], dict)
+            and set(value['run']) == {'id', 'attempt'} and type(value['run']['id']) is int
+            and value['run']['id'] > 0 and type(value['run']['attempt']) is int
+            and value['run']['attempt'] == 1
+            and all(full_sha(value[x]) for x in ('head', 'base', 'candidate', 'merge', 'tree')),
+            'invalid merge receipt')
+    try:
+        parsed = dt.datetime.strptime(value['merged_at'], '%Y-%m-%dT%H:%M:%SZ')
+        require(parsed.strftime('%Y-%m-%dT%H:%M:%SZ') == value['merged_at'],
+                'invalid merge receipt time')
+    except (ValueError, TypeError) as exc:
+        raise ReceiptError('invalid merge receipt time') from exc
+    require(raw == canonical(value), 'noncanonical merge receipt')
+    return value
+
+
+def retained_merge(root, revision, path, candidate, *, product, api=None):
+    """Reject unauthenticated history by rechecking its live GitHub provenance."""
+    if api is None:
+        from receipt_closed_run import gh
+        api = gh
+    raw = blob(root, revision, path)
+    value = merge_receipt(raw)
+    require(path == f"{RECEIPT_DIR}/merge-{value['run']['id']}-1.json"
+            and value['candidate'] == candidate, 'wrong merge receipt path or candidate')
+    history = git(root, 'log', '--full-history', '--format=%H', revision, '--', path).splitlines()
+    require(len(history) == 1 and blob(root, history[0].decode(), path) == raw,
+            'merge receipt history was edited')
+    run = api(f"repos/{REPOSITORY}/actions/runs/{value['run']['id']}")
+    plan = dict(head_sha=value['head'], base_sha=value['base'],
+                candidate_sha=value['candidate'], workflow_id=run.get('workflow_id'))
+    require(value == merge_evidence(value['pr'], value['run']['id'], plan,
+                                    product=product, api=api),
+            'merge receipt provenance mismatch')
+    return value
 
 
 def pinned_source(product, revision):
