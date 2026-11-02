@@ -280,6 +280,9 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 		Result:       result,
 		Presentation: presentation,
 	}
+	if changeErr == nil && result.Status != "complete" {
+		return output, &appMachineError{Code: "partial"}
+	}
 	return output, changeErr
 }
 
