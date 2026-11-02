@@ -443,19 +443,8 @@ def live(value, plan, api=None, product=None):
             witnessed = decode(archive.read(entries[0]), 65536)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         raise ReceiptError("unreadable plan ZIP") from exc
-    # No-op abfangen: wenn der producer plan weder die Pilotpfade aendert
-    # noch eine PR->Task-Karte gemappt ist, ist das ein No-op mit success.
-    # Fail-closed stattdessen: der coverage_status != "resolved" UND die
-    # selected_gates enthalten nicht "integration/static/public-contracts"
-    # => der Gate hat keinen relevanten Einfluss auf diesen PR.
-    coverage_status = witnessed.get("coverage_status")
-    selected_gates = witnessed.get("selected_gates")
-    is_pilot_unmapped = (coverage_status != "resolved"
-                         and "integration/static/public-contracts"
-                             not in (selected_gates or []))
-    if is_pilot_unmapped:
-        # Non-pilot + unmapped => No-op success (PR #1252 Praezedenz).
-        return
+    # A successful return authorizes receipt creation or approval. A plan that
+    # is outside this pilot must be classified before invoking this verifier.
     require(witnessed.get("schema") == "baseharbor.pr-gate-plan/v1"
             and witnessed.get("coverage_status") == "resolved"
             and "integration/static/public-contracts" in witnessed.get("selected_gates", [])
