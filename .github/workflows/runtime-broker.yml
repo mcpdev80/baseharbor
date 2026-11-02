@@ -226,7 +226,7 @@ jobs:
           set -e
           docker logs --since "$start_time" "$target_id" > /tmp/cross-app-server.log 2>&1
           python3 "$GITHUB_WORKSPACE/scripts/ci-broker-mtls-rejection.py" \
-            "$target_ip" "$code" /tmp/cross-app-meta /tmp/cross-app.err /tmp/cross-app-server.log
+            "$target_ip" "$other_ip" "$code" /tmp/cross-app-meta /tmp/cross-app.err /tmp/cross-app-server.log
 
       - name: Prove broker lifecycle and same dynamic secret ref survives restart
         run: |
