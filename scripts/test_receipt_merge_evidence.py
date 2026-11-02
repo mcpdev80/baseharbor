@@ -226,6 +226,20 @@ class MergeEvidenceTest(unittest.TestCase):
         with patch.object(verifier, 'live'), self.assertRaisesRegex(verifier.ReceiptError, 'tested base'):
             evidence.build(42, 123, api=api, product='reviewed-checkout')
 
+    def test_squash_merge_matches_tested_base_and_tree(self):
+        original = self.api
+        def api(path, **kwargs):
+            result = original(path, **kwargs)
+            if path.endswith('/git/commits/' + self.merge):
+                result['parents'] = [dict(sha=self.base)]
+            return result
+        with patch.object(verifier, 'live'):
+            result = evidence.build(42, 123, api=api, product='reviewed-checkout')
+        self.assertEqual(result['candidate_tree'], self.tree)
+        with patch.object(evidence, 'fetch_sources'), patch.object(verifier, 'producer_identity'):
+            self.assertTrue(evidence.matches_merged_candidate(self.run, self.pr,
+                            api=api, product='reviewed-checkout'))
+
     def test_rejects_failed_late_or_missing_required_check(self):
         for key, value in (("conclusion", "failure"),
                            ("completed_at", "2026-11-02T12:00:01Z"),
