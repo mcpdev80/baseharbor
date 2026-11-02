@@ -1486,6 +1486,22 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/observability')
             selected.add('atomic/podman/observability')
+        elif path.startswith('internal/runtimebroker/') and path.endswith('.go'):
+            # runtime-broker container realization + its tests (compose_render.go
+            # readiness grace, broker/retirement lifecycle). The broker renders
+            # and drives the runtime on BOTH runners (Docker/Compose and rootless
+            # Podman/Quadlet), so it must exercise the real atomic lifecycle gates
+            # on both.  Bind the whole package to those EXISTING gates only — no
+            # new release gate, no widening.  Without this branch the files fell to
+            # the generic internal/runtime/ catch-all and left PR Selected Checks
+            # fail-closed with 'unknown impact for internal/runtimebroker/…'
+            # (#1265).  Any other internal/runtimebroker/*.go that does not match an
+            # explicit reviewed-source clause below stays unresolved.
+            area = 'runtimebroker-lifecycle'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)

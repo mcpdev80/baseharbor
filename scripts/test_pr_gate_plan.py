@@ -953,6 +953,28 @@ class MappingTests(unittest.TestCase):
                 commands = {c['command'] for c in result['required_validation_checks']}
                 self.assertIn('go test ./internal/repositoryinspect/ -count=1', commands)
 
+    def test_runtimebroker_package_binds_existing_lifecycle_gates_resolved(self):
+        # #1265 / broker-ready4 PR B: the runtime-broker container realization
+        # (compose_render.go readiness grace, broker/retirement lifecycle) runs
+        # on BOTH runners and must resolve to the EXISTING atomic lifecycle
+        # gates — no new gate, no widening.  Without this binding the files fell
+        # to the catch-all and blocked PR Selected checks with 'unknown impact'.
+        for name in ['internal/runtimebroker/broker.go',
+                     'internal/runtimebroker/compose_render.go',
+                     'internal/runtimebroker/retirement.go',
+                     'internal/runtimebroker/broker_test.go',
+                     'internal/runtimebroker/retirement_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                 sorted(result['selected_gates']))
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertIn('cli-vet', ids)
+                self.assertIn('cli-build', ids)
+
     def test_resolver_routing_allowlist_runs_focused_resolver_checks_resolved(self):
         # core-1220 permanent lane: only the exact reviewed resolver files resolve
         # to the focused package checks, with zero native release gates.
