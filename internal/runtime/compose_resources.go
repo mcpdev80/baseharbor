@@ -275,17 +275,17 @@ func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) 
 		{
 			kind:            "container",
 			listArgs:        []string{"container", "ls", "-a", "--format", "{{.Names}}"},
-			inspectTemplate: `{{.Name}}|{{ index .Config.Labels "com.docker.compose.project" }}|{{ index .Config.Labels "io.podman.compose.project" }}`,
+			inspectTemplate: `{{printf "[%s,%s,%s]" (json .Name) (json (index .Config.Labels "com.docker.compose.project")) (json (index .Config.Labels "io.podman.compose.project"))}}`,
 		},
 		{
 			kind:            "network",
 			listArgs:        []string{"network", "ls", "--format", "{{.Name}}"},
-			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+			inspectTemplate: `{{printf "[%s,%s,%s]" (json .Name) (json (index .Labels "com.docker.compose.project")) (json (index .Labels "io.podman.compose.project"))}}`,
 		},
 		{
 			kind:            "volume",
 			listArgs:        []string{"volume", "ls", "--format", "{{.Name}}"},
-			inspectTemplate: `{{.Name}}|{{ index .Labels "com.docker.compose.project" }}|{{ index .Labels "io.podman.compose.project" }}`,
+			inspectTemplate: `{{printf "[%s,%s,%s]" (json .Name) (json (index .Labels "com.docker.compose.project")) (json (index .Labels "io.podman.compose.project"))}}`,
 		},
 	}
 
@@ -321,16 +321,31 @@ func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) 
 			if strings.TrimSpace(line) == "" {
 				continue
 			}
-			parts := strings.Split(strings.TrimSpace(line), "|")
-			if len(parts) != 3 {
+			var parts []json.RawMessage
+			if err := json.Unmarshal([]byte(line), &parts); err != nil || len(parts) != 3 {
 				return nil, fmt.Errorf("malformed %s inventory inspection", spec.kind)
 			}
-			name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+			var name string
+			var dockerOwner, podmanOwner *string
+			if json.Unmarshal(parts[0], &name) != nil || json.Unmarshal(parts[1], &dockerOwner) != nil || json.Unmarshal(parts[2], &podmanOwner) != nil {
+				return nil, fmt.Errorf("malformed %s inventory inspection", spec.kind)
+			}
+			name = strings.TrimPrefix(strings.TrimSpace(name), "/")
 			if !listedNames[name] || inspectedNames[name] {
 				return nil, fmt.Errorf("incomplete or duplicate %s inventory inspection", spec.kind)
 			}
 			inspectedNames[name] = true
-			owner := firstRuntimeLabel(parts[1], parts[2])
+			docker, podman := "", ""
+			if dockerOwner != nil {
+				docker = strings.TrimSpace(*dockerOwner)
+			}
+			if podmanOwner != nil {
+				podman = strings.TrimSpace(*podmanOwner)
+			}
+			if docker != "" && podman != "" && docker != podman {
+				return nil, fmt.Errorf("conflicting %s project labels", spec.kind)
+			}
+			owner := firstRuntimeLabel(docker, podman)
 			if owner != project {
 				continue
 			}

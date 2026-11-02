@@ -44,8 +44,10 @@ func brokerOwnerUnmaterialized(ctx context.Context, provider bhruntime.RuntimePr
 		filepath.Join(files.Dir, "broker.compose.yaml"),
 		filepath.Join(files.Dir, "broker-image"),
 		filepath.Join(files.Dir, "broker-docs-port"),
+		filepath.Join(files.Dir, "workload.runtime-identity.override.yaml"),
 		filepath.Join(files.Bindings, "runtime-broker"),
 		filepath.Join(files.Bindings, "runtime-identity"),
+		filepath.Dir(application.RuntimeIdentityTokenPath(files)),
 	} {
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 			return false
