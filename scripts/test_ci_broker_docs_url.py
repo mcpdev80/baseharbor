@@ -1,5 +1,8 @@
 """Validate the isolated broker gateway endpoint without weakening TLS."""
 import importlib.util
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -31,6 +34,16 @@ class BrokerDocsURLTests(unittest.TestCase):
                                "Swagger/OpenAPI: https://broker-demo.baha.localhost/swagger/")
         with self.assertRaises(ValueError):
             helper.extract_url("no docs URL")
+
+    def test_invalid_port_diagnostic_does_not_echo_untrusted_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "broker.out"
+            output.write_text("Swagger/OpenAPI: https://broker-demo.baha.localhost:sensitive-marker/swagger/", encoding="utf-8")
+            result = subprocess.run([sys.executable, spec.origin, str(output)],
+                                    text=True, capture_output=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertNotIn("sensitive-marker", result.stderr)
+            self.assertEqual("broker docs URL: invalid or inaccessible broker output\n", result.stderr)
 
 
 if __name__ == "__main__":

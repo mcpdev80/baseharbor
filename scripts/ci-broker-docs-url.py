@@ -25,6 +25,6 @@ if __name__ == "__main__":
         if len(sys.argv) != 2:
             raise ValueError("expected broker output file")
         print(extract_url(Path(sys.argv[1]).read_text(encoding="utf-8")))
-    except (OSError, UnicodeError, ValueError) as error:
-        print("broker docs URL: " + str(error), file=sys.stderr)
+    except (OSError, UnicodeError, ValueError):
+        print("broker docs URL: invalid or inaccessible broker output", file=sys.stderr)
         sys.exit(1)
