@@ -451,6 +451,24 @@ class F1PositiveRun(unittest.TestCase):
                 if output:
                     self.assertIn(output, (self.root / "gh_out").read_text())
 
+    def test_decoder_missing_merge_ref_distinguishes_superseded_and_error(self):
+        env = dict(os.environ, GITHUB_OUTPUT=str(self.root / "gh_out"),
+                   GH_WORKFLOW_TOKEN="fixture-token", RUN_HEAD=FAKE_PLAN["head_sha"],
+                   RUN_BASE=FAKE_PLAN["target_base_sha"], FAKE_MERGE_MISSING="1",
+                   PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
+                   PYTHONPATH=str(HERE))
+        for state, head, success in (("closed", "a" * 40, True),
+                                     ("open", "d" * 40, True),
+                                     ("open", "a" * 40, False),
+                                     ("closed", "bad", False)):
+            with self.subTest(state=state, head=head):
+                (self.root / "gh_out").write_text("")
+                proc = _run(["bash", "-euo", "pipefail", "-c", self._decode_block()],
+                            env=dict(env, FAKE_PR_STATE=state, FAKE_PR_HEAD=head), cwd=self.root)
+                self.assertEqual(proc.returncode == 0, success, proc.stderr)
+                self.assertEqual("public_contracts_selected=false" in
+                                 (self.root / "gh_out").read_text(), success)
+
     class _env:
         def __init__(self, env):
             self.env = env
@@ -553,6 +571,7 @@ FAKE_GH_STUB = r'''#!/usr/bin/env python3
 import json
 import sys
 import shlex
+import os
 
 args = sys.argv[1:]
 path = ""
@@ -561,10 +580,14 @@ for i, a in enumerate(args):
         path = args[i + 1]
         break
 if "/git/ref/pull/" in path and path.endswith("/merge"):
+    if os.environ.get("FAKE_MERGE_MISSING"):
+        sys.exit(1)
     print("c" * 40)
     sys.exit(0)
 if "/pulls/" in path or path.endswith("/pulls"):
-    print(json.dumps({"number": 1124, "state": "open",
+    print(json.dumps({"number": 1124, "state": os.environ.get("FAKE_PR_STATE", "open"),
+                      "head": {"sha": os.environ.get("FAKE_PR_HEAD", "a" * 40)},
+                      "base": {"sha": "b" * 40, "ref": "develop"},
                       "body": "Closes #1125"}))
     sys.exit(0)
 if "/issues/" in path or path.endswith("/issues"):
@@ -843,7 +866,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                     pr_api_rc=0,
                     compare_files_rc=0, compare_shape_rc=0,
                     compare_shape_nonarray=False, compare_shape_missing=False,
-                    event="pull_request"):
+                    event="pull_request", run_target="develop", pr_target="develop", pr_state="open"):
         """Run the eligibility probe with an endpoint-accurate gh stub.
 
         The probe issues several authenticated gh calls now: the artifact list,
@@ -874,7 +897,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
             if run_base is None:
                 run_pr_json = '[{"number": 1124, "base": null}]'
             else:
-                run_pr_json = '[{"number": 1124, "base": {"sha": "%s"}}]' % run_base
+                run_pr_json = '[{"number": 1124, "base": {"sha": "%s", "ref": "%s"}}]' % (run_base, run_target)
         else:
             # Explicitly passed run_pr_json without .base.sha — wrap it to
             # carry the run_base value so the probe can extract it.
@@ -887,9 +910,9 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 if isinstance(entries, list):
                     for entry in entries:
                         if isinstance(entry, dict) and entry.get("number") is not None:
-                            entry["base"] = {"sha": run_base}
+                            entry["base"] = {"sha": run_base, "ref": run_target}
                         else:
-                            entries.append({"number": 1124, "base": {"sha": run_base}})
+                            entries.append({"number": 1124, "base": {"sha": run_base, "ref": run_target}})
                             break
                     run_pr_json = json.dumps(entries)
 
@@ -945,8 +968,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
             pr_base_obj = '{"sha":""}' + '}'
         else:
             # Normal case: base: {"sha":"..."}
-            pr_base_obj = '{"sha":"%s"}' % pr_base
-        pr_json = _q('{"head":{"sha":"%s"},"base":%s}' % (pr_head, pr_base_obj))
+            pr_base_obj = '{"sha":"%s","ref":"%s"}' % (pr_base, pr_target)
+        pr_json = _q('{"state":"%s","head":{"sha":"%s"},"base":%s}' % (pr_state, pr_head, pr_base_obj))
 
         with tempfile.TemporaryDirectory() as td:
             bin_dir = Path(td) / "bin"
@@ -1026,6 +1049,25 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                                        files_stdout="README.md", files_rc=0)
         self.assertNotEqual(proc.returncode, 0)
         self.assertNotIn("producer_eligible=false", result)
+
+    def test_non_develop_and_superseded_prs_do_not_need_artifact(self):
+        for kwargs in ({"run_target": "main", "pr_target": "main"},
+                       {"pr_state": "closed"},
+                       {"pr_target": "main"}):
+            with self.subTest(kwargs=kwargs):
+                proc, result = self._run_probe(artifact_stdout="", artifact_rc=2,
+                                               files_stdout="", files_rc=0, **kwargs)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn("producer_eligible=false", result)
+
+    def test_unidentifiable_target_or_state_fails_closed(self):
+        for kwargs in ({"run_target": ""}, {"pr_target": ""},
+                       {"pr_state": "unknown"}, {"pr_head": "bad"}):
+            with self.subTest(kwargs=kwargs):
+                proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
+                                               files_stdout="", files_rc=0, **kwargs)
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertNotIn("producer_eligible=false", result)
 
     def test_contract_touch_without_artifact_fails_closed(self):
         # The Owner-precise rule: a contracts/ touch with no trusted-pr-plan
@@ -1116,8 +1158,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
                                        files_stdout="", files_rc=0,
                                        run_head="aaaa" * 10, pr_head="bbbb" * 10)
-        self.assertNotEqual(proc.returncode, 0,
-                            "PR/run head mismatch must fail closed, not skip")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
 
     def test_malformed_endpoint_fails_closed(self):
         # An unmatched/malformed gh endpoint must exit non-zero in the stub so
@@ -1230,8 +1272,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         proc, result = self._run_probe(artifact_stdout="", artifact_rc=0,
                                         files_stdout="README.md", files_rc=0,
                                         run_head="aaaa" * 10, pr_head="bbbb" * 10)
-        self.assertNotEqual(proc.returncode, 0,
-                            "run/PR head mismatch must fail closed, not skip")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
 
     # rv1221d point 2: the immutable run-bound base must be a verifiable full
     # SHA; every malformation (error, empty, non-hex, short, all-zero) fails
@@ -1406,9 +1448,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                                        run_base="cafebabe00000000cafebabe00000000cafebabe")
         # The drift-wächter compares run-bound base against live PR base;
         # a mismatch fails closed.
-        self.assertNotEqual(proc.returncode, 0,
-                            "base drift (run-bound != live PR) must fail closed, not pass")
-        self.assertNotIn("producer_eligible=true", result)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("producer_eligible=false", result)
 
     def test_pr_object_api_error_fails_closed(self):
         # The PR object API call itself fails — the probe must hard-fail.

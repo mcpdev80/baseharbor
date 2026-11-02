@@ -97,20 +97,6 @@ jobs:
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # Every PR run needs its trusted plan. Without it we cannot determine
-          # whether the receipt gate applies, so API errors and absence fail closed.
-          # Resolve the run/PR association before examining the plan.
-          # Artifact listing: explicit pagination (--paginate) so a truncated
-          # page cannot hide the artifact; gh's own exit code gates the probe.
-          set +e
-          ART_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name' 2>/dev/null)"
-          ART_RC=$?
-          set -e
-          if [ "${ART_RC}" -ne 0 ]; then
-            echo "trusted-pr-plan artifact API failed (rc=${ART_RC}): not absence, failing closed" >&2
-            exit 1
-          fi
-          HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
           # Run-to-PR association: independently resolved and validated. The
           # run object's pull_requests[] carries the binding PR number; exactly
           # one non-null entry is required, an absent or ambiguous lookup is a
@@ -131,72 +117,56 @@ jobs:
             exit 1
           fi
           PR="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number)[0]')"
-          RUN_HEAD="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.head_sha' 2>/dev/null)"
-          RUN_HEAD_RC=$?
-          set -e
-          if [ "${RUN_HEAD_RC}" -ne 0 ] || [ -z "${RUN_HEAD}" ]; then
-            echo "run head_sha lookup failed or empty: failing closed" >&2
+          if [[ ! "${PR}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "invalid run PR number: failing closed" >&2
             exit 1
           fi
-          # Immutable PR object: the file set must correspond to the completed
-          # run's immutable head, and the PR must reference this repository.
-          PR_HEAD="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.head.sha' 2>/dev/null)"
-          PR_HEAD_RC=$?
-          set -e
-          if [ "${PR_HEAD_RC}" -ne 0 ] || [ "${PR_HEAD}" != "${RUN_HEAD}" ]; then
-            echo "PR head ${PR_HEAD:-} != authenticated run head ${RUN_HEAD}: association mismatch, failing closed" >&2
-            exit 1
-          fi
-          # Run-bound base SHA: extracted from the authenticated run's
-          # pull_requests[0].base.sha — the same immutable association used
-          # for the PR number above. The live PR object (.base.sha on
-          # pulls/$PR) may have drifted after the run completed; base movement
-          # without a head change would produce a wrong compare. Fail closed
-          # on any malformation: lookup error, empty, non-40-hex, or an all-zero
-          # value. A non-zero base that is not a valid full SHA is rejected too
-          # (CODE-AUDIT: the bound base must be a verifiable immutable producer
-          # reference, never an asserted/malformed string).
-          set +e
-          RUN_BASE="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .base.sha // empty)[0]' 2>/dev/null)"
-          RUN_BASE_RC=$?
-          set -e
-          if [ "${RUN_BASE_RC}" -ne 0 ]; then
-            echo "run pull_requests[0].base.sha lookup failed (rc=${RUN_BASE_RC}): failing closed" >&2
-            exit 1
-          fi
-          # Drift-wächter: compare the run-bound base against the live PR base.
-          # If the PR maintainer rebased after the run completed, the live base
-          # diverges from the immutable run-bound base. The compare endpoint
-          # must use the run-bound base (not the live PR base) to avoid
-          # classifying the wrong diff. If they differ, fail closed — the
-          # run's association is with an older base, and the live PR has
-          # drifted.
-          set +e
-          LIVE_BASE="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR" --jq '.base.sha' 2>/dev/null)"
-          LIVE_BASE_RC=$?
-          set -e
-          if [ "${LIVE_BASE_RC}" -ne 0 ]; then
-            echo "live PR base.sha lookup failed (rc=${LIVE_BASE_RC}): failing closed" >&2
-            exit 1
-          fi
-          if [ "${RUN_BASE}" != "${LIVE_BASE}" ]; then
-            echo "base drift detected: run-bound base ${RUN_BASE} != live PR base ${LIVE_BASE}: fail closed" >&2
-            exit 1
-          fi
-          case "${RUN_BASE}" in
-            *[!0-9a-f]* | "" )
-              echo "PR base.sha '${RUN_BASE}' is empty or non-hex: failing closed" >&2
+          # Authenticate the original and current PR identities before any
+          # ineligibility/superseded outcome. Missing facts are never a skip.
+          RUN_HEAD="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID" --jq '.head_sha')"
+          RUN_BASE="$(printf '%s' "${RUN_PR_JSON}" | jq -er '.[0].base.sha')"
+          RUN_TARGET="$(printf '%s' "${RUN_PR_JSON}" | jq -er '.[0].base.ref')"
+          PR_DATA="$(gh api "repos/mcpdev80/baseharbor/pulls/$PR")"
+          PR_STATE="$(printf '%s' "$PR_DATA" | jq -er '.state')"
+          PR_HEAD="$(printf '%s' "$PR_DATA" | jq -er '.head.sha')"
+          LIVE_BASE="$(printf '%s' "$PR_DATA" | jq -er '.base.sha')"
+          LIVE_TARGET="$(printf '%s' "$PR_DATA" | jq -er '.base.ref')"
+          for sha in "$RUN_HEAD" "$RUN_BASE" "$PR_HEAD" "$LIVE_BASE"; do
+            if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$sha" == 0000000000000000000000000000000000000000 ]]; then
+              echo "missing or malformed run/PR SHA: failing closed" >&2
               exit 1
-              ;;
-          esac
-          if [ "${#RUN_BASE}" -ne 40 ]; then
-            echo "PR base.sha '${RUN_BASE}' is not a full 40-hex SHA: failing closed" >&2
+            fi
+          done
+          if [[ "$PR_STATE" != open && "$PR_STATE" != closed ]] ||
+             [[ -z "$RUN_TARGET" || -z "$LIVE_TARGET" ]]; then
+            echo "invalid run/PR state or target: failing closed" >&2
             exit 1
           fi
-          if [ "${RUN_BASE}" = "0000000000000000000000000000000000000000" ]; then
-            echo "PR base.sha is all-zero (unverified base): failing closed" >&2
+          if [[ "$PR_STATE" == closed || "$PR_HEAD" != "$RUN_HEAD" ||
+                "$LIVE_BASE" != "$RUN_BASE" || "$LIVE_TARGET" != "$RUN_TARGET" ]]; then
+            echo "authenticated PR run has been superseded; no receipt" >&2
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$RUN_TARGET" != develop ]]; then
+            echo "PR target $RUN_TARGET is outside develop receipt production" >&2
+            echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Every PR run needs its trusted plan. Without it we cannot determine
+          # whether the receipt gate applies, so API errors and absence fail closed.
+          # Resolve the run/PR association before examining the plan.
+          # Artifact listing: explicit pagination (--paginate) so a truncated
+          # page cannot hide the artifact; gh's own exit code gates the probe.
+          set +e
+          ART_LIST="$(gh api "repos/mcpdev80/baseharbor/actions/runs/$RUN_ID/artifacts" --paginate --jq '.artifacts[].name' 2>/dev/null)"
+          ART_RC=$?
+          set -e
+          if [ "${ART_RC}" -ne 0 ]; then
+            echo "trusted-pr-plan artifact API failed (rc=${ART_RC}): not absence, failing closed" >&2
             exit 1
           fi
+          HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
           # Complete changed-file set for the authenticated run, derived from an
           # IMMUTABLE run-bound head+base pair via the authenticated compare
           # endpoint (${RUN_BASE}..${RUN_HEAD}): paginated, concatenated,
@@ -412,9 +382,28 @@ jobs:
               echo "invalid run-bound PR number" >&2
               exit 1
           fi
+          set +e
           merge_sha="$(gh api "repos/mcpdev80/baseharbor/git/ref/pull/${pr_number}/merge" --jq '.object.sha')"
-          if [ "${candidate_sha}" != "${merge_sha}" ]; then
-              echo "trusted plan candidate differs from authenticated merge ref" >&2
+          merge_rc=$?
+          set -e
+          if [ "$merge_rc" -ne 0 ] || [ "${candidate_sha}" != "${merge_sha}" ]; then
+              current="$(gh api "repos/mcpdev80/baseharbor/pulls/${pr_number}")"
+              state="$(printf '%s' "$current" | jq -er '.state')"
+              head="$(printf '%s' "$current" | jq -er '.head.sha')"
+              base="$(printf '%s' "$current" | jq -er '.base.sha')"
+              target="$(printf '%s' "$current" | jq -er '.base.ref')"
+              for sha in "$head" "$base"; do
+                  if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$sha" == 0000000000000000000000000000000000000000 ]]; then
+                      echo "invalid current PR identity" >&2; exit 1
+                  fi
+              done
+              if [[ ( "$state" == closed || ( "$state" == open &&
+                  ( "$head" != "$RUN_HEAD" || "$base" != "$RUN_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
+                  echo "authenticated PR run has been superseded; no receipt" >&2
+                  echo "public_contracts_selected=false" >> "$GITHUB_OUTPUT"
+                  exit 0
+              fi
+              echo "merge ref unavailable or candidate mismatch for current PR" >&2
               exit 1
           fi
           # Bind the artifact workflow_id to the authenticated Actions API value;
