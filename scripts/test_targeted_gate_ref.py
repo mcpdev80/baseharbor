@@ -189,6 +189,108 @@ class WorkflowWiring(unittest.TestCase):
         preserve = next(s for s in steps if s.get('name') == 'Preserve demo runtime diagnostics')
         self.assertIn('preserve-summary.txt', preserve['run'])
 
+    def test_observability_gate_executes_fullstack_and_rejects_skip_or_failure(self):
+        steps = self.suite['jobs']['gate']['steps']
+        ci = yaml.safe_load((self.workflows / 'ci.yml').read_text())
+        plan = ci['jobs']['pr_plan']
+        self.assertEqual('${{ steps.plan.outputs.trusted_base_sha }}', plan['outputs']['trusted_base_sha'])
+        self.assertIn('["target_base_sha"]', next(s['run'] for s in plan['steps'] if s.get('id') == 'plan'))
+        self.assertEqual('${{ needs.pr_plan.outputs.trusted_base_sha }}',
+                         ci['jobs']['pr_runtime_selected']['with']['trusted_base_sha'])
+        setup = next(s for s in steps if s.get('name') == 'Set up Go')
+        self.assertIn("inputs.gate == 'observability'", setup['if'])
+        gate = next(s for s in steps if s.get('id') == 'runtime_gate')
+        self.assertIn("inputs.gate == 'observability' && 25", gate['timeout-minutes'])
+        condition = 'if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/ci-runtime-reset.sh').write_text('printf "%s\\n" "$1" > "$RUNNER_TEMP/reset"\n')
+            bindir = root / 'bin'
+            bindir.mkdir()
+            git = bindir / 'git'
+            git.write_text('#!/bin/sh\ncase "$1" in\n'
+                           '  rev-parse) printf "%s\\n" "${GIT_ACTUAL_SHA:-$CANDIDATE_SHA}";;\n'
+                           '  fetch) exit "${FETCH_STATUS:-0}";;\n'
+                           '  diff) exit "${DIFF_STATUS:-1}";;\n'
+                           '  *) exit 2;;\nesac\n')
+            git.chmod(0o755)
+            go = bindir / 'go'
+            go.write_text('#!/bin/sh\nprintf "%s %s %s\\n" "$BASEHARBOR_OBSERVABILITY_ACCEPTANCE" "$BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE" "$BASEHARBOR_PROVIDER_VALKEY_SCOPE" > "$RUNNER_TEMP/test-env"\n'
+                          'case "$FAKE_RESULT" in\n'
+                          '  pass) printf "=== RUN   TestObservabilityFullStackAcceptanceInCI\\n    acceptance_test.go:100: [VERIFIED] logs 1 workload stream(s), 4 provider stream(s) ingested\\n--- PASS: TestObservabilityFullStackAcceptanceInCI (1s)\\n";;\n'
+                          '  zero) printf "=== RUN   TestObservabilityFullStackAcceptanceInCI\\n    acceptance_test.go:100: [VERIFIED] logs 1 workload stream(s), 0 provider stream(s) ingested\\n--- PASS: TestObservabilityFullStackAcceptanceInCI (1s)\\n";;\n'
+                          '  missing) printf "=== RUN   TestObservabilityFullStackAcceptanceInCI\\n--- PASS: TestObservabilityFullStackAcceptanceInCI (1s)\\n";;\n'
+                          '  skip) printf "=== RUN   TestObservabilityFullStackAcceptanceInCI\\n--- SKIP: TestObservabilityFullStackAcceptanceInCI (0s)\\n";;\n'
+                          '  empty) printf "testing: warning: no tests to run\\n";;\n'
+                          '  fail) exit 1;;\n'
+                          'esac\n')
+            go.chmod(0o755)
+            env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+                       GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       RUNTIME='podman', GATE='observability', GITHUB_EVENT_NAME='pull_request',
+                       PR_BASE_SHA='c' * 40, EVENT_BASE_SHA='c' * 40)
+            for result, expected in (('pass', 0), ('zero', 1), ('missing', 1), ('skip', 1), ('empty', 1), ('fail', 1)):
+                with self.subTest(result=result):
+                    execution = subprocess.run(['bash', '-c', block], env={**env, 'FAKE_RESULT': result},
+                                               capture_output=True, text=True)
+                    self.assertEqual(expected, execution.returncode, execution.stderr)
+            self.assertEqual('podman', (root / 'reset').read_text().strip())
+            self.assertEqual('1 application application', (root / 'test-env').read_text().strip())
+            wrong_sha = subprocess.run(['bash', '-c', block],
+                                       env={**env, 'FAKE_RESULT': 'pass', 'GIT_ACTUAL_SHA': 'b' * 40},
+                                       capture_output=True, text=True)
+            self.assertNotEqual(0, wrong_sha.returncode)
+            (root / 'reset').unlink()
+            other_gate = subprocess.run(['bash', '-c', block],
+                                        env={**env, 'GATE': 'lifecycle', 'FAKE_RESULT': 'pass'},
+                                        capture_output=True, text=True)
+            self.assertEqual(0, other_gate.returncode, other_gate.stderr)
+            self.assertFalse((root / 'reset').exists())
+            unrelated = subprocess.run(['bash', '-c', block],
+                                       env={**env, 'FAKE_RESULT': 'pass', 'DIFF_STATUS': '0'},
+                                       capture_output=True, text=True)
+            self.assertEqual(0, unrelated.returncode, unrelated.stderr)
+            self.assertFalse((root / 'reset').exists())
+            for override in ({'PR_BASE_SHA': ''}, {'EVENT_BASE_SHA': 'd' * 40},
+                             {'FETCH_STATUS': '2'}, {'DIFF_STATUS': '2'}):
+                with self.subTest(override=override):
+                    failed = subprocess.run(['bash', '-c', block],
+                                            env={**env, **override, 'FAKE_RESULT': 'pass'},
+                                            capture_output=True, text=True)
+                    self.assertNotEqual(0, failed.returncode)
+
+    def test_observability_scope_detects_git_rename_and_delete(self):
+        gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
+        self.assertIn('git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- internal/logs/render.go', gate['run'])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            def git(*args):
+                return subprocess.run(['git', '-C', tmp, *args], check=True,
+                                      capture_output=True, text=True).stdout.strip()
+            git('init', '-q')
+            git('config', 'user.name', 'fixture')
+            git('config', 'user.email', 'fixture@example.invalid')
+            (root / 'internal/logs').mkdir(parents=True)
+            (root / 'internal/logs/render.go').write_text('package logs\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            for action in ('rename', 'delete'):
+                with self.subTest(action=action):
+                    git('reset', '--hard', '-q', base)
+                    if action == 'rename':
+                        git('mv', 'internal/logs/render.go', 'internal/logs/renamed.go')
+                    else:
+                        git('rm', '-q', 'internal/logs/render.go')
+                    git('commit', '-qm', action)
+                    candidate = git('rev-parse', 'HEAD')
+                    diff = subprocess.run(['git', '-C', tmp, 'diff', '--no-renames', '--quiet',
+                                           base, candidate, '--', 'internal/logs/render.go'],
+                                          capture_output=True, text=True)
+                    self.assertEqual(1, diff.returncode)
+
     def test_suite_inline_guard_fails_fast_on_bare_short_sha(self):
         guard = next(s for s in self.suite['jobs']['gate']['steps']
                      if s.get('name') == 'Validate candidate ref before checkout')
