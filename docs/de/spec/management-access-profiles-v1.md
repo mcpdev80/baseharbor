@@ -1,6 +1,6 @@
 # Management-Zugriffsschnittstellen (v1)
 
-Minimal, anbieterneutrale Schnittstellen für den portablen Management-Zugiffs-
+Minimal, anbieterneutrale Schnittstellen für den portablen Management-Zugriffs-
 vertrag. Dies sind die aufrufbaren Produktionsweg-Oberflächen; sie deklarieren,
 *was* ein Profil, eine Enrollment-Registrierung oder eine Zugangsdatenausgabe
 mitführt und *was* das Importieren dieser Objekte nicht darf. Sie deklarieren
