@@ -98,7 +98,7 @@ class MergeEvidenceTest(unittest.TestCase):
         if "/git/commits/" in path:
             sha = path.rsplit("/", 1)[1]
             return dict(sha=sha, tree=dict(sha=self.trees[sha]),
-                        parents=[dict(sha=self.head), dict(sha=self.base)])
+                        parents=[dict(sha=self.base), dict(sha=self.head)])
         raise AssertionError(path)
 
     def build(self):
@@ -216,6 +216,16 @@ class MergeEvidenceTest(unittest.TestCase):
         with patch.object(verifier, 'live'), self.assertRaisesRegex(verifier.ReceiptError, 'tested base'):
             evidence.build(42, 123, api=api, product='reviewed-checkout')
 
+    def test_rejects_reversed_merged_parents(self):
+        original = self.api
+        def api(path, **kwargs):
+            result = original(path, **kwargs)
+            if path.endswith('/git/commits/' + self.merge):
+                result['parents'].reverse()
+            return result
+        with patch.object(verifier, 'live'), self.assertRaisesRegex(verifier.ReceiptError, 'tested base'):
+            evidence.build(42, 123, api=api, product='reviewed-checkout')
+
     def test_rejects_failed_late_or_missing_required_check(self):
         for key, value in (("conclusion", "failure"),
                            ("completed_at", "2026-11-02T12:00:01Z"),
@@ -305,7 +315,7 @@ class MergeEvidenceLiveIntegrationTest(__import__('test_receipt_verifier').Verif
                 return [pr]
             if '/git/commits/' in path:
                 return dict(sha=path.rsplit('/', 1)[-1], tree=dict(sha=tree),
-                            parents=[dict(sha=self.head_sha), dict(sha=self.base_sha)])
+                            parents=[dict(sha=self.base_sha), dict(sha=self.head_sha)])
             if '/jobs?' in path:
                 producer = dict(self.job, id=457, name='PR · Trusted Plan')
                 return dict(total_count=3, jobs=[self.job, producer, final])
