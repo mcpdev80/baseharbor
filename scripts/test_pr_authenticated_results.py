@@ -43,7 +43,8 @@ class AuthenticatedResultsTests(unittest.TestCase):
                   if 'git show' in line and ':scripts/pr-authenticated-results.py' in line]
         self.assertEqual(['git show "${EXPECTED_BASE}:scripts/pr-authenticated-results.py" '
                           '> "$RUNNER_TEMP/pr-authenticated-results.py"'], origin)
-        self.assertIn('EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}', final)
+        self.assertIn('EVENT_BASE: ${{ github.event.pull_request.base.sha }}', final)
+        self.assertIn('test "$EXPECTED_BASE" = "$PLAN_BASE"', final)
         self.assertIn('ref: ${{ github.event.pull_request.base.sha }}', final)
         self.assertIn('git show c6db56c4ac077dbc496134cb0871c8e996a593fe:'
                       'scripts/pr-required-final.py > "$RUNNER_TEMP/pr-required-final.py"', final)

@@ -462,8 +462,31 @@ jobs:
           INTEGRATION_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA"
-          python3 scripts/pr-diff-base.py --target-base "$BASE_SHA" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip
+          target_tip="$(git rev-parse refs/remotes/origin/pr-target-tip)"
+          # Bootstrap only from the candidate's base parent after proving it
+          # belongs to the fetched target history and follows the event base.
+          # The event base itself may predate the current resolver interface.
+          read -r -a parents <<< "$(git rev-list --parents -n 1 "$INTEGRATION_SHA")"
+          if [ "${#parents[@]}" -eq 3 ] && [ "${parents[2]}" = "$HEAD_SHA" ]; then
+            effective_base="${parents[1]}"
+          elif [ "${#parents[@]}" -eq 2 ] && [ "$INTEGRATION_SHA" = "$HEAD_SHA" ]; then
+            effective_base="$target_tip"
+            git merge-base --is-ancestor "$effective_base" "$HEAD_SHA"
+          else
+            echo "candidate does not have the expected integration parents" >&2
+            exit 1
+          fi
+          [[ "$effective_base" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$BASE_SHA" "$effective_base"
+          git merge-base --is-ancestor "$effective_base" "$target_tip"
+          git checkout --detach "$effective_base"
+          # Resolver independently checks exact parents, clean tree and diff.
+          if [ "$INTEGRATION_SHA" = "$HEAD_SHA" ]; then
+            python3 scripts/pr-diff-base.py --target-base "$effective_base" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" --base-tip "$effective_base" > "$RUNNER_TEMP/pr-diff.json"
+          else
+            python3 scripts/pr-diff-base.py --target-base "$effective_base" --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" > "$RUNNER_TEMP/pr-diff.json"
+          fi
           python3 scripts/pr-gate-plan.py --diff "$RUNNER_TEMP/pr-diff.json" > pr-plan.json
           echo "trusted_base_sha=$(python3 -c 'import json; print(json.load(open("pr-plan.json"))["target_base_sha"])')" >> "$GITHUB_OUTPUT"
           # Run the check-runner from the same trusted base checkout as the
@@ -500,7 +523,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           fetch-depth: 0
           persist-credentials: false
       - name: Verify integrated #896 isolation interface from trusted base
@@ -524,7 +547,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           persist-credentials: false
       - name: Resolve verified immutable v0.4.26 consumer graph
         id: resolve
@@ -665,8 +688,8 @@ jobs:
           # R27-F2: execute the receipt control-plane suites with the TRUSTED
           # base-runner selecting the exact registered modules; candidate code
           # must not define its own receipt discovery.
-          git fetch --no-tags origin "${{ github.event.pull_request.base.sha }}"
-          git show "${{ github.event.pull_request.base.sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
+          git fetch --no-tags origin "${{ needs.pr_plan.outputs.trusted_base_sha }}"
+          git show "${{ needs.pr_plan.outputs.trusted_base_sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
           python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
 
   pr_validations:
@@ -691,7 +714,7 @@ jobs:
       - name: Execute existing validation owner without publication
         env:
           VALIDATION: ${{ matrix.check }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ needs.pr_plan.outputs.trusted_base_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -858,7 +881,8 @@ jobs:
       - name: Enforce every required check (unqualified runtime remains blocked)
         env:
           PLAN_JOB: ${{ needs.pr_plan.result }}
-          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha }}
+          PLAN_BASE: ${{ needs.pr_plan.outputs.trusted_base_sha }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
           EXPECTED_INTEGRATION: ${{ github.sha }}
           FOCUSED_JOB: ${{ needs.pr_focused.result }}
@@ -875,6 +899,26 @@ jobs:
           set -euo pipefail
           test "$PLAN_JOB" = success
           test -s pr-plan.json
+          git fetch --no-tags origin "$EVENT_BASE" "$EXPECTED_HEAD" "$EXPECTED_INTEGRATION" refs/heads/develop:refs/remotes/origin/final-target-tip
+          target_tip="$(git rev-parse refs/remotes/origin/final-target-tip)"
+          read -r -a parents <<< "$(git rev-list --parents -n 1 "$EXPECTED_INTEGRATION")"
+          if [ "${#parents[@]}" -eq 3 ] && [ "${parents[2]}" = "$EXPECTED_HEAD" ]; then
+            EXPECTED_BASE="${parents[1]}"
+          elif [ "${#parents[@]}" -eq 2 ] && [ "$EXPECTED_INTEGRATION" = "$EXPECTED_HEAD" ]; then
+            # Keep the plan's proven base if the branch advances again while
+            # this run is in flight; ancestry is independently checked below.
+            EXPECTED_BASE="$PLAN_BASE"
+            [[ "$EXPECTED_BASE" =~ ^[0-9a-f]{40}$ ]]
+            git merge-base --is-ancestor "$EXPECTED_BASE" "$EXPECTED_HEAD"
+          else
+            echo "candidate does not have the expected integration parents" >&2
+            exit 1
+          fi
+          [[ "$EXPECTED_BASE" =~ ^[0-9a-f]{40}$ ]]
+          git merge-base --is-ancestor "$EVENT_BASE" "$EXPECTED_BASE"
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$target_tip"
+          test "$EXPECTED_BASE" = "$PLAN_BASE"
+          export EXPECTED_BASE
           python3 -c 'import json,os; p=json.load(open("pr-plan.json")); pairs=(("target_base_sha","EXPECTED_BASE"),("head_sha","EXPECTED_HEAD"),("integration_sha","EXPECTED_INTEGRATION")); assert all(p.get(k)==os.environ[v] for k,v in pairs), "stale PR integration inputs: replan required"'
           git fetch --no-tags origin c6db56c4ac077dbc496134cb0871c8e996a593fe c6db56c4ac077dbc496134cb0871c8e996a593fe
           git show "${EXPECTED_BASE}:scripts/pr-authenticated-results.py" > "$RUNNER_TEMP/pr-authenticated-results.py"
