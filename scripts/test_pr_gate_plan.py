@@ -1447,6 +1447,28 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+class PodmanHealthPackageBindingTests(unittest.TestCase):
+    def test_direct_package_paths_require_fixed_tests_and_lifecycles(self):
+        for name in ('internal/health/podman_doctor.go',
+                     'internal/providers/runtime/podman/doctor.go',
+                     'internal/providers/runtime/podman/doctor_test.go',
+                     'internal/providers/runtime/podman/new.go'):
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertIn('runtime-provider-package-tests',
+                              {c['id'] for c in result['required_validation_checks']})
+                self.assertEqual({'atomic/docker/lifecycle', 'atomic/podman/lifecycle'},
+                                 set(result['selected_gates']))
+
+    def test_unreviewed_package_scope_and_type_change_remain_blocked(self):
+        for change in ([{'status': 'modified', 'path': 'internal/health/doctor.go'}],
+                       [{'status': 'modified', 'path': 'internal/providers/runtime/podman/sub/doctor.go'}],
+                       [{'status': 'type_changed', 'path': 'internal/health/podman_doctor.go'}],
+                       [{'status': 'renamed', 'old_path': 'internal/providers/runtime/podman/doctor.go',
+                         'new_path': 'internal/unknown/doctor.go'}]):
+            with self.subTest(change=change):
+                self.assertEqual('unresolved', planner.plan(diff(change), REQ, MAP)['coverage_status'])
 class LogsRenderingBindingTests(unittest.TestCase):
     def test_render_requires_package_and_native_observability(self):
         result = planner.plan(diff(paths('internal/logs/render.go')), REQ, MAP)

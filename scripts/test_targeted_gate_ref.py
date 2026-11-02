@@ -261,6 +261,35 @@ class WorkflowWiring(unittest.TestCase):
                                             capture_output=True, text=True)
                     self.assertNotEqual(0, failed.returncode)
 
+    def test_podman_doctor_smoke_is_fail_closed(self):
+        gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
+        start = 'if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        end = 'if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        block = 'set -euo pipefail\n' + start + gate['run'].split(start, 1)[1].split(end, 1)[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / 'demo/.tools/bin').mkdir(parents=True)
+            bindir = root / 'bin'
+            bindir.mkdir()
+            git = bindir / 'git'
+            git.write_text('#!/bin/sh\ncase "$1" in rev-parse) echo "$CANDIDATE_SHA";; fetch) exit 0;; diff) exit "${DIFF_STATUS:-1}";; esac\n')
+            git.chmod(0o755)
+            baha = root / 'demo/.tools/bin/baha'
+            baha.write_text('#!/bin/sh\ncase "$1" in version) echo "$CANDIDATE_SHA";; target) exit 0;; doctor) test ! -e baseharbor.yaml || exit 1; printf "%s\\n" "$DOCTOR_JSON";; *) exit 1;; esac\n')
+            baha.chmod(0o755)
+            env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+                       GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       PR_BASE_SHA='b' * 40, EVENT_BASE_SHA='b' * 40,
+                       GATE='lifecycle', RUNTIME='podman', GITHUB_EVENT_NAME='pull_request',
+                       workdir=str(root / 'demo'))
+            for checks, expected in (([{'name': 'podman', 'ready': True}, {'name': 'quadlet', 'ready': True}], 0),
+                                     ([{'name': 'podman', 'ready': True}], 1),
+                                     ([{'name': 'podman', 'ready': False}, {'name': 'quadlet', 'ready': True}], 1)):
+                with self.subTest(checks=checks):
+                    execution = subprocess.run(['bash', '-c', block], env={**env, 'DOCTOR_JSON': json.dumps({'checks': checks})},
+                                               capture_output=True, text=True)
+                    self.assertEqual(expected, execution.returncode, execution.stderr)
+
     def test_observability_scope_detects_git_rename_and_delete(self):
         gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
         self.assertIn('git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- internal/logs/render.go', gate['run'])
