@@ -1,6 +1,9 @@
 """Security boundaries for post-merge machine evidence."""
 import copy
 import io
+import pathlib
+import subprocess
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -32,6 +35,19 @@ class GitHubAdapterTest(unittest.TestCase):
         with patch.object(verifier, 'github', side_effect=verifier.ReceiptError('unsupported')):
             with self.assertRaises(verifier.ReceiptError):
                 evidence.github(path + '/../../secrets')
+
+    def test_reconciliation_inventory_filters_by_merge_date_and_detects_ordering_errors(self):
+        def pr(number, updated, merged):
+            return dict(number=number, updated_at=updated, merged_at=merged,
+                        base=dict(ref='develop'))
+        rows = [pr(1, '2026-11-02T12:00:00Z', '2026-11-02T11:00:00Z'),
+                pr(2, '2026-11-02T10:00:00Z', None),
+                pr(3, '2026-10-30T00:00:00Z', '2026-10-30T00:00:00Z')]
+        self.assertEqual(evidence.recent_merged_prs('2026-11-01T00:00:00Z',
+                                                    api=lambda _: rows), [1])
+        with self.assertRaisesRegex(verifier.ReceiptError, 'unordered'):
+            evidence.recent_merged_prs('2026-10-29T00:00:00Z',
+                                       api=lambda _: [rows[1], rows[0]])
 
     def test_newer_failed_or_running_run_never_falls_back_to_old_success(self):
         head = 'a' * 40
@@ -76,7 +92,8 @@ class MergeEvidenceTest(unittest.TestCase):
         self.artifact = dict(id=101, name="trusted-pr-plan", expired=False,
                              workflow_run=dict(id=123, head_sha=self.head))
         self.plan = dict(schema="baseharbor.pr-gate-plan/v1", integration_sha=self.candidate,
-                         target_base_sha=self.base, head_sha=self.head)
+                         target_base_sha=self.base, head_sha=self.head, coverage_status='resolved',
+                         selected_gates=['integration/static/public-contracts'])
         self.trees = {self.candidate: self.tree, self.merge: self.tree}
 
     def api(self, path, *, binary=False):
@@ -123,6 +140,17 @@ class MergeEvidenceTest(unittest.TestCase):
             self.trees[self.merge] = 'f' * 40
             self.assertFalse(evidence.matches_merged_candidate(self.run, self.pr,
                              api=self.api, product='reviewed-checkout'))
+
+    def test_nonpilot_noop_requires_resolved_plan_and_selected_checks(self):
+        self.plan['selected_gates'] = []
+        plan = evidence.scope_for_run(123, self.head, api=self.api)
+        evidence.verify_nonpilot(self.pr, 123, plan, api=self.api)
+        self.job['conclusion'] = 'failure'
+        with self.assertRaisesRegex(verifier.ReceiptError, 'selected checks'):
+            evidence.verify_nonpilot(self.pr, 123, plan, api=self.api)
+        self.plan['coverage_status'] = 'unresolved'
+        with self.assertRaisesRegex(verifier.ReceiptError, 'unresolved'):
+            evidence.scope_for_run(123, self.head, api=self.api)
 
     def test_both_completed_pr_and_failed_develop_push_wake_same_merged_pr(self):
         run = dict(self.run)
@@ -281,6 +309,31 @@ class MergeEvidenceTest(unittest.TestCase):
             evidence.publish(42, 123, api=self.api, product='reviewed-checkout', planning='/planning')
         commit.assert_not_called()
 
+    def test_repeated_publication_does_not_duplicate_or_mutate_evidence(self):
+        record = self.build()
+        def git(*args):
+            return subprocess.run(['git', *map(str, args)], check=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+        with tempfile.TemporaryDirectory() as tmp:
+            remote = pathlib.Path(tmp) / 'remote.git'
+            checkout = pathlib.Path(tmp) / 'planning'
+            git('init', '--bare', '--initial-branch=main', remote)
+            git('clone', remote, checkout)
+            git('-C', checkout, 'config', 'user.name', 'Test')
+            git('-C', checkout, 'config', 'user.email', 'test@example.invalid')
+            (checkout / 'README').write_text('planning\n')
+            git('-C', checkout, 'add', 'README')
+            git('-C', checkout, 'commit', '-m', 'initial')
+            git('-C', checkout, 'push', '-u', 'origin', 'main')
+            with patch.object(evidence, 'build', return_value=record):
+                first = evidence.publish(42, 123, api=self.api, product='reviewed-checkout',
+                                         planning=checkout)
+                second = evidence.publish(42, 123, api=self.api, product='reviewed-checkout',
+                                          planning=checkout)
+            self.assertEqual(first, second)
+            history = git('-C', checkout, 'log', '--format=%H', '--', first[0]).splitlines()
+            self.assertEqual(len(history), 1)
+
     def test_record_rejects_forged_or_noncanonical_content(self):
         record = self.build()
         for change in (dict(merged_by_id=1), dict(run_attempt=2), dict(approved=True)):
@@ -338,6 +391,8 @@ class MergeEvidenceLiveIntegrationTest(__import__('test_receipt_verifier').Verif
         self.assertEqual(result['candidate_sha'], self.candidate)
         self.assertEqual(result['merge_commit'], merge)
         self.assertNotIn('approved', result)
+        self.assertEqual(evidence.verify_record(verifier.canonical(result), api=api,
+                                                product=self.product), result)
 
 
 if __name__ == "__main__":
