@@ -253,17 +253,73 @@ def fetch_sources(product, head, base):
                    check=True, stdout=subprocess.DEVNULL)
 
 
-def latest_run(runs, head):
-    """Never fall back to a stale success when a newer candidate run failed."""
+def select_run(runs, head, matches):
+    """Select by authenticated candidate before considering run conclusion."""
     candidates = [r for r in runs if r.get('head_sha') == head
                   and r.get('event') == 'pull_request'
                   and type(r.get('id')) is int and r['id'] > 0]
     verifier.require(candidates, 'no candidate run available')
-    latest = max(candidates, key=lambda r: r['id'])
+    relevant = [r for r in candidates if matches(r)]
+    verifier.require(relevant, 'no run matches the merged candidate')
+    latest = max(relevant, key=lambda r: r['id'])
     verifier.require(latest.get('run_attempt') == 1 and latest.get('status') == 'completed'
                      and latest.get('conclusion') == 'success',
                      'latest candidate run has not succeeded')
     return latest['id']
+
+
+def matches_merged_candidate(run, pr, *, api, product):
+    """Classify via validated source and producer artifact, never by branch name."""
+    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
+    run_id = run['id']
+    detail = api(f'{PREFIX}/actions/runs/{run_id}')
+    verifier.require(detail.get('id') == run_id and detail.get('head_sha') == head
+                     and detail.get('event') == 'pull_request'
+                     and detail.get('path') == '.github/workflows/ci.yml'
+                     and (detail.get('repository') or {}).get('id') == verifier.REPOSITORY_ID,
+                     'untrusted candidate run')
+    artifacts = _inventory(api, f'{PREFIX}/actions/runs/{run_id}/artifacts', 'artifacts')
+    found = [a for a in artifacts if a.get('name') == 'trusted-pr-plan']
+    verifier.require(len(found) == 1, 'candidate run plan missing or ambiguous')
+    artifact = found[0]
+    verifier.require(type(artifact.get('id')) is int and artifact['id'] > 0
+                     and artifact.get('expired') is False
+                     and (artifact.get('workflow_run') or {}).get('id') == run_id
+                     and (artifact.get('workflow_run') or {}).get('head_sha') == head,
+                     'untrusted candidate plan')
+    raw = api(f"{PREFIX}/actions/artifacts/{artifact['id']}/zip", binary=True)
+    verifier.require(type(raw) is bytes and 0 < len(raw) <= 65536, 'invalid candidate archive')
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            entries = archive.infolist()
+            verifier.require(len(entries) == 1 and entries[0].filename == 'pr-plan.json'
+                             and 0 < entries[0].file_size < 65536, 'invalid candidate archive')
+            plan = verifier.decode(archive.read(entries[0]), 65536)
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
+        raise verifier.ReceiptError('invalid candidate archive') from exc
+    base = _sha(plan.get('target_base_sha'), 'missing candidate base')
+    candidate = _sha(plan.get('integration_sha'), 'missing candidate identity')
+    verifier.require(plan.get('schema') == 'baseharbor.pr-gate-plan/v1'
+                     and plan.get('head_sha') == head, 'candidate plan source mismatch')
+    fetch_sources(product, head, base)
+    verifier.producer_identity(product, {'head_sha': head, 'base_sha': base})
+    candidate_commit = api(f'{PREFIX}/git/commits/{candidate}')
+    merge_sha = _sha(pr.get('merge_commit_sha'), 'missing merge commit')
+    merge = api(f'{PREFIX}/git/commits/{merge_sha}')
+    verifier.require(candidate_commit.get('sha') == candidate and merge.get('sha') == merge_sha,
+                     'candidate commit identity mismatch')
+    parents = candidate_commit.get('parents')
+    verifier.require(isinstance(parents, list) and len(parents) == 2
+                     and all(isinstance(p, dict) for p in parents)
+                     and {p.get('sha') for p in parents} == {base, head} and base != head,
+                     'candidate commit parents invalid')
+    merged_parents = merge.get('parents')
+    verifier.require(isinstance(merged_parents, list) and len(merged_parents) == 2
+                     and all(isinstance(p, dict) for p in merged_parents),
+                     'merge commit parents invalid')
+    tree = _sha((candidate_commit.get('tree') or {}).get('sha'), 'missing candidate tree')
+    merged_tree = _sha((merge.get('tree') or {}).get('sha'), 'missing merge tree')
+    return {p.get('sha') for p in merged_parents} == {base, head} and tree == merged_tree
 
 
 def main():
@@ -277,7 +333,8 @@ def main():
     runs = _inventory(github,
                       f"{PREFIX}/actions/workflows/ci.yml/runs?head_sha={head}&event=pull_request",
                       'workflow_runs')
-    run = latest_run(runs, head)
+    run = select_run(runs, head, lambda run: matches_merged_candidate(
+        run, pr, api=github, product=args.product))
     path, introduction, publication = publish(args.pr, run, api=github,
                                                   product=args.product, planning=args.planning,
                                                   fetch_sources=fetch_sources)
