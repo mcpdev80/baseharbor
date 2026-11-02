@@ -186,52 +186,12 @@ jobs:
             exit 1
           fi
           HAS_ARTIFACT="$(printf '%s\n' "${ART_LIST}" | grep -qx "trusted-pr-plan" && echo true || echo false)"
-          # Complete changed-file set for the authenticated run, derived from an
-          # IMMUTABLE run-bound head+base pair via the authenticated compare
-          # endpoint (${RUN_BASE}..${RUN_HEAD}): paginated, concatenated,
-          # deduplicated — a truncated page cannot hide a contracts/ touch.
-          # gh's own exit code gates it, and the returned files correspond to
-          # this exact immutable base..head diff, never the mutable live PR base.
-          set +e
-          CONTRACT_FILES="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}...${RUN_HEAD}" --paginate --jq '.files[].filename' 2>/dev/null | sort -u)"
-          CONTRACT_RC=$?
-          set -e
-          if [ "${CONTRACT_RC}" -ne 0 ]; then
-            echo "PR base..head compare API failed (rc=${CONTRACT_RC}) against immutable base ${RUN_BASE}: not absence, failing closed" >&2
-            exit 1
-          fi
-          # Fail closed when the compare payload is unusable: a missing,
-          # non-array, null, or empty files field, or an API failure, must never
-          # read as a clean no-contracts file set. A truncated page that omits
-          # the files field entirely is treated as unusable, never absent.
-          set +e
-          CONTRACT_SHAPE="$(gh api "repos/mcpdev80/baseharbor/compare/${RUN_BASE}...${RUN_HEAD}?shape=files" --jq '.files' 2>/dev/null)"
-          CONTRACT_SHAPE_RC=$?
-          set -e
-          if [ "${CONTRACT_SHAPE_RC}" -ne 0 ] || [ -z "${CONTRACT_SHAPE}" ] || [ "${CONTRACT_SHAPE}" = "null" ]; then
-            echo "compare files field missing/null or API failed (rc=${CONTRACT_SHAPE_RC}): failing closed" >&2
-            exit 1
-          fi
-          # A non-array files field (object, string, number) is unusable: the
-          # file set cannot be enumerated from it. Reject anything that does
-          # not start with '[' so a malformed compare response fails closed.
-          case "${CONTRACT_SHAPE}" in
-            \[*)
-              :
-              ;;
-            *)
-              echo "compare files field is not an array ('${CONTRACT_SHAPE:0:32}'): failing closed" >&2
-              exit 1
-              ;;
-          esac
-          HAS_CONTRACT_TOUCH="$(printf '%s\n' "${CONTRACT_FILES}" | grep -q '^contracts/' && echo true || echo false)"
+          # Every authenticated develop PR requires its trusted plan. The
+          # changed-file compare cannot change either outcome: absence always
+          # fails closed, while presence proceeds to plan verification.
           if [ "${HAS_ARTIFACT}" = true ]; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
             echo "run_base_sha=${RUN_BASE}" >> "$GITHUB_OUTPUT"
-          elif [ "${HAS_CONTRACT_TOUCH}" = true ]; then
-            # A contracts change without a trusted plan is an integrity error.
-            echo "contracts/ touch without trusted-pr-plan artifact on run $RUN_ID (PR=$PR): integrity error, failing closed" >&2
-            exit 1
           else
             echo "trusted-pr-plan artifact missing on PR run $RUN_ID (PR=$PR); cannot determine selected gates, failing closed" >&2
             exit 1
