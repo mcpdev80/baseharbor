@@ -385,8 +385,7 @@ class VerifierFixtureTest(unittest.TestCase):
         return api
 
     def bogus_noop_coverage_api(self):
-        """Noop coverage: coverage_status != 'resolved' AND selected_gates
-        omits the pilot gate path => is_pilot_unmapped=True => No-op success."""
+        """An unresolved plan without the pilot gate must not authorize evidence."""
         def api(path, *, binary=False):
             if binary:
                 buffer = io.BytesIO()
@@ -647,15 +646,26 @@ class LiveNegativeNegativesTest(VerifierFixtureTest):
         with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
             verifier.live(value, self.plan, api=self.bogus_selected_gates_api([]))
 
-    def test_non_pilot_unmapped_pr_noop_success(self):
-        """PR #1252 Praezedenz: non-pilot + unmapped PR => No-op success.
-        coverage_status != 'resolved' AND selected_gates omits the gate path.
-        The live() verifier must return without raising ReceiptError."""
+    def test_unresolved_non_pilot_plan_fails_closed(self):
         path, original = self.create()
         value = verifier.receipt((self.root / path).read_bytes())
-        # bogus_noop_coverage_api returns coverage_status='failed' AND empty selected_gates
-        # => is_pilot_unmapped=True => live() returns None (success, No-op)
-        verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
+        with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
+            verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
+
+    def test_unresolved_non_pilot_plan_cannot_create_receipt(self):
+        before = self.head()
+        with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
+            writer.write(self.root, self.plan_sha, 123, 1,
+                         api=self.bogus_noop_coverage_api())
+        self.assertEqual(self.head(), before)
+
+    def test_unresolved_non_pilot_plan_cannot_approve_receipt(self):
+        path, original = self.create()
+        before = (self.root / path).read_bytes()
+        with self.assertRaisesRegex(verifier.ReceiptError, 'producer plan/source mismatch'):
+            self.approve(path, original, api=self.bogus_noop_coverage_api())
+        self.assertEqual(self.head(), original)
+        self.assertEqual((self.root / path).read_bytes(), before)
 
     def test_negative_second_attempt_rejected(self):
         path, original = self.create()
