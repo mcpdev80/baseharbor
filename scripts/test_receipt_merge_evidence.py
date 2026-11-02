@@ -124,6 +124,31 @@ class MergeEvidenceTest(unittest.TestCase):
             self.assertFalse(evidence.matches_merged_candidate(self.run, self.pr,
                              api=self.api, product='reviewed-checkout'))
 
+    def test_both_completed_pr_and_failed_develop_push_wake_same_merged_pr(self):
+        run = dict(self.run)
+        def api(path, **kwargs):
+            if path.endswith('/actions/runs/123'):
+                return run
+            if '/commits/' in path and '/pulls?' in path:
+                return [self.pr]
+            raise AssertionError(path)
+        self.assertEqual(evidence.wakeup_pr(123, api=api), 42)
+        run.update(event='push', head_sha=self.merge, head_branch='develop', conclusion='failure')
+        self.assertEqual(evidence.wakeup_pr(123, api=api), 42)
+        self.pr.update(state='open', merged_at=None)
+        self.assertIsNone(evidence.wakeup_pr(123, api=api))
+
+    def test_wakeup_rejects_ambiguous_or_untrusted_events(self):
+        def api(path, **kwargs):
+            if path.endswith('/actions/runs/123'):
+                return self.run
+            return [self.pr, dict(self.pr, number=43)]
+        with self.assertRaisesRegex(verifier.ReceiptError, 'ambiguous'):
+            evidence.wakeup_pr(123, api=api)
+        self.run['repository']['id'] = 1
+        with self.assertRaisesRegex(verifier.ReceiptError, 'untrusted'):
+            evidence.wakeup_pr(123, api=api)
+
     def test_rejects_non_owner_and_unmerged(self):
         for key, value in (("merged_by", dict(id=1, login=verifier.OWNER)),
                            ("merged", False), ("state", "open")):
@@ -239,6 +264,22 @@ class MergeEvidenceTest(unittest.TestCase):
                 evidence.validate_record(verifier.canonical(dict(record, **change)))
         with self.assertRaises(verifier.ReceiptError):
             evidence.validate_record(verifier.canonical(record).rstrip())
+
+    def test_consumer_reauthenticates_instead_of_trusting_json(self):
+        record = self.build()
+        with patch.object(evidence, 'build', return_value=record) as build:
+            self.assertEqual(evidence.verify_record(verifier.canonical(record), api=self.api,
+                                                    product='reviewed-checkout'), record)
+            build.assert_called_once()
+        forged = dict(record, candidate_tree='f' * 40)
+        with patch.object(evidence, 'build', return_value=record), self.assertRaisesRegex(
+                verifier.ReceiptError, 'differs from live provenance'):
+            evidence.verify_record(verifier.canonical(forged), api=self.api,
+                                   product='reviewed-checkout')
+        with patch.object(evidence, 'build', side_effect=verifier.ReceiptError('expired')):
+            with self.assertRaisesRegex(verifier.ReceiptError, 'expired'):
+                evidence.verify_record(verifier.canonical(record), api=self.api,
+                                       product='reviewed-checkout')
 
 class MergeEvidenceLiveIntegrationTest(__import__('test_receipt_verifier').VerifierFixtureTest):
     def test_verified_merge_calls_real_live_verifier(self):
