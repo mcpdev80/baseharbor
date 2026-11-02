@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - develop
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
