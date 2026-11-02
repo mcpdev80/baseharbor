@@ -91,6 +91,7 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
                 'openbao-package-tests',
+                'logs-package-tests',
                 'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
@@ -115,7 +116,7 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'receipt-execution-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'openbao-package-tests':
         # Require the frozen bootstrap unit families; native opt-in acceptance
@@ -145,6 +146,42 @@ def execute_validation(check, repository):
             if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
                 raise RuntimeError('OpenBao test missing PASS: ' + name)
         return list(OPENBAO_REQUIRED_TESTS)
+    if check == 'logs-package-tests':
+        # #1286 r3 logsmap Runde 4: the native Logs package validation
+        # (go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$')
+        # is the EXISTING required validation bound to internal/logs/render.go.
+        # Discover once and run once: require at least one matching test in the
+        # package (Go's -run exits zero when no tests match), then execute the
+        # native Loki compose acceptance test with the integration flag set and
+        # require it to actually run and PASS. A missing, empty, skipped or
+        # failing package fails closed.
+        repo = Path(repository)
+        listed = subprocess.run(
+            ['go', 'test', './internal/logs/...', '-list', '.'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if listed.returncode:
+            raise RuntimeError('Logs test discovery failed: ' + listed.stderr.strip())
+        matches = [
+            line.strip() for line in listed.stdout.splitlines()
+            if re.fullmatch(r'Test[A-Za-z0-9_]+', line.strip())
+        ]
+        if not matches:
+            raise RuntimeError('no matching Logs tests in ./internal/logs')
+        executed = subprocess.run(
+            ['go', 'test', './internal/logs/...',
+             '-run', r'^TestManagedLokiIngestsRealComposeWorkloadLogs$',
+             '-count=1', '-v'],
+            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            env=dict(os.environ, BASEHARBOR_LOGS_INTEGRATION='1'))
+        if executed.returncode:
+            raise RuntimeError('Logs package tests failed: ' + executed.stdout)
+        if not re.search(r'(?m)^=== RUN   TestManagedLokiIngestsRealComposeWorkloadLogs(?:$|/)',
+                         executed.stdout):
+            raise RuntimeError('native Logs acceptance test did not execute')
+        if not re.search(r'(?m)^--- PASS: TestManagedLokiIngestsRealComposeWorkloadLogs(?:$|\s)',
+                         executed.stdout):
+            raise RuntimeError('native Logs acceptance test missing PASS')
+        return ['TestManagedLokiIngestsRealComposeWorkloadLogs']
     if check == 'receipt-execution-tests':
         # Prove the registered receipt control-plane suites actually execute.
         # Run the explicit module list (never a silent glob) and require, from
