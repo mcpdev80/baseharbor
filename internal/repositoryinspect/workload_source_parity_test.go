@@ -63,3 +63,169 @@ func TestWorkloadSourceCrossSourceSemanticParity(t *testing.T) {
 		})
 	}
 }
+
+// TestInspectProjectsNeutralSummaryForAllSourceFamilies asserts that the shared
+// inspection summary (ports, health/readiness, workload vs infrastructure
+// classification and capability findings) is projected from normalized workload
+// evidence for every supported source family, not only Compose. This is the
+// core-750 contract: Quadlet and Kubernetes repositories must not under-report.
+// The object-storage variants additionally prove that the normalized
+// infrastructure class storage.object (MinIO/SeaweedFS) maps to infrastructure
+// classification and the object-storage.s3 capability in all three families.
+func TestInspectProjectsNeutralSummaryForAllSourceFamilies(t *testing.T) {
+	fixtures := map[string]struct {
+		root           string
+		components     []string
+		infrastructure map[string]string
+	}{
+		"compose": {
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "compose"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
+		},
+		"quadlet": {
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "quadlet"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
+		},
+		"kubernetes": {
+			root:           filepath.Join("..", "..", "testdata", "adoption-parity", "kubernetes"),
+			components:     []string{"api", "worker", "db", "cache", "storage"},
+			infrastructure: map[string]string{"db": "database.sql", "cache": "cache.key-value", "storage": "object-storage.s3"},
+		},
+	}
+
+	for name, fx := range fixtures {
+		t.Run(name, func(t *testing.T) {
+			result, err := Inspect(context.Background(), fx.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, id := range fx.components {
+				if !contains(result.WorkloadServices, id) && !contains(result.InfrastructureServices, id) {
+					t.Fatalf("%s: component %q not projected to workload/infrastructure services: workload=%v infra=%v",
+						name, id, result.WorkloadServices, result.InfrastructureServices)
+				}
+			}
+			for id, class := range fx.infrastructure {
+				if !contains(result.InfrastructureServices, id) {
+					t.Fatalf("%s: infrastructure component %q (%s) not projected: infra=%v", name, id, class, result.InfrastructureServices)
+				}
+				if contains(result.WorkloadServices, id) {
+					t.Fatalf("%s: infrastructure component %q (%s) must not be classified workload: workload=%v", name, id, class, result.WorkloadServices)
+				}
+				assertFindingConfidence(t, result, class, ConfidenceDetected)
+			}
+			if len(result.Ports) == 0 {
+				t.Fatalf("%s: ports not projected from normalized component evidence", name)
+			}
+			if len(result.HealthChecks) == 0 {
+				t.Fatalf("%s: health/readiness not projected from normalized component evidence", name)
+			}
+			logFinding := resultFindByCapability(result, "logs")
+			if logFinding == nil {
+				t.Fatal("logs suggestion not projected; it must not be Compose-only")
+			}
+			assertSourceEvidenceKind(t, name, *logFinding)
+		})
+	}
+}
+
+// TestInspectObjectStorageParityAcrossSourceFamilies compares the shared
+// classification semantics for the same logical application expressed in
+// Compose, Quadlet and Kubernetes: the MinIO storage component must land in
+// InfrastructureServices (never WorkloadServices) and carry a detected
+// object-storage.s3 capability finding in every family. The finding Name stays
+// empty for the aggregate Compose detector finding and names the providing
+// component for per-component projections; that source-native naming is
+// provenance, not shared semantics, and is therefore excluded from the
+// cross-family equality.
+func TestInspectObjectStorageParityAcrossSourceFamilies(t *testing.T) {
+	families := []string{"compose", "quadlet", "kubernetes"}
+	type projection struct {
+		infrastructure bool
+		workload       bool
+		capability     string
+		confidence     Confidence
+	}
+	projected := map[string]projection{}
+	for _, name := range families {
+		root := filepath.Join("..", "..", "testdata", "adoption-parity", name)
+		result, err := Inspect(context.Background(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := projection{
+			infrastructure: contains(result.InfrastructureServices, "storage"),
+			workload:       contains(result.WorkloadServices, "storage"),
+		}
+		if finding := resultFindByCapability(result, "object-storage.s3"); finding != nil {
+			p.capability = finding.Capability
+			p.confidence = finding.Confidence
+		}
+		projected[name] = p
+	}
+	for _, name := range families {
+		p := projected[name]
+		if !p.infrastructure {
+			t.Fatalf("%s: object-storage component not classified infrastructure while %v are", name, projected)
+		}
+		if p.workload {
+			t.Fatalf("%s: object-storage component misclassified as workload: %#v", name, p)
+		}
+		if p.capability != "object-storage.s3" || p.confidence != ConfidenceDetected {
+			t.Fatalf("%s: object-storage capability finding mismatch: %#v", name, p)
+		}
+	}
+	if projected["compose"] != projected["quadlet"] ||
+		projected["compose"] != projected["kubernetes"] {
+		t.Fatalf("object-storage semantics differ across families: %#v", projected)
+	}
+}
+
+// assertSourceEvidenceKind verifies the workload log suggestion carries the
+// evidence kind of the selected source family: Compose records compose, every
+// other family records config provenance and never falsely claims Compose.
+func assertSourceEvidenceKind(t *testing.T, name string, finding Finding) {
+	t.Helper()
+	if len(finding.Evidence) == 0 {
+		t.Fatalf("%s: logs finding has no evidence", name)
+	}
+	if name == "compose" && finding.Evidence[0].Kind != EvidenceCompose {
+		t.Fatalf("%s: compose logs finding kind = %q, want compose", name, finding.Evidence[0].Kind)
+	}
+	if name != "compose" && finding.Evidence[0].Kind == EvidenceCompose {
+		t.Fatalf("%s: non-compose logs finding must not claim compose evidence, got %q", name, finding.Evidence[0].Kind)
+	}
+	if name != "compose" && finding.Evidence[0].Kind != EvidenceConfig {
+		t.Fatalf("%s: non-compose logs finding kind = %q, want config", name, finding.Evidence[0].Kind)
+	}
+}
+
+func contains(list []string, value string) bool {
+	for _, item := range list {
+		if item == value {
+			return true
+		}
+	}
+	return false
+}
+
+func resultFindByName(result Result, name string) *Finding {
+	for i := range result.Findings {
+		if result.Findings[i].Name == name {
+			return &result.Findings[i]
+		}
+	}
+	return nil
+}
+
+func resultFindByCapability(result Result, capability string) *Finding {
+	for i := range result.Findings {
+		if result.Findings[i].Capability == capability {
+			return &result.Findings[i]
+		}
+	}
+	return nil
+}
