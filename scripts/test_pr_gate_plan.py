@@ -1447,6 +1447,49 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual([], result['selected_gates'])
                 self.assertIn(check_id, {row['id'] for row in result['required_validation_checks']})
 
+class CliGofmtTestBindingTests(unittest.TestCase):
+    """gatemap-r6: cmd/baha/*_test.go bound to EXISTING cli-gofmt gate.
+
+    Pure cmd/baha test-only source exercises existing CLI behaviour and must
+    resolve to the existing cli-gofmt formatting gate that the CI matrix already
+    runs for every cmd/baha change (WIZARD_BASE_CHECKS['cli-gofmt'],
+    .github/workflows/ci.yml cli-gofmt handler). No new gate, no widening.
+    """
+
+    def test_generic_cmd_baha_test_file_selects_cli_gofmt(self):
+        for name in ['cmd/baha/main_test.go',
+                     'cmd/baha/app_show_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual([], result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertIn('cli-gofmt', ids)
+                self.assertIn('cli-vet', ids)
+                self.assertIn('cli-build', ids)
+                self.assertIn('source-contracts', ids)
+
+    def test_generic_cmd_baha_test_file_not_bundled_with_unreviewed(self):
+        # fail-closed: resolved test file + an unreviewed production file keeps
+        # the whole PR unresolved.
+        result = planner.plan(diff(paths('cmd/baha/main_test.go',
+                                          'cmd/baha/app_apply.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
+    def test_mcp_and_registration_source_stays_unresolved(self):
+        # The cmd/baha/*_test.go binding must NOT sweep in mcp_ / registration
+        # mixed source — those stay on their own unresolved clauses.
+        for name in ['cmd/baha/mcp_workspace_mutation_test.go',
+                     'cmd/baha/mcp_preconditions_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
+
 class RuntimeDockerEngineMappingTests(unittest.TestCase):
     def test_docker_engine_path_classifies_to_lifecycle_gate(self):
         # core-1240 permanent lane: changing ONLY internal/runtime/docker_engine.go
