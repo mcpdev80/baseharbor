@@ -1415,6 +1415,16 @@ def plan(diff, requirements, mapping, repository='.',
             require(PROJECTION_CHECKS)
             if path_status.get(path) != 'modified' and path_status.get(path) != 'added':
                 unresolved.append('runtime native binding projection source status requires exact reviewed candidate: ' + path)
+        elif path.startswith('internal/application/shared_backend_dependency') or \
+                path.startswith('internal/application/shared_backends') or \
+                path.startswith('internal/application/shared_postgres') or \
+                path.startswith('internal/application/shared_core') or \
+                path.startswith('internal/application/shared_valkey') or \
+                path == 'internal/application/postgres_backup.go' or \
+                path == 'internal/application/backend_tls.go':
+            area = 'shared-backend-resolution'
+            require(CODE_CHECKS)
+            selected.add('shared-postgres')
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)

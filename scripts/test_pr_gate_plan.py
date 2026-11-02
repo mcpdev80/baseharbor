@@ -19,7 +19,8 @@ wizard_check = planner.wizard_check
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
 GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
          'integration/static/public-contracts', 'atomic/docker/lifecycle',
-         'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data']
+         'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data',
+         'shared-postgres']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
@@ -839,6 +840,32 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual('resolved', result['coverage_status'])
                 commands = {check['command'] for check in result['required_validation_checks']}
                 self.assertIn('go test ./internal/capability/... -count=1', commands)
+
+    def test_shared_backend_resolution_selects_shared_postgres_gate(self):
+        # shared-backend resolution files (the class touched by the shared-pg-fix
+        # fix) qualify via the shared-postgres focused gate, not the broad
+        # application-implementation catch-all that leaves them unresolved.
+        for name in ['internal/application/shared_backend_dependency.go',
+                     'internal/application/shared_backends.go',
+                     'internal/application/shared_backends_runtime.go',
+                     'internal/application/shared_postgres_topology.go',
+                     'internal/application/shared_core_sql.go',
+                     'internal/application/shared_valkey_registration_test.go',
+                     'internal/application/postgres_backup.go',
+                     'internal/application/backend_tls.go']:
+            with self.subTest(path=name):
+                # broad=False: a mapped shared-backend file with no diff-base
+                # conflict resolves via the shared-postgres gate; the broad flag
+                # still forces unresolved coverage.
+                result = planner.plan(diff(paths(name), broad=False), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertIn('shared-postgres', result['selected_gates'])
+                self.assertEqual([], result['unresolved_coverage'])
+        # A non-shared application file still resolves via the catch-all.
+        with self.subTest(path='internal/application/manifest.go'):
+            result = planner.plan(diff(paths('internal/application/manifest.go'), broad=False), REQ, MAP)
+            self.assertEqual('unresolved', result['coverage_status'])
+            self.assertNotIn('shared-postgres', result['selected_gates'])
 
     def test_reconcile_source_runs_focused_inspect_checks_resolved(self):
         # core-752 permanent lane: only the exact reviewed reconciliation files
