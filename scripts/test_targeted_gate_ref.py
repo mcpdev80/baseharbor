@@ -261,6 +261,53 @@ class WorkflowWiring(unittest.TestCase):
                                             capture_output=True, text=True)
                     self.assertNotEqual(0, failed.returncode)
 
+    def test_lifecycle_native_test_source_changes_execute_real_tests(self):
+        gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
+        condition = 'if [ "$GATE" = lifecycle ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        next_block = 'if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ]'
+        block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1].split(next_block, 1)[0]
+        mapping = {
+            'cmd/baha/app_repository_integration_test.go': ['TestRepositoryWorkflowRealLifecycle'],
+            'cmd/baha/app_workload_integration_test.go': ['TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI', 'TestRepositoryComposeWorkloadOnlyLifecycleInCI', 'TestRepositoryBuildWorkloadRebuildsSourceChangesInCI'],
+            'internal/application/runtime_multi_integration_test.go': ['TestMultiInstanceComposeLifecycleInCI'],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/ci-runtime-reset.sh').write_text('exit 0\n')
+            bindir = root / 'bin'
+            bindir.mkdir()
+            git = bindir / 'git'
+            git.write_text('#!/bin/sh\ncase "$1" in\n'
+                           'rev-parse) echo "$CANDIDATE_SHA";;\n'
+                           'fetch) exit 0;;\n'
+                           'diff) test "${DIFF_ERROR:-0}" = 0 || exit 2; printf "%s\n" "$CHANGED_PATH";;\n'
+                           '*) exit 2;; esac\n')
+            git.chmod(0o755)
+            go = bindir / 'go'
+            go.write_text('#!/usr/bin/env python3\nimport os, sys\n'
+                          'name=sys.argv[sys.argv.index("-run")+1].strip("^$")\n'
+                          'assert os.environ.get("BASEHARBOR_CI_RUNTIME_INTEGRATION") == "1"\n'
+                          'open(os.path.join(os.environ["RUNNER_TEMP"], "calls"), "a").write(name+"\\n")\n'
+                          'print("=== RUN   "+name)\n'
+                          'print(("--- PASS: " if os.environ.get("FAKE_OUTCOME") == "pass" else "--- SKIP: ")+name+" (1s)")\n')
+            go.chmod(0o755)
+            env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
+                       GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       RUNTIME='podman', GATE='lifecycle', GITHUB_EVENT_NAME='pull_request',
+                       PR_BASE_SHA='c' * 40, EVENT_BASE_SHA='c' * 40, FAKE_OUTCOME='pass')
+            for path, expected in mapping.items():
+                with self.subTest(path=path):
+                    calls = root / 'calls'
+                    calls.unlink(missing_ok=True)
+                    run = subprocess.run(['bash', '-c', block], env={**env, 'CHANGED_PATH': path}, capture_output=True, text=True)
+                    self.assertEqual(0, run.returncode, run.stderr)
+                    self.assertEqual(expected, calls.read_text().splitlines())
+            bad = {**env, 'CHANGED_PATH': next(iter(mapping)), 'FAKE_OUTCOME': 'skip'}
+            self.assertNotEqual(0, subprocess.run(['bash', '-c', block], env=bad, capture_output=True).returncode)
+            bad = {**env, 'CHANGED_PATH': next(iter(mapping)), 'DIFF_ERROR': '1'}
+            self.assertNotEqual(0, subprocess.run(['bash', '-c', block], env=bad, capture_output=True).returncode)
+
     def test_podman_doctor_smoke_is_fail_closed(self):
         gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
         start = 'if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
