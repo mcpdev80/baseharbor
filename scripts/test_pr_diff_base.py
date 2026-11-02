@@ -198,8 +198,10 @@ class GitFixture(unittest.TestCase):
 
 
     def test_stale_event_base_proceeds_to_tree_check_and_normal_restores_diff(self):
-        # Existing no-tip calls still compare the event-base tree. Supplying a
-        # proven target tip opts in to the actual integration base.
+        # The develop-ci contract calls pr-diff-base.py WITHOUT --base-tip. With
+        # no fetched base tip, the resolver anchors on the event base.sha and
+        # A forward-moved synthetic merge must not be accepted unless the
+        # target branch tip is fetched and the lineage can be verified.
         self.branch('feature')
         self.write('feature.txt', 'reviewed feature\\n')
         head = self.commit('feature')
@@ -246,6 +248,7 @@ class GitFixture(unittest.TestCase):
         self.assertFalse(verified['broad_required'], verified['reasons'])
         self.assertEqual(target, verified['target_base_sha'])
 
+
     def test_advanced_base_must_belong_to_fetched_target_branch(self):
         self.branch('feature')
         head = self.commit_with('feature.txt', 'feature\n', 'feature')
@@ -278,8 +281,101 @@ class GitFixture(unittest.TestCase):
         self.assertEqual('integration_tree_mismatch', result['reasons'][0]['code'])
         self.assertEqual([], result['changes'])
 
+    def test_workflow_replans_using_verified_advanced_base_policy(self):
+        # Exercise the actual workflow shell against immutable Git commits,
+        # including an event base older than GitHub's synthetic merge parent.
+        helper = Path(__file__).with_name('pr-diff-base.py').read_text()
+        # The event-time resolver predates the new command-line contract. It
+        # must never be executed merely to discover the candidate's parent.
+        self.write('scripts/pr-diff-base.py', 'raise SystemExit("old resolver invoked")\n')
+        event_base = self.commit('event base with old resolver')
+        self.branch('feature')
+        head = self.commit_with('feature.txt', 'feature\n', 'feature')
+        self.git('switch', '-q', 'main')
+        self.write('scripts/pr-diff-base.py', helper + '\n# actual target policy\n')
+        self.write('target-only.txt', 'trusted\n')
+        target = self.commit('advanced target with its own trusted resolver')
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        candidate = self.git('commit-tree', tree, '-p', target, '-p', head,
+                             input_data='GitHub merge\n')
+        # The later fetched branch tip is an ancestry witness, not a source
+        # of executable code for this older candidate.
+        self.write('scripts/pr-diff-base.py', 'raise SystemExit("tip resolver invoked")\n')
+        tip = self.commit('later target with different resolver')
+        self.git('update-ref', 'refs/heads/develop', tip)
+        self.git('remote', 'add', 'origin', str(self.root))
+        self.git('checkout', '-q', '--detach', event_base)
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github/workflows/ci.yml').read_text()
+        begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA"')
+        end = workflow.index('          python3 scripts/pr-gate-plan.py', begin)
+        shell = '\n'.join(line.removeprefix('          ') for line in
+                          workflow[begin:end].splitlines())
+        with tempfile.TemporaryDirectory() as runner_temp:
+            env = dict(os.environ, BASE_SHA=event_base, HEAD_SHA=head,
+                       INTEGRATION_SHA=candidate, RUNNER_TEMP=runner_temp)
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                    cwd=self.root, env=env, text=True,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(0, result.returncode, result.stderr)
+            plan = json.loads((Path(runner_temp) / 'pr-diff.json').read_text())
+        self.assertFalse(plan['broad_required'], plan['reasons'])
+        self.assertEqual(target, plan['target_base_sha'])
+        self.assertEqual(resolver.resolve_pr_diff(self.root, target, head, candidate), plan,
+                         'trusted binding must be able to reproduce the exact diff')
+        self.assertEqual(target, self.git('rev-parse', 'HEAD'))
+        self.assertIn('# actual target policy', (self.root / 'scripts/pr-diff-base.py').read_text())
 
+    def test_final_check_rederives_base_instead_of_trusting_plan_output(self):
+        self.branch('feature')
+        head = self.commit_with('feature.txt', 'feature\n', 'feature')
+        self.git('switch', '-q', 'main')
+        target = self.commit_with('target.txt', 'target\n', 'advanced target')
+        tree = self.git('merge-tree', '--write-tree', target, head).splitlines()[0]
+        candidate = self.git('commit-tree', tree, '-p', target, '-p', head,
+                             input_data='GitHub merge\n')
+        self.git('update-ref', 'refs/heads/develop', target)
+        self.git('remote', 'add', 'origin', str(self.root))
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github/workflows/ci.yml').read_text()
+        begin = workflow.index('          git fetch --no-tags origin "$EVENT_BASE"')
+        end = workflow.index('          python3 -c \'import json,os;', begin)
+        shell = '\n'.join(line.removeprefix('          ') for line in
+                          workflow[begin:end].splitlines())
+        base_env = dict(os.environ, EVENT_BASE=self.initial, EXPECTED_HEAD=head,
+                        EXPECTED_INTEGRATION=candidate, PLAN_BASE=target)
+        result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                cwd=self.root, env=base_env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                cwd=self.root, env=dict(base_env, PLAN_BASE=self.initial),
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertNotEqual(0, result.returncode, 'stale plan base must fail closed')
 
+    def test_final_linear_candidate_allows_verified_target_advance(self):
+        planned_base = self.commit_with('one.txt', 'one\n', 'planned base')
+        later_base = self.commit_with('two.txt', 'two\n', 'later base')
+        head = self.commit_with('feature.txt', 'feature\n', 'linear feature')
+        self.git('update-ref', 'refs/heads/develop', later_base)
+        self.git('remote', 'add', 'origin', str(self.root))
+        workflow = (Path(__file__).resolve().parent.parent /
+                    '.github/workflows/ci.yml').read_text()
+        begin = workflow.index('          git fetch --no-tags origin "$EVENT_BASE"')
+        end = workflow.index('          python3 -c \'import json,os;', begin)
+        shell = '\n'.join(line.removeprefix('          ') for line in
+                          workflow[begin:end].splitlines())
+        env = dict(os.environ, EVENT_BASE=self.initial, EXPECTED_HEAD=head,
+                   EXPECTED_INTEGRATION=head, PLAN_BASE=planned_base)
+        result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                cwd=self.root, env=env, text=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, result.returncode, result.stderr)
+        # A plan selecting a commit outside target history remains blocked.
+        result = subprocess.run(['bash', '-euo', 'pipefail', '-c', shell],
+                                cwd=self.root, env=dict(env, PLAN_BASE=head),
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertNotEqual(0, result.returncode)
 
     def test_reversed_exact_parents_accepted_order_agnostic(self):
         # The authoritative-basis decision relaxes parent ORDER: a merge whose

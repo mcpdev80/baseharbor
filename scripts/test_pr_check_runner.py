@@ -234,7 +234,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
         self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
         self.assertIn('--check "$VALIDATION"', fragment)
-        self.assertIn('git show "${{ github.event.pull_request.base.sha }}:'
+        self.assertIn('git show "${{ needs.pr_plan.outputs.trusted_base_sha }}:'
                       'scripts/pr-check-runner.py"', workflow)
         self.assertNotIn(
             'python3 scripts/pr-check-runner.py execute --check '
