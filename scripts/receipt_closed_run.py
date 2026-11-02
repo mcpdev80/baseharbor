@@ -40,7 +40,9 @@ def closed_run(run_id, product, api=gh):
             and run.get("repository", {}).get("id") == REPOSITORY_ID
             and isinstance(head, str) and rv.full_sha(head)
             and isinstance(branch, str) and branch, "invalid producer run")
-    require(run.get("pull_requests") == [], "run is not missing its PR association")
+    associations = run.get("pull_requests")
+    require(isinstance(associations, list) and len(associations) <= 1,
+            "run PR association is invalid or ambiguous")
     pages = api(f"{prefix}/attempts/1/jobs?per_page=100", pages=True)
     jobs = [j for page in pages for j in page.get("jobs", [])]
     pr_pages = api(f"repos/{REPOSITORY}/commits/{head}/pulls?per_page=100", pages=True)
@@ -50,6 +52,13 @@ def closed_run(run_id, product, api=gh):
            and p.get("base", {}).get("repo", {}).get("id") == REPOSITORY_ID]
     require(len(prs) == 1, "missing or ambiguous PR for producer head")
     pr = prs[0]
+    if associations:
+        association = associations[0]
+        require(isinstance(association, dict) and association.get("number") == pr.get("number")
+                and association.get("head", {}).get("sha") == head
+                and association.get("base", {}).get("sha") == pr.get("base", {}).get("sha")
+                and association.get("base", {}).get("ref") == pr.get("base", {}).get("ref"),
+                "run PR association mismatch")
     require(pr.get("state") == "closed"
             and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),
             "closed PR identity mismatch")
