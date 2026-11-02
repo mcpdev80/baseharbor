@@ -178,7 +178,7 @@ def _reapply_onto(root, path: str, raw, *, head: str) -> bool:
 
 
 def publish(root: Path, path: str, local_commit: str, *,
-            dry_run: bool = False) -> Tuple[str, str, str]:
+            dry_run: bool = False, canonical_validator=_check_canonical) -> Tuple[str, str, str]:
     """Publish a local receipt commit to the Planning remote via fast-forward push.
 
     Implements bounded re-apply with idempotent retry under an unrelated
@@ -277,7 +277,7 @@ def publish(root: Path, path: str, local_commit: str, *,
         remote_bytes = _current_remote_bytes(root, path)
         # Durable receipt exists on the fresh remote.
         if remote_bytes is not None:
-            _check_canonical(remote_bytes)
+            canonical_validator(remote_bytes)
             if remote_bytes == raw:
                 # Identical canonical bytes — return idempotently.
                 after = git(root, "rev-parse", "origin/main").decode().strip()
@@ -298,7 +298,7 @@ def publish(root: Path, path: str, local_commit: str, *,
             # idempotent return only if the fresh remote now carries our own bytes.
             remote_bytes2 = _current_remote_bytes(root, path)
             if remote_bytes2 is not None and remote_bytes2 == raw:
-                _check_canonical(remote_bytes2)
+                canonical_validator(remote_bytes2)
                 after2 = git(root, "rev-parse", "origin/main").decode().strip()
                 return path, _find_introduction(root, path, after2), after2
             raise ReceiptError("conflicting receipt on remote after re-apply; blocked")
