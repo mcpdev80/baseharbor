@@ -32,6 +32,7 @@ def github(path, *, binary=False):
         rf"{prefix}/commits/[0-9a-f]{{40}}/pulls\?per_page=100&page=(?:[1-9]|10)",
         rf"{prefix}/git/commits/[0-9a-f]{{40}}",
         rf"{prefix}/actions/workflows/ci\.yml/runs\?head_sha=[0-9a-f]{{40}}&event=pull_request&per_page=100&page=(?:[1-9]|10)",
+        rf"{prefix}/pulls\?state=closed&sort=updated&direction=desc&per_page=100&page=(?:[1-9]|[1-9][0-9]|100)",
     )
     if not any(re.fullmatch(pattern, path) for pattern in extra):
         return verifier.github(path, binary=binary)
@@ -41,7 +42,7 @@ def github(path, *, binary=False):
                             capture_output=True)
     verifier.require(result.returncode == 0,
                      "GitHub witness unavailable: " + verifier.witness_failure(result))
-    if '/commits/' not in path or not '/pulls?' in path:
+    if not ('/commits/' in path and '/pulls?' in path or '/pulls?state=closed' in path):
         return verifier.decode(result.stdout, 2_000_000)
     verifier.require(0 < len(result.stdout) < 2_000_000, "invalid byte length")
     try:
@@ -129,6 +130,39 @@ def wakeup_pr(run_id, *, api):
     number = relevant[0].get('number')
     verifier.require(type(number) is int and number > 0, 'invalid wakeup PR')
     return number
+
+
+def recent_merged_prs(since, *, api):
+    """Enumerate the bounded reconciliation interval without silently truncating."""
+    cutoff = _time(since)
+    latest = None
+    matches = []
+    for page in range(1, 101):
+        path = (f'{PREFIX}/pulls?state=closed&sort=updated&direction=desc'
+                f'&per_page=100&page={page}')
+        rows = api(path)
+        verifier.require(isinstance(rows, list) and len(rows) <= 100
+                         and all(isinstance(row, dict) for row in rows),
+                         'invalid reconciliation inventory')
+        for pr in rows:
+            updated = _time(pr.get('updated_at'))
+            verifier.require(latest is None or updated <= latest, 'unordered reconciliation inventory')
+            latest = updated
+            if updated < cutoff:
+                return matches
+            merged = pr.get('merged_at')
+            if merged is None:
+                continue
+            merged_at = _time(merged)
+            verifier.require(merged_at <= updated, 'invalid PR timestamps')
+            if merged_at >= cutoff and (pr.get('base') or {}).get('ref') == 'develop':
+                number = pr.get('number')
+                verifier.require(type(number) is int and number > 0 and number not in matches,
+                                 'invalid or duplicate merged PR')
+                matches.append(number)
+        if len(rows) < 100:
+            return matches
+    raise verifier.ReceiptError('reconciliation inventory exceeds limit')
 
 
 def build(pr_number, run_id, *, api, product, fetch_sources=None):
@@ -312,16 +346,8 @@ def select_run(runs, head, matches):
     return latest['id']
 
 
-def matches_merged_candidate(run, pr, *, api, product):
-    """Classify via validated source and producer artifact, never by branch name."""
-    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
-    run_id = run['id']
-    detail = api(f'{PREFIX}/actions/runs/{run_id}')
-    verifier.require(detail.get('id') == run_id and detail.get('head_sha') == head
-                     and detail.get('event') == 'pull_request'
-                     and detail.get('path') == '.github/workflows/ci.yml'
-                     and (detail.get('repository') or {}).get('id') == verifier.REPOSITORY_ID,
-                     'untrusted candidate run')
+def scope_for_run(run_id, head, *, api):
+    """Classify only a complete plan bound to this run; unknown fails closed."""
     artifacts = _inventory(api, f'{PREFIX}/actions/runs/{run_id}/artifacts', 'artifacts')
     found = [a for a in artifacts if a.get('name') == 'trusted-pr-plan']
     verifier.require(len(found) == 1, 'candidate run plan missing or ambiguous')
@@ -341,6 +367,25 @@ def matches_merged_candidate(run, pr, *, api, product):
             plan = verifier.decode(archive.read(entries[0]), 65536)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError) as exc:
         raise verifier.ReceiptError('invalid candidate archive') from exc
+    gates = plan.get('selected_gates')
+    verifier.require(plan.get('schema') == 'baseharbor.pr-gate-plan/v1'
+                     and plan.get('head_sha') == head and plan.get('coverage_status') == 'resolved'
+                     and isinstance(gates, list) and all(isinstance(g, str) for g in gates),
+                     'unresolved candidate plan')
+    return plan
+
+
+def matches_merged_candidate(run, pr, *, api, product):
+    """Classify via validated source and producer artifact, never by branch name."""
+    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
+    run_id = run['id']
+    detail = api(f'{PREFIX}/actions/runs/{run_id}')
+    verifier.require(detail.get('id') == run_id and detail.get('head_sha') == head
+                     and detail.get('event') == 'pull_request'
+                     and detail.get('path') == '.github/workflows/ci.yml'
+                     and (detail.get('repository') or {}).get('id') == verifier.REPOSITORY_ID,
+                     'untrusted candidate run')
+    plan = scope_for_run(run_id, head, api=api)
     base = _sha(plan.get('target_base_sha'), 'missing candidate base')
     candidate = _sha(plan.get('integration_sha'), 'missing candidate identity')
     verifier.require(plan.get('schema') == 'baseharbor.pr-gate-plan/v1'
@@ -366,29 +411,85 @@ def matches_merged_candidate(run, pr, *, api, product):
     return merge_parents_match(merged_parents, base, head) and tree == merged_tree
 
 
+def verify_nonpilot(pr, run_id, plan, *, api):
+    """A non-pilot no-op still requires a successful exact selected-check run."""
+    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
+    merger = pr.get('merged_by') or {}
+    verifier.require(pr.get('state') == 'closed' and pr.get('merged') is True
+                     and merger.get('id') == OWNER_ID and merger.get('login') == verifier.OWNER
+                     and (pr.get('base') or {}).get('ref') == 'develop'
+                     and ((pr.get('base') or {}).get('repo') or {}).get('id') == verifier.REPOSITORY_ID,
+                     'untrusted merged PR')
+    verifier.require('integration/static/public-contracts' not in plan['selected_gates'],
+                     'pilot requires receipt publication')
+    run = api(f'{PREFIX}/actions/runs/{run_id}')
+    pr_head = pr.get('head') or {}
+    verifier.require(run.get('id') == run_id and run.get('run_attempt') == 1
+                     and run.get('head_sha') == head and run.get('event') == 'pull_request'
+                     and run.get('head_branch') == pr_head.get('ref')
+                     and (run.get('head_repository') or {}).get('id') == (pr_head.get('repo') or {}).get('id')
+                     and run.get('status') == 'completed' and run.get('conclusion') == 'success',
+                     'non-pilot run is not successful')
+    pulls = [p for p in _head_pulls(api, head) if (p.get('head') or {}).get('sha') == head
+             and (p.get('head') or {}).get('ref') == pr_head.get('ref')
+             and ((p.get('head') or {}).get('repo') or {}).get('id') == (pr_head.get('repo') or {}).get('id')
+             and (p.get('base') or {}).get('ref') == 'develop'
+             and ((p.get('base') or {}).get('repo') or {}).get('id') == verifier.REPOSITORY_ID]
+    verifier.require(len(pulls) == 1 and pulls[0].get('number') == pr.get('number'),
+                     'non-pilot PR association missing or ambiguous')
+    jobs = _inventory(api, f'{PREFIX}/actions/runs/{run_id}/attempts/1/jobs', 'jobs')
+    final = [j for j in jobs if j.get('name') == 'PR Selected Checks']
+    verifier.require(len(final) == 1 and final[0].get('run_id') == run_id
+                     and final[0].get('head_sha') == head and final[0].get('status') == 'completed'
+                     and final[0].get('conclusion') == 'success'
+                     and _time(final[0].get('completed_at')) <= _time(pr.get('merged_at')),
+                     'non-pilot selected checks not successful before merge')
+
+
+def reconcile_pr(pr_number, *, product, planning, api=github):
+    pr = api(f"{PREFIX}/pulls/{pr_number}")
+    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
+    runs = _inventory(api,
+                      f"{PREFIX}/actions/workflows/ci.yml/runs?head_sha={head}&event=pull_request",
+                      'workflow_runs')
+    run = select_run(runs, head, lambda run: matches_merged_candidate(
+        run, pr, api=api, product=product))
+    plan = scope_for_run(run, head, api=api)
+    if 'integration/static/public-contracts' not in plan['selected_gates']:
+        verify_nonpilot(pr, run, plan, api=api)
+        print(f'PR {pr_number}: verified non-pilot candidate')
+        return
+    path, introduction, publication = publish(pr_number, run, api=api,
+                                                  product=product, planning=planning,
+                                                  fetch_sources=fetch_sources)
+    print(f'publication: {publication}\nevidence: {path}\nintroduction: {introduction}')
+
+
 def main():
     parser = argparse.ArgumentParser()
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument('--pr', type=int)
     selection.add_argument('--wakeup-run', type=int)
+    selection.add_argument('--reconcile-since')
     parser.add_argument('--product', type=Path, required=True)
     parser.add_argument('--planning', type=Path, required=True)
     args = parser.parse_args()
+    if args.reconcile_since is not None:
+        prs = recent_merged_prs(args.reconcile_since, api=github)
+        failures = []
+        for pr_number in prs:
+            try:
+                reconcile_pr(pr_number, product=args.product, planning=args.planning)
+            except (verifier.ReceiptError, subprocess.CalledProcessError) as exc:
+                failures.append(pr_number)
+                print(f'PR {pr_number}: reconciliation failed: {exc}')
+        verifier.require(not failures, f'reconciliation incomplete for PRs: {failures}')
+        return
     pr_number = args.pr if args.pr is not None else wakeup_pr(args.wakeup_run, api=github)
     if pr_number is None:
         print('no merged develop PR for authenticated wakeup')
         return
-    pr = github(f"{PREFIX}/pulls/{pr_number}")
-    head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
-    runs = _inventory(github,
-                      f"{PREFIX}/actions/workflows/ci.yml/runs?head_sha={head}&event=pull_request",
-                      'workflow_runs')
-    run = select_run(runs, head, lambda run: matches_merged_candidate(
-        run, pr, api=github, product=args.product))
-    path, introduction, publication = publish(pr_number, run, api=github,
-                                                  product=args.product, planning=args.planning,
-                                                  fetch_sources=fetch_sources)
-    print(f'publication: {publication}\nevidence: {path}\nintroduction: {introduction}')
+    reconcile_pr(pr_number, product=args.product, planning=args.planning)
 
 
 if __name__ == '__main__':
