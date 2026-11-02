@@ -188,14 +188,14 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
 	}
 
 	if err := runWithIO(withProviderChangeConsent(ctx, consent), []string{"--verbose", "app", "apply"}, &out, &out); err != nil {
-		t.Fatalf("full-stack observability apply failed: %v\n%s", err, out.String())
+		t.Fatal("full-stack observability apply failed")
 	}
 	if !strings.Contains(out.String(), "application and requested infrastructure verified") {
-		t.Fatalf("apply output missing final verified-ready state:\n%s", out.String())
+		t.Fatal("apply output missing final verified-ready state")
 	}
 	providerEvidence := regexp.MustCompile(`(?m)^\[VERIFIED\] logs\s+[0-9]+ workload stream\(s\), [1-9][0-9]* provider stream\(s\) ingested for ` + regexp.QuoteMeta(m.Name) + `$`).FindString(out.String())
 	if providerEvidence == "" {
-		t.Fatalf("apply did not verify ingestion of any provider log streams:\n%s", out.String())
+		t.Fatal("apply did not verify ingestion of any provider log streams")
 	}
 	t.Log(providerEvidence)
 
