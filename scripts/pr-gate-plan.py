@@ -1600,6 +1600,15 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path in ('cmd/baha/app_repository_integration_test.go',
+                      'cmd/baha/app_workload_integration_test.go',
+                      'internal/application/runtime_multi_integration_test.go'):
+            area = 'native-integration-tests'
+            require(CODE_CHECKS + CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('native integration test removal or rename needs review: ' + path)
         elif path == 'cmd/baha/app_observability_acceptance_test.go':
             # Full-stack observability acceptance for the CLI (TestObservabilityFullStack
             # AcceptanceInCI).  This boots a real native container runtime (Docker and
