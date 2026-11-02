@@ -149,3 +149,60 @@ func TestMCPAuthoringAuthorizationDenialPrecedesIdentityPersistence(t *testing.T
 		}
 	}
 }
+
+func TestMCPAuthoringWorkloadComposeIsOptional(t *testing.T) {
+	// Regression: #1265 made Workload.Compose required in the generated MCP intent
+	// schema, rejecting valid authoring intent that omits it. Source provenance is
+	// optional portable intent (spec/application-contract-v1.md). A valid adopt
+	// intent with only workload.components must pass schema validation without it.
+	target := configureTestTarget(t)
+	root := t.TempDir()
+	session := workspaceMutationClient(t)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/workload:fixed\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"repository": root, "intent": map[string]any{"Version": 1, "Name": "coreless", "Environment": "dev", "Workload": map[string]any{"Components": []string{"api"}}}}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.app.adopt", Arguments: args})
+	if err != nil || result.IsError {
+		failure, _ := json.Marshal(result)
+		t.Fatalf("valid intent without Compose rejected: %v %s", err, failure)
+	}
+	if _, err := deployment.ListDeployments(target.Name); err != nil {
+		t.Fatalf("deployment lookup after valid adopt failed: %v", err)
+	}
+}
+
+func TestMCPAuthoringSchemaStillRejectsMissingRequiredField(t *testing.T) {
+	// Companion negative case to TestMCPAuthoringWorkloadComposeIsOptional:
+	// removing Compose must be optional, but an actually required intent field
+	// (Name) must still be rejected by the generated schema itself, not by later
+	// business logic. If the omitempty fix ever over-relaxed the schema, this
+	// assertion fails, which proves the required gate is intact.
+	root := t.TempDir()
+	session := workspaceMutationClient(t)
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services:\n  api:\n    image: example.invalid/workload:fixed\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadDir(root)
+	args := map[string]any{"repository": root, "intent": map[string]any{"Version": 1, "Environment": "dev", "Workload": map[string]any{"Components": []string{"api"}}}}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "baseharbor.app.adopt", Arguments: args})
+	if err != nil || !result.IsError {
+		t.Fatalf("missing required field Name accepted: %+v", result)
+	}
+	encoded, _ := json.Marshal(result)
+	if !strings.Contains(string(encoded), "missing properties") || !strings.Contains(string(encoded), "Name") {
+		t.Fatalf("rejected for wrong reason: %s", encoded)
+	}
+	after, _ := os.ReadDir(root)
+	if len(before) != len(after) {
+		t.Fatalf("schema rejection mutated repository: before=%v after=%v", names(before), names(after))
+	}
+}
+
+func names(entries []os.DirEntry) []string {
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	return out
+}
