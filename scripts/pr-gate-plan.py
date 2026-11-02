@@ -1496,11 +1496,34 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             selected.add('integration/static/public-contracts')
+        elif path in ('internal/capability/lifecycle.go',
+                      'internal/capability/service_binding.go',
+                      'internal/capability/service_binding_test.go'):
+            # core-390 service-binding enforcement (#1229): the reviewed
+            # lifecycle/service_binding implementation + its test are covered by
+            # the package's own capability-package-tests check (already in
+            # CAPABILITY_CHECKS) plus the existing static public-contracts gate.
+            # Bind to those EXISTING gates only (#1260 pattern: reference existing
+            # gates, no new gate) — no new release gate, no widening. Any other
+            # internal/capability/* production file stays fail-closed unresolved
+            # below.
+            area = 'capability-implementation-resolved'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            selected.add('integration/static/public-contracts')
         elif path.startswith('internal/capability/'):
             area = 'capability-implementation-unresolved'
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path.startswith('testdata/adoption-parity/'):
+            # #1222 static adoption fixtures (README/compose/k8s/quadlet). Bind to
+            # the same focused inspect checks that already run the
+            # repositoryinspect parity test (#1259 observability-binding pattern):
+            # no new gate, no widening. Only this prefix resolves; any other
+            # unmatched file still falls to the fail-closed catch-all below.
+            area = 'inspect-testdata-fixed'
+            require(INSPECT_CHECKS)
         elif path in PROJECTION_REVIEWED_FILES:
             area = 'application-projection-reviewed-path'
             require(PROJECTION_CHECKS)
