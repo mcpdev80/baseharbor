@@ -1044,8 +1044,7 @@ class MappingTests(unittest.TestCase):
                                       'inspect-consumer-build'}, ids)
 
     def test_application_and_capability_production_remain_unresolved(self):
-        for name in ['internal/application/manifest.go',
-                     'internal/application/footprint.go',
+        for name in ['internal/application/footprint.go',
                      'internal/application/provider_union.go',
                      'internal/capability/registry.go',
                      'internal/capability/provider_placement.go',
@@ -1374,7 +1373,7 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         # Even if docker_engine is resolved, a second unreviewed file must
         # keep the whole PR unresolved — fail-closed.
         result = planner.plan(diff(paths('internal/runtime/docker_engine.go',
-                                          'internal/application/manifest.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1416,7 +1415,7 @@ class CliEngineMappingTests(unittest.TestCase):
         # round2 fail-closed: even if docker_engine.go is resolved, a second
         # unreviewed file must keep the whole PR unresolved.
         result = planner.plan(diff(paths('cmd/baha/docker_engine.go',
-                                          'internal/application/manifest.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
@@ -1504,17 +1503,50 @@ class SharedBackendResolutionMappingTests(unittest.TestCase):
         # fail-closed: resolved shared-backend file + an unreviewed second file
         # keeps the whole PR unresolved.
         result = planner.plan(diff(paths('internal/application/shared_backends.go',
-                                          'internal/application/manifest.go')), REQ, MAP)
+                                          'internal/application/footprint.go')), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertTrue(result['unresolved_coverage'])
 
     def test_unrelated_application_file_stays_unresolved(self):
-        # A non shared_backend application file must NOT pick up the new
+        # A non-manifest application file must NOT pick up the r4 manifest
         # classification; it stays in application-implementation-unresolved.
-        result = planner.plan(diff(paths('internal/application/manifest.go')), REQ, MAP)
+        result = planner.plan(diff(paths('internal/application/footprint.go')), REQ, MAP)
         self.assertEqual('unresolved', result['coverage_status'])
         self.assertIn('application lifecycle', result['unresolved_coverage'][0])
         self.assertNotIn('atomic/podman/lifecycle', result['selected_gates'])
+        self.assertNotIn('atomic/docker/lifecycle', result['selected_gates'])
+
+    def test_gatemap_r4_manifest_paths_bind_lifecycle_gates(self):
+        # gatemap-r4: the three reviewed manifest-parser paths bind to the two
+        # EXISTING native lifecycle gates (atomic/docker/lifecycle,
+        # atomic/podman/lifecycle) -> coverage resolved, selected_gates exactly
+        # those two catalog tokens (no new gate).
+        for name in ['internal/application/manifest.go',
+                     'internal/application/manifest_parse.go',
+                     'internal/application/v0425_contract_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual([], result['unresolved_coverage'])
+                self.assertEqual({'atomic/docker/lifecycle',
+                                  'atomic/podman/lifecycle'},
+                                 set(result['selected_gates']))
+                commands = {c['command'] for c in result['required_validation_checks']}
+                self.assertIn('go test ./internal/application/... ./contracts/...',
+                              commands)
+
+    def test_gatemap_r4_other_application_file_stays_unresolved(self):
+        # Next application file that is NOT the reviewed manifest parser stays
+        # fail-closed unresolved; the three-file binding does NOT widen.
+        for name in ['internal/application/footprint.go',
+                     'internal/application/provider_union.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+                self.assertNotEqual({'atomic/docker/lifecycle',
+                                     'atomic/podman/lifecycle'},
+                                    set(result['selected_gates']))
 
     def test_shared_backend_missing_lifecycle_gate_fails_closed(self):
         # Fail-closed on incomplete catalog: no atomic/podman/lifecycle => unresolved.
