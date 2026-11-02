@@ -9,7 +9,8 @@ spec.loader.exec_module(module)
 
 class MTLSRejectionTest(unittest.TestCase):
     def test_client_cert_alert_from_verified_target(self):
-        self.assertTrue(module.rejected("172.17.0.2", 56, "172.17.0.2|0|000", "curl: (56) OpenSSL: tlsv1 alert unknown ca"))
+        self.assertTrue(module.rejected("172.17.0.2", 56, "172.17.0.2|0|000", "curl: (56) TLS alert, bad certificate"))
+        self.assertTrue(module.rejected("172.17.0.2", 35, "172.17.0.2|0|000", "curl: (35) bad certificate, TLS alert"))
 
     def test_unrelated_failures_do_not_pass(self):
         for code, meta, error in [
@@ -20,6 +21,8 @@ class MTLSRejectionTest(unittest.TestCase):
             (0, "172.17.0.2|0|000", "tlsv1 alert bad certificate"),
             (56, "", "tlsv1 alert bad certificate"),
             (56, "172.17.0.2|0|000", "connection reset by peer"),
+            (56, "172.17.0.2|0|000", "tlsv1 alert unknown ca"),
+            (56, "172.17.0.2|0|000", "bad certificate\nTLS alert"),
         ]:
             with self.subTest(code=code, metadata=meta, error=error):
                 self.assertFalse(module.rejected("172.17.0.2", code, meta, error))

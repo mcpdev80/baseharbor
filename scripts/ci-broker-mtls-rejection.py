@@ -7,8 +7,8 @@ from pathlib import Path
 
 
 CLIENT_CERT_ALERT = re.compile(
-    r"\b(?:sslv3|tlsv1(?:\.\d)?|tlsv13) alert "
-    r"(?:bad certificate|unknown ca|certificate required|access denied)\b",
+    r"(?:\balert\b[^\n]{0,100}\bbad certificate\b|"
+    r"\bbad certificate\b[^\n]{0,100}\balert\b)",
     re.IGNORECASE,
 )
 
@@ -29,13 +29,23 @@ def rejected(expected_ip: str, exit_code: int, metadata: str, stderr: str) -> bo
 
 
 def main() -> int:
+    diagnosis = "input-invalid"
     try:
         target, code, metadata, error = sys.argv[1:]
-        success = rejected(target, int(code), Path(metadata).read_text(), Path(error).read_text())
+        metadata_text = Path(metadata).read_text()
+        error_text = Path(error).read_text()
+        success = rejected(target, int(code), metadata_text, error_text)
+        remote, verify, http = metadata_text.strip().split("|")
+        diagnosis = (f"exit-allowed={int(code) in (35, 56)} "
+                     f"target-matched={ipaddress.ip_address(remote) == ipaddress.ip_address(target)} "
+                     f"server-verified={verify == '0'} http-unanswered={http == '000'} "
+                     f"client-cert-alert={CLIENT_CERT_ALERT.search(error_text) is not None} "
+                     f"any-tls-alert={'alert' in error_text.lower()}")
     except (ValueError, OSError):
         success = False
     if not success:
         print("cross-app request did not prove a verified target and client certificate rejection", file=sys.stderr)
+        print(diagnosis, file=sys.stderr)
         return 1
     print("verified target rejected the other application's client certificate")
     return 0
