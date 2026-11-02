@@ -188,6 +188,15 @@ func ReconcileSharedBackends(ctx context.Context, compose bhruntime.RuntimeProvi
 	if err != nil {
 		return false, err
 	}
+	// The shared backend owner directory is canonical and environment-agnostic
+	// ("shared-backends/core", or a retained per-environment legacy directory).
+	// Its state.Environment identity must match the directory basename, never the
+	// transient caller environment: writing the caller env here would drift against
+	// the canonical owner directory on every subsequent reconcile (e.g. a fresh
+	// GitHub-hosted runner apply persists "dev", then the next update reads the
+	// "core" owner directory and fails closed). Keep the caller env only for the
+	// per-application entry below; the shared backend identity stays canonical.
+	state.Environment = filepath.Base(shared.Dir)
 	core, err := selectSharedBackendDependency(&state, m, issuer, namespace)
 	if err != nil {
 		return false, err
