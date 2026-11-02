@@ -359,6 +359,10 @@ OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
 ]
+LOGS_PACKAGE_TESTS = [
+    {'id': 'logs-package-tests', 'owner': 'internal/logs',
+     'command': 'python3 scripts/pr-check-runner.py execute --check logs-package-tests --repository .'},
+]
 OPENBAO_RETRY_HEAD = '9f715184af7b89ca3011aa4a0636c45138fe2c6b'
 OPENBAO_RETRY_FILES = {'internal/openbao/bootstrap.go': 'modified',
                        'internal/openbao/bootstrap_test.go': 'modified'}
@@ -805,6 +809,21 @@ PINBUMP_INVENTORY = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_pr_authenticated_results.py': 'modified',
 }
+# r3 logsmap lane (OWNER-ENTSCHEIDUNG #1): the native Logs gate (logs-package-
+# tests) is registered in pr-check-runner.py and executed by an exact ci.yml
+# handler-case. These five files are the sole CI-infra + classifier footprint of
+# that gate; bound to CI_CHECKS (plus the native logs-package-tests check via
+# pr-check-runner.py execute) exactly like the PINBUMP inventory. This is NOT a
+# generic CI-file reclassification: only these five exact paths resolve through
+# the reviewed-source register, every other CI path stays fail-closed below.
+LOGS_INVENTORY = {
+    'scripts/pr-check-runner.py': 'modified',
+    'scripts/pr-gate-plan.py': 'modified',
+    'scripts/test_pr_gate_plan.py': 'modified',
+    '.github/workflows/ci.yml': 'modified',
+    'internal/logs/render.go': 'modified',
+}
+LOGS_REVIEWED_HEAD = '9a93865a935624045e96a503da0a3a1c2f7d1559'
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
@@ -927,6 +946,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
         receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
         workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
         pinbump_files = PINBUMP_INVENTORY
+        logs_files = LOGS_INVENTORY
         records = []
         for block in blocks:
             record = json.loads(block, object_pairs_hook=unique_object)
@@ -934,7 +954,9 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                 return None
             checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
                       if record.get('files') in (workflow_files, pinbump_files)
-                      else CI_CHECKS)
+                      else CI_CHECKS
+                      + ([c for c in LOGS_PACKAGE_TESTS]
+                         if record.get('files') == logs_files else []))
             expected_ids = {check['id'] for check in checks}
             if (not isinstance(record, dict) or set(record) != {
                     'repository', 'target_branch', 'reviewed_head', 'files',
@@ -943,7 +965,7 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                     record['target_branch'] != context_target_branch or
                     not isinstance(record['reviewed_head'], str) or
                     re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
+                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files, logs_files) or
                     not isinstance(record['file_hashes'], dict) or
                     set(record['file_hashes']) != set(record['files']) or
                     any(not isinstance(value, str) or
@@ -985,9 +1007,11 @@ def trusted_binding_checks(diff, repository='.', context_repository=None,
                                            record['reviewed_head'] + ':' + path)).hexdigest() != digest):
                     break
             else:
-                return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                        if record['files'] in (workflow_files, pinbump_files)
-                        else CI_CHECKS)
+                extra = ([c for c in LOGS_PACKAGE_TESTS]
+                         if record['files'] == logs_files else [])
+                return CI_CHECKS + WORKFLOW_SYNTAX_CHECKS \
+                    if record['files'] in (workflow_files, pinbump_files) \
+                    else CI_CHECKS + extra
     except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
         return None
     return None
@@ -1132,6 +1156,9 @@ def plan(diff, requirements, mapping, repository='.',
         (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
+         (LOGS_REVIEWED_HEAD, LOGS_INVENTORY,
+          CI_CHECKS + [c for c in LOGS_PACKAGE_TESTS],
+          'reviewed exact logsmap r3 CI + classifier + native Logs candidate'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
@@ -1763,6 +1790,24 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in RESOLVER_ROUTING_REVIEWED:
             area = 'resolver-routing-resolved'
             require(RESOLVER_CHECKS)
+        elif path == 'internal/logs/render.go':
+            # #1283 lane (fachlich geprüft, EXAKTE Pfad-Allowlist): changing ONLY
+            # internal/logs/render.go is covered by the native Logs package
+            # validation `logs-package-tests` (go test ./internal/logs
+            # -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$'), the real
+            # required validation the CI matrix runs on a logs change (same
+            # pattern as openbao-package-tests / the atomic lifecycle gates).
+            # The acceptance test renders a real Loki compose workload and drives
+            # the render.go regex path end to end; it is a native runtime gate
+            # that runs (and must pass) in CI with the real runtime. This binds
+            # render.go to that EXISTING native validation only — no invented
+            # gate, no cmd/baha substitution, no package waiver, no coverage
+            # widening. This is the exact #1283 change (render.go only). Any
+            # other internal/logs/*.go — a new file, an untested file, or a file
+            # in a subpackage — stays fail-closed unresolved below: no
+            # prefix/name heuristic, no prefix wildcard.
+            area = 'logs-render-resolved'
+            require(LOGS_PACKAGE_TESTS)
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
             # Container-runtime files: docker_engine.go and openbao_runtime_prepare.go
             # are explicit runtime-mutation surfaces that must exercise the real atomic

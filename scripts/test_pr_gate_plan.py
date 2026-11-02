@@ -4269,6 +4269,61 @@ class PodmanDoctorRuntimeImpactMappingTests(unittest.TestCase):
                       ' '.join(result['unresolved_coverage']))
 
 
+class LogsRenderExactQualificationTests(unittest.TestCase):
+    """logsmap r3: internal/logs/render.go resolves via the NATIVE Logs package
+    validation `logs-package-tests` (go test ./internal/logs
+    -run ^TestManagedLokiIngestsRealComposeWorkloadLogs$), the real required
+    validation the CI matrix runs on a logs change — NOT the cmd/baha gates.
+    Mapping is an EXACT single-path allowlist (path == render.go). Any new,
+    untested or subpackage internal/logs/*.go stays fail-closed unresolved, and
+    a mixed diff (render.go plus another internal/logs file) stays unresolved.
+    The native `logs-package-tests` id is registered in pr-check-runner.py
+    (PR-B); PR-A owns the classifier mapping and asserts the id is bound."""
+
+    def render_diff(self, changes):
+        diff = {'target_base_sha': 'a' * 40, 'head_sha': 'b' * 40,
+                'merge_base_sha': 'c' * 40, 'integration_sha': 'd' * 40,
+                'broad_required': False, 'reasons': [], 'changes': changes}
+        return planner.plan(diff, REQ, MAP)
+
+    def test_render_go_resolves_under_native_logs_gate(self):
+        # #1283 changes ONLY internal/logs/render.go -> resolved via the native
+        # Logs package validation `logs-package-tests` (not invented, not
+        # cmd/baha gates). The id must be the catalog validation PR-B registers.
+        result = self.render_diff([{'status': 'modified', 'path': 'internal/logs/render.go'}])
+        self.assertEqual('resolved', result['coverage_status'], result)
+        self.assertEqual([], result['unresolved_coverage'], result)
+        self.assertFalse(result['broad_required'])
+        ids = {c['id'] for c in result['required_validation_checks']}
+        self.assertIn('logs-package-tests', ids)
+
+    def test_new_internal_logs_file_stays_unresolved(self):
+        # Fail-closed regression: a new internal/logs/*.go file that is not the
+        # reviewed render.go path stays unresolved (no prefix wildcard).
+        result = self.render_diff([{'status': 'added', 'path': 'internal/logs/foo.go'}])
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('unknown impact for internal/logs/foo.go',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_subpackage_internal_logs_file_stays_unresolved(self):
+        # Fail-closed regression: a file in a subpackage is not covered by an
+        # allowlist of the exact reviewed path.
+        result = self.render_diff([{'status': 'added', 'path': 'internal/logs/sub/x.go'}])
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('unknown impact for internal/logs/sub/x.go',
+                      ' '.join(result['unresolved_coverage']))
+
+    def test_mixed_diff_render_go_plus_other_logs_stays_unresolved(self):
+        # r3 required: render.go PLUS another internal/logs/*.go -> the second
+        # file stays fail-closed unresolved (direct regression).
+        result = self.render_diff([
+            {'status': 'modified', 'path': 'internal/logs/render.go'},
+            {'status': 'added', 'path': 'internal/logs/state.go'}])
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertIn('unknown impact for internal/logs/state.go',
+                      ' '.join(result['unresolved_coverage']))
+
+
 def runner_validations():
     import importlib.util
     spec_v = importlib.util.spec_from_file_location('check_runner', ROOT / 'pr-check-runner.py')
