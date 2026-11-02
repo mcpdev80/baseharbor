@@ -24,6 +24,11 @@ on:
         required: false
         default: ""
         type: string
+      trusted_base_sha:
+        description: Base SHA from the authenticated PR plan, for scoped provider-log qualification
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -83,7 +88,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
-        if: inputs.candidate_artifact == '' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
+        if: inputs.candidate_artifact == '' || inputs.gate == 'observability' || inputs.gate == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -225,11 +230,14 @@ jobs:
         if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
         # Security starts the complete provider set; budget cold builds and
         # teardown after acceptance without changing service readiness limits.
-        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
+        timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || inputs.gate == 'observability' && 25 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities' && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8 }}
         shell: bash
         env:
           CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
+          PR_BASE_SHA: ${{ inputs.trusted_base_sha }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GATE: ${{ inputs.gate }}
+          RUNTIME: ${{ inputs.runtime }}
         run: |
           set -euo pipefail
           exec > >(tee "$RUNNER_TEMP/gate-output.log") 2>&1
@@ -244,6 +252,35 @@ jobs:
           fi
           cd "$workdir"
           env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+          if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cd "$GITHUB_WORKSPACE"
+            test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+            [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
+            git fetch --no-tags origin "$PR_BASE_SHA"
+            if git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- internal/logs/render.go; then
+              logs_changed=false
+            else
+              diff_status=$?
+              [ "$diff_status" -eq 1 ] || exit "$diff_status"
+              logs_changed=true
+            fi
+            if [ "$logs_changed" = true ]; then
+              bash scripts/ci-runtime-reset.sh "$RUNTIME"
+              unset BASEHARBOR_TARGET
+              export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-fullstack-xdg/config"
+              export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-fullstack-xdg/data"
+              export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-fullstack-xdg/cache"
+              env BASEHARBOR_OBSERVABILITY_ACCEPTANCE=1 \
+                  BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE=application \
+                  BASEHARBOR_PROVIDER_VALKEY_SCOPE=application \
+                  go test -p 1 ./cmd/baha -run '^TestObservabilityFullStackAcceptanceInCI$' -count=1 -v \
+                  | tee "$RUNNER_TEMP/observability-fullstack.log"
+              grep -Eq '^=== RUN +TestObservabilityFullStackAcceptanceInCI$' "$RUNNER_TEMP/observability-fullstack.log"
+              grep -Eq '^--- PASS: TestObservabilityFullStackAcceptanceInCI( |$)' "$RUNNER_TEMP/observability-fullstack.log"
+              grep -Eq '\[VERIFIED\] logs +[0-9]+ workload stream\(s\), [1-9][0-9]* provider stream\(s\) ingested' "$RUNNER_TEMP/observability-fullstack.log"
+            fi
+          fi
 
       - name: Preserve demo runtime diagnostics
         if: failure() && inputs.runtime != 'static'
