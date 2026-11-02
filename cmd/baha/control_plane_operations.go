@@ -150,12 +150,14 @@ func collectControlPlaneDoctorChecks(ctx context.Context) []health.Check {
 	if targetErr != nil {
 		return append(checks, health.Check{Name: "target-selection", OK: false, Message: targetErr.Error()})
 	}
-	if engine, err := inspectTargetDockerEngine(ctx, target); engine != nil {
-		message := fmt.Sprintf("%s (%s; daemon %s)", engine.Endpoint, engine.Mode, engine.DaemonID)
-		if err != nil {
-			message = err.Error()
+	if target.RuntimeProvider == "docker" {
+		if engine, err := inspectTargetDockerEngine(ctx, target); engine != nil {
+			message := fmt.Sprintf("%s (%s; daemon %s)", engine.Endpoint, engine.Mode, engine.DaemonID)
+			if err != nil {
+				message = err.Error()
+			}
+			checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
 		}
-		checks = append(checks, health.Check{Name: "Docker engine", OK: err == nil && engine.Verified, Message: message})
 	}
 	// Native runtime readiness is probed explicitly for the target's provider.
 	// The dropped health.Doctor() legacy probes never emitted a named runtime
