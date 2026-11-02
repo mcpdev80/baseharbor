@@ -359,6 +359,10 @@ OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
 ]
+LOGS_CHECKS = [
+    {'id': 'logs-package-tests', 'owner': 'internal/logs',
+     'command': 'python3 scripts/pr-check-runner.py execute --check logs-package-tests --repository .'},
+]
 OPENBAO_RETRY_HEAD = '9f715184af7b89ca3011aa4a0636c45138fe2c6b'
 OPENBAO_RETRY_FILES = {'internal/openbao/bootstrap.go': 'modified',
                        'internal/openbao/bootstrap_test.go': 'modified'}
@@ -1731,6 +1735,12 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
+        elif path == 'internal/logs/render.go':
+            # Rendering changes affect runtime log collection as well as Go behavior.
+            area = 'logs-rendering'
+            require(LOGS_CHECKS)
+            selected.add('atomic/docker/observability')
+            selected.add('atomic/podman/observability')
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
