@@ -136,7 +136,7 @@ func TestObservabilityFullStackAcceptanceInCI(t *testing.T) {
         - >-
           set -- --silent --show-error --max-time 3 --cacert "$$OTEL_EXPORTER_OTLP_CERTIFICATE";
           if [ -n "$${OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE:-}" ]; then
-            set -- "$$@" --cert "$$OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE" --key "$$OTEL_EXPORTER_OTLP_CLIENT_KEY";
+          set -- "$$@" --cert "$$OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE" --key "$$OTEL_EXPORTER_OTLP_CLIENT_KEY";
           fi;
           code=$$(curl "$$@" -o /dev/null -w '%{http_code}' "$${OTEL_EXPORTER_OTLP_ENDPOINT%/}/") &&
           case "$$code" in 200|204|404|405) exit 0;; *) exit 1;; esac
