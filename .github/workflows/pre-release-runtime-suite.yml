@@ -252,6 +252,37 @@ jobs:
           fi
           cd "$workdir"
           env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+          if [ "$GATE" = lifecycle ] && [ "$RUNTIME" = podman ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cd "$GITHUB_WORKSPACE"
+            test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+            [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
+            git fetch --no-tags origin "$PR_BASE_SHA"
+            if git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
+              ':(glob)internal/health/podman_*.go' \
+              ':(glob)internal/providers/runtime/podman/*.go' \
+              cmd/baha/podman_doctor_checks.go cmd/baha/podman_doctor_checks_test.go \
+              cmd/baha/control_plane_operations.go; then
+              doctor_changed=false
+            else
+              diff_status=$?
+              [ "$diff_status" -eq 1 ] || exit "$diff_status"
+              doctor_changed=true
+            fi
+            if [ "$doctor_changed" = true ]; then
+              candidate_baha="$workdir/.tools/bin/baha"
+              test -x "$candidate_baha"
+              "$candidate_baha" version | grep -F "$CANDIDATE_SHA"
+              export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-doctor-xdg/config"
+              export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-doctor-xdg/data"
+              export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-doctor-xdg/cache"
+              export BASEHARBOR_TARGET=ci-podman-doctor
+              cd "$(mktemp -d "$RUNNER_TEMP/control-plane-doctor.XXXXXX")"
+              "$candidate_baha" target create "$BASEHARBOR_TARGET" --provider podman --access local-podman --reference local --scope default --default
+              "$candidate_baha" doctor -o json > "$RUNNER_TEMP/podman-control-plane-doctor.json"
+              jq -e '(.checks | type == "array") and ([.checks[] | select(.name == "podman" and .ready == true)] | length == 1) and ([.checks[] | select(.name == "quadlet" and .ready == true)] | length == 1) and ([.checks[] | select(.name == "Docker engine")] | length == 0)' "$RUNNER_TEMP/podman-control-plane-doctor.json"
+            fi
+          fi
           if [ "$GATE" = observability ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             cd "$GITHUB_WORKSPACE"
             test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"

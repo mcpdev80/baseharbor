@@ -60,6 +60,10 @@ CODE_CHECKS = [
     {'id': 'source-contracts', 'owner': 'CI source / contracts',
      'command': 'go test ./internal/application/... ./contracts/...'},
 ]
+RUNTIME_PROVIDER_CHECKS = [
+    {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
+     'command': 'go test ./internal/runtime ./internal/health ./internal/providers/runtime/podman -count=1'},
+]
 CLI_CHECKS = [
     {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
      'command': "go test ./cmd/baha -run '^TestGuided' -count=1"},
@@ -1729,6 +1733,15 @@ def plan(diff, requirements, mapping, repository='.',
             # v0425_contract_test.go pins the v0.4.25 contract for both lifecycles.
             area = 'application-manifest-lifecycle'
             require(CODE_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif ((path.startswith('internal/health/podman_') and '/' not in path[len('internal/health/'):]) or
+              (path.startswith('internal/providers/runtime/podman/') and
+               '/' not in path[len('internal/providers/runtime/podman/'):])) and path.endswith('.go'):
+            area = 'podman-health-package'
+            require(CODE_CHECKS + CLI_CHECKS + RUNTIME_PROVIDER_CHECKS)
+            if path_status.get(path) not in ('added', 'modified', 'deleted', 'renamed', 'copied'):
+                unresolved.append('unsupported runtime package change: ' + path)
             selected.add('atomic/docker/lifecycle')
             selected.add('atomic/podman/lifecycle')
         elif path.startswith('internal/application/'):

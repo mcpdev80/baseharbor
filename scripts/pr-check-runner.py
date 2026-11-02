@@ -90,7 +90,7 @@ OPENBAO_REQUIRED_TESTS = (
 VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
-                'openbao-package-tests',
+                'openbao-package-tests', 'runtime-provider-package-tests',
                 'pr-planner-tests', 'ci-policy', 'ci-actionlint',
                 'ci-executor-verifier-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
