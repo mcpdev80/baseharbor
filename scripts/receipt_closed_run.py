@@ -67,6 +67,8 @@ def closed_run(run_id, product, api=gh):
     require(facts["head_sha"] == head and plan.get("coverage_status") == "resolved"
             and isinstance(plan.get("selected_gates"), list)
             and all(isinstance(x, str) for x in plan["selected_gates"]), "invalid producer plan")
+    require("integration/static/public-contracts" not in plan["selected_gates"],
+            "public-contracts producer requires receipt handling")
     pages = api(f"repos/{REPOSITORY}/commits/{head}/pulls?per_page=100", pages=True)
     prs = [p for page in pages for p in page
            if p.get("head", {}).get("sha") == head

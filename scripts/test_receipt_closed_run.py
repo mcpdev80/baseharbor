@@ -40,7 +40,7 @@ class ClosedRunTests(unittest.TestCase):
     def test_authenticated_tuple_and_fail_closed_negatives(self):
         original = fixture()
         cases = ("ok", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",
-                 "artifact_expired", "wrong_parents", "wrong_identity", "missing_plan")
+                 "artifact_expired", "wrong_parents", "wrong_identity", "missing_plan", "pilot")
         for case in cases:
             with self.subTest(case=case):
                 run, jobs, artifact, pr, archive = copy.deepcopy(original)
@@ -52,6 +52,14 @@ class ClosedRunTests(unittest.TestCase):
                 if case == "wrong_run": artifact["workflow_run"]["id"] = 456
                 if case == "artifact_expired": artifact["expired"] = True
                 if case == "missing_plan": archive = b"invalid"
+                if case == "pilot":
+                    with zipfile.ZipFile(io.BytesIO(archive)) as source:
+                        plan = json.loads(source.read("pr-plan.json"))
+                    plan["selected_gates"] = ["integration/static/public-contracts"]
+                    buffer = io.BytesIO()
+                    with zipfile.ZipFile(buffer, "w") as target:
+                        target.writestr("pr-plan.json", json.dumps(plan))
+                    archive = buffer.getvalue()
                 def api(path, *, pages=False, binary=False):
                     if binary: return archive
                     if "/attempts/1/jobs" in path: return [{"jobs": jobs}]
