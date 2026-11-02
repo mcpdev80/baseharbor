@@ -48,6 +48,9 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Validate broker fixture helpers
+        run: python3 -m unittest scripts/test_ci_broker_project.py scripts/test_ci_broker_docs_url.py scripts/test_ci_broker_typed_consent.py scripts/test_ci_broker_mtls_rejection.py scripts/test_ci_podman_typed_consent.py -q
+
       - name: Build BaseHarbor and package exact tested binary
         run: |
           CGO_ENABLED=0 go build -trimpath -o /tmp/baha ./cmd/baha
@@ -75,27 +78,49 @@ jobs:
 
       - name: Create two isolated secret applications
         run: |
+          set -eo pipefail
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
 
+          apply_with_current_consent() {
+            local plan consent result
+            plan=$(mktemp)
+            chmod 600 "$plan"
+            /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$plan") || { rm -f "$plan"; return 1; }
+            rm -f "$plan"
+            if [ "$consent" = none ]; then
+              unset consent
+              env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app apply "$1"
+              return $?
+            fi
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha --no-input app apply "$1" || { result=$?; unset consent; return "$result"; }
+            unset consent
+          }
+          record_project() {
+            local app="$1"
+            /tmp/baha app status "$app" -o json | python3 "$GITHUB_WORKSPACE/scripts/ci-broker-project.py" "$app" >"/tmp/${app}-project"
+          }
+
           /tmp/baha app create broker-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply broker-demo >/tmp/broker-demo-required.out 2>&1
+          apply_with_current_consent broker-demo >/tmp/broker-demo-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
-          grep -q "required secrets check failed" /tmp/broker-demo-required.out
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/broker-demo-required.out
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply broker-demo | tee /tmp/broker-demo-apply.out
+          apply_with_current_consent broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
-          docs_url="$(sed -n 's/.*Swagger\/OpenAPI: \(https:\/\/127\.0\.0\.1:[0-9][0-9]*\/\).*/\1/p' /tmp/broker-demo-apply.out | tail -n1)"
-          test -n "$docs_url"
-          curl --fail --silent --show-error \
-            --cacert $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/ca.pem \
-            "$docs_url" >/tmp/broker-demo-docs.html
+          record_project broker-demo
+          docs_url=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-docs-url.py" /tmp/broker-demo-apply.out)
+          application_env=$(/tmp/baha app env broker-demo --path)
+          broker_ca="$(dirname "$application_env")/bindings/runtime-identity/ca.pem"
+          curl --fail --silent --show-error --noproxy 127.0.0.1 \
+            --cacert "$broker_ca" "$docs_url" >/tmp/broker-demo-docs.html
           /tmp/baha app status broker-demo | tee /tmp/broker-demo-status.out
           grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-demo-status.out
-          grep -Fq "Swagger/OpenAPI: $docs_url" /tmp/broker-demo-status.out
+          grep -F "Swagger/OpenAPI" /tmp/broker-demo-status.out | grep -Fq "$docs_url"
           /tmp/baha app status broker-demo --verbose | tee /tmp/broker-demo-status-verbose.out
           grep -q "Runtime artifact" /tmp/broker-demo-status-verbose.out
           grep -q "image id" /tmp/broker-demo-status-verbose.out
@@ -103,19 +128,20 @@ jobs:
 
           /tmp/baha app create other-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply other-demo >/tmp/other-demo-required.out 2>&1
+          apply_with_current_consent other-demo >/tmp/other-demo-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
-          grep -q "required secrets check failed" /tmp/other-demo-required.out
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/other-demo-required.out
           printf '%s' 'bootstrap-b' | /tmp/baha app secret set other-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply other-demo | grep -q "application and requested infrastructure verified"
+          apply_with_current_consent other-demo | grep -q "application and requested infrastructure verified"
+          record_project other-demo
 
       - name: Prove dynamic secret create resolve rotate and wrong-token rejection
         run: |
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
-          project=baseharbor-broker-ci-broker-demo-dev
+          project=$(cat /tmp/broker-demo-project)
           broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
 
@@ -162,43 +188,92 @@ jobs:
 
       - name: Prove cross-app mTLS identity is rejected before authorization
         run: |
-          target_project=baseharbor-broker-ci-broker-demo-dev
-          other_project=baseharbor-broker-ci-other-demo-dev
+          target_project=$(cat /tmp/broker-demo-project)
+          other_project=$(cat /tmp/other-demo-project)
           target_id=$(docker ps --filter "label=com.docker.compose.project=$target_project" --filter 'label=com.docker.compose.service=broker' -q)
           other_id=$(docker ps --filter "label=com.docker.compose.project=$other_project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$target_id"
           test -n "$other_id"
-          target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
+          target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-ci-secrets"}}{{.IPAddress}}{{end}}')
+          other_ip=$(docker inspect "$other_id" --format '{{with index .NetworkSettings.Networks "baseharbor-ci-secrets"}}{{.IPAddress}}{{end}}')
           test -n "$target_ip"
+          test -n "$other_ip"
+          test "$target_ip" != "$other_ip"
+          for entry in "$target_id:$target_ip" "$other_id:$other_ip"; do
+            id=${entry%%:*}
+            ip=${entry#*:}
+            docker exec "$id" curl --fail --silent --show-error \
+              --resolve "baseharbor-secrets:8443:$ip" \
+              --cacert /run/baseharbor/identity/ca.pem \
+              --cert /run/secrets/probe-client-cert --key /run/secrets/probe-client-key \
+              https://baseharbor-secrets:8443/readyz >/dev/null
+          done
+          docker cp "$target_id:/run/baseharbor/identity/ca.pem" /tmp/broker-target-ca.pem
+          docker exec -i "$other_id" sh -c 'cat > /tmp/broker-target-ca.pem' </tmp/broker-target-ca.pem
+          docker cp "$target_id:/run/secrets/probe-client-cert" /tmp/broker-target-cert.pem
+          docker cp "$other_id:/run/secrets/probe-client-cert" /tmp/broker-other-cert.pem
+          ! cmp -s /tmp/broker-target-cert.pem /tmp/broker-other-cert.pem
+          start_time=$(date -u +'%Y-%m-%dT%H:%M:%S.%NZ')
           set +e
-          docker exec "$other_id" sh -ec "curl --fail --silent --show-error \
-            --resolve baseharbor-secrets:8443:$target_ip \
-            --cacert /run/baseharbor/identity/ca.pem \
+          docker exec "$other_id" curl --fail --silent --show-error \
+            --resolve "baseharbor-secrets:8443:$target_ip" \
+            --cacert /tmp/broker-target-ca.pem \
             --cert /run/secrets/probe-client-cert \
             --key /run/secrets/probe-client-key \
-            https://baseharbor-secrets:8443/readyz >/tmp/cross-app.out 2>/tmp/cross-app.err"
+            --output /dev/null --write-out '%{remote_ip}|%{ssl_verify_result}|%{http_code}' \
+            https://baseharbor-secrets:8443/readyz >/tmp/cross-app-meta 2>/tmp/cross-app.err
           code=$?
           set -e
-          test "$code" -ne 0
+          docker logs --since "$start_time" "$target_id" > /tmp/cross-app-server.log 2>&1
+          python3 "$GITHUB_WORKSPACE/scripts/ci-broker-mtls-rejection.py" \
+            "$target_ip" "$other_ip" "$code" /tmp/cross-app-meta /tmp/cross-app.err /tmp/cross-app-server.log
 
       - name: Prove broker lifecycle and same dynamic secret ref survives restart
         run: |
+          set -eo pipefail
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
           ref=$(cat /tmp/broker-demo-secret-ref)
           test -n "$ref"
 
-          client_before=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
-          /tmp/baha app down broker-demo | tee /tmp/broker-down.out
+          project=$(cat /tmp/broker-demo-project)
+          application_env=$(/tmp/baha app env broker-demo --path)
+          case "$application_env" in /*/application.env) ;; *) echo "unexpected application environment path" >&2; exit 1 ;; esac
+          client_cert="$(dirname "$application_env")/bindings/runtime-identity/client-cert.pem"
+          client_before=$(sha256sum "$client_cert" | awk '{print $1}')
+          down_plan_file=$(mktemp)
+          chmod 600 "$down_plan_file"
+          if env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app down broker-demo >"$down_plan_file" 2>/tmp/broker-down-plan-error.txt; then
+            echo "app down unexpectedly succeeded without typed provider consent" >&2
+            exit 1
+          fi
+          down_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" scope-output "$down_plan_file")
+          rm -f "$down_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$down_consent" /tmp/baha app down broker-demo | tee /tmp/broker-down.out
+          unset down_consent
           grep -q "runtime-broker.*stopped" /tmp/broker-down.out
-          test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev)"
+          test -z "$(docker ps -q --filter "label=com.docker.compose.project=$project")"
 
-          /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
-          /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
-          client_after=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
+          up_plan_file=$(mktemp)
+          chmod 600 "$up_plan_file"
+          /tmp/baha app plan broker-demo -o json >"$up_plan_file"
+          up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$up_plan_file")
+          rm -f "$up_plan_file"
+          if [ "$up_consent" = none ]; then
+            env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app up broker-demo | tee /tmp/broker-up.out
+          else
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha --no-input app up broker-demo | tee /tmp/broker-up.out
+          fi
+          unset up_consent
+          grep -Fq 'application and requested infrastructure verified' /tmp/broker-up.out
+          /tmp/baha app status broker-demo > /tmp/broker-up-status.out
+          grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-up-status.out
+          current_project=$(/tmp/baha app status broker-demo -o json | python3 "$GITHUB_WORKSPACE/scripts/ci-broker-project.py" broker-demo)
+          test "$current_project" = "$project"
+          client_after=$(sha256sum "$client_cert" | awk '{print $1}')
           test "$client_before" = "$client_after"
 
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
@@ -215,7 +290,8 @@ jobs:
       - name: Prove delete is permanent for the same ref
         run: |
           ref=$(cat /tmp/broker-demo-secret-ref)
-          broker_id=$(docker ps --filter "label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev" --filter 'label=com.docker.compose.service=broker' -q)
+          project=$(cat /tmp/broker-demo-project)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec -e REF="$ref" "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)
@@ -277,6 +353,22 @@ jobs:
 
       - name: Bootstrap performance application
         run: |
+          set -eo pipefail
+          apply_with_current_consent() {
+            local plan consent result
+            plan=$(mktemp)
+            chmod 600 "$plan"
+            /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$plan") || { rm -f "$plan"; return 1; }
+            rm -f "$plan"
+            if [ "$consent" = none ]; then
+              unset consent
+              env -u BASEHARBOR_PROVIDER_CHANGE_CONSENT /tmp/baha --no-input app apply "$1"
+              return $?
+            fi
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha --no-input app apply "$1" || { result=$?; unset consent; return "$result"; }
+            unset consent
+          }
           workdir=$(mktemp -d)
           printf '%s\n' "$workdir" >/tmp/baseharbor-perf-workdir
           cd "$workdir"
@@ -292,16 +384,19 @@ jobs:
           fi
           /tmp/baha app create perf-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1
+          apply_with_current_consent perf-demo >/tmp/perf-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
+          grep -Fq "Required application secret BOOTSTRAP_SECRET is missing." /tmp/perf-required.out
           printf '%s' 'bootstrap' | /tmp/baha app secret set perf-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply perf-demo | grep -q "application and requested infrastructure verified"
+          apply_with_current_consent perf-demo | grep -q "application and requested infrastructure verified"
+          /tmp/baha app status perf-demo -o json | python3 "$GITHUB_WORKSPACE/scripts/ci-broker-project.py" perf-demo >/tmp/perf-demo-project
 
       - name: Measure 200 real mTLS secret resolves
         run: |
-          broker_id=$(docker ps --filter 'label=com.docker.compose.project=baseharbor-broker-ci-perf-demo-dev' --filter 'label=com.docker.compose.service=broker' -q)
+          project=$(cat /tmp/perf-demo-project)
+          broker_id=$(docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$broker_id"
           docker exec "$broker_id" sh -ec '
             token=$(cat /run/secrets/runtime-token)

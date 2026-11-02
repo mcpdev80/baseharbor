@@ -517,7 +517,7 @@ func printRuntimeBrokerDocs(out io.Writer, target string, m application.Manifest
 		return
 	}
 	url := strings.TrimSpace(brokerFiles.DocsURL)
-	if devaccess.Enabled(m.Environment) {
+	if requiresDevelopmentGateway(m) {
 		if host, hostErr := devaccess.ApplicationHost(target, m.Name, "api"); hostErr == nil {
 			url = devgateway.URLForTarget(target, host) + "/swagger/"
 		}
