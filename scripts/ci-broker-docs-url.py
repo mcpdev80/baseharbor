@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract the isolated broker fixture's single expected HTTPS gateway URL."""
+"""Extract the isolated broker fixture's authenticated loopback HTTPS URL."""
 import re
 import sys
 from pathlib import Path
@@ -12,11 +12,11 @@ def extract_url(output):
         raise ValueError("broker output must contain exactly one docs URL")
     parsed = urlsplit(urls[0])
     port = parsed.port
-    if (parsed.scheme != "https" or parsed.hostname != "broker-demo.baha.localhost"
-            or parsed.path != "/swagger/" or parsed.username is not None
+    if (parsed.scheme != "https" or parsed.hostname != "127.0.0.1"
+            or parsed.path != "/" or parsed.username is not None
             or parsed.password is not None or parsed.query or parsed.fragment
-            or (port is not None and not 1 <= port <= 65535)):
-        raise ValueError("broker docs URL is not the expected isolated HTTPS gateway")
+            or port is None or not 1 <= port <= 65535):
+        raise ValueError("broker docs URL is not the expected loopback HTTPS endpoint")
     return urls[0]
 
 

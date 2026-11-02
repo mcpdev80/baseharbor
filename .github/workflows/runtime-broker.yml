@@ -114,11 +114,10 @@ jobs:
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
           record_project broker-demo
           docs_url=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-docs-url.py" /tmp/broker-demo-apply.out)
-          docs_port=$(python3 -c 'from urllib.parse import urlsplit; import sys; print(urlsplit(sys.argv[1]).port or 443)' "$docs_url")
-          gateway_ca="${XDG_DATA_HOME:-$HOME/.local/share}/baseharbor/targets/ci/developer-access/dev/gateway/runtime/ca.pem"
-          curl --fail --silent --show-error --noproxy broker-demo.baha.localhost \
-            --resolve "broker-demo.baha.localhost:${docs_port}:127.0.0.1" \
-            --cacert "$gateway_ca" "$docs_url" >/tmp/broker-demo-docs.html
+          application_env=$(/tmp/baha app env broker-demo --path)
+          broker_ca="$(dirname "$application_env")/bindings/runtime-identity/ca.pem"
+          curl --fail --silent --show-error --noproxy 127.0.0.1 \
+            --cacert "$broker_ca" "$docs_url" >/tmp/broker-demo-docs.html
           /tmp/baha app status broker-demo | tee /tmp/broker-demo-status.out
           grep -q "runtime-broker.*mTLS readiness verified" /tmp/broker-demo-status.out
           grep -Fq "Swagger/OpenAPI: $docs_url" /tmp/broker-demo-status.out

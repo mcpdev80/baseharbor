@@ -14,31 +14,30 @@ spec.loader.exec_module(helper)
 
 
 class BrokerDocsURLTests(unittest.TestCase):
-    def test_exact_gateway_with_default_and_explicit_port(self):
-        for url in ("https://broker-demo.baha.localhost/swagger/",
-                    "https://broker-demo.baha.localhost:18443/swagger/"):
+    def test_exact_loopback_with_explicit_port(self):
+        for url in ("https://127.0.0.1:18443/", "https://127.0.0.1:8081/"):
             self.assertEqual(url, helper.extract_url("[INFO] Swagger/OpenAPI: " + url))
 
     def test_rejects_unexpected_or_ambiguous_endpoint(self):
-        invalid = ("http://broker-demo.baha.localhost/swagger/",
-                   "https://broker-demo.baha.localhost.evil/swagger/",
-                   "https://user@broker-demo.baha.localhost/swagger/",
-                   "https://broker-demo.baha.localhost/swagger/?token=x",
-                   "https://broker-demo.baha.localhost/other/",
-                   "https://broker-demo.baha.localhost:70000/swagger/")
+        invalid = ("http://127.0.0.1:18443/",
+                   "https://127.0.0.1.evil:18443/",
+                   "https://user@127.0.0.1:18443/",
+                   "https://127.0.0.1:18443/?token=x",
+                   "https://127.0.0.1:18443/other/",
+                   "https://127.0.0.1:70000/")
         for url in invalid:
             with self.subTest(url=url), self.assertRaises(ValueError):
                 helper.extract_url("Swagger/OpenAPI: " + url)
         with self.assertRaises(ValueError):
-            helper.extract_url("Swagger/OpenAPI: https://broker-demo.baha.localhost/swagger/\n"
-                               "Swagger/OpenAPI: https://broker-demo.baha.localhost/swagger/")
+            helper.extract_url("Swagger/OpenAPI: https://127.0.0.1:18443/\n"
+                               "Swagger/OpenAPI: https://127.0.0.1:18443/")
         with self.assertRaises(ValueError):
             helper.extract_url("no docs URL")
 
     def test_invalid_port_diagnostic_does_not_echo_untrusted_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "broker.out"
-            output.write_text("Swagger/OpenAPI: https://broker-demo.baha.localhost:sensitive-marker/swagger/", encoding="utf-8")
+            output.write_text("Swagger/OpenAPI: https://127.0.0.1:sensitive-marker/", encoding="utf-8")
             result = subprocess.run([sys.executable, spec.origin, str(output)],
                                     text=True, capture_output=True)
             self.assertNotEqual(0, result.returncode)
