@@ -333,6 +333,10 @@ jobs:
           # (Owner correction 2026-10-27, D3).
           export GH_TOKEN="${GH_WORKFLOW_TOKEN}"
           ATTEMPT_RESOLVED="$(gh api repos/mcpdev80/baseharbor/actions/runs/${RUN_ID} --jq .run_attempt)"
+          # The controller is pinned and initially shallow. Fetch the
+          # authenticated run head and base so its existing identity verifier
+          # can compare the producer workflow before classifying a no-receipt.
+          git fetch --no-tags --depth=1 origin "$RUN_HEAD" "$RUN_BASE"
           RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT_RESOLVED}" python3 - <<'PY' > plan.txt
           import zipfile, os
           import receipt_verifier as rv
@@ -359,6 +363,8 @@ jobs:
                   or out["head_sha"] != os.environ["RUN_HEAD"]
                   or out["base_sha"] != os.environ["RUN_BASE"]):
               raise ValueError("unresolved, malformed or mismatched trusted plan")
+          rv.producer_identity(".", {"head_sha": out["head_sha"],
+                                     "base_sha": out["base_sha"]})
           print("public_contracts_selected=%s" % str(
               "integration/static/public-contracts" in plan["selected_gates"]).lower())
           print("workflow_id=%s" % out["workflow_id"])
