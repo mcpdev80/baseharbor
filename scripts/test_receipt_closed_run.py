@@ -37,6 +37,24 @@ def fixture():
 
 
 class ClosedRunTests(unittest.TestCase):
+    def test_push_wakes_completed_pr_and_defers_pending(self):
+        run, _, _, pr, _ = fixture()
+        merge = 'd' * 40
+        pr.update(state='closed', merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z')
+        push = dict(run, id=999, event='push', head_branch='develop', head_sha=merge)
+        def api(path, *, pages=False, binary=False):
+            if '/commits/' in path: return [[pr]]
+            if '/actions/workflows/' in path: return [{'workflow_runs': [run]}]
+            return push
+        with patch.object(helper, 'closed_run', return_value=42) as closed:
+            self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
+            self.assertEqual(closed.call_args.args[0], RUN)
+            run['status'] = 'in_progress'
+            self.assertIsNone(helper.push_run(999, '.', 'planning', api=api))
+            run.update(status='completed', conclusion='failure')
+            with self.assertRaises(ValueError):
+                helper.push_run(999, '.', 'planning', api=api)
+
     def test_pilot_is_forwarded_to_existing_writer_only_with_planning(self):
         run, jobs, artifact, pr, archive = fixture()
         pr['merge_commit_sha'] = 'd' * 40
@@ -56,6 +74,7 @@ class ClosedRunTests(unittest.TestCase):
             return subprocess.CompletedProcess(args, 0, stdout=f'{CANDIDATE} {BASE} {HEAD}\n')
         with patch.object(helper.subprocess, 'run', side_effect=command), \
              patch.object(helper.rv, 'producer_identity'), \
+             patch.object(helper.rv, 'retained_merge'), \
              patch('receipt_writer.write_merge', return_value=('path', 'intro', 'durable')) as write:
             self.assertEqual(helper.closed_run(RUN, '.', api, planning='planning'), 42)
             self.assertEqual(write.call_args.args[1:3], (42, RUN))
