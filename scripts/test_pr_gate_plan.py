@@ -1455,8 +1455,21 @@ class LogsRenderingBindingTests(unittest.TestCase):
         self.assertEqual({'atomic/docker/observability', 'atomic/podman/observability'},
                          set(result['selected_gates']))
 
+    def test_provider_journal_test_runs_existing_package_and_native_checks(self):
+        path = 'internal/logs/journal_provider_render_test.go'
+        for status in ('added', 'modified'):
+            with self.subTest(status=status):
+                result = planner.plan(diff([{'status': status, 'path': path}]), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertIn('logs-package-tests', {c['id'] for c in result['required_validation_checks']})
+                self.assertEqual({'atomic/docker/observability', 'atomic/podman/observability'},
+                                 set(result['selected_gates']))
+        result = planner.plan(diff([{'status': 'deleted', 'path': path}]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
     def test_other_logs_files_remain_unresolved(self):
-        for path in ('internal/logs/sub/render.go', 'internal/logs/other.go'):
+        for path in ('internal/logs/sub/render.go', 'internal/logs/other.go',
+                     'internal/logs/sub/journal_provider_render_test.go'):
             with self.subTest(path=path):
                 result = planner.plan(diff(paths(path)), REQ, MAP)
                 self.assertEqual('unresolved', result['coverage_status'])
