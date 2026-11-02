@@ -49,6 +49,39 @@ class GitHubAdapterTest(unittest.TestCase):
             evidence.recent_merged_prs('2026-10-29T00:00:00Z',
                                        api=lambda _: [rows[1], rows[0]])
 
+    def test_watermark_advances_only_after_all_prs_are_processed(self):
+        def git(*args):
+            return subprocess.run(['git', *map(str, args)], check=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+        row = dict(number=42, updated_at='2026-11-02T11:00:00Z',
+                   merged_at='2026-11-02T10:00:00Z', base=dict(ref='develop'))
+        initial, until = '2026-11-01T00:00:00Z', '2026-11-03T00:00:00Z'
+        with tempfile.TemporaryDirectory() as tmp:
+            remote, checkout = pathlib.Path(tmp) / 'origin.git', pathlib.Path(tmp) / 'plan'
+            git('init', '--bare', '--initial-branch=main', remote)
+            git('clone', remote, checkout)
+            git('-C', checkout, 'config', 'user.name', 'Test')
+            git('-C', checkout, 'config', 'user.email', 'test@example.invalid')
+            (checkout / 'README').write_text('initial\n')
+            git('-C', checkout, 'add', 'README')
+            git('-C', checkout, 'commit', '-m', 'initial')
+            git('-C', checkout, 'push', '-u', 'origin', 'main')
+            def fail(_):
+                raise verifier.ReceiptError('temporarily unavailable')
+            with self.assertRaisesRegex(verifier.ReceiptError, 'incomplete'):
+                evidence.reconcile_with_watermark(checkout, initial, until,
+                                                   api=lambda _: [row], process=fail)
+            cursor = checkout / 'evidence/ci-runs/reconciliation-watermark.json'
+            self.assertFalse(cursor.exists())
+            processed = []
+            self.assertEqual(evidence.reconcile_with_watermark(
+                checkout, initial, until, api=lambda _: [row], process=processed.append), until)
+            self.assertEqual(processed, [42])
+            self.assertEqual(verifier.decode(cursor.read_bytes(), 4096)['through'], until)
+            remote_state = git('--git-dir', remote, 'show',
+                               'main:evidence/ci-runs/reconciliation-watermark.json')
+            self.assertIn(until, remote_state)
+
     def test_newer_failed_or_running_run_never_falls_back_to_old_success(self):
         head = 'a' * 40
         success = dict(id=1, head_sha=head, event='pull_request', run_attempt=1,
