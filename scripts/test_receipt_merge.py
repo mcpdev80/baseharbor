@@ -23,8 +23,10 @@ class MergeReceiptTest(unittest.TestCase):
         self.job = dict(name='PR Selected Checks', completed_at='2026-11-02T11:59:00Z')
 
     def api(self, path, **kwargs):
-        if kwargs.get('pages'):
+        if kwargs.get('pages') and '/commits/' in path:
             return [[copy.deepcopy(self.pr)]]
+        if kwargs.get('pages') and '/jobs?' in path:
+            return [dict(total_count=1, jobs=[copy.deepcopy(self.job)])]
         if '/pulls/' in path:
             return copy.deepcopy(self.pr)
         if '/attempts/' in path:
@@ -124,7 +126,9 @@ class MergeChainTest(VerifierFixtureTest):
                     candidate_sha=self.candidate, workflow_id=17)
         association = [pr]
         def api(path, *, pages=False, binary=False):
-            if pages: return [copy.deepcopy(association)]
+            if pages and '/commits/' in path: return [copy.deepcopy(association)]
+            if pages and '/jobs?' in path:
+                return [dict(total_count=3, jobs=[copy.deepcopy(self.job), producer, copy.deepcopy(final)])]
             if path.endswith('/pulls/42'): return copy.deepcopy(pr)
             if '/jobs?' in path:
                 return dict(total_count=3, jobs=[copy.deepcopy(self.job), producer, copy.deepcopy(final)])
