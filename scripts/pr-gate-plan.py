@@ -58,7 +58,7 @@ def validated_diff(diff):
 # PR plan may require validations and select zero native release gates.
 CODE_CHECKS = [
     {'id': 'source-contracts', 'owner': 'CI source / contracts',
-     'command': 'go test ./internal/application/... ./contracts/...'},
+     'command': 'go test ./internal/application/... ./internal/runtimebroker/... ./contracts/...'},
 ]
 CLI_CHECKS = [
     {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
