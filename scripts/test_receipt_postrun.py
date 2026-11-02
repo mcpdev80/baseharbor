@@ -132,6 +132,7 @@ class FakeApi:
                         name="PR · Public Contracts", status="completed",
                         conclusion="success")
         self.producer = dict(self.job, id=457, name="PR · Trusted Plan")
+        self.final = dict(self.job, id=458, name="PR Selected Checks")
 
     def _make_plan_zip(self):
         buf = io.BytesIO()
@@ -155,9 +156,10 @@ class FakeApi:
             if run_id != RUN_ID:
                 return self._run_obj(run_id, head_sha=HEAD_SHA)
             if "/jobs?" in path:
-                return dict(total_count=2,
+                return dict(total_count=3,
                             jobs=[copy.deepcopy(self.job),
-                                  copy.deepcopy(self.producer)])
+                                  copy.deepcopy(self.producer),
+                                  copy.deepcopy(self.final)])
             if "/attempts/" in path:
                 return dict(id=RUN_ID, run_attempt=1, head_sha=HEAD_SHA,
                             repository=dict(id=receipt_verifier.REPOSITORY_ID,
