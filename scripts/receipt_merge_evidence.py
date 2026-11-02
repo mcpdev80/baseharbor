@@ -337,13 +337,14 @@ def select_run(runs, head, matches):
                   and r.get('event') == 'pull_request'
                   and type(r.get('id')) is int and r['id'] > 0]
     verifier.require(candidates, 'no candidate run available')
-    relevant = [r for r in candidates if matches(r)]
-    verifier.require(relevant, 'no run matches the merged candidate')
-    latest = max(relevant, key=lambda r: r['id'])
-    verifier.require(latest.get('run_attempt') == 1 and latest.get('status') == 'completed'
-                     and latest.get('conclusion') == 'success',
-                     'latest candidate run has not succeeded')
-    return latest['id']
+    for latest in sorted(candidates, key=lambda r: r['id'], reverse=True):
+        if not matches(latest):
+            continue
+        verifier.require(latest.get('run_attempt') == 1 and latest.get('status') == 'completed'
+                         and latest.get('conclusion') == 'success',
+                         'latest candidate run has not succeeded')
+        return latest['id']
+    raise verifier.ReceiptError('no run matches the merged candidate')
 
 
 def scope_for_run(run_id, head, *, api):
@@ -411,9 +412,10 @@ def matches_merged_candidate(run, pr, *, api, product):
     return merge_parents_match(merged_parents, base, head) and tree == merged_tree
 
 
-def verify_nonpilot(pr, run_id, plan, *, api):
+def verify_nonpilot(pr, run_id, *, api, product):
     """A non-pilot no-op still requires a successful exact selected-check run."""
     head = _sha((pr.get('head') or {}).get('sha'), 'missing PR head')
+    plan = scope_for_run(run_id, head, api=api)
     merger = pr.get('merged_by') or {}
     verifier.require(pr.get('state') == 'closed' and pr.get('merged') is True
                      and merger.get('id') == OWNER_ID and merger.get('login') == verifier.OWNER
@@ -430,6 +432,8 @@ def verify_nonpilot(pr, run_id, plan, *, api):
                      and (run.get('head_repository') or {}).get('id') == (pr_head.get('repo') or {}).get('id')
                      and run.get('status') == 'completed' and run.get('conclusion') == 'success',
                      'non-pilot run is not successful')
+    verifier.require(matches_merged_candidate(run, pr, api=api, product=product),
+                     'non-pilot candidate differs from merge')
     pulls = [p for p in _head_pulls(api, head) if (p.get('head') or {}).get('sha') == head
              and (p.get('head') or {}).get('ref') == pr_head.get('ref')
              and ((p.get('head') or {}).get('repo') or {}).get('id') == (pr_head.get('repo') or {}).get('id')
@@ -456,7 +460,7 @@ def reconcile_pr(pr_number, *, product, planning, api=github):
         run, pr, api=api, product=product))
     plan = scope_for_run(run, head, api=api)
     if 'integration/static/public-contracts' not in plan['selected_gates']:
-        verify_nonpilot(pr, run, plan, api=api)
+        verify_nonpilot(pr, run, api=api, product=product)
         print(f'PR {pr_number}: verified non-pilot candidate')
         return
     path, introduction, publication = publish(pr_number, run, api=api,
