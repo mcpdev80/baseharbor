@@ -44,6 +44,9 @@ func persistControlPlaneOpenBaoReference(ctx context.Context) error {
 	return store.Update(func(registry *capability.Registry) error {
 		for _, existing := range registry.Instances {
 			if existing.ID == "openbao/control-plane" {
+				if existing.Provider.Kind != capability.ProviderOpenBao || existing.Scope != capability.ScopeShared || existing.Ownership != capability.OwnershipBaseHarbor {
+					return fmt.Errorf("control-plane OpenBao provider reference has incompatible identity")
+				}
 				return nil
 			}
 		}
@@ -175,7 +178,10 @@ func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryF
 		if len(checks) > 0 {
 			_, ready := health.Format(checks)
 			if ready {
-				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY. No changes.")
+				if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+					return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
+				}
+				fmt.Fprintln(out, "BaseHarbor control-plane runtime already READY.")
 				return nil
 			}
 		}
@@ -191,6 +197,9 @@ func runtimeUpExistingSelection(parent context.Context, out io.Writer, recoveryF
 	}
 	if err := verifyExistingControlPlaneAfterStart(ctx, compose, files, resolvedRecoveryFile, out); err != nil {
 		return err
+	}
+	if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+		return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
 	}
 	if _, found, err := bhruntime.LoadControlPlaneCredentialRotation(files); err != nil {
 		return fmt.Errorf("inspect pending control-plane credential rotation: %w", err)
