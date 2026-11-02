@@ -228,12 +228,12 @@ def build(pr_number, run_id, *, api, product, fetch_sources=None):
     parents = candidate_commit.get("parents")
     verifier.require(isinstance(parents, list) and len(parents) == 2
                      and all(isinstance(p, dict) for p in parents)
-                     and {p.get("sha") for p in parents} == {base_sha, pr_head}
+                     and [p.get("sha") for p in parents] == [base_sha, pr_head]
                      and base_sha != pr_head, "candidate parent mismatch")
     merged_parents = merge_commit.get("parents")
     verifier.require(isinstance(merged_parents, list) and len(merged_parents) == 2
                      and all(isinstance(p, dict) for p in merged_parents)
-                     and {p.get("sha") for p in merged_parents} == {base_sha, pr_head},
+                     and [p.get("sha") for p in merged_parents] == [base_sha, pr_head],
                      "merged commit does not preserve tested base and head")
     tree = _sha((candidate_commit.get("tree") or {}).get("sha"), "missing candidate tree")
     verifier.require((merge_commit.get("tree") or {}).get("sha") == tree,
@@ -351,7 +351,7 @@ def matches_merged_candidate(run, pr, *, api, product):
     parents = candidate_commit.get('parents')
     verifier.require(isinstance(parents, list) and len(parents) == 2
                      and all(isinstance(p, dict) for p in parents)
-                     and {p.get('sha') for p in parents} == {base, head} and base != head,
+                     and [p.get('sha') for p in parents] == [base, head] and base != head,
                      'candidate commit parents invalid')
     merged_parents = merge.get('parents')
     verifier.require(isinstance(merged_parents, list) and len(merged_parents) == 2
@@ -359,7 +359,7 @@ def matches_merged_candidate(run, pr, *, api, product):
                      'merge commit parents invalid')
     tree = _sha((candidate_commit.get('tree') or {}).get('sha'), 'missing candidate tree')
     merged_tree = _sha((merge.get('tree') or {}).get('sha'), 'missing merge tree')
-    return {p.get('sha') for p in merged_parents} == {base, head} and tree == merged_tree
+    return [p.get('sha') for p in merged_parents] == [base, head] and tree == merged_tree
 
 
 def main():
