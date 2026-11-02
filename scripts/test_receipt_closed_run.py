@@ -38,15 +38,18 @@ def fixture():
 
 class ClosedRunTests(unittest.TestCase):
     def test_push_wakes_completed_pr_and_defers_pending(self):
-        run, _, _, pr, _ = fixture()
+        run, _, artifact, pr, archive = fixture()
         merge = 'd' * 40
         pr.update(state='closed', merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z')
         push = dict(run, id=999, event='push', head_branch='develop', head_sha=merge)
         def api(path, *, pages=False, binary=False):
+            if binary: return archive
             if '/commits/' in path: return [[pr]]
             if '/actions/workflows/' in path: return [{'workflow_runs': [run]}]
+            if path.endswith('/artifacts?per_page=100'): return [{'artifacts': [artifact]}]
             return push
-        with patch.object(helper, 'closed_run', return_value=42) as closed:
+        with patch.object(helper, 'closed_run', return_value=42) as closed, \
+             patch.object(helper.subprocess, 'run'), patch.object(helper.rv, 'producer_identity'):
             self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
             self.assertEqual(closed.call_args.args[0], RUN)
             run['status'] = 'in_progress'
@@ -54,6 +57,33 @@ class ClosedRunTests(unittest.TestCase):
             run.update(status='completed', conclusion='failure')
             with self.assertRaises(ValueError):
                 helper.push_run(999, '.', 'planning', api=api)
+
+    def test_push_ignores_newer_run_for_different_base(self):
+        run, _, artifact, pr, archive = fixture()
+        merge = 'd' * 40
+        pr.update(merge_commit_sha=merge, merged_at='2026-11-02T12:00:00Z')
+        push = dict(run, id=999, event='push', head_branch='develop', head_sha=merge)
+        newer = dict(run, id=124)
+        newer_artifact = copy.deepcopy(artifact)
+        newer_artifact['id'] = 6
+        newer_artifact['workflow_run']['id'] = 124
+        with zipfile.ZipFile(io.BytesIO(archive)) as source:
+            plan = json.loads(source.read('pr-plan.json'))
+        plan['target_base_sha'] = 'e' * 40
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, 'w') as target:
+            target.writestr('pr-plan.json', json.dumps(plan))
+        def api(path, *, pages=False, binary=False):
+            if binary: return stream.getvalue() if '/artifacts/6/' in path else archive
+            if '/commits/' in path: return [[pr]]
+            if '/actions/workflows/' in path: return [{'workflow_runs': [run, newer]}]
+            if '/actions/runs/124/artifacts?' in path: return [{'artifacts': [newer_artifact]}]
+            if '/actions/runs/123/artifacts?' in path: return [{'artifacts': [artifact]}]
+            return push
+        with patch.object(helper, 'closed_run', return_value=42) as closed, \
+             patch.object(helper.subprocess, 'run'), patch.object(helper.rv, 'producer_identity'):
+            self.assertEqual(helper.push_run(999, '.', 'planning', api=api), 42)
+            self.assertEqual(closed.call_args.args[0], RUN)
 
     def test_pilot_is_forwarded_to_existing_writer_only_with_planning(self):
         run, jobs, artifact, pr, archive = fixture()
