@@ -170,15 +170,44 @@ def push_run(push_id, product, planning, api=gh):
             'invalid PR run inventory')
     runs = [r for page in pages for r in page.get('workflow_runs', [])
             if r.get('head_sha') == head and r.get('event') == 'pull_request'
+            and r.get('head_branch') == prs[0].get('head', {}).get('ref')
+            and r.get('head_repository', {}).get('id') == prs[0].get('head', {}).get('repo', {}).get('id')
             and type(r.get('id')) is int and r['id'] > 0]
     require(runs, 'merged PR has no candidate run')
-    latest = max(runs, key=lambda r: r['id'])
-    if latest.get('status') != 'completed':
-        print('Candidate run still pending; completion event will retry')
-        return None
-    require(latest.get('conclusion') == 'success' and latest.get('run_attempt') == 1,
-            'latest candidate run did not succeed')
-    return closed_run(latest['id'], product, api, planning=planning)
+    expected_base = prs[0].get('base', {}).get('sha') or ''
+    require(rv.full_sha(expected_base), 'missing merged PR base')
+    for latest in sorted(runs, key=lambda r: r['id'], reverse=True):
+        if latest.get('status') != 'completed':
+            print('Candidate run still pending; completion event will retry')
+            return None
+        inventories = api(f"repos/{REPOSITORY}/actions/runs/{latest['id']}/artifacts?per_page=100", pages=True)
+        require(isinstance(inventories, list) and all(isinstance(p, dict) for p in inventories),
+                'invalid candidate artifact inventory')
+        artifacts = [a for page in inventories for a in page.get('artifacts', [])
+                     if a.get('name') == 'trusted-pr-plan']
+        require(len(artifacts) == 1 and artifacts[0].get('expired') is False
+                and artifacts[0].get('workflow_run', {}).get('id') == latest['id']
+                and artifacts[0].get('workflow_run', {}).get('head_sha') == head
+                and type(artifacts[0].get('id')) is int, 'candidate artifact missing or untrusted')
+        raw = api(f"repos/{REPOSITORY}/actions/artifacts/{artifacts[0]['id']}/zip", binary=True)
+        require(type(raw) is bytes and 0 < len(raw) <= 65536, 'invalid candidate archive size')
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            entries = archive.infolist()
+            require(len(entries) == 1 and entries[0].filename == 'pr-plan.json'
+                    and 0 < entries[0].file_size < 65536, 'invalid candidate archive')
+            plan = rv.decode(archive.read(entries[0]), 65536)
+        base = plan.get('target_base_sha') or ''
+        require(plan.get('schema') == 'baseharbor.pr-gate-plan/v1'
+                and plan.get('head_sha') == head and rv.full_sha(base), 'invalid candidate plan')
+        subprocess.run(['git', '-C', str(product), 'fetch', '--no-tags', '--depth=2', 'origin',
+                        head, base], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        rv.producer_identity(product, {'head_sha': head, 'base_sha': base})
+        if base != expected_base:
+            continue
+        require(latest.get('conclusion') == 'success' and latest.get('run_attempt') == 1,
+                'latest matching candidate run did not succeed')
+        return closed_run(latest['id'], product, api, planning=planning)
+    raise ValueError('merged candidate has no matching run')
 
 
 if __name__ == "__main__":
@@ -192,7 +221,8 @@ if __name__ == "__main__":
         number = (push_run(int(args[0]), Path(args[1]), planning) if push
                   else closed_run(int(args[0]), Path(args[1]), planning=planning, classify_only=classify))
         if number is not None:
-            print(f"Authenticated closed PR #{number}" + ('; no receipt required' if planning is None else ''))
+            suffix = '; classification only' if classify else ('; no receipt required' if planning is None else '')
+            print(f"Authenticated closed PR #{number}" + suffix)
     except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, subprocess.CalledProcessError, rv.ReceiptError):
         print("Unable to authenticate a unique closed PR; failing closed", file=sys.stderr)
         sys.exit(1)
