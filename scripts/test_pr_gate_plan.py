@@ -841,6 +841,65 @@ class MappingTests(unittest.TestCase):
                 commands = {check['command'] for check in result['required_validation_checks']}
                 self.assertIn('go test ./internal/capability/... -count=1', commands)
 
+    def test_capability_implementation_reviewed_files_resolve(self):
+        # gatemap-r3 / #1229 (core-390 service-binding enforcement): the reviewed
+        # lifecycle/service_binding implementation + its paired test resolve via
+        # their package's own capability-package-tests check plus the existing
+        # static public-contracts gate (#1260 pattern: reference existing gates,
+        # NO new gate). The reviewed files bind to EXISTING gates only.
+        for name in ['internal/capability/lifecycle.go',
+                     'internal/capability/service_binding.go',
+                     'internal/capability/service_binding_test.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                self.assertEqual(['integration/static/public-contracts'],
+                                 result['selected_gates'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertIn('capability-package-tests', ids)
+                self.assertIn('source-contracts', ids)
+
+    def test_unreviewed_capability_implementation_stays_fail_closed(self):
+        # Fail-closed regression: any OTHER internal/capability/* production file
+        # that is not the reviewed core-390 set stays unresolved, exactly like
+        # the registry/provider_placement surface.
+        for name in ['internal/capability/registry.go',
+                     'internal/capability/provider_placement.go',
+                     'internal/capability/manifest.go']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('unresolved', result['coverage_status'])
+                self.assertTrue(result['unresolved_coverage'])
+
+    def test_testdata_adoption_parity_fixtures_resolve(self):
+        # gatemap-r3 / #1222: static adoption fixtures (README/compose/k8s/quadlet)
+        # bind to the same focused inspect checks that already run the
+        # repositoryinspect parity test (#1259 observability-binding pattern) —
+        # no new gate, no widening.
+        for name in ['testdata/adoption-parity/README.md',
+                     'testdata/adoption-parity/compose/compose.yaml',
+                     'testdata/adoption-parity/kubernetes/app.yaml',
+                     'testdata/adoption-parity/quadlet/storage.container']:
+            with self.subTest(path=name):
+                result = planner.plan(diff(paths(name)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertFalse(result['unresolved_coverage'])
+                self.assertFalse(result['broad_required'])
+                ids = {c['id'] for c in result['required_validation_checks']}
+                self.assertEqual({'inspect-gofmt', 'inspect-package-tests',
+                                  'inspect-vet', 'inspect-consumer-tests',
+                                  'inspect-consumer-build'}, ids)
+
+    def test_other_testdata_stays_unresolved(self):
+        # Fail-closed regression: a testdata file OUTSIDE adoption-parity still
+        # falls to the catch-all unresolved branch (only the adopted prefix is
+        # resolved).
+        result = planner.plan(diff(paths('testdata/something/else.txt')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+
     def test_reconcile_source_runs_focused_inspect_checks_resolved(self):
         # core-752 permanent lane: only the exact reviewed reconciliation files
         # resolve to the focused package checks, with zero native gates.
@@ -967,7 +1026,6 @@ class MappingTests(unittest.TestCase):
                      'internal/application/footprint.go',
                      'internal/application/provider_union.go',
                      'internal/capability/registry.go',
-                     'internal/capability/lifecycle.go',
                      'internal/capability/provider_placement.go',
                      'internal/capability/registry_test.go',
                      'internal/capability/new_provider.go']:
