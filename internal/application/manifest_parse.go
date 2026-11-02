@@ -299,11 +299,20 @@ func (p *manifestYAMLParser) parseServiceSection(lineNo int, trim string) error 
 }
 
 func (p *manifestYAMLParser) parseWorkloadField(lineNo int, trim string) error {
-	if trim != "components:" {
-		return fmt.Errorf("line %d: unsupported workload field %q; expected components:", lineNo, trim)
+	switch {
+	case trim == "components:":
+		p.workloadField = "components"
+		return nil
+	case strings.HasPrefix(trim, "compose:"):
+		_, value, ok := strings.Cut(trim, ":")
+		if ok {
+			p.manifest.Workload.Compose = strings.TrimSpace(value)
+		}
+		p.workloadField = "compose"
+		return nil
+	default:
+		return fmt.Errorf("line %d: unsupported workload field %q; expected components: or compose:", lineNo, trim)
 	}
-	p.workloadField = "components"
-	return nil
 }
 
 func (p *manifestYAMLParser) parseIndent4(lineNo int, trim string) error {

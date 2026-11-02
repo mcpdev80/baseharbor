@@ -145,6 +145,7 @@ func WithIdentityAuthentication(m Manifest, mfa string, methods []string, passwo
 // repository authoring metadata and never to portable application intent.
 type WorkloadConfig struct {
 	Components []string
+	Compose    string
 }
 
 // HTTPExposureRequirement is provider-neutral public HTTP exposure intent.
