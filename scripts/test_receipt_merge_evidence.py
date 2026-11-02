@@ -37,11 +37,20 @@ class GitHubAdapterTest(unittest.TestCase):
         head = 'a' * 40
         success = dict(id=1, head_sha=head, event='pull_request', run_attempt=1,
                        status='completed', conclusion='success')
-        self.assertEqual(evidence.latest_run([success], head), 1)
+        self.assertEqual(evidence.select_run([success], head, lambda _: True), 1)
         for status, conclusion in [('completed', 'failure'), ('in_progress', None)]:
             newer = dict(success, id=2, status=status, conclusion=conclusion)
             with self.subTest(status=status), self.assertRaises(verifier.ReceiptError):
-                evidence.latest_run([success, newer], head)
+                evidence.select_run([success, newer], head, lambda _: True)
+
+    def test_newer_different_candidate_does_not_mask_tested_merge(self):
+        head = 'a' * 40
+        match = dict(id=1, head_sha=head, event='pull_request', run_attempt=1,
+                     status='completed', conclusion='success')
+        other = dict(match, id=2, conclusion='failure')
+        self.assertEqual(evidence.select_run([match, other], head, lambda run: run['id'] == 1), 1)
+        with self.assertRaises(verifier.ReceiptError):
+            evidence.select_run([match, other], head, lambda _: True)
 
 
 class MergeEvidenceTest(unittest.TestCase):
@@ -67,7 +76,7 @@ class MergeEvidenceTest(unittest.TestCase):
         self.artifact = dict(id=101, name="trusted-pr-plan", expired=False,
                              workflow_run=dict(id=123, head_sha=self.head))
         self.plan = dict(schema="baseharbor.pr-gate-plan/v1", integration_sha=self.candidate,
-                         target_base_sha=self.base)
+                         target_base_sha=self.base, head_sha=self.head)
         self.trees = {self.candidate: self.tree, self.merge: self.tree}
 
     def api(self, path, *, binary=False):
@@ -106,6 +115,14 @@ class MergeEvidenceTest(unittest.TestCase):
         self.assertEqual(result["merge_commit"], self.merge)
         self.assertEqual(result["candidate_tree"], self.tree)
         self.assertNotIn("approved", result)
+
+    def test_classifies_using_tested_candidate_and_merge_tree(self):
+        with patch.object(evidence, 'fetch_sources'), patch.object(verifier, 'producer_identity'):
+            self.assertTrue(evidence.matches_merged_candidate(self.run, self.pr,
+                            api=self.api, product='reviewed-checkout'))
+            self.trees[self.merge] = 'f' * 40
+            self.assertFalse(evidence.matches_merged_candidate(self.run, self.pr,
+                             api=self.api, product='reviewed-checkout'))
 
     def test_rejects_non_owner_and_unmerged(self):
         for key, value in (("merged_by", dict(id=1, login=verifier.OWNER)),
