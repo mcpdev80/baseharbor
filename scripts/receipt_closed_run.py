@@ -133,16 +133,61 @@ def closed_run(run_id, product, api=gh, *, planning=None):
                            candidate_sha=facts['candidate_sha'], workflow_id=run['workflow_id'])
         path, _, publication = write_merge(Path(planning), pr['number'], run_id, writer_plan,
                                            product=product, api=api)
+        rv.retained_merge(Path(planning), publication, path, facts['candidate_sha'],
+                          product=product, api=api)
         print(f"receipt: {publication}:{path}")
     return pr["number"]
 
 
+def push_run(push_id, product, planning, api=gh):
+    """Wake after develop push when the PR run finished before its merge."""
+    push = api(f'repos/{REPOSITORY}/actions/runs/{push_id}')
+    merge = push.get('head_sha') or ''
+    require(push.get('id') == push_id and push.get('event') == 'push'
+            and push.get('status') == 'completed' and push.get('head_branch') == 'develop'
+            and push.get('path') == '.github/workflows/ci.yml'
+            and push.get('repository', {}).get('id') == REPOSITORY_ID
+            and rv.full_sha(merge), 'invalid develop push wakeup')
+    pages = api(f'repos/{REPOSITORY}/commits/{merge}/pulls?per_page=100', pages=True)
+    require(isinstance(pages, list) and all(isinstance(p, list) for p in pages),
+            'invalid push PR inventory')
+    prs = [p for page in pages for p in page if p.get('state') == 'closed'
+           and p.get('merge_commit_sha') == merge and p.get('merged_at')
+           and p.get('base', {}).get('ref') == 'develop'
+           and p.get('base', {}).get('repo', {}).get('id') == REPOSITORY_ID]
+    require(len(prs) <= 1, 'ambiguous push PR')
+    if not prs:
+        return None
+    head = prs[0].get('head', {}).get('sha') or ''
+    require(rv.full_sha(head), 'missing merged PR head')
+    pages = api(f'repos/{REPOSITORY}/actions/workflows/ci.yml/runs?head_sha={head}'
+                '&event=pull_request&per_page=100', pages=True)
+    require(isinstance(pages, list) and all(isinstance(p, dict) for p in pages),
+            'invalid PR run inventory')
+    runs = [r for page in pages for r in page.get('workflow_runs', [])
+            if r.get('head_sha') == head and r.get('event') == 'pull_request'
+            and type(r.get('id')) is int and r['id'] > 0]
+    require(runs, 'merged PR has no candidate run')
+    latest = max(runs, key=lambda r: r['id'])
+    if latest.get('status') != 'completed':
+        print('Candidate run still pending; completion event will retry')
+        return None
+    require(latest.get('conclusion') == 'success' and latest.get('run_attempt') == 1,
+            'latest candidate run did not succeed')
+    return closed_run(latest['id'], product, api, planning=planning)
+
+
 if __name__ == "__main__":
     try:
-        require(len(sys.argv) in (3, 4) and sys.argv[1].isdigit(), "invalid arguments")
-        planning = Path(sys.argv[3]) if len(sys.argv) == 4 else None
-        number = closed_run(int(sys.argv[1]), Path(sys.argv[2]), planning=planning)
-        print(f"Authenticated closed PR #{number}" + ('; no receipt required' if planning is None else ''))
+        push = len(sys.argv) == 5 and sys.argv[1] == '--push'
+        args = sys.argv[2:] if push else sys.argv[1:]
+        require(len(args) in (2, 3) and args[0].isdigit() and (not push or len(args) == 3),
+                "invalid arguments")
+        planning = Path(args[2]) if len(args) == 3 else None
+        number = (push_run(int(args[0]), Path(args[1]), planning) if push
+                  else closed_run(int(args[0]), Path(args[1]), planning=planning))
+        if number is not None:
+            print(f"Authenticated closed PR #{number}" + ('; no receipt required' if planning is None else ''))
     except (ValueError, KeyError, TypeError, OSError, zipfile.BadZipFile, subprocess.CalledProcessError, rv.ReceiptError):
         print("Unable to authenticate a unique closed PR; failing closed", file=sys.stderr)
         sys.exit(1)
