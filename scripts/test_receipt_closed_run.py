@@ -37,6 +37,29 @@ def fixture():
 
 
 class ClosedRunTests(unittest.TestCase):
+    def test_pilot_is_forwarded_to_existing_writer_only_with_planning(self):
+        run, jobs, artifact, pr, archive = fixture()
+        pr['merge_commit_sha'] = 'd' * 40
+        with zipfile.ZipFile(io.BytesIO(archive)) as source:
+            plan = json.loads(source.read('pr-plan.json'))
+        plan['selected_gates'] = ['integration/static/public-contracts']
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, 'w') as target:
+            target.writestr('pr-plan.json', json.dumps(plan))
+        def api(path, *, pages=False, binary=False):
+            if binary: return output.getvalue()
+            if '/attempts/1/jobs' in path: return [{'jobs': jobs}]
+            if path.endswith('/artifacts?per_page=100'): return [{'artifacts': [artifact]}]
+            if '/commits/' in path: return [[pr]]
+            return run
+        def command(args, **kwargs):
+            return subprocess.CompletedProcess(args, 0, stdout=f'{CANDIDATE} {BASE} {HEAD}\n')
+        with patch.object(helper.subprocess, 'run', side_effect=command), \
+             patch.object(helper.rv, 'producer_identity'), \
+             patch('receipt_writer.write_merge', return_value=('path', 'intro', 'durable')) as write:
+            self.assertEqual(helper.closed_run(RUN, '.', api, planning='planning'), 42)
+            self.assertEqual(write.call_args.args[1:3], (42, RUN))
+
     def test_authenticated_tuple_and_fail_closed_negatives(self):
         original = fixture()
         cases = ("ok", "associated", "wrong_association", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",
