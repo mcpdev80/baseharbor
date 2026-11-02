@@ -1,9 +1,47 @@
 package runtime
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
+
+func TestProjectInventoryRejectsIncompleteInspection(t *testing.T) {
+	command := filepath.Join(t.TempDir(), "runtime")
+	script := `#!/bin/sh
+case "$1 $2" in
+  "container ls") printf '%s\n' owned other ;;
+  "container inspect")
+    case "$INVENTORY_FIXTURE" in
+      complete) printf '%s\n' 'owned|ci|' 'other|foreign|' ;;
+      missing) printf '%s\n' 'owned|ci|' ;;
+      duplicate) printf '%s\n' 'owned|ci|' 'owned|ci|' ;;
+      malformed) printf '%s\n' 'owned|ci|' 'bad-inspection' ;;
+      unexpected) printf '%s\n' 'owned|ci|' 'other-name|foreign|' ;;
+    esac ;;
+  "network ls"|"volume ls") ;;
+  *) exit 2 ;;
+esac
+`
+	if err := os.WriteFile(command, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"complete", "missing", "duplicate", "malformed", "unexpected"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("INVENTORY_FIXTURE", mode)
+			actual, err := NewCLIBackend(command).ListOwnedProjectResources(context.Background(), "ci")
+			if mode == "complete" {
+				if err != nil || len(actual) != 1 || actual[0].Name != "owned" {
+					t.Fatalf("inventory=%v err=%v", actual, err)
+				}
+			} else if err == nil {
+				t.Fatalf("%s inventory was accepted: %v", mode, actual)
+			}
+		})
+	}
+}
 
 func TestNetworkHasActiveConsumers(t *testing.T) {
 	cases := []struct {

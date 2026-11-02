@@ -296,8 +296,13 @@ func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) 
 			return nil, fmt.Errorf("list %s resources for project %s: %w", spec.kind, project, err)
 		}
 		var names []string
+		listedNames := map[string]bool{}
 		for _, line := range strings.Split(listed, "\n") {
 			if name := strings.TrimSpace(line); name != "" {
+				if listedNames[name] {
+					return nil, fmt.Errorf("duplicate %s inventory entry", spec.kind)
+				}
+				listedNames[name] = true
 				names = append(names, name)
 			}
 		}
@@ -311,17 +316,28 @@ func (c Compose) ListOwnedProjectResources(ctx context.Context, project string) 
 		if err != nil {
 			return nil, fmt.Errorf("inspect %s resources for project %s: %w", spec.kind, project, err)
 		}
+		inspectedNames := map[string]bool{}
 		for _, line := range strings.Split(inspected, "\n") {
-			parts := strings.SplitN(strings.TrimSpace(line), "|", 3)
-			if len(parts) != 3 {
+			if strings.TrimSpace(line) == "" {
 				continue
 			}
+			parts := strings.Split(strings.TrimSpace(line), "|")
+			if len(parts) != 3 {
+				return nil, fmt.Errorf("malformed %s inventory inspection", spec.kind)
+			}
 			name := strings.TrimPrefix(strings.TrimSpace(parts[0]), "/")
+			if !listedNames[name] || inspectedNames[name] {
+				return nil, fmt.Errorf("incomplete or duplicate %s inventory inspection", spec.kind)
+			}
+			inspectedNames[name] = true
 			owner := firstRuntimeLabel(parts[1], parts[2])
-			if name == "" || owner != project {
+			if owner != project {
 				continue
 			}
 			resources = append(resources, ProjectResource{Kind: spec.kind, Name: name})
+		}
+		if len(inspectedNames) != len(listedNames) {
+			return nil, fmt.Errorf("incomplete %s inventory inspection", spec.kind)
 		}
 	}
 	sort.Slice(resources, func(i, j int) bool {

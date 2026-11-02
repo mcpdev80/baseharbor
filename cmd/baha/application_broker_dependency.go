@@ -139,6 +139,12 @@ func observeApplicationBrokerFacts(ctx context.Context, resolved resolvedApplica
 			continue
 		}
 		files := application.RuntimeFilesFor(owner.store, owner.manifest)
+		instance := application.RuntimeBrokerDependency(resolved.Target.Name, owner.manifest)
+		if brokerOwnerUnmaterialized(ctx, provider, owner.manifest, files) {
+			count := int64(0)
+			facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, Ancillary: true, OwnerReference: files.Dir, State: application.ProviderNewRequired, Core: application.CoreRequired, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "complete native broker project inventory"}}
+			continue
+		}
 		protected := true
 		for _, path := range []string{files.Dir, filepath.Join(files.Dir, "broker.compose.yaml")} {
 			info, err := os.Lstat(path)
@@ -165,7 +171,6 @@ func observeApplicationBrokerFacts(ctx context.Context, resolved resolvedApplica
 				}
 			}
 		}
-		instance := application.RuntimeBrokerDependency(resolved.Target.Name, owner.manifest)
 		facts[instance.ID] = application.ProviderFact{Target: resolved.Target.Name, Ancillary: true, OwnerReference: files.Dir, State: state, Core: application.CoreRequired, MemoryBytes: application.Quantity{Classification: "unknown"}, Containers: application.Quantity{Value: &count, Classification: "measured", Source: "declared broker in protected deployment owner and inspected native container"}}
 	}
 }
