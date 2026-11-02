@@ -194,8 +194,8 @@ jobs:
           other_id=$(docker ps --filter "label=com.docker.compose.project=$other_project" --filter 'label=com.docker.compose.service=broker' -q)
           test -n "$target_id"
           test -n "$other_id"
-          target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
-          other_ip=$(docker inspect "$other_id" --format '{{with index .NetworkSettings.Networks "baseharbor-secrets"}}{{.IPAddress}}{{end}}')
+          target_ip=$(docker inspect "$target_id" --format '{{with index .NetworkSettings.Networks "baseharbor-ci-secrets"}}{{.IPAddress}}{{end}}')
+          other_ip=$(docker inspect "$other_id" --format '{{with index .NetworkSettings.Networks "baseharbor-ci-secrets"}}{{.IPAddress}}{{end}}')
           test -n "$target_ip"
           test -n "$other_ip"
           test "$target_ip" != "$other_ip"
