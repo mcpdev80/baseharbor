@@ -57,9 +57,9 @@ func TestCollectControlPlaneDoctorChecksOmitsDockerEngineForPodmanTarget(t *test
 		},
 		Targets: map[string]deployment.TargetDefinition{
 			"podman-ci": {
-				Runtime:   deployment.RuntimeDefinition{Provider: "podman"},
-				Access:    deployment.TargetAccess{Reference: "local-podman"},
-				Scope:     "local",
+				Runtime: deployment.RuntimeDefinition{Provider: "podman"},
+				Access:  deployment.TargetAccess{Reference: "local-podman"},
+				Scope:   "local",
 			},
 		},
 	}
