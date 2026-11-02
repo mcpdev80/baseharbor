@@ -1082,6 +1082,89 @@ class ProducerIdentityTest(VerifierFixtureTest):
         with self.assertRaises(verifier.ReceiptError):
             verifier.producer_identity(self.product, dict(self.plan, head_sha=head))
 
+    def test_forward_base_candidate_identity_and_adversarial_cases(self):
+        event_base, head = self.base_sha, self.head_sha
+        # Advance target independently and modify the trusted workflow only
+        # on the target. The candidate, unlike the older PR head, incorporates
+        # this workflow and must match the actual protected base.
+        self._pcommand('checkout', '-q', event_base)
+        base = self._product_commit('.github/workflows/ci.yml', b'name: newer trusted CI\n',
+                                    'advance target workflow')
+        tree = self._pcommand('merge-tree', '--write-tree', base, head).decode().strip()
+        candidate = self._pcommand('commit-tree', tree, '-p', base, '-p', head,
+                                   '-m', 'candidate').decode().strip()
+        plan = dict(head_sha=head, base_sha=base, candidate_sha=candidate)
+        verifier.candidate_producer_identity(self.product, plan, event_base, base)
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.candidate_producer_identity(self.product, plan, head, base)
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.candidate_producer_identity(self.product, plan, event_base, event_base)
+        reversed_parents = self._pcommand('commit-tree', tree, '-p', head, '-p', base,
+                                          '-m', 'wrong order').decode().strip()
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.candidate_producer_identity(self.product,
+                dict(plan, candidate_sha=reversed_parents), event_base, base)
+        wrong_tree = self._pcommand('rev-parse', head + '^{tree}').decode().strip()
+        forged = self._pcommand('commit-tree', wrong_tree, '-p', base, '-p', head,
+                                '-m', 'forged tree').decode().strip()
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.candidate_producer_identity(self.product,
+                dict(plan, candidate_sha=forged), event_base, base)
+        # A PR that modifies the workflow relative to its actual target must
+        # never get producer authority merely because its merge tree is valid.
+        self._pcommand('checkout', '-q', event_base)
+        evil_head = self._product_commit('.github/workflows/ci.yml', b'name: attacker CI\n',
+                                         'attacker changes CI')
+        evil_tree = self._pcommand('rev-parse', evil_head + '^{tree}').decode().strip()
+        evil_candidate = self._pcommand('commit-tree', evil_tree, '-p', event_base,
+                                         '-p', evil_head, '-m', 'evil').decode().strip()
+        with self.assertRaisesRegex(verifier.ReceiptError, 'candidate workflow differs'):
+            verifier.candidate_producer_identity(self.product,
+                dict(head_sha=evil_head, base_sha=event_base, candidate_sha=evil_candidate),
+                event_base, event_base)
+
+    def test_live_forward_base_uses_authenticated_run_and_pr(self):
+        event_base, head = self.base_sha, self.head_sha
+        self._pcommand('checkout', '-q', event_base)
+        base = self._product_commit('base-only.txt', b'advanced target\n', 'advance target')
+        tree = self._pcommand('merge-tree', '--write-tree', base, head).decode().strip()
+        candidate = self._pcommand('commit-tree', tree, '-p', base, '-p', head,
+                                   '-m', 'candidate').decode().strip()
+        self.base_sha, self.candidate = base, candidate
+        self.plan.update(base_sha=base, candidate_sha=candidate)
+        self.run['pull_requests'] = [{'number': PR_NUMBER, 'base': {'sha': event_base}}]
+        self.pull['base'] = {'sha': base, 'ref': 'develop',
+                             'repo': {'id': verifier.REPOSITORY_ID}}
+        value = {'approved': None, 'sha': candidate, 'run': {'id': 123, 'attempt': 1}}
+        target_ref = {'ref': 'refs/heads/develop', 'object': {'type': 'commit', 'sha': base}}
+        merge_ref = {'ref': f'refs/pull/{PR_NUMBER}/merge',
+                     'object': {'type': 'commit', 'sha': candidate}}
+        def api(path, *, binary=False):
+            if path.endswith('/git/ref/heads/develop'):
+                return copy.deepcopy(target_ref)
+            if path.endswith(f'/git/ref/pull/{PR_NUMBER}/merge'):
+                return copy.deepcopy(merge_ref)
+            return self.api(path, binary=binary)
+        verifier.live(value, self.plan, api=api, product=self.product)
+        # PR.base.sha may remain historical; the authenticated target ref is
+        # authoritative for detecting a newer target.
+        self.pull['base']['sha'] = event_base
+        verifier.live(value, self.plan, api=api, product=self.product)
+        target_ref['object']['sha'] = event_base
+        with self.assertRaisesRegex(verifier.ReceiptError, 'current target'):
+            verifier.live(value, self.plan, api=api, product=self.product)
+        target_ref['object']['sha'] = base
+        # Different metadata creates a distinct commit with the identical
+        # parents and tree; GitHub's authenticated merge ref must reject it.
+        forged = self._pcommand('commit-tree', tree, '-p', base, '-p', head,
+                                '-m', 'same tree but not GitHub candidate').decode().strip()
+        self.assertNotEqual(forged, candidate)
+        self.candidate = forged
+        self.plan['candidate_sha'] = forged
+        value['sha'] = forged
+        with self.assertRaisesRegex(verifier.ReceiptError, 'authenticated merge ref'):
+            verifier.live(value, self.plan, api=api, product=self.product)
+
     def test_approval_end_to_end_rejects_workflow_changing_pr(self):
         # The genuine approval path: every authenticated witness stays
         # consistent with the new head; only the ci.yml bytes differ. This is

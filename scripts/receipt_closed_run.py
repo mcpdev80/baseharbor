@@ -56,7 +56,7 @@ def closed_run(run_id, product, api=gh):
         association = associations[0]
         require(isinstance(association, dict) and association.get("number") == pr.get("number")
                 and association.get("head", {}).get("sha") == head
-                and association.get("base", {}).get("sha") == pr.get("base", {}).get("sha")
+                and rv.full_sha(association.get("base", {}).get("sha"))
                 and association.get("base", {}).get("ref") == pr.get("base", {}).get("ref"),
                 "run PR association mismatch")
     require(pr.get("state") == "closed"
@@ -110,8 +110,10 @@ def closed_run(run_id, product, api=gh):
             and all(isinstance(x, str) for x in plan["selected_gates"]), "invalid producer plan")
     require("integration/static/public-contracts" not in plan["selected_gates"],
             "public-contracts producer requires receipt handling")
+    event_base = associations[0]["base"]["sha"] if associations else facts["base_sha"]
+    forward_base = bool(associations) and event_base != facts["base_sha"]
     require(pr.get("state") == "closed" and pr.get("base", {}).get("ref") == "develop"
-            and pr.get("base", {}).get("sha") == facts["base_sha"]
+            and (forward_base or pr.get("base", {}).get("sha") == facts["base_sha"])
             and pr.get("head", {}).get("repo", {}).get("id") == run.get("head_repository", {}).get("id"),
             "closed PR source tuple mismatch")
     subprocess.run(["git", "-C", str(product), "fetch", "--no-tags", "--depth=2", "origin",
@@ -121,7 +123,26 @@ def closed_run(run_id, product, api=gh):
                               facts["candidate_sha"]], capture_output=True, check=True, text=True).stdout.split()
     require(len(parents) == 3 and parents[0] == facts["candidate_sha"]
             and set(parents[1:]) == {head, facts["base_sha"]}, "candidate parent mismatch")
-    rv.producer_identity(product, {"head_sha": head, "base_sha": facts["base_sha"]})
+    if forward_base:
+        target = api(f"repos/{REPOSITORY}/git/ref/heads/develop")
+        merge_ref = api(f"repos/{REPOSITORY}/git/ref/pull/{pr['number']}/merge")
+        tip = (target.get("object") or {}).get("sha")
+        require(target.get("ref") == "refs/heads/develop"
+                and (target.get("object") or {}).get("type") == "commit" and rv.full_sha(tip),
+                "invalid current target ref")
+        require(merge_ref.get("ref") == f"refs/pull/{pr['number']}/merge"
+                and (merge_ref.get("object") or {}).get("type") == "commit"
+                and (merge_ref.get("object") or {}).get("sha") == facts["candidate_sha"],
+                "candidate SHA does not match authenticated merge ref")
+        # The proof needs complete ancestry, not a depth-2 shallow boundary.
+        subprocess.run(["git", "-C", str(product), "fetch", "--no-tags", "--unshallow",
+                        "origin", event_base, facts["base_sha"], head, facts["candidate_sha"], tip],
+                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        rc, _, _ = rv.git_stderr(product, "merge-base", "--is-ancestor", facts["base_sha"], tip)
+        require(rc == 0, "candidate base not on current target history")
+        rv.candidate_producer_identity(product, facts, event_base, facts["base_sha"])
+    else:
+        rv.producer_identity(product, {"head_sha": head, "base_sha": facts["base_sha"]})
     return pr["number"]
 
 

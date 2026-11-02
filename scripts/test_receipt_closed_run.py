@@ -37,6 +37,39 @@ def fixture():
 
 
 class ClosedRunTests(unittest.TestCase):
+    def test_forward_base_requires_candidate_lineage_proof(self):
+        run, jobs, artifact, pr, archive = fixture()
+        event_base = 'e' * 40
+        run['pull_requests'] = [{'number': 42, 'head': {'sha': HEAD},
+                                 'base': {'sha': event_base, 'ref': 'develop'}}]
+        merge_sha = [CANDIDATE]
+        def api(path, *, pages=False, binary=False):
+            if binary: return archive
+            if path.endswith('/git/ref/heads/develop'):
+                return {'ref': 'refs/heads/develop', 'object': {'type': 'commit', 'sha': BASE}}
+            if path.endswith('/git/ref/pull/42/merge'):
+                return {'ref': 'refs/pull/42/merge', 'object': {'type': 'commit', 'sha': merge_sha[0]}}
+            if '/attempts/1/jobs' in path: return [{'jobs': jobs}]
+            if path.endswith('/artifacts?per_page=100'): return [{'artifacts': [artifact]}]
+            if '/commits/' in path: return [[pr]]
+            return run
+        def command(args, **kwargs):
+            if 'rev-list' in args:
+                return subprocess.CompletedProcess(args, 0, stdout=f'{CANDIDATE} {BASE} {HEAD}\n')
+            return subprocess.CompletedProcess(args, 0)
+        with patch.object(helper.subprocess, 'run', side_effect=command), patch.object(
+                helper.rv, 'git_stderr', return_value=(0, b'', b'')), patch.object(
+                helper.rv, 'candidate_producer_identity') as proof:
+            self.assertEqual(helper.closed_run(RUN, '.', api), 42)
+            self.assertEqual(proof.call_args.args[2:], (event_base, BASE))
+            proof.side_effect = ValueError('lineage invalid')
+            with self.assertRaises(ValueError):
+                helper.closed_run(RUN, '.', api)
+            proof.side_effect = None
+            merge_sha[0] = 'f' * 40
+            with self.assertRaisesRegex(ValueError, 'authenticated merge ref'):
+                helper.closed_run(RUN, '.', api)
+
     def test_authenticated_tuple_and_fail_closed_negatives(self):
         original = fixture()
         cases = ("ok", "associated", "wrong_association", "open", "ambiguous", "wrong_base", "failed_job", "wrong_run",

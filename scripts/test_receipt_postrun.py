@@ -116,6 +116,8 @@ def _extract_run_block(role):
 
 
 def _run(cmd, *, env=None, cwd=None, input=None):
+    if env is not None and 'RUN_BASE' in env and 'LIVE_BASE' not in env:
+        env = dict(env, LIVE_BASE=env['RUN_BASE'])
     return subprocess.run(
         cmd, shell=isinstance(cmd, str),
         env=env, cwd=cwd, capture_output=True, text=True,
@@ -285,13 +287,13 @@ class ExtractBlocksTest(unittest.TestCase):
         # All verifier loads must use the reviewed final-check controller.
         text = POST_RUN_YML.read_text()
         pin_matches = re.findall(
-            r"ref:\s+32eaaa116eedd929a47537152c27157b2720d8ed\s*$",
+            r"ref:\s+752e635b1a7faa61718ef9fe2760ddca94a77392\s*$",
             text, re.MULTILINE,
         )
         self.assertEqual(len(pin_matches), 2,
             f"Expected exactly 2 controller checkout pins, found {len(pin_matches)}")
         self.assertIn(
-            "contents/scripts/receipt_verifier.py?ref=32eaaa116eedd929a47537152c27157b2720d8ed",
+            "contents/scripts/receipt_verifier.py?ref=752e635b1a7faa61718ef9fe2760ddca94a77392",
             text,
         )
 
@@ -458,6 +460,32 @@ class F1PositiveRun(unittest.TestCase):
                 if output:
                     self.assertIn(output, (self.root / "gh_out").read_text())
 
+    def test_forward_base_decode_requires_proven_candidate(self):
+        forward = 'e' * 40
+        with zipfile.ZipFile(self.root / 'plan.zip', 'w') as archive:
+            archive.writestr('pr-plan.json', json.dumps(dict(FAKE_PLAN, target_base_sha=forward)))
+        env = dict(os.environ, GITHUB_OUTPUT=str(self.root / 'gh_out'),
+                   GH_WORKFLOW_TOKEN='fixture-token', RUN_HEAD=FAKE_PLAN['head_sha'],
+                   RUN_BASE=FAKE_PLAN['target_base_sha'], LIVE_BASE=forward,
+                   PATH='%s:%s' % (str(self.bin), os.environ.get('PATH', '')),
+                   PYTHONPATH=str(HERE))
+        for bad, expected in ((None, True), ('FAKE_BAD_LINEAGE', False),
+                              ('FAKE_BAD_TREE', False), ('FAKE_BAD_PARENTS', False)):
+            with self.subTest(bad=bad):
+                (self.root / 'gh_out').write_text('')
+                proc = _run(['bash', '-euo', 'pipefail', '-c', self._decode_block()],
+                            env=dict(env, **({bad: '1'} if bad else {})), cwd=self.root)
+                self.assertEqual(proc.returncode == 0, expected, proc.stderr)
+                if not expected:
+                    self.assertNotIn('public_contracts_selected=', (self.root / 'gh_out').read_text())
+        # A closed nonpilot must not silently skip on parent/tree equivalence
+        # when GitHub no longer provides the exact run candidate merge ref.
+        (self.root / 'gh_out').write_text('')
+        proc = _run(['bash', '-euo', 'pipefail', '-c', self._decode_block()],
+                    env=dict(env, FAKE_MERGE_MISSING='1', FAKE_PR_STATE='closed'), cwd=self.root)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn('public_contracts_selected=false', (self.root / 'gh_out').read_text())
+
     def test_decoder_missing_merge_ref_distinguishes_superseded_and_error(self):
         env = dict(os.environ, GITHUB_OUTPUT=str(self.root / "gh_out"),
                    GH_WORKFLOW_TOKEN="fixture-token", RUN_HEAD=FAKE_PLAN["head_sha"],
@@ -597,6 +625,17 @@ if args and args[0] == "fetch":
     sys.exit(1 if os.getenv("FAKE_FETCH_FAILURE") else 0)
 if args[:2] == ["-C", "."]:
     args = args[2:]
+    if args[0] == "merge-base":
+        sys.exit(1 if os.getenv("FAKE_BAD_LINEAGE") else 0)
+    if args[0] == "rev-list":
+        print("c" * 40, "e" * 40, ("d" if os.getenv("FAKE_BAD_PARENTS") else "a") * 40)
+        sys.exit(0)
+    if args[0] == "merge-tree":
+        print("f" * 40)
+        sys.exit(0)
+    if args[0] == "rev-parse":
+        print(("d" if os.getenv("FAKE_BAD_TREE") else "f") * 40)
+        sys.exit(0)
     if args[0] == "ls-tree":
         oid = "1" * 40 if args[1] == "a" * 40 else "2" * 40
         print("100644 blob %s\t.github/workflows/ci.yml" % oid)
@@ -629,6 +668,9 @@ if "/git/ref/pull/" in path and path.endswith("/merge"):
     if os.environ.get("FAKE_MERGE_MISSING"):
         sys.exit(1)
     print("c" * 40)
+    sys.exit(0)
+if path.endswith('/git/ref/heads/develop'):
+    print(os.environ.get('FAKE_TARGET_TIP', 'b' * 40))
     sys.exit(0)
 if "/pulls/" in path or path.endswith("/pulls"):
     print(json.dumps({"number": 1124, "state": os.environ.get("FAKE_PR_STATE", "open"),
@@ -912,7 +954,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                     pr_api_rc=0,
                     compare_files_rc=0, compare_shape_rc=0,
                     compare_shape_nonarray=False, compare_shape_missing=False,
-                    event="pull_request", run_target="develop", pr_target="develop", pr_state="open"):
+                    event="pull_request", run_target="develop", pr_target="develop", pr_state="open",
+                    target_tip=None, target_tip_rc=0):
         """Run the eligibility probe with an endpoint-accurate gh stub.
 
         The probe issues several authenticated gh calls now: the artifact list,
@@ -935,6 +978,8 @@ class ProducerEligibilityGateTests(unittest.TestCase):
         if pr_base is _PR_BASE_NULL:
             pr_base = "0123456789abcdef0123456789abcdef01234567"
         run_base = run_base if run_base is not None else "0123456789abcdef0123456789abcdef01234567"
+        target_tip = target_tip if target_tip is not None else (pr_base if isinstance(pr_base, str)
+                                                                  and len(pr_base) == 40 else run_base)
         # Build run_pr_json from the run_base value so the run's pull_requests
         # array carries .base.sha — this is the immutable association the probe
         # reads for the run-bound base. Default: one PR entry with the numeric
@@ -1045,6 +1090,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                 'esac',
                 'if [ "$matched" = "0" ]; then',
                 'case "$qurl" in',
+                '*/git/ref/heads/develop) out=' + _q('{"object":{"sha":"%s"}}' % target_tip) + '; rc=' + str(target_tip_rc) + ' ;;',
                 '*/artifacts) out=' + artifacts_json + '; rc=' + str(artifact_rc) + ' ;;',
                 '*/actions/runs/*) out=' + run_json + '; rc=' + str(run_rc) + ' ;;',
                 '*/compare/*) out=' + compare_json + '; rc=' + str(compare_files_rc or files_rc) + ' ;;',
@@ -1431,21 +1477,29 @@ class ProducerEligibilityGateTests(unittest.TestCase):
                             "PR base.sha non-hex must fail closed, not skip")
         self.assertNotIn("producer_eligible=", result)
 
-    def test_pr_base_drift_fails_closed(self):
-        # The run-bound base.sha (from pull_requests[0]) differs from the live
-        # PR base.sha. The drift-wächter detects this divergence and fails
-        # closed — the immutable run-bound base and the mutable live PR base
-        # must match, otherwise base movement without a head change would
-        # produce a wrong compare.
+    def test_pr_base_drift_requires_plan_and_later_candidate_proof(self):
+        # A moved target is not itself a reason to silently skip: eligibility
+        # only forwards both API values; the decoder proves the candidate.
         proc, result = self._run_probe(artifact_stdout="trusted-pr-plan",
                                        artifact_rc=0, files_stdout="README.md",
                                        files_rc=0,
                                        pr_base="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
                                        run_base="cafebabe00000000cafebabe00000000cafebabe")
-        # The drift-wächter compares run-bound base against live PR base;
-        # a mismatch fails closed.
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("producer_eligible=false", result)
+        self.assertIn("producer_eligible=true", result)
+        self.assertIn("run_base_sha=cafebabe00000000cafebabe00000000cafebabe", result)
+        self.assertIn("live_base_sha=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", result)
+
+    def test_target_ref_is_authoritative_and_missing_ref_fails_closed(self):
+        tip = 'e' * 40
+        proc, result = self._run_probe(artifact_stdout='trusted-pr-plan', artifact_rc=0,
+                                       files_stdout='', files_rc=0, target_tip=tip)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn('live_base_sha=' + tip, result)
+        proc, result = self._run_probe(artifact_stdout='trusted-pr-plan', artifact_rc=0,
+                                       files_stdout='', files_rc=0, target_tip_rc=1)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertNotIn('producer_eligible=', result)
 
     def test_pr_object_api_error_fails_closed(self):
         # The PR object API call itself fails — the probe must hard-fail.

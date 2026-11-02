@@ -31,6 +31,7 @@ jobs:
     outputs:
       producer_eligible: ${{ steps.eligibility.outputs.producer_eligible }}
       run_base_sha: ${{ steps.eligibility.outputs.run_base_sha }}
+      live_base_sha: ${{ steps.eligibility.outputs.live_base_sha }}
       workflow_id: ${{ steps.facts.outputs.workflow_id }}
       head_sha: ${{ steps.facts.outputs.head_sha }}
       candidate_sha: ${{ steps.facts.outputs.candidate_sha }}
@@ -118,7 +119,7 @@ jobs:
             helper_dir="$(mktemp -d)"
             trap 'rm -rf "$helper_dir"' EXIT
             gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=${GITHUB_SHA}" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
-            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=32eaaa116eedd929a47537152c27157b2720d8ed" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
+            gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_verifier.py?ref=752e635b1a7faa61718ef9fe2760ddca94a77392" --jq .content | base64 -d > "$helper_dir/receipt_verifier.py"
             git init -q "$helper_dir/product"
             git -C "$helper_dir/product" remote add origin "https://github.com/mcpdev80/baseharbor.git"
             PYTHONPATH="$helper_dir" python3 "$helper_dir/receipt_closed_run.py" "$RUN_ID" "$helper_dir/product"
@@ -161,8 +162,7 @@ jobs:
           if [[ "$PR_STATE" == closed ]]; then
             classify_closed_run
           fi
-          if [[ "$PR_HEAD" != "$RUN_HEAD" ||
-                "$LIVE_BASE" != "$RUN_BASE" || "$LIVE_TARGET" != "$RUN_TARGET" ]]; then
+          if [[ "$PR_HEAD" != "$RUN_HEAD" || "$LIVE_TARGET" != "$RUN_TARGET" ]]; then
             echo "authenticated PR run has been superseded; no receipt" >&2
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -172,6 +172,12 @@ jobs:
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          # PR.base.sha may lag behind the actual branch. Use the authenticated
+          # target ref as current anchor; the downstream verifier proves the
+          # candidate parent, event ancestry, clean merge tree and workflow.
+          TARGET_TIP="$(gh api 'repos/mcpdev80/baseharbor/git/ref/heads/develop' --jq '.object.sha')"
+          [[ "$TARGET_TIP" =~ ^[0-9a-f]{40}$ && "$TARGET_TIP" != 0000000000000000000000000000000000000000 ]] || {
+            echo "invalid target branch tip; failing closed" >&2; exit 1; }
           # Every PR run needs its trusted plan. Without it we cannot determine
           # whether the receipt gate applies, so API errors and absence fail closed.
           # Resolve the run/PR association before examining the plan.
@@ -192,6 +198,7 @@ jobs:
           if [ "${HAS_ARTIFACT}" = true ]; then
             echo "producer_eligible=true" >> "$GITHUB_OUTPUT"
             echo "run_base_sha=${RUN_BASE}" >> "$GITHUB_OUTPUT"
+            echo "live_base_sha=${TARGET_TIP}" >> "$GITHUB_OUTPUT"
           else
             echo "trusted-pr-plan artifact missing on PR run $RUN_ID (PR=$PR); cannot determine selected gates, failing closed" >&2
             exit 1
@@ -222,7 +229,7 @@ jobs:
         with:
           # Same reviewed controller pin as the publication job; scripts are
           # read-only here so receipt_verifier resolves at import time.
-          ref: 32eaaa116eedd929a47537152c27157b2720d8ed
+          ref: 752e635b1a7faa61718ef9fe2760ddca94a77392
           persist-credentials: false
 
       - name: Download trusted-pr-plan artifact
@@ -289,6 +296,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}/scripts
           RUN_HEAD: ${{ github.event.workflow_run.head_sha }}
           RUN_BASE: ${{ needs.producer_context.outputs.run_base_sha }}
+          LIVE_BASE: ${{ needs.producer_context.outputs.live_base_sha }}
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.workflow_run.id }}"
@@ -316,6 +324,27 @@ jobs:
           # authenticated run head and base so its existing identity verifier
           # can compare the producer workflow before classifying a no-receipt.
           git fetch --no-tags --depth=1 origin "$RUN_HEAD" "$RUN_BASE"
+          # If the target moved forward, obtain the exact plan tuple as data,
+          # then prove its ancestry and merge tree. Never evaluate plan text as
+          # shell. Full ancestry is required for the forward-lineage proof.
+          if [ "$RUN_BASE" != "$LIVE_BASE" ]; then
+            read -r PLAN_BASE PLAN_CANDIDATE < <(python3 - <<'PY'
+          import zipfile
+          import receipt_verifier as rv
+          with zipfile.ZipFile('plan.zip') as archive:
+              entries = archive.infolist()
+              if len(entries) != 1 or entries[0].filename != 'pr-plan.json' or not 0 < entries[0].file_size <= 65536:
+                  raise ValueError('invalid trusted plan archive')
+              plan = rv.decode(archive.read(entries[0]), 65536)
+          base, candidate = plan.get('target_base_sha'), plan.get('integration_sha')
+          if not rv.full_sha(base) or not rv.full_sha(candidate):
+              raise ValueError('invalid candidate source tuple')
+          print(base, candidate)
+          PY
+            )
+            [[ "$PLAN_BASE" =~ ^[0-9a-f]{40}$ && "$PLAN_CANDIDATE" =~ ^[0-9a-f]{40}$ ]] || exit 1
+            git fetch --no-tags --unshallow origin "$RUN_BASE" "$PLAN_BASE" "$RUN_HEAD" "$PLAN_CANDIDATE"
+          fi
           RUN_ID="${RUN_ID}" WORKFLOW_DEFINITION_ID="${WORKFLOW_DEFINITION_ID}" PR_NUMBER="${PR_NUMBER}" RUN_ATTEMPT="${ATTEMPT_RESOLVED}" python3 - <<'PY' > plan.txt
           import zipfile, os
           import receipt_verifier as rv
@@ -340,10 +369,14 @@ jobs:
                   or not isinstance(plan.get("selected_gates"), list)
                   or any(not isinstance(g, str) for g in plan["selected_gates"])
                   or out["head_sha"] != os.environ["RUN_HEAD"]
-                  or out["base_sha"] != os.environ["RUN_BASE"]):
+                  or out["base_sha"] != os.environ["LIVE_BASE"]):
               raise ValueError("unresolved, malformed or mismatched trusted plan")
-          rv.producer_identity(".", {"head_sha": out["head_sha"],
-                                     "base_sha": out["base_sha"]})
+          if os.environ["RUN_BASE"] != os.environ["LIVE_BASE"]:
+              rv.candidate_producer_identity(".", out, os.environ["RUN_BASE"],
+                                             os.environ["LIVE_BASE"])
+          else:
+              rv.producer_identity(".", {"head_sha": out["head_sha"],
+                                         "base_sha": out["base_sha"]})
           print("public_contracts_selected=%s" % str(
               "integration/static/public-contracts" in plan["selected_gates"]).lower())
           print("workflow_id=%s" % out["workflow_id"])
@@ -372,18 +405,27 @@ jobs:
           merge_rc=$?
           set -e
           if [ "$merge_rc" -ne 0 ] || [ "${candidate_sha}" != "${merge_sha}" ]; then
+              # For a forward-base run the candidate's exact SHA is not
+              # authenticated by the now-missing/mismatched PR merge ref.
+              # Parent/tree equivalence is not an exact candidate witness.
+              if [ "$RUN_BASE" != "$LIVE_BASE" ]; then
+                  echo "forward-base candidate merge ref unavailable or mismatched; failing closed" >&2
+                  exit 1
+              fi
               current="$(gh api "repos/mcpdev80/baseharbor/pulls/${pr_number}")"
               state="$(printf '%s' "$current" | jq -er '.state')"
               head="$(printf '%s' "$current" | jq -er '.head.sha')"
               base="$(printf '%s' "$current" | jq -er '.base.sha')"
               target="$(printf '%s' "$current" | jq -er '.base.ref')"
+              target_tip="$(gh api 'repos/mcpdev80/baseharbor/git/ref/heads/develop' --jq '.object.sha')"
+              [[ "$target_tip" =~ ^[0-9a-f]{40}$ && "$target_tip" != 0000000000000000000000000000000000000000 ]] || exit 1
               for sha in "$head" "$base"; do
                   if [[ ! "$sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$sha" == 0000000000000000000000000000000000000000 ]]; then
                       echo "invalid current PR identity" >&2; exit 1
                   fi
               done
               if [[ ( "$state" == closed || ( "$state" == open &&
-                  ( "$head" != "$RUN_HEAD" || "$base" != "$RUN_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
+                  ( "$head" != "$RUN_HEAD" || "$target_tip" != "$LIVE_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
                   if [[ "$state" == closed && "$public_contracts_selected" == true ]]; then
                       echo "closed public-contracts producer requires receipt handling; failing closed" >&2
                       exit 1
@@ -437,9 +479,15 @@ jobs:
           # PR head. Pinning the exact SHA prevents PR-controlled code from
           # running in the credential-bearing controller; the scripts are
           # reviewed, protected, and identical across all invocations.
-          ref: 32eaaa116eedd929a47537152c27157b2720d8ed
+          ref: 752e635b1a7faa61718ef9fe2760ddca94a77392
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Fetch authenticated tested candidate
+        run: |
+          set -euo pipefail
+          [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch --no-tags origin "$CANDIDATE_SHA"
 
       - name: Checkout Planning (for publication)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
