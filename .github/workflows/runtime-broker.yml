@@ -84,8 +84,13 @@ jobs:
             plan=$(mktemp)
             chmod 600 "$plan"
             /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
-            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$plan") || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$plan") || { rm -f "$plan"; return 1; }
             rm -f "$plan"
+            if [ "$consent" = none ]; then
+              unset consent
+              /tmp/baha app apply "$1"
+              return $?
+            fi
             BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
             unset consent
           }
@@ -218,9 +223,13 @@ jobs:
           up_plan_file=$(mktemp)
           chmod 600 "$up_plan_file"
           /tmp/baha app plan broker-demo -o json >"$up_plan_file"
-          up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$up_plan_file")
+          up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$up_plan_file")
           rm -f "$up_plan_file"
-          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+          if [ "$up_consent" = none ]; then
+            /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+          else
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+          fi
           unset up_consent
           /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
           client_after=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
@@ -311,8 +320,13 @@ jobs:
             plan=$(mktemp)
             chmod 600 "$plan"
             /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
-            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$plan") || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-broker-typed-consent.py" "$plan") || { rm -f "$plan"; return 1; }
             rm -f "$plan"
+            if [ "$consent" = none ]; then
+              unset consent
+              /tmp/baha app apply "$1"
+              return $?
+            fi
             BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
             unset consent
           }
