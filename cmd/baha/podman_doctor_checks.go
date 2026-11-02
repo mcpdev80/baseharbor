@@ -5,9 +5,9 @@ import (
 	"os/exec"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	podmanprovider "github.com/mcpdev80/baseharbor/internal/providers/runtime/podman"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // PodmanRuntimeDoctorChecks probes the Podman runtime and Quadlet generator for
