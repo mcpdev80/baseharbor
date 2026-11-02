@@ -394,6 +394,41 @@ func registerReferenceProvidersAt(dataDir string, registry *capability.Registry,
 	return nil
 }
 
+// ReferenceProviderInstanceForRegistration resolves the canonical shared
+// provider instance for a provider without an application manifest. It backs
+// persisting the control-plane OpenBao realization after 'baha up', where no
+// application manifest is available but the shared baseharbor-owned realization
+// must still be recorded in the provider registry.
+func ReferenceProviderInstanceForRegistration(resource capability.Resource) (capability.ProviderInstance, error) {
+	placement, err := ResolveConfiguredProviderPlacement(Manifest{}, resource.Provider)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+	bundled, err := builtin.Lookup(resource.Provider)
+	if err != nil {
+		return capability.ProviderInstance{}, err
+	}
+	instance := capability.ProviderInstance{
+		ProviderID:       bundled.ID,
+		ProviderVersion:  bundled.Version,
+		ProviderProtocol: bundled.Integration.Protocol,
+		Provider:         bundled.Integration.Provider,
+		Scope:            placement.Scope,
+		SharingBoundary:  placement.SharingBoundary,
+		Ownership:        placement.Ownership,
+		Reference:        placement.ExternalReference,
+	}
+	if instance.Provider.Kind == "" {
+		return capability.ProviderInstance{}, fmt.Errorf("no reference provider registry mapping for %q", resource.Provider)
+	}
+	if instance.Scope == capability.ScopeShared {
+		instance.ID = sharedProviderInstanceID(instance.Provider.Kind, placement.SharingBoundary)
+	} else {
+		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
+	}
+	return instance, nil
+}
+
 func referenceProviderInstance(m Manifest, resource capability.Resource) (capability.ProviderInstance, error) {
 	placement, err := ResolveProviderPlacement(m, resource.Provider)
 	if err != nil {

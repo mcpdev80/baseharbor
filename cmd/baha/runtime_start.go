@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/health"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -20,6 +22,45 @@ const (
 	controlPlaneStartTimeout        = 10 * time.Minute
 	controlPlaneComposeStartTimeout = 8 * time.Minute
 )
+
+// persistControlPlaneOpenBaoReference records the shared baseharbor-owned
+// openbao/control-plane realization into the persisted provider registry after a
+// control-plane 'up'. A fresh host never wrote this instance (only the first
+// app apply reconciles the registry), so the persisted provider-registry.json
+// stayed empty until then. The runtime broker and destroy paths resolve that
+// shared instance from the persisted registry; an empty file would otherwise
+// surface 'runtime broker dependency "openbao/control-plane" is not registered'.
+// Registering a second time is a no-op: Register dedupes by instance ID.
+func persistControlPlaneOpenBaoReference(ctx context.Context) error {
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		return err
+	}
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		return err
+	}
+	store := capability.RegistryStore{Path: filepath.Join(dataRoot, "provider-registry.json")}
+	return store.Update(func(registry *capability.Registry) error {
+		for _, existing := range registry.Instances {
+			if existing.ID == "openbao/control-plane" {
+				return nil
+			}
+		}
+		// Mirror registerReferenceProvidersAt's OpenBao registration: a shared,
+		// baseharbor-owned realization with no sharing boundary. No manifest is
+		// required because the shared placement is the default for OpenBao.
+		resource := capability.Resource{Kind: capability.Secrets, Name: "default", Provider: capability.ProviderOpenBao}
+		instance, err := application.ReferenceProviderInstanceForRegistration(resource)
+		if err != nil {
+			return err
+		}
+		if instance.Ownership != capability.OwnershipBaseHarbor {
+			return fmt.Errorf("runtime broker requires its supported managed OpenBao realization")
+		}
+		return registry.Register(instance)
+	})
+}
 
 func runtimeUp(parent context.Context, out io.Writer) error {
 	return runtimeUpExisting(parent, out, "")
@@ -49,6 +90,15 @@ func runtimeUpWithPortsSelection(parent context.Context, out io.Writer, ports bh
 	}
 	if err := resumeSharedPlatformRuntimeForSelection(ctx, compose, out, controlPlaneOnly); err != nil {
 		return fmt.Errorf("resume shared platform runtime: %w", err)
+	}
+	// A fresh host never persisted the shared OpenBao control-plane realization
+	// (only the first app apply reconciles the provider registry). Persist it
+	// here so the persisted provider-registry.json always lists the baseharbor
+	// openbao/control-plane instance that the runtime broker and destroy paths
+	// resolve against; an empty persisted registry would otherwise surface
+	// 'runtime broker dependency "openbao/control-plane" is not registered'.
+	if err := persistControlPlaneOpenBaoReference(ctx); err != nil {
+		return fmt.Errorf("persist control-plane OpenBao provider reference: %w", err)
 	}
 	fmt.Fprintln(out, "BaseHarbor control-plane runtime started")
 	fmt.Fprintln(out, "next: run 'baha status' and 'baha doctor'")
