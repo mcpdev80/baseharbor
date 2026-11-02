@@ -109,6 +109,10 @@ SELECT format('ALTER DATABASE openbao OWNER TO %I', :'openbao_user')
 REVOKE ALL ON DATABASE openbao FROM PUBLIC;
 SELECT format('GRANT CONNECT ON DATABASE openbao TO %I', :'openbao_user')
 \gexec
+SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE postgres TO %I', :'openbao_user')
+\gexec
+SELECT format('GRANT CONNECT, TEMPORARY ON DATABASE template1 TO %I', :'openbao_user')
+\gexec
 EOSQL
 
 PGPASSWORD="$BASEHARBOR_POSTGRES_PASSWORD" PGSSLMODE=verify-ca PGSSLROOTCERT=/run/baseharbor/postgres-ca/ca.pem psql -v ON_ERROR_STOP=1 \
