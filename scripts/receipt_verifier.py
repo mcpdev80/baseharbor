@@ -406,13 +406,6 @@ def live(value, plan, api=None, product=None):
     ids = [j.get("id") for j in jobs]
     require(all(type(i) is int and i > 0 for i in ids) and len(set(ids)) == len(ids),
             "ambiguous job inventory")
-    selected = [j for j in jobs if j.get("name") == "PR · Public Contracts"]
-    require(len(selected) == 1, "required gate job missing or ambiguous")
-    job = selected[0]
-    require(job.get("run_id") == value["run"]["id"]
-            and job.get("head_sha") == plan["head_sha"]
-            and job.get("status") == "completed" and job.get("conclusion") == "success",
-            "required gate job is not successful")
     producer = [j for j in jobs if j.get("name") == "PR · Trusted Plan"]
     require(len(producer) == 1 and producer[0].get("status") == "completed"
             and producer[0].get("conclusion") == "success"
@@ -456,6 +449,28 @@ def live(value, plan, api=None, product=None):
     if is_pilot_unmapped:
         # Non-pilot + unmapped => No-op success (PR #1252 Praezedenz).
         return
+    # Required gate jobs are derived from the TRUSTED-PLAN output, not a
+    # hardcoded name list (rcptverfix): the producer's authoritative rule
+    # (pr-authenticated-results.py) marks "PR · Public Contracts" required only
+    # when "integration/static/public-contracts" is in selected_gates, so a
+    # legitimately skipped such job no longer blocks a non-contract PR. A job
+    # required by the plan that is skipped or failed still fails closed; a job
+    # the plan does NOT require is accepted even if it ran and failed.
+    required_gates = witnessed.get("selected_gates") or []
+    required_names = ["PR · Focused Python", "Workflow policy"]
+    if any("native" in g or "lifecycle" in g for g in required_gates):
+        required_names += ["PR · Exact Candidate", "PR · Runner Interface"]
+    if "integration/static/public-contracts" in required_gates:
+        required_names.append("PR · Public Contracts")
+    by_name = {j.get("name"): j for j in jobs}
+    require(all(name in by_name for name in required_names),
+            "required gate job missing or ambiguous")
+    for name in required_names:
+        job = by_name[name]
+        require(job.get("run_id") == value["run"]["id"]
+                and job.get("head_sha") == plan["head_sha"]
+                and job.get("status") == "completed" and job.get("conclusion") == "success",
+                "required gate job is not successful: " + name)
     require(witnessed.get("schema") == "baseharbor.pr-gate-plan/v1"
             and witnessed.get("coverage_status") == "resolved"
             and "integration/static/public-contracts" in witnessed.get("selected_gates", [])

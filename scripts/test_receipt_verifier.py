@@ -252,6 +252,7 @@ class VerifierFixtureTest(unittest.TestCase):
             archive.writestr('pr-plan.json', verifier.canonical(dict(
                 schema='baseharbor.pr-gate-plan/v1', coverage_status='resolved',
                 selected_gates=['integration/static/public-contracts'],
+                run_id=123, attempt=1, workflow_id=17,
                 head_sha=self.head_sha, target_base_sha=self.base_sha,
                 integration_sha=self.candidate)))
         return buffer.getvalue()
@@ -283,8 +284,15 @@ class VerifierFixtureTest(unittest.TestCase):
                     id=789, name='trusted-pr-plan', expired=False, size_in_bytes=500,
                     workflow_run=dict(id=self.run["id"], head_sha=self.head_sha))])
             if '/jobs?' in path:
-                producer = dict(self.job, id=457, name='PR · Trusted Plan')
-                return dict(total_count=2, jobs=[copy.deepcopy(self.job), producer])
+                run_id = self.run.get('id', 123)
+                required = [dict(self.job, run_id=run_id, head_sha=self.head_sha),
+                            dict(self.job, id=458, run_id=run_id, head_sha=self.head_sha,
+                                 name='PR · Focused Python'),
+                            dict(self.job, id=459, run_id=run_id, head_sha=self.head_sha,
+                                 name='Workflow policy')]
+                producer = dict(self.job, id=457, run_id=run_id, head_sha=self.head_sha,
+                                name='PR · Trusted Plan')
+                return dict(total_count=4, jobs=required + [producer])
             return copy.deepcopy(self.run)
         raise verifier.ReceiptError("GitHub witness unavailable: run or resource not found")
 
@@ -381,6 +389,46 @@ class VerifierFixtureTest(unittest.TestCase):
                         selected_gates=selected_gates, head_sha=self.head_sha,
                         target_base_sha=self.base_sha, integration_sha=self.candidate)))
                 return buffer.getvalue()
+            return self.api(path, binary=binary)
+        return api
+
+    def bogus_prsc_conclusion_api(self, conclusion):
+        """Override the PRSC job conclusion (skip/fail) while keeping every
+        other job genuine. The plan still selects the pilot gate, so PRSC stays
+        required; this isolates the required-vs-required-not distinction."""
+        def api(path, *, binary=False):
+            if '/jobs?' in path and not binary:
+                run_id = self.run.get('id', 123)
+                prsc = dict(self.job, id=456, run_id=run_id, head_sha=self.head_sha,
+                            name='PR · Public Contracts', conclusion=conclusion)
+                focused = dict(self.job, id=458, run_id=run_id, head_sha=self.head_sha,
+                               name='PR · Focused Python')
+                policy = dict(self.job, id=459, run_id=run_id, head_sha=self.head_sha,
+                              name='Workflow policy')
+                producer = dict(self.job, id=457, run_id=run_id, head_sha=self.head_sha,
+                                name='PR · Trusted Plan')
+                return dict(total_count=4, jobs=[prsc, focused, policy, producer])
+            return self.api(path, binary=binary)
+        return api
+
+    def bogus_optional_failure_api(self):
+        """One NON-required job (PR · Exact Candidate) ran with conclusion
+        'failure'; the plan selects the pilot gate but that job is not part of
+        the derived required set. It must not block."""
+        def api(path, *, binary=False):
+            if '/jobs?' in path and not binary:
+                run_id = self.run.get('id', 123)
+                prsc = dict(self.job, id=456, run_id=run_id, head_sha=self.head_sha,
+                            name='PR · Public Contracts')
+                focused = dict(self.job, id=458, run_id=run_id, head_sha=self.head_sha,
+                               name='PR · Focused Python')
+                policy = dict(self.job, id=459, run_id=run_id, head_sha=self.head_sha,
+                              name='Workflow policy')
+                producer = dict(self.job, id=457, run_id=run_id, head_sha=self.head_sha,
+                                name='PR · Trusted Plan')
+                optional = dict(self.job, id=460, run_id=run_id, head_sha=self.head_sha,
+                                name='PR · Exact Candidate', conclusion='failure')
+                return dict(total_count=5, jobs=[prsc, focused, policy, producer, optional])
             return self.api(path, binary=binary)
         return api
 
@@ -656,6 +704,41 @@ class LiveNegativeNegativesTest(VerifierFixtureTest):
         # bogus_noop_coverage_api returns coverage_status='failed' AND empty selected_gates
         # => is_pilot_unmapped=True => live() returns None (success, No-op)
         verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
+
+    def test_required_gate_skipped_blocks(self):
+        """rcptverfix regression: a REQUIRED gate job (selected by the trusted
+        plan) that is SKIPPED must FAIL CLOSED, exactly like a failure. This is
+        the fail-closed guarantee the mission keeps."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'required gate job is not successful: PR · Public Contracts'):
+            verifier.live(value, self.plan, api=self.bogus_prsc_conclusion_api('skipped'))
+
+    def test_required_gate_failure_blocks(self):
+        """Regression: a REQUIRED gate job that failed must still block."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'required gate job is not successful: PR · Public Contracts'):
+            verifier.live(value, self.plan, api=self.bogus_prsc_conclusion_api('failure'))
+
+    def test_not_required_skipped_is_accepted(self):
+        """rcptverfix regression: when the trusted plan does NOT select the
+        pilot gate AND coverage is unresolved (No-op PR), a skipped PRSC is
+        accepted (this is the #1272 fix)."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        # bogus_noop_coverage_api returns coverage_status='failed' AND empty
+        # selected_gates => is_pilot_unmapped=True => No-op success.
+        verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
+
+    def test_not_required_optional_failure_is_accepted(self):
+        """rcptverfix regression: a job the plan does NOT require may run and
+        fail without blocking the receipt."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        verifier.live(value, self.plan, api=self.bogus_optional_failure_api())
 
     def test_negative_second_attempt_rejected(self):
         path, original = self.create()
@@ -1561,12 +1644,20 @@ class ProductionPathCliTest(VerifierFixtureTest):
                    "body": TASK_PATH},
                   open(fix + '/issue.json', 'w'))
         producer_job = copy.deepcopy(self.job)
-        json.dump(dict(total_count=2, jobs=[producer_job, dict(
-            producer_job, id=producer_job['id'] + 1, name='PR · Trusted Plan')]),
-            open(fix + '/jobs.json', 'w'))
+        run_id = self.run.get('id', producer_job.get('run_id', 123))
+        head_sha = self.head_sha
+        required = [dict(producer_job, run_id=run_id, head_sha=head_sha),
+                    dict(producer_job, id=producer_job['id'] + 1, run_id=run_id,
+                         head_sha=head_sha, name='PR · Focused Python'),
+                    dict(producer_job, id=producer_job['id'] + 2, run_id=run_id,
+                         head_sha=head_sha, name='Workflow policy')]
+        producer = dict(producer_job, id=producer_job['id'] + 3, run_id=run_id,
+                        head_sha=head_sha, name='PR · Trusted Plan')
+        json.dump(dict(total_count=4, jobs=required + [producer]),
+                  open(fix + '/jobs.json', 'w'))
         json.dump(dict(total_count=1, artifacts=[dict(
             id=789, name='trusted-pr-plan', expired=False, size_in_bytes=500,
-            workflow_run=dict(id=producer['id'], head_sha=producer['head_sha']))]),
+            workflow_run=dict(id=run_id, head_sha=head_sha))]),
             open(fix + '/artifacts.json', 'w'))
         (self.fixture_dir / 'plan.zip').write_bytes(self.plan_zip())
 
