@@ -271,8 +271,10 @@ class ReceiptWriterTest(BaseWriterTest):
                 expired=False, size_in_bytes=500,
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
+            focused = dict(job, id=458, name='PR · Focused Python')
+            policy = dict(job, id=459, name='Workflow policy')
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            return dict(total_count=4, jobs=[copy.deepcopy(job), focused, policy, producer])
         return copy.deepcopy(run)
 
 
@@ -368,8 +370,10 @@ class PublishRemoteTest(TestCase):
                 expired=False, size_in_bytes=500,
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
+            focused = dict(job, id=458, name='PR · Focused Python')
+            policy = dict(job, id=459, name='Workflow policy')
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            return dict(total_count=4, jobs=[copy.deepcopy(job), focused, policy, producer])
         return copy.deepcopy(run)
 
     def test_publish_first_receipt_pushes_successfully(self):
@@ -803,8 +807,10 @@ class PublishRemoteTest(TestCase):
                 expired=False, size_in_bytes=500,
                 workflow_run=dict(id=123, head_sha='a' * 40))])
         if '/jobs?' in path:
+            focused = dict(job, id=458, name='PR · Focused Python')
+            policy = dict(job, id=459, name='Workflow policy')
             producer = dict(job, id=457, name='PR · Trusted Plan')
-            return dict(total_count=2, jobs=[copy.deepcopy(job), producer])
+            return dict(total_count=4, jobs=[copy.deepcopy(job), focused, policy, producer])
         return copy.deepcopy(run)
 
 

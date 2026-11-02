@@ -155,8 +155,14 @@ class FakeApi:
             if run_id != RUN_ID:
                 return self._run_obj(run_id, head_sha=HEAD_SHA)
             if "/jobs?" in path:
-                return dict(total_count=2,
-                            jobs=[copy.deepcopy(self.job),
+                focused = copy.deepcopy(self.job)
+                focused["id"] = 458
+                focused["name"] = "PR · Focused Python"
+                policy = copy.deepcopy(self.job)
+                policy["id"] = 459
+                policy["name"] = "Workflow policy"
+                return dict(total_count=4,
+                            jobs=[copy.deepcopy(self.job), focused, policy,
                                   copy.deepcopy(self.producer)])
             if "/attempts/" in path:
                 return dict(id=RUN_ID, run_attempt=1, head_sha=HEAD_SHA,
