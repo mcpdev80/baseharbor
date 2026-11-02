@@ -811,5 +811,65 @@ class PublishRemoteTest(TestCase):
         return copy.deepcopy(run)
 
 
+class CommitReceiptTest(TestCase):
+    def test_commit_receipt_is_published_once_on_retry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            remote = root / 'planning.git'
+            subprocess.run(['git', 'init', '-q', '--bare', '--initial-branch=main', str(remote)], check=True)
+            subprocess.run(['git', 'clone', '-q', str(remote), str(root / 'planning')], check=True)
+            planning = root / 'planning'
+            for repo in (planning, root / 'product'):
+                repo.mkdir(exist_ok=True)
+                if repo != planning:
+                    _git(repo, 'init', '-q')
+                _git(repo, 'config', 'user.name', 'Receipt fixture')
+                _git(repo, 'config', 'user.email', 'receipt@example.invalid')
+                (repo / 'initial').write_text('initial')
+                _git(repo, 'add', '.')
+                _git(repo, 'commit', '-qm', 'initial')
+            _git(planning, 'push', '-q', 'origin', 'HEAD:refs/heads/main')
+            product = root / 'product'
+            sha = _git(product, 'rev-parse', 'HEAD').decode().strip()
+            _git(product, 'update-ref', 'refs/remotes/origin/develop', sha)
+            value = dict(number=7, state='closed', merged=True, merge_commit_sha=sha,
+                         merged_by={'id': 22537373},
+                         base={'ref': 'develop', 'repo': {'id': 1360667669}})
+            first = writer.publish_commit(planning, product, 7, lambda _: value)
+            second = writer.publish_commit(planning, product, 7, lambda _: value)
+            self.assertEqual(first, second)
+            self.assertEqual((planning / first[0]).read_bytes(),
+                             verifier.canonical({'commit': sha, 'pull_request': 7}))
+
+    def test_only_authenticated_owner_merge_is_recorded(self):
+        value = dict(number=7, state='closed', merged=True, merge_commit_sha='a' * 40,
+                     merged_by={'id': 22537373},
+                     base={'ref': 'develop', 'repo': {'id': 1360667669}})
+        self.assertEqual({'commit': 'a' * 40, 'pull_request': 7},
+                         writer.commit_record(7, lambda _: value))
+        for bad in (dict(value, merged=False), dict(value, merge_commit_sha='b' * 39),
+                    dict(value, merged_by={'id': 1}), dict(value, base={'ref': 'main'})):
+            with self.subTest(bad=bad), self.assertRaises(verifier.ReceiptError):
+                writer.commit_record(7, lambda _: bad)
+
+    def test_receipt_is_canonical_and_does_not_claim_ci_success(self):
+        raw = verifier.canonical({'commit': 'a' * 40, 'pull_request': 7})
+        writer._check_commit_record(raw)
+        with self.assertRaises(verifier.ReceiptError):
+            writer._check_commit_record(verifier.canonical(
+                {'commit': 'a' * 40, 'pull_request': 7, 'status': 'pass'}))
+
+    def test_rejects_commit_not_on_develop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            product = Path(tmp) / 'product'
+            product.mkdir()
+            _git(product, 'init', '-q')
+            value = dict(number=7, state='closed', merged=True, merge_commit_sha='a' * 40,
+                         merged_by={'id': 22537373},
+                         base={'ref': 'develop', 'repo': {'id': 1360667669}})
+            with self.assertRaises(verifier.ReceiptError):
+                writer.publish_commit(Path(tmp), product, 7, lambda _: value)
+
+
 if __name__ == '__main__':
     unittest.main()
