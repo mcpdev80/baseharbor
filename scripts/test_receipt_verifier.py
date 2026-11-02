@@ -1943,10 +1943,24 @@ class MergeReceiptExecutionTest(VerifierFixtureTest):
                 verifier.retained_merge(self.root, result[2], result[0], self.candidate,
                                          product=self.product, api=api)
         final['conclusion'] = 'success'
+        final['name'] = 'missing final'
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.retained_merge(self.root, result[2], result[0], self.candidate,
+                                     product=self.product, api=api)
+        final['name'] = 'PR Selected Checks'
         association[:] = [dict(pr, number=43)]
         with self.assertRaisesRegex(verifier.ReceiptError, 'association'):
             verifier.retained_merge(self.root, result[2], result[0], self.candidate,
                                      product=self.product, api=api)
+        association[:] = [pr]
+        def expired_api(path, *, pages=False, binary=False):
+            response = api(path, pages=pages, binary=binary)
+            if '/artifacts?' in path:
+                response['artifacts'][0]['expired'] = True
+            return response
+        with self.assertRaisesRegex(verifier.ReceiptError, 'artifact'):
+            verifier.retained_merge(self.root, result[2], result[0], self.candidate,
+                                     product=self.product, api=expired_api)
 
 
 class MergeReceiptTest(unittest.TestCase):

@@ -224,74 +224,32 @@ class ExtractBlocksTest(unittest.TestCase):
         proc = _run(["bash", "-n", "-"], input=block)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
-    def _publish_step_env_keys(self):
-        """Return the publish-step env keys in source order (comments stripped)."""
+    def test_merge_writer_has_scoped_live_witness_and_planning_token(self):
         doc = yaml.safe_load(POST_RUN_YML.read_text())
-        publish = next(
-            step
-            for step in doc["jobs"]["publish_receipt"]["steps"]
-            if step.get("name") == "Publish receipt to Planning"
-        )
-        env = publish.get("env", {}) or {}
-        return [key for key in env if not key.startswith("#")]
+        self.assertNotIn("publish_receipt", doc["jobs"])
+        job = doc["jobs"]["closed_receipt"]
+        publish = next(step for step in job["steps"]
+                       if step.get("name") == "Authenticate, publish, and consume merged receipt")
+        self.assertEqual(publish["env"]["GH_TOKEN"], "${{ github.token }}")
+        self.assertEqual(publish["env"]["PLANNING_RECEIPT_WRITE_TOKEN"],
+                         "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}")
+        self.assertEqual(job["permissions"],
+                         {"actions": "read", "contents": "read", "pull-requests": "read"})
+        self.assertIn("receipt_closed_run.py", publish["run"])
 
-    def test_publish_step_env_carries_write_token(self):
-        # Root cause 40834168626: the controller requires
-        # PLANNING_RECEIPT_WRITE_TOKEN from os.environ and fails closed when it
-        # is absent (receipt_writer.py:108-110). The publish step env must
-        # supply it; a missing key re-introduces the fail-closed gap.
-        keys = self._publish_step_env_keys()
-        self.assertIn("PLANNING_ROOT", keys)
-        self.assertIn("RUN_ID", keys)
-        self.assertIn("PLAN_REVISION", keys)
-        self.assertIn(
-            "PLANNING_RECEIPT_WRITE_TOKEN", keys,
-            "publish step env must supply the Planning write token",
-        )
-        # The token is sourced from the repository secret, never a literal.
-        doc = yaml.safe_load(POST_RUN_YML.read_text())
-        publish = next(
-            step
-            for step in doc["jobs"]["publish_receipt"]["steps"]
-            if step.get("name") == "Publish receipt to Planning"
-        )
-        self.assertEqual(
-            str(publish["env"]["PLANNING_RECEIPT_WRITE_TOKEN"]),
-            "${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}",
-        )
-
-    def test_publish_step_env_carries_gh_token(self):
-        # The publish step requires GH_TOKEN for the writer's live witness
-        # gh call; without it the receipt_writer.py live() verification fails.
-        # This assertion verifies the forward-port of main's GH_TOKEN fix.
-        keys = self._publish_step_env_keys()
-        self.assertIn(
-            "GH_TOKEN", keys,
-            "publish step env must supply GH_TOKEN for writer live witness",
-        )
-        # GH_TOKEN is sourced from the repository secret, never a literal.
-        doc = yaml.safe_load(POST_RUN_YML.read_text())
-        publish = next(
-            step
-            for step in doc["jobs"]["publish_receipt"]["steps"]
-            if step.get("name") == "Publish receipt to Planning"
-        )
-        self.assertEqual(
-            str(publish["env"]["GH_TOKEN"]),
-            "${{ secrets.GITHUB_TOKEN }}",
-        )
-
-    def test_controller_pins_bumped_to_dd8fb61d(self):
-        # The e13f157 controller lacks --product in argparse; dd8fb61d
-        # fixes this (commit dd8fb61d: wire --product through CLI).
-        # Both checkout pins must reference dd8fb61d.
+    def test_controller_pins_are_immutable(self):
         text = POST_RUN_YML.read_text()
-        pin_matches = re.findall(
-            r"ref:\s+dd8fb61d614b59252c9d29121380b5893d006828\s*$",
-            text, re.MULTILINE,
-        )
-        self.assertEqual(len(pin_matches), 2,
-            f"Expected exactly 2 controller pins at dd8fb61d, found {len(pin_matches)}")
+        self.assertIn("ref: dd8fb61d614b59252c9d29121380b5893d006828", text)
+        self.assertIn("ref: eab14539140a4a732a46711954f5a0f7ec2df5f2", text)
+
+    def test_merge_during_extraction_routes_to_authenticated_writer(self):
+        doc = yaml.safe_load(POST_RUN_YML.read_text())
+        self.assertNotIn('publish_receipt', doc['jobs'])
+        self.assertIn('extract_plan', doc['jobs']['closed_receipt']['needs'])
+        self.assertIn("needs.extract_plan.outputs.source_closed == 'true'",
+                      doc['jobs']['closed_receipt']['if'])
+        decode = _extract_run_block('decode')
+        self.assertIn('echo "source_closed=true" >> "$GITHUB_OUTPUT"', decode)
 
 
 class F1PositiveRun(unittest.TestCase):
@@ -462,17 +420,17 @@ class F1PositiveRun(unittest.TestCase):
                    RUN_BASE=FAKE_PLAN["target_base_sha"], FAKE_MERGE_MISSING="1",
                    PATH="%s:%s" % (str(self.bin), os.environ.get("PATH", "")),
                    PYTHONPATH=str(HERE))
-        for state, head, success in (("closed", "a" * 40, False),
-                                     ("open", "d" * 40, True),
-                                     ("open", "a" * 40, False),
-                                     ("closed", "bad", False)):
+        for state, head, success, expected in (("closed", "a" * 40, True, 'source_closed=true'),
+                                               ("open", "d" * 40, True, 'public_contracts_selected=false'),
+                                               ("open", "a" * 40, False, None),
+                                               ("closed", "bad", False, None)):
             with self.subTest(state=state, head=head):
                 (self.root / "gh_out").write_text("")
                 proc = _run(["bash", "-euo", "pipefail", "-c", self._decode_block()],
                             env=dict(env, FAKE_PR_STATE=state, FAKE_PR_HEAD=head), cwd=self.root)
                 self.assertEqual(proc.returncode == 0, success, proc.stderr)
-                self.assertEqual("public_contracts_selected=false" in
-                                 (self.root / "gh_out").read_text(), success)
+                if expected is not None:
+                    self.assertIn(expected, (self.root / "gh_out").read_text())
 
     def test_nonpilot_requires_producer_workflow_identity(self):
         with zipfile.ZipFile(self.root / "plan.zip", "w") as archive:
@@ -504,86 +462,6 @@ class F1PositiveRun(unittest.TestCase):
             os.environ.update(self.old)
             return False
 
-
-class F1WorkflowShellEndToEnd(unittest.TestCase):
-    """Exercise the real extracted tasklink + publish workflow run blocks against
-    a fresh bare Planning remote with a controlled gh stub. Proves the F1 recipe
-    closure end-to-end: the extracted shell writes the plan fixture, publishes an
-    unapproved receipt, and the receipt's run id is the LIVE run id (never the
-    workflow definition id). The Planning write token is set so the in-process
-    push auth path is exercised.
-    """
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-
-        # A bare Planning remote.
-        self.bare = self.root / "planning.bare"
-        self.bare.mkdir()
-        _run(["git", "init", "--bare", "-q", str(self.bare)])
-
-        # A fresh Planning checkout with the task note + plan fixture on main.
-        self.planning = self.root / "planning"
-        self.planning.mkdir()
-        _run(["git", "init", "-q", str(self.planning)])
-        _run(["git", "-C", self.planning, "config", "user.name", "F1 fixture"])
-        _run(["git", "-C", self.planning, "config", "user.email", "f1@example.invalid"])
-        task = self.planning / "tasks" / "t-20261022-r27-evidence-pilot.md"
-        task.parent.mkdir(parents=True, exist_ok=True)
-        task.write_text("---\nid: t-20261022-r27-evidence-pilot\n---\nr27 evidence pilot\n")
-        _run(["git", "-C", self.planning, "add", "-A"])
-        _run(["git", "-C", self.planning, "commit", "-qm", "initial planning"])
-        _run(["git", "-C", self.planning, "branch", "-M", "main"])
-        _run(["git", "-C", self.planning, "remote", "add", "origin", str(self.bare)])
-        _run(["git", "-C", self.planning, "push", "-q", "origin", "main"])
-        self.plan_commit = _run(["git", "-C", self.planning, "rev-parse", "HEAD"]).stdout.strip()
-
-        # Controlled gh stub ahead on PATH so the extracted tasklink block does
-        # not hit the real GitHub API.
-        self.bin = self.root / "bin"
-        self.bin.mkdir()
-        self._write_gh_stub()
-
-    def _write_gh_stub(self):
-        stub = self.bin / "gh"
-        stub.write_text(FAKE_GH_STUB)
-        stub.chmod(0o755)
-
-    def test_real_tasklink_block_writes_plan_fixture(self):
-        # The extracted tasklink block returns the Planning plan revision as its
-        # final 40-hex line. Run it against the fresh Planning checkout and
-        # assert the plan fixture is durable on the bare remote main. The
-        # extracted block calls `gh api` which resolves to PATH; the stub makes
-        # the PR->task resolution return the fixture task deterministically.
-        tasklink_block = _extract_run_block("tasklink")
-        gh_out = self.root / "gh_out"
-        gh_out.write_text("")
-        env = dict(os.environ,
-                   GITHUB_OUTPUT=str(gh_out),
-                   GITHUB_TOKEN="fixture-token",
-                   GH_WORKFLOW_TOKEN="fixture-token",
-                   PLANNING_ROOT=str(self.planning),
-                   WORKFLOW_ID=str(FAKE_PLAN["workflow_id"]),
-                   HEAD_SHA=HEAD_SHA,
-                   CANDIDATE_SHA="c" * 40,
-                   BASE_SHA="b" * 40,
-                   PR_NUMBER="1124",
-                   PATH="%s:%s" % (self.bin, os.environ.get("PATH", "")),
-                   PYTHONPATH=str(HERE.parent))
-        proc = _run(["bash", "-euo", "pipefail", "-c", tasklink_block], env=env,
-                    cwd=str(HERE.parent))
-        self.assertEqual(proc.returncode, 0, f"tasklink block failed: {proc.stderr}")
-
-        fixture = self.planning / receipt_tasklink.PLAN_PATH
-        self.assertTrue(fixture.exists(), "plan fixture not written")
-        # The extracted tasklink block advances the local Planning checkout HEAD
-        # to the new plan revision (the writer later publishes this to the bare
-        # remote). The fixture commit is newer than the seeded initial plan.
-        local_head = _run(["git", "-C", self.planning, "rev-parse", "HEAD"]).stdout.strip()
-        self.assertNotEqual(local_head, self.plan_commit,
-                            "plan revision did not advance the local checkout")
 
 
 FAKE_PRODUCER_GIT_STUB = r'''#!/usr/bin/env python3
@@ -1252,7 +1130,7 @@ class ProducerEligibilityGateTests(unittest.TestCase):
 
     def test_downstream_jobs_gate_on_eligibility(self):
         text = self.WORKFLOW.read_text()
-        for job in ("extract_plan", "publish_receipt"):
+        for job in ("extract_plan",):
             seg = text.split("  %s:" % job, 1)[1].split("\n    if:", 1)[1].split("\n", 1)[0]
             self.assertIn("producer_eligible == 'true'", seg, job)
 

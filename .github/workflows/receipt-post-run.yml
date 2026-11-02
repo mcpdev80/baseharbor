@@ -1,10 +1,9 @@
-name: "Receipt · Post-Run Writer"
+name: "Receipt · Post-Run Evidence"
 
-# Production wiring: after a successful producer CI run, automatically
-# write the bounded plan fixture (tasklink), publish an unapproved receipt
-# to Planning, and return the exact introduction/publication commits.
-# No manual run/SHA/patch step — all facts come from the authenticated
-# workflow_run context and the producer's trusted-pr-plan artifact.
+# Migration candidate: authenticate producer plans, then publish a distinct
+# merge receipt after the actual Owner merge. Existing V1 approval and retained
+# verification remain available for historical receipts; no V1 approval is
+# synthesized from the merge.
 
 on:
   workflow_run:
@@ -258,6 +257,7 @@ jobs:
       run_id: ${{ steps.plan.outputs.run_id }}
       pr_number: ${{ steps.plan.outputs.pr_number }}
       public_contracts_selected: ${{ steps.plan.outputs.public_contracts_selected }}
+      source_closed: ${{ steps.plan.outputs.source_closed }}
     steps:
       - name: Checkout immutable controller (reviewed CI)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -427,8 +427,9 @@ jobs:
               if [[ ( "$state" == closed || ( "$state" == open &&
                   ( "$head" != "$RUN_HEAD" || "$base" != "$RUN_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
                   if [[ "$state" == closed && "$public_contracts_selected" == true ]]; then
-                      echo "closed public-contracts producer requires receipt handling; failing closed" >&2
-                      exit 1
+                      echo "closed public-contracts producer routed to authenticated receipt handling" >&2
+                      echo "source_closed=true" >> "$GITHUB_OUTPUT"
+                      exit 0
                   fi
                   echo "authenticated PR run has been superseded; no receipt" >&2
                   echo "public_contracts_selected=false" >> "$GITHUB_OUTPUT"
@@ -451,173 +452,18 @@ jobs:
           echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
           echo "pr_number=${pr_number}" >> "$GITHUB_OUTPUT"
           echo "Plan extracted: candidate=$candidate_sha base=$base_sha head=$head_sha run=$run_id wf_id=${workflow_id} pr=${pr_number}"
-
-  # Step 3: Write plan fixture (tasklink) and publish the receipt.
-  # This is the ONLY step with contents:write — and it runs the IMMUTABLE
-  # controller Python from the reviewed CI repo, NOT PR-controlled code.
-  publish_receipt:
-    name: "Publish Receipt to Planning"
-    if: github.event.workflow_run.conclusion == 'success' && needs.producer_context.outputs.producer_eligible == 'true' && needs.extract_plan.outputs.public_contracts_selected == 'true'
-    needs: [producer_context, extract_plan]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    env:
-      WORKFLOW_ID: ${{ needs.extract_plan.outputs.workflow_id }}
-      HEAD_SHA: ${{ needs.extract_plan.outputs.head_sha }}
-      CANDIDATE_SHA: ${{ needs.extract_plan.outputs.candidate_sha }}
-      BASE_SHA: ${{ needs.extract_plan.outputs.base_sha }}
-      PR_NUMBER: ${{ needs.extract_plan.outputs.pr_number }}
-    steps:
-      - name: Checkout immutable controller (reviewed CI)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          # CRITICAL: We check out the immutable reviewed CI controller scripts
-          # by their full reviewed commit SHA — NOT mutable develop and NOT the
-          # PR head. Pinning the exact SHA prevents PR-controlled code from
-          # running in the credential-bearing controller; the scripts are
-          # reviewed, protected, and identical across all invocations.
-          ref: dd8fb61d614b59252c9d29121380b5893d006828
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Checkout Planning (for publication)
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: mcpdev80/baseharbor-plan
-          ref: main
-          fetch-depth: 0
-          persist-credentials: true
-          path: planning
-          token: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
-
-      - name: Configure ephemeral Planning commit identity
-        run: |
-          set -euo pipefail
-          # Bounded ephemeral identity for the single bounded push: the
-          # Planning write token provides authorization, credentials are
-          # persisted by the preceding checkout (persist-credentials: true)
-          # and this step sets a purpose-bound committer.
-          git -C planning config user.name "codeman-runtime"
-          git -C planning config user.email "codeman-runtime@users.noreply.github.com"
-          git -C planning fetch origin main --quiet || true
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: '3.14'
-
-      - name: Automatic task-link (plan fixture)
-        id: plan_commit
-        env:
-          PLANNING_ROOT: ${{ github.workspace }}/planning
-          GH_WORKFLOW_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Writing plan fixture with task link..."
-          echo "  workflow_id=$WORKFLOW_ID"
-          echo "  head_sha=$HEAD_SHA"
-          echo "  candidate_sha=$CANDIDATE_SHA"
-          echo "  base_sha=$BASE_SHA"
-          echo "  pr_number=$PR_NUMBER"
-          # The tasklink script writes the bounded plan fixture through the ONE
-          # authoritative PR->task resolver (CODE-AUDIT F4). The task is NOT
-          # caller-supplied (--task); it is auto-resolved from the trusted PR
-          # via --pr-number. A caught resolver error fails closed — it is never
-          # an authorization to fall back to a hardcoded task (F4). The commit
-          # the tasklink returns is the real Planning plan revision the writer
-          # consumes as --plan (never the candidate SHA, never a run.id).
-          #
-          # The CLI emits diagnostics on stdout and returns the result commit
-          # as its final line; the plan revision is that last 40-hex line
-          # only — never parsed from arbitrary progress text (Owner
-          # correction 2026-10-27).
-          RESULT="$(GITHUB_TOKEN="${GH_WORKFLOW_TOKEN}" python3 scripts/receipt_tasklink.py \
-            --planning "$PLANNING_ROOT" \
-            --workflow-id "$WORKFLOW_ID" \
-            --head "$HEAD_SHA" \
-            --candidate "$CANDIDATE_SHA" \
-            --base "$BASE_SHA" \
-            --pr-number "$PR_NUMBER")"
-          PLAN_COMMIT="$(printf '%s\n' "$RESULT" \
-            | grep -E '^[0-9a-f]{40}$' | tail -n 1)"
-          if [ -z "${PLAN_COMMIT}" ]; then
-            echo "tasklink did not return a valid plan commit SHA" >&2
-            exit 1
+          if [ "$public_contracts_selected" = true ]; then
+            echo "Receipt pending: authenticated Owner merge has not yet been processed." >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
           fi
-          echo "plan_revision=${PLAN_COMMIT}" >> "$GITHUB_OUTPUT"
-          echo "Plan fixture written at $PLAN_COMMIT. Verifying..."
-          ls -la "$PLANNING_ROOT/evidence/receipt-plans/"
 
-      - name: Publish receipt to Planning
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PLANNING_ROOT: ${{ github.workspace }}/planning
-          # run-id for the receipt is the authenticated workflow RUN (the
-          # live workflow run id), never the workflow definition id
-          # (workflow_id). load_plan() requires a Planning commit, never the
-          # tested candidate SHA — the writer's --plan is the plan fixture's
-          # Planning commit below.
-          RUN_ID: ${{ needs.extract_plan.outputs.run_id }}
-          PLAN_REVISION: ${{ steps.plan_commit.outputs.plan_revision }}
-          # The controller requires this token from the environment and fails
-          # closed when it is absent (receipt_writer.py:108-110). The Planning
-          # checkout step above already sources the same secret; the writer's
-          # push auth path reads it from os.environ, so the step env must carry
-          # it. The value is never echoed: _push_authed passes it via an
-          # ephemeral http.extraheader and _scrub_secret redacts any bearer
-          # diagnostic, so publication cannot leak the token.
-          PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
-        shell: bash
-        run: |
-           set -euo pipefail
-           echo "Publishing receipt..."
-           echo "  run_id=$RUN_ID"
-           echo "  attempt=1"
-           echo "  plan_revision=$PLAN_REVISION"
-           # The writer invokes the immutable controller Python.
-           # It creates a canonical 6-field receipt, verifies it live WITH the
-           # product checkout (producer-definition check at issuance), and
-           # publishes via ordinary fast-forward push to Planning.
-           # Identity comes from the authenticated run context only; no
-           # GITHUB_* values are overridden — the writer's own context is the
-           # verification source (Owner review: remove all GITHUB_* overrides).
-           # --product supplies the reviewed protected ci.yml bytes so that a
-           # workflow-changing PR cannot issue trust (CODE-AUDIT F8).
-           python3 scripts/receipt_writer.py \
-             --planning "$PLANNING_ROOT" \
-             --plan "$PLAN_REVISION" \
-             --run "$RUN_ID" \
-             --attempt 1 \
-             --product "$GITHUB_WORKSPACE" \
-             --publish
-           echo "Receipt published. Verifying durable state..."
-           ls -la "$PLANNING_ROOT/evidence/receipts/"
-
-      - name: Report publication result
-        if: always()
-        run: |
-          set -euo pipefail
-          echo "## Receipt Publication Report" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Workflow ID:** ${{ needs.extract_plan.outputs.workflow_id }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Head SHA:** ${{ needs.extract_plan.outputs.head_sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Candidate SHA:** ${{ needs.extract_plan.outputs.candidate_sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Base SHA:** ${{ needs.extract_plan.outputs.base_sha }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **PR Number:** ${{ needs.extract_plan.outputs.pr_number }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Conclusion:** ${{ github.event.workflow_run.conclusion }}" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ job.status }}" = "success" ]; then
-            echo "- **Status:** ✅ Published" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "- **Status:** ❌ Failed" >> "$GITHUB_STEP_SUMMARY"
-          fi
+  # The prior V1 publisher required a separate Owner dispatch and task link.
+  # Existing V1 receipts and the approval consumer stay readable; new
+  # post-merge evidence uses the closed_receipt job below.
 
   closed_receipt:
     name: "Receipt · Merged Candidate"
-    needs: [producer_context]
-    if: always() && github.event_name == 'workflow_run' && (needs.producer_context.outputs.source_closed == 'true' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'develop'))
+    needs: [producer_context, extract_plan]
+    if: always() && github.event_name == 'workflow_run' && (needs.producer_context.outputs.source_closed == 'true' || needs.extract_plan.outputs.source_closed == 'true' || (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'develop'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
