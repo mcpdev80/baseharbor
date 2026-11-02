@@ -112,10 +112,9 @@ jobs:
             exit 1
           fi
           RUN_PR_NUMBER="$(printf '%s' "${RUN_PR_JSON}" | jq -r 'map(select(.number != null) | .number) | length' 2>/dev/null)"
-          if [ "${RUN_PR_NUMBER}" = "0" ]; then
-            # GitHub can remove the run association once a PR is merged. Only
-            # a uniquely authenticated closed PR with the same run, plan and
-            # merge parents may be classified as superseded without a receipt.
+          classify_closed_run() {
+            # Only an authenticated non-pilot closed PR may finish without a
+            # receipt. An eligible pilot or an ambiguous source must fail.
             helper_dir="$(mktemp -d)"
             trap 'rm -rf "$helper_dir"' EXIT
             gh api "repos/mcpdev80/baseharbor/contents/scripts/receipt_closed_run.py?ref=${GITHUB_SHA}" --jq .content | base64 -d > "$helper_dir/receipt_closed_run.py"
@@ -125,6 +124,9 @@ jobs:
             PYTHONPATH="$helper_dir" python3 "$helper_dir/receipt_closed_run.py" "$RUN_ID" "$helper_dir/product"
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
             exit 0
+          }
+          if [ "${RUN_PR_NUMBER}" = "0" ]; then
+            classify_closed_run
           fi
           if [ "${RUN_PR_NUMBER}" != "1" ]; then
             echo "run $RUN_ID has ${RUN_PR_NUMBER} (expected exactly 1) bound PR: ambiguous/absent association, failing closed" >&2
@@ -156,7 +158,10 @@ jobs:
             echo "invalid run/PR state or target: failing closed" >&2
             exit 1
           fi
-          if [[ "$PR_STATE" == closed || "$PR_HEAD" != "$RUN_HEAD" ||
+          if [[ "$PR_STATE" == closed ]]; then
+            classify_closed_run
+          fi
+          if [[ "$PR_HEAD" != "$RUN_HEAD" ||
                 "$LIVE_BASE" != "$RUN_BASE" || "$LIVE_TARGET" != "$RUN_TARGET" ]]; then
             echo "authenticated PR run has been superseded; no receipt" >&2
             echo "producer_eligible=false" >> "$GITHUB_OUTPUT"
@@ -419,6 +424,10 @@ jobs:
               done
               if [[ ( "$state" == closed || ( "$state" == open &&
                   ( "$head" != "$RUN_HEAD" || "$base" != "$RUN_BASE" || "$target" != develop ) ) ) && -n "$target" ]]; then
+                  if [[ "$state" == closed && "$public_contracts_selected" == true ]]; then
+                      echo "closed public-contracts producer requires receipt handling; failing closed" >&2
+                      exit 1
+                  fi
                   echo "authenticated PR run has been superseded; no receipt" >&2
                   echo "public_contracts_selected=false" >> "$GITHUB_OUTPUT"
                   exit 0
