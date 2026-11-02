@@ -75,18 +75,30 @@ jobs:
 
       - name: Create two isolated secret applications
         run: |
+          set -eo pipefail
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
 
+          apply_with_current_consent() {
+            local plan consent result
+            plan=$(mktemp)
+            chmod 600 "$plan"
+            /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$plan") || { rm -f "$plan"; return 1; }
+            rm -f "$plan"
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
+            unset consent
+          }
+
           /tmp/baha app create broker-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply broker-demo >/tmp/broker-demo-required.out 2>&1
+          apply_with_current_consent broker-demo >/tmp/broker-demo-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
           grep -q "required secrets check failed" /tmp/broker-demo-required.out
           printf '%s' 'bootstrap-a' | /tmp/baha app secret set broker-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply broker-demo | tee /tmp/broker-demo-apply.out
+          apply_with_current_consent broker-demo | tee /tmp/broker-demo-apply.out
           grep -Eq "READY +runtime-broker +mTLS identity verified" /tmp/broker-demo-apply.out
           docs_url="$(sed -n 's/.*Swagger\/OpenAPI: \(https:\/\/127\.0\.0\.1:[0-9][0-9]*\/\).*/\1/p' /tmp/broker-demo-apply.out | tail -n1)"
           test -n "$docs_url"
@@ -103,13 +115,13 @@ jobs:
 
           /tmp/baha app create other-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply other-demo >/tmp/other-demo-required.out 2>&1
+          apply_with_current_consent other-demo >/tmp/other-demo-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
           grep -q "required secrets check failed" /tmp/other-demo-required.out
           printf '%s' 'bootstrap-b' | /tmp/baha app secret set other-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply other-demo | grep -q "application and requested infrastructure verified"
+          apply_with_current_consent other-demo | grep -q "application and requested infrastructure verified"
 
       - name: Prove dynamic secret create resolve rotate and wrong-token rejection
         run: |
@@ -183,17 +195,33 @@ jobs:
 
       - name: Prove broker lifecycle and same dynamic secret ref survives restart
         run: |
+          set -eo pipefail
           workdir=$(cat /tmp/baseharbor-broker-workdir)
           cd "$workdir"
           ref=$(cat /tmp/broker-demo-secret-ref)
           test -n "$ref"
 
           client_before=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
-          /tmp/baha app down broker-demo | tee /tmp/broker-down.out
+          down_plan_file=$(mktemp)
+          chmod 600 "$down_plan_file"
+          if /tmp/baha --no-input app down broker-demo >"$down_plan_file" 2>/tmp/broker-down-plan-error.txt; then
+            echo "app down unexpectedly succeeded without typed provider consent" >&2
+            exit 1
+          fi
+          down_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" scope-output "$down_plan_file")
+          rm -f "$down_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$down_consent" /tmp/baha app down broker-demo | tee /tmp/broker-down.out
+          unset down_consent
           grep -q "runtime-broker.*stopped" /tmp/broker-down.out
           test -z "$(docker ps -q --filter label=com.docker.compose.project=baseharbor-broker-ci-broker-demo-dev)"
 
-          /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+          up_plan_file=$(mktemp)
+          chmod 600 "$up_plan_file"
+          /tmp/baha app plan broker-demo -o json >"$up_plan_file"
+          up_consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$up_plan_file")
+          rm -f "$up_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" /tmp/baha app up broker-demo | grep -q "runtime and requested infrastructure verified"
+          unset up_consent
           /tmp/baha app status broker-demo | grep -q "runtime-broker.*mTLS readiness verified"
           client_after=$(sha256sum $XDG_DATA_HOME/baseharbor/targets/ci/deployments/broker-demo/dev/state/broker-demo/runtime/bindings/runtime-identity/client-cert.pem | awk '{print $1}')
           test "$client_before" = "$client_after"
@@ -277,6 +305,17 @@ jobs:
 
       - name: Bootstrap performance application
         run: |
+          set -eo pipefail
+          apply_with_current_consent() {
+            local plan consent result
+            plan=$(mktemp)
+            chmod 600 "$plan"
+            /tmp/baha app plan "$1" -o json >"$plan" || { rm -f "$plan"; return 1; }
+            consent=$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$plan") || { rm -f "$plan"; return 1; }
+            rm -f "$plan"
+            BASEHARBOR_PROVIDER_CHANGE_CONSENT="$consent" /tmp/baha app apply "$1" || { result=$?; unset consent; return "$result"; }
+            unset consent
+          }
           workdir=$(mktemp -d)
           printf '%s\n' "$workdir" >/tmp/baseharbor-perf-workdir
           cd "$workdir"
@@ -292,12 +331,12 @@ jobs:
           fi
           /tmp/baha app create perf-demo --sql --require-secret BOOTSTRAP_SECRET
           set +e
-          /tmp/baha app apply perf-demo >/tmp/perf-required.out 2>&1
+          apply_with_current_consent perf-demo >/tmp/perf-required.out 2>&1
           code=$?
           set -e
           test "$code" -eq 1
           printf '%s' 'bootstrap' | /tmp/baha app secret set perf-demo BOOTSTRAP_SECRET --stdin
-          /tmp/baha app apply perf-demo | grep -q "application and requested infrastructure verified"
+          apply_with_current_consent perf-demo | grep -q "application and requested infrastructure verified"
 
       - name: Measure 200 real mTLS secret resolves
         run: |
