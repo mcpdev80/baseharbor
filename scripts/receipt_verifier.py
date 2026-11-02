@@ -449,28 +449,70 @@ def live(value, plan, api=None, product=None):
     if is_pilot_unmapped:
         # Non-pilot + unmapped => No-op success (PR #1252 Praezedenz).
         return
-    # Required gate jobs are derived from the TRUSTED-PLAN output, not a
-    # hardcoded name list (rcptverfix): the producer's authoritative rule
-    # (pr-authenticated-results.py) marks "PR · Public Contracts" required only
-    # when "integration/static/public-contracts" is in selected_gates, so a
-    # legitimately skipped such job no longer blocks a non-contract PR. A job
-    # required by the plan that is skipped or failed still fails closed; a job
-    # the plan does NOT require is accepted even if it ran and failed.
-    required_gates = witnessed.get("selected_gates") or []
+    # Required gate/validation jobs are derived from the TRUSTED-PLAN output,
+    # not a hardcoded name list (rcptverfix). This mirrors the producer's
+    # authoritative rule in scripts/pr-authenticated-results.py exactly:
+    #   - always required: "PR · Focused Python", "Workflow policy", and
+    #     one "PR · Validation · <id>" job for every id in the plan's
+    #     required_validation_checks (these are never skippable);
+    #   - when a selected gate has one of the exact native/exact prefixes
+    #     atomic/docker/, atomic/podman/, integration/docker/, integration/podman/
+    #     (NOT a substring match, so a bare "native"/"lifecycle" gate cannot
+    #     dodge these): "PR · Exact Candidate", "PR · Runner Interface", plus
+    #     "PR · Consumer Pins" or "PR · Demo Pin" when the plan's
+    #     required_consumer_dependencies require console/connector or demo;
+    #   - when integration/static/public-contracts is selected: "PR · Public
+    #     Contracts" — the legitimate-skip case this fix resolves.
+    # A required job that is skipped or failed still fails closed; a job the
+    # plan does NOT require is accepted even if it ran and failed. An optional
+    # job that ran AND failed still fails closed because a required name that
+    # appears twice (a shadow success) is caught by the uniqueness check.
+    NATIVE_EXACT_PREFIXES = ("atomic/docker/", "atomic/podman/",
+                             "integration/docker/", "integration/podman/")
+    selected_gates = list(witnessed.get("selected_gates") or [])
     required_names = ["PR · Focused Python", "Workflow policy"]
-    if any("native" in g or "lifecycle" in g for g in required_gates):
+    for check_id in witnessed.get("required_validation_checks") or []:
+        required_names.append("PR · Validation · " + str(check_id))
+    if any(isinstance(g, str) and g.startswith(NATIVE_EXACT_PREFIXES)
+           for g in selected_gates):
         required_names += ["PR · Exact Candidate", "PR · Runner Interface"]
-    if "integration/static/public-contracts" in required_gates:
+        deps = witnessed.get("required_consumer_dependencies")
+        require(isinstance(deps, list), "unqualified selected-gate dependencies")
+        require(set(deps) <= {"core", "demo", "console", "connector"},
+                "unknown consumer dependency")
+        if set(deps) & {"console", "connector"}:
+            required_names.append("PR · Consumer Pins")
+        elif "demo" in deps:
+            required_names.append("PR · Demo Pin")
+    if "integration/static/public-contracts" in selected_gates:
         required_names.append("PR · Public Contracts")
-    by_name = {j.get("name"): j for j in jobs}
-    require(all(name in by_name for name in required_names),
+    # Exactly one job per required name: a duplicate required name (a shadow
+    # success job) must not hide a failed required job (rcptverfix #3).
+    by_count = {}
+    for job in jobs:
+        by_count[job.get("name")] = by_count.get(job.get("name"), 0) + 1
+    require(all(by_count.get(name, 0) == 1 for name in required_names),
             "required gate job missing or ambiguous")
+    by_name = {j.get("name"): j for j in jobs}
     for name in required_names:
         job = by_name[name]
         require(job.get("run_id") == value["run"]["id"]
+                and job.get("run_attempt", value["run"]["attempt"])
+                    == value["run"]["attempt"]
                 and job.get("head_sha") == plan["head_sha"]
-                and job.get("status") == "completed" and job.get("conclusion") == "success",
+                and job.get("status") == "completed"
+                and job.get("conclusion") == "success",
                 "required gate job is not successful: " + name)
+    # Fail-closed for executed-and-failed non-required jobs (rcptverfix #1):
+    # a job the plan does NOT require is accepted when it is simply absent
+    # (skipped), but if it RAN and FAILED it must block — a shadow success on a
+    # required name would otherwise hide this (covered by the uniqueness check
+    # above), and a genuine optional failure must not be silently whitelisted.
+    for job in jobs:
+        if job.get("conclusion") not in (None, "success"):
+            require(job.get("name") in required_names,
+                    "executed-and-failed job not in trusted plan: "
+                    + str(job.get("name")))
     require(witnessed.get("schema") == "baseharbor.pr-gate-plan/v1"
             and witnessed.get("coverage_status") == "resolved"
             and "integration/static/public-contracts" in witnessed.get("selected_gates", [])

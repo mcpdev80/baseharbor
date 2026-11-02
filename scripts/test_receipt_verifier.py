@@ -391,7 +391,6 @@ class VerifierFixtureTest(unittest.TestCase):
                 return buffer.getvalue()
             return self.api(path, binary=binary)
         return api
-
     def bogus_prsc_conclusion_api(self, conclusion):
         """Override the PRSC job conclusion (skip/fail) while keeping every
         other job genuine. The plan still selects the pilot gate, so PRSC stays
@@ -413,8 +412,9 @@ class VerifierFixtureTest(unittest.TestCase):
 
     def bogus_optional_failure_api(self):
         """One NON-required job (PR · Exact Candidate) ran with conclusion
-        'failure'; the plan selects the pilot gate but that job is not part of
-        the derived required set. It must not block."""
+        'failure'; the plan selects the pilot gate (PRSC only), so Exact
+        Candidate is NOT in the derived required set. Per the rcptverfix
+        contract an executed-and-failed non-required job must STILL BLOCK."""
         def api(path, *, binary=False):
             if '/jobs?' in path and not binary:
                 run_id = self.run.get('id', 123)
@@ -432,6 +432,67 @@ class VerifierFixtureTest(unittest.TestCase):
             return self.api(path, binary=binary)
         return api
 
+    def bogus_native_plan_api(self, *, selected_gates, required_validation_checks,
+                              required_consumer_dependencies, job_conclusions=None,
+                              extra_jobs=None, omit=None):
+        """Serve a trusted plan with an explicit native/exact gate (or any
+        selected_gates / required_validation_checks / consumer deps) plus the
+        derived required job set. job_conclusions maps a required job name to
+        a non-success conclusion (to prove skipped/failed required jobs still
+        fail closed); extra_jobs injects jobs such as duplicate names to
+        exercise the uniqueness gate (rcptverfix #3); omit is a set of required
+        job NAMES to deliberately leave unserved to test that missing required
+        jobs block."""
+        def api(path, *, binary=False):
+            if binary:
+                buffer = io.BytesIO()
+                with zipfile.ZipFile(buffer, 'w') as archive:
+                    plan = dict(
+                        schema='baseharbor.pr-gate-plan/v1',
+                        coverage_status='resolved',
+                        selected_gates=selected_gates,
+                        required_validation_checks=required_validation_checks,
+                        head_sha=self.head_sha, target_base_sha=self.base_sha,
+                        integration_sha=self.candidate)
+                    if required_consumer_dependencies is not None:
+                        plan['required_consumer_dependencies'] = required_consumer_dependencies
+                    archive.writestr('pr-plan.json', verifier.canonical(plan))
+                return buffer.getvalue()
+            if '/jobs?' in path:
+                run_id = self.run.get('id', 123)
+                base = dict(self.job, run_id=run_id, head_sha=self.head_sha)
+                jobs = [
+                    dict(base, id=456, name='PR · Public Contracts'),
+                    dict(base, id=458, name='PR · Focused Python'),
+                    dict(base, id=459, name='Workflow policy'),
+                    dict(base, id=457, name='PR · Trusted Plan'),
+                ]
+                native = False
+                for gate in selected_gates:
+                    if gate.startswith(('atomic/docker/', 'atomic/podman/',
+                                       'integration/docker/', 'integration/podman/')):
+                        native = True
+                        jobs.append(dict(base, id=461, name='PR · Exact Candidate'))
+                        jobs.append(dict(base, id=462, name='PR · Runner Interface'))
+                        if set(required_consumer_dependencies) & {'console', 'connector'}:
+                            jobs.append(dict(base, id=463, name='PR · Consumer Pins'))
+                        elif 'demo' in required_consumer_dependencies:
+                            jobs.append(dict(base, id=464, name='PR · Demo Pin'))
+                for cid in required_validation_checks:
+                    jobs.append(dict(base, id=470 + int(cid),
+                                     name='PR · Validation · ' + str(cid)))
+                conclusions = job_conclusions or {}
+                omit_set = omit or set()
+                for j in jobs:
+                    if j['name'] in conclusions:
+                        j['conclusion'] = conclusions[j['name']]
+                        j['status'] = 'completed'
+                jobs = [j for j in jobs if j['name'] not in omit_set]
+                if extra_jobs:
+                    jobs.extend(extra_jobs)
+                return dict(total_count=len(jobs), jobs=jobs)
+            return self.api(path, binary=binary)
+        return api
     def bogus_noop_coverage_api(self):
         """Noop coverage: coverage_status != 'resolved' AND selected_gates
         omits the pilot gate path => is_pilot_unmapped=True => No-op success."""
@@ -733,12 +794,128 @@ class LiveNegativeNegativesTest(VerifierFixtureTest):
         # selected_gates => is_pilot_unmapped=True => No-op success.
         verifier.live(value, self.plan, api=self.bogus_noop_coverage_api())
 
-    def test_not_required_optional_failure_is_accepted(self):
-        """rcptverfix regression: a job the plan does NOT require may run and
-        fail without blocking the receipt."""
+    def test_not_required_optional_failure_blocks(self):
+        """rcptverfix #1 contract: a job the plan does NOT require may be absent
+        (skipped) without blocking, but if it RAN and FAILED it must block
+        (fail-closed). Regression against the old behavior that whitelisted it."""
         path, original = self.create()
         value = verifier.receipt((self.root / path).read_bytes())
-        verifier.live(value, self.plan, api=self.bogus_optional_failure_api())
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'executed-and-failed job not in trusted plan: PR \u00b7 Exact Candidate'):
+            verifier.live(value, self.plan, api=self.bogus_optional_failure_api())
+
+    def test_native_gate_selects_exact_and_runner(self):
+        """rcptverfix #2: a selected native/exact gate (exact prefix, not a
+        substring) requires PR · Exact Candidate and PR · Runner Interface."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        # genuine Exact/Runner jobs present => no block
+        verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+            selected_gates=['integration/static/public-contracts', 'atomic/docker/lifecycle'],
+            required_validation_checks=[], required_consumer_dependencies=[]))
+
+    def test_native_gate_missing_exact_blocks(self):
+        """A selected native gate with Exact/Runner Interface absent -> block."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts', 'atomic/docker/lifecycle'],
+                required_validation_checks=[], required_consumer_dependencies=[],
+                omit={'PR · Exact Candidate', 'PR · Runner Interface'}))
+
+    def test_missing_required_validation_blocks(self):
+        """rcptverfix #2: required_validation_checks entries add a required
+        'PR · Validation · <id>' job; a missing one blocks."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts'],
+                required_validation_checks=[7], required_consumer_dependencies=[],
+                omit={'PR · Validation · 7'}))
+
+    def test_failed_required_validation_blocks(self):
+        """A required Validation job that failed -> block."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'required gate job is not successful: PR \u00b7 Validation \u00b7 7'):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts'],
+                required_validation_checks=[7], required_consumer_dependencies=[],
+                job_conclusions={'PR \u00b7 Validation \u00b7 7': 'failure'}))
+
+    def test_consumer_pins_required_when_deps_console(self):
+        """A native gate with console/connector dependency requires PR ·
+        Consumer Pins."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+            selected_gates=['integration/static/public-contracts', 'integration/docker/native'],
+            required_validation_checks=[],
+            required_consumer_dependencies=['console']))
+
+    def test_demo_pins_required_when_deps_demo(self):
+        """A native gate with a demo dependency requires PR · Demo Pin."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+            selected_gates=['integration/static/public-contracts', 'integration/docker/native'],
+            required_validation_checks=[],
+            required_consumer_dependencies=['demo']))
+
+    def test_demo_pins_missing_blocks(self):
+        """Missing Demo Pin under a demo dependency -> block."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        with self.assertRaises(verifier.ReceiptError):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts', 'atomic/docker/native'],
+                required_validation_checks=[],
+                required_consumer_dependencies=['demo'],
+                omit={'PR · Demo Pin'}))
+
+    def test_substring_native_does_not_select_exact(self):
+        """A bare 'native'/'lifecycle' substring gate (exact prefix absent)
+        must NOT pull in Exact/Runner Interface (rcptverfix #2)."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        # exact gate absent; Exact/Runner jobs not served -> still no block
+        # because they are not required by a substring-only gate.
+        verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+            selected_gates=['integration/static/public-contracts', 'some/native/gate'],
+            required_validation_checks=[], required_consumer_dependencies=[]))
+
+    def test_duplicate_required_name_shadow_blocks_order1(self):
+        """rcptverfix #3: a required name appears twice (a shadow success) must
+        block regardless of ordering. Duplicate first, failing job second."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        run_id = self.run.get('id', 123)
+        shadow = dict(self.job, id=950, run_id=run_id, head_sha=self.head_sha,
+                      name='PR · Public Contracts', conclusion='success')
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'required gate job missing or ambiguous'):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts'],
+                required_validation_checks=[], required_consumer_dependencies=[],
+                extra_jobs=[shadow]))
+
+    def test_duplicate_required_name_shadow_blocks_order2(self):
+        """rcptverfix #3: same duplicate required name (a second success job
+        under the required name) -> must still block."""
+        path, original = self.create()
+        value = verifier.receipt((self.root / path).read_bytes())
+        run_id = self.run.get('id', 123)
+        shadow = dict(self.job, id=951, run_id=run_id, head_sha=self.head_sha,
+                      name='PR · Public Contracts', conclusion='success')
+        with self.assertRaisesRegex(verifier.ReceiptError,
+                                    'required gate job missing or ambiguous'):
+            verifier.live(value, self.plan, api=self.bogus_native_plan_api(
+                selected_gates=['integration/static/public-contracts'],
+                required_validation_checks=[], required_consumer_dependencies=[],
+                extra_jobs=[shadow]))
 
     def test_negative_second_attempt_rejected(self):
         path, original = self.create()
