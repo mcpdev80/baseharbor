@@ -65,9 +65,9 @@ jobs:
       shell: bash
       run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     - name: Set up Go
-      if: inputs.reuse_from == '' && inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
         == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
-        == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
+        == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime')
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
       with:
         go-version-file: go.mod
