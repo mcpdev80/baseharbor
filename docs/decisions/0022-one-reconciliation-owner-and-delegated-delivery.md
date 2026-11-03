@@ -30,10 +30,10 @@ ownership is deferred (see Decision 2 and the follow-up cards).
 ### 2. Ambiguous ownership fails closed
 
 If the persisted record attests conflicting active ownership — a recorded
-conflict flag, or two differing persisted owners for one resource set — the save
-fails closed: BaseHarbor reports the conflict at **record save** and refuses to
-persist an apply or observation unless exactly one owner is expressible in
-portable intent.
+conflict flag, or a persisted owner that conflicts with the delivery mode being saved — the
+save fails closed: BaseHarbor reports the conflict at **record save** and refuses to
+persist the save. Where exactly one owner is expressible in portable intent, this
+decision's admission condition holds.
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied
 `Observed.Owner` cannot bypass it. A direct save is refused if the persisted owner is external; a recorded conflict of two active
