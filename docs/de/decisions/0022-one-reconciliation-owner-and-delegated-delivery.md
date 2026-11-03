@@ -29,11 +29,12 @@ Besitzererschaft ist zurückgestellt (siehe Beschluss 2 und die Folgekarten).
 
 ### 2. Zweideutige Besitzer schlagen bei Konflikt fehl (closed)
 
-Wenn eine Auswahlen-Beobachtung gleichzeitig einen direkten `baseharbor`-Besitzer
-und einen delegierten `external`-Besitzer für dieselben Ressourcensatz aktiv
-beobachtet, schlägt die Beobachtung bei Konflikt fehl: BaseHarbor meldet den Konflikt
-beim Speichern des Datensatzes und lehnt das Speichern eines Apply- oder Beobachtungs-Satzes ab,
-solange bereits mehr als ein Besitzer in portable Intent ausdrückbar ist; ist genau
+Wenn der gespeicherte Datensatz einen widersprechenden aktiven Besitz belegt —
+eine protokollierte Konflikt-Flagge oder zwei verschieden gespeicherte Besitzer für
+denselben Ressourcensatz — schlägt das Speichern fail-closed fehl: BaseHarbor meldet
+den Konflikt beim Speichern des Datensatzes und verweigert das Speichern eines
+Apply- oder Beobachtungssatzes, sofern nicht genau ein Besitzer in portable Intent
+ausdrückbar ist;
 ein Besitzer ausdrückbar, gilt die Aufnahmebedingung dieses Beschlusses. Der Guard sitzt in
 `internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
 vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
@@ -66,7 +67,7 @@ delegiertem Speichern); darin liegt keine Bestätigung irgendeiner externen Akti
 Nachteile:
 
 - Delegierte Lieferung trägt zusätzliche revisions-/besitzer-Zustände, die direkte Lieferung wegLässt.
-- Der Invariant wird beim Speichern des Datensatzes geprüft; er verhindert nicht, dass ein Operator zwei Systeme konfiguriert, sondern nur, dass BaseHarbor das Ergebnis still akzeptiert.
+- Der Invariant wird beim Speichern des Datensatzes anhand des gespeicherten Besitzstands geprüft; lebende gleichzeitige Akzeptanz ist außerhalb des Umfangs bis zur nachgelieferten Laufzeit-Erkennung.
 
 ### Umfang und abgehängtes Dependency
 

@@ -29,11 +29,11 @@ ownership is deferred (see Decision 2 and the follow-up cards).
 
 ### 2. Ambiguous ownership fails closed
 
-If a selection observes both a direct `baseharbor` owner and a delegated
-`external` owner active for the same resource set, the observation fails closed:
-BaseHarbor reports the conflict at **record save** and refuses to persist an apply
-or observation unless exactly one owner is expressible in portable intent. The
-guard lives at
+If the persisted record attests conflicting active ownership — a recorded
+conflict flag, or two differing persisted owners for one resource set — the save
+fails closed: BaseHarbor reports the conflict at **record save** and refuses to
+persist an apply or observation unless exactly one owner is expressible in
+portable intent.
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied
 `Observed.Owner` cannot bypass it. A direct save is refused if the persisted owner is external; a recorded conflict of two active
@@ -61,7 +61,7 @@ activity, whose detection is deferred to `t-20261018-r27-authority-contract` and
 Trade-offs:
 
 - Delegated delivery carries extra revision/ownership state that direct delivery omits.
-- The invariant is checked at record-save time; it does not prevent an operator from configuring two systems, only from BaseHarbor silently accepting the result.
+- The invariant is checked at record-save time against persisted ownership state; live concurrent acceptance is out of scope until the deferred runtime detection lands.
 
 ### Scope and deferred dependency
 
