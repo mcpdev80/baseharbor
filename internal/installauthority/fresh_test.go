@@ -41,7 +41,7 @@ func (f *fakeIssuer) RevokedStatus(ctx context.Context, serial string) (bool, er
 func freshObserved(serial string) serviceaccess.CertificateStatus {
 	return serviceaccess.CertificateStatus{
 		Identity:          "authoritative-connection",
-		IssuedCertificate: serviceaccess.IssuedCertificate{Serial: serial},
+		IssuedCertificate: serviceaccess.IssuedCertificate{Serial: serial, ExpiresAt: time.Now().UTC().Add(time.Hour)},
 	}
 }
 

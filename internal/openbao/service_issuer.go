@@ -2,7 +2,10 @@ package openbao
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -130,33 +133,64 @@ func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus,
 }
 
 // BaseSerial is the read-only identity of the OpenBao service management
-// connection: a stable mount-derived serial that issued every service leaf.
-// It lets the production selection boundary observe the existing connection
-// without issuing a new leaf.
+// connection: the real CA serial number (hex, no colon) that issued every
+// service leaf. RevokedStatus compares against this on the CRL, so it must carry
+// the genuine serial, not the mount URI.
 func (i *ServiceIssuer) BaseSerial(ctx context.Context) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	_, err := i.TrustBundle(ctx)
+	ca, err := ServiceCA(ctx, i.executor, i.files)
 	if err != nil {
 		return "", err
 	}
-	return serviceIssuerReference, nil
+	serial, err := caSerialHex(ca)
+	if err != nil {
+		return "", err
+	}
+	return serial, nil
 }
 
-// BaseExpiry is the read-only freshness bound of the OpenBao service
-// management connection. It reuses the base issuer reference time (there is no
-// separate base cert clock), so the production selection boundary has a stable
-// freshness bound without issuing a fresh leaf.
+// BaseExpiry is the read-only expiry bound of the OpenBao service management
+// connection. It reads the genuine CA certificate NotAfter, so the production
+// selection boundary sees the real certificate lifetime instead of an invented
+// window.
 func (i *ServiceIssuer) BaseExpiry(ctx context.Context) (time.Time, error) {
 	if err := ctx.Err(); err != nil {
 		return time.Time{}, err
 	}
-	_, err := i.TrustBundle(ctx)
+	ca, err := ServiceCA(ctx, i.executor, i.files)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.Now().UTC().Add(90 * 24 * time.Hour), nil
+	return caNotAfter(ca)
 }
 
 var _ serviceaccess.Issuer = (*ServiceIssuer)(nil)
+
+// caSerialHex parses the PEM service CA and returns its serial as lowercase hex
+// without colons, matching the format RevokedStatus compares the CRL against.
+func caSerialHex(caPEM []byte) (string, error) {
+	block, rest := pem.Decode(caPEM)
+	if block == nil || block.Type != "CERTIFICATE" || len(rest) != 0 {
+		return "", errors.New("OpenBao service CA is not a single CERTIFICATE block")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("parse OpenBao service CA: %w", err)
+	}
+	return cert.SerialNumber.Text(16), nil
+}
+
+// caNotAfter parses the PEM service CA and returns its real NotAfter in UTC.
+func caNotAfter(caPEM []byte) (time.Time, error) {
+	block, rest := pem.Decode(caPEM)
+	if block == nil || block.Type != "CERTIFICATE" || len(rest) != 0 {
+		return time.Time{}, errors.New("OpenBao service CA is not a single CERTIFICATE block")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse OpenBao service CA: %w", err)
+	}
+	return cert.NotAfter.UTC(), nil
+}

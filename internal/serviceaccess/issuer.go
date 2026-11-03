@@ -59,6 +59,11 @@ type IssuedCertificate struct {
 	CAChain         [][]byte
 	Serial          string
 	ExpiresAt       time.Time
+	// Reference is the issuer identity (CA serial) that issued this leaf; it
+	// carries the real CA serial so RevokedStatus can compare against the CRL at
+	// the serial level. IssuerNotAfter is the issuing CA certificate NotAfter.
+	Reference      string
+	IssuerNotAfter time.Time
 }
 
 type IssuerStatus struct {

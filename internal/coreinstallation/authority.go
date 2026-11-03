@@ -229,7 +229,7 @@ func VerifyConnectionIdentity(
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
-	return installauthority.Fresh(ctx, issuer, observed, authoritativeConnection, observedAt, time.Minute)
+	return installauthority.Fresh(ctx, issuer, observed, authoritativeConnection, observedAt, serviceaccess.DefaultObservationMaxAge)
 }
 
 // mapBoundaryErr maps a serviceaccess boundary sentinel to the corresponding

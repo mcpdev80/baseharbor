@@ -116,6 +116,8 @@ func (i *Issuer) Issue(_ context.Context, request serviceaccess.CertificateReque
 		IssuingCA:       pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}),
 		Serial:          serial.Text(16),
 		ExpiresAt:       template.NotAfter,
+		Reference:       i.ca.SerialNumber.Text(16),
+		IssuerNotAfter:  i.ca.NotAfter,
 	}, nil
 }
 
@@ -136,11 +138,11 @@ func (i *Issuer) Status(context.Context) (serviceaccess.IssuerStatus, error) {
 }
 
 func (i *Issuer) BaseSerial(_ context.Context) (string, error) {
-	return i.reference, nil
+	return i.ca.SerialNumber.Text(16), nil
 }
 
 func (i *Issuer) BaseExpiry(_ context.Context) (time.Time, error) {
-	return time.Now().UTC().Add(90 * 24 * time.Hour), nil
+	return i.ca.NotAfter.UTC(), nil
 }
 
 var _ serviceaccess.Issuer = (*Issuer)(nil)
@@ -160,5 +162,5 @@ func (i *Issuer) SignCSR(_ context.Context, request serviceaccess.CSRSigningRequ
 	if err != nil {
 		return serviceaccess.IssuedCertificate{}, err
 	}
-	return serviceaccess.IssuedCertificate{IssuerReference: i.reference, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}), Serial: serial.Text(16), ExpiresAt: certificate.NotAfter}, nil
+	return serviceaccess.IssuedCertificate{IssuerReference: i.reference, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: i.ca.Raw}), Serial: serial.Text(16), ExpiresAt: certificate.NotAfter, Reference: i.ca.SerialNumber.Text(16), IssuerNotAfter: i.ca.NotAfter}, nil
 }

@@ -53,6 +53,17 @@ func Fresh(
 	if observed.Identity != authoritativeConnection {
 		return serviceaccess.ErrForeignAuthority
 	}
+	// A real certificate expiry bound is checked on the verification path itself:
+	// the observed certificate is authoritative only when it carries a non-zero
+	// expiry that is still in the future at now. A zero expiry is unusable and a
+	// value in the past is expired — either way the observed CA certificate is not
+	// a live, current authority, so fail closed before any revocation work. This
+	// is the genuine certificate-lifetime check the contract requires on this
+	// path (distinct from the observed-at freshness window above).
+	now := time.Now()
+	if observed.IssuedCertificate.ExpiresAt.IsZero() || now.After(observed.IssuedCertificate.ExpiresAt) {
+		return serviceaccess.ErrExpiredAuthority
+	}
 	if issuer == nil {
 		return serviceaccess.ErrMissingAuthority
 	}

@@ -363,3 +363,143 @@ func overrideObservedAtForTest(fn func(context.Context, serviceaccess.Issuer) (s
 	observedAt = fn
 	return func() { observedAt = previous }
 }
+
+// TestResolveManagementConnectionIssuerRejectsExpiredRealCertificate proves the
+// real certificate-expiry bound lives on the verification path: a freshly
+// observed but otherwise valid local issuer whose CA certificate has already
+// expired is rejected through resolveManagementConnectionIssuer. This is the
+// reviewer-repro the isolated-archive test must demonstrate.
+func TestResolveManagementConnectionIssuerRejectsExpiredRealCertificate(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+	if err != nil {
+		t.Fatalf("resolve local issuer: %v", err)
+	}
+	if _, ok := localIssuer.(*serviceaccess.LocalIssuer); !ok {
+		t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+	}
+	if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+	// Seed a readable CRL (revoking a throwaway) so only the expiry bound can reject.
+	if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+		_ = local.Revoke(context.Background(), seed.Serial)
+	}
+	observed, err := observedThroughBoundary(context.Background(), local)
+	if err != nil {
+		t.Fatalf("observe boundary: %v", err)
+	}
+	// Force the observed CA certificate into the past: a freshly observed but
+	// expired certificate must not verify.
+	observed.IssuedCertificate.ExpiresAt = time.Now().UTC().Add(-time.Hour)
+	restoreObservedAt := overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		return observed, nil
+	}, t)
+	defer restoreObservedAt()
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+		t.Fatal("expired real certificate accepted through wrapper (expiry not on verification path)")
+	}
+}
+
+// TestResolveManagementConnectionIssuerZeroRealCertificateRejects proves a zero
+// certificate expiry fails closed through the wrapper.
+func TestResolveManagementConnectionIssuerZeroRealCertificateRejects(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+	if err != nil {
+		t.Fatalf("resolve local issuer: %v", err)
+	}
+	if _, ok := localIssuer.(*serviceaccess.LocalIssuer); !ok {
+		t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+	}
+	if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+		t.Fatal(err)
+	}
+	local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+	if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+		_ = local.Revoke(context.Background(), seed.Serial)
+	}
+	observed, err := observedThroughBoundary(context.Background(), local)
+	if err != nil {
+		t.Fatalf("observe boundary: %v", err)
+	}
+	observed.IssuedCertificate.ExpiresAt = time.Time{}
+	restoreObservedAt := overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		return observed, nil
+	}, t)
+	defer restoreObservedAt()
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+		t.Fatal("zero expiry accepted through wrapper")
+	}
+}
+
+// TestResolveManagementConnectionIssuerWindowBound30minFreshAndStale proves the
+// single observed-at freshness bound is the agreed 1h constant (DefaultObservation
+// MaxAge): a 30-minute observation verifies, an observation past 1h is rejected.
+// The default 5-minute window no longer applies on any production path.
+func TestResolveManagementConnectionIssuerWindowBound30minFreshAndStale(t *testing.T) {
+	seed := func(local *serviceaccess.LocalIssuer) {
+		if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+			_ = local.Revoke(context.Background(), seed.Serial)
+		}
+	}
+	observe := func(local *serviceaccess.LocalIssuer, observedAt time.Time) func() {
+		observed, err := observedThroughBoundary(context.Background(), local)
+		if err != nil {
+			t.Fatalf("observe boundary: %v", err)
+		}
+		observed.ObservedAt = observedAt
+		return overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+			return observed, nil
+		}, t)
+	}
+	newResolved := func() resolvedApplication {
+		resolved := corelessResolvedFixture(t)
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		local, ok := localIssuer.(*serviceaccess.LocalIssuer)
+		if !ok {
+			t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+		}
+		if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+			t.Fatal(err)
+		}
+		seed(local)
+		return resolved
+	}
+
+	// 30 minutes ago is within the 1h window => verified.
+	{
+		resolved := newResolved()
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+		seed(local)
+		restore := observe(local, time.Now().UTC().Add(-30*time.Minute))
+		if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err != nil {
+			t.Fatalf("30-min observation rejected, want fresh: %v", err)
+		}
+		restore()
+	}
+
+	// 2 hours ago is past the 1h window => rejected as stale.
+	{
+		resolved := newResolved()
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+		seed(local)
+		restore := observe(local, time.Now().UTC().Add(-2*time.Hour))
+		if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+			t.Fatal("2-hour-old observation verified through wrapper (window bound not enforced)")
+		}
+		restore()
+	}
+}

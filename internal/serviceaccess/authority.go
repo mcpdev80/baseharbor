@@ -46,13 +46,12 @@ func (s CertificateStatus) Fresh(now time.Time) error {
 }
 
 // maxAge is the observation freshness window. The zero value fails closed: any
-// past observation is stale.
+// past observation is stale. The default window is the single authoritative
+// bound (DefaultObservationMaxAge); a boundary never opens on an unbounded
+// observation, so it falls back to that constant rather than a private
+// minute-scale window.
 func (s CertificateStatus) maxAge() time.Duration {
-	const defaultWindow = 5 * time.Minute
-	if s.ObservedAt.IsZero() {
-		return 0
-	}
-	return defaultWindow
+	return DefaultObservationMaxAge
 }
 
 // FreshnessWindow is the single verification-path observation-freshness kernel.
