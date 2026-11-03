@@ -95,7 +95,7 @@ requires an explicit `consent`, and the apply fails closed (writes no state)
 without it.
 
 This slice is constrained by the [Native delivery, artifacts and independent stage
-versions](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/docs/decisions/2026-10-18-r27-native-delivery-and-stages.md)
+versions](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/decisions/2026-10-18-r27-native-delivery-and-stages.md)
 decision (`2026-10-18-r27-native-delivery-and-stages`).
 
 ## Standards boundary
@@ -104,7 +104,7 @@ Reuse native tools and existing owners. No private release, registry, build,
 pipeline or controller framework. No default CI or GitOps prerequisite for local
 work. Runtime-specific unsupported behavior remains explicit. This slice is
 constrained by the [Native delivery, artifacts and independent stage
-versions](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/docs/decisions/2026-10-18-r27-native-delivery-and-stages.md)
+versions](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/decisions/2026-10-18-r27-native-delivery-and-stages.md)
 decision (`2026-10-18-r27-native-delivery-and-stages`).
 
 ## Fixtures
