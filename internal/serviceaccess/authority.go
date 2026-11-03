@@ -46,13 +46,13 @@ func (s CertificateStatus) Fresh(now time.Time) error {
 }
 
 // maxAge is the observation freshness window. The zero value fails closed: any
-// past observation is stale.
+// past observation is stale. It delegates to the single DefaultObservationMaxAge
+// bound, so no caller hardcodes a second minute- or hour-scale window.
 func (s CertificateStatus) maxAge() time.Duration {
-	const defaultWindow = 5 * time.Minute
 	if s.ObservedAt.IsZero() {
 		return 0
 	}
-	return defaultWindow
+	return DefaultObservationMaxAge
 }
 
 // FreshnessWindow is the single verification-path observation-freshness kernel.
@@ -60,10 +60,12 @@ func (s CertificateStatus) maxAge() time.Duration {
 // observation time is not authoritative (ErrInvalidObservation), a future
 // observation is not an authoritative observation of the past (futureError),
 // and an observation older than the window (now-ObservedAt > maxAge) is stale
-// (ErrStaleObservation); a default window of five minutes applies when maxAge is
-// zero so a boundary never opens on an unbounded observation. It is the single
-// source consumed by CertificateStatus.Fresh, coreinstallation.ObservedState.Fresh
-// and installauthority.Fresh — no third copy of the zero/future/window rules.
+// (ErrStaleObservation); a default window applies when maxAge is zero so a
+// boundary never opens on an unbounded observation. The default window is the
+// single DefaultObservationMaxAge bound, so there is one direction, not a
+// second hard-coded number. It is the single source consumed by
+// CertificateStatus.Fresh, coreinstallation.ObservedState.Fresh and
+// installauthority.Fresh — no third copy of the zero/future/window rules.
 // futureError is caller-owned so distinct sentinel errors stay distinct.
 func FreshnessWindow(observedAt time.Time, maxAge time.Duration, now time.Time, zeroError, futureError, staleError error) error {
 	if observedAt.IsZero() {
@@ -74,7 +76,7 @@ func FreshnessWindow(observedAt time.Time, maxAge time.Duration, now time.Time, 
 	}
 	window := maxAge
 	if window == 0 {
-		window = 5 * time.Minute
+		window = DefaultObservationMaxAge
 	}
 	if now.Sub(observedAt) > window {
 		return staleError

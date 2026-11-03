@@ -2,7 +2,10 @@ package openbao
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -130,33 +133,53 @@ func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus,
 }
 
 // BaseSerial is the read-only identity of the OpenBao service management
-// connection: a stable mount-derived serial that issued every service leaf.
-// It lets the production selection boundary observe the existing connection
-// without issuing a new leaf.
+// connection: the base (CA) certificate serial that issued every service leaf,
+// as an unseparated positive hexadecimal integer. It lets the production
+// selection boundary observe the existing connection through the real CA serial
+// (never a mount reference) without issuing a new leaf. An unreadable service
+// CA fails closed by returning an error, so the selection boundary never
+// accepts a connection whose base identity cannot be read.
 func (i *ServiceIssuer) BaseSerial(ctx context.Context) (string, error) {
-	if err := ctx.Err(); err != nil {
-		return "", err
-	}
-	_, err := i.TrustBundle(ctx)
+	ca, err := i.baseCA(ctx)
 	if err != nil {
 		return "", err
 	}
-	return serviceIssuerReference, nil
+	return ca.SerialNumber.Text(16), nil
 }
 
 // BaseExpiry is the read-only freshness bound of the OpenBao service
-// management connection. It reuses the base issuer reference time (there is no
-// separate base cert clock), so the production selection boundary has a stable
-// freshness bound without issuing a fresh leaf.
+// management connection: the base (CA) certificate not-after. The production
+// selection boundary uses it as the freshness bound instead of issuing a fresh
+// leaf. An unreadable service CA fails closed by returning an error.
 func (i *ServiceIssuer) BaseExpiry(ctx context.Context) (time.Time, error) {
-	if err := ctx.Err(); err != nil {
-		return time.Time{}, err
-	}
-	_, err := i.TrustBundle(ctx)
+	ca, err := i.baseCA(ctx)
 	if err != nil {
 		return time.Time{}, err
 	}
-	return time.Now().UTC().Add(90 * 24 * time.Hour), nil
+	return ca.NotAfter.UTC(), nil
+}
+
+// baseCA reads and parses the real OpenBao service CA so BaseSerial/BaseExpiry
+// observe the actual issuing certificate, not a derived reference string. It
+// never writes. An unreadable CA is a genuine read error and is propagated so
+// the selection boundary fails closed rather than projecting an unknown base.
+func (i *ServiceIssuer) baseCA(ctx context.Context) (*x509.Certificate, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	pemBytes, err := ServiceCA(ctx, i.executor, i.files)
+	if err != nil {
+		return nil, err
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, errors.New("openbao service CA is not a parseable certificate")
+	}
+	ca, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("openbao service CA does not parse: %w", err)
+	}
+	return ca, nil
 }
 
 var _ serviceaccess.Issuer = (*ServiceIssuer)(nil)
