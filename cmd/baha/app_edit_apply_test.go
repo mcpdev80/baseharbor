@@ -867,7 +867,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// absence of a SQL provider before the confirmed Edit creates one.
 	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer setupCancel()
-	if err := executeApplicationApplyLifecycle(setupCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
+	// The repository apply binds the candidate on explicit operator confirmation:
+	// show the canonical confirm hash and require --confirm-candidate with it.
+	confirmCtx := withConfirmCandidateForSetup(setupCtx, target, m.Name, root)
+	if err := executeApplicationApplyLifecycle(confirmCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
 

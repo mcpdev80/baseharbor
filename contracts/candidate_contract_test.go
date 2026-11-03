@@ -88,7 +88,26 @@ func toSubmission(t *testing.T, raw json.RawMessage) delivery.CandidateSubmissio
 	return d
 }
 
-// loadFixtures parses a fixtures array and fails closed on an empty set.
+// validateSubmission enforces the candidate leaf with an explicit consent.
+// Positive cases carry a matching consent whose digest is the canonical
+// content-hash of exactly this submission; cases that expect failure pass nil
+// (missing consent) so a candidate can only be persisted when an explicit
+// operator/automation consent pins the validated submission.
+//
+// The acknowledged principal (by) is taken from the caller when non-empty,
+// otherwise it defaults to "operator".
+func validateSubmission(t *testing.T, sub delivery.CandidateSubmission, by string, wantOK bool) error {
+	t.Helper()
+	var consent *delivery.CandidateConsent
+	if wantOK {
+		if by == "" {
+			by = "operator"
+		}
+		consent = &delivery.CandidateConsent{By: by, Digest: delivery.CandidateConsentDigest(sub)}
+	}
+	return sub.Validate(consent)
+}
+
 func loadFixtures(t *testing.T, raw []byte) []candidateFixture {
 	t.Helper()
 	var fixtures []candidateFixture
@@ -134,7 +153,7 @@ func TestCandidateGoldenFixturesAreAcceptedByProductLeaf(t *testing.T) {
 	for _, f := range loadFixtures(t, goldenFixtures) {
 		t.Run(f.Record, func(t *testing.T) {
 			sub := toSubmission(t, f.Fixture)
-			if err := sub.Validate(); err != nil {
+			if err := validateSubmission(t, sub, "operator", true); err != nil {
 				t.Fatalf("%s: valid candidate rejected by product leaf: %v", f.Record, err)
 			}
 			resolved := schemaValidator(t)
@@ -154,7 +173,7 @@ func TestCandidateNegativeFixturesFailClosedAtProductLeaf(t *testing.T) {
 	for _, f := range loadFixtures(t, negativeFixtures) {
 		t.Run(f.Record, func(t *testing.T) {
 			sub := toSubmission(t, f.Fixture)
-			if err := sub.Validate(); err == nil {
+			if err := validateSubmission(t, sub, "", false); err == nil {
 				t.Fatalf("%s: malformed candidate accepted by product leaf; a candidate must fail closed", f.Record)
 			}
 			if err := validateAgainstSchema(t, resolved, f.Fixture); err == nil {
@@ -169,7 +188,7 @@ func TestCandidateNegativeFixturesFailClosedAtProductLeaf(t *testing.T) {
 func TestCandidateRequiresExactlyOneIdentitySource(t *testing.T) {
 	both := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000004"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"},"image":{"kind":"image","reference":"example/app","digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}}`
 	sub := toSubmission(t, json.RawMessage(both))
-	if err := sub.Validate(); err == nil {
+	if err := validateSubmission(t, sub, "", false); err == nil {
 		t.Fatal("both source and image accepted; exactly one immutable identity is required")
 	}
 }
@@ -180,13 +199,13 @@ func TestCandidateRequiresExactlyOneIdentitySource(t *testing.T) {
 func TestCandidateSourceRevisionMustBePinned(t *testing.T) {
 	loose := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"main"}}`
 	sub := toSubmission(t, json.RawMessage(loose))
-	if err := sub.Validate(); err == nil {
+	if err := validateSubmission(t, sub, "", false); err == nil {
 		t.Fatal("movable branch-string source accepted; a source revision must be pinned")
 	}
 
 	pinned := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"}}`
 	sub = toSubmission(t, json.RawMessage(pinned))
-	if err := sub.Validate(); err != nil {
+	if err := validateSubmission(t, sub, "operator", true); err != nil {
 		t.Fatalf("fixed source revision rejected: %v", err)
 	}
 }
@@ -196,7 +215,7 @@ func TestCandidateSourceRevisionMustBePinned(t *testing.T) {
 func TestCandidateMutableTagWithImageCounterpartRejected(t *testing.T) {
 	mutable := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"release-1"},"image":{"kind":"image","reference":"example/app","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"}}`
 	sub := toSubmission(t, json.RawMessage(mutable))
-	if err := sub.Validate(); err == nil {
+	if err := validateSubmission(t, sub, "", false); err == nil {
 		t.Fatal("mutable tag with image counterpart accepted; a mutable tag is never a fixed identity")
 	}
 }
@@ -204,7 +223,7 @@ func TestCandidateMutableTagWithImageCounterpartRejected(t *testing.T) {
 func TestCandidateConsentMustBeAcknowledged(t *testing.T) {
 	notAcked := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":false,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"}}`
 	sub := toSubmission(t, json.RawMessage(notAcked))
-	if err := sub.Validate(); err == nil {
+	if err := validateSubmission(t, sub, "", false); err == nil {
 		t.Fatal("unacknowledged candidate accepted; consent.acknowledged must be true")
 	}
 }
@@ -214,7 +233,7 @@ func TestCandidateConsentMustBeAcknowledged(t *testing.T) {
 func TestCandidateRejectsBareSecretReference(t *testing.T) {
 	withSecret := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000005"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567","secretRef":"secrets/db-password"}}`
 	sub := toSubmission(t, json.RawMessage(withSecret))
-	if err := sub.Validate(); err == nil {
+	if err := validateSubmission(t, sub, "", false); err == nil {
 		t.Fatal("bare secret reference accepted; secrets must not enter candidate identity")
 	}
 }

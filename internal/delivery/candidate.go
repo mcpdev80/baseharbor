@@ -1,9 +1,14 @@
 package delivery
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // CandidateContractVersion is the exact candidate submission contract version.
@@ -42,6 +47,40 @@ type CandidateSubmission struct {
 	ImageDigest    string `json:"image.digest,omitempty"`
 	// SecretRef must be empty: a bare secret reference never enters identity.
 	SecretRef string `json:"source.secretRef,omitempty"`
+	// Consent is the acknowledged identity bound to this submission. It is
+	// required: a candidate is applied only on an explicit operator/automation
+	// acknowledgement whose digest pins the exact validated submission. The
+	// published schema carries the identity through consent (by/at/digest);
+	// a nil consent never validates.
+	Consent *CandidateConsent `json:"-"`
+}
+
+// CandidateConsent is the acknowledged identity bound to a candidate submission.
+// It carries the who (operator/automation principal) and the when, and its
+// Digest pins the exact validated submission it acknowledges: the canonical
+// content-hash of the submission the candidate leaf accepted. A candidate may
+// only be applied when the persisted consent digest matches the digest of the
+// submission the leaf validated, so a submission can never be acknowledged by a
+// stale, partial, or otherwise mismatched consent.
+type CandidateConsent struct {
+	By     string    `json:"by"`
+	At     time.Time `json:"at"`
+	Digest string    `json:"digest"`
+}
+
+// CandidateConsentDigest returns the canonical content-hash of a candidate
+// submission: the lowercase hex sha256 of its canonical JSON encoding. The
+// encoding pins every contract field in declaration order through json.Marshal
+// over the typed struct, so the digest binds the exact submission contents and
+// no incidental key ordering. It reuses the established delivery-paket digest
+// convention (sha256 over a canonical json.Marshal), not a new hash scheme.
+func CandidateConsentDigest(c CandidateSubmission) string {
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 // CandidateIdentity reports which immutable source a submission carries. It is
@@ -70,17 +109,31 @@ func (c CandidateSubmission) CandidateIdentity() CandidateSource {
 	}
 }
 
-// Validate enforces the fail-closed candidate submission contract:
+// Validate enforces the fail-closed candidate submission contract. Consent is
+// required and content-pinned: a candidate is applied only on an explicit
+// operator/automation acknowledgement whose digest matches the exact validated
+// submission.
 //
-//   - exactly one immutable identity source (source revision OR image digest),
-//     never both, never neither;
-//   - consent.acknowledged MUST be true;
-//   - a source revision must be a fixed identity (a 40/64-hex Git commit object
-//     ID or an opaque algo:hex digest of >=32 hex chars); a mutable branch or
-//     tag is never accepted, even when paired with an image digest;
-//   - an image must carry a sha256 digest, never a mutable tag alone;
-//   - no bare secret reference may enter the submission.
-func (c CandidateSubmission) Validate() error {
+//		consent: the acknowledged identity bound to this submission; must be
+//		    non-nil and its Digest must equal the canonical content-hash of the
+//		    submission the leaf validated (a stale, partial, or otherwise mismatched
+//		    consent is rejected). A nil consent never validates.
+//
+//	  - exactly one immutable identity source (source revision OR image digest),
+//	    never both, never neither;
+//	  - a source revision must be a fixed identity (a 40/64-hex Git commit object
+//	    ID or an opaque algo:hex digest of >=32 hex chars); a mutable branch or
+//	    tag is never accepted, even when paired with an image digest;
+//	  - an image must carry a sha256 digest, never a mutable tag alone;
+//	  - no bare secret reference may enter the submission.
+func (c CandidateSubmission) Validate(consent *CandidateConsent) error {
+	if consent == nil || strings.TrimSpace(consent.By) == "" || consent.Digest == "" {
+		return fmt.Errorf("candidate submission requires an explicit operator/automation consent with a matching digest")
+	}
+	expectedDigest := CandidateConsentDigest(c)
+	if !constantTimeEqual(consent.Digest, expectedDigest) {
+		return fmt.Errorf("candidate consent digest does not match the validated submission (expected %s)", expectedDigest)
+	}
 	c = c.normalize()
 	if c.ContractVersion != CandidateContractVersion {
 		return fmt.Errorf("candidate contract version must be %q", CandidateContractVersion)
@@ -90,12 +143,6 @@ func (c CandidateSubmission) Validate() error {
 	}
 	if strings.TrimSpace(c.TargetName) == "" {
 		return fmt.Errorf("candidate submission requires target.name")
-	}
-	if strings.TrimSpace(c.ConsentBy) == "" {
-		return fmt.Errorf("candidate submission requires consent.by")
-	}
-	if !c.Acknowledged {
-		return fmt.Errorf("candidate submission requires consent.acknowledged to be true")
 	}
 	if strings.TrimSpace(c.SecretRef) != "" {
 		return fmt.Errorf("candidate submission must not carry a bare secret reference")
@@ -114,6 +161,16 @@ func (c CandidateSubmission) Validate() error {
 		return fmt.Errorf("candidate submission must carry exactly one immutable identity (source revision OR image digest)")
 	}
 	return nil
+}
+
+// constantTimeEqual compares two digests in constant time to avoid leaking
+// timing information about the expected submission digest. An empty expected
+// digest never matches (the caller already rejects empty consent digests).
+func constantTimeEqual(got, expected string) bool {
+	if expected == "" || got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
 }
 
 // validatePinnedSource accepts only a fixed source revision. A mutable branch or

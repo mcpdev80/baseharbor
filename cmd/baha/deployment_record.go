@@ -10,15 +10,23 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) (deployment.DeploymentRecord, error) {
-	return recordDeploymentBeforeMutation(ctx, resolved, "configured")
+	return recordDeploymentBeforeMutation(ctx, resolved, "configured", "")
 }
 
-func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string) (deployment.DeploymentRecord, error) {
+// errConsentRequiredForCandidateSubmission is returned when a repository-owned
+// apply has no explicit operator/automation consent. A candidate submission may
+// only be persisted when an explicit consent pins the exact validated
+// submission; a missing consent fails closed before any deployment state write.
+var errConsentRequiredForCandidateSubmission = errors.New(
+	"candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
+)
+
+func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
 	}
@@ -86,47 +94,42 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	}
 	// Fail closed at the real product submission point: for a repository-owned
 	// application the deployment source IS the exact candidate identity bound to
-	// this application and target before any state change. Validate it against
-	// the fail-closed candidate contract (exactly one immutable identity: a
-	// 40/64-hex commit object ID or an opaque algo:hex digest; a mutable
-	// branch/tag or an absent identity is rejected) before any deployment state
-	// is written. Managed-app creates use a local source path and are not
-	// candidate submissions, so they are not validated here.
-	if record.Source.Kind == "repository" {
-		if err := validateCandidateSubmissionForRecord(record); err != nil {
+	// this application and target before any state change. This choke point runs
+	// only on the applying mutation (state == "applying"); the "configured"
+	// pending state used by init/restore planning is not a candidate submission.
+	// Validate it against the fail-closed candidate contract (exactly one
+	// immutable identity: a 40/64-hex commit object ID or an opaque algo:hex
+	// digest; a mutable branch/tag or an absent identity is rejected) before any
+	// deployment state is written. Managed-app creates use a local source path
+	// and are not candidate submissions, so they are not validated here.
+	if record.Source.Kind == "repository" && state == "applying" {
+		submission := delivery.CandidateSubmission{
+			ContractVersion:  delivery.CandidateContractVersion,
+			ApplicationID:    record.Identity.ApplicationID,
+			TargetName:       record.Identity.Target,
+			SourceRepository: record.Source.Repository,
+			SourceRevision:   record.Source.Digest,
+			ImageDigest:      "",
+		}
+		// Finalize the operator's confirm digest into an ECHT consent: pin the
+		// canonical content-hash of the validated submission so the persisted
+		// consent binds the exact submission that is about to be written.
+		consent, consErr := finalizeCandidateConsent(rawCandidateConsent, "operator", submission)
+		if consErr != nil {
+			return deployment.DeploymentRecord{}, consErr
+		}
+		if consent == nil {
+			return deployment.DeploymentRecord{}, errConsentRequiredForCandidateSubmission
+		}
+		if err := submission.Validate(consent); err != nil {
 			return deployment.DeploymentRecord{}, err
 		}
+		record.Consent = consent
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		return deployment.DeploymentRecord{}, err
 	}
 	return record, nil
-}
-
-// validateCandidateSubmissionForRecord binds the deployment record's source to
-// a CandidateSubmission and enforces the fail-closed candidate contract before
-// any deployment state is written. It is the real product consumer of
-// internal/delivery.CandidateSubmission.Validate (PR #1355 r27).
-//
-// The repository-owned apply path records an acknowledged desired-state
-// submission for an application and a target: the deployment identity supplies
-// app.id and target.name and the acknowledged intent supplies consent by the
-// operator/automation that ran the apply. The fixed desired-state fingerprint
-// (Source.Digest) is the pinned source identity being applied, so it binds to
-// the source revision; a mutable branch/tag or an absent identity is rejected
-// by the fail-closed leaf.
-func validateCandidateSubmissionForRecord(record deployment.DeploymentRecord) error {
-	submission := delivery.CandidateSubmission{
-		ContractVersion:  delivery.CandidateContractVersion,
-		ApplicationID:    record.Identity.ApplicationID,
-		TargetName:       record.Identity.Target,
-		ConsentBy:        record.Identity.Target,
-		Acknowledged:     true,
-		SourceRepository: record.Source.Repository,
-		SourceRevision:   record.Source.Digest,
-		ImageDigest:      "",
-	}
-	return submission.Validate()
 }
 
 func recordAppliedDeployment(ctx context.Context, resolved resolvedApplication, files application.RuntimeFiles) error {

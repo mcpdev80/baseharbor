@@ -16,10 +16,13 @@ for portable application intent.
 
 A candidate submission is exact and never inferred:
 
-- A Git source is a fixed `repository` + `revision` (branch, tag or commit SHA),
-  or an absent source when only an image is submitted.
-- An image submission is a fixed OCI digest (never a mutable tag alone) with an
-  optional image-layout path.
+- A Git source is a fixed `repository` + `revision`, where `revision` is a pinned
+  immutable identity only: a 40/64-hex Git commit object ID or an opaque
+  `algo:hex` digest of at least 32 hex chars. A mutable branch or tag (e.g.
+  `main`, `release-1`) is never a fixed identity and is rejected. An absent
+  source is valid when only an image is submitted.
+- An image submission is a fixed OCI sha256 digest (never a mutable tag alone)
+  with an optional image-layout path.
 - Native Compose and Quadlet units are consumed as authored inputs; they are
   not rebuilt by BaseHarbor at consume time.
 - A Git revision may be unknown or absent; OCI annotations alone do not prove
@@ -34,8 +37,12 @@ The candidate binds an application and a target through an explicit consent:
 
 - `app.*` fields bind the submission to a specific application.
 - `target.*` fields bind it to a specific target.
-- `consent.*` records the operator/automation acknowledgement that a fixed
-  submission is applied.
+- `consent.*` carries the explicit operator/automation acknowledgement that a
+  fixed submission is applied: `consent.by` names the principal, `consent.at`
+  is the RFC 3339 acknowledgement time, and `consent.digest` is the canonical
+  content-hash of the validated submission. A candidate can only be applied
+  when `consent.digest` matches that exact submission; a stale, partial, or
+  otherwise mismatched acknowledgement is rejected.
 
 The binding is declarative intent only. It does not build, promote or migrate
 anything on its own.
@@ -72,6 +79,24 @@ A deployment release/configuration record may extend the existing environment
 axis with an optional, non-normative stage label for observability. Stage
 information reuses existing source/applied/observed record fields; it never
 introduces a new normative stage axis or DSL.
+
+## Consent in persisted deployment records
+
+The persisted, environment-keyed deployment record (the `deployment.json` record
+under `internal/deployment/deployment_store.go`) gains one additive field:
+`consent`, an explicit `CandidateConsent{by, at, digest}` that pins the exact
+validated candidate submission. This is a minimal, backward-compatible extension
+of the existing record — it adds a field and does not change any existing field,
+so the retention and normalization paths are unchanged.
+
+**Migration:** existing deployment records written before this field existed
+remain loadable; the first repository-owned apply mutation after deployment
+requires an explicit `consent`, and the apply fails closed (writes no state)
+without it.
+
+This slice is constrained by the [Native delivery, artifacts and independent stage
+versions](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/docs/decisions/2026-10-18-r27-native-delivery-and-stages.md)
+decision (`2026-10-18-r27-native-delivery-and-stages`).
 
 ## Standards boundary
 

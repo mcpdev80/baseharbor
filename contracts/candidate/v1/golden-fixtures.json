@@ -5,7 +5,7 @@
       "contract_version": "baseharbor.candidate/v1",
       "app": { "id": "00000000-0000-0000-0000-000000000001" },
       "target": { "name": "lab" },
-      "consent": { "acknowledged": true, "by": "operator" },
+      "consent": { "by": "operator", "at": "2026-11-03T00:00:00Z", "digest": "92458d3787aa958803103015f40be8e2e3de8467249a384b9ef5a8b0117aff06" },
       "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" }
     }
   },
@@ -15,7 +15,7 @@
       "contract_version": "baseharbor.candidate/v1",
       "app": { "id": "00000000-0000-0000-0000-000000000002" },
       "target": { "name": "lab" },
-      "consent": { "acknowledged": true, "by": "automation" },
+      "consent": { "by": "automation", "at": "2026-11-03T00:00:00Z", "digest": "7c518261535ed332f389de16120ed703d8fca50af30a3f30658e3d3584f6515" },
       "image": { "kind": "image", "reference": "example/app:release", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
       "stage": "stable"
     }
@@ -26,7 +26,7 @@
       "contract_version": "baseharbor.candidate/v1",
       "app": { "id": "00000000-0000-0000-0000-000000000003" },
       "target": { "name": "prod" },
-      "consent": { "acknowledged": true, "by": "operator" },
+      "consent": { "by": "operator", "at": "2026-11-03T00:00:00Z", "digest": "9efdd8934ae67317d4f683165174925f03a21be94475c761ead66503b57cb29c" },
       "image": { "kind": "image", "reference": "example/app", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" }
     }
   }

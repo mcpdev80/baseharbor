@@ -17,8 +17,13 @@ für die portable Anwendungsabsicht.
 
 Die Kandidaten-Einreichung ist exakt und wird nie abgeleitet:
 
-- Eine Quell-Revision ist eine feste `repository` + `revision` (Branch, Tag oder
-  Commit-SHA), oder eine abwesende Quelle, wenn nur ein Bild eingereicht wird.
+- Eine Quell-Revision ist eine feste `repository` + `revision`, wobei
+  `revision` nur eine festgelegte, unverändliche Identität ist: eine
+  40/64-stellige hexadezimale Git-Commit-Objektd-ID oder ein opaques
+  `algo:hex`-Digest mit mindestens 32 hexadezimalen Zeichen. Ein
+  beweglicher Branch oder Tag (z. B. `main`, `release-1`) ist niemals eine
+  feste Identität und wird abgelehnt. Eine abwesende Quelle ist gültig, wenn
+  nur ein Bild eingereicht wird.
 - Eine Bild-Einreichung ist eine feste OCI-Digest (nie ein alleiniger,
   beweglicher Tag) mit einem optionalen image-layout-Pfad.
 - Native Compose- und Quadlet-Einheiten werden wie authored als Eingang
@@ -37,8 +42,13 @@ Consent:
 
 - `app.*`-Felder binden die Einreichung an eine bestimmte Anwendung.
 - `target.*`-Felder binden sie an ein bestimmtes Target.
-- `consent.*`-Felder erfassen die Operator-/Automatisierungs-Anerkennung, dass
-  eine feste Einreichung angewandt wird.
+- `consent.*`-Felder tragen den ausdrücklichen Operator-/Automatisierungs-Anerkennung,
+  dass eine feste Einreichung angewandt wird: `consent.by` nennt die
+  Auftraggeber-Identität, `consent.at` ist die RFC-3339-Anerkennungszeit und
+  `consent.digest` ist der kanonische Content-Hash der validierten Einreichung.
+  Ein Kandidat darf nur angewandt werden, wenn `consent.digest` dieser exakten
+  Einreichung entspricht; eine veraltete, unvollständige oder sonst
+  abweichende Anerkennung wird abgelehnt.
 
 Die Bindung ist nur deklarative Absicht. Sie kompiliert, befördert oder migriert
 alleine nichts.
@@ -76,6 +86,21 @@ Ein Bereitstellungs-Freigabe/Config-Datensatz kann die bestehende Umweltachse um
 ein optionales, nicht-normatives Stage-Label für Beobachtung erweitern.
 Stage-Informationen wiederverwendet die bestehenden Quell/angewandt/beobachtet
 Datensatzfelder; sie führen keine neue normative Stage-Achse oder DSL ein.
+
+## Consent im persistierten Bereitstellungs-Datensatz
+
+Der persistierte, umgebungsbasierte Bereitstellungs-Datensatz (der
+`deployment.json`-Datensatz unter `internal/deployment/deployment_store.go`)
+erhält ein additives Feld: `consent`, ein ausdrückliches
+`CandidateConsent{by, at, digest}`, das die exakte validierte Kandidaten-
+Einreichung fixiert. Dies ist eine minimale, abwärtskompatible Erweiterung des
+bestehenden Datensatzes — sie fügt ein Feld hinzu und ändert kein bestehendes
+Feld, daher bleiben Retentions- und Normalisierungspfade unverändert.
+
+**Migration:** bestehende Datensätze, die vor diesem Feld geschrieben wurden,
+bleiben lesbar; die erste neue quellenbasierte Apply-Mutation nach der
+Bereitstellung verlangt eine ausdrückliche `consent`, und das Apply schlägt
+ohne sie fehl (schreibt keinen Zustand).
 
 ## Standards-Grenze
 

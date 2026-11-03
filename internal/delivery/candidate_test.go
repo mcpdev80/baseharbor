@@ -63,7 +63,14 @@ func TestCandidateValidateContract(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := tc.sub.Validate()
+			// Positive cases carry a matching consent; the digest is the canonical
+			// content-hash of exactly this submission. Cases that expect an error
+			// pass nil consent (missing consent) or a deliberately wrong digest.
+			var consent *CandidateConsent
+			if tc.ok {
+				consent = &CandidateConsent{By: "operator", Digest: CandidateConsentDigest(tc.sub)}
+			}
+			err := tc.sub.Validate(consent)
 			if tc.ok && err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -74,21 +81,35 @@ func TestCandidateValidateContract(t *testing.T) {
 	}
 }
 
+// A consent whose digest does not match the validated submission fails closed:
+// a stale, partial, or otherwise mismatched acknowledgement cannot persist a
+// candidate.
+func TestCandidateConsentDigestMustMatch(t *testing.T) {
+	sub := CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-1", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRepository: "example/app", SourceRevision: "0123456789abcdef0123456789abcdef01234567"}
+	if err := sub.Validate(nil); err == nil {
+		t.Fatal("nil consent accepted; consent is required")
+	}
+	wrong := &CandidateConsent{By: "operator", Digest: "deadbeef"}
+	if err := sub.Validate(wrong); err == nil {
+		t.Fatal("mismatched consent digest accepted; consent digest must match the submission")
+	}
+}
+
 // isPinnedRevision accepts a 40- or 64-hex commit object ID and an opaque
 // algo:hex digest (>=32 hex chars); it rejects branch names, mutable tags and
 // any other syntactic label.
 func TestIsPinnedRevision(t *testing.T) {
 	cases := map[string]bool{
-		"0123456789abcdef0123456789abcdef01234567":                    true, // 40-hex commit object ID
-		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef": true, // 64-hex SHA
+		"0123456789abcdef0123456789abcdef01234567":                                true, // 40-hex commit object ID
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef":        true, // 64-hex SHA
 		"sha256:1111111111111111111111111111111111111111111111111111111111111111": true, // opaque digest (>=32 hex)
-		"abc123":                                                          false, // short hex: not a fixed object ID
-		"v1.4.2":                                                          false, // dotted tag (mutable)
-		"release/main":                                                    false, // branch path (movable)
-		"release-1":                                                       false, // mutable tag
-		"main2":                                                           false, // mutable tag
-		"main":                                                            false, // plain branch (movable)
-		"":                                                                false, // empty
+		"abc123":       false, // short hex: not a fixed object ID
+		"v1.4.2":       false, // dotted tag (mutable)
+		"release/main": false, // branch path (movable)
+		"release-1":    false, // mutable tag
+		"main2":        false, // mutable tag
+		"main":         false, // plain branch (movable)
+		"":             false, // empty
 	}
 	for revision, want := range cases {
 		if got := isPinnedRevision(revision); got != want {
