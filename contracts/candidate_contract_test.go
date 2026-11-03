@@ -359,6 +359,35 @@ func TestCandidateSourceRevisionCaseParityThroughBothValidators(t *testing.T) {
 	}
 }
 
+// Pair-binding (r27 round 8, PUNKT 2): a source revision without its owning
+// source repository and an image digest without its owning image reference must
+// fail closed at BOTH the Go leaf and the published schema, which validate the
+// source and image pairs as units. Shared vector drives the same documents
+// through both validators.
+func TestCandidatePairBindingFailsClosedThroughBothValidators(t *testing.T) {
+	resolved := schemaValidator(t)
+
+	// Source revision present, repository omitted: the source pair is incomplete.
+	revWithoutRepo := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"source":{"kind":"source","revision":"0123456789abcdef0123456789abcdef01234567"}}`
+	subRev := toSubmission(t, json.RawMessage(revWithoutRepo))
+	if err := validateSubmission(t, subRev, "", false); err == nil {
+		t.Fatal("source revision without repository accepted; source pair must be validated as a unit")
+	}
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(revWithoutRepo)); err == nil {
+		t.Fatal("source revision without repository accepted by schema; source pair must be a unit")
+	}
+
+	// Image digest present, reference omitted: the image pair is incomplete.
+	imgWithoutRef := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000002"},"target":{"name":"lab"},"consent":{"by":"automation","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"image":{"kind":"image","digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111"}}`
+	subImg := toSubmission(t, json.RawMessage(imgWithoutRef))
+	if err := validateSubmission(t, subImg, "", false); err == nil {
+		t.Fatal("image digest without reference accepted; image pair must be validated as a unit")
+	}
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(imgWithoutRef)); err == nil {
+		t.Fatal("image digest without reference accepted by schema; image pair must be a unit")
+	}
+}
+
 // timeNowUTC returns the current UTC time for consent stamps.
 func timeNowUTC() time.Time {
 	return time.Now().UTC()

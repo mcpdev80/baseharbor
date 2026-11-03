@@ -921,7 +921,12 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	// The repository apply binds the candidate on explicit operator confirmation:
+	// the Edit lifecycle reuses the same apply choke point, so carry the canonical
+	// confirm digest for the repository candidate this Edit will bind. Without it
+	// the confirmed Edit fails closed at the candidate consent choke point.
+	editConfirmCtx := withConfirmCandidateForSetup(context.Background(), target, m.Name, root)
+	ctx, cancel := context.WithTimeout(editConfirmCtx, 4*time.Minute)
 	defer cancel()
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)

@@ -81,6 +81,49 @@ func TestCandidateValidateContract(t *testing.T) {
 	}
 }
 
+// Pair-binding: a source revision without its owning source repository fails
+// closed, and an image digest without its owning image reference fails closed —
+// the schema/source and image pairs are validated as a unit.
+func TestCandidatePairBindingRequiresRepositoryAndReference(t *testing.T) {
+	cases := []struct {
+		name string
+		sub  CandidateSubmission
+		ok   bool
+	}{
+		{
+			name: "pinned source without repository",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-1", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRevision: "0123456789abcdef0123456789abcdef01234567"},
+			ok:   false,
+		},
+		{
+			name: "pinned image without reference",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-2", TargetName: "lab", ConsentBy: "automation", Acknowledged: true, ImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+			ok:   false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			consent := &CandidateConsent{By: "operator", Digest: CandidateConsentDigest(tc.sub)}
+			if err := tc.sub.Validate(consent); err == nil {
+				t.Fatal("pair-binding not enforced: a revision without repository / digest without reference must fail closed")
+			}
+		})
+	}
+}
+
+// A source revision bound to its repository still validates when the revision is
+// pinned, and an image digest bound to its reference still validates when pinned.
+func TestCandidatePairBindingAcceptsCompletePairs(t *testing.T) {
+	src := CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-1", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRepository: "example/app", SourceRevision: "0123456789abcdef0123456789abcdef01234567"}
+	if err := src.Validate(&CandidateConsent{By: "operator", Digest: CandidateConsentDigest(src)}); err != nil {
+		t.Fatalf("complete source pair rejected: %v", err)
+	}
+	img := CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-2", TargetName: "lab", ConsentBy: "automation", Acknowledged: true, ImageReference: "example/app:release", ImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"}
+	if err := img.Validate(&CandidateConsent{By: "automation", Digest: CandidateConsentDigest(img)}); err != nil {
+		t.Fatalf("complete image pair rejected: %v", err)
+	}
+}
+
 // A consent whose digest does not match the validated submission fails closed:
 // a stale, partial, or otherwise mismatched acknowledgement cannot persist a
 // candidate.

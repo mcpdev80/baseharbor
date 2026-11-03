@@ -187,8 +187,14 @@ func ConstantTimeDigestMatch(got, expected string) bool {
 
 // validatePinnedSource accepts only a fixed source revision. A mutable branch or
 // tag — even when an image digest counterpart is present — is never accepted:
-// the immutable identity is content-addressed, never a syntactic label.
+// the immutable identity is content-addressed, never a syntactic label. A source
+// revision is only valid when bound to its owning source repository: the
+// published schema's source pair (kind, repository, revision) is validated as a
+// unit, so a revision without its repository can never carry an identity.
 func (c CandidateSubmission) validatePinnedSource() error {
+	if strings.TrimSpace(c.SourceRepository) == "" {
+		return fmt.Errorf("source revision requires source.repository to be set; a source revision must be bound to its owning repository")
+	}
 	if isPinnedRevision(c.SourceRevision) {
 		return nil
 	}
@@ -196,7 +202,13 @@ func (c CandidateSubmission) validatePinnedSource() error {
 }
 
 // validatePinnedImage requires a sha256 digest; a mutable tag alone is rejected.
+// An image digest is only valid when bound to its owning image reference: the
+// published schema's image pair (kind, reference, digest) is validated as a
+// unit, so a digest without its reference can never carry an identity.
 func (c CandidateSubmission) validatePinnedImage() error {
+	if strings.TrimSpace(c.ImageReference) == "" {
+		return fmt.Errorf("image digest requires image.reference to be set; an image digest must be bound to its owning reference")
+	}
 	if !sha256Digest.MatchString(c.ImageDigest) {
 		return fmt.Errorf("image must carry a sha256 digest, never a mutable tag alone")
 	}
