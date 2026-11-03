@@ -730,6 +730,7 @@ jobs:
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
+          python3 scripts/test_pr_incremental_reuse.py
           git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
           python3 scripts/test_pr_selected_runtime_matrix.py
           python3 scripts/test_ecosystem_release_pins.py
