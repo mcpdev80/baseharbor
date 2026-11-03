@@ -73,9 +73,9 @@ class EphemeralReuseTests(unittest.TestCase):
         result = self.decide(
             ["internal/deployment/state.go"],
             {("./cmd/baha",): {"cmd/baha", "internal/deployment"}})
-        self.assertEqual({"go-unit-tests", "cli-package-tests"},
+        self.assertEqual({"go-unit-tests", "cli-package-tests", "go-build"},
                          {row["check"] for row in result["matrix"]["include"]})
-        self.assertIn("go-build", result["reused_checks"])
+        self.assertNotIn("go-build", result["reused_checks"])
         self.assertEqual("", result["runtime_matrix"]["include"][0]["reuse_from"])
 
     def test_changed_go_test_only_does_not_invalidate_build(self):
