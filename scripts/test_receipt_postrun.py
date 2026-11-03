@@ -24,6 +24,10 @@ class CommitReceiptWorkflowTest(unittest.TestCase):
         self.assertFalse(any('PLANNING_RECEIPT_WRITE_TOKEN' in str(step)
                              for step in steps[:-1]))
         self.assertNotIn('actions', workflow['permissions'])
+        self.assertIn("github.ref == 'refs/heads/main'", job['if'])
+        self.assertIn('workflow_dispatch', trigger)
+        self.assertTrue(trigger['workflow_dispatch']['inputs']['pr_number']['required'])
+        self.assertIn('inputs.pr_number', publisher['env']['PR_NUMBER'])
 
 
 if __name__ == '__main__':
