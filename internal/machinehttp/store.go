@@ -297,7 +297,20 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 // appendJournalLineLocked appends one already-marshaled line to the active
 // segment and enforces the hard total-cap after the append. Callers must hold
 // s.mu.
+//
+// Segment-cap is enforced PRE-WRITE (review-1354d finding 3, mission runde 6):
+// the check must decide the size AFTER appending, not before. If the current
+// segment already holds data and adding this line would exceed
+// journalSegmentCap, the active segment is rotated atomically BEFORE the new
+// line is appended, so two individually-allowed entries can never produce a
+// single > 4 MiB segment (e.g. two 430 KiB NUL-actor lines). A read-only or
+// otherwise unwritable active segment — where no rotation is possible — fails
+// closed: the line is appended and the append error propagates so NO event is
+// ever published for a write that could not be durably committed.
 func (s *executionStore) appendJournalLineLocked(line []byte) error {
+	if err := s.rotateBeforeWriteLocked(len(line) + 1); err != nil {
+		return err
+	}
 	f, err := os.OpenFile(s.journalPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("open execution journal %q: %w", s.journalPath, err)
@@ -307,6 +320,27 @@ func (s *executionStore) appendJournalLineLocked(line []byte) error {
 		return fmt.Errorf("append execution journal line: %w", err)
 	}
 	return s.enforceTotalCapLocked()
+}
+
+// rotateBeforeWriteLocked rotates the active segment atomically when appending
+// the given line length would exceed journalSegmentCap. The "+1" accounts for
+// the trailing newline. When no active segment exists yet the check is a no-op
+// (the first line of a fresh segment is always safe: a single entry was
+// already rejected above in appendJournalLocked when it would exceed the cap).
+// Any rotation error is returned so the caller fails closed — a segment that
+// cannot be rotated also cannot accept the line.
+func (s *executionStore) rotateBeforeWriteLocked(extraBytes int) error {
+	info, err := os.Stat(s.journalPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if info.Size()+int64(extraBytes) <= journalSegmentCap {
+		return nil
+	}
+	return s.rotateSegmentLocked()
 }
 
 // rotateIfNeededLocked rotates the active segment into a numbered backup when it
