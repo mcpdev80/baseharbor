@@ -48,8 +48,17 @@ func remoteApplicationCoreFixture(t *testing.T) (context.Context, deployment.Res
 // that a denied Core selection does not create installation state.
 func remoteApplicationCoreFixtureEmpty(t *testing.T) (context.Context, deployment.ResolvedTarget, deployment.ResolvedTarget) {
 	ctx, core, node := remoteApplicationCoreFixture(t)
-	if stateRoot, err := deployment.TargetStateRoot(core.Name); err == nil {
-		_ = os.RemoveAll(stateRoot)
+	stateRoot, err := deployment.TargetStateRoot(core.Name)
+	if err != nil {
+		t.Fatalf("resolve target root for empty remote-core fixture: %v", err)
+	}
+	// A removal failure or an unresolved target root is a setup error, not a
+	// benign no-op: this fixture asserts a Coreless target with no installation
+	// state, so a swallowed error would silently leave installation-owned state
+	// behind and let the negative-path assertion pass on the wrong filesystem.
+	// Fail closed, matching the configureTestTargetEmpty helper style.
+	if err := os.RemoveAll(stateRoot); err != nil {
+		t.Fatalf("remove installation-owned state for empty remote-core fixture %s: %v", core.Name, err)
 	}
 	return ctx, core, node
 }
