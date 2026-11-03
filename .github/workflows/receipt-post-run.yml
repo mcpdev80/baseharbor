@@ -4,6 +4,12 @@ on:
   pull_request_target:
     types: [closed]
     branches: [develop]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Merged develop PR whose missing receipt should be retried
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,7 +17,7 @@ permissions:
 
 jobs:
   receipt:
-    if: github.event.pull_request.merged == true
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -43,6 +49,6 @@ jobs:
       - name: Record authenticated merged commit
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           PLANNING_RECEIPT_WRITE_TOKEN: ${{ secrets.PLANNING_RECEIPT_WRITE_TOKEN }}
         run: python3 scripts/receipt_writer.py --planning planning --product . --commit-pr "$PR_NUMBER" --publish

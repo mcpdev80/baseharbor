@@ -308,7 +308,7 @@ class GitFixture(unittest.TestCase):
         workflow = (Path(__file__).resolve().parent.parent /
                     '.github/workflows/ci.yml').read_text()
         begin = workflow.index('          git fetch --no-tags origin "$BASE_SHA"')
-        end = workflow.index('          python3 scripts/pr-gate-plan.py', begin)
+        end = workflow.index('          # One immutable, locally checked controller', begin)
         shell = '\n'.join(line.removeprefix('          ') for line in
                           workflow[begin:end].splitlines())
         with tempfile.TemporaryDirectory() as runner_temp:

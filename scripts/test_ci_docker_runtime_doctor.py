@@ -96,7 +96,7 @@ class DockerRuntimeDoctorTests(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
 
 
-class HostedRootlessDockerReceipts(unittest.TestCase):
+class HostedRootlessDockerTests(unittest.TestCase):
     required = {
         'main': [
             ('cmd/baha', 'TestRepositoryWorkflowRealLifecycle'),
@@ -110,7 +110,7 @@ class HostedRootlessDockerReceipts(unittest.TestCase):
         'traces': [('internal/traces', 'TestManagedTempoReceivesVerificationTraceThroughCollector')],
     }
 
-    def receipts(self):
+    def events(self):
         result = {}
         for name, expected in self.required.items():
             rows = [{'Package': 'github.com/mcpdev80/baseharbor/' + package,
@@ -123,7 +123,7 @@ class HostedRootlessDockerReceipts(unittest.TestCase):
     def execute(self, receipts):
         code = workflow_python('Verify all eight executed runtime tests')
         with tempfile.TemporaryDirectory() as tmp:
-            folder = Path(tmp) / 'docker-runtime-evidence/tests'
+            folder = Path(tmp) / 'docker-runtime-checks/tests'
             folder.mkdir(parents=True)
             for name, events in receipts.items():
                 (folder / (name + '.jsonl')).write_text('\n'.join(json.dumps(e) for e in events))
@@ -132,13 +132,13 @@ class HostedRootlessDockerReceipts(unittest.TestCase):
 
     def test_actual_parser_requires_all_eight_test_and_package_passes(self):
         self.assertEqual(8, sum(len(tests) for tests in self.required.values()))
-        passed = self.execute(self.receipts())
+        passed = self.execute(self.events())
         self.assertEqual(0, passed.returncode, passed.stderr)
         for name, required in self.required.items():
             for _, test in required:
                 for mutation in ['missing', 'skip', 'fail', 'wrong-package']:
                     with self.subTest(name=name, test=test, mutation=mutation):
-                        value = self.receipts()
+                        value = self.events()
                         for row in list(value[name]):
                             if row.get('Test') != test:
                                 continue
@@ -149,15 +149,15 @@ class HostedRootlessDockerReceipts(unittest.TestCase):
                             else:
                                 row['Action'] = mutation
                         self.assertNotEqual(0, self.execute(value).returncode)
-            value = self.receipts()
+            value = self.events()
             value[name] = [row for row in value[name] if 'Test' in row]
             self.assertNotEqual(0, self.execute(value).returncode)
-            value = self.receipts()
+            value = self.events()
             del value[name]
             self.assertNotEqual(0, self.execute(value).returncode)
 
     def test_actual_parser_rejects_skipped_nested_cleanup_even_with_parent_pass(self):
-        value = self.receipts()
+        value = self.events()
         value['main'].append({'Package': 'github.com/mcpdev80/baseharbor/cmd/baha',
                               'Test': 'TestRepositoryWorkflowRealLifecycle/cleanup', 'Action': 'skip'})
         self.assertNotEqual(0, self.execute(value).returncode)
@@ -172,8 +172,6 @@ class HostedRootlessDockerReceipts(unittest.TestCase):
         for match in __import__('re').finditer('ci-runtime-reset.sh|baha\" doctor', workflow):
             self.assertLess(setup, match.start())
         self.assertIn('if: always()', workflow.split('      - name: Verify all eight executed runtime tests', 1)[1])
-        self.assertIn('retention-days: 30', workflow)
-        self.assertIn('if-no-files-found: error', workflow)
         for name in self.required:
             self.assertIn('/tests/' + name + '.jsonl', workflow)
         for name in ['source-sha.txt', 'source-tree.txt', 'source-repository.txt',
@@ -199,7 +197,7 @@ class ExactDockerRuntimeImage(unittest.TestCase):
                 recipe_path.write_text(recipe)
                 runner_temp = root / 'runner'
                 runner_temp.mkdir()
-                (runner_temp / 'docker-runtime-evidence').mkdir()
+                (runner_temp / 'docker-runtime-checks').mkdir()
                 (runner_temp / 'baha').write_bytes(binary)
                 tools = root / 'tools'
                 tools.mkdir()

@@ -5,17 +5,15 @@ The binding complete checklist is the [canonical release audit](https://github.c
 **Pre-release-ready** means all release preparation and targeted acceptance
 are complete: Core, Demo, Console, Node Connector, CLI/JSON/MCP/HTTP compatibility,
 developer journeys, EN/DE documentation, Pages candidate build/navigation,
-changelog, release notes, immutable ecosystem SHAs and the versioned gate and
-evidence plan. Core-only green does not qualify. Missing, failed, skipped or
+changelog, release notes, immutable ecosystem SHAs and the versioned test plan. Core-only green does not qualify. Missing, failed, skipped or
 unverified required proofs block this status.
 
-**Release-ready** additionally requires successful complete pre-release approval.
+**Release-ready** additionally requires successful complete pre-release validation.
 Promotion, tagging, publication and post-release verification need their own
 authorization. Actual Pages deployment follows promotion; candidate builds and
 workflow compatibility are checked before pre-release without publishing.
 
-Reuse green gates only when the existing evidence verifier proves unchanged
-inputs. Rerun affected gates only. Preparation does not authorize pre-release.
+Run the required checks directly through the normal workflow dependencies. No gate manifests, evidence reuse or completed-run re-verification are required. Preparation does not authorize pre-release.
 
 ## Parallel local checks
 
@@ -34,5 +32,4 @@ the aggregate. Edits after capture do not change the tested snapshot. Go tests,
 vet, CLI build, script tests, docs audits, readability and strict EN/DE builds run
 independently. Runtime acceptance flags are excluded: native Docker/Podman gates
 remain separately qualified on their exact inputs. Local success is not ecosystem
-or pre-release readiness. Reuse unchanged qualified inputs through the existing
-evidence verifier rather than repeatedly running the full local suite.
+or pre-release readiness. Choose focused checks for changed inputs rather than repeatedly running the full local suite. Local logs are diagnostics, not a second CI acceptance mechanism.

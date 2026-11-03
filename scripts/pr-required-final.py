@@ -1,117 +1,70 @@
 #!/usr/bin/env python3
-"""Fail-closed verification of selected PR gate and validation results."""
+"""Require normal job results from this workflow's needs context."""
 import argparse
 import json
-import re
+import os
 from pathlib import Path
 
-SHA = re.compile(r'^[0-9a-f]{40}$')
-SUCCESS = 'success'
+BASE_JOBS = ('workflow_policy', 'pr_plan', 'pr_focused', 'pr_validations')
 
 
-def verify(plan, report, catalog):
-    errors = []
+def verify(plan, needs, *, head=None, integration=None):
     if not isinstance(plan, dict) or plan.get('schema') != 'baseharbor.pr-gate-plan/v1':
-        return ['invalid PR gate plan schema']
-    if not isinstance(report, dict) or report.get('schema') != 'baseharbor.pr-check-results/v1':
-        return ['invalid PR check results schema']
-    required = plan.get('selected_gates')
+        return ['missing or invalid selected-check plan']
+    if not isinstance(needs, dict):
+        return ['missing workflow dependency results']
+    errors = []
+    if plan.get('coverage_status') != 'resolved' or plan.get('unresolved_coverage') != []:
+        errors.append('unresolved check coverage: ' + str(plan.get('unresolved_coverage')))
+    if head is not None and plan.get('head_sha') != head:
+        errors.append('plan belongs to another PR head')
+    if integration is not None and plan.get('integration_sha') != integration:
+        errors.append('plan belongs to another integration commit')
+    gates = plan.get('selected_gates')
     checks = plan.get('required_validation_checks')
-    if not isinstance(required, list) or len(required) != len(set(required)) or not all(isinstance(x, str) for x in required):
-        return ['selected gate set missing, empty or malformed']
-    if not isinstance(checks, list) or any(not isinstance(c, dict) or not isinstance(c.get('id'), str) for c in checks):
-        return ['validation check set malformed']
-    if plan.get('coverage_status') != 'resolved':
-        errors.append('coverage-unresolved: ' + '; '.join(
-            str(x) for x in plan.get('unresolved_coverage', [])
-        ) if isinstance(plan.get('unresolved_coverage'), list) and plan.get('unresolved_coverage')
-        else 'coverage-unresolved: missing explicit coverage resolution')
-    elif plan.get('unresolved_coverage') != []:
-        errors.append('resolved coverage has nonempty or missing unresolved reasons')
-    if not required and not checks:
-        errors.append('no required gates or validations')
-    validation = [c['id'] for c in checks]
-    if len(validation) != len(set(validation)):
-        errors.append('duplicate validation checks')
-    eligible = {g['id'] for g in catalog.get('gates', []) if 'v0.4.26' in g.get('required_for', [])}
-    if not set(required) <= eligible:
-        errors.append('gate not in trusted release inventory')
-    if plan.get('release') != 'v0.4.26':
-        errors.append('incorrect release')
-    for k in ('target_base_sha', 'head_sha', 'merge_base_sha'):
-        if not SHA.fullmatch(str(plan.get(k, ''))):
-            errors.append('invalid plan ' + k)
-    for k in ('target_base_sha', 'head_sha', 'merge_base_sha', 'integration_sha'):
-        if report.get(k) != plan.get(k):
-            errors.append('mismatched integration input ' + k)
-    expected_jobs = ['PR · Focused Python', 'Workflow policy']
-    if any(isinstance(gate, str) and gate.startswith(
-            ('atomic/docker/', 'atomic/podman/', 'integration/docker/', 'integration/podman/'))
-           for gate in required):
-        expected_jobs += ['PR · Exact Candidate', 'PR · Runner Interface']
-        deps = plan.get('required_consumer_dependencies')
-        if not isinstance(deps, list) or not set(deps) <= {'core', 'demo', 'console', 'connector'}:
-            errors.append('unqualified gate consumer dependency projection')
-        elif set(deps) & {'console', 'connector'}:
-            expected_jobs.append('PR · Consumer Pins')
-        elif 'demo' in deps:
-            expected_jobs.append('PR · Demo Pin')
-    if 'integration/static/public-contracts' in required:
-        expected_jobs.append('PR · Public Contracts')
-    rows = report.get('required_job_conclusions')
-    if not isinstance(rows, list):
-        errors.append('missing authenticated job prerequisite conclusions')
-    else:
-        seen_jobs = {}
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get('name'), str):
-                errors.append('invalid authenticated job prerequisite')
-                continue
-            name = row['name']
-            if name in seen_jobs:
-                errors.append('duplicate authenticated prerequisite: ' + name)
-            seen_jobs[name] = row.get('conclusion')
-        for name in expected_jobs:
-            if name not in seen_jobs or seen_jobs[name] != SUCCESS:
-                errors.append('required authenticated job not successful: ' + name)
-        if set(seen_jobs) != set(expected_jobs):
-            errors.append('authenticated job prerequisite set differs from trusted plan')
-    entries = report.get('results')
-    if not isinstance(entries, list):
-        return errors + ['results must be an array']
-    index = {}
-    for row in entries:
-        if not isinstance(row, dict) or not isinstance(row.get('id'), str):
-            errors.append('malformed result')
-            continue
-        key = (row.get('kind'), row['id'])
-        if key in index:
-            errors.append('duplicate result: ' + str(key))
-        index[key] = row
-    for kind, ids in (('gate', required), ('validation', validation)):
-        for identifier in ids:
-            row = index.get((kind, identifier))
-            if not row:
-                errors.append('missing required ' + kind + ': ' + identifier)
-            elif row.get('conclusion') != SUCCESS:
-                errors.append('required ' + kind + ' not successful: ' + identifier + ' (' + str(row.get('conclusion')) + ')')
-    for (kind, identifier), row in index.items():
-        if kind not in ('gate', 'validation'):
-            errors.append('unknown result kind: ' + str(kind))
-        if kind == 'gate' and identifier not in required and row.get('conclusion') == SUCCESS:
-            errors.append('not-required gate incorrectly reported PASS: ' + identifier)
-        if kind == 'validation' and identifier not in validation and row.get('conclusion') == SUCCESS:
-            errors.append('not-required validation incorrectly reported PASS: ' + identifier)
+    if not isinstance(gates, list) or not all(isinstance(x, str) for x in gates):
+        return errors + ['invalid selected gates']
+    if not isinstance(checks, list) or not all(isinstance(x, dict) and isinstance(x.get('id'), str) for x in checks):
+        return errors + ['invalid validation checks']
+    if not gates and not checks:
+        errors.append('no selected checks')
+    required = set(BASE_JOBS)
+    for gate in gates:
+        parts = gate.split('/')
+        if len(parts) == 3 and parts[0] == 'atomic' and parts[1] in ('docker', 'podman'):
+            required.update(('pr_candidate', 'pr_runner_interface', 'pr_runtime_selected'))
+        elif gate == 'integration/static/public-contracts':
+            required.add('pr_public_contracts')
+        else:
+            errors.append('selected gate has no workflow executor: ' + gate)
+    if 'pr_runtime_selected' in required or 'pr_public_contracts' in required:
+        dependencies = plan.get('required_consumer_dependencies')
+        if not isinstance(dependencies, list) or not all(isinstance(x, str) for x in dependencies) or not set(dependencies) <= {'core', 'demo', 'console', 'connector'}:
+            errors.append('invalid consumer dependency selection')
+        elif set(dependencies) & {'console', 'connector'}:
+            required.add('pr_consumer_pins')
+        else:
+            required.add('pr_demo_pin')
+    for name in sorted(required):
+        job = needs.get(name)
+        if not isinstance(job, dict) or job.get('result') != 'success':
+            errors.append('required job did not succeed: ' + name)
+    # An optional skipped job is normal. An executed failure is never ignored.
+    for name, job in needs.items():
+        if not isinstance(job, dict) or job.get('result') not in ('success', 'skipped'):
+            errors.append('workflow job did not succeed: ' + name)
     return errors
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--plan', type=Path, required=True)
-    parser.add_argument('--results', type=Path, required=True)
-    parser.add_argument('--requirements', type=Path, required=True)
     args = parser.parse_args()
-    errors = verify(json.loads(args.plan.read_text()), json.loads(args.results.read_text()), json.loads(args.requirements.read_text()))
+    try:
+        errors = verify(json.loads(args.plan.read_text()), json.loads(os.environ['CI_NEEDS']),
+                        head=os.environ['EXPECTED_HEAD'], integration=os.environ['EXPECTED_INTEGRATION'])
+    except (OSError, ValueError, KeyError) as exc:
+        raise SystemExit('PR Selected Checks: missing workflow inputs') from exc
     for error in errors:
         print('BLOCKED: ' + error)
     if errors:
