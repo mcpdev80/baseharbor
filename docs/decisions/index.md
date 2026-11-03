@@ -27,3 +27,5 @@ ADRs preserve decisions and rationale. They do not replace current-state documen
 - [0019 — Organization preferences and independent policy](0019-organization-preferences-and-independent-policy.md)
 
 - [0020 — Scoped Connector enrollment](0020-scoped-connector-enrollment.md)
+
+- [0022 — One reconciliation owner and delegated delivery boundaries](0022-one-reconciliation-owner-and-delegated-delivery.md)
