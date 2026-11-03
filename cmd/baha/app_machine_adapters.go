@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"slices"
 
@@ -228,7 +227,7 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 	outcomes, executionErr := apply(ctx, plan, request.Consent)
 	result, err := application.RecordProviderChangeResult(plan, outcomes)
 	if err != nil {
-		if os.Getenv("DIAG_EXEC") != "" {
+		if true {
 			fmt.Printf("DIAG_EXEC RecordProviderChangeResult err=%v outcomes=%+v\n", err, outcomes)
 		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
@@ -453,7 +452,7 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr, resultErr)
 	}
 	if executionErr != nil {
-		if os.Getenv("DIAG_EXEC") != "" {
+		if true {
 			fmt.Printf("DIAG_EXEC adapter executionErr=%v\n", executionErr)
 		}
 		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr)
