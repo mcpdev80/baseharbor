@@ -456,14 +456,14 @@ func TestExportEnforcementPerKind(t *testing.T) {
 func TestCredentialExportCombinedSchemaAndGoImport(t *testing.T) {
 	resolved := managementAccessResolve(t)
 
-	// Positive: a valid credential-export (valid export object, real 32-byte nonce)
-	// validates through the schema AND ValidateKindEnforcement.
+	// Positive: a valid credential-export (valid export object, canonical 12-byte
+	// nonce) validates through the schema AND ValidateKindEnforcement.
 	good := managementAccessBaseline(t, resolved)
 	good["kind"] = "credential-export"
 	good["export"] = map[string]any{
 		"algorithm": "aes-256-gcm",
 		"encrypted": true,
-		// 43 base64url chars -> 32 bytes (not 12), matching the documented nonce.
+		// 16 base64url chars -> 12 bytes (the AES-256-GCM AEAD nonce).
 		"nonce": "4fIDBAUGBwgJCgsM",
 	}
 	if err := resolved.Validate(cloneObject(good)); err != nil {
@@ -492,17 +492,17 @@ func TestCredentialExportCombinedSchemaAndGoImport(t *testing.T) {
 		t.Fatal("Go import boundary must reject an unsupported export algorithm")
 	}
 
-	// Negative nonce length: the schema requires 43 base64url chars and the Go
-	// boundary enforces the same.
+	// Negative nonce length: the schema requires exactly 16 base64url chars and
+	// the Go boundary enforces the same.
 	badNonce := good
 	badNonce["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "short"}
 	if err := resolved.Validate(cloneObject(badNonce)); err == nil {
-		t.Fatal("schema must reject a non-43-character nonce")
+		t.Fatal("schema must reject a non-16-character nonce")
 	}
 	badNonceP := profileFor(t)
 	badNonceP.Kind = managementaccess.CredentialExport
 	badNonceP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "short"}
 	if err := badNonceP.ValidateKindEnforcement(); err == nil {
-		t.Fatal("Go import boundary must reject a non-43-character nonce")
+		t.Fatal("Go import boundary must reject a non-16-character nonce")
 	}
 }

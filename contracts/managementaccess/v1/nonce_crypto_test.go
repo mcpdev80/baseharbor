@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/contracts/managementaccess/v1"
 )
@@ -112,18 +113,31 @@ func TestNonceNonCanonicalTrailingBitsFailsClosed(t *testing.T) {
 
 // TestNonceUnknownAlgorithmFailsClosed proves the algorithm gate is independent
 // of the nonce: a canonical 12-byte nonce paired with an unknown algorithm must
-// fail closed.
+// fail closed on the ALGORITHM, using a fully valid baseline profile so no other
+// field (trust, validity window, storage) masks the algorithm as the rejection
+// reason.
 func TestNonceUnknownAlgorithmFailsClosed(t *testing.T) {
 	nonce := "ABCDEFGHIJKLMNOP" // 16 chars, 12 bytes, canonical
 	if !canonicalBase64urlDecodingToBytes(nonce, 12) {
 		t.Fatalf("sanity: %q must be canonical 12 bytes", nonce)
 	}
-	p := managementaccess.ManagementAccessProfile{
-		Kind: managementaccess.CredentialExport,
-		Export: &managementaccess.EncryptionDescriptor{Algorithm: "xor-1", Encrypted: true, Nonce: nonce},
-	}
-	if err := p.ValidateKindEnforcement(); err == nil {
+	// profileFor() is a fully valid baseline profile (trust + validity window
+	// set), so the only way a credential-export variant fails is the field under
+	// test. This avoids masking the unknown-algorithm reason with a missing
+	// trust or validity window.
+	badAlgoP := profileFor(t)
+	badAlgoP.Kind = managementaccess.CredentialExport
+	badAlgoP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "xor-1", Encrypted: true, Nonce: nonce}
+	if err := badAlgoP.ValidateKindEnforcement(); err == nil {
 		t.Fatal("unknown algorithm must fail closed")
+	}
+	// A profile identical except for the supported algorithm must validate, so
+	// the only reason the profile above fails is the unknown algorithm.
+	goodP := profileFor(t)
+	goodP.Kind = managementaccess.CredentialExport
+	goodP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: nonce}
+	if err := goodP.ValidateKindEnforcement(); err != nil {
+		t.Fatalf("fully valid baseline must validate, got %v", err)
 	}
 }
 
@@ -145,30 +159,80 @@ func TestNonceWrongKeyFailsClosed(t *testing.T) {
 	}
 }
 
-// TestNonceContractRejectsNonCanonicalAndWrongLength drives the exported
-// ValidateKindEnforcement boundary to prove the contract rejects a non-canonical
-// nonce and a wrong-length nonce for a supported algorithm.
-func TestNonceContractRejectsNonCanonicalAndWrongLength(t *testing.T) {
-	// Non-canonical: corrupted last char, supported algorithm.
-	nonCanon := "5" + aes256GcmNonceGolden[1:]
-	nonCanonP := managementaccess.ManagementAccessProfile{
-		Kind: managementaccess.CredentialExport,
-		Export: &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: nonCanon},
+// TestNonceContractRejectsInvalidAlphabetPaddingWrongLength drives the exported
+// ValidateKindEnforcement boundary to prove the contract rejects a nonce whose
+// alphabet is outside base64url, a padded nonce, and a nonce of the wrong
+// (non-16) length for a supported algorithm. At 12 bytes there are no unused
+// trailing bits, so a valid first-character substitution is a DIFFERENT valid
+// 12-byte nonce and MUST be accepted — there is no canonical/non-canonical
+// rejection at 16 characters.
+func TestNonceContractRejectsInvalidAlphabetPaddingWrongLength(t *testing.T) {
+	now := time.Now().UTC()
+	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
+	baseP := managementaccess.ManagementAccessProfile{
+		Kind:        managementaccess.CredentialExport,
+		Version:     "baseharbor.management-access/v1",
+		Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+		NotBefore:   now.Add(-time.Minute),
+		NotAfter:    now.Add(time.Hour),
+		Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
 	}
-	if err := nonCanonP.ValidateKindEnforcement(); err == nil {
-		t.Fatal("non-canonical nonce must fail the contract boundary")
+	// A fully valid baseline profile with the golden nonce validates.
+	if err := baseP.ValidateKindEnforcement(); err != nil {
+		t.Fatalf("fully valid baseline profile must validate, got %v", err)
 	}
-	// Wrong length (43 chars, the old wire length): supported algorithm, wrong nonce.
-	wrongLen := "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"
-	wrongLenP := managementaccess.ManagementAccessProfile{
-		Kind: managementaccess.CredentialExport,
-		Export: &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: wrongLen},
+
+	// Invalid alphabet: '!' is not a base64url character.
+	badAlphabet := baseP
+	badAlphabet.Export.Nonce = "4!IDBAUGBwgJCgsM"
+	if err := badAlphabet.ValidateKindEnforcement(); err == nil {
+		t.Fatal("nonce with invalid alphabet must fail the contract boundary")
 	}
-	if err := wrongLenP.ValidateKindEnforcement(); err == nil {
-		t.Fatal("wrong-length nonce must fail the contract boundary")
+	// Padding character: base64url padding '=' is outside the 16-char domain.
+	padded := baseP
+	padded.Export.Nonce = "4fIDBAUGBwgJCgsM="
+	if err := padded.ValidateKindEnforcement(); err == nil {
+		t.Fatal("nonce with padding character must fail the contract boundary")
 	}
-	// The canonical golden nonce decodes to exactly 12 bytes.
-	if !canonicalBase64urlDecodingToBytes(aes256GcmNonceGolden, 12) {
-		t.Fatal("golden nonce must be canonical 12 bytes")
+	// Wrong length 15 -> 11 bytes: one short of the 12-byte AEAD nonce.
+	short15 := baseP
+	short15.Export.Nonce = "4fIDBAUGBwgJCGs"
+	if err := short15.ValidateKindEnforcement(); err == nil {
+		t.Fatal("15-character nonce (11 bytes) must fail the contract boundary")
+	}
+	// Wrong length 17 -> not a valid raw base64url length (17 % 4 == 1).
+	long17 := baseP
+	long17.Export.Nonce = "4fIDBAUGBwgJCgsMx"
+	if err := long17.ValidateKindEnforcement(); err == nil {
+		t.Fatal("17-character nonce must fail the contract boundary")
+	}
+}
+
+// TestNonceContractAcceptsValid16CharVariants proves that a valid 16-character
+// base64url nonce is accepted regardless of its specific bytes: at 12 bytes all
+// octets are significant, so changing the first character yields a DIFFERENT
+// valid 12-byte nonce (not a non-canonical value), and the contract accepts it.
+func TestNonceContractAcceptsValid16CharVariants(t *testing.T) {
+	now := time.Now().UTC()
+	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
+	mk := func(nonce string) managementaccess.ManagementAccessProfile {
+		return managementaccess.ManagementAccessProfile{
+			Kind:        managementaccess.CredentialExport,
+			Version:     "baseharbor.management-access/v1",
+			Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+			NotBefore:   now.Add(-time.Minute),
+			NotAfter:    now.Add(time.Hour),
+			Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: nonce},
+		}
+	}
+	for _, nonce := range []string{
+		aes256GcmNonceGolden,        // canonical golden
+		"5fIDBAUGBwgJCgsM",          // first char changed -> different 12 bytes, still valid
+		"ABCDEFGHIJKLMNOP",            // fully different canonical 16 chars
+		"9Xy3Kp8Qr2Zt7Lm4",          // fully different canonical 16 chars
+	} {
+		if err := mk(nonce).ValidateKindEnforcement(); err != nil {
+			t.Fatalf("valid 16-character nonce %q must be accepted, got %v", nonce, err)
+		}
 	}
 }

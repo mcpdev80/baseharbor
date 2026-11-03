@@ -114,7 +114,7 @@
         "nonce": {
           "type": "string",
           "pattern": "^[A-Za-z0-9_-]{16}$",
-          "description": "AES-256-GCM AEAD nonce: exactly 12 random bytes, canonically encoded as base64url without padding (16 characters). A value with non-canonical trailing bits or any other length fails closed. chacha20-poly1305 is not accepted in v1."
+          "description": "AES-256-GCM AEAD nonce: exactly 12 random bytes, canonically encoded as base64url without padding (16 characters). Any length other than 16 base64url characters fails closed (at 12 bytes all octets are significant, so every canonical 16-character value is a valid 12-byte nonce). chacha20-poly1305 is not accepted in v1."
         }
       }
     }

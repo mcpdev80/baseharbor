@@ -435,3 +435,32 @@ func ValidateRecipientBind(recipient string, scope targetenrollment.Scope) error
 	}
 	return nil
 }
+
+// importOrchestrator is the injected orchestration boundary a production
+// consumer would implement. It receives the validated profile and returns
+// whether the record was accepted. A production implementation performs the
+// real import without granting rights, running a plugin, or redirecting
+// credentials. The production import boundary is deferred to the owning slice
+// (see credential-access-v1.md deferred interfaces); this is the testable
+// orchestration seam, not a production endpoint.
+type importOrchestrator interface {
+	// Import orchestrates the import of an already-validated profile without
+	// granting rights, running a plugin, or redirecting credentials.
+	Import(profile ManagementAccessProfile) (accepted bool)
+}
+
+// ImportProfile is the package-internal orchestration point that every import
+// (accepted or rejected) flows through. It validates the profile with the
+// fail-closed kind enforcement and delegates orchestration to the injected
+// orchestrator. It performs no side effect itself: importing a record grants no
+// access right, cannot run a plugin, and cannot redirect credentials.
+//
+// The production import boundary is deferred to the owning slice (see
+// credential-access-v1.md deferred interfaces); ImportProfile is the testable
+// orchestration seam, not a production endpoint — it has no production caller.
+func ImportProfile(orc importOrchestrator, profile ManagementAccessProfile) (accepted bool) {
+	if err := profile.ValidateKindEnforcement(); err != nil {
+		return false
+	}
+	return orc.Import(profile)
+}
