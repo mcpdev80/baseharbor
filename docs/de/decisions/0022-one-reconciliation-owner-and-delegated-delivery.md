@@ -20,8 +20,9 @@ Ressourcensatz_mutiert, wessen Intent gewinnt, wenn zur selbenzeit zwei Besitzer
 
 ### 1. Genau ein aktiver Versöhnungs-Besitzer je verwaltete Ressourcensatz
 
-Für einen verwalteten Ressourcensatz gibt es zu jedem Beobachtungszeitpunkt genau
-einen aktiven Mutation/Versöhnungs-Besitzer.
+Für einen verwalteten Ressourcensatz gibt es genau einen persistierten Versöhnungs-Besitzer zum
+Zeitpunkt des Datensatz-Speicherns, durchgesetzt beim Speichern; die Laufzeit-Erkennung paralleler
+Besitzererschaft ist zurückgestellt (siehe Beschluss 2 und die Folgekarten).
 
 - Direkte Lieferung: der Besitzer ist `baseharbor`.
 - Delegierte Lieferung: der Besitzer ist `external`.
@@ -36,9 +37,11 @@ solange bereits mehr als ein Besitzer in portable Intent ausdrückbar ist; ist g
 ein Besitzer ausdrückbar, gilt die Aufnahmebedingung dieses Beschlusses. Der Guard sitzt in
 `internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
 vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
-Eine direkte Mutation verweigert sich, wenn ein externer Versöhner bereits besitzt; ein
-beobachteter Konflikt zweier aktiven Besitzer schlägt bei Konflikt fehl. Dies ist nur der
-Speichern-des-Datensatzes-Check; die prozessübergreifende aktive Versöhnung ist abgehängt.
+Ein direktes Speichern wird verweigert, wenn der persistierte Besitzer `external` ist; ein
+protollieter Konflikt zweier aktiven Besitzer schlägt fail-closed fehl. Ein persistierter
+Besitzer, der fehlt, leer oder nicht erkannt ist, wird wie ungesetzt behandelt — nach derselben
+Normalisierung, die `Selection.Normalize` auf Selektionen anwendet — sodass ein beschädigter Wert
+weder Besitz bestätigt noch erweitert.
 
 ### 3. Direkte Lieferung bleibt ohne GitOps
 

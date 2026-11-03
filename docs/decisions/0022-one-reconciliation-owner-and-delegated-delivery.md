@@ -20,8 +20,9 @@ resource set, whose intent wins if two owners appear at once?
 
 ### 1. Exactly one active reconciliation owner per managed resource set
 
-For one managed resource set there is exactly one active mutation/reconciliation
-owner at any observed moment.
+For a managed resource set there is exactly one persisted reconciliation owner
+at record-save time, enforced at record save; runtime detection of concurrent
+ownership is deferred (see Decision 2 and the follow-up cards).
 
 - Direct delivery: the owner is `baseharbor`.
 - Delegated delivery: the owner is `external`.
@@ -35,10 +36,10 @@ or observation unless exactly one owner is expressible in portable intent. The
 guard lives at
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied
-`Observed.Owner` cannot bypass it. A direct mutation is refused if an external
-reconciler already owns the resource; a recorded conflict of
-two active owners refuses closed. This is the record-save check only; live
-cross-process reconciliation outside the record-save guard is deferred.
+`Observed.Owner` cannot bypass it. A direct save is refused if the persisted owner is external; a recorded conflict of two active
+owners refuses closed. A persisted owner that is absent, empty, or unrecognised is treated as unset
+by the same normalization `Selection.Normalize` applies to selections, so a corrupt value never
+widens or attests ownership.
 
 ### 3. Direct delivery stays without GitOps
 

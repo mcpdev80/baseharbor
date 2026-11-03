@@ -446,3 +446,197 @@ func TestFirstSaveDelegatedCallerConflictPasses(t *testing.T) {
 		t.Fatalf("first-save delegated caller conflict=true must pass, got %v", err)
 	}
 }
+
+// seedCorruptedOwner persists a record, then hand-injects a corrupt/unrecognised
+// persisted reconciliation owner into the stored deployment.json. The stored
+// owner is neither "" nor a recognised owner (baseharbor|external).
+func seedCorruptedOwner(t *testing.T, id DeploymentIdentity, owner string) string {
+	t.Helper()
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	seed := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed corrupted-owner record: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	return path
+}
+func TestCorruptedOwnerDirectPassesUnsetPathIsWideningNeutral(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed baseharbor record: %v", err)
+	}
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Observed.Owner = delivery.ReconciliationOwner("corrupt-third-party")
+	injected, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal injected: %v", err)
+	}
+	injected = append(injected, '\n')
+	if err := os.WriteFile(path, injected, 0o600); err != nil {
+		t.Fatalf("write injected corrupt owner: %v", err)
+	}
+
+	record2 := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(record2); err != nil {
+		t.Fatalf("direct apply over corrupt persisted owner must pass via unset-path, got %v", err)
+	}
+	got, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load after direct apply: %v", err)
+	}
+	if got.Observed.Owner != delivery.OwnerBaseHarbor {
+		t.Fatalf("persisted owner must become canonical baseharbor, got %q", got.Observed.Owner)
+	}
+}
+
+// TestCorruptedOwnerDelegatedOwnExternalGoverns is regression 2 restated
+// precisely: the corrupt persisted owner is not widened into a valid owner — a
+// delegated apply whose own selection owner is genuinely external is allowed
+// because the unset-path defers to the applied selection's owner, and the
+// persisted owner becomes canonical external. The corrupt value neither widens
+// nor attests any owner beyond what the applied selection carries.
+func TestCorruptedOwnerDelegatedOwnExternalGoverns(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed baseharbor record: %v", err)
+	}
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Observed.Owner = delivery.ReconciliationOwner("corrupt-third-party")
+	injected, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal injected: %v", err)
+	}
+	injected = append(injected, '\n')
+	if err := os.WriteFile(path, injected, 0o600); err != nil {
+		t.Fatalf("write injected corrupt owner: %v", err)
+	}
+
+	delegated := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied: AppliedDeployment{RuntimeProvider: "k8s", Delivery: delivery.Selection{
+			Mode: delivery.ModeDelegated, Provider: "gitops/argocd", Owner: delivery.OwnerExternal, Placement: delivery.PlacementExternal,
+		}},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerExternal},
+	}
+	if err := SaveDeploymentRecord(delegated); err != nil {
+		t.Fatalf("delegated apply whose own owner is external must pass over corrupt persisted owner, got %v", err)
+	}
+	got, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load after delegated apply: %v", err)
+	}
+	if got.Observed.Owner != delivery.OwnerExternal {
+		t.Fatalf("persisted owner must become canonical external, got %q", got.Observed.Owner)
+	}
+}
+
+// TestCorruptedOwnerPreviousConflictStillRefuses is regression 3: a corrupt
+// persisted owner plus a previous record whose conflict flag is true still
+// refuses (fail closed): the carried conflict wins regardless of the owner value.
+func TestCorruptedOwnerPreviousConflictStillRefused(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed baseharbor record: %v", err)
+	}
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Observed.Owner = delivery.ReconciliationOwner("corrupt-third-party")
+	record.Observed.Conflict = true
+	injected, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal injected: %v", err)
+	}
+	injected = append(injected, '\n')
+	if err := os.WriteFile(path, injected, 0o600); err != nil {
+		t.Fatalf("write injected corrupt owner + conflict: %v", err)
+	}
+
+	// A same-owner update must be refused: the previous conflict carries into the
+	// guard and fails closed, even with a corrupt owner.
+	update := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+	if err := SaveDeploymentRecord(update); !errors.Is(err, ErrConflictingOneWriter) {
+		t.Fatalf("same-owner update under carried conflict + corrupt owner must refuse with ErrConflictingOneWriter, got %v", err)
+	}
+}
+
+// TestCorruptedOwnerNormaliseHelperDirect checks the helper directly: an
+// unknown/corrupt value collapses to "" (unset) while recognised values are
+// preserved lower-cased, and whitespace/upper-case is normalised.
+func TestCorruptedOwnerNormaliseHelperDirect(t *testing.T) {
+	cases := map[string]string{
+		"":                          "",
+		"baseharbor":                "baseharbor",
+		"external":                  "external",
+		"corrupt-third-party":       "",
+		"BASEHARBOR":                "baseharbor",
+		"  external  ":              "external",
+		"  corrupt-third-party  ":   "",
+		"BaseHarbor":                "baseharbor",
+	}
+	for in, want := range cases {
+		if got := normalisePersistedOwner(in); got != want {
+			t.Fatalf("normalisePersistedOwner(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

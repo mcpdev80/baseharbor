@@ -183,8 +183,7 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// and before any state is written — and its reconciliation-owner observation
 	// governs. The previous record is the real owner observed before this
 	// mutation; the caller value can never change the outcome.
-	previous, loadErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
-	previousExists := loadErr == nil
+	previousOwner, previousConflict, previousExists, loadErr := loadPersistedOwnerForGuard(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"))
 	if !previousExists && loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return loadErr
 	}
@@ -192,9 +191,17 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// exists; otherwise the applied selection's mode fixes the owner (a direct
 	// (BaseHarbor-owned) apply has no prior external owner, so the guarded direct
 	// happy path stays green). The caller-supplied Observed.Owner is never used.
+	// The persisted owner is normalised before the guard: a value that is neither
+	// "" nor a recognised owner (baseharbor|external) — a corrupt or unknown
+	// persisted owner — is normalised to "" (unset) by the same rule
+	// Selection.Normalize applies to selections, so it neither silently blocks nor
+	// silently attests an owner. An absent or corrupt persisted owner therefore
+	// defers to the applied selection's mode.
 	guardOwner := record.Applied.Delivery.Owner
-	if previousExists && previous.Observed.Owner != "" {
-		guardOwner = previous.Observed.Owner
+	if previousExists {
+		if normalised := normalisePersistedOwner(previousOwner); normalised != "" {
+			guardOwner = delivery.ReconciliationOwner(normalised)
+		}
 	}
 	guardRecord := record
 	guardRecord.Observed.Owner = guardOwner
@@ -206,7 +213,7 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// is overwritten (not merely ORed). The caller-supplied Conflict is thus
 	// never trusted at first or subsequent save.
 	if previousExists {
-		guardRecord.Observed.Conflict = previous.Observed.Conflict
+		guardRecord.Observed.Conflict = previousConflict
 	} else {
 		guardRecord.Observed.Conflict = false
 	}
@@ -224,11 +231,19 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// persisted preferences — the exact data-loss regression this guards.
 	if record.DesiredProviderPreferences == nil {
 		if previousExists {
-			if previous.Identity.ApplicationID != record.Identity.ApplicationID || previous.Identity.Environment != record.Identity.Environment {
-				return errors.New("cannot retain preferences from a different deployment owner")
+			// Identity/preferences retention re-reads the previous record through
+			// the full loader (owner validation is the guard's job, done above via
+			// loadPersistedOwnerForGuard). A corrupt persisted owner does not block
+			// retention of the separately owned preferences; the guard already
+			// resolved the authoritative owner from the raw persisted value.
+			prevForRetention, retErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
+			if retErr == nil {
+				if prevForRetention.Identity.ApplicationID != record.Identity.ApplicationID || prevForRetention.Identity.Environment != record.Identity.Environment {
+					return errors.New("cannot retain preferences from a different deployment owner")
+				}
+				record.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
+				guardRecord.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
 			}
-			record.DesiredProviderPreferences = previous.DesiredProviderPreferences
-			guardRecord.DesiredProviderPreferences = previous.DesiredProviderPreferences
 		}
 	}
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
@@ -310,6 +325,34 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 		}
 	}
 	return record, nil
+}
+
+// loadPersistedOwnerForGuard reads the reconciliation owner and the conflict
+// flag from the persisted previous deployment record WITHOUT running the full
+// validate() path, so a corrupt or unrecognised persisted owner (e.g. a value
+// that is neither baseharbor nor external) can still be observed and normalised
+// before the one-writer guard. It fails closed on a missing, unparseable, or
+// structurally-broken record (identity/version/JSON failures), i.e. it only
+// returns a usable owner for a structurally-valid record whose persisted owner
+// value may be corrupt. os.ErrNotExist is preserved as a nil owner with a
+// non-nil error so the guard can distinguish "no previous record" from "previous
+// record with a corrupt owner".
+func loadPersistedOwnerForGuard(target, deploymentID, path string) (owner string, conflict bool, exists bool, err error) {
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return "", false, false, readErr
+	}
+	var record DeploymentRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return "", false, false, err
+	}
+	if record.Version != DeploymentRecordVersion {
+		return "", false, false, errors.New("unsupported deployment record version")
+	}
+	if record.Identity.Target != target || record.Identity.DeploymentID != deploymentID {
+		return "", false, false, errors.New("deployment record identity does not match storage path")
+	}
+	return string(record.Observed.Owner), record.Observed.Conflict, true, nil
 }
 
 func DeleteDeploymentRecord(id DeploymentIdentity) error {
@@ -482,4 +525,20 @@ func refuseOneWriterMutation(record DeploymentRecord) error {
 		return ErrUnauthorizedMutation
 	}
 	return nil
+}
+
+// normalisePersistedOwner mirrors Selection.Normalize for a persisted
+// reconciliation owner read from a previous deployment record: it trims and
+// lower-cases the value, and collapses any value that is neither "" nor a
+// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner —
+// to "" (unset). This keeps the one-writer guard from either silently blocking
+// (an unknown owner that is neither direct- nor delegated-legal) or silently
+// attesting an owner that the validate() switch would otherwise reject, so the
+// absent/corrupt value defers to the applied selection's mode.
+func normalisePersistedOwner(owner string) string {
+	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
+	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {
+		return ""
+	}
+	return string(normalised)
 }
