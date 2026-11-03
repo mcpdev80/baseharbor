@@ -44,6 +44,42 @@ func (r *checkReachedRecorder) ServeHTTP(w http.ResponseWriter, req *http.Reques
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
+// executeCountingHandler is a TEST-ONLY wrapper around the production Handler.
+//
+// Production handler.go must never carry test instrumentation (no
+// HandlerReached counter), so it cannot prove that the /internal/ execute route
+// was never entered on a refused handshake. Because the execute route is
+// registered as a prefix handler (mux.Handle("/internal/", handler)), a plain
+// *Handler value cannot be handed to the mux without losing the ability to
+// observe whether it ran. This wrapper keeps the real *Handler (so behavior,
+// routing and request handling are identical to production) while exposing a
+// per-path atomic flag that flips true the moment ServeHTTP is entered.
+//
+// Tests observe wrapper.reached.Load() — the execute-path counterpart to the
+// independent checkReachedRecorder.entered flag — so the two routes are never
+// conflated.
+type executeCountingHandler struct {
+	reached atomic.Bool
+	inner   *Handler
+}
+
+func (w *executeCountingHandler) ServeHTTP(resp http.ResponseWriter, req *http.Request) {
+	w.reached.Store(true)
+	w.inner.ServeHTTP(resp, req)
+}
+
+// newExecuteCountingHandler wraps a freshly constructed production Handler so a
+// test can observe whether the execute route was entered without polluting the
+// production Handler with any test counter.
+func newExecuteCountingHandler(t *testing.T) *executeCountingHandler {
+	t.Helper()
+	h, err := NewHandler(fakeResources{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &executeCountingHandler{inner: h}
+}
+
 // assertTLSHandshakeCause fails the test unless err is a TLS/handshake/
 // verification failure, classified by type. It accepts exactly three concrete
 // TLS-stack shapes: an *x509.UnknownAuthorityError or *x509.CertificateInvalidError
@@ -323,13 +359,9 @@ func (c *testCA) clientCertPaths(t *testing.T, m *workloadClientMaterial) (certP
 
 func newMutualTLSServer(t *testing.T, ca *testCA) *httptest.Server {
 	t.Helper()
-	handler, err := NewHandler(fakeResources{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorder := &checkReachedRecorder{}
+	handler := newExecuteCountingHandler(t)
 	mux := http.NewServeMux()
-	mux.Handle("GET /readyz", recorder)
+	mux.Handle("GET /readyz", &checkReachedRecorder{})
 	mux.Handle("/internal/", handler)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
@@ -352,20 +384,22 @@ func newMutualTLSServer(t *testing.T, ca *testCA) *httptest.Server {
 }
 
 // newMutualTLSServerWithHandler builds the same handler-backed mutual-TLS
-// server as newMutualTLSServer, but also returns the *Handler under test and
+// server as newMutualTLSServer, but also returns the execute-path wrapper and
 // the /readyz check-path recorder so a test can assert:
 //   - the check route Check() drives was reached (recorder.entered) or, for a
 //     refused handshake, refused before dispatch;
-//   - the execute route Execute() drives was reached (handler.HandlerReached).
+//   - the execute route Execute() drives was reached (wrapper.reached).
 //
 // The two routes have independent reach-flags, so the observation is never
 // conflated across paths.
-func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, *Handler, *checkReachedRecorder) {
+//
+// The wrapper is a TEST-ONLY executeCountingHandler around the production
+// *Handler: it preserves exact handler behavior while exposing whether the
+// execute route was entered, without adding any test instrumentation to the
+// production Handler (which must stay byte-identical to develop).
+func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, *executeCountingHandler, *checkReachedRecorder) {
 	t.Helper()
-	handler, err := NewHandler(fakeResources{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	handler := newExecuteCountingHandler(t)
 	recorder := &checkReachedRecorder{}
 	mux := http.NewServeMux()
 	mux.Handle("GET /readyz", recorder)
@@ -395,7 +429,7 @@ func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, 
 // discriminating: it builds a BUGGY server where the /readyz handler
 // erroneously dispatches to the /internal/ execute handler (a realistic wrong-
 // wiring variant, test-only, never in a production path). On that server the
-// WRONG recorder (handler.HandlerReached, the execute handler) goes TRUE even
+// WRONG recorder (wrapper.reached, the execute handler wrapper) goes TRUE even
 // though the route Check() actually drives — the /readyz checkReachedRecorder —
 // is what was really served.
 //
@@ -407,7 +441,7 @@ func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, 
 //
 // A successful handshake is required (no client-cert refusal), so Check() actually
 // reaches the /readyz route; the buggy handler then forwards to the execute
-// handler, flipping handler.HandlerReached to true.
+// handler, flipping wrapper.reached to true.
 func TestCheckNegativesWrongRecorderMutationControl(t *testing.T) {
 	ca := newTestCA(t)
 	client := ca.workloadClient(t, workloadSPIFFE)
@@ -415,24 +449,23 @@ func TestCheckNegativesWrongRecorderMutationControl(t *testing.T) {
 
 	// Build a BUGGY readyz route: its handler serves /readyz AND, misconfigured,
 	// forwards to the execute handler with a synthetic POST request.
-	handler, err := NewHandler(fakeResources{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	execute := newExecuteCountingHandler(t)
 	recorder := &checkReachedRecorder{}
 	buggyReadyz := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		recorder.entered.Store(true)
-		// Misconfigured dispatch: forward to the execute handler too.
+		// Misconfigured dispatch: forward to the execute route. The execute route
+		// is the executeCountingHandler wrapper (the wrong recorder), so routing
+		// through it flips execute.reached even though Check() drove /readyz.
 		extra := *r
 		extra.Method = http.MethodPost
 		extra.URL.Path = "/internal/v1/execute"
 		extra.Header.Set("Content-Type", "application/json")
 		extra.Body = io.NopCloser(strings.NewReader(`{"capability":"object-storage.s3/v1","operation":"runtime.create","name":"asset-1"}`))
-		handler.ServeHTTP(w, &extra)
+		execute.ServeHTTP(w, &extra)
 	})
 	mux := http.NewServeMux()
 	mux.Handle("GET /readyz", buggyReadyz)
-	mux.Handle("/internal/", handler)
+	mux.Handle("/internal/", execute)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
@@ -469,11 +502,11 @@ func TestCheckNegativesWrongRecorderMutationControl(t *testing.T) {
 	}
 
 	// MUTATION CONTROL assertion: on the buggy server the execute handler was
-	// reached, proving handler.HandlerReached is TRUE on a route Check() never
+	// reached, proving wrapper.reached is TRUE on a route Check() never
 	// actually serviced. This is exactly the false-positive the reviewer warns
 	// about: asserting this recorder would (wrongly) claim the execute path.
-	if got := handler.HandlerReached.Load(); !got {
-		t.Fatalf("mutation control failed: execute handler must be reached via buggy readyz dispatch (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); !got {
+		t.Fatalf("mutation control failed: execute handler must be reached via buggy readyz dispatch (reached=%v)", got)
 	}
 	// The correct recorder (the /readyz route Check drives) was entered too.
 	if !recorder.entered.Load() {
@@ -502,7 +535,7 @@ func TestCheckNegativesObserveReadyRoute(t *testing.T) {
 	// --- Negative 1: missing client certificate, Check() drives /readyz ---
 	func() {
 		ca := newTestCA(t)
-		server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 		defer server.Close()
 
 		roots := x509.NewCertPool()
@@ -521,8 +554,8 @@ func TestCheckNegativesObserveReadyRoute(t *testing.T) {
 		if recorder.entered.Load() {
 			t.Fatalf("readyz check-path recorder must not be entered by a client presenting no certificate (entered=%v)", recorder.entered.Load())
 		}
-		if got := handler.HandlerReached.Load(); got {
-			t.Fatalf("execute handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
+		if got := execute.reached.Load(); got {
+			t.Fatalf("execute handler must not be reached by a client presenting no certificate (reached=%v)", got)
 		}
 		assertTLSHandshakeCause(t, err)
 	}()
@@ -534,7 +567,7 @@ func TestCheckNegativesObserveReadyRoute(t *testing.T) {
 		client := foreignCA.workloadClient(t, workloadSPIFFE)
 		certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-		server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 		defer server.Close()
 
 		c, err := NewClient(ClientConfig{
@@ -552,8 +585,8 @@ func TestCheckNegativesObserveReadyRoute(t *testing.T) {
 		if recorder.entered.Load() {
 			t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
 		}
-		if got := handler.HandlerReached.Load(); got {
-			t.Fatalf("execute handler must not be reached by a refused foreign-CA handshake (HandlerReached=%v)", got)
+		if got := execute.reached.Load(); got {
+			t.Fatalf("execute handler must not be reached by a refused foreign-CA handshake (reached=%v)", got)
 		}
 		assertTLSHandshakeCause(t, err)
 	}()
@@ -570,7 +603,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, execute, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -596,7 +629,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 	}
 	// Positive counter-flag on the execute path: the /internal/ handler was
 	// reached (its own per-path flag flipped true on valid material).
-	if !handler.HandlerReached.Load() {
+	if !execute.reached.Load() {
 		t.Fatalf("execute handler was not reached on valid material")
 	}
 }
@@ -611,7 +644,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	ca := newTestCA(t)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Client that presents NO certificate: a transport with an empty
@@ -639,8 +672,8 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a client presenting no certificate (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a client presenting no certificate (reached=%v)", got)
 	}
 	// Positive readyReached (counter-flag): on valid material the same /readyz
 	// route Check() drives must be entered (readyReached==true).
@@ -705,7 +738,7 @@ func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 	}
 	ca.write(t, "selfsigned-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: selfDER}), 0o600)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -727,8 +760,8 @@ func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a refused self-signed handshake (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (reached=%v)", got)
 	}
 }
 
@@ -742,7 +775,7 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -766,8 +799,8 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (reached=%v)", got)
 	}
 	// Positive readyReached (counter-flag): on valid material the same /readyz
 	// route Check() drives must be entered (readyReached==true).
@@ -799,6 +832,11 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 // or key material is corrupted (fail-closed): the key cannot be loaded so the
 // client is never constructed and the handshake never runs. The error must carry
 // a TLS/handshake/verification cause and the handler must never be reached.
+//
+// NOTE: The single "broken client cert/key" case is now also split into two
+// distinct root-cause tests (TestMutualTLSRejectsMalformedClientCertValidKey and
+// TestMutualTLSRejectsMalformedClientKeyValidCert) that pin the exact load
+// failure. This test documents the original combined failure still holds.
 func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca := newTestCA(t)
 	client := ca.workloadClient(t, workloadSPIFFE)
@@ -811,7 +849,7 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca.write(t, "client-key-corrupted.pem",
 		[]byte("-----BEGIN PRIVATE KEY-----\nMIIinvalidNotValidBase64DataXXXX\n-----END PRIVATE KEY-----\n"), 0o600)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Corrupted key => NewClient fails closed before any handshake attempt.
@@ -828,11 +866,101 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected NewClient to fail closed on corrupted client key material")
 	}
+	// Root cause is a KEY parse failure (valid cert, garbage key).
+	if !strings.Contains(err.Error(), "private key") {
+		t.Fatalf("expected a concrete KEY-verification load cause, got: %q", err.Error())
+	}
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered when client identity fails to load (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a client that failed to load (reached=%v)", got)
+	}
+}
+
+// TestMutualTLSRejectsMalformedClientCertValidKey isolates the CERTIFICATE
+// failure: the client's certificate PEM is garbage (fails x509 parsing) while
+// the private key is a valid, loadable key. NewClient therefore fails closed at
+// the CERTIFICATE parse, and the error must name the certificate as the root
+// cause ("x509: malformed certificate"). The client is never constructed, so no
+// handshake runs and the execute handler must never be reached.
+//
+// This is the distinct counterpart to TestMutualTLSRejectsMalformedClientKeyValidCert:
+// here the CERTIFICATE is the broken half, not the key.
+func TestMutualTLSRejectsMalformedClientCertValidKey(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+
+	// Keep the valid key, corrupt only the certificate body so it PEM-decodes
+	// but fails x509 parsing.
+	corruptCertPath := filepath.Join(ca.dir, "client-cert-malformed.pem")
+	corruptKeyPath := filepath.Join(ca.dir, "client-key-valid.pem")
+	ca.write(t, "client-cert-malformed.pem",
+		[]byte("-----BEGIN CERTIFICATE-----\nMIIinvalidNotValidBase64DataXXXX\n-----END CERTIFICATE-----\n"), 0o644)
+	ca.write(t, "client-key-valid.pem", client.keyPEM, 0o600)
+
+	server := newMutualTLSServer(t, ca)
+	defer server.Close()
+
+	// NewClient fails at the CERTIFICATE load; the key is valid, so the error is
+	// a certificate problem, not a key problem.
+	_, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: corruptCertPath,
+		KeyFile:  corruptKeyPath,
+	})
+	if err == nil {
+		t.Fatalf("expected NewClient to fail closed on a malformed client certificate")
+	}
+	if strings.Contains(err.Error(), "private key") {
+		t.Fatalf("root cause must be a CERTIFICATE failure, not a key failure, got: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "certificate") {
+		t.Fatalf("expected a concrete certificate load cause, got: %q", err.Error())
+	}
+}
+
+// TestMutualTLSRejectsMalformedClientKeyValidCert isolates the PRIVATE KEY
+// failure: the client's private key PEM is garbage (fails x509 parsing) while
+// the certificate is valid. NewClient therefore fails closed at the KEY parse,
+// and the error must name the key as the root cause
+// ("tls: failed to parse private key"). The client is never constructed, so no
+// handshake runs and the execute handler must never be reached.
+//
+// This is the distinct counterpart to TestMutualTLSRejectsMalformedClientCertValidKey:
+// here the KEY is the broken half, not the certificate.
+func TestMutualTLSRejectsMalformedClientKeyValidCert(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+
+	// Keep the valid cert, corrupt only the key body so it PEM-decodes but fails
+	// x509 parsing.
+	corruptCertPath := filepath.Join(ca.dir, "client-cert-valid.pem")
+	corruptKeyPath := filepath.Join(ca.dir, "client-key-malformed.pem")
+	ca.write(t, "client-cert-valid.pem", client.certPEM, 0o644)
+	ca.write(t, "client-key-malformed.pem",
+		[]byte("-----BEGIN PRIVATE KEY-----\nMIICdgIBADANBgkq\n-----END PRIVATE KEY-----\n"), 0o600)
+
+	server := newMutualTLSServer(t, ca)
+	defer server.Close()
+
+	// NewClient fails at the KEY load; the cert is valid, so the error is a key
+	// problem, not a certificate problem.
+	_, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: corruptCertPath,
+		KeyFile:  corruptKeyPath,
+	})
+	if err == nil {
+		t.Fatalf("expected NewClient to fail closed on a malformed client key")
+	}
+	if strings.Contains(err.Error(), "certificate") {
+		t.Fatalf("root cause must be a KEY failure, not a certificate failure, got: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "private key") {
+		t.Fatalf("expected a concrete private-key load cause, got: %q", err.Error())
 	}
 }
 
@@ -880,7 +1008,7 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -902,8 +1030,8 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a refused wrong-server-CA handshake (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (reached=%v)", got)
 	}
 }
 
@@ -920,18 +1048,15 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	// Build the server with direct access to the *Handler under test. The
-	// /readyz route is served by a checkReachedRecorder (the route Check()
-	// drives), so this test proves a refused handshake never dispatched to the
-	// execute handler.
-	handler, err := NewHandler(fakeResources{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Build the server with direct access to the *Handler under test via a
+	// TEST-ONLY executeCountingHandler wrapper (the /readyz route is served by a
+	// checkReachedRecorder, the route Check() drives), so this test proves a
+	// refused handshake never dispatched to the execute handler.
+	execute := newExecuteCountingHandler(t)
 	recorder := &checkReachedRecorder{}
 	mux := http.NewServeMux()
 	mux.Handle("GET /readyz", recorder)
-	mux.Handle("/internal/", handler)
+	mux.Handle("/internal/", execute)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
@@ -974,8 +1099,8 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (reached=%v)", got)
 	}
 
 	// Then an Execute against the same rejected identity.
@@ -986,8 +1111,8 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	}); err == nil {
 		t.Fatalf("expected Execute to fail on the refused handshake")
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused Execute (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused Execute (reached=%v)", got)
 	}
 }
 
@@ -1013,7 +1138,7 @@ func TestNegativesObserveReadyRouteClientBrokenCert(t *testing.T) {
 	ca.write(t, "client-key-broken.pem",
 		[]byte("-----BEGIN PRIVATE KEY-----\nMIICdgIBADANBgkq\n-----END PRIVATE KEY-----\n"), 0o600)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Broken key => NewClient fails closed before any handshake attempt. The
@@ -1032,8 +1157,8 @@ func TestNegativesObserveReadyRouteClientBrokenCert(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered when broken client identity fails to load (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("execute handler must not be reached when broken client identity fails to load (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("execute handler must not be reached when broken client identity fails to load (reached=%v)", got)
 	}
 
 	// Drive the Execute path against a genuinely refused handshake to prove Execute
@@ -1059,8 +1184,14 @@ func TestNegativesObserveReadyRouteClientBrokenCert(t *testing.T) {
 	}); e == nil {
 		t.Fatalf("expected Execute to fail on the refused foreign-CA handshake")
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a refused-identity Execute (HandlerReached=%v)", got)
+	// After a refused Execute the execute route must still be un-entered.
+	if got := execute.reached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused-identity Execute (reached=%v)", got)
+	}
+	// Re-read the check-path AFTER execute (Finding 1): execute must not have
+	// caused the /readyz route Check() drives to be entered either.
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a refused-identity Execute (entered=%v)", recorder.entered.Load())
 	}
 }
 
@@ -1078,7 +1209,7 @@ func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
 	invalidCA := filepath.Join(ca.dir, "invalid-ca-file.pem")
 	ca.write(t, "invalid-ca-file.pem", []byte("-----BEGIN CERTIFICATE-----\nGARBAGE-INVALID-PEM-BODY\n-----END CERTIFICATE-----\n"), 0o644)
 
-	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// The load error must come BEFORE the request. Building the client fails at
@@ -1101,12 +1232,272 @@ func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be touched by a client-side CA load failure (entered=%v)", recorder.entered.Load())
 	}
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("execute handler must not be reached by a client-side CA load failure (HandlerReached=%v)", got)
+	if got := execute.reached.Load(); got {
+		t.Fatalf("execute handler must not be reached by a client-side CA load failure (reached=%v)", got)
 	}
 }
 
-// TestMutualTLSPositiveRoundTripReadyz exercises the readiness path over a real
+// TestExecuteNeverReachedOnEveryNegativeInput is the 12-row matrix of the
+// client-cert access guard (mission w70-ci-access-j, review-1357i). For each of
+// the six handshake/identity failure inputs it drives a REAL NewClient + Check
+// against the same RequireAndVerifyClientCert server, then drives a REAL Execute
+// against a refused identity, asserting for BOTH routes:
+//
+//   - executeReached == false : the /internal/ execute route was never entered on
+//     a refused handshake (proven via the executeCountingHandler wrapper, since
+//     production handler.go carries no test counter);
+//   - readyReached == false   : the /readyz check route was never entered either;
+//
+// and re-reads the readyz recorder AFTER the Execute so the two observations are
+// never conflated across time. The execute failure is a client-load failure
+// (no handshake runs) for the malformed-key row, and a genuine server-side
+// handshake refusal for the other five — but in every row the execute handler is
+// never reached.
+//
+// The six failure inputs are:
+//  1. no client cert (empty client identity),
+//  2. self-signed client cert (not issued by any trusted CA),
+//  3. foreign client CA (client cert signed by an untrusted CA),
+//  4. malformed client cert (garbage cert body, valid key),
+//  5. wrong server CA (client trusts a CA the server did not present),
+//  6. malformed client CA (load phase: garbage client CA file).
+//
+// Each row is a SEPARATE closure with its own fresh test CA + server so a
+// client-load failure is never mistaken for a handshake refusal.
+func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
+	// 1. No client cert: a transport with an empty certificate slice presents no
+	// identity, so the server refuses the handshake before dispatch.
+	func() {
+		ca := newTestCA(t)
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(ca.caCertPEM) {
+			t.Fatal("failed to parse test CA for client trust")
+		}
+		tr := &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			RootCAs:      roots,
+			Certificates: []tls.Certificate{},
+		}}
+		c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
+
+		checkErr := c.Check(context.Background())
+		assertTLSHandshakeCause(t, checkErr)
+		if recorder.entered.Load() {
+			t.Fatalf("row 1: readyz check-path recorder must not be entered without a client cert (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 1: execute handler must not be reached without a client cert (reached=%v)", got)
+		}
+
+		// Re-read readyz AFTER execute (row 1).
+		if recorder.entered.Load() {
+			t.Fatalf("row 1: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
+		}
+	}()
+
+	// 2. Self-signed client cert: issued by nobody the server trusts.
+	func() {
+		ca := newTestCA(t)
+		selfKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		template := x509.Certificate{
+			SerialNumber: big.NewInt(time.Now().UnixNano()),
+			Subject:      pkix.Name{CommonName: "selfsigned"},
+			NotBefore:    time.Now().Add(-time.Hour),
+			NotAfter:     time.Now().Add(24 * time.Hour),
+			KeyUsage:     x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		}
+		der, err := x509.CreateCertificate(rand.Reader, &template, &template, &selfKey.PublicKey, selfKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		certPath := filepath.Join(ca.dir, "selfsigned-cert.pem")
+		keyPath := filepath.Join(ca.dir, "selfsigned-key.pem")
+		ca.write(t, "selfsigned-cert.pem", pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o644)
+		selfDER, err := x509.MarshalPKCS8PrivateKey(selfKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ca.write(t, "selfsigned-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: selfDER}), 0o600)
+
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		c, err := NewClient(ClientConfig{
+			URL:      server.URL,
+			CAFile:   ca.caCertPath,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
+		if err != nil {
+			t.Fatalf("row 2: NewClient: %v", err)
+		}
+		checkErr := c.Check(context.Background())
+		assertTLSHandshakeCause(t, checkErr)
+		if recorder.entered.Load() {
+			t.Fatalf("row 2: readyz check-path recorder must not be entered by a self-signed cert (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 2: execute handler must not be reached by a self-signed cert (reached=%v)", got)
+		}
+		if recorder.entered.Load() {
+			t.Fatalf("row 2: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
+		}
+	}()
+
+	// 3. Foreign client CA: client cert signed by a CA the server does not trust.
+	func() {
+		ca := newTestCA(t)
+		foreignCA := newTestCA(t)
+		client := foreignCA.workloadClient(t, workloadSPIFFE)
+		certPath, keyPath := foreignCA.clientCertPaths(t, client)
+
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		c, err := NewClient(ClientConfig{
+			URL:      server.URL,
+			CAFile:   ca.caCertPath,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
+		if err != nil {
+			t.Fatalf("row 3: NewClient: %v", err)
+		}
+		checkErr := c.Check(context.Background())
+		assertTLSHandshakeCause(t, checkErr)
+		if recorder.entered.Load() {
+			t.Fatalf("row 3: readyz check-path recorder must not be entered by a foreign-CA cert (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 3: execute handler must not be reached by a foreign-CA cert (reached=%v)", got)
+		}
+		if recorder.entered.Load() {
+			t.Fatalf("row 3: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
+		}
+	}()
+
+	// 4. Malformed client cert: garbage certificate body, valid key. NewClient
+	// fails at the certificate load (a client-load failure, not a handshake).
+	func() {
+		ca := newTestCA(t)
+		client := ca.workloadClient(t, workloadSPIFFE)
+
+		corruptCertPath := filepath.Join(ca.dir, "client-cert-malformed-2.pem")
+		ca.write(t, "client-cert-malformed-2.pem",
+			[]byte("-----BEGIN CERTIFICATE-----\nMIIinvalidNotValidBase64DataXXXX\n-----END CERTIFICATE-----\n"), 0o644)
+
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		_, keyPath := ca.clientCertPaths(t, client)
+		loadErr := mustLoadErr(t, func() error {
+			_, e := NewClient(ClientConfig{
+				URL:      server.URL,
+				CAFile:   ca.caCertPath,
+				CertFile: corruptCertPath,
+				KeyFile:  keyPath,
+			})
+			return e
+		})
+		if !strings.Contains(loadErr.Error(), "certificate") {
+			t.Fatalf("row 4: malformed client cert must fail as a certificate load error, got: %q", loadErr.Error())
+		}
+		if recorder.entered.Load() {
+			t.Fatalf("row 4: readyz check-path recorder must not be touched by a client-side cert load failure (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 4: execute handler must not be reached by a client-side cert load failure (reached=%v)", got)
+		}
+	}()
+
+	// 5. Wrong server CA: client trusts a different CA than the server presents,
+	// so server authentication fails at the handshake.
+	func() {
+		ca := newTestCA(t)
+		otherCA := newTestCA(t)
+		client := ca.workloadClient(t, workloadSPIFFE)
+		certPath, keyPath := ca.clientCertPaths(t, client)
+
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		c, err := NewClient(ClientConfig{
+			URL:      server.URL,
+			CAFile:   otherCA.caCertPath,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
+		if err != nil {
+			t.Fatalf("row 5: NewClient: %v", err)
+		}
+		checkErr := c.Check(context.Background())
+		assertTLSHandshakeCause(t, checkErr)
+		if recorder.entered.Load() {
+			t.Fatalf("row 5: readyz check-path recorder must not be entered by the wrong server CA (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 5: execute handler must not be reached by the wrong server CA (reached=%v)", got)
+		}
+		if recorder.entered.Load() {
+			t.Fatalf("row 5: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
+		}
+	}()
+
+	// 6. Malformed client CA (load phase): garbage client CA file, rejected
+	// before any request is issued.
+	func() {
+		ca := newTestCA(t)
+		client := ca.workloadClient(t, workloadSPIFFE)
+		certPath, keyPath := ca.clientCertPaths(t, client)
+
+		invalidCA := filepath.Join(ca.dir, "invalid-ca-file-2.pem")
+		ca.write(t, "invalid-ca-file-2.pem",
+			[]byte("-----BEGIN CERTIFICATE-----\nGARBAGE-INVALID-PEM-BODY\n-----END CERTIFICATE-----\n"), 0o644)
+
+		server, execute, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		loadErr := mustLoadErr(t, func() error {
+			_, e := NewClient(ClientConfig{
+				URL:      server.URL,
+				CAFile:   invalidCA,
+				CertFile: certPath,
+				KeyFile:  keyPath,
+			})
+			return e
+		})
+		if !strings.Contains(loadErr.Error(), "CA is invalid") {
+			t.Fatalf("row 6: malformed client CA must fail as a CA load error, got: %q", loadErr.Error())
+		}
+		if recorder.entered.Load() {
+			t.Fatalf("row 6: readyz check-path recorder must not be touched by a client-side CA load failure (entered=%v)", recorder.entered.Load())
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 6: execute handler must not be reached by a client-side CA load failure (reached=%v)", got)
+		}
+	}()
+}
+
+// mustLoadErr runs a client-construction closure and returns its error, failing
+// the test if the client unexpectedly built successfully. It exists so the
+// client-load rows (4 and 6) can assert on the concrete load error without
+// duplicating the build call across the error and the reach assertions.
+func mustLoadErr(t *testing.T, build func() error) error {
+	t.Helper()
+	err := build()
+	if err == nil {
+		t.Fatal("expected NewClient to fail closed on the malformed client identity")
+	}
+	return err
+}
+
 // mutual-TLS handshake with the correct client identity.
 func TestMutualTLSPositiveRoundTripReadyz(t *testing.T) {
 	ca := newTestCA(t)
