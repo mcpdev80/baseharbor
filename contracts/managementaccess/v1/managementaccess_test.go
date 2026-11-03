@@ -107,25 +107,21 @@ func TestImportCapabilityFailClosedForEachGuarantee(t *testing.T) {
 	}
 }
 
-// Finding 4 (l8-profile-r6): side-effect witnesses through the real import
-// boundary. Importing a management record must grant no rights, run no plugin,
-// and redirect no credentials. We prove this with local before/after witnesses
-// at the actual import entry: the valid golden records validate through
-// ValidateKindEnforcement (the fail-closed import gate) with a zeroed
-// ImportCapability, so FailClosedImport() is false (no side effect) and every
-// flag stays false. A record with any true flag fails closed BEFORE the import
-// boundary, so no grant/plugin/redirect can ever run.
-func TestImportSideEffectsWitnessed(t *testing.T) {
-	// The real import boundary is ValidateKindEnforcement, called on the import
-	// path. Valid golden records must validate with every import flag false, so
-	// FailClosedImport() is false and no grant/plugin/redirect side effect runs.
-	// We now prove this with the before/after witness counters (no grant / plugin
-	// / credential-redirect ever increments).
-	golds := []managementaccess.ManagementAccessKind{
+// Finding 4 (l8-profile-r6, deferred per mission l11-profile-r9): the import
+// side-effect witness claim is formally deferred (card section "Coordinator
+// decision on import side-effect clause"), so this slice makes NO side-effect
+// guarantee. The import boundary here is the fail-closed kind enforcement,
+// ValidateKindEnforcement: clean golden records validate with a zeroed
+// ImportCapability (FailClosedImport() is false), and any record carrying a true
+// import flag fails closed at the boundary. This is a schema/contract check only
+// — no grant / plugin / credential-redirect orchestration is asserted.
+func TestImportCapabilityFailClosedAtKindBoundary(t *testing.T) {
+	// Clean golden records validate through the fail-closed import gate with a
+	// zeroed ImportCapability, so FailClosedImport() is false.
+	for _, kind := range []managementaccess.ManagementAccessKind{
 		managementaccess.ManagementProfile,
 		managementaccess.CredentialExport,
-	}
-	for _, kind := range golds {
+	} {
 		p := profileFor(t)
 		p.Kind = kind
 		if kind == managementaccess.CredentialExport {
@@ -134,13 +130,12 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 		if p.Import.FailClosedImport() {
 			t.Fatalf("%s: a clean import must not fail closed", kind)
 		}
-		witness := newSideEffectWitness()
-		importWithWitnesses(t, witness, &p)
+		if err := p.ValidateKindEnforcement(); err != nil {
+			t.Fatalf("%s clean golden record must validate at the boundary, got %v", kind, err)
+		}
 	}
 
-	// A record carrying ANY true import flag fails closed at the boundary before
-	// any side effect runs, so a production caller never observes a grant/plugin/
-	// redirect from the import path.
+	// A record carrying ANY true import flag fails closed BEFORE the boundary.
 	for _, flag := range []struct {
 		name string
 		set  func(*managementaccess.ImportCapability)
@@ -151,8 +146,9 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 	} {
 		p := profileFor(t)
 		flag.set(&p.Import)
-		witness := newSideEffectWitness()
-		assertRejected(t, witness, &p, flag.name, p.Kind)
+		if err := p.ValidateKindEnforcement(); err == nil {
+			t.Fatalf("%s=true must fail closed import", flag.name)
+		}
 	}
 }
 

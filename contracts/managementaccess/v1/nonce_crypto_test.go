@@ -1,6 +1,7 @@
 package managementaccess_test
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -233,6 +234,88 @@ func TestNonceContractAcceptsValid16CharVariants(t *testing.T) {
 	} {
 		if err := mk(nonce).ValidateKindEnforcement(); err != nil {
 			t.Fatalf("valid 16-character nonce %q must be accepted, got %v", nonce, err)
+		}
+	}
+}
+
+// TestNonceGoldenAEADRoundtripWithDecodedGoldenNonce drives a real AES-256-GCM
+// AEAD encrypt/decrypt using the bytes of the DECODED golden nonce (not a newly
+// generated nonce): the golden base64url nonce decodes to exactly 12 bytes, the
+// AEAD nonce size, and those exact bytes must seal and then open a blob. This
+// proves the documented golden nonce is a real AEAD nonce end to end.
+func TestNonceGoldenAEADRoundtripWithDecodedGoldenNonce(t *testing.T) {
+	goldenBytes, err := base64.RawURLEncoding.DecodeString(aes256GcmNonceGolden)
+	if err != nil {
+		t.Fatalf("golden nonce must decode: %v", err)
+	}
+	if len(goldenBytes) != 12 {
+		t.Fatalf("decoded golden nonce must be 12 bytes, got %d", len(goldenBytes))
+	}
+	key := make([]byte, 32) // 32-byte AES-256 key
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatalf("new cipher: %v", err)
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		t.Fatalf("new gcm: %v", err)
+	}
+	if gcm.NonceSize() != 12 {
+		t.Fatalf("AES-256-GCM nonce size must be 12, got %d", gcm.NonceSize())
+	}
+	plaintext := []byte("credential-export-secret-blob")
+	ciphertext := gcm.Seal(nil, goldenBytes, plaintext, nil)
+	dec, err := gcm.Open(nil, goldenBytes, ciphertext, nil)
+	if err != nil {
+		t.Fatalf("AEAD open with decoded golden nonce must succeed: %v", err)
+	}
+	if !bytes.Equal(dec, plaintext) {
+		t.Fatalf("round-trip mismatch: got %q", dec)
+	}
+}
+
+// TestNonceContractRejectsNegativeVariantsWithFreshBaselineProfiles drives the
+// exported ValidateKindEnforcement boundary for negative nonce variants. Each
+// negative variant starts from its OWN fresh, fully valid baseline profile (a
+// deep copy taken before mutation) so that no variant shares the exported
+// EncryptionDescriptor pointer of a shared baseline and one variant's mutation
+// cannot mask another's failure. The golden baseline validates first.
+func TestNonceContractRejectsNegativeVariantsWithFreshBaselineProfiles(t *testing.T) {
+	now := time.Now().UTC()
+	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
+	// freshBaseline returns a brand-new valid profile per call (no shared Export pointer).
+	freshBaseline := func() managementaccess.ManagementAccessProfile {
+		return managementaccess.ManagementAccessProfile{
+			Kind:        managementaccess.CredentialExport,
+			Version:     "baseharbor.management-access/v1",
+			Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+			NotBefore:   now.Add(-time.Minute),
+			NotAfter:    now.Add(time.Hour),
+			Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
+		}
+	}
+	base := freshBaseline()
+	if err := base.ValidateKindEnforcement(); err != nil {
+		t.Fatalf("fully valid baseline profile must validate, got %v", err)
+	}
+
+	negatives := []string{
+		"4!IDBAUGBwgJCgsM", // invalid alphabet: '!' is not base64url
+		"4fIDBAUGBwgJCgsM=", // padding character '=' outside the 16-char domain
+		"4fIDBAUGBwgJCGs",  // 15 chars -> 11 bytes: short of the 12-byte AEAD nonce
+		"4fIDBAUGBwgJCgsMx", // 17 chars -> not a valid raw base64url length
+	}
+	for _, bad := range negatives {
+		// Deep-copy the fresh baseline before mutating its Nonce.
+		p := freshBaseline()
+		pp := &p
+		pp.Export = &managementaccess.EncryptionDescriptor{
+			Algorithm: "aes-256-gcm",
+			Encrypted: true,
+			Nonce:     bad,
+		}
+		if err := pp.ValidateKindEnforcement(); err == nil {
+			t.Fatalf("nonce %q must fail the contract boundary", bad)
 		}
 	}
 }
