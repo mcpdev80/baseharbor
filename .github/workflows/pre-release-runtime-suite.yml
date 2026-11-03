@@ -2,22 +2,8 @@ name: Atomic Acceptance Gate
 permissions:
   contents: read
 jobs:
-  reused:
-    name: Reused ${{ inputs.runtime }} · ${{ inputs.gate }}
-    if: inputs.reuse_from != '' && github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Report authenticated unchanged previous result
-        env:
-          REUSED_RUN: ${{ inputs.reuse_from }}
-          GATE_NAME: ${{ inputs.runtime }}/${{ inputs.gate }}
-        run: |
-          set -euo pipefail
-          [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
-          echo "Native gate $GATE_NAME reused from existing successful run $REUSED_RUN; exact PR ancestry, source changes and Demo source were checked by the trusted PR planner." >> "$GITHUB_STEP_SUMMARY"
   gate:
-    if: inputs.reuse_from == ''
-    name: ${{ inputs.runtime }} · ${{ inputs.gate }}
+    name: ${{ inputs.reuse_from != '' && 'Reused' || 'Executed' }} ${{ inputs.runtime }} · ${{ inputs.gate }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
@@ -25,7 +11,18 @@ jobs:
       BASEHARBOR_RUNTIME_IMAGE: localhost/baseharbor-runtime:pre-release
       ARTIFACT_DIR: /tmp/baseharbor-atomic-${{ inputs.runtime }}-${{ inputs.gate }}
     steps:
+    - name: Report previously qualified run without executing native runtime
+      if: inputs.reuse_from != ''
+      env:
+        REUSED_RUN: ${{ inputs.reuse_from }}
+        GATE_NAME: ${{ inputs.runtime }}/${{ inputs.gate }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
+        echo "Reused native gate $GATE_NAME from previously successful PR run $REUSED_RUN. This step does not execute native tests; the trusted planner establishes eligible ancestry and input identity." >> "$GITHUB_STEP_SUMMARY"
     - name: Validate candidate ref before checkout
+      if: inputs.reuse_from == ''
       shell: bash
       env:
         CANDIDATE_REF: ${{ inputs.ref }}
@@ -52,6 +49,7 @@ jobs:
           fail_fast
         fi
     - name: Checkout BaseHarbor candidate
+      if: inputs.reuse_from == ''
       id: checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -59,14 +57,15 @@ jobs:
         persist-credentials: false
         fetch-depth: 0
     - name: Prepare verified rootless runtime
-      if: inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
     - name: Resolve candidate SHA
+      if: inputs.reuse_from == ''
       id: candidate
       shell: bash
       run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     - name: Set up Go
-      if: inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
+      if: inputs.reuse_from == '' && inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
         == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
         == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -74,12 +73,14 @@ jobs:
         go-version-file: go.mod
         cache: false
     - name: Reset runtime state
+      if: inputs.reuse_from == ''
       id: reset
       if: inputs.runtime != 'static'
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
     - name: Verify Podman Quadlet runtime
+      if: inputs.reuse_from == ''
       id: quadlet
       if: inputs.runtime == 'podman'
       shell: bash
@@ -107,6 +108,7 @@ jobs:
         chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
         echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
     - name: Download prebuilt candidate
+      if: inputs.reuse_from == ''
       id: candidate_artifact
       if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime'
         && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime'
@@ -116,6 +118,7 @@ jobs:
         name: ${{ inputs.candidate_artifact }}
         path: ${{ runner.temp }}/pre-release-candidate
     - name: Load prebuilt runtime image
+      if: inputs.reuse_from == ''
       id: load_image
       if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' &&
         inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery'
@@ -134,6 +137,7 @@ jobs:
           docker image inspect "$BASEHARBOR_RUNTIME_IMAGE" >/dev/null
         fi
     - name: Checkout exact demo revision
+      if: inputs.reuse_from == ''
       id: demo
       shell: bash
       env:
@@ -149,6 +153,7 @@ jobs:
         test "$(git -C "$workdir" rev-parse HEAD)" = "$DEMO_REF"
         echo "workdir=$workdir" >> "$GITHUB_OUTPUT"
     - name: Validate gate resource declaration
+      if: inputs.reuse_from == ''
       id: resource_profile
       shell: bash
       env:
@@ -172,6 +177,7 @@ jobs:
         echo "profile=$(jq -r --arg gate "$GATE" '.[$gate].profile' "$registry")" >> "$GITHUB_OUTPUT"
         echo "capabilities=$(jq -c --arg gate "$GATE" '.[$gate].capabilities' "$registry")" >> "$GITHUB_OUTPUT"
     - name: Run static gate
+      if: inputs.reuse_from == ''
       id: static_gate
       if: inputs.runtime == 'static'
       shell: bash
@@ -202,6 +208,7 @@ jobs:
           *) echo "Unsupported static gate: $GATE" >&2; exit 2 ;;
         esac
     - name: Run runtime gate
+      if: inputs.reuse_from == ''
       id: runtime_gate
       if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
       timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
@@ -369,7 +376,7 @@ jobs:
           fi
         fi
     - name: Preserve demo runtime diagnostics
-      if: failure() && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && failure() && inputs.runtime != 'static'
       shell: bash
       run: |
         out="$RUNNER_TEMP/demo-runtime-diagnostics"
@@ -390,6 +397,7 @@ jobs:
         done
         echo "::endgroup::"
     - name: Run provider integration gate
+      if: inputs.reuse_from == ''
       id: integration_gate
       if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration'
       shell: bash
@@ -441,7 +449,7 @@ jobs:
             ;;
         esac
     - name: Collect failure diagnostics
-      if: failure() && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && failure() && inputs.runtime != 'static'
       shell: bash
       run: |
         export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-demo-xdg/config"
@@ -461,11 +469,12 @@ jobs:
         mkdir -p "$ARTIFACT_DIR/runtime-diagnostics"
         cp -a "$diag/." "$ARTIFACT_DIR/runtime-diagnostics/" 2>/dev/null || true
     - name: Show original assertion before cleanup
-      if: failure()
+      if: inputs.reuse_from == '' && failure()
       shell: bash
       run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json"
         | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Cleanup runtime state
+      if: inputs.reuse_from == ''
       id: cleanup
       if: always() && inputs.runtime != 'static'
       shell: bash
