@@ -172,32 +172,46 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := record.Applied.Delivery.Validate(); err != nil {
 		return fmt.Errorf("invalid delivery selection: %w", err)
 	}
-	// One-writer guard (ADR 0022 §2): fail closed before any state is written.
-	// The owner/conflict observation is populated by the production apply path
-	// (recordBackendPlacementOwner) from the persisted record's authoritative
-	// previous reconciliation owner, so the guard observes a real external owner
-	// instead of accepting an empty field as safe.
-	if guardErr := refuseOneWriterMutation(record); guardErr != nil {
+	root, err := DeploymentRoot(record.Identity)
+	if err != nil {
+		return err
+	}
+	// ADR 0022 §2: the one-writer guard observes an authoritative resource owner,
+	// not the caller-supplied Observed block. A caller can forge
+	// record.Observed.Owner (e.g. Owner=baseharbor with Mode=direct) to slip past
+	// the guard, so the persisted previous record is read here — before the guard
+	// and before any state is written — and its reconciliation-owner observation
+	// governs. The previous record is the real owner observed before this
+	// mutation; the caller value can never change the outcome.
+	previous, loadErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
+	previousExists := loadErr == nil
+	if !previousExists && loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return loadErr
+	}
+	// Guard observation: the persisted owner governs when a previous record
+	// exists; otherwise the applied selection's mode fixes the owner (a direct
+	// (BaseHarbor-owned) apply has no prior external owner, so the guarded direct
+	// happy path stays green). The caller-supplied Observed.Owner is never used.
+	guardOwner := record.Applied.Delivery.Owner
+	if previousExists && previous.Observed.Owner != "" {
+		guardOwner = previous.Observed.Owner
+	}
+	guardRecord := record
+	guardRecord.Observed.Owner = guardOwner
+	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
 	}
 	if err := validateRemoteProject(record); err != nil {
 		return err
 	}
-	root, err := DeploymentRoot(record.Identity)
-	if err != nil {
-		return err
-	}
 	// Existing lifecycle callers reconstruct records. Preserve separately owned
 	// desired preferences unless an explicit replacement (including []) is supplied.
 	if record.DesiredProviderPreferences == nil {
-		previous, loadErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
-		if loadErr == nil {
+		if previousExists {
 			if previous.Identity.ApplicationID != record.Identity.ApplicationID || previous.Identity.Environment != record.Identity.Environment {
 				return errors.New("cannot retain preferences from a different deployment owner")
 			}
 			record.DesiredProviderPreferences = previous.DesiredProviderPreferences
-		} else if !errors.Is(loadErr, os.ErrNotExist) {
-			return loadErr
 		}
 	}
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
