@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Create one canonical, unapproved pilot receipt, commit it to Planning, and publish."""
 import argparse
+import base64
 import json
 import os
 import re
@@ -94,7 +95,7 @@ def _push_authed(root, args):
 
     The Planning write token authorizes the single bounded publication against
     the real (network) Planning remote. The token is passed via
-    ``http.extraheader`` (an ephemeral git config value on the subprocess argv)
+    ``http.extraheader`` (an ephemeral git config value in the subprocess environment)
     so it is never written to the checkout, never added to a persisted remote
     URL and never echoed: the value is not captured in stdout/stderr here and
     the caller never prints the push arguments. Any downstream read-back uses
@@ -109,8 +110,13 @@ def _push_authed(root, args):
     token = os.environ.get("PLANNING_RECEIPT_WRITE_TOKEN", "")
     require(bool(token),
             "PLANNING_RECEIPT_WRITE_TOKEN required; publication push blocked")
-    authed_args = ["-c", "http.extraheader=AUTHORIZATION: bearer %s" % token, *args]
-    return git_stderr(root, *authed_args)
+    credential = base64.b64encode(("x-access-token:" + token).encode()).decode()
+    env = dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_TERMINAL_PROMPT="0")
+    env["GIT_CONFIG_COUNT"] = "1"
+    env["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader"
+    env["GIT_CONFIG_VALUE_0"] = "AUTHORIZATION: basic " + credential
+    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, env=env)
+    return result.returncode, result.stdout, result.stderr.replace(credential.encode(), b"<redacted>").replace(token.encode(), b"<redacted>")
 
 
 def _current_remote_bytes(root, path: str) -> Optional[bytes]:
