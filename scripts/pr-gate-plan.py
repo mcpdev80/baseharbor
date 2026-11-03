@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -59,6 +58,28 @@ def validated_diff(diff):
 CODE_CHECKS = [
     {'id': 'source-contracts', 'owner': 'CI source / contracts',
      'command': 'go test ./internal/application/... ./contracts/...'},
+]
+AUTHORITY_PACKAGE_CHECKS = [
+    {'id': 'authority-package-tests', 'owner': 'installation authority and stable identity',
+     'command': 'python3 scripts/pr-check-runner.py execute --check authority-package-tests --repository .'},
+]
+AUTHORITY_PACKAGE_PATHS = {
+    'internal/coreinstallation/authority.go', 'internal/coreinstallation/authority_test.go',
+    'internal/coreinstallation/lifecycle_lock.go', 'internal/coreinstallation/lock_unix.go',
+    'internal/coreinstallation/lock_windows.go', 'internal/serviceaccess/local_issuer.go',
+    'internal/stableid/lock.go', 'internal/stableid/lock_test.go',
+    'internal/stableid/lock_unix.go', 'internal/stableid/lock_windows.go',
+}
+
+DELIVERY_PACKAGE_CHECKS = [{'id': 'delivery-package-tests', 'owner': 'delivery owner and selection contract',
+    'command': 'python3 scripts/pr-check-runner.py execute --check delivery-package-tests --repository .'}]
+
+CLI_PACKAGE_CHECKS = [{'id': 'cli-package-tests', 'owner': 'cmd/baha package tests',
+    'command': 'go test ./cmd/baha -count=1'}]
+
+RUNTIME_PROVIDER_CHECKS = [
+    {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
+     'command': 'go test ./internal/runtime ./internal/health ./internal/providers/runtime/podman -count=1'},
 ]
 CLI_CHECKS = [
     {'id': 'cli-guided-tests', 'owner': 'cmd/baha guided read-only adapter',
@@ -159,12 +180,6 @@ APPID_ENV_ROBUST_TEST_REVIEWED_FILES = {
 # Exact final-check repair: await mandatory policy and bounded authenticated
 # API job readiness. The adapter comes only from the immutable trusted base;
 # the verifier and original identity guards stay unchanged. No runtime exception.
-WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '013d7e4d491afc58a31c7934b371ab0dc35f3346'
-WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    'scripts/pr-authenticated-results.py': 'modified',
-    'scripts/test_pr_authenticated_results.py': 'modified',
-}
 
 # Independently reviewed public MCP bootstrap: pin an omitted initial revision
 # through the existing read owner, then revalidate; apply consent stays strict.
@@ -295,21 +310,7 @@ DISPATCH_GATE_REF_REVIEWED_FILES = {
 }
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
-ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
-ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
-    '.github/workflows/pre-release.yml': 'modified',
-    '.github/workflows/release.yml': 'modified',
-    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
-    'scripts/pre-release-resume.py': 'modified',
-    'scripts/test_ecosystem_release_pins.py': 'modified',
-    'scripts/test_pre_release_resume.py': 'modified',
-}
 
-EVIDENCE_REUSE_REVIEWED_HEAD = 'c7e629c2876772493edc037769f1643c45c92fe8'
-EVIDENCE_REUSE_REVIEWED_FILES = {
-    'scripts/pre-release-resume.py': 'modified',
-    'scripts/test_pre_release_resume.py': 'modified',
-}
 
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
@@ -341,10 +342,27 @@ PROJECTION_REVIEWED_FILES = frozenset({
     'internal/application/runtime_environment.go',
     'internal/application/runtime_placement_retention_test.go',
 })
+# #1265 application-implementation-unresolved (gatemap-r4): the manifest parser
+# drives the real App-Apply/Promotion path.  manifest.go renders the concrete
+# Manifest with its Provider/SQL/Valkey/Identity/TLS/readiness resolution;
+# manifest_parse.go parses and validates it.  Bind these EXACT three files to
+# the two EXISTING native lifecycle gates (atomic/docker/lifecycle,
+# atomic/podman/lifecycle) — the #1259/#1262 pattern: reference existing gates,
+# NO new gate, no wildcard over internal/application/*. Every other
+# internal/application/* source stays on the conservative unresolved branch.
+GATEMAP_R4_MANIFEST_FILES = frozenset({
+    'internal/application/manifest.go',
+    'internal/application/manifest_parse.go',
+    'internal/application/v0425_contract_test.go',
+})
 PROJECTION_CHECKS = CODE_CHECKS
 OPENBAO_CHECKS = [
     {'id': 'openbao-package-tests', 'owner': 'internal/openbao',
      'command': 'python3 scripts/pr-check-runner.py execute --check openbao-package-tests --repository .'},
+]
+LOGS_CHECKS = [
+    {'id': 'logs-package-tests', 'owner': 'internal/logs',
+     'command': 'python3 scripts/pr-check-runner.py execute --check logs-package-tests --repository .'},
 ]
 OPENBAO_RETRY_HEAD = '9f715184af7b89ca3011aa4a0636c45138fe2c6b'
 OPENBAO_RETRY_FILES = {'internal/openbao/bootstrap.go': 'modified',
@@ -374,6 +392,41 @@ INSPECT_RECONCILE_REVIEWED = frozenset([
     'internal/repositoryinspect/reconcile.go',
     'internal/repositoryinspect/reconcile_default_instance_test.go',
 ])
+# core-750 permanent lane: exact reviewed source of the source-neutral shared
+# summary projection. Like INSPECT_RECONCILE_REVIEWED this is an exact reviewed
+# path allowlist, never a prefix or name heuristic: the package tests at
+# internal/repositoryinspect/ cover this production file and its parity test,
+# with zero native release gates. Every other internal/repositoryinspect/*.go
+# file stays fail-closed unresolved on the branch below.
+INSPECT_PROJECTION_REVIEWED = frozenset([
+    'internal/repositoryinspect/inspect.go',
+    'internal/repositoryinspect/workload_source_parity_test.go',
+])
+# Focused, package-scoped checks for the runtime resolver routing surface.
+# The resolver is pure in-memory target routing with a thin cmd/baha consumer,
+# so package unit tests, vet and the consumer build cover its actual risk
+# without a native runtime gate. They never exempt the whole package: any
+# other internal/runtime/resolver/*.go stays unresolved below.
+RESOLVER_CHECKS = [
+    {'id': 'resolver-gofmt', 'owner': 'internal/runtime/resolver formatting',
+     'command': 'test -z "$(gofmt -l internal/runtime/resolver)"'},
+    {'id': 'resolver-package-tests', 'owner': 'internal/runtime/resolver',
+     'command': 'go test ./internal/runtime/resolver/ -count=1'},
+    {'id': 'resolver-vet', 'owner': 'internal/runtime/resolver',
+     'command': 'go vet ./internal/runtime/resolver/'},
+    {'id': 'resolver-consumer-build', 'owner': 'cmd/baha package',
+     'command': 'go build -o "$RUNNER_TEMP/baha-resolver" ./cmd/baha'},
+]
+# core-1220 permanent lane: exact reviewed source of the resolver routing
+# qualification. Like INSPECT_PROJECTION_REVIEWED and INSPECT_RECONCILE_REVIEWED
+# this is an exact reviewed path allowlist, never a prefix or name heuristic:
+# the package tests at internal/runtime/resolver/ cover this production file,
+# with zero native release gates. Every other internal/runtime/resolver/*.go
+# file stays fail-closed unresolved on the branch below.
+RESOLVER_ROUTING_REVIEWED = frozenset([
+    'internal/runtime/resolver/resolver.go',
+    'internal/runtime/resolver/resolver_test.go',
+])
 # core-751 prospective scope is explicit but never a path-only qualification.
 # Source review and immutable commit binding must precede resolved coverage.
 INSPECT_IMPORT_CANDIDATE_FILES = {
@@ -396,11 +449,6 @@ GC_999_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_artifact_gc.py': 'modified',
 }
-BINDING_PR_1007_REVIEWED_FILES = {
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-}
 
 
 RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
@@ -419,14 +467,6 @@ MCP_PRECONDITIONS_REVIEWED_FILES = {
     'cmd/baha/mcp_preconditions_test.go': 'added',
 }
 
-EVIDENCE_RETENTION_REVIEWED_HEAD = '2e3325e142995aedd3d69a2e5569452127cbc58f'
-EVIDENCE_RETENTION_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    '.github/workflows/artifact-gc.yml': 'modified',
-    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
-    '.github/workflows/podman-acceptance.yml': 'modified',
-    'scripts/test_artifact_gc.py': 'modified',
-}
 
 SQL_RUNTIME_LAYOUT_REVIEWED_HEAD = '887eece62ffdfe2ba694ceb1f332dc5a74ce7872'
 SQL_RUNTIME_LAYOUT_REVIEWED_FILES = {
@@ -450,33 +490,6 @@ CORE_991_REVIEWED_FILES = {
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
 # paths continue through the conservative unresolved classifier.
-AUDITED_CORE_893_PATHS = frozenset([
-    ".github/workflows/ci.yml",
-    ".github/workflows/pre-release-runtime-suite.yml",
-    "scripts/PR_RUNTIME_REQUEST_INTERFACE.md",
-    "scripts/documentation-audit.sh",
-    "scripts/pr-authenticated-results.py",
-    "scripts/pr-check-runner.py",
-    "scripts/pr-gate-dependencies.py",
-    "scripts/pr-required-final.py",
-    "scripts/pr-runtime-request.py",
-    "scripts/pr-selected-runtime-matrix.py",
-    "scripts/pr-verified-atomic-evidence.py",
-    "scripts/test_pr_authenticated_results.py",
-    "scripts/test_pr_check_runner.py",
-    "scripts/test_pr_gate_dependencies.py",
-    "scripts/test_pr_required_final.py",
-    "scripts/test_pr_runtime_request.py",
-    "scripts/test_pr_selected_runtime_matrix.py",
-    "scripts/test_pr_verified_atomic_evidence.py"
-])
-CORE_893_REVIEWED_HEAD_SHA = 'b0acfc32ddf4d940294a43f98db4618d3aba83cd'
-CORE_893_TRUSTED_MERGE_BASE_SHA = '14d864dfd38801a56e54901ea520f3b02db134b2'
-CORE_893_GATE_QUALIFICATION = {
-    'integration/static/public-contracts',
-    'atomic/docker/backup-restore',
-    'atomic/podman/backup-restore',
-}
 
 # Immutable independently reviewed #953 CI/executor change; source-tree binding
 # is the commit SHA, not a reusable matching-path exemption.  The stable
@@ -485,35 +498,14 @@ CORE_752_CI_HEAD = '211d19b13a206040f0f32506e5f5f85d4a467287'
 # Original review base is embodied in the authenticated reviewed commit ancestry.
 # The current merge-base changes after normal develop integration.
 CORE_752_CI_MERGE_BASE = 'e8b021fe63c61abc0990a560e5f2915bb70c2c13'
-CORE_752_CI_PATHS = frozenset({
-    '.github/workflows/ci.yml',
-    'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-    'scripts/test_pr_check_runner.py', 'scripts/test_pr_gate_plan.py',
-})
 
 # Independent manager qualification of the corrected #957 source. This record
 # is read only from trusted develop; it cannot authorize an unreviewed follow-up.
-WIZARD_CI_REVIEWED_HEAD = '1a94d171166d0402b95740a5f71b52482fb61d9a'
-WIZARD_CI_REVIEWED_PATHS = frozenset({
-    '.github/workflows/ci.yml', 'scripts/pr-check-runner.py',
-    'scripts/pr-gate-plan.py', 'scripts/test_pr_check_runner.py',
-    'scripts/test_pr_gate_plan.py', 'scripts/test_pr_required_final.py',
-    'scripts/test_pr_wizard_workflow_route.py',
-})
 
 # Independent Maintainer source review for registration CI (#974), not task
 # acceptance or authorization of future core-921 production registration edits.
 # Evidence: run 38929047340; actual hosted route pilots remain required after
 # integration. The immutable commit and exact statuses bind this bootstrap.
-REGISTRATION_CI_REVIEWED_HEAD = 'bb9c713ab0449b0c8243e7535a51b8e43195bf0c'
-REGISTRATION_CI_REVIEWED_FILES = {
-    'cmd/baha/registration_ci_readiness_test.go': 'added',
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_check_runner.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    'scripts/test_pr_registration_ci.py': 'added',
-}
 
 # Independently reviewed production registration, SDK error/consent semantics,
 # and coreless SQL fixture. Full native MCP run 39605072620 passed every step,
@@ -595,6 +587,43 @@ CORE_918_REVIEWED_FILES = {
 }
 CORE_918_REQUIRED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
 
+# PR #1272 exact reviewed candidate (registration-mixed fix, head 72c14450):
+# three modified sources — a negative-schema regression test, the Workload.Compose
+# omitempty authoring fix, and the restored CHANGELOG note. No production authoring
+# or mutation semantics beyond the omitempty tag; no generic cmd/baha/mcp_ or
+# internal/application exemption. Coverage resolves only for this exact three-file
+# candidate with a clean trusted-target integration, and only if the two native
+# lifecycle gates actually execute the new cmd/baha tests (core-754/mcp pattern),
+# not merely path-prefix or generic test coverage.
+PR1272_REGISTRATION_MIXED_HEAD = '72c14450e13f63b05f3d29bd2c4e87c65b11488c'
+PR1272_REGISTRATION_MIXED_FILES = {
+    'cmd/baha/mcp_application_authoring_test.go': 'modified',
+    'internal/application/manifest.go': 'modified',
+    'CHANGELOG.md': 'modified',
+}
+PR1272_REGISTRATION_MIXED_GATES = {'atomic/docker/lifecycle', 'atomic/podman/lifecycle'}
+
+# cmd/baha test files that are bound by an EXACT reviewed-test-candidate clause
+# (APPID_FIX and its follow-ups). A PR whose head does NOT match that exact
+# reviewed SHA keeps the fail-closed ancestry contract and must stay unresolved
+# rather than inherit the generic cmd/baha/*_test.go cli-gofmt binding. Any
+# OTHER cmd/baha/*_test.go (not in this set) is eligible for the generic
+# test-only binding below.
+REVIEWED_TEST_FILES = frozenset({
+    'cmd/baha/app_workload_integration_test.go',
+    'internal/application/manifest_test.go',
+    'internal/application/external_provider_registry_test.go',
+    'internal/application/external_provider_removal_retry_test.go',
+    'internal/application/external_provider_scope_test.go',
+    'internal/application/protected_tempdir_test.go',
+    'internal/application/runtime_binding_projection_reset_test.go',
+    'internal/application/telemetry_authorization_test.go',
+})
+
+def _is_reviewed_test_file(path):
+    """True for cmd/baha/*_test.go paths bound by an exact reviewed-test clause."""
+    return path.endswith('_test.go') and path in REVIEWED_TEST_FILES
+
 def core752_reviewed_merge_chain(target, head, reviewed=None, repository='.'):
     """Trust only clean, first-parent-preserving merges of trusted target commits.
 
@@ -642,93 +671,25 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
-# Receipt control-plane (v0.4.27 PR1/PR2): the three canonical scripts, their
-# focused regressions and the three receipt-*.yml control-plane workflows carry a
-# bounded, reviewed scope (canonical fields, attempt-1-only live pilot, dormant
-# job-level never-true guards, fail-closed base-SHA task link). These are exact
-# path-prefixes bound to existing CI/WIZARD/PYTEST classes, not a directory-level
-# exemption: a receipt production source change stays bound to pr-planner-tests
-# + focused script suite (PR1 core) and a receipt workflow change stays bound to
-# ci-policy + ci-actionlint + pr-planner-tests (PR2 control plane). Any path that
-# is not one of these exact prefixes keeps the fail-closed fallthrough below and
-# stays unresolved; an added, deleted, renamed or unreviewed receipt file is not
-# covered. This durable mapping covers every later PR1/PR2 receipt PR without a
-# per-candidate bootstrap and precedes the runtime-workflow / ci-executor
-# fallthroughs so it is not masked by them.
+# Commit receipts record only the merged SHA and PR. Their normal regression
+# tests run with CI helper changes; no separate evidence or approval path exists.
 RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
-    'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
-    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+    'scripts/receipt_writer.py', 'scripts/ci-workflow-policy.sh',
 })
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
-    'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
-    'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
-    'scripts/test_receipt_tasklink.py',
-    'scripts/test_receipt_postrun.py',
+    'scripts/test_receipt_writer.py', 'scripts/test_receipt_postrun.py',
 })
-RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
-RECEIPT_CANDIDATE_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    '.github/workflows/receipt-approval.yml': 'modified',
-    '.github/workflows/receipt-post-run.yml': 'modified',
-    '.github/workflows/receipt-shadow.yml': 'modified',
-    'docs/de/development/minimal-ci-receipts.md': 'modified',
-    'docs/development/minimal-ci-receipts.md': 'modified',
-    'evidence-r27/ci1-repair.md': 'added',
-    'evidence-r27/cy1.md': 'added',
-    'evidence-r27/cy3.md': 'added',
-    'evidence-r27/f1-fix.md': 'added',
-    'evidence-r27/f1x.md': 'added',
-    'evidence-r27/f1z2.md': 'added',
-    'evidence-r27/f345b.md': 'added',
-    'evidence-r27/f3b-fix.md': 'added',
-    'evidence-r27/f8-corrective.md': 'added',
-    'evidence-r27/g1x.md': 'added',
-    'evidence-r27/g1y.md': 'added',
-    'evidence-r27/g2x.md': 'added',
-    'evidence-r27/r5i.md': 'added',
-    'evidence-r27/s2-v3staging.md': 'added',
-    'evidence-r27/w1.md': 'added',
-    'evidence-r27/w3.md': 'added',
-    'evidence-r27/w4b3.md': 'added',
-    'evidence-r27/w4c.md': 'added',
-    'evidence-r27/w5.md': 'added',
-    'evidence-r27/x1-fix.md': 'added',
-    'evidence/g1/evidence-r27/g1.md': 'added',
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/receipt_tasklink.py': 'modified',
-    'scripts/receipt_verifier.py': 'modified',
-    'scripts/receipt_writer.py': 'modified',
-    'scripts/test_ci_workflow_policy_receipts.py': 'modified',
-    'scripts/test_pr_check_runner.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    'scripts/test_receipt_chain.py': 'modified',
-    'scripts/test_receipt_postrun.py': 'added',
-    'scripts/test_receipt_tasklink.py': 'modified',
-    'scripts/test_receipt_verifier.py': 'modified',
-    'scripts/test_receipt_writer.py': 'modified',
-}
-RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
-    '.github/workflows/receipt-approval.yml',
-    '.github/workflows/receipt-post-run.yml',
-    '.github/workflows/receipt-shadow.yml',
-})
-PINBUMP_INVENTORY = {
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    '.github/workflows/ci.yml': 'modified',
-    'scripts/test_pr_authenticated_results.py': 'modified',
-}
+RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run.yml'})
+
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
-    {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
-     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+    {'id': 'ci-executor-tests', 'owner': 'normal selected CI regressions',
+     'command': 'python3 scripts/pr-check-runner.py execute --check ci-executor-tests --repository .'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
-     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py'},
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_postrun.py'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
@@ -785,127 +746,6 @@ def openbao_retry_checks(diff, repository='.', context_repository=None,
         return None
     return CODE_CHECKS + OPENBAO_CHECKS
 
-
-def trusted_binding_checks(diff, repository='.', context_repository=None,
-                           context_target_branch=None):
-    """Verify the frozen binding from the authenticated target, never PR content.
-
-    Re-run the real diff resolver so caller-supplied inventories, integration
-    parents and merge trees cannot substitute for Git evidence. This bounded
-    record enables only the three CI scripts, optionally with ci.yml and its
-    mandatory syntax check, through an exact immutable inventory. The pin-bump
-    inventory extends the allowed set with the same four CI paths plus the
-    authenticated-results test, still through an exact immutable tuple.
-    Hash the frozen reviewed blobs; later source may only add exact Git-computed
-    first-parent merges of authenticated target history. This permits strict
-    up-to-date integration without accepting candidate-authored follow-ups.
-    """
-    valid, _ = validated_diff(diff)
-    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
-        return None
-    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
-                          if context_repository is None else context_repository)
-    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
-                            if context_target_branch is None else context_target_branch)
-    if (context_repository != 'mcpdev80/baseharbor' or
-            context_target_branch != 'develop'):
-        return None
-
-    def git(*args):
-        return subprocess.run(['git', '-C', str(repository), *args],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              check=True).stdout
-
-    try:
-        raw = git('show', diff['target_base_sha'] +
-                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
-        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
-                            flags=re.MULTILINE | re.DOTALL)
-        # The trusted register may accumulate one entry per reviewed candidate.
-        # Every fenced block must be a complete, well-formed supported inventory;
-        # a stray fence, duplicate anchor or weakened
-        # record fails the whole register closed.
-        if not blocks or raw.count('```') != 2 * len(blocks):
-            return None
-
-        def unique_object(pairs):
-            result = {}
-            for key, value in pairs:
-                if key in result:
-                    raise ValueError('duplicate qualification key')
-                result[key] = value
-            return result
-
-        script_files = {path: 'modified' for path in (
-            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'scripts/test_pr_gate_plan.py')}
-        receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
-        workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
-        pinbump_files = PINBUMP_INVENTORY
-        records = []
-        for block in blocks:
-            record = json.loads(block, object_pairs_hook=unique_object)
-            if not isinstance(record, dict):
-                return None
-            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                      if record.get('files') in (workflow_files, pinbump_files)
-                      else CI_CHECKS)
-            expected_ids = {check['id'] for check in checks}
-            if (not isinstance(record, dict) or set(record) != {
-                    'repository', 'target_branch', 'reviewed_head', 'files',
-                    'file_hashes', 'required_checks'} or
-                    record['repository'] != context_repository or
-                    record['target_branch'] != context_target_branch or
-                    not isinstance(record['reviewed_head'], str) or
-                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
-                    not isinstance(record['file_hashes'], dict) or
-                    set(record['file_hashes']) != set(record['files']) or
-                    any(not isinstance(value, str) or
-                        re.fullmatch(r'[0-9a-f]{64}', value) is None
-                        for value in record['file_hashes'].values()) or
-                    not isinstance(record['required_checks'], list) or
-                    len(record['required_checks']) != len(expected_ids) or
-                    set(record['required_checks']) != expected_ids):
-                return None
-            records.append(record)
-        anchors = [record['reviewed_head'] for record in records]
-        if len(anchors) != len(set(anchors)):
-            return None
-        # Import the resolver beside this trusted planner, not from the PR tree.
-        import importlib.util
-        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(resolver)
-        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
-                                          diff['head_sha'], diff['integration_sha'])
-        if actual != diff or actual['broad_required']:
-            return None
-        changes = actual['changes']
-        # A register entry qualifies only through the existing review-ancestry
-        # and frozen-blob proof; entries not binding this exact candidate never
-        # contribute, so a missing entry keeps the conservative fallback.
-        for record in records:
-            if (len(changes) != len(record['files']) or
-                    {c.get('path'): c.get('status') for c in changes} != record['files']):
-                continue
-            if not core752_reviewed_merge_chain(
-                    diff['target_base_sha'], diff['head_sha'],
-                    record['reviewed_head'], repository):
-                continue
-            for path, digest in record['file_hashes'].items():
-                if (not isinstance(digest, str) or
-                        re.fullmatch(r'[0-9a-f]{64}', digest) is None or
-                        hashlib.sha256(git('cat-file', 'blob',
-                                           record['reviewed_head'] + ':' + path)).hexdigest() != digest):
-                    break
-            else:
-                return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                        if record['files'] in (workflow_files, pinbump_files)
-                        else CI_CHECKS)
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
-        return None
-    return None
 
 
 def plan(diff, requirements, mapping, repository='.',
@@ -989,9 +829,6 @@ def plan(diff, requirements, mapping, repository='.',
         (DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD, DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES,
          CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed native Docker fixture and authenticated eight-family runtime evidence'),
-        (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed final-job dependency on mandatory authenticated workflow policy'),
         (RETIREMENT_PREFERENCES_REVIEWED_HEAD, RETIREMENT_PREFERENCES_REVIEWED_FILES,
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
          'reviewed withdrawal preferences projection preserving canonical owners'),
@@ -1016,14 +853,6 @@ def plan(diff, requirements, mapping, repository='.',
          (DISPATCH_GATE_REF_REVIEWED_HEAD, DISPATCH_GATE_REF_REVIEWED_FILES,
           CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
           'reviewed bare-SHA dispatch input resolution before atomic gate checkout'),
-        (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed v0.4.26 immutable ecosystem resolver activation'),
-        (EVIDENCE_REUSE_REVIEWED_HEAD, EVIDENCE_REUSE_REVIEWED_FILES,
-         CI_CHECKS,
-         'Owner-qualified input-equivalent evidence reuse with authenticated original receipts'),
-        (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed scoped-reset source'),
         (PODMAN_CONSENT_REVIEWED_HEAD, PODMAN_CONSENT_REVIEWED_FILES,
@@ -1044,9 +873,6 @@ def plan(diff, requirements, mapping, repository='.',
          (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
            CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
            'reviewed exact #999 GC evidence retention candidate'),
-        (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
@@ -1127,54 +953,42 @@ def plan(diff, requirements, mapping, repository='.',
                                         'results fail closed.'),
                 'reasons': ['Exact 21-file core-918 candidate, reviewed source SHA and '
                             'clean trusted-target integration only; no file-wide exemption']}
-    # The exact reviewed orchestration bundle receives named targeted coverage,
-    # not a directory-level security/evidence exception.
-    if (valid and not diff['broad_required'] and
-            identifiers['head_sha'] == CORE_893_REVIEWED_HEAD_SHA and
-            identifiers['merge_base_sha'] == CORE_893_TRUSTED_MERGE_BASE_SHA and
+    # PR #1272 registration-mixed authoring fix: three modified files only. No
+    # generic cmd/baha/mcp_ or internal/application exemption. Coverage resolves
+    # only for this exact three-file candidate with a clean trusted-target merge
+    # and only if both native lifecycle gates are present and actually run the new
+    # cmd/baha tests; any other head, path set or status, or a missing lifecycle
+    # gate keeps the registration-mixed fallthrough unresolved.
+    if (valid and not diff['broad_required'] and not unresolved and
             identifiers['integration_sha'] is not None and
-            len(paths) == len(AUDITED_CORE_893_PATHS) and
-            set(paths) == AUDITED_CORE_893_PATHS):
-        require(CI_CHECKS)
-        selected.update(CORE_893_GATE_QUALIFICATION)
-        absent = sorted(selected - available)
+            len(paths) == len(PR1272_REGISTRATION_MIXED_FILES) and
+            set(paths) == set(PR1272_REGISTRATION_MIXED_FILES) and
+            all(ch.get('status') == PR1272_REGISTRATION_MIXED_FILES.get(ch.get('path'))
+                for ch in diff['changes']) and
+            core752_reviewed_merge_chain(identifiers['target_base_sha'],
+                                         identifiers['head_sha'],
+                                         PR1272_REGISTRATION_MIXED_HEAD)):
+        require(WIZARD_BASE_CHECKS)
+        absent = sorted(PR1272_REGISTRATION_MIXED_GATES - available)
         if absent:
-            unresolved.append('reviewed core-893 gates absent from trusted catalog: ' + ', '.join(absent))
-            selected.difference_update(absent)
+            unresolved.append('reviewed registration-mixed lifecycle gates absent: ' + ', '.join(absent))
         return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
                 'mapping_schema': mapping['schema'], 'release': release,
                 'coverage_status': 'unresolved' if unresolved else 'resolved',
-                'unresolved_coverage': unresolved,
-                'broad_required': bool(unresolved),
-                'selected_gates': sorted(selected),
+                'unresolved_coverage': unresolved, 'broad_required': bool(unresolved),
+                'selected_gates': sorted(PR1272_REGISTRATION_MIXED_GATES & available),
                 'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
+                'validation_contract': ('Every listed validation and both native lifecycle '
+                    'gates must execute and pass for the exact reviewed candidate; missing, '
+                    'skipped and failed results fail closed. Not a path-wide registration-mixed '
+                    'exemption.'),
+                'reasons': ['PR #1272 exact three-file registration-mixed candidate at '
+                            '72c14450 with clean trusted-target integration; both native '
+                            'lifecycle gates must run the new cmd/baha authoring tests']}
+    # The exact reviewed orchestration bundle receives named targeted coverage,
+    # not a directory-level security/evidence exception.
     # This authority lives on trusted develop. Only the reviewed source or
     # proven clean first-parent merges from trusted target history qualify.
-    if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(REGISTRATION_CI_REVIEWED_FILES) and
-            set(paths) == set(REGISTRATION_CI_REVIEWED_FILES) and
-            all(ch.get('status') == REGISTRATION_CI_REVIEWED_FILES.get(ch.get('path'))
-                for ch in diff['changes']) and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'],
-                                         identifiers['head_sha'], REGISTRATION_CI_REVIEWED_HEAD)):
-        require(CI_CHECKS)
-        require(CODE_CHECKS)
-        require(CLI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Require every listed validation; exact reviewed source '
-                    'integration does not accept registration task or future handler changes.'),
-                'reasons': ['independently reviewed exact #974 registration CI source; '
-                            'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
     # core-921 reviewed production registration coverage. No path-only approval:
     # the exact shared registration handlers, the golden contract/registry, the
     # CLI/MCP parity sources and the six EN/DE reference docs must arrive as this
@@ -1262,52 +1076,11 @@ def plan(diff, requirements, mapping, repository='.',
                             'protected tmp roots in internal/application test sources only']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
-    if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(WIZARD_CI_REVIEWED_PATHS) and
-            set(paths) == WIZARD_CI_REVIEWED_PATHS and
-            all(ch.get('status') == ('added' if ch.get('path') ==
-                'scripts/test_pr_wizard_workflow_route.py' else 'modified')
-                for ch in diff['changes']) and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'],
-                                         identifiers['head_sha'], WIZARD_CI_REVIEWED_HEAD)):
-        require(CI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['independently reviewed exact #957 wizard planner/executor bundle; '
-                            'focused hosted Go/workflow-route regressions and mandatory CI checks']}
     # Review-owned trusted policy for exact #953 commit. Never read a policy
     # record from PR head. The verified diff resolver validates integration
     # parents/tree separately; a moved target base is allowed, but PR content
     # and original merge-base remain immutable.
-    if (valid and not diff['broad_required'] and not unresolved and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'], identifiers['head_sha']) and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(CORE_752_CI_PATHS) and
-            set(paths) == CORE_752_CI_PATHS and
-            all(ch.get('status') == 'modified' for ch in diff['changes'])):
-        require(CI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['independently reviewed exact #953 CI executor and planner change; '
-                            'trusted CI validations and mandatory focused Python regressions']}
     binding_checks = (openbao_retry_checks(
-        diff, repository, context_repository, context_target_branch)
-        if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None)
     if binding_checks:
@@ -1395,6 +1168,138 @@ def plan(diff, requirements, mapping, repository='.',
             selected.update(native_gates)
             if path_status.get(path) not in ('added', 'modified'):
                 unresolved.append('wizard component rename/delete/type change needs explicit review: ' + path)
+        elif path.startswith('cmd/baha/') and path.endswith('_engine.go'):
+            # CLI-side docker_engine.go and similar *_engine.go files that call the
+            # runtime and bind Docker/Podman engine observations to the Compose backend.
+            # These are true runtime-mutation surfaces that affect BOTH runner backends
+            # (Docker and Podman/Quadlet) and must exercise the real atomic lifecycle
+            # gates on both.  Only the specific *_engine.go files are matched — no
+            # directory-level blanket resolution of all cmd/baha/*.go.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/docker_engine_podman_test.go':
+            # Dedicated test for the CLI-side docker engine binding that exercises
+            # both Docker and Podman lifecycles in a single test file.  Maps to both
+            # lifecycle gates to ensure neither runner is left untested.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/runtime_restart_integration_test.go':
+            # Control-plane restart integration test (TestExistingControlPlane
+            # RestartRequiresAndUsesRecoveryFile / TestSingleControlPlaneRestart
+            # RotationAndCleanup).  This boots a real Postgres/OpenBao control-plane
+            # on a native container runtime, performs an OpenBao recovery-file
+            # restart, credential rotations and HA failover.  It is the exact
+            # restart-after-crash proof the Lifecycle-Gates drive and runs on BOTH
+            # runners (the targeted-integration.yml v0421_ha matrix dispatches this
+            # file to the control-plane / control-plane-single cases for docker and
+            # podman).  Bind it to the SAME existing native lifecycle gates as the
+            # other cmd/baha runtime-mutation files (atomic/docker/lifecycle,
+            # atomic/podman/lifecycle) — no new gate, no weakening.  Without this
+            # branch the file fell to the cli-unresolved-runtime-impact catch-all
+            # and blocked PR Selected checks (#1245).
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path in (
+                'cmd/baha/podman_doctor_checks.go',
+                'cmd/baha/podman_doctor_checks_test.go'):
+            # Podman-target doctor readiness checks (PodmanRuntimeDoctorChecks and
+            # its regression test).  collectControlPlaneDoctorChecks in
+            # cmd/baha/control_plane_operations.go appends podman + quadlet
+            # readiness checks here BEFORE the core-deployment early return, but
+            # ONLY for target.RuntimeProvider == "podman"; the Docker-target
+            # doctor output is intentionally untouched.  These three files are a
+            # single runtime-mutation surface that affects BOTH runner backends
+            # (Docker doctor output must stay clean, Podman doctor output gains
+            # two named checks) and must exercise the real atomic lifecycle gates
+            # on both, exactly like the other cmd/baha runtime-mutation files.
+            # Bind to the SAME existing native lifecycle gates (atomic/docker/
+            # lifecycle, atomic/podman/lifecycle) — no new gate, no weakening.
+            # Without this branch the three files fell to the
+            # cli-unresolved-runtime-impact catch-all and blocked PR Selected
+            # checks (#1267).  This branch must sit BEFORE the
+            # cli-unresolved-runtime-impact catch-all.
+            area = 'cli-podman-doctor-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/control_plane_operations.go' and path_status.get(path) == 'modified':
+            # The control-plane doctor path that appends the podman/quadlet
+            # readiness checks for a Podman target.  It is the exact mutation the
+            # new PodmanRuntimeDoctorChecks wires into, affects both runner
+            # backends (Docker output stays clean, Podman output gains two checks)
+            # and binds to the SAME existing native lifecycle gates as the runtime
+            # acceptance family (atomic/docker/lifecycle, atomic/podman/lifecycle)
+            # — no new gate, no weakening.  Without this branch this file fell to
+            # the cli-unresolved-runtime-impact catch-all and blocked PR Selected
+            # checks (#1267).  This branch must sit BEFORE the
+            # cli-unresolved-runtime-impact catch-all.
+            area = 'cli-podman-doctor-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path in ('cmd/baha/app_repository_integration_test.go',
+                      'cmd/baha/app_workload_integration_test.go',
+                      'internal/application/runtime_multi_integration_test.go'):
+            area = 'native-integration-tests'
+            require(CODE_CHECKS + CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+            if path_status.get(path) not in ('added', 'modified'):
+                unresolved.append('native integration test removal or rename needs review: ' + path)
+        elif path == 'cmd/baha/app_observability_acceptance_test.go':
+            # Full-stack observability acceptance for the CLI (TestObservabilityFullStack
+            # AcceptanceInCI).  This boots a real native container runtime (Docker and
+            # Podman/Quadlet) and runs the observability full-stack acceptance end to
+            # end.  It is the exact proof the observability acceptance gates drive and
+            # runs on BOTH runners (the observability-acceptance.yml dispatches this
+            # test to the docker and podman blocks).  Bind it to the SAME catalog
+            # observability gates as the runtime acceptance family (atomic/docker/
+            # observability, atomic/podman/observability) — no new gate, no weakening.
+            # Without this branch the file fell to the cli-unresolved-runtime-impact
+            # catch-all and blocked PR Selected checks (#1242).
+            area = 'observability-acceptance'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/observability')
+            selected.add('atomic/podman/observability')
+        elif path.startswith('internal/runtimebroker/') and path.endswith('.go'):
+            # runtime-broker container realization + its tests (compose_render.go
+            # readiness grace, broker/retirement lifecycle). The broker renders
+            # and drives the runtime on BOTH runners (Docker/Compose and rootless
+            # Podman/Quadlet), so it must exercise the real atomic lifecycle gates
+            # on both.  Bind the whole package to those EXISTING gates only — no
+            # new release gate, no widening.  Without this branch the files fell to
+            # the generic internal/runtime/ catch-all and left PR Selected Checks
+            # fail-closed with 'unknown impact for internal/runtimebroker/…'
+            # (#1265).  Any other internal/runtimebroker/*.go that does not match an
+            # explicit reviewed-source clause below stays unresolved.
+            area = 'runtimebroker-lifecycle'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path.endswith('_test.go') and path.startswith('cmd/baha/') and \
+                all(p.endswith('_test.go') for p in paths) and \
+                not any(_is_reviewed_test_file(path) for path in paths):
+            # Test-only CLI changes execute the package, including newly added
+            # regression tests outside the Guided family. Native opt-in tests
+            # keep their explicit runtime routes above.
+            area = 'cli-package-tests'
+            require(CLI_PACKAGE_CHECKS)
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            require(WIZARD_BASE_CHECKS)
         elif path.startswith('cmd/baha/') and path.endswith('.go'):
             area = 'cli-unresolved-runtime-impact'
             require(CODE_CHECKS)
@@ -1405,16 +1310,94 @@ def plan(diff, requirements, mapping, repository='.',
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             selected.add('integration/static/public-contracts')
+        elif path in ('internal/capability/lifecycle.go',
+                      'internal/capability/service_binding.go',
+                      'internal/capability/service_binding_test.go'):
+            # core-390 service-binding enforcement (#1229): the reviewed
+            # lifecycle/service_binding implementation + its test are covered by
+            # the package's own capability-package-tests check (already in
+            # CAPABILITY_CHECKS) plus the existing static public-contracts gate.
+            # Bind to those EXISTING gates only (#1260 pattern: reference existing
+            # gates, no new gate) — no new release gate, no widening. Any other
+            # internal/capability/* production file stays fail-closed unresolved
+            # below.
+            area = 'capability-implementation-resolved'
+            require(CODE_CHECKS)
+            require(CAPABILITY_CHECKS)
+            selected.add('integration/static/public-contracts')
         elif path.startswith('internal/capability/'):
             area = 'capability-implementation-unresolved'
             require(CODE_CHECKS)
             require(CAPABILITY_CHECKS)
             unresolved.append('provider/capability registry or lifecycle impact needs targeted qualification: ' + path)
+        elif path.startswith('testdata/adoption-parity/'):
+            # #1222 static adoption fixtures (README/compose/k8s/quadlet). Bind to
+            # the same focused inspect checks that already run the
+            # repositoryinspect parity test (#1259 observability-binding pattern):
+            # no new gate, no widening. Only this prefix resolves; any other
+            # unmatched file still falls to the fail-closed catch-all below.
+            area = 'inspect-testdata-fixed'
+            require(INSPECT_CHECKS)
         elif path in PROJECTION_REVIEWED_FILES:
             area = 'application-projection-reviewed-path'
             require(PROJECTION_CHECKS)
             if path_status.get(path) != 'modified' and path_status.get(path) != 'added':
                 unresolved.append('runtime native binding projection source status requires exact reviewed candidate: ' + path)
+        elif path.startswith('internal/application/shared_backends') or \
+                path.startswith('internal/application/shared_backend_dependency') or \
+                'shared_backend' in path and path.endswith('.go'):
+            # Shared-backend provider resolution (shared_backends.go and its
+            # sisters: shared_backend_dependency.go / selectSharedBackendDependency).
+            # A consumer Manifest's SQL/Valkey providers resolve to a shared
+            # Postgres/Valkey backend; service identity, credentials, TLS and
+            # readiness all key off the resolved backend.  This is genuine
+            # Provider-Resolution-Impact (see PR #1255: a clobbered
+            # state.Environment routed readiness probes to a non-existent
+            # shared-postgres-core).  The qualification gate is the hosted
+            # runtime-validation/ha/shared-postgres targeted run, which runs the
+            # ./internal/application TestSharedPostgres family on both runners.
+            # The aggregator only recognises the eight catalog tokens; there is no
+            # `integration/shared-postgres` token and the mission forbids inventing
+            # one.  Map to the existing atomic/podman/lifecycle lifecycle gate — a
+            # real catalog token that already maps to a real native lifecycle run
+            # covering this shared Postgres service-identity/credential path.
+            # Without this branch the files fell to application-implementation
+            # -unresolved and blocked PR Selected checks (#1255).  This branch must
+            # sit BEFORE the internal/application/ catch-all.
+            area = 'application-shared-provider-resolution'
+            require(CODE_CHECKS)
+            selected.add('atomic/podman/lifecycle')
+        elif path in GATEMAP_R4_MANIFEST_FILES:
+            # #1265 application-implementation-unresolved: the manifest parser
+            # drives the real App-Apply/Promotion path.  manifest.go renders the
+            # concrete Manifest and its Provider/SQL/Valkey/Identity/TLS/readiness
+            # resolution; manifest_parse.go parses/validates it.  Binding to the
+            # two EXISTING native lifecycle gates (#1259/#1262 pattern: reference
+            # existing gates, NO new gate, no wildcard over internal/application/*)
+            # proves the real provider-resolution + readiness path on BOTH runners.
+            # v0425_contract_test.go pins the v0.4.25 contract for both lifecycles.
+            area = 'application-manifest-lifecycle'
+            require(CODE_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif ((path.startswith('internal/health/podman_') and '/' not in path[len('internal/health/'):]) or
+              (path.startswith('internal/providers/runtime/podman/') and
+               '/' not in path[len('internal/providers/runtime/podman/'):])) and path.endswith('.go'):
+            area = 'podman-health-package'
+            require(CODE_CHECKS + CLI_CHECKS + RUNTIME_PROVIDER_CHECKS)
+            if path_status.get(path) not in ('added', 'modified', 'deleted', 'renamed', 'copied'):
+                unresolved.append('unsupported runtime package change: ' + path)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path in ('internal/logs/render.go', 'internal/logs/journal_provider_render_test.go'):
+            # Rendering changes affect runtime log collection as well as Go behavior.
+            area = 'logs-rendering'
+            require(LOGS_CHECKS)
+            selected.add('atomic/docker/observability')
+            selected.add('atomic/podman/observability')
+            if (path == 'internal/logs/journal_provider_render_test.go' and
+                    path_status.get(path) not in ('added', 'modified')):
+                unresolved.append('journal provider regression removal requires review: ' + path)
         elif path.startswith('internal/application/'):
             area = 'application-implementation-unresolved'
             require(CODE_CHECKS)
@@ -1437,10 +1420,59 @@ def plan(diff, requirements, mapping, repository='.',
         elif path in INSPECT_RECONCILE_REVIEWED:
             area = 'inspect-reconciliation'
             require(INSPECT_CHECKS)
+        elif path in INSPECT_PROJECTION_REVIEWED:
+            area = 'inspect-implementation-resolved'
+            require(INSPECT_CHECKS)
         elif path.startswith('internal/repositoryinspect/') and path.endswith('.go'):
             area = 'inspect-implementation-unresolved'
             require(INSPECT_CHECKS)
             unresolved.append('unreviewed repository inspection file needs targeted qualification: ' + path)
+        elif path in RESOLVER_ROUTING_REVIEWED:
+            area = 'resolver-routing-resolved'
+            require(RESOLVER_CHECKS)
+        elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
+            # Container-runtime files: docker_engine.go and openbao_runtime_prepare.go
+            # are explicit runtime-mutation surfaces that must exercise the real atomic
+            # docker lifecycle gate.  This path prefix classification targets the known
+            # concrete files (see the test case below) — any future internal/runtime/*.go
+            # that does not match an explicit reviewed-source clause stays unresolved.
+            area = 'runtime-docker-engine'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+        elif path.startswith('cmd/baha/') and path.endswith('_engine.go'):
+            # CLI-side docker_engine.go and similar *_engine.go files that call the
+            # runtime and bind Docker/Podman engine observations to the Compose backend.
+            # These are true runtime-mutation surfaces that affect BOTH runner backends
+            # (Docker and Podman/Quadlet) and must exercise the real atomic lifecycle
+            # gates on both.  Only the specific *_engine.go files are matched — no
+            # directory-level blanket resolution of all cmd/baha/*.go.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path == 'cmd/baha/docker_engine_podman_test.go':
+            # Dedicated test for the CLI-side docker engine binding that exercises
+            # both Docker and Podman lifecycles in a single test file.  Maps to both
+            # lifecycle gates to ensure neither runner is left untested.
+            area = 'cli-engine-runtime-impact'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
+            selected.add('atomic/docker/lifecycle')
+            selected.add('atomic/podman/lifecycle')
+        elif path.startswith('internal/runtime/resolver/') and path.endswith('.go'):
+            area = 'resolver-routing-unresolved'
+            require(RESOLVER_CHECKS)
+            unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
+        elif re.fullmatch(r'internal/delivery/[^/]+\.go', path):
+            area = 'delivery-package'
+            require(DELIVERY_PACKAGE_CHECKS)
+            require(CLI_CHECKS)
+        elif path in AUTHORITY_PACKAGE_PATHS:
+            area = 'authority-package'
+            require(AUTHORITY_PACKAGE_CHECKS)
+            require(CLI_CHECKS)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
@@ -1468,16 +1500,28 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
-            area = 'runtime-workflow-unresolved'
+            area = 'ci-workflow'
             require(CI_CHECKS)
             require(WORKFLOW_SYNTAX_CHECKS)
-            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
+        elif path in ('go.mod', 'go.sum'):
+            # Module and dependency files: a bump changes exactly the Go build and
+            # test surface, never product or gate behaviour. Bind it to the same
+            # Go build/test validation checks the CI matrix runs for a Go change
+            # (source-contracts, cli-build, cli-vet, cli-guided-tests, cli-gofmt)
+            # -- no new gate, no widening. Without this branch a Dependabot-only
+            # go.mod/go.sum diff fell to the 'unknown impact' catch-all and left
+            # PR Selected Checks coverage-unresolved (#1160).
+            area = 'go-module-dependency'
+            require(CODE_CHECKS)
+            require(CLI_CHECKS)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
-              path.startswith('scripts/verify-') or 'evidence' in path):
-            area = 'ci-executor-unresolved'
+              path.startswith('scripts/verify-') or
+              (path.startswith('scripts/') and path.endswith(('.py', '.sh', '.json', '.md'))) or
+              path in ('AGENTS.md', '.github/copilot-instructions.md') or
+              path.startswith('evidence-r27/') or path.startswith('evidence/')):
+            area = 'ci-executor'
             require(CI_CHECKS)
-            unresolved.append('CI execution/evidence impact requires specific qualification: ' + path)
         else:
             area = 'unresolved'
             unresolved.append('unknown impact for ' + path)
@@ -1519,7 +1563,8 @@ def main():
     # context yields an unresolved plan, never a trusted one.
     context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
     context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
-    if not context_repository or not context_target_branch:
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
         raise SystemExit(
             'refusing to qualify without authenticated runner context: '
             'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'

@@ -39,9 +39,16 @@ class RunnerTests(unittest.TestCase):
         for group in (planner.DOC_CHECKS, planner.CODE_CHECKS, planner.CLI_CHECKS,
                       planner.WIZARD_BASE_CHECKS, planner.CAPABILITY_CHECKS,
                       planner.CI_CHECKS, planner.WORKFLOW_SYNTAX_CHECKS,
-                      planner.INSPECT_CHECKS):
+                      planner.INSPECT_CHECKS, planner.RESOLVER_CHECKS):
             emitted |= {check['id'] for check in group}
         self.assertEqual(set(), emitted - runner.VALIDATIONS)
+
+    def test_resolver_checks_have_workflow_dispatch(self):
+        workflow = (Path(__file__).parent.parent / '.github' / 'workflows' / 'ci.yml').read_text()
+        for check_id in ('resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+                         'resolver-consumer-build'):
+            with self.subTest(check_id=check_id):
+                self.assertIn(check_id + ')', workflow)
 
     def test_empty_validation_never_claims_pass(self):
         self.assertEqual([{'check': 'not-required'}],
@@ -53,15 +60,7 @@ class RunnerTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runner.matrix({'required_validation_checks': checks})
 
-    def test_static_failure_never_authenticates_validation(self):
-        for status in ('failure', 'skipped', 'cancelled', 'timed_out', 'blocked'):
-            with self.subTest(status=status):
-                results = runner.report(PLAN, status, 'success')
-                self.assertTrue(all(x['conclusion'] == 'blocked' for x in results['results']))
 
-    def test_no_runtime_gate_can_be_forged_from_validation_job(self):
-        result = runner.report(PLAN, 'success', 'success')
-        self.assertEqual({'validation'}, {row['kind'] for row in result['results']})
 
 
     def test_all_wizard_profile_ids_are_runnable(self):
@@ -227,7 +226,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
         self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
         self.assertIn('--check "$VALIDATION"', fragment)
-        self.assertIn('git show "${{ github.event.pull_request.base.sha }}:'
+        self.assertIn('git show "${{ needs.pr_plan.outputs.controller_sha }}:'
                       'scripts/pr-check-runner.py"', workflow)
         self.assertNotIn(
             'python3 scripts/pr-check-runner.py execute --check '
@@ -337,7 +336,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
                     runner.execute_validation('receipt-execution-tests', repo)
         with self.subTest(dropped_suite=True):
             partial = ok_output.replace(
-                'test_ci_workflow_policy_receipts.', 'other_module.')
+                'test_receipt_postrun.', 'other_module.')
             with patch.object(runner.subprocess, 'run',
                               return_value=CompletedProcess([], 0, partial, '')):
                 with self.assertRaisesRegex(RuntimeError, 'did not execute'):
@@ -347,5 +346,55 @@ class Core754MCPExecutionTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as empty_repo:
                 with self.assertRaisesRegex(RuntimeError, 'registered receipt suite missing'):
                     runner.execute_validation('receipt-execution-tests', empty_repo)
+class NormalPackageExecutionTests(unittest.TestCase):
+    def test_cli_package_runs_non_guided_tests_and_propagates_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/cli\n\ngo 1.25\n')
+            package = root / 'cmd/baha'
+            package.mkdir(parents=True)
+            test = package / 'regression_test.go'
+            test.write_text('package main\nimport "testing"\nfunc TestNewRegression(t *testing.T) {}\n')
+            self.assertEqual(['./cmd/baha'], runner.execute_validation('cli-package-tests', root))
+            test.write_text('package main\nimport "testing"\nfunc TestNewRegression(t *testing.T) { t.Fatal("regression") }\n')
+            with self.assertRaisesRegex(RuntimeError, 'CLI package tests failed'):
+                runner.execute_validation('cli-package-tests', root)
+
+    def test_delivery_package_requires_real_passing_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/delivery\n\ngo 1.25\n')
+            with self.assertRaisesRegex(RuntimeError, 'delivery package missing'):
+                runner.execute_validation('delivery-package-tests', root)
+            package = root / 'internal/delivery'
+            package.mkdir(parents=True)
+            (package / 'contract.go').write_text('package delivery\n')
+            with self.assertRaisesRegex(RuntimeError, 'lacks passing test execution'):
+                runner.execute_validation('delivery-package-tests', root)
+            test = package / 'contract_test.go'
+            test.write_text('package delivery\nimport "testing"\nfunc TestContract(t *testing.T) {}\n')
+            self.assertEqual(['./internal/delivery'], runner.execute_validation('delivery-package-tests', root))
+            for action in ('t.Fatal("failure")', 't.Skip("not executed")'):
+                test.write_text('package delivery\nimport "testing"\nfunc TestContract(t *testing.T) {' + action + '}\n')
+                with self.assertRaises(RuntimeError):
+                    runner.execute_validation('delivery-package-tests', root)
+
+    def test_authority_packages_require_actual_passing_test_execution(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'internal/coreinstallation').mkdir(parents=True)
+            rows = [{'Package': 'example.test/internal/coreinstallation', 'Test': 'TestAuthority', 'Action': 'run'},
+                    {'Package': 'example.test/internal/coreinstallation', 'Test': 'TestAuthority', 'Action': 'pass'},
+                    {'Package': 'example.test/internal/coreinstallation', 'Action': 'pass'}]
+            import json
+            for events, valid in [(rows, True), ([], False), (rows[:1], False)]:
+                with self.subTest(events=events), patch.object(runner.subprocess, 'run',
+                        return_value=subprocess.CompletedProcess([], 0, '\n'.join(json.dumps(row) for row in events))):
+                    if valid:
+                        self.assertEqual(['./internal/coreinstallation'], runner.execute_validation('authority-package-tests', tmp))
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            runner.execute_validation('authority-package-tests', tmp)
+
 if __name__ == '__main__':
     unittest.main()

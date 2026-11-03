@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """#896: prepare and clean isolated disposable PR runtime lanes.
 
-This helper DOES NOT execute a gate or attest evidence. Trusted orchestration
-must admit a request and invoke existing gate runners independently.
+This helper admits hosted PR events and manages isolated disposable lanes.
+Normal CI jobs execute their selected tests independently.
 """
 import argparse
 import hashlib
@@ -11,10 +11,8 @@ import os
 from pathlib import Path
 import re
 import shutil
-import tempfile
 import fcntl
 import subprocess
-import urllib.request
 
 SHA = re.compile(r"^[0-9a-f]{40}$")
 SLUG = re.compile(r"^[a-zA-Z0-9_-]{1,60}$")
@@ -23,56 +21,10 @@ FIELDS = ("target_base_sha", "head_sha", "merge_base_sha", "integration_sha")
 PINS = ("demo_sha", "console_sha", "connector_sha")
 
 
-def github_json(url, token):
-    if not url.startswith("https://api.github.com/repos/"):
-        raise ValueError("invalid GitHub API endpoint")
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "baseharbor-ci-isolation"}
-    if token:
-        headers["Authorization"] = "Bearer " + token
-    request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.load(response)
-
-
-def verify_github_admission(request, run_id, attempt, repository, pr_number, token):
-    # This MUST run from immutable trusted source before untrusted code begins.
-    # A username, head branch, environment variable or caller-supplied bool is
-    # never accepted as proof of admission.
-    if not re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+", repository):
-        raise ValueError("invalid repository")
-    if not run_id.isdecimal() or not isinstance(pr_number, int) or pr_number < 1:
-        raise ValueError("invalid GitHub run or PR")
-    prefix = "https://api.github.com/repos/" + repository
-    run = github_json(prefix + "/actions/runs/" + run_id, token)
-    pr = github_json(prefix + "/pulls/" + str(pr_number), token)
-    repo_info = github_json(prefix, token)
-    matches = {
-        "event": run.get("event") == "pull_request",
-        "repository": run.get("repository", {}).get("id") == repo_info.get("id"),
-        "attempt": run.get("run_attempt") == attempt,
-        "run_head": run.get("head_sha") == request.get("head_sha"),
-        "base_ref": pr.get("base", {}).get("ref") == "develop",
-        "base_sha": pr.get("base", {}).get("sha") == request.get("target_base_sha"),
-        "pr_head": pr.get("head", {}).get("sha") == request.get("head_sha"),
-        "pr_open": pr.get("state") == "open",
-        "integration": pr.get("merge_commit_sha") == request.get("integration_sha"),
-    }
-    if not all(matches.values()):
-        raise PermissionError("GitHub run/PR/integration mismatch: " +
-                              ", ".join(key for key, valid in matches.items() if not valid))
-    # Only an authenticated repository-owner PR can enter this initial
-    # privileged admission class. External PRs require separate reviewed
-    # qualification and must not enter privileged runtime runners.
-    if (pr.get("user", {}).get("id") != repo_info.get("owner", {}).get("id") or
-            pr.get("head", {}).get("repo", {}).get("id") != repo_info.get("id")):
-        raise PermissionError("untrusted PR cannot enter native qualification")
-    return True
-
-
 def verify_hosted_unprivileged_admission(request, run_id, attempt, repository, pr_number):
     """Admit only a GitHub-created hosted PR event to a *credential-free* lane.
 
-    Not evidence, not approval for privileged persistent or self-hosted runners.
+    This cannot admit privileged persistent or self-hosted runners.
     Call from reviewed runner source before any untrusted build/test executes.
     """
     env = os.environ
@@ -110,8 +62,9 @@ def verify_hosted_unprivileged_admission(request, run_id, attempt, repository, p
 def validate(request, run_id, attempt, capacity):
     if not isinstance(request, dict) or request.get("schema") != "baseharbor.pr-runtime-request/v1":
         raise ValueError("unsupported request schema")
-    if request.get("admission") != "requires-trusted-isolated-runner" or request.get("evidence") != "existing-verifier-only":
-        raise ValueError("request cannot override runtime admission or evidence authority")
+    fields = {"schema", "gate_id", "runtime", "consumer_pins", "admission", *FIELDS}
+    if set(request) != fields or request.get("admission") != "requires-trusted-isolated-runner":
+        raise ValueError("request cannot override runtime admission or include unknown fields")
     runtime = request.get("runtime")
     gate = request.get("gate_id")
     if runtime not in RUNTIMES or not isinstance(gate, str) or not gate.startswith("atomic/" + runtime + "/"):
@@ -136,12 +89,9 @@ def identity(request, run_id, attempt):
     return hashlib.sha256(canonical).hexdigest()
 
 
-def prepare(request, root, run_id, attempt, capacity, repository, pr_number, token):
+def prepare(request, root, run_id, attempt, capacity, repository, pr_number):
     runtime, gate = validate(request, run_id, attempt, capacity)
-    if token is None:
-        verify_hosted_unprivileged_admission(request, run_id, attempt, repository, pr_number)
-    else:
-        verify_github_admission(request, run_id, attempt, repository, pr_number, token)
+    verify_hosted_unprivileged_admission(request, run_id, attempt, repository, pr_number)
     original_root = Path(root)
     if original_root.is_symlink():
         raise ValueError("symlink isolation root forbidden")
@@ -198,7 +148,7 @@ def cleanup(root, lane_id, run_id, attempt):
         raise PermissionError("cleanup ownership mismatch")
     # A helper cannot independently prove runtime resource deletion.
     # The admitted runner must first remove its OWN containers/networks/volumes.
-    # Return this explicit required cleanup contract, not success evidence.
+    # Keep the lease until its runtime resources have actually been removed.
     return {"lane": str(lane), "cleanup_required": True,
             "network": lease["network"], "volume_prefix": lease["volume_prefix"],
             "state": "pending-runtime-cleanup"}
@@ -240,8 +190,7 @@ def finalize_cleanup(root, lane_id, run_id, attempt):
             raise RuntimeError("lease workspace cleanup unverified")
     return {"schema": "baseharbor.pr-runtime-cleanup/v1",
             "lane_id": lane_id, "run_id": run_id, "attempt": attempt,
-            "state": "verified-empty-and-released",
-            "gate_evidence": False}
+            "state": "verified-empty-and-released"}
 
 
 def main():
@@ -258,8 +207,7 @@ def main():
     request = json.loads(args.request.read_text())
     if args.operation == "prepare":
         result = prepare(request, args.root, args.run_id, args.attempt,
-                         args.capacity, args.repository, args.pr_number,
-                         os.environ.get('GH_TOKEN', ''))
+                         args.capacity, args.repository, args.pr_number)
     elif args.operation == "inspect-cleanup":
         result = cleanup(args.root, identity(request, args.run_id, args.attempt),
                          args.run_id, args.attempt)

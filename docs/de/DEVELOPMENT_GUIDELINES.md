@@ -106,6 +106,10 @@ Zweige sind temporäre Arbeitsflächen, nicht langlebige Geschichte.
 - Langlebige Branchen beschränken sich auf explizit bezeichnete Integration oder gepflegte Arbeitsspuren wie z.B.`main `, ` develop`und absichtlich beibehaltene aktive Merkmals-/Prüfzweige.
 - Vergewissern Sie sich vor dem Löschen eines abweichenden Zweigs, dass alle erforderlichen Änderungen bereits im Zielzweig vorhanden sind oder absichtlich obsolet sind.
 
+## CI-Prüfungen und Commit-Receipts
+
+CI, Pre-Release und Release führen normale Tests aus und verwenden deren Jobergebnisse direkt. Gate-Manifeste, erneute Actions-Lauf-/Job-Prüfungen, Evidence-Wiederverwendung und zusätzliche Receipt-Freigaben entfallen. Nach einem autorisierten Merge enthält der einzige CI-Vermerk Merge-SHA und PR-Nummer. Siehe [minimale CI-Receipts](development/minimal-ci-receipts.md). Während dieser Korrektur bleiben die Rulesets deaktiviert; eine aktive technische Durchsetzung darf nicht behauptet werden.
+
 ## Entwicklungsablauf
 
 `develop` integriert die nächste Veröffentlichung und `main` enthält veröffentlichten Quellcode; das maßgebliche Branch- und Release-Modell steht in [Releases und Versionierung](reference/releases.md). Ab v0.4.26 wird jede Arbeitseinheit als eigener kleiner Branch und Pull Request gegen `develop` geliefert. v0.4.25 wurde nach dem früheren Shared-Branch-Verfahren abgeschlossen ([PR #881](https://github.com/mcpdev80/baseharbor/pull/881)); dessen Workflows und Nachweise bleiben unverändert und werden nicht nachträglich neu eingespielt.
