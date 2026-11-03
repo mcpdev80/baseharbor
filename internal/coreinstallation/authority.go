@@ -154,20 +154,7 @@ func (o ObservedState) RejectOwnership() error {
 // The observation is authoritative exactly when it is non-zero, not in the
 // future and recent enough (now-ObservedAt <= MaxAge).
 func (o ObservedState) Fresh(now time.Time) error {
-	if o.ObservedAt.IsZero() {
-		return ErrInvalidObservation
-	}
-	if o.ObservedAt.After(now) {
-		return ErrFutureObservation
-	}
-	window := o.MaxAge
-	if window == 0 {
-		window = 5 * time.Minute
-	}
-	if now.Sub(o.ObservedAt) > window {
-		return ErrStaleObservation
-	}
-	return nil
+	return serviceaccess.FreshnessWindow(o.ObservedAt, o.MaxAge, now, ErrInvalidObservation, ErrFutureObservation, ErrStaleObservation)
 }
 
 // AuthoritativeConnection proves that a remote decision is made through a

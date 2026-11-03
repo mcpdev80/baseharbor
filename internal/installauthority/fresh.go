@@ -60,22 +60,13 @@ func Fresh(
 	if err != nil || !status.Ready {
 		return serviceaccess.ErrNotReady
 	}
-	// Observed-at freshness is the single source: a zero or future observation
-	// and a stale observation (now-observedAt past the bound) fail closed before
-	// any revocation work. A missing bound falls back to the default recent
-	// window so the boundary never opens on an unbounded observation.
-	if observedAt.IsZero() {
-		return serviceaccess.ErrInvalidObservation
-	}
-	if observedAt.After(time.Now()) {
-		return serviceaccess.ErrInvalidObservation
-	}
-	window := maxAge
-	if window == 0 {
-		window = 5 * time.Minute
-	}
-	if time.Now().Sub(observedAt) > window {
-		return serviceaccess.ErrStaleObservation
+	// Observed-at freshness delegates to the single verification-path kernel;
+	// a zero or future observation and a stale observation (now-observedAt past
+	// the bound) fail closed before any revocation work. A missing bound falls
+	// back to the default recent window so the boundary never opens on an
+	// unbounded observation.
+	if err := serviceaccess.FreshnessWindow(observedAt, maxAge, time.Now(), serviceaccess.ErrInvalidObservation, serviceaccess.ErrInvalidObservation, serviceaccess.ErrStaleObservation); err != nil {
+		return err
 	}
 	// Exactly one authoritative tri-state revocation call: an unreadable,
 	// missing or malformed status (err != nil) rejects, and a revoked serial

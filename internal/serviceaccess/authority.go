@@ -42,16 +42,7 @@ type CertificateStatus struct {
 // is normally in the future, so it cannot serve as the observation freshness
 // bound.
 func (s CertificateStatus) Fresh(now time.Time) error {
-	if s.ObservedAt.IsZero() {
-		return ErrInvalidObservation
-	}
-	if s.ObservedAt.After(now) {
-		return ErrInvalidObservation
-	}
-	if now.Sub(s.ObservedAt) > s.maxAge() {
-		return ErrStaleObservation
-	}
-	return nil
+	return FreshnessWindow(s.ObservedAt, s.maxAge(), now, ErrInvalidObservation, ErrInvalidObservation, ErrStaleObservation)
 }
 
 // maxAge is the observation freshness window. The zero value fails closed: any
@@ -62,6 +53,33 @@ func (s CertificateStatus) maxAge() time.Duration {
 		return 0
 	}
 	return defaultWindow
+}
+
+// FreshnessWindow is the single verification-path observation-freshness kernel.
+// It enforces the three shared rules for an observed-at freshness bound: a zero
+// observation time is not authoritative (ErrInvalidObservation), a future
+// observation is not an authoritative observation of the past (futureError),
+// and an observation older than the window (now-ObservedAt > maxAge) is stale
+// (ErrStaleObservation); a default window of five minutes applies when maxAge is
+// zero so a boundary never opens on an unbounded observation. It is the single
+// source consumed by CertificateStatus.Fresh, coreinstallation.ObservedState.Fresh
+// and installauthority.Fresh — no third copy of the zero/future/window rules.
+// futureError is caller-owned so distinct sentinel errors stay distinct.
+func FreshnessWindow(observedAt time.Time, maxAge time.Duration, now time.Time, zeroError, futureError, staleError error) error {
+	if observedAt.IsZero() {
+		return zeroError
+	}
+	if observedAt.After(now) {
+		return futureError
+	}
+	window := maxAge
+	if window == 0 {
+		window = 5 * time.Minute
+	}
+	if now.Sub(observedAt) > window {
+		return staleError
+	}
+	return nil
 }
 
 // FreshlyObservedConnection proves that the observed management connection is

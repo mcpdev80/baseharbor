@@ -173,4 +173,33 @@ func TestRevokedStatusParsesAndValidatesRevocationList(t *testing.T) {
 			t.Fatal("valid empty list reported the serial as revoked")
 		}
 	})
+
+	// The four JSON forms without a datenstruktur (null, {}, {"data":{}},
+	// {"data":{"serials":null}}) are NOT a readable empty list: they are
+	// structurally malformed and must fail closed (err != nil), distinct from a
+	// genuinely empty serials array which reports not-revoked.
+	t.Run("JSON without datenstruktur fails closed", func(t *testing.T) {
+		payloads := []struct {
+			name    string
+			payload string
+		}{
+			{"json-null", `null`},
+			{"json-object", `{}`},
+			{"data-empty", `{"data":{}}`},
+			{"data-serials-null", `{"data":{"serials":null}}`},
+		}
+		for _, tc := range payloads {
+			t.Run(tc.name, func(t *testing.T) {
+				fake := &revocationListFake{response: tc.payload}
+				issuer := NewServiceIssuer(fake, files)
+				revoked, err := issuer.RevokedStatus(context.Background(), "01:02:03")
+				if err == nil {
+					t.Fatalf("%s: malformed payload must return an error", tc.name)
+				}
+				if revoked {
+					t.Fatalf("%s: malformed payload must not report the serial as revoked", tc.name)
+				}
+			})
+		}
+	})
 }

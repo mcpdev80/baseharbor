@@ -18,11 +18,13 @@ const (
 	servicePKIRole  = "baseharbor-services"
 )
 
-// errEmptyRevocationStatus marks an empty/missing provider revocation response
-// as unreadable: the provider did not publish a valid, parseable revocation
-// list. The fail-closed production path treats it as revoked rather than
-// reporting not-revoked for a blank status.
-var errEmptyRevocationStatus = errors.New("empty revocation status, fails closed")
+// malformedRevocationPayload reports a revocation-list payload that is structurally
+// unreadable: the response is blank, unparseable, or the serials array (or its
+// containing data object) is absent or null. None of these is a valid, readable
+// revocation status and all must fail closed rather than reporting not-revoked.
+func malformedRevocationPayload() error {
+	return errors.New("revocation list payload malformed")
+}
 
 type ServiceCertificateRequest struct {
 	CommonName  string
@@ -341,9 +343,9 @@ func revokedSerialInResponse(out, serial string) (bool, error) {
 	trimmed := strings.TrimSpace(out)
 	if trimmed == "" {
 		// An empty revocation response is unreadable: the provider did not publish
-		// a valid, parseable list. Fail closed (treat as revoked) rather than
+		// a valid, parseable list. Fail closed (malformed payload) rather than
 		// reporting not-revoked for a missing/blank status.
-		return true, errEmptyRevocationStatus
+		return false, malformedRevocationPayload()
 	}
 	type listPayload struct {
 		Data struct {
@@ -352,7 +354,13 @@ func revokedSerialInResponse(out, serial string) (bool, error) {
 	}
 	var payload listPayload
 	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
-		return true, fmt.Errorf("parse openbao revocation status: %w", err)
+		return false, malformedRevocationPayload()
+	}
+	// A serials array that is structurally missing or null is not a valid,
+	// readable revocation status; only a present array (possibly empty) is a
+	// genuinely empty revocation list (reports not-revoked, no error).
+	if payload.Data.Serials == nil {
+		return false, malformedRevocationPayload()
 	}
 	for _, s := range payload.Data.Serials {
 		if strings.TrimSpace(s) == serial {
