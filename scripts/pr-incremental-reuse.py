@@ -270,7 +270,12 @@ def main():
     try:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", a.repo):
             raise ValueError("invalid repository")
-        previous = completed_previous(a.repo, int(a.workflow_id), a.branch,
+        current = request_json(a.repo, "actions/runs/" + str(int(a.run_id)), a.token)
+        workflow_id = current.get("workflow_id")
+        if (current.get("event") != "pull_request" or
+                not isinstance(workflow_id, int) or workflow_id <= 0):
+            raise ValueError("current run is not an authenticated PR workflow")
+        previous = completed_previous(a.repo, workflow_id, a.branch,
                                       int(a.pr_number), int(a.run_id), a.token)
         if previous:
             paths = qualified_ancestry(previous["head_sha"], a.integration, a.head)
