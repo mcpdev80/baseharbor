@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/contracts"
+	"github.com/mcpdev80/baseharbor/contracts/managementaccess/v1"
 )
 
 const managementAccessPath = "managementaccess/v1/profile.schema.json"
@@ -65,8 +66,8 @@ func managementAccessBaseline(t *testing.T, resolved *jsonschema.Resolved) map[s
 		"kind":            "management-profile",
 		"installation_id": "11111111-1111-4111-8111-111111111111",
 		"trust": map[string]any{
-			"ca_pem": "-----BEGIN CERTIFICATE-----\nPUBLIC-MANAGEMENT-FIXTURE",
-			"sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+			"ca_pem": managementFixturesCA(t),
+			"sha256": managementFixturesCAFA(t),
 		},
 		"recipient":  "spiffe://baseharbor/platform/core/11111111-1111-4111-8111-111111111111/homelab",
 		"scope":      "control-plane",
@@ -121,6 +122,43 @@ func TestManagementAccessGoldenFixturesValidate(t *testing.T) {
 		if err := resolved.Validate(fixture); err != nil {
 			t.Fatalf("%s golden fixture rejected: %v", fixture["kind"], err)
 		}
+	}
+}
+
+// TestManagementAccessGoldenFixturesPassTrust validates every positive golden
+// through the same real semantic path the production path uses: it decodes the
+// golden into a ManagementAccessProfile and runs ValidateTrust, which recomputes
+// the CA fingerprint from the actual certificate and binds it to the stored
+// fingerprint. A mismatched or fabricated fingerprint fails closed.
+func TestManagementAccessGoldenFixturesPassTrust(t *testing.T) {
+	for _, fixture := range managementAccessFixtures(t) {
+		raw, err := json.Marshal(fixture)
+		if err != nil {
+			t.Fatalf("%s golden marshal: %v", fixture["kind"], err)
+		}
+		var profile managementaccess.ManagementAccessProfile
+		if err := json.Unmarshal(raw, &profile); err != nil {
+			t.Fatalf("%s golden unmarshal: %v", fixture["kind"], err)
+		}
+		if err := profile.ValidateTrust(); err != nil {
+			t.Fatalf("%s golden fails ValidateTrust: %v", fixture["kind"], err)
+		}
+	}
+}
+
+// TestManagementAccessGoldenFixturesNegativeCoversMismatchedPin builds an
+// in-memory golden that reuses the shared fixture CA but stores a wrong
+// fingerprint and asserts it fails closed — the negative counterpart to the
+// positive goldens in profile.golden.json.
+func TestManagementAccessGoldenFixturesNegativeCoversMismatchedPin(t *testing.T) {
+	ca := managementFixturesCA(t)
+	profile := managementaccess.ManagementAccessProfile{
+		Kind:    managementaccess.ManagementProfile,
+		Version: "baseharbor.management-access/v1",
+		Trust:   managementaccess.Trust{CAPEM: ca, SHA256: "0000000000000000000000000000000000000000000000000000000000000000"},
+	}
+	if err := profile.ValidateTrust(); err == nil {
+		t.Fatal("golden with mismatched fingerprint must fail closed")
 	}
 }
 
@@ -195,5 +233,25 @@ func TestManagementAccessProfileRejectsTransportRole(t *testing.T) {
 	base["access"] = map[string]any{"client_id": "transport-client"}
 	if err := resolved.Validate(base); err == nil {
 		t.Fatal("management-profile must not carry connection-profile transport role fields")
+	}
+}
+
+// Finding 1: kind-specific fail-closed enforcement via the Go contract path
+// (schema keeps storage optional; the per-kind storage obligation lives in
+// ValidateKindEnforcement, complementing the schema's import/encryption rules).
+func TestManagementAccessKindStorageEnforcement(t *testing.T) {
+	// device-enrollment plaintext durable fails closed.
+	p := profileFor(t)
+	p.Kind = managementaccess.DeviceEnrollment
+	p.Storage = managementaccess.Storage{Class: managementaccess.ProtectedDurable, Durable: true, Encrypted: false, DisasterRecovery: false}
+	if err := p.ValidateKindEnforcement(); err == nil {
+		t.Fatal("plaintext durable device-enrollment must fail closed")
+	}
+
+	// management-profile plaintext durable fails closed.
+	pm := profileFor(t)
+	pm.Storage = managementaccess.Storage{Class: managementaccess.ProtectedDurable, Durable: true, Encrypted: false, DisasterRecovery: false}
+	if err := pm.ValidateKindEnforcement(); err == nil {
+		t.Fatal("plaintext durable management-profile must fail closed")
 	}
 }

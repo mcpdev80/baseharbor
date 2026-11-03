@@ -77,6 +77,23 @@ func authorizedScope() targetenrollment.Scope {
 	}
 }
 
+// managementFixturesCA returns the non-secret test CA PEM shared by the golden
+// fixtures. The private key never leaves this process; only the public
+// certificate is exported, so no real credential is produced.
+func managementFixturesCA(t *testing.T) string {
+	t.Helper()
+	ca, _ := generateTestCA(t, "BaseHarbor Management r27 Test CA")
+	return ca
+}
+
+// managementFixturesCAFA returns the authoritative SHA-256 fingerprint (SHA-256
+// of the DER, matching hosttrust.ParseCA) of the shared fixture CA.
+func managementFixturesCAFA(t *testing.T) string {
+	t.Helper()
+	_, sha := generateTestCA(t, "BaseHarbor Management r27 Test CA")
+	return sha
+}
+
 // readGoldenFixtures loads the schema golden fixtures for the complementary
 // schema-validation test. It does not assert behavioral enforcement; the
 // behavioral negatives live in managementaccess_test.go.
@@ -93,7 +110,6 @@ func readGoldenFixtures(t *testing.T) []byte {
 func profileFor(t *testing.T) managementaccess.ManagementAccessProfile {
 	t.Helper()
 	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
-	scope := authorizedScope()
 	now := time.Now().UTC()
 	return managementaccess.ManagementAccessProfile{
 		Kind:           managementaccess.ManagementProfile,
@@ -103,11 +119,11 @@ func profileFor(t *testing.T) managementaccess.ManagementAccessProfile {
 			CAPEM:  caPEM,
 			SHA256: caSHA,
 		},
-		Recipient:  scope.Identity(),
-		Scope:      "control-plane",
-		NotBefore:  now.Add(-time.Minute),
-		NotAfter:   now.Add(time.Hour),
-		Import:     managementaccess.ImportCapability{RightsGranting: false, PluginExecution: false, CredentialRedirect: false},
-		Storage:    managementaccess.Storage{Class: managementaccess.ProtectedDurable, Durable: true, Encrypted: true, DisasterRecovery: false},
+		Recipient: "spiffe://baseharbor/platform/core/00000000-0000-4000-8000-000000000001/homelab",
+		Scope:     "control-plane",
+		NotBefore: now.Add(-time.Minute),
+		NotAfter:  now.Add(time.Hour),
+		Import:    managementaccess.ImportCapability{RightsGranting: false, PluginExecution: false, CredentialRedirect: false},
+		Storage:   managementaccess.Storage{Class: managementaccess.ProtectedDurable, Durable: true, Encrypted: true, DisasterRecovery: false},
 	}
 }
