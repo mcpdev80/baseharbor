@@ -77,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          out="$RUNNER_TEMP/otlp-handoff-evidence"
+          out="$RUNNER_TEMP/otlp-handoff-checks"
           mkdir -p "$out"
           git rev-parse HEAD > "$out/source.txt"
           git rev-parse 'HEAD^{tree}' > "$out/tree.txt"
@@ -91,14 +91,6 @@ jobs:
           assert not any(event.get('Action') in {'fail','skip'} for event in events)
           assert any(event.get('Test')=='TestManagedRegisteredOTLPNativeConsumerHandoff' and event.get('Action')=='pass' for event in events)
           PY
-      - name: Retain exact source proof and original failures
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: otlp-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/otlp-handoff-evidence
-          if-no-files-found: warn
-          retention-days: 30
   up_dispatch_source:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[up-dispatch-source]') }}
     name: Repository up source qualification
@@ -147,15 +139,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/application-reset-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/application-reset-evidence/source.txt"
-          go test ./cmd/baha -run '^TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData$' -count=1 -v -timeout 12m 2>&1 | tee "$RUNNER_TEMP/application-reset-evidence/reset.log"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
-        with:
-          name: application-reset-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/application-reset-evidence
-          if-no-files-found: error
+          mkdir -p "$RUNNER_TEMP/application-reset-checks"
+          git rev-parse HEAD > "$RUNNER_TEMP/application-reset-checks/source.txt"
+          go test ./cmd/baha -run '^TestApplicationFullResetRequiresNativeCurrentScopeAndDeletesSelectedData$' -count=1 -v -timeout 12m 2>&1 | tee "$RUNNER_TEMP/application-reset-checks/reset.log"
   core_stop:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[core-stop-runtime]') || contains(github.event.head_commit.message, '[core-destroy-ha]')) }}
     name: Selected Core stop · ${{ matrix.runtime }}
@@ -186,18 +172,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          mkdir -p "$RUNNER_TEMP/core-stop-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/core-stop-evidence/source.txt"
-          go version > "$RUNNER_TEMP/core-stop-evidence/go-version.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/core-stop-evidence/runtime-version.txt"
-          go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 18m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-evidence/core-stop.log"
-      - name: Upload bounded receipt including failed attempts
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: core-stop-${{ matrix.runtime }}-${{ github.sha }}
-          path: ${{ runner.temp }}/core-stop-evidence
-          if-no-files-found: error
+          mkdir -p "$RUNNER_TEMP/core-stop-checks"
+          git rev-parse HEAD > "$RUNNER_TEMP/core-stop-checks/source.txt"
+          go version > "$RUNNER_TEMP/core-stop-checks/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/core-stop-checks/runtime-version.txt"
+          go test ./cmd/baha -run '^TestCoreStopRetainsOriginalSQLCredentialsAndRunningSibling$' -count=1 -timeout 18m -v 2>&1 | tee "$RUNNER_TEMP/core-stop-checks/core-stop.log"
   standalone_retirement:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[standalone-retirement-runtime]') }}
     name: Retained standalone data · ${{ matrix.runtime }}
@@ -229,25 +208,18 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          mkdir -p "$RUNNER_TEMP/standalone-retirement-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/standalone-retirement-evidence/source.txt"
-          go version > "$RUNNER_TEMP/standalone-retirement-evidence/go-version.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-evidence/runtime-version.txt"
+          mkdir -p "$RUNNER_TEMP/standalone-retirement-checks"
+          git rev-parse HEAD > "$RUNNER_TEMP/standalone-retirement-checks/source.txt"
+          go version > "$RUNNER_TEMP/standalone-retirement-checks/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/standalone-retirement-checks/runtime-version.txt"
           status=0
           if [[ "${{ contains(github.event.head_commit.message, '[standalone-trace-only]') }}" != true ]]; then
-            go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/objectstorage.log" || status=1
+            go test ./internal/objectstorage -run '^TestSeaweedRetirementRetainsOriginalAuthenticatedObject$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-checks/objectstorage.log" || status=1
           fi
           if [[ "$BASEHARBOR_TEST_RUNTIME" == docker || "${{ contains(github.event.head_commit.message, '[standalone-failed-only]') }}" != true ]]; then
-            go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-evidence/traces.log" || status=1
+            go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/standalone-retirement-checks/traces.log" || status=1
           fi
           exit "$status"
-      - name: Upload bounded receipt including failed attempts
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: standalone-retirement-${{ matrix.runtime }}-${{ github.sha }}
-          path: ${{ runner.temp }}/standalone-retirement-evidence
-          if-no-files-found: error
   observability_consumers:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[observability-consumers-runtime]') }}
     name: Observability consumers · ${{ matrix.runtime }}
@@ -278,28 +250,21 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          evidence="$RUNNER_TEMP/observability-consumer-evidence"
-          mkdir -p "$evidence"
-          git rev-parse HEAD > "$evidence/source.txt"
-          git rev-parse 'HEAD^{tree}' > "$evidence/tree.txt"
-          go version > "$evidence/go-version.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$evidence/runtime-version.txt"
+          checks="$RUNNER_TEMP/observability-consumer-checks"
+          mkdir -p "$checks"
+          git rev-parse HEAD > "$checks/source.txt"
+          git rev-parse 'HEAD^{tree}' > "$checks/tree.txt"
+          go version > "$checks/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$checks/runtime-version.txt"
           status=0
           if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
-            go test ./internal/telemetry -run '^TestRegisteredOTLP' -count=1 -v 2>&1 | tee "$evidence/registered-otlp-local-tls.log" || status=1
+            go test ./internal/telemetry -run '^TestRegisteredOTLP' -count=1 -v 2>&1 | tee "$checks/registered-otlp-local-tls.log" || status=1
           fi
-          go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/metrics.log" || status=1
+          go test ./internal/metrics -run '^TestManagedPrometheusScrapesTwoIsolatedApplications$' -count=1 -timeout 8m -v 2>&1 | tee "$checks/metrics.log" || status=1
           if [[ "${{ contains(github.event.head_commit.message, '[observability-metrics-only]') }}" != true ]]; then
-            go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -timeout 8m -v 2>&1 | tee "$evidence/logs.log" || status=1
+            go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -timeout 8m -v 2>&1 | tee "$checks/logs.log" || status=1
           fi
           exit "$status"
-      - name: Retain exact source consumer results including failed attempts
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: observability-consumers-${{ matrix.runtime }}-${{ github.sha }}
-          path: ${{ runner.temp }}/observability-consumer-evidence
-          if-no-files-found: error
   installation_destroy:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[installation-destroy-runtime]') || contains(github.event.head_commit.message, '[installation-destroy-podman]')) }}
     name: Installation partial destruction · ${{ matrix.runtime }}
@@ -326,18 +291,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/installation-destroy-evidence"
+          mkdir -p "$RUNNER_TEMP/installation-destroy-checks"
           test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          git rev-parse HEAD > "$RUNNER_TEMP/installation-destroy-evidence/source.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/installation-destroy-evidence/runtime-version.txt"
-          go test ./cmd/baha -run '^TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/installation-destroy-evidence/destroy.log"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
-        with:
-          name: installation-destroy-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/installation-destroy-evidence
-          if-no-files-found: error
-          retention-days: 90
+          git rev-parse HEAD > "$RUNNER_TEMP/installation-destroy-checks/source.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/installation-destroy-checks/runtime-version.txt"
+          go test ./cmd/baha -run '^TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/installation-destroy-checks/destroy.log"
   shared_network:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[shared-network-runtime]') }}
     name: Retained shared network · ${{ matrix.runtime }}
@@ -366,11 +324,11 @@ jobs:
         run: |
           set -euo pipefail
           out="$RUNNER_TEMP/shared-network-build"
-          mkdir -p "$out" "$RUNNER_TEMP/shared-network-evidence"
+          mkdir -p "$out" "$RUNNER_TEMP/shared-network-checks"
           candidate_sha="$(git rev-parse HEAD)"
           test "$candidate_sha" = "${{ github.sha }}"
-          echo "$candidate_sha" > "$RUNNER_TEMP/shared-network-evidence/source.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/shared-network-evidence/runtime-version.txt"
+          echo "$candidate_sha" > "$RUNNER_TEMP/shared-network-checks/source.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/shared-network-checks/runtime-version.txt"
           CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.commit=$candidate_sha" -o "$out/baha" ./cmd/baha
           cp deploy/control-plane/Dockerfile.binary "$out/Dockerfile"
           "$BASEHARBOR_TEST_RUNTIME" build --pull -t "$BASEHARBOR_RUNTIME_IMAGE" "$out"
@@ -378,14 +336,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/shared-network-evidence/network.log"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        if: always()
-        with:
-          name: retained-network-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/shared-network-evidence
-          if-no-files-found: error
-          retention-days: 90
+          go test ./cmd/baha -run '^TestCoreBootstrapRetainsApplicationSharedNetworkAndSQL$' -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/shared-network-checks/network.log"
   coreless_runtime:
     if: ${{ (github.event_name == 'workflow_dispatch' && inputs.gate == 'coreless-runtime') || (github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[coreless-runtime]')) }}
     name: Core-less application · ${{ matrix.runtime }}
@@ -426,16 +377,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/coreless-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/coreless-evidence/candidate-sha.txt"
-          go version > "$RUNNER_TEMP/coreless-evidence/go-version.txt"
-          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-evidence/runtime-version.txt"
+          mkdir -p "$RUNNER_TEMP/coreless-checks"
+          git rev-parse HEAD > "$RUNNER_TEMP/coreless-checks/candidate-sha.txt"
+          go version > "$RUNNER_TEMP/coreless-checks/go-version.txt"
+          "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/coreless-checks/runtime-version.txt"
       - name: Verify fresh workload with zero Core containers
         if: ${{ contains(github.event.head_commit.message, '[app-stop-runtime]') || !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/lifecycle.log"
+          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-checks/lifecycle.log"
       - name: Verify selected Identity add remove re-add without management Core
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-identity]') }}
         env:
@@ -450,7 +401,7 @@ jobs:
           if [ '${{ contains(github.event.head_commit.message, '[coreless-production-identity]') }}' = true ]; then
             selection='^TestProductionIdentityRuntimeRealizedCallbackAndReapply$'
           fi
-          go test ./cmd/baha -run "$selection" -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/identity-lifecycle.log"
+          go test ./cmd/baha -run "$selection" -count=1 -v -timeout 20m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/identity-lifecycle.log"
       - name: Verify selected SQL and cache add remove re-add without Core
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-backends]') }}
         env:
@@ -458,7 +409,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestSelectiveBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/backend-lifecycle.log"
+          go test ./cmd/baha -run '^TestSelectiveBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/backend-lifecycle.log"
       - name: Verify selected messaging and document database lifecycle without Core
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-foundations]') }}
         env:
@@ -466,7 +417,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/application-backend-lifecycle.log"
+          go test ./cmd/baha -run '^TestSelectiveApplicationBackendRuntimeAddRemoveReAdd$' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/application-backend-lifecycle.log"
       - name: Verify selected HTTPS add remove re-add without Core
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         env:
@@ -474,7 +425,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/https-lifecycle.log"
+          go test ./cmd/baha -run '^TestSelectiveHTTPSRuntimeAddRemoveReAdd$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/https-lifecycle.log"
       - name: Verify actual local prod workload CLI and stdio without OIDC
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && contains(github.event.head_commit.message, '[coreless-local-auth]') }}
         env:
@@ -482,7 +433,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/local-prod-authority.log"
+          go test ./cmd/baha -run '^TestCorelessFreshWorkloadRuntimeLifecycle$' -count=1 -v -timeout 15m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/local-prod-authority.log"
       - name: Qualify changed volume recovery helper
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-selected-secrets]') && !contains(github.event.head_commit.message, '[coreless-managed]') && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
         env:
@@ -490,7 +441,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/volume-recovery.log"
+          go test ./internal/runtime -run '^TestRenovateVolumeRecoveryRuntimeAcceptance$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-checks/volume-recovery.log"
       - name: Build integrated exact-SHA management runtime image
         id: runtime_image
         if: ${{ !cancelled() && steps.runtime_setup.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-workload-only]') && !contains(github.event.head_commit.message, '[coreless-selected-identity]') && !contains(github.event.head_commit.message, '[coreless-selected-backends]') && !contains(github.event.head_commit.message, '[coreless-selected-foundations]') && !contains(github.event.head_commit.message, '[coreless-selected-https]') }}
@@ -510,22 +461,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '${{ contains(github.event.head_commit.message, '[coreless-shared-secrets]') && '^TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer$' || '^TestSelectiveSecretsRuntimeAddRemoveReAdd$' }}' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/secrets-lifecycle.log"
+          go test ./cmd/baha -run '${{ contains(github.event.head_commit.message, '[coreless-shared-secrets]') && '^TestSharedSecretsRuntimePreservesSiblingAndRetiresLastConsumer$' || '^TestSelectiveSecretsRuntimeAddRemoveReAdd$' }}' -count=1 -v -timeout 25m 2>&1 | tee "$RUNNER_TEMP/coreless-checks/secrets-lifecycle.log"
       - name: Verify explicit management Core and individual capability reuse
         if: ${{ !cancelled() && steps.runtime_image.outcome == 'success' && !contains(github.event.head_commit.message, '[coreless-selected-secrets]') }}
         shell: bash
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestApplicationCapabilityLifecycleExistingCore$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-evidence/managed-capabilities.log"
-      - name: Retain exact-SHA runtime evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: coreless-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/coreless-evidence
-          if-no-files-found: warn
-          retention-days: 30
-
+          go test ./cmd/baha -run '^TestApplicationCapabilityLifecycleExistingCore$' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/coreless-checks/managed-capabilities.log"
   shared_provider_contracts:
     if: ${{ github.event_name == 'push' && (github.ref_name == 'work/v0.4.24-core-ha-updates' || github.ref_name == 'work/v0.4.25-contract-minimal-core') && contains(github.event.head_commit.message, '[provider-contracts]') }}
     name: Shared provider unit and contract verification
@@ -828,17 +770,8 @@ jobs:
                              and event.get('Action') == 'pass' for event in events)
                   or not any(event.get('Package') == package and 'Test' not in event
                              and event.get('Action') == 'pass' for event in events)):
-              raise SystemExit('Native Podman backup/recovery requires an executed test PASS and package PASS; skip/fail/missing receipts block.')
+              raise SystemExit('Native Podman backup/recovery requires an executed test PASS and package PASS; missing, skipped or failed tests block.')
           PYTHON
-
-      - name: Retain exact Podman backup recovery evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: podman-backup-recovery-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/podman-backup-recovery
-          if-no-files-found: error
-          retention-days: 30
 
   core_bootstrap:
     if: ${{ github.event_name == 'push' && (startsWith(github.ref_name, 'runtime-validation/ha/core-bootstrap/') || (github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[management-union-runtime]'))) }}
@@ -877,15 +810,6 @@ jobs:
             pattern='^TestCoreOnlyBootstrapRuntimeAcceptance$/development$'
           fi
           go test -race -json ./cmd/baha -run "$pattern" -count=1 -timeout 28m 2>&1 | tee "$RUNNER_TEMP/core-bootstrap/tests.jsonl"
-      - name: Retain runtime qualification logs
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: core-bootstrap-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/core-bootstrap
-          if-no-files-found: warn
-          retention-days: 90
-
   core_ha_recovery:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[ha-cutover]') }}
     name: HA cutover and SQL rollback · ${{ matrix.runtime }}
@@ -917,15 +841,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ha-recovery"
           go test -race -json ./cmd/baha -run '^TestCoreHACutoverRollbackRuntimeAcceptance$' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/ha-recovery/tests.jsonl"
-      - name: Retain runtime qualification logs
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: ha-recovery-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/ha-recovery
-          if-no-files-found: warn
-          retention-days: 90
-
   provider_topology:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[topology-runtime]') }}
     name: Explicit provider topology · ${{ matrix.runtime }}
@@ -967,15 +882,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/provider-topology"
           go test -p 1 -race -json ./internal/objectstorage ./internal/metrics ./internal/telemetry ./internal/logs ./internal/traces ./internal/identityprovider -run '(DefaultTopologyRuntimeAcceptanceInCI|HARuntime.*AcceptanceInCI)$' -count=1 -timeout 40m 2>&1 | tee "$RUNNER_TEMP/provider-topology/tests.jsonl"
-      - name: Retain native topology qualification logs
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: provider-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/provider-topology
-          if-no-files-found: error
-          retention-days: 90
-
   application_provider_topology:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[application-topology-runtime]') }}
     name: Application providers and HA overrides · ${{ matrix.runtime }}
@@ -1007,15 +913,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/application-topology"
           go test -p 1 -race -json ./internal/application ./internal/logs ./internal/traces -run '^(TestApplicationDataDefaultTopologyRuntimeAcceptanceInCI|TestLokiComponentOverrideRuntimeAcceptanceInCI|TestTempoComponentOverrideRuntimeAcceptanceInCI)$' -count=1 -timeout 50m 2>&1 | tee "$RUNNER_TEMP/application-topology/tests.jsonl"
-      - name: Retain native role and override qualifications
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: application-topology-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/application-topology
-          if-no-files-found: error
-          retention-days: 90
-
   core_provider_versions:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[provider-runtime]') || contains(github.event.head_commit.message, '[provider-docker-runtime]')) }}
     name: Provider versions and SQL recovery · ${{ matrix.runtime }}
@@ -1047,17 +944,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/provider-versions"
           go test -race -json ./cmd/baha -run '^TestCoreProviderVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/provider-versions/tests.jsonl"
-      - name: Retain runtime qualification logs
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: provider-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/provider-versions
-            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
-          if-no-files-found: warn
-          retention-days: 90
-
   core_ha_openbao_versions:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]')) }}
     name: HA OpenBao versions and SQL recovery · ${{ matrix.runtime }}
@@ -1089,17 +975,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ha-openbao-versions"
           go test -race -json ./cmd/baha -run '^TestCoreHAOpenBaoVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/ha-openbao-versions/tests.jsonl"
-      - name: Retain runtime qualification logs
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: ha-openbao-versions-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/ha-openbao-versions
-            ${{ runner.temp }}/baseharbor-public-image-cache-${{ matrix.runtime }}.log
-          if-no-files-found: warn
-          retention-days: 90
-
   v0421_ha:
     if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/tempo/') || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}
@@ -1270,15 +1145,6 @@ jobs:
           mkdir -p "$RUNNER_TEMP/bug-hunt"
           go test -race -json ./cmd/baha -run 'Test(PreflightNewTargetRecoveryFile|TargetRecoveryFile|RequiredSecret(NullInput|RealPTY)|OverviewUsesCanonical|PromptAndStoreMissingRequiredSecrets)' -count=1 | tee "$RUNNER_TEMP/bug-hunt/source.jsonl"
           go test -json ./internal/development -run '^TestGeneratedTemplates' -count=1 -timeout 40m | tee "$RUNNER_TEMP/bug-hunt/templates.jsonl"
-      - name: Retain focused bug hunt evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: bug-hunt-templates-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/bug-hunt
-          if-no-files-found: warn
-          retention-days: 90
-
   rootless_engine_isolation:
     if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && contains(github.event.head_commit.message, '[rootless-runtime]') }}
     name: Engine isolation · ${{ matrix.runtime }}
@@ -1328,13 +1194,6 @@ jobs:
             selection='^TestCoreOnlyBootstrapRuntimeAcceptance$/^development$'
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 24m 2>&1 | tee "$RUNNER_TEMP/engine-isolation/tests.jsonl"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
-        with:
-          name: engine-isolation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/engine-isolation
-          retention-days: 90
-
   identity_trust:
     if: ${{ !startsWith(github.ref_name, 'runtime-validation/recovery-podman/') && (contains(github.event.head_commit.message, '[identity-runtime]') || contains(github.event.head_commit.message, '[identity-ha-runtime]')) }}
     name: Shared Identity SQL trust · ${{ matrix.runtime }}
@@ -1376,13 +1235,6 @@ jobs:
             selection='^TestCoreSharedIdentitySQLCARotationRuntimeAcceptance$/^ha$'
           fi
           go test -p 2 -race -json ./cmd/baha -run "$selection" -count=1 -timeout 32m 2>&1 | tee "$RUNNER_TEMP/identity-trust/tests.jsonl"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
-        with:
-          name: identity-trust-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/identity-trust
-          retention-days: 90
-
   final_bug_acceptance:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && contains(github.event.head_commit.message, '[final-bug-runtime]') }}
     name: Final product bug acceptance · ${{ matrix.runtime }}
@@ -1414,13 +1266,6 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/final-bugs"
           go test -p 2 -json ./cmd/baha ./internal/deployment ./internal/repositoryinspect ./internal/cli -run 'Test(Bug|CoreOnlyBootstrapRuntimeAcceptance|InspectFailsClosedOnComposeInclude|PreflightRepositoryWorkloadPublishedPorts|TargetRecovery|PreflightNewTargetRecovery)' -count=1 -timeout 25m 2>&1 | tee "$RUNNER_TEMP/final-bugs/tests.jsonl"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        if: always()
-        with:
-          name: final-product-bugs-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/final-bugs
-          retention-days: 90
-
   provider_observation:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && contains(github.event.head_commit.message, '[provider-observation-runtime]') }}
     name: Provider observation · ${{ matrix.runtime }}
@@ -1456,16 +1301,6 @@ jobs:
           git rev-parse HEAD^{tree} > "$RUNNER_TEMP/provider-observation/source-tree.txt"
           go version > "$RUNNER_TEMP/provider-observation/go-version.txt"
           go test -race -json ./cmd/baha -run '^TestProviderObservationNativePartialModule$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/provider-observation/tests.jsonl"
-      - name: Retain bounded native evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: provider-observation-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/provider-observation
-          if-no-files-found: warn
-          retention-days: 90
-
-
   external_provider_handoff:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[external-provider-handoff-runtime]') || contains(github.event.head_commit.message, '[external-provider-handoff-podman]')) }}
     name: External provider consumer handoff · ${{ matrix.runtime }}
@@ -1501,11 +1336,3 @@ jobs:
           go version > "$RUNNER_TEMP/external-provider-handoff/go-version.txt"
           "$BASEHARBOR_TEST_RUNTIME" version > "$RUNNER_TEMP/external-provider-handoff/runtime-version.txt"
           go test -race -json ./internal/identityprovider -run '^TestRegisteredExternalOIDCNativeConsumerHandoff$' -count=1 -timeout 18m 2>&1 | tee "$RUNNER_TEMP/external-provider-handoff/tests.jsonl"
-      - name: Retain bounded native evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: external-provider-handoff-${{ matrix.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/external-provider-handoff
-          if-no-files-found: warn
-          retention-days: 90
