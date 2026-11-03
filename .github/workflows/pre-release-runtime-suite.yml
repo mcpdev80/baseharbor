@@ -2,7 +2,21 @@ name: Atomic Acceptance Gate
 permissions:
   contents: read
 jobs:
+  reused:
+    name: Reused ${{ inputs.runtime }} · ${{ inputs.gate }}
+    if: inputs.reuse_from != '' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report authenticated unchanged previous result
+        env:
+          REUSED_RUN: ${{ inputs.reuse_from }}
+          GATE_NAME: ${{ inputs.runtime }}/${{ inputs.gate }}
+        run: |
+          set -euo pipefail
+          [[ "$REUSED_RUN" =~ ^[0-9]+$ ]]
+          echo "Native gate $GATE_NAME reused from existing successful run $REUSED_RUN; exact PR ancestry, source changes and Demo source were checked by the trusted PR planner." >> "$GITHUB_STEP_SUMMARY"
   gate:
+    if: inputs.reuse_from == ''
     name: ${{ inputs.runtime }} · ${{ inputs.gate }}
     runs-on: ${{ inputs.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 60
@@ -483,6 +497,11 @@ jobs:
         type: string
       trusted_base_sha:
         description: Base SHA from the authenticated PR plan, for scoped provider-log qualification
+        required: false
+        default: ''
+        type: string
+      reuse_from:
+        description: Prior successful PR run verified by the trusted incremental planner; empty means execute
         required: false
         default: ''
         type: string

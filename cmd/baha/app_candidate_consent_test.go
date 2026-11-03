@@ -124,3 +124,34 @@ func TestPromptDigestEqualsBindDigest(t *testing.T) {
 		t.Fatalf("persisted digest %q != shown digest %q", record.Consent.Digest, bound)
 	}
 }
+
+// TestConsentFillForEditSnapshot is a real apply-path test of Punkt 1: the edit
+// snapshot's candidate digest is filled from the same source-fingerprint helper
+// the real choke point uses, so the confirmed Edit carries an operator/automation
+// consent whose digest pins the exact new submission. This mirrors the baseline
+// withConfirmCandidateForSetup pattern but recomputes over the resolved snapshot,
+// so a changed source fingerprint binds the new digest, not the baseline's.
+func TestConsentFillForEditSnapshot(t *testing.T) {
+	r := repoCandidateFixture(t)
+	submission, _ := candidateSubmissionForResolved(t, r)
+	// A wrong confirm digest must fail closed and write nothing.
+	wrong := "0000000000000000000000000000000000000000000000000000000000000000"
+	if _, err := recordDeploymentBeforeMutation(withCandidateConsentDigest(context.Background(), wrong), r, "applying", wrong); err == nil {
+		t.Fatal("wrong confirm digest accepted; candidate must fail closed")
+	}
+	// The correct, freshly-computed edit digest must bind and persist.
+	editDigest := delivery.CandidateConsentDigest(submission)
+	record, err := recordDeploymentBeforeMutation(withCandidateConsentDigest(context.Background(), editDigest), r, "applying", editDigest)
+	if err != nil {
+		t.Fatalf("correct edit digest rejected: %v", err)
+	}
+	if record.Consent == nil {
+		t.Fatal("correct edit digest produced no consent")
+	}
+	if record.Consent.Digest != editDigest {
+		t.Fatalf("bound edit digest %q != computed %q", record.Consent.Digest, editDigest)
+	}
+	if record.Consent.By != "operator" {
+		t.Fatalf("edit consent by=%q, want operator", record.Consent.By)
+	}
+}

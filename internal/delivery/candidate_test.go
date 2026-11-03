@@ -60,6 +60,42 @@ func TestCandidateValidateContract(t *testing.T) {
 			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-5", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRepository: "example/app", SourceRevision: "0123456789abcdef0123456789abcdef01234567", SecretRef: "secrets/db-password"},
 			ok:   false,
 		},
+		{
+			// Shared vector (Punkt 2): a pinned revision without its repository
+			// is neither a source identity nor a partial field — the schema
+			// half-pair is incomplete and must fail closed.
+			name: "source revision without repository",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-6", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRevision: "0123456789abcdef0123456789abcdef01234567"},
+			ok:   false,
+		},
+		{
+			// Shared vector (Punkt 2): a repository without its revision is the
+			// same incomplete pair — must fail closed.
+			name: "source repository without revision",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-6", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRepository: "example/app"},
+			ok:   false,
+		},
+		{
+			// Shared vector (Punkt 2): a digest without its image reference is an
+			// incomplete image half-pair — must fail closed.
+			name: "image digest without reference",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-7", TargetName: "lab", ConsentBy: "automation", Acknowledged: true, ImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+			ok:   false,
+		},
+		{
+			// Shared vector (Punkt 2): a reference without its digest is the same
+			// incomplete image half-pair — must fail closed.
+			name: "image reference without digest",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-7", TargetName: "lab", ConsentBy: "automation", Acknowledged: true, ImageReference: "example/app"},
+			ok:   false,
+		},
+		{
+			// Both pairs complete but mismatched (revision without repo, digest
+			// without ref) — still structural violations.
+			name: "both pairs incomplete",
+			sub:  CandidateSubmission{ContractVersion: CandidateContractVersion, ApplicationID: "app-8", TargetName: "lab", ConsentBy: "operator", Acknowledged: true, SourceRevision: "0123456789abcdef0123456789abcdef01234567", ImageDigest: "sha256:1111111111111111111111111111111111111111111111111111111111111111"},
+			ok:   false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

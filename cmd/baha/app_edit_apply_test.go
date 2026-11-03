@@ -928,6 +928,21 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	editConfirmCtx := withConfirmCandidateForSetup(context.Background(), target, m.Name, root)
 	ctx, cancel := context.WithTimeout(editConfirmCtx, 4*time.Minute)
 	defer cancel()
+	// The confirmed Edit binds the repository candidate on explicit operator
+	// confirmation: compute the exact confirm digest the choke requires and feed
+	// it back through the input stream, exactly like the positive consent test
+	// family does for apply. This proves the Edit wires the candidate consent
+	// through to the choke (befund 1, punkt 1).
+	editResolved, rerr := resolveApplication(ctx, application.DefaultStore(), []string{m.Name}, "apply")
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	_, confirmDigest := withConfirmCandidateDigestForResolved(ctx, editResolved)
+	if confirmDigest == "" {
+		t.Fatal("could not compute the edit candidate confirm digest")
+	}
+	input = strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n" + confirmDigest + "\n")
+	ctx = withCandidateConsentDigest(ctx, confirmDigest)
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
 	if err != nil {

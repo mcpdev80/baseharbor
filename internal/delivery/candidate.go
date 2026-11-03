@@ -87,12 +87,44 @@ func CandidateConsentDigest(c CandidateSubmission) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// sourcePairValid reports the schema half-pair binding for a source identity:
+// SourceRevision is only meaningful together with SourceRepository. A revision
+// without its repository, or a repository without its revision, is neither an
+// identity nor a partial field — it is a structural contract violation shared
+// with the published schema.
+func (c CandidateSubmission) sourcePairValid() bool {
+	if strings.TrimSpace(c.SourceRepository) == "" || strings.TrimSpace(c.SourceRevision) == "" {
+		return false
+	}
+	// A fixed source still requires a pinned revision (see validatePinnedSource).
+	return isPinnedRevision(c.SourceRevision)
+}
+
+// imagePairValid reports the schema half-pair binding for an image identity:
+// ImageDigest is only meaningful together with ImageReference. A digest without
+// its reference, or a reference without its digest, is neither an identity nor
+// a partial field — it is a structural contract violation shared with the
+// published schema.
+func (c CandidateSubmission) imagePairValid() bool {
+	if strings.TrimSpace(c.ImageReference) == "" || strings.TrimSpace(c.ImageDigest) == "" {
+		return false
+	}
+	return sha256Digest.MatchString(c.ImageDigest)
+}
+
 // CandidateIdentity reports which immutable source a submission carries. It is
 // empty when neither, and ambiguous when both are present. A source identity is
 // only reported when the revision is itself fixed (see isPinnedRevision); a
 // mutable branch/tag never contributes an identity — including when paired with
 // a valid image digest, because the immutable identity must be content-addressed
 // and a movable source is never acceptable.
+//
+// The identity is reported only when the corresponding schema half-pair is
+// complete and valid: a source identity additionally requires SourceRevision
+// together with SourceRepository (see sourcePairValid), an image identity
+// additionally requires ImageDigest together with ImageReference (see
+// imagePairValid). An incomplete pair is never reported as an identity — it is
+// a structural contract violation, not a partial field.
 func (c CandidateSubmission) CandidateIdentity() CandidateSource {
 	hasImage := c.ImageDigest != ""
 	hasSource := c.SourceRepository != "" && c.SourceRevision != ""
@@ -107,9 +139,19 @@ func (c CandidateSubmission) CandidateIdentity() CandidateSource {
 	}
 	switch {
 	case hasImage:
+		// A digest without its reference is not an image identity.
+		if !c.imagePairValid() {
+			return ""
+		}
 		return CandidateIdentityImage
-	default:
+	case hasSource:
+		// A revision without its repository is not a source identity.
+		if !c.sourcePairValid() {
+			return ""
+		}
 		return CandidateIdentitySource
+	default:
+		return ""
 	}
 }
 
@@ -128,6 +170,10 @@ func (c CandidateSubmission) CandidateIdentity() CandidateSource {
 //	  - a source revision must be a fixed identity (a 40/64-hex Git commit object
 //	    ID or an opaque algo:hex digest of >=32 hex chars); a mutable branch or
 //	    tag is never accepted, even when paired with an image digest;
+//	  - a source revision must be bound to its repository (SourceRevision only
+//	    valid with SourceRepository), an image digest must be bound to its
+//	    reference (ImageDigest only valid with ImageReference) — an incomplete
+//	    schema half-pair is a structural contract violation;
 //	  - an image must carry a sha256 digest, never a mutable tag alone;
 //	  - no bare secret reference may enter the submission.
 func (c CandidateSubmission) Validate(consent *CandidateConsent) error {
@@ -150,6 +196,16 @@ func (c CandidateSubmission) Validate(consent *CandidateConsent) error {
 	}
 	if strings.TrimSpace(c.SecretRef) != "" {
 		return fmt.Errorf("candidate submission must not carry a bare secret reference")
+	}
+	// Pair binding: a source revision only counts together with its repository
+	// and an image digest only counts together with its reference. An incomplete
+	// schema half-pair is a structural contract violation, independent of the
+	// identity the candidate reports — both shared vectors must fail here.
+	if (c.SourceRevision != "" || c.SourceRepository != "") && !c.sourcePairValid() {
+		return fmt.Errorf("source revision requires its source repository (source.revision only valid with source.repository)")
+	}
+	if (c.ImageDigest != "" || c.ImageReference != "") && !c.imagePairValid() {
+		return fmt.Errorf("image digest requires its image reference (image.digest only valid with image.reference)")
 	}
 	identity := c.CandidateIdentity()
 	switch identity {
