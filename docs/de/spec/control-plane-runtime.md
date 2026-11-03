@@ -66,3 +66,20 @@ Der Server benötigt TLS und verwendet TLS 1.2 oder neuer. Ein fehlendes oder un
 ## Herunterfahren
 
 Die wichtigsten `baha` Prozess wandelt SIGINT und SIGTERM in Kontextstornierung um.`baha serve` führt dann eine begrenzte anmutige HTTP-Abschaltung vor dem Schließen seines PostgreSQL-Pools durch.
+
+## Zuständigkeitsgrenze (Server vs. lokale Ausführung)
+
+Der Control-Plane-Server ist eine Remote-Grenze. Sie adressiert die ausgewählte
+Installation-Autorität, die maßeblichen Deployment-, Anbieter-, Identitäts-,
+Consent-Revision- und Mutationszustand für seine admitted Environment verwaltet.
+
+Die lokale Direktausführung ist unabhängig davon, ob der Server präsent oder
+erreichbar ist: sie wiederverwendet denselben semantischen Kern
+(`internal/coreinstallation`, `internal/deployment`), ohne die OIDC/PostgreSQL-
+Operatorgrenze zu verpflichtet, die die Remote-API verlangt. Ein Remote-Client,
+der die ausgewählte Installation nicht durch seine Managerverbindung erreichen
+kann, schließt fehl; sie ersetzt niemals lokale Ausführung für eine fehlende,
+fremde oder abgelaufene Remote-Autorität, und eine gecachte last-known-Zustand
+ist eine veraltete `observed-at`-Beobachtung, niemals aktuelle „READY".
+
+Siehe [ADR 0021](../decisions/0021-one-installation-authority.md).
