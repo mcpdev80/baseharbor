@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -319,7 +320,176 @@ func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, 
 	return server, handler, recorder
 }
 
+// TestCheckNegativesWrongRecorderMutationControl is the MUTATION CONTROL for the
+// reviewer's counter-test (review-1357e). It proves the negative observation is
+// discriminating: it builds a BUGGY server where the /readyz handler
+// erroneously dispatches to the /internal/ execute handler (a realistic wrong-
+// wiring variant, test-only, never in a production path). On that server the
+// WRONG recorder (handler.HandlerReached, the execute handler) goes TRUE even
+// though the route Check() actually drives — the /readyz checkReachedRecorder —
+// is what was really served.
+//
+// The assertion MUST fire RED here (executeReached==true on the execute handler)
+// while the correct observation (the /readyz recorder being entered) proves the
+// wrong recorder is observing a route Check() never dispatched to. If this
+// control cannot go RED, the negative observation is vacuous and does not
+// discriminate the bug — the test would have to be abandoned.
+//
+// A successful handshake is required (no client-cert refusal), so Check() actually
+// reaches the /readyz route; the buggy handler then forwards to the execute
+// handler, flipping handler.HandlerReached to true.
+func TestCheckNegativesWrongRecorderMutationControl(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+	certPath, keyPath := ca.clientCertPaths(t, client)
+
+	// Build a BUGGY readyz route: its handler serves /readyz AND, misconfigured,
+	// forwards to the execute handler with a synthetic POST request.
+	handler, err := NewHandler(fakeResources{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &checkReachedRecorder{}
+	buggyReadyz := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		recorder.entered.Store(true)
+		// Misconfigured dispatch: forward to the execute handler too.
+		extra := *r
+		extra.Method = http.MethodPost
+		extra.URL.Path = "/internal/v1/execute"
+		extra.Header.Set("Content-Type", "application/json")
+		extra.Body = io.NopCloser(strings.NewReader(`{"capability":"object-storage.s3/v1","operation":"runtime.create","name":"asset-1"}`))
+		handler.ServeHTTP(w, &extra)
+	})
+	mux := http.NewServeMux()
+	mux.Handle("GET /readyz", buggyReadyz)
+	mux.Handle("/internal/", handler)
+	server := httptest.NewUnstartedServer(mux)
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
+		t.Fatal("failed to parse test CA for client trust")
+	}
+	server.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  caPool,
+	}
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ca.serverKey})
+	cert, err := tls.X509KeyPair(ca.serverCert, serverKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.TLS.Certificates = []tls.Certificate{cert}
+	server.StartTLS()
+	defer server.Close()
+
+	c, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// Check() reaches the /readyz route (successful handshake). The buggy handler
+	// forwards to the execute handler, so the WRONG recorder observes the request.
+	if err := c.Check(context.Background()); err != nil {
+		t.Fatalf("readyz over mutual-TLS: %v", err)
+	}
+
+	// MUTATION CONTROL assertion: on the buggy server the execute handler was
+	// reached, proving handler.HandlerReached is TRUE on a route Check() never
+	// actually serviced. This is exactly the false-positive the reviewer warns
+	// about: asserting this recorder would (wrongly) claim the execute path.
+	if got := handler.HandlerReached.Load(); !got {
+		t.Fatalf("mutation control failed: execute handler must be reached via buggy readyz dispatch (HandlerReached=%v)", got)
+	}
+	// The correct recorder (the /readyz route Check drives) was entered too.
+	if !recorder.entered.Load() {
+		t.Fatalf("mutation control failed: /readyz recorder must be entered (entered=%v)", recorder.entered.Load())
+	}
+}
+
 const workloadSPIFFE = "spiffe://baseharbor/apps/myservice/prod"
+
+// TestCheckNegativesObserveReadyRoute is the reviewer's counter-test (review-1357e):
+// it proves that the NEGATIVE Check() assertion observes the EXACT route Check()
+// drives — the /readyz checkReachedRecorder — AND the /internal/ execute handler.
+// For every negative case (missing client cert, foreign CA) the test asserts BOTH:
+//   - readyReached == false  (the /readyz route Check() drives was never entered)
+//   - executeReached == false (the /internal/ handler was never entered either)
+//
+// and the error is a classified TLS/handshake/verification cause.
+//
+// On the NORMAL server (correct wiring) a refused handshake reaches NEITHER
+// route, so both flags stay false and the test is GREEN. This is the
+// discriminating green test: the negative is now observed on the correct recorder
+// (the /readyz route Check drives), not vacuously on the execute handler alone.
+// The mutation control (TestCheckNegativesWrongRecorderMutationControl) proves the
+// observation is discriminating: on buggy wiring the wrong recorder goes TRUE.
+func TestCheckNegativesObserveReadyRoute(t *testing.T) {
+	// --- Negative 1: missing client certificate, Check() drives /readyz ---
+	func() {
+		ca := newTestCA(t)
+		server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(ca.caCertPEM) {
+			t.Fatal("failed to parse test CA for client trust")
+		}
+		tr := &http.Transport{TLSClientConfig: &tls.Config{
+			MinVersion:   tls.VersionTLS12,
+			RootCAs:      roots,
+			Certificates: []tls.Certificate{},
+		}}
+		c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
+
+		err := c.Check(context.Background())
+		// The negative MUST be observed on the exact route Check() drives.
+		if recorder.entered.Load() {
+			t.Fatalf("readyz check-path recorder must not be entered by a client presenting no certificate (entered=%v)", recorder.entered.Load())
+		}
+		if got := handler.HandlerReached.Load(); got {
+			t.Fatalf("execute handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
+		}
+		assertTLSHandshakeCause(t, err)
+	}()
+
+	// --- Negative 2: foreign client CA, Check() drives /readyz ---
+	func() {
+		ca := newTestCA(t)
+		foreignCA := newTestCA(t)
+		client := foreignCA.workloadClient(t, workloadSPIFFE)
+		certPath, keyPath := foreignCA.clientCertPaths(t, client)
+
+		server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+		defer server.Close()
+
+		c, err := NewClient(ClientConfig{
+			URL:      server.URL,
+			CAFile:   ca.caCertPath,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
+		if err != nil {
+			t.Fatalf("NewClient: %v", err)
+		}
+
+		err = c.Check(context.Background())
+		// The negative MUST be observed on the exact route Check() drives.
+		if recorder.entered.Load() {
+			t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
+		}
+		if got := handler.HandlerReached.Load(); got {
+			t.Fatalf("execute handler must not be reached by a refused foreign-CA handshake (HandlerReached=%v)", got)
+		}
+		assertTLSHandshakeCause(t, err)
+	}()
+}
+
+// TestMutualTLSRejectsForeignClientCA fails when the client presents a
 
 // TestMutualTLSExecutePositive drives a real two-way TLS handshake: the client
 // presents a workload identity signed by the test CA, the server verifies the
@@ -371,7 +541,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	ca := newTestCA(t)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Client that presents NO certificate: a transport with an empty
@@ -388,11 +558,15 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
 
 	err := c.Check(context.Background())
-	// The negative MUST be observed on the exact route Check() drives: the error
-	// is a classified TLS/handshake/verification cause (server-side client-cert
-	// refusal on the /readyz route), and the execute-path handler was never
-	// reached.
+	// The negative MUST be observed on the EXACT route Check() drives: the
+	// /readyz checkReachedRecorder (readyReached==false) AND the execute-path
+	// handler (executeReached==false). The old assertion observed only the
+	// execute handler — the wrong recorder — and proved nothing about the route
+	// Check() actually drove. Both flags must stay false on a refused handshake.
 	assertTLSHandshakeCause(t, err)
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a client presenting no certificate (entered=%v)", recorder.entered.Load())
+	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
 	}
@@ -465,7 +639,7 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -479,7 +653,14 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	}
 
 	err = c.Check(context.Background())
+	// The negative MUST be observed on the EXACT route Check() drives: the
+	// /readyz checkReachedRecorder (readyReached==false) AND the execute-path
+	// handler (executeReached==false). Both flags must stay false on a refused
+	// handshake — observing only the execute handler was the wrong-recorder bug.
 	assertTLSHandshakeCause(t, err)
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
+	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
@@ -501,7 +682,7 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca.write(t, "client-key-corrupted.pem",
 		[]byte("-----BEGIN PRIVATE KEY-----\nMIIinvalidNotValidBase64DataXXXX\n-----END PRIVATE KEY-----\n"), 0o600)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Corrupted key => NewClient fails closed before any handshake attempt.
@@ -513,12 +694,16 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	})
 	// The failure is a client-identity load error (no handshake runs), so the
 	// /readyz check path never observes a handshake. The error is non-nil and
-	// the handler is never reached.
+	// both reach-flags stay false on the exact route Check() drives AND the
+	// execute handler.
 	if err == nil {
 		t.Fatalf("expected NewClient to fail closed on corrupted client key material")
 	}
-	if handler.HandlerReached.Load() {
-		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", handler.HandlerReached.Load())
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered when client identity fails to load (entered=%v)", recorder.entered.Load())
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", got)
 	}
 }
 
@@ -646,6 +831,13 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 		t.Fatalf("expected handshake failure with an untrusted client certificate")
 	}
 	assertTLSHandshakeCause(t, checkErr)
+	// The negative MUST be observed on the EXACT route Check() drives: the
+	// /readyz checkReachedRecorder (readyReached==false) AND the execute-path
+	// handler (executeReached==false). Both flags stay false on a refused
+	// handshake — observing only the execute handler was the wrong-recorder bug.
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
+	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
