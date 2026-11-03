@@ -65,11 +65,11 @@ type AppliedDeployment struct {
 }
 
 type ObservedDeployment struct {
-	State      string                   `json:"state,omitempty"`
-	Ready      bool                     `json:"ready,omitempty"`
-	Conflict   bool                     `json:"conflict,omitempty"`
+	State      string                       `json:"state,omitempty"`
+	Ready      bool                         `json:"ready,omitempty"`
+	Conflict   bool                         `json:"conflict,omitempty"`
 	Owner      delivery.ReconciliationOwner `json:"owner,omitempty"`
-	VerifiedAt time.Time                `json:"verified_at,omitempty"`
+	VerifiedAt time.Time                    `json:"verified_at,omitempty"`
 }
 
 type DeploymentRecord struct {
@@ -201,9 +201,11 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// Carry a conflict observed in the persisted previous record into the guard
 	// evaluation. guardRecord is a copy of the caller-supplied record, which
 	// cannot invent a conflict; only an authoritative persisted conflict is
-	// honoured here, so a caller-supplied Conflict is never trusted.
-	if previousExists && previous.Observed.Conflict {
-		guardRecord.Observed.Conflict = true
+	// honoured here, so the persisted/previous value governs and the caller
+	// value is discarded (not merely ORed). The caller-supplied Conflict is
+	// never trusted.
+	if previousExists {
+		guardRecord.Observed.Conflict = previous.Observed.Conflict
 	}
 	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
@@ -212,13 +214,18 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 		return err
 	}
 	// Existing lifecycle callers reconstruct records. Preserve separately owned
-	// desired preferences unless an explicit replacement (including []) is supplied.
+	// desired preferences unless an explicit replacement (including []) is
+	// supplied. The retention is applied to guardRecord (not only to record)
+	// because guardRecord is the copy that gets serialised below; otherwise a
+	// lifecycle save with nil preferences would silently drop the previously
+	// persisted preferences — the exact data-loss regression this guards.
 	if record.DesiredProviderPreferences == nil {
 		if previousExists {
 			if previous.Identity.ApplicationID != record.Identity.ApplicationID || previous.Identity.Environment != record.Identity.Environment {
 				return errors.New("cannot retain preferences from a different deployment owner")
 			}
 			record.DesiredProviderPreferences = previous.DesiredProviderPreferences
+			guardRecord.DesiredProviderPreferences = previous.DesiredProviderPreferences
 		}
 	}
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
@@ -229,11 +236,13 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	}
 	// Persist the GUARDED record, not the caller-supplied one. The guard above
 	// resolved the authoritative owner into guardRecord (and carried any prior
-	// Conflict flag); serialising `record` here would persist the caller-supplied
-	// Observed.Owner, which a delegated update can forge — a later direct read
-	// would then see the forged/empty owner and bypass the guard. Persisting
-	// guardRecord keeps the persisted owner canonical; when the guard refuses a
-	// mutation the file is never written (store bytes unchanged).
+	// Conflict flag); the retention above restored owned preferences into
+	// guardRecord too. Serialising `record` here would persist the
+	// caller-supplied Observed.Owner (which a delegated update can forge) and,
+	// worse, the caller-supplied preferences (dropping retained ones); serialise
+	// guardRecord so the persisted owner and retained preferences are canonical.
+	// When the guard refuses a mutation the file is never written (store bytes
+	// unchanged).
 	data, err := json.MarshalIndent(guardRecord, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode deployment record: %w", err)
