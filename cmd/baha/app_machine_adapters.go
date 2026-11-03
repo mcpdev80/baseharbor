@@ -228,6 +228,9 @@ func appMachineChange(ctx context.Context, request appMachineChangeRequest, read
 	outcomes, executionErr := apply(ctx, plan, request.Consent)
 	result, err := application.RecordProviderChangeResult(plan, outcomes)
 	if err != nil {
+		if os.Getenv("DIAG_EXEC") != "" {
+			fmt.Printf("DIAG_EXEC RecordProviderChangeResult err=%v outcomes=%+v\n", err, outcomes)
+		}
 		return application.ProviderChangeResult{}, &appMachineError{Code: "partial"}
 	}
 	if executionErr != nil {
