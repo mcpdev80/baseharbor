@@ -31,7 +31,7 @@ owner at any observed moment.
 If a selection observes both a direct `baseharbor` owner and a delegated
 `external` owner active for the same resource set, the observation fails closed:
 BaseHarbor reports the conflict at **record save** and refuses to persist an apply
-or observation while exactly one owner is not expressible in portable intent. The
+or observation while exactly one owner is expressible in portable intent. The
 guard lives at
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied

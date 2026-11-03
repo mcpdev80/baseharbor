@@ -32,8 +32,7 @@ Wenn eine Auswahlen-Beobachtung gleichzeitig einen direkten `baseharbor`-Besitze
 und einen delegierten `external`-Besitzer für dieselben Ressourcensatz aktiv
 beobachtet, schlägt die Beobachtung bei Konflikt fehl: BaseHarbor meldet den Konflikt
 beim Speichern des Datensatzes und lehnt das Speichern eines Apply- oder Beobachtungs-Satzes ab,
-genau ein Besitzer in portable Intent ausdrückbar ist. Der Guard sitzt in
-Besitzer in portable Intent ausdrückbar ist. Der Guard sitzt in
+während genau ein Besitzer in portable Intent ausdrückbar ist. Der Guard sitzt in
 `internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
 vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
 Eine direkte Mutation verweigert sich, während ein externer Versöhner bereits besitzt; ein
@@ -48,7 +47,7 @@ nicht braucht; diese Zustände bleiben unter der Lieferung-Provider-Grenze.
 
 ## Folgen
 
-- Zwei konkurrierende Versöhner für eine Ressourcensatz werden vor dem Anwenden abgelehnt, nicht nach partieller Mutation.
+- Zwei konkurrierende Versöhner für eine Ressourcensatz werden beim Speichern des Datensatzes abgelehnt, nicht nach partieller Mutation.
 - BaseHarbors eigenen Bindungen/Betriebs-Empfänge bleiben BaseHarbor-besessen unabhängig vom Lieferung-Modus.
 - GitOps-Systeme (Argo CD, Flux) bleiben Implementierungen; der one-owner-Invariant ist portable Intent, kein Werkzeug.
 
