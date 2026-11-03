@@ -207,7 +207,9 @@ def impacts(check, paths, dependencies):
     if check in DOC_CHECKS:
         return changed_docs or bool(changed_go)
     if check in PYTHON_CHECKS:
-        return False
+        # These checks may inspect source/documentation fixtures, not only Python files.
+        # Preserve their coverage until a complete dependency map is available.
+        return bool(paths)
     if check in GLOBAL_TESTS:
         return bool(changed_go)
     if check in GLOBAL_BUILDS:
