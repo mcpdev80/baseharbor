@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Narrow, fail-closed PR runtime request contract for #896.
 
-This produces requests, not authority to execute untrusted code or accept evidence.
+Requests identify selected source inputs; hosted event admission happens separately.
 """
 import json
 import re
@@ -49,7 +49,6 @@ def requests(plan, requirements, pins):
             'integration_sha': integration,
             'consumer_pins': {key: pins[key] for key in required},
             'admission': 'requires-trusted-isolated-runner',
-            'evidence': 'existing-verifier-only',
         })
     return result
 

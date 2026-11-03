@@ -5,9 +5,9 @@ Run this audit before every BaseHarbor release.
 
 ## Planning transition
 
-Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and authenticated release evidence stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
+Planning lives in [baseharbor-plan](https://github.com/mcpdev80/baseharbor-plan), activated at `47474109ea69475e60be4f065ad17476c71665bb`. Read its `AGENTS.md` and the assigned task note for scope, dependencies, ownership and handoffs. Product engineering rules, PR reviews and release test results stay in their existing repositories. Migration-closed issues are historical references, not evidence of implementation.
 
-After planning activation, references below to roadmap issues and release-scoped issues mean the canonical release/task notes in baseharbor-plan. A task is complete only after its own acceptance and evidence pass. Migration-closed GitHub issues do not satisfy a release gate. Historical release records remain unchanged.
+After planning activation, references below to roadmap issues and release-scoped issues mean the canonical release/task notes in baseharbor-plan. A task is complete only after its own acceptance and required tests pass. Migration-closed GitHub issues do not satisfy a release gate. Historical release records remain unchanged.
 
 ## Binding readiness vocabulary
 
@@ -16,9 +16,9 @@ all required atomic/targeted acceptance is green on one immutable ecosystem
 matrix: Core, Demo, Console and Node Connector. It also includes CLI/JSON/MCP
 compatibility, general EN/DE documentation, developer journeys, Pages candidate
 build/navigation/workflow, changelog, human release notes, release-specific gate
-catalogue and authenticated evidence/pins. Core-only green is not this status.
+catalogue and immutable source pins. Core-only green is not this status.
 
-**Release-ready** adds successful complete pre-release approval. Promotion,
+**Release-ready** adds successful complete pre-release validation. Promotion,
 tagging, publication and their post-release verification are subsequent actions
 requiring their own authorization. No readiness phrase alone authorizes them.
 
@@ -35,13 +35,13 @@ journeys remain blockers, not automatic waivers.
 - [ ] Console: real issuer/login and authorization, plan/apply/status/doctor, logs, terminal, production rotation and owned cleanup pass where supported.
 - [ ] Connector: real enrollment/outbound mTLS, renewal/revocation, Docker/rootless Podman remote lifecycle and foreign/shared preservation pass.
 - [ ] Reuse a complete authenticated joint browser/Connector receipt rather than execute duplicate journeys.
-- [ ] Changed consumers need targeted tests before final approval; unchanged consumer code still needs compatibility evidence with the selected Core.
-- [ ] Pin exact source, job/run/attempt and artifact evidence. Failed or skipped journeys are never PASS.
+- [ ] Changed consumers need targeted tests before final approval; unchanged consumer code still needs compatibility tests with the selected Core.
+- [ ] Pin exact source inputs and execute the real consumer tests. Failed or skipped required journeys are never PASS.
 - [ ] Record intentional future scope separately; do not require future Console UI or onboarding features merely to qualify current compatibility.
 
 This is the canonical release-readiness checklist. A release is not ready merely because feature work is merged or normal CI is green.
 
-The audit covers the BaseHarbor repository, the external `baseharbor-demo`, GitHub Issues/Roadmap, documentation/GitHub Pages, release evidence, publication and post-release verification.
+The audit covers the BaseHarbor repository, the external `baseharbor-demo`, GitHub Issues/Roadmap, documentation/GitHub Pages, release tests, publication and post-release verification.
 
 ## 1. Release scope and issue closure
 
@@ -51,8 +51,8 @@ The audit covers the BaseHarbor repository, the external `baseharbor-demo`, GitH
 - [ ] Do not treat broader future/freeze issues as release blockers unless the roadmap explicitly assigns them to this release.
 - [ ] Review open PRs/issues mentioning the target release for forgotten blockers or deferred acceptance.
 - [ ] Confirm deferred work is assigned to a later issue/release and is not silently dropped.
-- [ ] Update release-scoped issue acceptance checklists/evidence when implementation or external acceptance is complete.
-- [ ] Close release-scoped issues only when their own acceptance/evidence requirements are satisfied.
+- [ ] Update release-scoped issue acceptance checklists and test outcomes when implementation or external acceptance is complete.
+- [ ] Close release-scoped issues only when their own acceptance requirements are satisfied.
 
 ## 2. Final BaseHarbor implementation review
 
@@ -134,7 +134,7 @@ When a release adds or changes a service kind, capability/provider contract, run
 
 ## 6. External `baseharbor-demo` review
 
-The external demo is part of release evidence and must be reviewed before pinning its SHA.
+The external demo is part of release validation and must be reviewed before pinning its SHA.
 
 - [ ] README matches the target BaseHarbor release and current developer journey.
 - [ ] Demo application consumes current standard service bindings without BaseHarbor-specific application SDK shortcuts.
@@ -182,11 +182,11 @@ BaseHarbor uses **atomic-first release validation**:
 2. Prove static and runtime gates individually or in small groups before the final release-boundary run.
 3. When a gate fails, fix and rerun only that gate (or the smallest directly affected gate set).
 4. Keep every gate result bound to the exact BaseHarbor candidate SHA, demo SHA, runtime, gate, resource profile and outcome.
-5. A code or demo change invalidates evidence for the changed SHA. Re-run affected atomic gates against the new immutable pair.
+5. A code or demo change changes the test inputs. Re-run affected atomic gates against the new immutable pair.
 6. Do not repeatedly run the complete pre-release orchestrator while known atomic failures remain.
-7. Only after the atomic gate set is individually green on the final unchanged candidate, run `.github/workflows/pre-release.yml` once as the release-boundary approval.
+7. Only after the atomic gate set is individually green on the final unchanged candidate, run `.github/workflows/pre-release.yml` once as the release-boundary validation.
 
-The final complete run is not a debugging loop. It is the proof that the exact candidate can reproduce the **entire required evidence set in one release run**.
+The final complete run is not a debugging loop. It is the proof that the exact candidate can reproduce the **entire required test set in one release run**.
 
 The final gate must prove:
 
@@ -210,29 +210,29 @@ The final gate must prove:
 - [ ] Docker runtime acceptance through the complete required atomic gate set.
 - [ ] Podman/Quadlet runtime acceptance through the complete required atomic gate set.
 - [ ] Podman validation blocks fallback to `podman compose`.
-- [ ] Every required atomic gate emits `baseharbor.pre-release.gate-evidence/v1`.
-- [ ] The final manifest contains exactly the expected unique gate IDs, all with the same candidate SHA and demo SHA and `outcome=success`.
-- [ ] No required gate/evidence item is missing, duplicated or stale.
-- [ ] Immutable `release-approved.json` is produced only after the complete manifest succeeds; it records candidate SHA, demo SHA, workflow run, gate count and success result.
+- [ ] Every required test job executes its actual assertions and returns a failing exit code on error.
+- [ ] The final workflow result checks that every required job succeeded for the selected immutable inputs.
+- [ ] No required test job is missing, cancelled or improperly skipped.
+- [ ] No gate manifest, approval artifact or separate evidence verifier is produced or consumed.
 
-Atomic evidence is **not** permission to combine evidence from different candidate SHAs into one approval. Targeted runs are for diagnosis and pre-proof; the final approval is produced only by the complete orchestrator on the final unchanged candidate.
+Targeted runs diagnose and validate the selected scope. Complete pre-release validation uses normal job dependencies on the final unchanged candidate; it never assembles earlier run artifacts into a new result.
 
 Do not launch duplicate release validation while an equivalent run is queued or in progress.
 
-## 10. Evidence-driven issue/audit completion
+## 10. Issue and audit completion
 
 After the exact candidate pre-release gate is green:
 
-- [ ] Update release audit documents with the actual candidate SHA, demo SHA and relevant workflow/run evidence.
+- [ ] Update release audit documents with the actual candidate SHA, demo SHA and actual test outcomes.
 - [ ] Check off external acceptance items that could not be proven before pre-release.
-- [ ] Close any remaining release-scoped issues whose final acceptance depended on that evidence.
+- [ ] Close any remaining release-scoped issues whose final acceptance depended on those checks.
 - [ ] Reconfirm that all explicitly release-scoped issues are closed/completed before promotion.
 
 ## 11. Promotion: `develop -> main`
 
 - [ ] Open exactly one release PR from `develop` to `main`.
 - [ ] Release PR contains only the understood release delta.
-- [ ] Reference the successful immutable pre-release approval/evidence.
+- [ ] Reference the validated immutable candidate and the completed required checks.
 - [ ] Review mergeability and the resulting tree.
 - [ ] Merge only after the complete pre-release gate is green.
 - [ ] Verify the resulting `main` release commit contains the intended release tree.
@@ -242,7 +242,7 @@ After the exact candidate pre-release gate is green:
 - [ ] Create the immutable release tag on the resulting `main` release commit.
 - [ ] Never move a published version tag.
 - [ ] Confirm the tag commit is contained in `main`.
-- [ ] Release workflow locates and validates the matching immutable pre-release approval.
+- [ ] Release workflow executes the reusable normal Pre-Release jobs on the exact tag before publication.
 - [ ] Release-only/supplemental validation succeeds when required.
 - [ ] Matching multi-arch runtime image is published.
 - [ ] GoReleaser publishes the expected archives and checksum file.
@@ -264,7 +264,7 @@ Verify:
 - [ ] The matching versioned `ghcr.io/mcpdev80/baseharbor-runtime:<version>` image exists.
 - [ ] expected compatible/minor/latest runtime tags were published.
 - [ ] runtime image provenance/attestation is present.
-- [ ] release references the correct pre-release evidence.
+- [ ] release identifies the intended immutable source inputs.
 - [ ] GitHub Pages workflow from `main` is green.
 - [ ] Published Pages shows the correct release notes, roadmap and current reference docs.
 - [ ] External release-mode demo/dispatch is reviewed if the release workflow or project policy triggers it.
@@ -299,5 +299,5 @@ Notes:
 - only meaningful exceptions or intentionally deferred work
 ```
 
-Any materially incorrect documentation, stale machine/demo contract, incomplete release-scoped issue, failed mandatory acceptance/evidence gate, or missing published artifact blocks release completion.
+Any materially incorrect documentation, stale machine/demo contract, incomplete release-scoped issue, failed mandatory acceptance check, or missing published artifact blocks release completion.
 

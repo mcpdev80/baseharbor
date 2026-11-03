@@ -39,9 +39,16 @@ class RunnerTests(unittest.TestCase):
         for group in (planner.DOC_CHECKS, planner.CODE_CHECKS, planner.CLI_CHECKS,
                       planner.WIZARD_BASE_CHECKS, planner.CAPABILITY_CHECKS,
                       planner.CI_CHECKS, planner.WORKFLOW_SYNTAX_CHECKS,
-                      planner.INSPECT_CHECKS):
+                      planner.INSPECT_CHECKS, planner.RESOLVER_CHECKS):
             emitted |= {check['id'] for check in group}
         self.assertEqual(set(), emitted - runner.VALIDATIONS)
+
+    def test_resolver_checks_have_workflow_dispatch(self):
+        workflow = (Path(__file__).parent.parent / '.github' / 'workflows' / 'ci.yml').read_text()
+        for check_id in ('resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+                         'resolver-consumer-build'):
+            with self.subTest(check_id=check_id):
+                self.assertIn(check_id + ')', workflow)
 
     def test_empty_validation_never_claims_pass(self):
         self.assertEqual([{'check': 'not-required'}],
@@ -53,15 +60,7 @@ class RunnerTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     runner.matrix({'required_validation_checks': checks})
 
-    def test_static_failure_never_authenticates_validation(self):
-        for status in ('failure', 'skipped', 'cancelled', 'timed_out', 'blocked'):
-            with self.subTest(status=status):
-                results = runner.report(PLAN, status, 'success')
-                self.assertTrue(all(x['conclusion'] == 'blocked' for x in results['results']))
 
-    def test_no_runtime_gate_can_be_forged_from_validation_job(self):
-        result = runner.report(PLAN, 'success', 'success')
-        self.assertEqual({'validation'}, {row['kind'] for row in result['results']})
 
 
     def test_all_wizard_profile_ids_are_runnable(self):
@@ -227,7 +226,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
         self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
         self.assertIn('--check "$VALIDATION"', fragment)
-        self.assertIn('git show "${{ github.event.pull_request.base.sha }}:'
+        self.assertIn('git show "${{ needs.pr_plan.outputs.controller_sha }}:'
                       'scripts/pr-check-runner.py"', workflow)
         self.assertNotIn(
             'python3 scripts/pr-check-runner.py execute --check '
@@ -337,7 +336,7 @@ class Core754MCPExecutionTests(unittest.TestCase):
                     runner.execute_validation('receipt-execution-tests', repo)
         with self.subTest(dropped_suite=True):
             partial = ok_output.replace(
-                'test_ci_workflow_policy_receipts.', 'other_module.')
+                'test_receipt_postrun.', 'other_module.')
             with patch.object(runner.subprocess, 'run',
                               return_value=CompletedProcess([], 0, partial, '')):
                 with self.assertRaisesRegex(RuntimeError, 'did not execute'):
@@ -347,5 +346,203 @@ class Core754MCPExecutionTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as empty_repo:
                 with self.assertRaisesRegex(RuntimeError, 'registered receipt suite missing'):
                     runner.execute_validation('receipt-execution-tests', empty_repo)
+class NormalPackageExecutionTests(unittest.TestCase):
+    def test_cli_package_runs_non_guided_tests_and_propagates_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/cli\n\ngo 1.25\n')
+            package = root / 'cmd/baha'
+            package.mkdir(parents=True)
+            test = package / 'regression_test.go'
+            test.write_text('package main\nimport "testing"\nfunc TestNewRegression(t *testing.T) {}\n')
+            self.assertEqual(['./cmd/baha'], runner.execute_validation('cli-package-tests', root))
+            test.write_text('package main\nimport "testing"\nfunc TestNewRegression(t *testing.T) { t.Fatal("regression") }\n')
+            with self.assertRaisesRegex(RuntimeError, 'CLI package tests failed'):
+                runner.execute_validation('cli-package-tests', root)
+
+    def test_delivery_package_requires_real_passing_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/delivery\n\ngo 1.25\n')
+            with self.assertRaisesRegex(RuntimeError, 'delivery package missing'):
+                runner.execute_validation('delivery-package-tests', root)
+            package = root / 'internal/delivery'
+            package.mkdir(parents=True)
+            (package / 'contract.go').write_text('package delivery\n')
+            with self.assertRaisesRegex(RuntimeError, 'lacks passing test execution'):
+                runner.execute_validation('delivery-package-tests', root)
+            test = package / 'contract_test.go'
+            test.write_text('package delivery\nimport "testing"\nfunc TestContract(t *testing.T) {}\n')
+            self.assertEqual(['./internal/delivery'], runner.execute_validation('delivery-package-tests', root))
+            for action in ('t.Fatal("failure")', 't.Skip("not executed")'):
+                test.write_text('package delivery\nimport "testing"\nfunc TestContract(t *testing.T) {' + action + '}\n')
+                with self.assertRaises(RuntimeError):
+                    runner.execute_validation('delivery-package-tests', root)
+
+    def test_authority_packages_require_actual_passing_test_execution(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'internal/coreinstallation').mkdir(parents=True)
+            rows = [{'Package': 'example.test/internal/coreinstallation', 'Test': 'TestAuthority', 'Action': 'run'},
+                    {'Package': 'example.test/internal/coreinstallation', 'Test': 'TestAuthority', 'Action': 'pass'},
+                    {'Package': 'example.test/internal/coreinstallation', 'Action': 'pass'}]
+            import json
+            for events, valid in [(rows, True), ([], False), (rows[:1], False)]:
+                with self.subTest(events=events), patch.object(runner.subprocess, 'run',
+                        return_value=subprocess.CompletedProcess([], 0, '\n'.join(json.dumps(row) for row in events))):
+                    if valid:
+                        self.assertEqual(['./internal/coreinstallation'], runner.execute_validation('authority-package-tests', tmp))
+                    else:
+                        with self.assertRaises(RuntimeError):
+                            runner.execute_validation('authority-package-tests', tmp)
+
+class GoJSONPackageTests(unittest.TestCase):
+    PROFILES = {
+        'authority-package-tests': 'internal/coreinstallation',
+        'delivery-package-tests': 'internal/delivery',
+        'deployment-package-tests': 'internal/deployment',
+        'broker-package-tests': 'internal/runtimebroker',
+        'cli-package-tests': 'cmd/baha',
+        'logs-package-tests': 'internal/logs',
+    }
+
+    def events(self, package, action='pass', include_package=True):
+        import json
+        rows = [{'Package': 'example.test/' + package, 'Test': 'TestRequired', 'Action': 'run'},
+                {'Package': 'example.test/' + package, 'Test': 'TestRequired', 'Action': action}]
+        if include_package:
+            rows.append({'Package': 'example.test/' + package, 'Action': 'pass'})
+        return '\n'.join(json.dumps(row) for row in rows)
+
+    def test_diagnostics_are_not_parsed_as_json_for_any_package_profile(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            for check, package in self.PROFILES.items():
+                (Path(tmp) / package).mkdir(parents=True, exist_ok=True)
+                with self.subTest(check=check), patch.object(runner.subprocess, 'run',
+                        return_value=subprocess.CompletedProcess([], 0, self.events(package),
+                                                                 'go: downloading example.test/module v1.0.0\n')) as run:
+                    self.assertEqual(['./' + package], runner.execute_validation(check, tmp))
+                    self.assertEqual(subprocess.PIPE, run.call_args.kwargs['stderr'])
+
+    def test_failed_build_and_malformed_output_retain_diagnostics(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            for check, package in self.PROFILES.items():
+                (Path(tmp) / package).mkdir(parents=True, exist_ok=True)
+                for code, stdout, stderr, expected in [
+                    (1, '', 'compiler failure: undefined symbol', 'exit 1.*compiler failure'),
+                    (0, 'broken json', 'tool diagnostic', 'invalid Go JSON: broken jsontool diagnostic'),
+                    (0, '[]', 'tool diagnostic', 'invalid Go events'),
+                    (0, self.events(package, action='fail'), '', 'reported failure'),
+                ]:
+                    with self.subTest(check=check, stdout=stdout), patch.object(runner.subprocess, 'run',
+                            return_value=subprocess.CompletedProcess([], code, stdout, stderr)):
+                        with self.assertRaisesRegex(RuntimeError, expected):
+                            runner.execute_validation(check, tmp)
+
+    def test_package_success_requires_executed_tests_and_terminal_package_pass(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            for check, package in self.PROFILES.items():
+                (Path(tmp) / package).mkdir(parents=True, exist_ok=True)
+                for stdout in ('', self.events(package, action='skip'),
+                               self.events(package, include_package=False)):
+                    with self.subTest(check=check, stdout=stdout), patch.object(runner.subprocess, 'run',
+                            return_value=subprocess.CompletedProcess([], 0, stdout, '')):
+                        with self.assertRaisesRegex(RuntimeError, 'lacks passing test execution'):
+                            runner.execute_validation(check, tmp)
+
+    def test_cli_and_logs_allow_optional_native_skip_beside_passing_unit_tests(self):
+        import json
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            for check, package in self.PROFILES.items():
+                (Path(tmp) / package).mkdir(parents=True, exist_ok=True)
+                stdout = self.events(package) + '\n' + '\n'.join(json.dumps(row) for row in [
+                    {'Package': 'example.test/' + package, 'Test': 'TestNativeOptIn', 'Action': 'run'},
+                    {'Package': 'example.test/' + package, 'Test': 'TestNativeOptIn', 'Action': 'skip'}])
+                with self.subTest(check=check), patch.object(runner.subprocess, 'run',
+                        return_value=subprocess.CompletedProcess([], 0, stdout, '')):
+                    if check in ('cli-package-tests', 'logs-package-tests'):
+                        self.assertEqual(['./' + package], runner.execute_validation(check, tmp))
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, 'lacks passing test execution'):
+                            runner.execute_validation(check, tmp)
+
+    def test_deployment_package_uses_real_go_tests(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/deployment\n\ngo 1.25\n')
+            package = root / 'internal/deployment'
+            with self.assertRaisesRegex(RuntimeError, 'deployment package missing'):
+                runner.execute_validation('deployment-package-tests', root)
+            package.mkdir(parents=True)
+            (package / 'store.go').write_text('package deployment\n')
+            with self.assertRaisesRegex(RuntimeError, 'lacks passing test execution'):
+                runner.execute_validation('deployment-package-tests', root)
+            test = package / 'store_test.go'
+            test.write_text('package deployment\nimport "testing"\nfunc TestStore(t *testing.T) {}\n')
+            self.assertEqual(['./internal/deployment'], runner.execute_validation('deployment-package-tests', root))
+            for action in ('t.Fatal("failure")', 't.Skip("not executed")'):
+                test.write_text('package deployment\nimport "testing"\nfunc TestStore(t *testing.T) {' + action + '}\n')
+                with self.assertRaises(RuntimeError):
+                    runner.execute_validation('deployment-package-tests', root)
+
+class OpenBaoPackageExecutionTests(unittest.TestCase):
+    def test_new_service_issuer_test_executes_and_can_fail_outside_bootstrap_families(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'go.mod').write_text('module example.test/openbao\n\ngo 1.25\n')
+            package = root / 'internal/openbao'
+            package.mkdir(parents=True)
+            tests = ['package openbao', 'import "testing"'] + [
+                'func %s(t *testing.T) {}' % name for name in runner.OPENBAO_REQUIRED_TESTS]
+            tests.append('func TestNativeOptional(t *testing.T) { t.Skip("native opt-in") }')
+            fixture = package / 'service_issuer_test.go'
+            for failed in (False, True):
+                fixture.write_text('\n'.join(tests + [
+                    'func TestServiceIssuerNewBehavior(t *testing.T) {' +
+                    ('t.Fatal("new ServiceIssuer regression")' if failed else '') + '}\n']))
+                if failed:
+                    with self.assertRaisesRegex(RuntimeError, 'new ServiceIssuer regression'):
+                        runner.execute_validation('openbao-package-tests', root)
+                else:
+                    self.assertEqual(list(runner.OPENBAO_REQUIRED_TESTS),
+                                     runner.execute_validation('openbao-package-tests', root))
+
+    def test_go_diagnostic_is_separate_and_required_bootstrap_skip_still_fails(self):
+        import json
+        from unittest.mock import patch
+        names = runner.OPENBAO_REQUIRED_TESTS
+        package = 'example.test/internal/openbao'
+        for skipped in (None, names[0]):
+            rows = []
+            for name in names:
+                rows.extend([{'Package': package, 'Test': name, 'Action': 'run'},
+                             {'Package': package, 'Test': name,
+                              'Action': 'skip' if name == skipped else 'pass'}])
+            rows.append({'Package': package, 'Action': 'pass'})
+            results = [subprocess.CompletedProcess([], 0, '\n'.join(names), ''),
+                       subprocess.CompletedProcess([], 0, '\n'.join(json.dumps(row) for row in rows),
+                                                   'go: downloading example.test/module v1.0.0\n')]
+            with self.subTest(skipped=skipped), patch.object(runner.subprocess, 'run', side_effect=results) as run:
+                if skipped:
+                    with self.assertRaisesRegex(RuntimeError, 'required OpenBao tests missing PASS'):
+                        runner.execute_validation('openbao-package-tests', '.')
+                else:
+                    self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
+                self.assertNotIn('-run', run.call_args.args[0])
+                self.assertEqual(subprocess.PIPE, run.call_args.kwargs['stderr'])
+
+    def test_authority_includes_new_installauthority_leaf(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'internal/installauthority').mkdir(parents=True)
+            with patch.object(runner, 'go_package_tests', return_value=['./internal/installauthority']) as execute:
+                self.assertEqual(['./internal/installauthority'],
+                                 runner.execute_validation('authority-package-tests', tmp))
+                self.assertEqual(['./internal/installauthority'], execute.call_args.args[1])
+
 if __name__ == '__main__':
     unittest.main()

@@ -200,7 +200,7 @@ func collectApplicationStatusResult(ctx context.Context, store application.Store
 		if files, filesErr := application.ExistingRuntimeFiles(resolved.Store, resolved.Manifest); filesErr == nil {
 			if brokerFiles, brokerErr := runtimebroker.Existing(files); brokerErr == nil {
 				runtimeDocsURL = strings.TrimSpace(brokerFiles.DocsURL)
-				if devaccess.Enabled(resolved.Manifest.Environment) && runtimeDocsURL != "" {
+				if requiresDevelopmentGateway(resolved.Manifest) && runtimeDocsURL != "" {
 					if host, hostErr := devaccess.ApplicationHost(resolved.Target.Name, resolved.Manifest.Name, "api"); hostErr == nil {
 						runtimeDocsURL = devgateway.URLForTarget(resolved.Target.Name, host) + "/swagger/"
 					}

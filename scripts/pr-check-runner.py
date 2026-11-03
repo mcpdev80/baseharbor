@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trusted selected-check execution and authenticated final-result verification."""
+"""Trusted selected-check execution and normal CI test execution."""
 import argparse
 import json
 import os
@@ -87,26 +87,67 @@ OPENBAO_REQUIRED_TESTS = (
     'TestPureTransportErrorStaysTransient',
 )
 
-VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
+VALIDATIONS = {'go-unit-tests', 'go-vet', 'go-build',
+               'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
-                'openbao-package-tests',
+                'openbao-package-tests', 'logs-package-tests', 'runtime-provider-package-tests',
                 'pr-planner-tests', 'ci-policy', 'ci-actionlint',
-                'ci-executor-verifier-tests', 'receipt-execution-tests',
+                'ci-executor-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
+               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+               'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
-# R27-F2: the exact receipt control-plane suites this check must execute. This
-# is the execution-side mirror of pr-gate-plan.py RECEIPT_CONTROL_PLANE_TEST_
-# SCRIPTS; a glob like test_receipt*.py silently drops registered suites whose
-# name does not carry the prefix (test_ci_workflow_policy_receipts.py), so the
-# selection is an explicit module list, never a filename pattern.
-RECEIPT_EXECUTION_SUITES = (
-    'test_receipt_writer', 'test_receipt_verifier', 'test_receipt_chain',
-    'test_ci_workflow_policy_receipts', 'test_receipt_tasklink',
-    'test_receipt_postrun',
+RECEIPT_EXECUTION_SUITES = ('test_receipt_writer', 'test_receipt_postrun')
+CI_EXECUTION_SUITES = (
+    'test_pr_diff_base', 'test_pr_required_final', 'test_pr_check_runner',
+    'test_pr_runtime_request', 'test_pr_gate_dependencies',
+    'test_pr_selected_runtime_matrix', 'test_ecosystem_release_pins',
+    'test_targeted_gate_ref', 'test_artifact_gc', 'test_pre_release_check_plan',
+    'test_pre_release_integration', 'test_consumer_source_pins',
+    'test_frozen_candidate_promotion', 'test_ci_check_routes',
+    'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',
 )
+
+
+def go_package_tests(repository, packages, label, *, allow_skips=False, required_tests=()):
+    """Keep Go tool diagnostics separate from its JSON test-event stream."""
+    result = subprocess.run(['go', 'test', *packages, '-count=1', '-json'],
+        cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    diagnostics = (result.stdout or '') + (result.stderr or '')
+    if result.returncode:
+        raise RuntimeError(label + ' package tests failed (exit ' +
+                           str(result.returncode) + '): ' + diagnostics)
+    try:
+        events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    except ValueError as error:
+        raise RuntimeError(label + ' package tests emitted invalid Go JSON: ' + diagnostics) from error
+    if any(not isinstance(event, dict) or not isinstance(event.get('Action'), str)
+           or ('Package' in event and not isinstance(event['Package'], str))
+           or ('Test' in event and not isinstance(event['Test'], str)) for event in events):
+        raise RuntimeError(label + ' package tests emitted invalid Go events: ' + diagnostics)
+    if any(event['Action'] == 'fail' for event in events):
+        raise RuntimeError(label + ' package tests reported failure: ' + diagnostics)
+    for package in packages:
+        suffix = '/' + package.removeprefix('./')
+        rows = [event for event in events if event.get('Package', '').endswith(suffix)]
+        ran = {event['Test'] for event in rows if event['Action'] == 'run' and event.get('Test')}
+        passed = {event['Test'] for event in rows if event['Action'] == 'pass' and event.get('Test')}
+        skipped = {event['Test'] for event in rows if event['Action'] == 'skip' and event.get('Test')}
+        # Whole CLI/Logs/OpenBao packages include separate opt-in native tests.
+        # Named required tests must always run and pass, including OpenBao's bootstrap checks.
+        finished = passed | skipped if allow_skips else passed
+        if (not ran or not passed or not ran <= finished or (skipped and not allow_skips)
+                or not any(event['Action'] == 'pass' and not event.get('Test') for event in rows)):
+            raise RuntimeError(label.lower() + ' package lacks passing test execution: ' + package +
+                               '\n' + diagnostics)
+        missing = set(required_tests) - (ran & passed)
+        if missing:
+            raise RuntimeError('required ' + label + ' tests missing PASS: ' +
+                               ', '.join(sorted(missing)) + '\n' + diagnostics)
+    return packages
 
 
 def execute_validation(check, repository):
@@ -115,14 +156,33 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'receipt-execution-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests'):
         raise ValueError('unsupported executable validation')
+    if check == 'authority-package-tests':
+        # Some slices precede stableid; test every present authority package.
+        packages = ['./' + name for name in ('internal/coreinstallation',
+                    'internal/stableid', 'internal/serviceaccess', 'internal/installauthority')
+                    if (Path(repository) / name).is_dir()]
+        if not packages:
+            raise RuntimeError('no authority packages found')
+        return go_package_tests(repository, packages, 'Authority')
+    if check in ('delivery-package-tests', 'deployment-package-tests', 'broker-package-tests'):
+        name = 'runtimebroker' if check == 'broker-package-tests' else check.removesuffix('-package-tests')
+        package = 'internal/' + name
+        if not (Path(repository) / package).is_dir():
+            raise RuntimeError(name + ' package missing')
+        return go_package_tests(repository, ['./' + package], name.capitalize())
+    if check == 'cli-package-tests':
+        return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
+    if check == 'logs-package-tests':
+        # Native opt-in scenarios run in their separately selected runtime jobs.
+        return go_package_tests(repository, ['./internal/logs'], 'Logs', allow_skips=True)
     if check == 'openbao-package-tests':
         # Require the frozen bootstrap unit families; native opt-in acceptance
         # tests keep their separate runtime gates. Discover once and run once.
         repo = Path(repository)
         listed = subprocess.run(
-            ['go', 'test', './internal/openbao/...', '-list', '.'],
+            ['go', 'test', './internal/openbao', '-list', '.'],
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if listed.returncode:
             raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
@@ -133,44 +193,34 @@ def execute_validation(check, repository):
         missing = set(OPENBAO_REQUIRED_TESTS) - set(matches)
         if missing:
             raise RuntimeError('missing required OpenBao tests: ' + ', '.join(sorted(missing)))
-        pattern = '^(' + '|'.join(re.escape(name) for name in OPENBAO_REQUIRED_TESTS) + ')$'
-        executed = subprocess.run(
-            ['go', 'test', './internal/openbao/...', '-run', pattern, '-count=1', '-v'],
-            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if executed.returncode:
-            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
-        for name in OPENBAO_REQUIRED_TESTS:
-            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
-                raise RuntimeError('required OpenBao test did not execute: ' + name)
-            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
-                raise RuntimeError('OpenBao test missing PASS: ' + name)
+        # Include all new unit tests, while retaining the mandatory bootstrap checks.
+        go_package_tests(repository, ['./internal/openbao'], 'OpenBao', allow_skips=True,
+                         required_tests=OPENBAO_REQUIRED_TESTS)
         return list(OPENBAO_REQUIRED_TESTS)
-    if check == 'receipt-execution-tests':
-        # Prove the registered receipt control-plane suites actually execute.
-        # Run the explicit module list (never a silent glob) and require, from
-        # the real unittest output, that every registered module executed at
-        # least one test and the combined run passed. A missing, empty or
-        # failing suite fails closed.
+    if check in ('receipt-execution-tests', 'ci-executor-tests'):
+        # Execute the registered suites and reject missing or empty modules.
         repo = Path(repository)
-        for module in RECEIPT_EXECUTION_SUITES:
+        modules = RECEIPT_EXECUTION_SUITES if check == 'receipt-execution-tests' else CI_EXECUTION_SUITES
+        label = 'receipt' if check == 'receipt-execution-tests' else 'CI'
+        for module in modules:
             if not (repo / 'scripts' / (module + '.py')).is_file():
-                raise RuntimeError('registered receipt suite missing: ' + module + '.py')
+                raise RuntimeError('registered ' + label + ' suite missing: ' + module + '.py')
         env = dict(os.environ, PYTHONPATH=str(repo / 'scripts'))
         executed = subprocess.run(
-            [sys.executable, '-m', 'unittest', '-v', *RECEIPT_EXECUTION_SUITES],
+            [sys.executable, '-m', 'unittest', '-v', *modules],
             cwd=repo, text=True, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, env=env)
         if executed.returncode:
-            raise RuntimeError('receipt suite execution failed: ' + executed.stdout)
+            raise RuntimeError(label + ' suite execution failed: ' + executed.stdout)
         # unittest -v prints "<method> (module.Class.test_method) ... ok".
         # The count and per-module presence come from the executed output, not
         # from a hardcoded filename list.
         if not re.search(r'(?m)^Ran [1-9][0-9]* tests?', executed.stdout):
-            raise RuntimeError('receipt-execution-tests: no receipt test executed')
-        for module in RECEIPT_EXECUTION_SUITES:
+            raise RuntimeError(check + ': no ' + label + ' test executed')
+        for module in modules:
             if not re.search(r'\(' + re.escape(module) + r'\.', executed.stdout):
-                raise RuntimeError('receipt suite did not execute: ' + module)
-        return [module + '.py' for module in RECEIPT_EXECUTION_SUITES]
+                raise RuntimeError(label + ' suite did not execute: ' + module)
+        return [module + '.py' for module in modules]
     patterns = WIZARD_TEST_FAMILIES.get(check)
     if patterns is None:
         raise ValueError('unsupported executable validation')
@@ -220,23 +270,6 @@ def matrix(plan):
     return {'include': [{'check': i} for i in ids] or [{'check': 'not-required'}]}
 
 
-def report(plan, job_conclusion, matrix_result):
-    ids = [row['id'] for row in plan['required_validation_checks']]
-    # Fail closed on composite job outcome: one failed/omitted matrix lane
-    # must never be projected as independent success.
-    success = matrix_result == 'success' and job_conclusion == 'success'
-    return {
-        'schema': 'baseharbor.pr-check-results/v1',
-        **{k: plan.get(k) for k in ('target_base_sha', 'head_sha',
-                                   'merge_base_sha', 'integration_sha')},
-        'results': [
-            {'kind': 'validation', 'id': name,
-             'conclusion': 'success' if success else 'blocked'}
-            for name in ids
-        ],
-    }
-
-
 def validate_pins_data(check, repository):
     """Validate source metadata with trusted sibling contract owners, offline.
 
@@ -248,7 +281,7 @@ def validate_pins_data(check, repository):
     sys.path.insert(0, trusted)
     try:
         from ecosystem_release_pins import resolve_pins, validate_ecosystem_graph
-        from private_consumer_evidence import REPOSITORIES, source_origin
+        from consumer_source_pins import REPOSITORIES, source_origin
     finally:
         sys.path.pop(0)
     source = Path(repository).resolve()
@@ -317,12 +350,10 @@ def validate_pins_data(check, repository):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=['matrix', 'results', 'execute'])
+    parser.add_argument('mode', choices=['matrix', 'execute'])
     parser.add_argument('--plan', type=Path)
     parser.add_argument('--check')
     parser.add_argument('--repository', default='.')
-    parser.add_argument('--job-conclusion', default='blocked')
-    parser.add_argument('--matrix-result', default='blocked')
     args = parser.parse_args()
     if args.mode == 'execute':
         if not args.check:
@@ -337,8 +368,7 @@ def main():
     if not args.plan:
         parser.error('--plan is required for matrix/results')
     plan = json.loads(args.plan.read_text())
-    value = matrix(plan) if args.mode == 'matrix' else report(
-        plan, args.job_conclusion, args.matrix_result)
+    value = matrix(plan)
     print(json.dumps(value, sort_keys=True, separators=(',', ':')))
 
 

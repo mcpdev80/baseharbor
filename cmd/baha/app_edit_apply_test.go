@@ -269,6 +269,25 @@ func TestAppEditApplyForeignOwnerAndPartialActualResult(t *testing.T) {
 	}
 }
 
+func TestAppEditApplyIncompleteResultReturnsPartialError(t *testing.T) {
+	before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
+	after := append(append([]capability.Requirement(nil), before...), capability.Requirement{Kind: capability.KeyValue, Name: "cache"})
+	loaded := appEditTestLoaded(t, "prod", before, nil)
+	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: "prod", Revision: "r1", PlanID: "incomplete", Complete: false, ConfirmationsRequired: 1,
+		Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "add"}}}
+	executed := 0
+	authorities := appEditTestAuthorities("prod", loaded.ApplicationID, before, nil, []application.ProviderImpactPlan{plan}, &executed)
+	authorities.Execute = func(context.Context, appEditDesired, application.ProviderImpactPlan, application.ProviderChangeConsent) ([]application.ProviderExecutionOutcome, error) {
+		executed++
+		return nil, nil
+	}
+	result, err := appEditApplyConfirmed(context.Background(), appEditTestController("prod", after, nil, plan), loaded, application.ProviderChangeConsent{PlanID: plan.PlanID, First: true}, authorities)
+	var partial *appMachineError
+	if !errors.As(err, &partial) || partial.Code != "partial" || result.Result.Status != "partial" || executed != 1 {
+		t.Fatalf("incomplete result must fail with partial status: result=%+v err=%v executed=%d", result.Result, err, executed)
+	}
+}
+
 func TestAppEditApplyTargetPreferencesAndPreservedIntent(t *testing.T) {
 	before := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}}
 	after := []capability.Requirement{{Kind: capability.SQL, Name: "primary"}, {Kind: capability.KeyValue, Name: "cache"}}
@@ -277,7 +296,7 @@ func TestAppEditApplyTargetPreferencesAndPreservedIntent(t *testing.T) {
 			loadedPreference := application.ProviderPreference{Requirement: before[0], InstanceID: "sql-" + target}
 			loaded := appEditTestLoaded(t, target, before, []application.ProviderPreference{loadedPreference})
 			decisionPreference := loadedPreference
-			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target, Revision: "r", PlanID: "p-" + target, ConfirmationsRequired: 1, Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "add"}}}
+			plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, Target: target, Revision: "r", PlanID: "p-" + target, Complete: true, ConfirmationsRequired: 1, Impacts: []application.ProviderImpact{{InstanceID: "cache", Operation: "add"}}}
 			controller := appEditTestController(target, after, []application.ProviderPreference{decisionPreference}, plan)
 			executed := 0
 			authorities := appEditTestAuthorities(target, loaded.ApplicationID, before, []application.ProviderPreference{loadedPreference}, []application.ProviderImpactPlan{plan}, &executed)
@@ -735,6 +754,14 @@ func TestAppEditCommandReview918PersistExactTargetPreferenceAndResolveLater(t *t
 func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
+	// Hosted CI provides an explicitly selected Docker daemon endpoint via
+	// the job's DOCKER_HOST. Pin it so a stale CLI context or socket cannot
+	// silently redirect this lifecycle; never fall back after a failure.
+	if endpoint := os.Getenv("DOCKER_HOST"); endpoint != "" {
+		t.Setenv("DOCKER_HOST", endpoint)
+	} else {
+		t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	}
 	target := configureTestTarget(t)
 	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -798,9 +825,14 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
-	// Hosted CI provides an explicitly selected rootful Docker daemon, not the
-	// default rootless socket. Never fall back after a failed engine selection.
-	t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	// Hosted CI provides an explicitly selected Docker daemon endpoint via
+	// the job's DOCKER_HOST. Pin it so a stale CLI context or socket cannot
+	// silently redirect this lifecycle; never fall back after a failure.
+	if endpoint := os.Getenv("DOCKER_HOST"); endpoint != "" {
+		t.Setenv("DOCKER_HOST", endpoint)
+	} else {
+		t.Setenv("DOCKER_HOST", "unix:///var/run/docker.sock")
+	}
 	target := configureTestTarget(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {

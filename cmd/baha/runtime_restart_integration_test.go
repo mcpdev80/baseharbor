@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/containersecurity"
@@ -181,6 +183,19 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	if err := persistTargetRecoveryFileReference(ctx, recovery); err != nil {
 		t.Fatalf("persist target recovery reference: %v", err)
 	}
+	// Simulate a target created before control-plane references were persisted.
+	target, err := effectiveTarget(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataRoot, err := targetDataRoot(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registryPath := filepath.Join(dataRoot, "provider-registry.json")
+	if err := os.Remove(registryPath); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 
 	out.Reset()
 	if err := runtimeUpExisting(ctx, &out, ""); err != nil {
@@ -191,6 +206,35 @@ func runControlPlaneRestartAcceptance(t *testing.T, ha bool) {
 	}
 	if !strings.Contains(out.String(), "control-plane runtime started and ready") {
 		t.Fatalf("restart output did not report verified readiness: %q", out.String())
+	}
+	registry, err := (capability.RegistryStore{Path: registryPath}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := application.New("worker", "dev", false, false, false)
+	manifest = application.WithWorkloadComponents(manifest, "api")
+	manifest = application.WithRuntimePermission(manifest, string(capability.MetricsV1.ID), []string{"api"}, "runtime.get")
+	roots, err := application.RuntimeDependencyRoots(manifest, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("restarted control plane broker dependency: %v, %v", roots, err)
+	}
+	if err := os.Remove(registryPath); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runtimeUpExisting(ctx, &out, ""); err != nil {
+		t.Fatalf("up of an already-ready control plane: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "control-plane runtime already READY") {
+		t.Fatalf("expected already-ready path: %q", out.String())
+	}
+	registry, err = (capability.RegistryStore{Path: registryPath}).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots, err = application.RuntimeDependencyRoots(manifest, registry)
+	if err != nil || len(roots) != 1 || roots[0] != "openbao/control-plane" {
+		t.Fatalf("already-ready control plane broker dependency: %v, %v", roots, err)
 	}
 
 	state, err := platformopenbao.Inspect(ctx, compose, files)
