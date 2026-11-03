@@ -186,7 +186,7 @@ func TestManagementAccessSchemaRejectsMissingTopLevelRequired(t *testing.T) {
 	// fires and names the kind constraint.
 	kindMissing := cloneObject(base)
 	delete(kindMissing, "kind")
-	kindMissing["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	kindMissing["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(kindMissing); err != nil {
 		if !strings.Contains(err.Error(), "kind") {
 			t.Fatalf("missing kind: error %q does not name the kind constraint", err.Error())
@@ -224,7 +224,7 @@ func TestManagementAccessExportMustBeEncrypted(t *testing.T) {
 	exportCopy := map[string]any{
 		"algorithm": "aes-256-gcm",
 		"encrypted": true,
-		"nonce":     "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
+		"nonce":     "4fIDBAUGBwgJCgsM",
 	}
 	base["export"] = exportCopy
 	// Golden credential-export carries an encryption descriptor and validates.
@@ -263,14 +263,14 @@ func TestManagementAccessSchemaExportRequiredForCredentialExport(t *testing.T) {
 	base["export"] = map[string]any{
 		"algorithm": "aes-256-gcm",
 		"encrypted": true,
-		"nonce":     "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
+		"nonce":     "4fIDBAUGBwgJCgsM",
 	}
 	if err := resolved.Validate(cloneObject(base)); err != nil {
 		t.Fatalf("credential-export with valid export rejected: %v", err)
 	}
 	// Missing export object fails closed at schema level.
 	delete(base["export"].(map[string]any), "algorithm")
-	base["export"] = map[string]any{"encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	base["export"] = map[string]any{"encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(cloneObject(base)); err == nil {
 		t.Fatal("schema accepted a credential-export without an export object")
 	}
@@ -278,7 +278,7 @@ func TestManagementAccessSchemaExportRequiredForCredentialExport(t *testing.T) {
 	base["export"] = map[string]any{
 		"algorithm": "xor-1",
 		"encrypted": true,
-		"nonce":     "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
+		"nonce":     "4fIDBAUGBwgJCgsM",
 	}
 	if err := resolved.Validate(cloneObject(base)); err == nil {
 		t.Fatal("schema accepted an invalid credential-export algorithm")
@@ -287,7 +287,7 @@ func TestManagementAccessSchemaExportRequiredForCredentialExport(t *testing.T) {
 	base["export"] = map[string]any{
 		"algorithm": "aes-256-gcm",
 		"encrypted": false,
-		"nonce":     "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
+		"nonce":     "4fIDBAUGBwgJCgsM",
 	}
 	if err := resolved.Validate(cloneObject(base)); err == nil {
 		t.Fatal("schema accepted an unencrypted credential-export")
@@ -362,7 +362,7 @@ func TestManagementAccessSchemaExportForbiddenOnNonCredentialExport(t *testing.T
 	// schema (export is credential-export-only).
 	mp := managementAccessBaseline(t, resolved)
 	mp["kind"] = "management-profile"
-	mp["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	mp["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(cloneObject(mp)); err == nil {
 		t.Fatal("schema accepted a management-profile carrying a valid export descriptor (export is credential-export-only)")
 	}
@@ -371,7 +371,7 @@ func TestManagementAccessSchemaExportForbiddenOnNonCredentialExport(t *testing.T
 	// schema.
 	de := managementAccessBaseline(t, resolved)
 	de["kind"] = "device-enrollment"
-	de["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	de["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(cloneObject(de)); err == nil {
 		t.Fatal("schema accepted a device-enrollment carrying a valid export descriptor (export is credential-export-only)")
 	}
@@ -406,7 +406,7 @@ func TestManagementAccessSchemaExportOnlyForCredentialExport(t *testing.T) {
 	// A credential-export with a valid export object validates.
 	ce := managementAccessBaseline(t, resolved)
 	ce["kind"] = "credential-export"
-	ce["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	ce["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(cloneObject(ce)); err != nil {
 		t.Fatalf("credential-export with valid export rejected: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestManagementAccessSchemaExportOnlyForCredentialExport(t *testing.T) {
 func TestExportEnforcementPerKind(t *testing.T) {
 	// management-profile carrying an export descriptor fails closed.
 	mgmt := profileFor(t)
-	mgmt.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	mgmt.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := mgmt.ValidateKindEnforcement(); err == nil {
 		t.Fatal("management-profile with an export descriptor must fail closed")
 	}
@@ -426,7 +426,7 @@ func TestExportEnforcementPerKind(t *testing.T) {
 	// device-enrollment carrying an export descriptor fails closed.
 	enroll := profileFor(t)
 	enroll.Kind = managementaccess.DeviceEnrollment
-	enroll.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	enroll.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := enroll.ValidateKindEnforcement(); err == nil {
 		t.Fatal("device-enrollment with an export descriptor must fail closed")
 	}
@@ -442,7 +442,7 @@ func TestExportEnforcementPerKind(t *testing.T) {
 	// credential-export with a valid export descriptor validates.
 	exportValid := profileFor(t)
 	exportValid.Kind = managementaccess.CredentialExport
-	exportValid.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	exportValid.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := exportValid.ValidateKindEnforcement(); err != nil {
 		t.Fatalf("credential-export with a valid export descriptor rejected: %v", err)
 	}
@@ -464,7 +464,7 @@ func TestCredentialExportCombinedSchemaAndGoImport(t *testing.T) {
 		"algorithm": "aes-256-gcm",
 		"encrypted": true,
 		// 43 base64url chars -> 32 bytes (not 12), matching the documented nonce.
-		"nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
+		"nonce": "4fIDBAUGBwgJCgsM",
 	}
 	if err := resolved.Validate(cloneObject(good)); err != nil {
 		t.Fatalf("valid credential-export rejected by packaged schema: %v", err)
@@ -473,7 +473,7 @@ func TestCredentialExportCombinedSchemaAndGoImport(t *testing.T) {
 	// recomputes the CA fingerprint) has a valid certificate to bind.
 	goodP := profileFor(t)
 	goodP.Kind = managementaccess.CredentialExport
-	goodP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	goodP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := goodP.ValidateKindEnforcement(); err != nil {
 		t.Fatalf("valid credential-export rejected by Go import boundary: %v", err)
 	}
@@ -481,13 +481,13 @@ func TestCredentialExportCombinedSchemaAndGoImport(t *testing.T) {
 	// Negative algorithm: the schema rejects it and ValidateKindEnforcement rejects
 	// it too (Go enforces the enum, not just nonempty).
 	badAlgo := good
-	badAlgo["export"] = map[string]any{"algorithm": "xor-1", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	badAlgo["export"] = map[string]any{"algorithm": "xor-1", "encrypted": true, "nonce": "4fIDBAUGBwgJCgsM"}
 	if err := resolved.Validate(cloneObject(badAlgo)); err == nil {
 		t.Fatal("schema must reject an unsupported export algorithm")
 	}
 	badAlgoP := profileFor(t)
 	badAlgoP.Kind = managementaccess.CredentialExport
-	badAlgoP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "xor-1", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	badAlgoP.Export = &managementaccess.EncryptionDescriptor{Algorithm: "xor-1", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := badAlgoP.ValidateKindEnforcement(); err == nil {
 		t.Fatal("Go import boundary must reject an unsupported export algorithm")
 	}

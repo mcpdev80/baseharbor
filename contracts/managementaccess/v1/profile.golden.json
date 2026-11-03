@@ -81,7 +81,7 @@
       "export": {
         "algorithm": "aes-256-gcm",
         "encrypted": true,
-        "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"
+        "nonce": "4fIDBAUGBwgJCgsM"
       }
     }
   }

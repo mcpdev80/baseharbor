@@ -61,7 +61,7 @@ func TestValidateKindDeviceEnrollmentMustBeSensitiveAndOneUse(t *testing.T) {
 func TestValidateKindCredentialExportRequiresEncryption(t *testing.T) {
 	p := profileFor(t)
 	p.Kind = managementaccess.CredentialExport
-	p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := p.ValidateKindEnforcement(); err != nil {
 		t.Fatalf("encrypted credential-export should validate: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestValidateKindCredentialExportRequiresEncryption(t *testing.T) {
 	// Unencrypted export fails closed.
 	p = profileFor(t)
 	p.Kind = managementaccess.CredentialExport
-	p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: false, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: false, Nonce: "4fIDBAUGBwgJCgsM"}
 	if err := p.ValidateKindEnforcement(); err == nil {
 		t.Fatal("unencrypted credential-export must fail closed")
 	}
@@ -127,7 +127,7 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 		p := profileFor(t)
 		p.Kind = kind
 		if kind == managementaccess.CredentialExport {
-			p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+			p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 		}
 		p.Import = managementaccess.ImportCapability{
 			RightsGranting:     false,
@@ -577,7 +577,7 @@ func TestWireRecordJSONTagsRoundTrip(t *testing.T) {
 	// credential-export with an encryption descriptor.
 	export := profileFor(t)
 	export.Kind = managementaccess.CredentialExport
-	export.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	export.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 	wireRoundTripAgainstSchema(t, resolved, export)
 }
 

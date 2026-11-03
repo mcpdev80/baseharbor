@@ -16,6 +16,7 @@ package managementaccess
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"time"
 
@@ -97,17 +98,25 @@ func (s Storage) FailClosedStorage() bool {
 // EncryptionDescriptor is the explicit encryption envelope of a credential
 // export. Every field is required and the payload must be encrypted.
 type EncryptionDescriptor struct {
-	Algorithm string `json:"algorithm"` // aes-256-gcm | chacha20-poly1305
+	Algorithm string `json:"algorithm"` // aes-256-gcm only in v1
 	Encrypted bool   `json:"encrypted"`
 	Nonce     string `json:"nonce"`
 }
 
-// Supported AEAD algorithms. These are exactly the schema's `export.algorithm`
-// enum values; keeping them here lets the Go import boundary reject anything the
-// schema would reject.
+// Supported AEAD algorithms. In management-access/v1 the ONLY supported AEAD is
+// AES-256-GCM (Go stdlib crypto/aes + crypto/cipher gcm, NonceSize = 12). The
+// credential-export nonce is exactly 12 random bytes, canonically encoded as
+// base64url without padding = 16 characters. chacha20-poly1305 is OUT until it
+// lands with its own 12-byte rule and executable tests; its mere presence in a
+// string here would be a silent widening, so the algorithm is validated by
+// algorithmIsSupportedAES256GCM rather than an allow-list constant.
 const (
-	AlgorithmAES256GCM       = "aes-256-gcm"
-	AlgorithmChacha20Poly1305 = "chacha20-poly1305"
+	AlgorithmAES256GCM = "aes-256-gcm"
+	// aes256GcmNonceBytes is the fixed AEAD nonce size for AES-256-GCM: 12 bytes.
+	aes256GcmNonceBytes = 12
+	// aes256GcmNonceChars is the canonical base64url (no padding) length of a
+	// 12-byte nonce: exactly 16 characters.
+	aes256GcmNonceChars = 16
 )
 
 // ManagementAccessProfile is the wire record. JSON tags match the schema exactly,
@@ -137,8 +146,9 @@ var ErrInvalidManagementAccess = errors.New("invalid management-access/v1 record
 //   - management-profile : trust and storage must be present and safe.
 //   - device-enrollment  : storage must be sensitive (never plaintext durable).
 //   - credential-export  : an encrypted export descriptor must be present, with
-//     an algorithm in the supported AEAD set and a 43-character base64url nonce,
-//     matching the schema's export value domain exactly.
+//     an algorithm in the supported AEAD set and a canonical 12-byte AEAD nonce
+//     (16 base64url characters without padding), matching the schema's export
+//     value domain exactly.
 //   - all kinds          : the record must be trust-consistent and its validity
 //     window must be ordered, current and non-elapsed.
 func (p ManagementAccessProfile) ValidateKindEnforcement() error {
@@ -169,16 +179,15 @@ func (p ManagementAccessProfile) ValidateKindEnforcement() error {
 		if p.Export == nil || !p.Export.Encrypted || p.Export.Algorithm == "" || p.Export.Nonce == "" {
 			return ErrInvalidManagementAccess
 		}
-		// The Go import boundary mirrors the schema's export value domain exactly:
-		// the algorithm must be one of the supported AEAD ciphers and the nonce
-		// must be a 43-character base64url value (43 base64url chars decode to 32
-		// bytes — the documented golden fixture decodes to 32 bytes, not 12).
-		// Arbitrary nonempty algorithms or nonces are rejected so the Go check and
-		// the schema cannot drift.
-		if p.Export.Algorithm != AlgorithmAES256GCM && p.Export.Algorithm != AlgorithmChacha20Poly1305 {
+		// The Go import boundary is the AEAD nonce contract: the algorithm must be
+		// the one supported AEAD cipher (AES-256-GCM) and the nonce must be a
+		// canonical 12-byte AEAD nonce encoded as 16 base64url characters without
+		// padding. Both are enforced here so the Go check and the schema cannot
+		// drift; any non-empty algorithm or wrong-length nonce fails closed.
+		if !algorithmIsSupportedAES256GCM(p.Export.Algorithm) {
 			return ErrInvalidManagementAccess
 		}
-		if !nonceIsBase64Url43(p.Export.Nonce) {
+		if !nonceIsAes256Gcm(p.Export.Algorithm, p.Export.Nonce) {
 			return ErrInvalidManagementAccess
 		}
 	default:
@@ -236,6 +245,46 @@ func nonceIsBase64Url43(nonce string) bool {
 		}
 	}
 	return true
+}
+
+// algorithmIsSupportedAES256GCM reports whether algorithm is the one AEAD cipher
+// management-access/v1 supports. chacha20-poly1305 is intentionally not an
+// accepted value in v1; it must land with its own 12-byte rule and executable
+// tests, so it fails closed here rather than widening the allow-list.
+func algorithmIsSupportedAES256GCM(algorithm string) bool {
+	return algorithm == AlgorithmAES256GCM
+}
+
+// nonceIsAes256Gcm reports whether nonce is a canonical 12-byte AEAD nonce for
+// AES-256-GCM: exactly 16 base64url characters without padding, decoding to 12
+// bytes with canonical (zero) trailing bits. Non-canonical trailing bits (a value
+// whose re-encoding would differ) and any wrong length fail closed.
+func nonceIsAes256Gcm(algorithm, nonce string) bool {
+	if !algorithmIsSupportedAES256GCM(algorithm) {
+		return false
+	}
+	if len(nonce) != aes256GcmNonceChars {
+		return false
+	}
+	for i := 0; i < len(nonce); i++ {
+		c := nonce[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	// Decode + canonical octet-count check: re-encoding the decoded bytes must
+	// reproduce nonce exactly (rejects non-canonical trailing bits), and the
+	// decoded length must be exactly the AEAD nonce size.
+	dec, err := base64.RawURLEncoding.DecodeString(nonce)
+	if err != nil || len(dec) != aes256GcmNonceBytes {
+		return false
+	}
+	return base64.RawURLEncoding.EncodeToString(dec) == nonce
 }
 
 // ErrUntrustedTrust is returned when the stored fingerprint does not match the
