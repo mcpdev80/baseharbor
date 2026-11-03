@@ -18,6 +18,14 @@ const (
 	servicePKIRole  = "baseharbor-services"
 )
 
+// malformedRevocationPayload reports a revocation-list payload that is structurally
+// unreadable: the response is blank, unparseable, or the serials array (or its
+// containing data object) is absent or null. None of these is a valid, readable
+// revocation status and all must fail closed rather than reporting not-revoked.
+func malformedRevocationPayload() error {
+	return errors.New("revocation list payload malformed")
+}
+
 type ServiceCertificateRequest struct {
 	CommonName  string
 	DNSNames    []string
@@ -305,6 +313,61 @@ func RevokeServiceCertificate(ctx context.Context, executor Executor, files bhru
 		return fmt.Errorf("revoke OpenBao service certificate: %w", err)
 	}
 	return nil
+}
+
+// revocationStatus is the read-only counterpart of RevokeServiceCertificate. It
+// reports whether the observed serial is revoked by listing the PKI revocation
+// output without writing. It never changes state and never writes. It is the
+// coarse boolean view over the tri-state RevokedStatus boundary; a missing,
+// foreign, unreadable or malformed revocation status fails closed by returning
+// false.
+func revocationStatus(ctx context.Context, executor Executor, files bhruntime.Files, serial string) bool {
+	revoked, err := NewServiceIssuer(executor, files).RevokedStatus(ctx, serial)
+	if err != nil {
+		return false
+	}
+	return revoked
+}
+
+// revokedSerialInResponse reports whether the (canonicalized) serial appears in
+// a JSON revocation-list response. It tolerates the several shapes the mount
+// may return without trusting any field for control flow beyond a substring
+// match against the canonical serial.
+// revokedSerialInResponse parses the JSON revocation-list response and reports
+// whether the (canonicalized) serial appears in it. It distinguishes a valid,
+// empty revocation list (a readable "not revoked" status) from an unreadable or
+// malformed response, which is reported via a non-nil error at the caller. An
+// exact canonical serial match is required; a bare substring match is not
+// sufficient, so a serial can never collide with an unrelated field.
+func revokedSerialInResponse(out, serial string) (bool, error) {
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		// An empty revocation response is unreadable: the provider did not publish
+		// a valid, parseable list. Fail closed (malformed payload) rather than
+		// reporting not-revoked for a missing/blank status.
+		return false, malformedRevocationPayload()
+	}
+	type listPayload struct {
+		Data struct {
+			Serials []string `json:"serials"`
+		} `json:"data"`
+	}
+	var payload listPayload
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return false, malformedRevocationPayload()
+	}
+	// A serials array that is structurally missing or null is not a valid,
+	// readable revocation status; only a present array (possibly empty) is a
+	// genuinely empty revocation list (reports not-revoked, no error).
+	if payload.Data.Serials == nil {
+		return false, malformedRevocationPayload()
+	}
+	for _, s := range payload.Data.Serials {
+		if strings.TrimSpace(s) == serial {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func managerToken(ctx context.Context, executor Executor, files bhruntime.Files) (string, error) {

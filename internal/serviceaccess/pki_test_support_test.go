@@ -14,11 +14,14 @@ import (
 )
 
 type testIssuer struct {
-	ca         *x509.Certificate
-	caKey      *ecdsa.PrivateKey
-	validity   time.Duration
-	issueCalls int
-	renewCalls int
+	ca               *x509.Certificate
+	caKey            *ecdsa.PrivateKey
+	validity         time.Duration
+	issueCalls       int
+	renewCalls       int
+	revokedSerials   []string
+	revokedStatus    bool
+	revokedStatusErr error
 }
 
 func newTestIssuer(t interface{ Fatal(...any) }) *testIssuer {
@@ -108,6 +111,23 @@ func (i *testIssuer) Renew(ctx context.Context, _ IssuedCertificate, request Cer
 }
 
 func (i *testIssuer) Revoke(context.Context, string) error { return nil }
+
+func (i *testIssuer) Revoked(_ context.Context, serial string) bool {
+	revoked, _ := i.RevokedStatus(context.Background(), serial)
+	return revoked
+}
+
+func (i *testIssuer) RevokedStatus(_ context.Context, _ string) (bool, error) {
+	return i.revokedStatus, i.revokedStatusErr
+}
+
+func (i *testIssuer) BaseSerial(_ context.Context) (string, error) {
+	return i.ca.SerialNumber.Text(16), nil
+}
+
+func (i *testIssuer) BaseExpiry(_ context.Context) (time.Time, error) {
+	return i.ca.NotAfter.UTC(), nil
+}
 
 func (i *testIssuer) Status(context.Context) (IssuerStatus, error) {
 	return IssuerStatus{IssuerReference: "test://issuer", Ready: true}, nil
