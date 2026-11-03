@@ -32,10 +32,11 @@ Wenn eine Auswahlen-Beobachtung gleichzeitig einen direkten `baseharbor`-Besitze
 und einen delegierten `external`-Besitzer für dieselben Ressourcensatz aktiv
 beobachtet, schlägt die Beobachtung bei Konflikt fehl: BaseHarbor meldet den Konflikt
 beim Speichern des Datensatzes und lehnt das Speichern eines Apply- oder Beobachtungs-Satzes ab,
-während genau ein Besitzer in portable Intent ausdrückbar ist. Der Guard sitzt in
+solange bereits mehr als ein Besitzer in portable Intent ausdrückbar ist; ist genau
+ein Besitzer ausdrückbar, gilt die Aufnahmebedingung dieses Beschlusses. Der Guard sitzt in
 `internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
 vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
-Eine direkte Mutation verweigert sich, während ein externer Versöhner bereits besitzt; ein
+Eine direkte Mutation verweigert sich, wenn ein externer Versöhner bereits besitzt; ein
 beobachteter Konflikt zweier aktiven Besitzer schlägt bei Konflikt fehl. Dies ist nur der
 Speichern-des-Datensatzes-Check; die prozessübergreifende aktive Versöhnung ist abgehängt.
 
