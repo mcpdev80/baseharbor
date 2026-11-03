@@ -123,3 +123,101 @@ This document defines credential/access ownership semantics version 1.
 Additive evolution MAY add metadata or additional explicit classifications without weakening existing class boundaries.
 
 A future incompatible reassignment of ownership semantics requires an explicit new contract version.
+
+## Management surface access profiles
+
+This section is the normative folding point for the portable management-access contract previously documented in `docs/spec/management-access-profiles-v1.md`. It classifies what a non-secret management profile, a sensitive one-use device enrollment, and an encrypted local credential export carry, and what importing them may not do. It declares no provider implementation and carries no secrets.
+
+`ManagementAccessKind` is the portable management-access kind marker:
+
+```go
+type ManagementAccessKind string
+
+const (
+    ManagementProfile          ManagementAccessKind = "management-profile"
+    DeviceEnrollment           ManagementAccessKind = "device-enrollment"
+    CredentialExport           ManagementAccessKind = "credential-export"
+)
+```
+
+`ManagementProfile` is the non-secret descriptor of an installation's management access (identity / trust / recipient / scope / validity window). `DeviceEnrollment` is the sensitive one-use registration of a node. `CredentialExport` is the explicitly encrypted local credential payload.
+
+Import capability is fail-closed. A record is contract-valid for import only when every field is `false`:
+
+```go
+type ImportCapability struct {
+    RightsGranting   bool `json:"rights_granting"`
+    PluginExecution  bool `json:"plugin_execution"`
+    CredentialRedirect bool `json:"credential_redirect"`
+}
+```
+
+Any record that advertises a true flag is rejected before it reaches a provider.
+
+Storage is separated by sensitivity:
+
+```go
+type StorageClass string
+
+const (
+    SessionOnly    StorageClass = "session-only"
+    ProtectedDurable StorageClass = "protected-durable"
+)
+```
+
+Session-only storage lives in memory for the lifetime of the process and is never persisted. Protected-durable storage is persisted behind host protection (keyring, OS-protected volume).
+
+`ManagementAccessProfile` binds installation identity, trust, recipient, scope, validity window, import capability, storage, and optional export encryption:
+
+```go
+type ManagementAccessProfile struct {
+    Kind           ManagementAccessKind  `json:"kind"`
+    Version        string                `json:"version"`
+    InstallationID string                `json:"installation_id"`
+    Trust          Trust                 `json:"trust"`
+    Recipient      string                `json:"recipient"`
+    Scope          string                `json:"scope"`
+    NotBefore      time.Time             `json:"not_before"`
+    NotAfter       time.Time             `json:"not_after"`
+    Import         ImportCapability      `json:"import"`
+    Storage        Storage               `json:"storage"`
+    Export         *EncryptionDescriptor `json:"export,omitempty"`
+}
+```
+
+Export encryption carries the algorithm, encrypted flag, and nonce:
+
+```go
+type EncryptionDescriptor struct {
+    Algorithm string `json:"algorithm"` // aes-256-gcm | chacha20-poly1305
+    Encrypted bool   `json:"encrypted"`
+    Nonce     string `json:"nonce"`
+}
+```
+
+These profiles are a fail-closed contract, not yet wired into a production consumer. `contracts/managementaccess/v1` binds the wire contract to the existing authoritative interfaces on develop: `ManagementAccessProfile.ValidateKindEnforcement` fails closed per kind (management-profile needs present, safe storage; device-enrollment must be sensitive; credential-export needs an encrypted descriptor), and the import boundary additionally rejects an elapsed/future/inverted window (`ValidityWindow`) and a trust fingerprint that does not hash to its own certificate (`ValidateTrust` / `internal/hosttrust.ParseCA`). `ValidateRecipientBind` binds the recipient to the one-use enrollment scope (`internal/targetenrollment`), rejecting a foreign pin. `EnrollDevice` binds the validated management profile (installation ID, pinned CA, recipient, validity window) to the one-use enrollment and runs a validate-then-enroll sequence: it resolves the pinned CA via `Enforcer.ResolveFingerprint`, rejects an elapsed/future/inverted validity window and a foreign recipient, and enforces the full kind contract (`ValidateKindEnforcement`) **before** it performs the enrollment effect (`enforcer.Enroll`, which consumes the single-use store); only afterwards does it verify the issued leaf against the authoritative trust bundle (`serviceaccess.ValidateSignedCSR`), so a foreign CA, an expired window, a foreign recipient or an invalid profile fail closed without spending the one-use pin. The wire record serializes the kind value into the JSON key `kind` and the version marker into `version`, matching the schema exactly (not a field swap).
+
+Trust is validated through the shared `internal/hosttrust` anchor and fingerprint; the access record reuses the same CA material rather than introducing a new trust root. One-use enrollment reuses `internal/targetenrollment` (Core issuer + single use store). Access records carry no new transport: they reuse native transport means (Git, SSH, Kubernetes, cloud) that already exist for the target. Disaster-recovery storage is kept out of the sensitive one-use path (`disaster_recovery` on storage, `encrypted` on export).
+
+Relationship to `contracts/connection-profile/v1`: `management-access/v1` and `connection-profile/v1` overlap on identity and trust fields but play different roles. `connection-profile/v1` is **transport only**: it selects the core endpoint and transport trust for a connection and declares its implementation as deferred. `management-access/v1` is **access only**: it declares what a non-secret management profile, a sensitive one-use enrollment, or an encrypted credential export carries, and what importing them may not do. When both appear, the `connection-profile/v1` trust anchors the transport and the `management-access/v1` trust must hash to the same CA (`sha256`) and remain bound to the recipient/scope of the access record; the transport binding does not widen the access record. The `management-profile` kind must not carry the `connection-profile/v1` transport `access.role` fields (scope for access, not for transport).
+
+Deferred interfaces:
+
+`management-access/v1` binds to existing, accepted surfaces on develop (the `internal/hosttrust` anchor, `serviceaccess.ValidateSignedCSR` leaf verification, and `internal/targetenrollment` one-use authority). The remaining authorities are outside this card's bounded write reservation and land with their own card:
+
+- **Production consumer / entry point.** No production consumer currently imports `contracts/managementaccess/v1`; the callable path is exposed as an interface, not yet a wired endpoint.
+- **Anchor + installation/recipient/scope binding + trusted time.** The full production binding of installation identity, recipient/scope, trusted wall-clock time, and credential ownership is resolved by [t-20261018-r27-access-profiles](../../tasks/t-20261018-r27-access-profiles.md).
+- **Disaster recovery separation in a production flow.** The DR separation declared here is not yet wired into a production recovery path.
+
+Same-CA/DR enforcement with an external `connection-profile/v1` transport anchor and an authoritative Core scope resolver is a cross-slice binding; it is documented here but not yet wired by this card, because those authorities (connection-profile/Core scope resolver, host-trust anchor) are owned outside this write-set and are deferred to their owning slices.
+
+Contract invariants:
+
+- Exactly one of the three `kind` values is present.
+- `import` is always `{rights_granting:false, plugin_execution:false, credential_redirect:false}`.
+- A `device-enrollment` record must be sensitive (protected durable or session-only, never a plaintext durable export).
+- A `credential-export` record must be encrypted with a real algorithm and nonce.
+- The stored trust fingerprint matches the actual certificate (`ValidateTrust`).
+- The validity window is ordered, current, and non-elapsed (`ValidityWindow`).
+- The recipient is bound to the one-use enrollment scope; a foreign pin is rejected (`ValidateRecipientBind` / `EnrollDevice`).
+- Not yet schema-enforced (documented behavior, not a gate): the `management-profile` kind must not carry transport `connection-profile/v1` role fields (scope for access, not for transport).
