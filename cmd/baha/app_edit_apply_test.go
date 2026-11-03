@@ -839,7 +839,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition := cfg.Targets[target.Name]
-	definition.Runtime.DockerMode = "rootful"
+	definition.Runtime.DockerMode = "rootless"
 	definition.Runtime.DockerEndpoint = "unix:///var/run/docker.sock"
 	cfg.Targets[target.Name] = definition
 	if err := cfg.Save(); err != nil {
