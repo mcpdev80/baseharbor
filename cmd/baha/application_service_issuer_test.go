@@ -307,29 +307,59 @@ func TestResolveManagementConnectionIssuerSuppliesObservedAtFreshness(t *testing
 	}
 	observed.IssuedCertificate.Serial = baseSerial
 
-	// A recent observation verifies.
-	if err := installauthority.Fresh(context.Background(), local, observed, observed.Identity, time.Now().UTC(), time.Minute); err != nil {
-		t.Fatalf("recent observed connection rejected: %v", err)
+	// The wrapper must verify the connection through resolveManagementConnectionIssuer
+	// with the real observation time (observed.ObservedAt), not a regenerated
+	// time.Now(). A recent observation therefore verifies.
+	restoreObservedAt := overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		return observed, nil
+	}, t)
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err != nil {
+		t.Fatalf("recent observed connection rejected through wrapper: %v", err)
 	}
+	restoreObservedAt()
 
-	// A zero observation time fails closed.
-	zero := observed
-	zero.ObservedAt = time.Time{}
-	if err := installauthority.Fresh(context.Background(), local, zero, zero.Identity, zero.ObservedAt, time.Minute); err == nil {
-		t.Fatal("zero observed-at verified through boundary")
+	// The wrapper must not fabricate a fresh time.Now(): a future-dated
+	// observation (impossible in production, but reachable through the seam) has
+	// to fail closed. If the wrapper regenerated time.Now() it would accept it.
+	restoreObservedAt = overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		future := observed
+		future.ObservedAt = time.Now().UTC().Add(time.Hour)
+		return future, nil
+	}, t)
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+		t.Fatal("future observed-at verified through wrapper (wrapper ignored observed.ObservedAt)")
 	}
+	restoreObservedAt()
 
-	// A future observation time fails closed.
-	future := observed
-	future.ObservedAt = time.Now().UTC().Add(time.Hour)
-	if err := installauthority.Fresh(context.Background(), local, future, future.Identity, future.ObservedAt, time.Minute); err == nil {
-		t.Fatal("future observed-at verified through boundary")
+	// A zero observation time fails closed through the wrapper.
+	restoreObservedAt = overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		zero := observed
+		zero.ObservedAt = time.Time{}
+		return zero, nil
+	}, t)
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+		t.Fatal("zero observed-at verified through wrapper")
 	}
+	restoreObservedAt()
 
-	// A stale observation time fails closed.
-	stale := observed
-	stale.ObservedAt = time.Now().UTC().Add(-time.Hour)
-	if err := installauthority.Fresh(context.Background(), local, stale, stale.Identity, stale.ObservedAt, time.Minute); err == nil {
-		t.Fatal("stale observed-at verified through boundary")
+	// A stale observation time fails closed through the wrapper.
+	restoreObservedAt = overrideObservedAtForTest(func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+		stale := observed
+		stale.ObservedAt = time.Now().UTC().Add(-time.Hour)
+		return stale, nil
+	}, t)
+	if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+		t.Fatal("stale observed-at verified through wrapper")
 	}
+	restoreObservedAt()
+}
+
+// overrideObservedAtForTest points the wrapper's observation seam at a
+// controllable function for the duration of a subtest and restores the
+// production boundary afterwards.
+func overrideObservedAtForTest(fn func(context.Context, serviceaccess.Issuer) (serviceaccess.CertificateStatus, error), t *testing.T) func() {
+	t.Helper()
+	previous := observedAt
+	observedAt = fn
+	return func() { observedAt = previous }
 }

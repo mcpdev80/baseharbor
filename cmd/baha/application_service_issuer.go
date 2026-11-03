@@ -91,19 +91,24 @@ func resolveManagementConnectionIssuer(ctx context.Context, resolved resolvedApp
 	if err != nil {
 		return nil, err
 	}
-	observed, err := observedThroughBoundary(ctx, issuer)
+	observed, err := observedAt(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}
-	// The wrapper supplies the observation time of this status to the boundary so
-	// freshness is checked against when the connection was actually observed,
-	// not against a certificate expiry that is normally in the future.
-	observedAt := time.Now().UTC()
-	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity, observedAt, time.Minute); err != nil {
+	// The wrapper supplies the real observation time of this status to the
+	// boundary so freshness is checked against when the connection was actually
+	// observed (observed.ObservedAt), not against a fresh time.Now() that would
+	// never distinguish a stale observation from a live one.
+	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity, observed.ObservedAt, time.Minute); err != nil {
 		return nil, fmt.Errorf("management connection not verified as a live, current, non-revoked authority: %w", err)
 	}
 	return issuer, nil
 }
+
+// observedAt is the single authorized production observation boundary for the
+// management-connection wrapper. It is a package var so tests can substitute a
+// controllable observation time while production always runs this function.
+var observedAt = observedThroughBoundary
 
 // observedThroughBoundary observes the already-selected management connection
 // through the read-only production boundary, without writing anything. The

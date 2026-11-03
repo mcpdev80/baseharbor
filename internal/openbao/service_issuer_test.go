@@ -147,4 +147,30 @@ func TestRevokedStatusParsesAndValidatesRevocationList(t *testing.T) {
 			t.Fatal("malformed revocation status did not fail closed")
 		}
 	})
+
+	// An empty/blank body fails closed: the provider did not publish a valid
+	// parseable revocation list, so the connection is treated as revoked
+	// rather than not-revoked (fail-open window).
+	t.Run("empty body fails closed", func(t *testing.T) {
+		fake := &revocationListFake{response: `   `}
+		issuer := NewServiceIssuer(fake, files)
+		revoked, err := issuer.RevokedStatus(context.Background(), "01:02:03")
+		if err == nil && !revoked {
+			t.Fatal("empty revocation body reported not-revoked (fail-open)")
+		}
+	})
+
+	// A provably valid empty serials list is still not-revoked: a readable,
+	// parseable status that reports no revocation.
+	t.Run("valid empty list still not revoked", func(t *testing.T) {
+		fake := &revocationListFake{response: `{"data":{"serials":[]}}`}
+		issuer := NewServiceIssuer(fake, files)
+		revoked, err := issuer.RevokedStatus(context.Background(), "01:02:03")
+		if err != nil {
+			t.Fatalf("valid empty list errored: %v", err)
+		}
+		if revoked {
+			t.Fatal("valid empty list reported the serial as revoked")
+		}
+	})
 }

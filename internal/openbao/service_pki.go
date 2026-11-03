@@ -18,6 +18,12 @@ const (
 	servicePKIRole  = "baseharbor-services"
 )
 
+// errEmptyRevocationStatus marks an empty/missing provider revocation response
+// as unreadable: the provider did not publish a valid, parseable revocation
+// list. The fail-closed production path treats it as revoked rather than
+// reporting not-revoked for a blank status.
+var errEmptyRevocationStatus = errors.New("empty revocation status, fails closed")
+
 type ServiceCertificateRequest struct {
 	CommonName  string
 	DNSNames    []string
@@ -334,8 +340,10 @@ func revocationStatus(ctx context.Context, executor Executor, files bhruntime.Fi
 func revokedSerialInResponse(out, serial string) (bool, error) {
 	trimmed := strings.TrimSpace(out)
 	if trimmed == "" {
-		// A valid, empty revocation list is readable and reports not revoked.
-		return false, nil
+		// An empty revocation response is unreadable: the provider did not publish
+		// a valid, parseable list. Fail closed (treat as revoked) rather than
+		// reporting not-revoked for a missing/blank status.
+		return true, errEmptyRevocationStatus
 	}
 	type listPayload struct {
 		Data struct {
@@ -344,7 +352,7 @@ func revokedSerialInResponse(out, serial string) (bool, error) {
 	}
 	var payload listPayload
 	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
-		return false, fmt.Errorf("parse openbao revocation status: %w", err)
+		return true, fmt.Errorf("parse openbao revocation status: %w", err)
 	}
 	for _, s := range payload.Data.Serials {
 		if strings.TrimSpace(s) == serial {
