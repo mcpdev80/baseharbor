@@ -872,6 +872,11 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	}
 
 	desired := application.WithSQLInstances(m, "default")
+	// The confirmed Edit changes the workload too, so the edit is NOT equivalent
+	// to the loaded source. Only a non-equivalent edit reaches the confirmation
+	// prompt (appEditEquivalent short-circuits an equivalent edit with empty
+	// consent); the workload change is what makes this a real, acknowledged edit.
+	desired = application.WithWorkloadComponents(desired, "db")
 	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
 	if err != nil {
 		t.Fatal(err)
