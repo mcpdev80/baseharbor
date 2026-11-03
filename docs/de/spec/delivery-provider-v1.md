@@ -41,6 +41,10 @@ Ein externer Versöhner besitzt die Versöhnung.
 - provider: Implementierungs-Bezeichner wie ein zukünftiger Argo CD oder Flux Provider
 
 Für einen verwalteten Ressourcensatz ist genau ein Versöhnungs-Besitzer gültig.
+Ein Konfliktbeobachtung (zwei aktive Besitzer für denselben Ressourcensatz) schlägt
+am Bereitstellung-Anwendungspfad ohne Downgrade fehl; durchgesetzt durch den
+internal/delivery Guard (internal/deployment.SaveDeploymentRecord) vor jedem
+Schreibzugriff auf den Zustand.
 
 ## Platzierung
 

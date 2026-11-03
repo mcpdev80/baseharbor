@@ -65,9 +65,11 @@ type AppliedDeployment struct {
 }
 
 type ObservedDeployment struct {
-	State      string    `json:"state,omitempty"`
-	Ready      bool      `json:"ready,omitempty"`
-	VerifiedAt time.Time `json:"verified_at,omitempty"`
+	State      string                   `json:"state,omitempty"`
+	Ready      bool                     `json:"ready,omitempty"`
+	Conflict   bool                     `json:"conflict,omitempty"`
+	Owner      delivery.ReconciliationOwner `json:"owner,omitempty"`
+	VerifiedAt time.Time                `json:"verified_at,omitempty"`
 }
 
 type DeploymentRecord struct {
@@ -78,6 +80,21 @@ type DeploymentRecord struct {
 	Applied                    AppliedDeployment  `json:"applied"`
 	Observed                   ObservedDeployment `json:"observed,omitempty"`
 }
+
+// ErrConflictingOneWriter is returned when a deployment record being applied
+// observes two active reconciliation owners for the same resource set. This is
+// ADR 0022 §2: ambiguous ownership fails closed at the apply path, before any
+// state is written.
+var ErrConflictingOneWriter = errors.New(
+	"one writer per resource: conflicting reconciliation owners observed, refusing to apply deployment record",
+)
+
+// ErrUnauthorizedMutation is returned when a direct (BaseHarbor-owned) mutation
+// is applied while an external reconciler already owns the resource. ADR 0022 §2
+// refuses direct mutation of a resource under active external ownership.
+var ErrUnauthorizedMutation = errors.New(
+	"one writer per resource: external reconciler active, direct mutation refused",
+)
 
 type DeploymentRecordStateError struct {
 	Identity DeploymentIdentity
@@ -154,6 +171,14 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	record.Applied.Delivery = record.Applied.Delivery.Normalize()
 	if err := record.Applied.Delivery.Validate(); err != nil {
 		return fmt.Errorf("invalid delivery selection: %w", err)
+	}
+	// One-writer guard (ADR 0022 §2): fail closed before any state is written.
+	// The owner/conflict observation is populated by the production apply path
+	// (recordBackendPlacementOwner) from the persisted record's authoritative
+	// previous reconciliation owner, so the guard observes a real external owner
+	// instead of accepting an empty field as safe.
+	if guardErr := refuseOneWriterMutation(record); guardErr != nil {
+		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
 	}
 	if err := validateRemoteProject(record); err != nil {
 		return err
@@ -393,4 +418,28 @@ func SourceAvailable(source DeploymentSource) bool {
 	}
 	info, err := os.Stat(source.Repository)
 	return err == nil && info.IsDir()
+}
+
+// refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
+// active reconciliation owner per managed resource set. It runs after the
+// applied selection's single-record validation and before any state is written.
+//
+// It observes the deployment's own observed state: a recorded conflict (two
+// active owners for the same resource set) fails closed, and a direct
+// (BaseHarbor-owned) mutation is refused while an external reconciler already
+// owns the resource. An absent observed state (direct mode, no external owner)
+// is the normal happy path and passes.
+func refuseOneWriterMutation(record DeploymentRecord) error {
+	applied := record.Applied.Delivery
+	observed := record.Observed
+
+	// Conflict observation wins closed: two active owners for one resource set.
+	if observed.Conflict {
+		return ErrConflictingOneWriter
+	}
+	// Direct mutation while an external reconciler already owns the resource.
+	if applied.Mode == delivery.ModeDirect && observed.Owner == delivery.OwnerExternal {
+		return ErrUnauthorizedMutation
+	}
+	return nil
 }

@@ -39,7 +39,10 @@ An external reconciler owns reconciliation.
 - owner: `external`
 - provider: implementation identifier such as a future Argo CD or Flux provider
 
-Exactly one reconciliation owner is valid for a managed resource set.
+Exactly one reconciliation owner is valid for a managed resource set. A conflicting
+observation (two active owners for the same resource set) fails closed at the
+deployment apply path, enforced by internal/delivery guard
+(internal/deployment.SaveDeploymentRecord) before any state is written.
 
 ## Placement
 

@@ -11,6 +11,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 )
 
 func desiredBackendPlacements(m application.Manifest) (map[capability.ProviderKind]capability.ProviderPlacement, error) {
@@ -85,6 +86,53 @@ func recordBackendPlacementOwner(record *deployment.DeploymentRecord, resolved r
 		}
 	}
 	record.Applied.GeneratedState["backend_placements"] = string(encoded)
+	// One-writer guard (ADR 0022 §2): make SaveDeploymentRecord's apply-path
+	// guard observe a real, authoritative per-resource owner instead of an
+	// absent field. recordBackendPlacementOwner is the card's owner-wiring
+	// point and the only place the persisted deployment record is read for
+	// this deployment, so it is the authoritative observation source.
+	if err := observeReconciliationOwner(record, resolved); err != nil {
+		return err
+	}
+	return nil
+}
+
+// observeReconciliationOwner records the current reconciliation owner on the
+// record's Observed block so internal/deployment refuses the mutation through
+// SaveDeploymentRecord's one-writer guard instead of silently accepting it.
+//
+// The persisted record's previous reconciliation owner is authoritative: it is
+// the real external/baseharbor owner observed before this apply. It wins over
+// the caller-supplied (attacker-controllable) client value. When no prior
+// record exists, the applied delivery mode's owner is the fallback. A direct
+// (BaseHarbor-owned) apply that meets a persisted external owner is flagged as
+// conflicting so the guard fails closed.
+func observeReconciliationOwner(record *deployment.DeploymentRecord, resolved resolvedApplication) error {
+	prior, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	hasPrior := loadErr == nil
+	if !hasPrior && loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return loadErr
+	}
+
+	mode := record.Applied.Delivery.Mode
+	var owner delivery.ReconciliationOwner
+	if mode == delivery.ModeDirect {
+		owner = delivery.OwnerBaseHarbor
+	} else if mode == delivery.ModeDelegated {
+		owner = delivery.OwnerExternal
+	}
+	// Persisted authoritative owner wins over the applied mode's owner.
+	if hasPrior && prior.Observed.Owner != "" {
+		owner = prior.Observed.Owner
+	}
+
+	record.Observed.Owner = owner
+	// Direct mutation while an external reconciler already owns the resource:
+	// the guard refuses it. Absent prior observation is the normal direct happy
+	// path and passes.
+	if mode == delivery.ModeDirect && hasPrior && prior.Observed.Owner == delivery.OwnerExternal {
+		record.Observed.Conflict = true
+	}
 	return nil
 }
 
