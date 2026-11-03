@@ -404,9 +404,21 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git diff --name-only -z --diff-filter=ACMRT "$BASE_SHA" "$INTEGRATION_SHA" -- '*.go' > "$RUNNER_TEMP/format-paths"
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+          read -r -a source_parents <<< "$(git rev-list --parents -n 1 "$INTEGRATION_SHA")"
+          if [ "${#source_parents[@]}" -eq 3 ] && [ "${source_parents[2]}" = "$HEAD_SHA" ]; then
+            format_base="${source_parents[1]}"
+            git merge-base --is-ancestor "$BASE_SHA" "$format_base"
+          elif [ "${#source_parents[@]}" -eq 2 ] && [ "$INTEGRATION_SHA" = "$HEAD_SHA" ]; then
+            format_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          else
+            echo "format candidate has unexpected PR source parents" >&2
+            exit 1
+          fi
+          git diff --name-only -z --diff-filter=ACMRT "$format_base" "$INTEGRATION_SHA" -- '*.go' > "$RUNNER_TEMP/format-paths"
           mapfile -d '' -t go_files < "$RUNNER_TEMP/format-paths"
           if [ "${#go_files[@]}" -gt 0 ]; then
             files="$(gofmt -l -- "${go_files[@]}")"
