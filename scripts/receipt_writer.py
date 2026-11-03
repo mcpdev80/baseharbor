@@ -427,9 +427,9 @@ def main():
         if args.commit_pr is not None:
             require(os.environ.get("GITHUB_EVENT_NAME") == "pull_request_target"
                     and os.environ.get("GITHUB_REPOSITORY") == "mcpdev80/baseharbor"
-                    and os.environ.get("GITHUB_REF") == "refs/heads/main"
+                    and os.environ.get("GITHUB_REF") == "refs/heads/develop"
                     and args.product is not None and args.publish and not args.dry_run,
-                    "trusted merged-PR action on protected main required")
+                    "trusted merged-PR action on develop required")
             path, intro, pub = publish_commit(args.planning, args.product, args.commit_pr, github_pr)
             print(f"receipt: {pub}:{path} (intro:{intro})")
             return
