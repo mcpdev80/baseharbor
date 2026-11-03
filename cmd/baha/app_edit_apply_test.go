@@ -809,7 +809,7 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 			_ = exec.Command("docker", args...).Run()
 		}
 	})
-	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
+	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	var out bytes.Buffer
@@ -823,7 +823,6 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
-	t.Setenv("DIAG_RUNTIME", "1")
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	// Hosted CI provides an explicitly selected Docker daemon endpoint via
@@ -918,7 +917,11 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
+	// The confirmed Edit plan carries an unverified consequence (provider-changed,
+	// incomplete inventory), so the consent authority requires two stages
+	// (1/2 "confirm the displayed outcome without a working alternative" and
+	// 2/2). Supply both "y" acknowledgements or the edit stops partial.
+	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	var out bytes.Buffer
