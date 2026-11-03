@@ -32,10 +32,23 @@ func backendBindingFixture(t *testing.T, kind capability.ProviderKind) resolvedA
 	return r
 }
 
+// backendBindingFixtureEmpty is the shared sibling-backend fixture with NO Core
+// installation provisioned: used by negative-path tests that assert a pending
+// owner does not become a verified sibling consumer. It builds the full fixture
+// then removes only the Core installation state, leaving deployment/provider data.
+func backendBindingFixtureEmpty(t *testing.T, kind capability.ProviderKind) resolvedApplication {
+	r := backendBindingFixture(t, kind)
+	installRoot := filepath.Join(r.TargetStateRoot, "runtime")
+	if _, err := os.Stat(installRoot); err == nil {
+		_ = os.RemoveAll(installRoot)
+	}
+	return r
+}
+
 func TestBackendBindingReplacementPlanRetainsOriginalOwnerAndDescribesDataLoss(t *testing.T) {
 	for _, kind := range []capability.ProviderKind{capability.ProviderPostgreSQL, capability.ProviderValkey} {
 		t.Run(string(kind), func(t *testing.T) {
-			r := backendBindingFixture(t, kind)
+			r := backendBindingFixtureEmpty(t, kind)
 			path := filepath.Join(r.TargetStateRoot, "provider-registry.json")
 			before, err := os.ReadFile(path)
 			if err != nil {
@@ -154,7 +167,7 @@ func TestRetainedBackendPlacementRejectsInvalidOwnerProjection(t *testing.T) {
 }
 
 func TestInterruptedBackendReplacementProtectsBothRealizationsFromSiblingApply(t *testing.T) {
-	r := backendBindingFixture(t, capability.ProviderPostgreSQL)
+	r := backendBindingFixtureEmpty(t, capability.ProviderPostgreSQL)
 	actual, err := (capability.RegistryStore{Path: filepath.Join(r.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
 		t.Fatal(err)
@@ -162,6 +175,12 @@ func TestInterruptedBackendReplacementProtectsBothRealizationsFromSiblingApply(t
 	old := actual.Bindings[0].ProviderInstanceID
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
 	r = captureBackendSelectionForTest(t, r)
+	// The pending owner binds an authoritative Core installation for the Target
+	// so the deployment-owner seam passes; the sibling plan verifies the owner's
+	// control-plane as observed below.
+	if err := registerInstallationForTarget(t, r.Target.Name); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying"); err != nil {
 		t.Fatal(err)
 	}
@@ -182,10 +201,19 @@ func TestInterruptedBackendReplacementProtectsBothRealizationsFromSiblingApply(t
 	current := r
 	current.Manifest = application.New("current", "dev", false, false, false)
 	module := application.SharedBackendRuntimeDependency(r.Target.Name, capability.ProviderPostgreSQL)
+	storage := application.RuntimeStorageDependency(r.Target.Name)
+	storageOwner := "runtime/" + r.Target.Name
 	facts := map[string]application.ProviderFact{
 		old:         {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{module.ID}},
 		destination: {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}},
 		module.ID:   {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreNotRequired, Dependencies: []string{}, Ancillary: true, OwnerReference: "runtime/shared"},
+		// The pending owner's Core management control-plane is real, shared,
+		// BaseHarbor-owned runtime; observe it so the sibling plan treats the
+		// installation as an authoritative owner rather than an unverifiable
+		// sibling. The single storage dependency mirrors production Core.
+		"runtime/bh-docker-dev-core-shared/keycloak":         {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreRequired, Dependencies: []string{storage.ID}, Ancillary: true, OwnerReference: storageOwner},
+		"runtime/bh-docker-dev-shared/control-plane/openbao": {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreRequired, Dependencies: []string{storage.ID}, Ancillary: true, OwnerReference: storageOwner},
+		storage.ID: {Target: r.Target.Name, State: application.ProviderRunning, Core: application.CoreRequired, Dependencies: []string{}, Ancillary: true, OwnerReference: storageOwner},
 	}
 	snapshot, preferences, err := applicationLifecycleSnapshot(current, facts)
 	if err != nil {

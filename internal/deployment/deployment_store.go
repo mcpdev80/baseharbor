@@ -44,6 +44,14 @@ var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not ow
 // directory itself need not pre-exist: first-run init creates it under the owner,
 // so absence of the directory is not itself a missing-owner condition.
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
+	// Tenant-managed targets are Coreless by design: they have no single Core
+	// installation to own the deployment, so the one-installation-owner binding
+	// does not apply. Only Core-governed targets (no TenantID) are enforced.
+	if cfg, cfgErr := LoadConfig(); cfgErr == nil {
+		if def, ok := cfg.Targets[targetName]; ok && strings.TrimSpace(def.TenantID) != "" {
+			return nil
+		}
+	}
 	installation, err := coreinstallation.Load(targetRoot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

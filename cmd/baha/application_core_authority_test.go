@@ -20,7 +20,7 @@ import (
 )
 
 func remoteApplicationCoreFixture(t *testing.T) (context.Context, deployment.ResolvedTarget, deployment.ResolvedTarget) {
-	core := configureTestTarget(t)
+	core := configureTestTargetWithOwner(t)
 	t.Setenv("BASEHARBOR_TARGET", "")
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
@@ -43,8 +43,19 @@ func remoteApplicationCoreFixture(t *testing.T) (context.Context, deployment.Res
 	return withTargetOverride(ctx, "remote"), core, node
 }
 
-func TestRemoteApplicationUsesStartupCoreWithoutChangingExecutionNode(t *testing.T) {
+// remoteApplicationCoreFixtureEmpty is the same shared remote/Core fixture but
+// with NO Core installation provisioned: used by negative-path tests that assert
+// that a denied Core selection does not create installation state.
+func remoteApplicationCoreFixtureEmpty(t *testing.T) (context.Context, deployment.ResolvedTarget, deployment.ResolvedTarget) {
 	ctx, core, node := remoteApplicationCoreFixture(t)
+	if stateRoot, err := deployment.TargetStateRoot(core.Name); err == nil {
+		_ = os.RemoveAll(stateRoot)
+	}
+	return ctx, core, node
+}
+
+func TestRemoteApplicationUsesStartupCoreWithoutChangingExecutionNode(t *testing.T) {
+	ctx, core, node := remoteApplicationCoreFixtureEmpty(t)
 	ctx = withCoreAuthority(ctx, core)
 	selected, remote, err := applicationCoreTarget(ctx)
 	if err != nil || !remote || selected != core {
@@ -111,7 +122,7 @@ func TestRemoteApplicationRejectsMissingForeignOrRemoteAuthority(t *testing.T) {
 }
 
 func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *testing.T) {
-	ctx, core, _ := remoteApplicationCoreFixture(t)
+	ctx, core, _ := remoteApplicationCoreFixtureEmpty(t)
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -160,7 +171,7 @@ func TestBoundApplicationCoreRejectsAnotherLocalInstallationBeforeBootstrap(t *t
 }
 
 func TestCoreSetupHTTPRejectsExecutionNodeWithoutInstallationState(t *testing.T) {
-	ctx, core, node := remoteApplicationCoreFixture(t)
+	ctx, core, node := remoteApplicationCoreFixtureEmpty(t)
 	for _, bound := range []bool{false, true} {
 		executor := &bahaMachineExecutor{}
 		if bound {

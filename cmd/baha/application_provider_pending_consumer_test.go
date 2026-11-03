@@ -69,7 +69,7 @@ func TestOtherInterruptedApplyRejectsDamagedOrForeignPreviousIntent(t *testing.T
 }
 
 func qualifyInterruptedSiblingConsumer(t *testing.T, rename bool) {
-	target := configureTestTarget(t)
+	target := configureTestTargetEmpty(t)
 	current := application.New("current", "dev", false, false, false)
 	prior := application.WithIdentity(application.New("sibling", "dev", false, false, false))
 	desired := prior

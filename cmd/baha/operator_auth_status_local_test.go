@@ -13,7 +13,7 @@ import (
 func TestOperatorAuthObservationUsesActualLocalAuthorityBoundaries(t *testing.T) {
 	for _, scenario := range []string{"cli", "stdio", "http", "unmarked", "tenant", "management", "stored-policy", "environment-policy", "remote-engine", "unverified-engine"} {
 		t.Run(scenario, func(t *testing.T) {
-			target := configureTestTarget(t)
+			target := configureTestTargetEmpty(t)
 			for _, name := range []string{operatorauth.EnvIssuer, operatorauth.EnvClientID, operatorauth.EnvScopes, operatorauth.EnvCallbackPort} {
 				t.Setenv(name, "")
 			}
