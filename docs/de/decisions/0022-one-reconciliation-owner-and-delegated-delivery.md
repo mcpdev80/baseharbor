@@ -48,7 +48,11 @@ nicht braucht; diese Zustände bleiben unter der Lieferung-Provider-Grenze.
 
 ## Folgen
 
-- Zwei konkurrierende Versöhner für eine Ressourcensatz werden beim Speichern des Datensatzes abgelehnt, nicht nach partieller Mutation.
+- Zwei konkurrierende Versöhner für dieselbe Ressourcenmenge werden beim Datensatz-Speichern abgewiesen
+(der Guard in `internal/deployment`); dies ist eine Speicherprüfung, keine Laufzeit-Erkennung — diese ist
+gemäß `t-20261018-r27-authority-contract` und `t-20261018-r27-state-owner` zurückgestellt. Ein fehlender
+oder unbekannter gespeicherter Besitzer gilt als ungesetzt und folgt der Direktvorgabe von
+`Selection.Normalize`; darin liegt keine Bestätigung irgendeiner externen Aktivität.
 - BaseHarbors eigenen Bindungen/Betriebs-Empfänge bleiben BaseHarbor-besessen unabhängig vom Lieferung-Modus.
 - GitOps-Systeme (Argo CD, Flux) bleiben Implementierungen; der one-owner-Invariant ist portable Intent, kein Werkzeug.
 

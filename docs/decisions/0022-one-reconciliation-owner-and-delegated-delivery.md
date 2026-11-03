@@ -48,7 +48,11 @@ and those states stay below the Delivery Provider boundary.
 
 ## Consequences
 
-- Two competing reconcilers for one resource set are rejected at record save, not after partial mutation: the one-writer guard in
+- Two competing reconcilers for one resource set are refused persistence at record save (the one-writer
+guard in `internal/deployment`); this is a persistence check, not live runtime detection, which is
+deferred to `t-20261018-r27-authority-contract` and `t-20261018-r27-state-owner`. Zero or unknown
+persisted owner is treated as unset and follows the `Selection.Normalize` direct default; it is not an
+attestation of any external activity.
   `internal/deployment.SaveDeploymentRecord` reads the authoritative persisted owner before any state is written and fails closed.
 - BaseHarbor's own bindings/operation receipts remain BaseHarbor-owned regardless of delivery mode.
 - GitOps systems (Argo CD, Flux) stay implementations; the one-owner invariant is portable intent, not a tool.
