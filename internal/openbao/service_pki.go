@@ -307,6 +307,43 @@ func RevokeServiceCertificate(ctx context.Context, executor Executor, files bhru
 	return nil
 }
 
+// revocationStatus is the read-only counterpart of RevokeServiceCertificate. It
+// reports whether the observed serial is revoked by listing the PKI revocation
+// output without writing. It never changes state; a missing, foreign,
+// unreadable or malformed revocation status fails closed by returning false.
+func revocationStatus(ctx context.Context, executor Executor, files bhruntime.Files, serial string) bool {
+	serial, err := canonicalServiceRevocationSerial(serial)
+	if err != nil {
+		return false
+	}
+	token, err := managerToken(ctx, executor, files)
+	if err != nil {
+		return false
+	}
+	const command = `exec bao read -format=json baseharbor-pki/list-revoked`
+	out, execErr := execWithToken(ctx, executor, files, token, command)
+	if execErr != nil {
+		return false
+	}
+	return revokedSerialInResponse(out, serial)
+}
+
+// revokedSerialInResponse reports whether the (canonicalized) serial appears in
+// a JSON revocation-list response. It tolerates the several shapes the mount
+// may return without trusting any field for control flow beyond a substring
+// match against the canonical serial.
+func revokedSerialInResponse(out, serial string) bool {
+	if out == "" {
+		return false
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(strings.TrimSpace(line), serial) {
+			return true
+		}
+	}
+	return false
+}
+
 func managerToken(ctx context.Context, executor Executor, files bhruntime.Files) (string, error) {
 	credentials, err := LoadAdminCredentials(files)
 	if err != nil {

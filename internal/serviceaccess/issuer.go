@@ -15,6 +15,11 @@ type Issuer interface {
 	Issue(ctx context.Context, request CertificateRequest) (IssuedCertificate, error)
 	Renew(ctx context.Context, current IssuedCertificate, request CertificateRequest) (IssuedCertificate, error)
 	Revoke(ctx context.Context, serial string) error
+	// Revoked is the read-only revocation boundary used by verification: it
+	// reports whether the observed certificate serial is revoked without
+	// changing any state. A missing, foreign, unparseable or unreadable
+	// revocation status fails closed by returning false.
+	Revoked(ctx context.Context, serial string) bool
 	Status(ctx context.Context) (IssuerStatus, error)
 }
 

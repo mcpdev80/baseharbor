@@ -123,6 +123,8 @@ func (i *Issuer) Renew(ctx context.Context, _ serviceaccess.IssuedCertificate, r
 
 func (i *Issuer) Revoke(context.Context, string) error { return nil }
 
+func (i *Issuer) Revoked(_ context.Context, _ string) bool { return false }
+
 func (i *Issuer) Status(context.Context) (serviceaccess.IssuerStatus, error) {
 	return serviceaccess.IssuerStatus{IssuerReference: i.reference, Ready: true}, nil
 }

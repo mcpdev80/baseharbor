@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/stableid"
 )
 
 // LocalIssuer is the software realization of the existing service-access
@@ -72,7 +72,7 @@ func EnsureLocalIssuer(dir string) (*LocalIssuer, error) {
 	if err != nil || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
 		return nil, errors.New("local issuer requires canonical private state")
 	}
-	unlock, err := coreinstallation.AcquireLifecycleLock(dir)
+	unlock, err := stableid.AcquireLifecycleLock(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	unlock, err := coreinstallation.AcquireLifecycleLock(i.Dir)
+	unlock, err := stableid.AcquireLifecycleLock(i.Dir)
 	if err != nil {
 		return err
 	}
@@ -311,6 +311,40 @@ func (i *LocalIssuer) revocations(ca *x509.Certificate) (*x509.RevocationList, e
 		return nil, errors.New("unverifiable local revocation state")
 	}
 	return list, nil
+}
+
+// Revoked is a read-only revocation predicate: it reports whether the observed
+// certificate serial appears in the issuer's published CRL without changing any
+// state. It reuses the private revocations() loader (revocations.pem) exactly
+// as Renew does and never writes. A missing CRL, an unverifiable CRL, an
+// unparseable serial or a non-positive/non-159-bit serial all fail closed by
+// returning false, so a connection whose revocation status cannot be read is not
+// treated as accepted.
+func (i *LocalIssuer) Revoked(ctx context.Context, serial string) bool {
+	if err := ctx.Err(); err != nil {
+		return false
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return false
+	}
+	list, err := i.revocations(ca)
+	if err != nil {
+		return false
+	}
+	if list == nil {
+		return false
+	}
+	number, ok := new(big.Int).SetString(serial, 16)
+	if !ok || number.Sign() <= 0 || number.BitLen() > 159 {
+		return false
+	}
+	for _, entry := range list.RevokedCertificateEntries {
+		if entry.SerialNumber.Cmp(number) == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func writeLocalIssuerAtomic(path string, data []byte) error {

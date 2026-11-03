@@ -82,6 +82,15 @@ func (i *ServiceIssuer) Revoke(ctx context.Context, serial string) error {
 	return RevokeServiceCertificate(ctx, i.executor, i.files, serial)
 }
 
+// Revoked is a read-only revocation predicate for verification paths: it reports
+// whether the observed serial is revoked by listing the PKI revocation output
+// without writing. It reuses the read-only revocation-status lookup and never
+// publishes a new revocation. A missing, foreign, unreadable or malformed
+// revocation status fails closed by returning false.
+func (i *ServiceIssuer) Revoked(ctx context.Context, serial string) bool {
+	return revocationStatus(ctx, i.executor, i.files, serial)
+}
+
 func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus, error) {
 	if _, err := i.TrustBundle(ctx); err != nil {
 		return serviceaccess.IssuerStatus{

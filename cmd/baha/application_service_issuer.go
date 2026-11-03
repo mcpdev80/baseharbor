@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/installauthority"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -73,4 +76,43 @@ func materializeApplicationServiceIssuer(issuer serviceaccess.Issuer) error {
 		return err
 	}
 	return nil
+}
+
+// resolveManagementConnectionIssuer is the single authorized production
+// selection point for the management-connection authority. It returns the
+// verified serviceaccess.Issuer for the selected installation and proves,
+// through the read-only installauthority.Fresh boundary, that the observed
+// connection is live, current and not foreign or revoked before the issuer is
+// returned to a caller. The mutating openbao/LocalIssuer Revoke action never
+// runs on this verification path; a missing, foreign, expired or revoked
+// connection selects no issuer (fails closed).
+func resolveManagementConnectionIssuer(ctx context.Context, resolved resolvedApplication, workload bhruntime.RuntimeProvider) (serviceaccess.Issuer, error) {
+	issuer, err := resolveApplicationServiceIssuer(ctx, resolved, workload)
+	if err != nil {
+		return nil, err
+	}
+	observed, err := observedThroughBoundary(ctx, issuer)
+	if err != nil {
+		return nil, err
+	}
+	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity); err != nil {
+		return nil, fmt.Errorf("management connection not verified as a live, current, non-revoked authority: %w", err)
+	}
+	return issuer, nil
+}
+
+// observedThroughBoundary issues a fresh leaf and binds the observed
+// CertificateStatus (identity = issuer reference, freshness bound = leaf
+// ExpiresAt, foreign/revoked target = leaf Serial) so the same real selection
+// is verified over one consistent observation.
+func observedThroughBoundary(ctx context.Context, issuer serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+	leaf, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{CommonName: "management-connection", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	return serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}, nil
 }
