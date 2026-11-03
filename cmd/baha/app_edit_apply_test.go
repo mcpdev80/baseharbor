@@ -823,6 +823,7 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
+	t.Setenv("DIAG_RUNTIME", "1")
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	// Hosted CI provides an explicitly selected Docker daemon endpoint via

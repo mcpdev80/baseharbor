@@ -40,6 +40,9 @@ func ensureRuntimeEnv(path string, m Manifest) error {
 	if err := validateRuntimeValues(values, m); err != nil {
 		return err
 	}
+	if os.Getenv("DIAG_RUNTIME") != "" {
+		fmt.Printf("DIAG_RUNTIME writeRuntimeEnv path=%s\n", path)
+	}
 	return writeRuntimeEnv(path, m, values)
 }
 
