@@ -6,7 +6,7 @@
       "app": { "id": "00000000-0000-0000-0000-000000000001" },
       "target": { "name": "lab" },
       "consent": { "acknowledged": true, "by": "operator" },
-      "source": { "kind": "source", "repository": "example/app", "revision": "abc123def456" }
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" }
     }
   },
   {

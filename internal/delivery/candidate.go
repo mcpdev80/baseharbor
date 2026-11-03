@@ -45,19 +45,28 @@ type CandidateSubmission struct {
 }
 
 // CandidateIdentity reports which immutable source a submission carries. It is
-// empty when neither, and ambiguous when both are present.
+// empty when neither, and ambiguous when both are present. A source identity is
+// only reported when the revision is itself fixed (see isPinnedRevision); a
+// mutable branch/tag never contributes an identity — including when paired with
+// a valid image digest, because the immutable identity must be content-addressed
+// and a movable source is never acceptable.
 func (c CandidateSubmission) CandidateIdentity() CandidateSource {
-	hasSource := c.SourceRepository != "" && c.SourceRevision != ""
 	hasImage := c.ImageDigest != ""
-	switch {
-	case hasSource && hasImage:
+	hasSource := c.SourceRepository != "" && c.SourceRevision != ""
+	// A mutable source revision is itself a contract violation; it must not be
+	// silently absorbed by the image-digest path.
+	if hasSource && !isPinnedRevision(c.SourceRevision) {
 		return ""
-	case hasSource:
-		return CandidateIdentitySource
+	}
+	if hasImage && hasSource {
+		// A fixed source AND an image present: ambiguous, reject.
+		return ""
+	}
+	switch {
 	case hasImage:
 		return CandidateIdentityImage
 	default:
-		return ""
+		return CandidateIdentitySource
 	}
 }
 
@@ -66,8 +75,9 @@ func (c CandidateSubmission) CandidateIdentity() CandidateSource {
 //   - exactly one immutable identity source (source revision OR image digest),
 //     never both, never neither;
 //   - consent.acknowledged MUST be true;
-//   - a source revision must be pinned; a loose branch-string alone is rejected
-//     unless paired with an image digest counterpart;
+//   - a source revision must be a fixed identity (a 40/64-hex Git commit object
+//     ID or an opaque algo:hex digest of >=32 hex chars); a mutable branch or
+//     tag is never accepted, even when paired with an image digest;
 //   - an image must carry a sha256 digest, never a mutable tag alone;
 //   - no bare secret reference may enter the submission.
 func (c CandidateSubmission) Validate() error {
@@ -106,18 +116,14 @@ func (c CandidateSubmission) Validate() error {
 	return nil
 }
 
-// validatePinnedSource accepts a fixed source revision, or a movable branch
-// only when an image digest counterpart pins the release identity.
+// validatePinnedSource accepts only a fixed source revision. A mutable branch or
+// tag — even when an image digest counterpart is present — is never accepted:
+// the immutable identity is content-addressed, never a syntactic label.
 func (c CandidateSubmission) validatePinnedSource() error {
-	pinned := isPinnedRevision(c.SourceRevision)
-	if pinned {
+	if isPinnedRevision(c.SourceRevision) {
 		return nil
 	}
-	// A movable branch-string is accepted only together with a pinned image.
-	if c.ImageDigest != "" && sha256Digest.MatchString(c.ImageDigest) {
-		return nil
-	}
-	return fmt.Errorf("source revision %q must be a fixed revision (branch, tag or commit SHA), not a movable string", c.SourceRevision)
+	return fmt.Errorf("source revision %q must be a fixed identity (40/64-hex commit object ID or algo:hex digest of >=32 hex chars), not a mutable branch or tag", c.SourceRevision)
 }
 
 // validatePinnedImage requires a sha256 digest; a mutable tag alone is rejected.
@@ -128,45 +134,42 @@ func (c CandidateSubmission) validatePinnedImage() error {
 	return nil
 }
 
-// isPinnedRevision reports whether a revision is a fixed identity. A commit SHA
-// (64 lowercase hex) is fixed; a non-empty label that carries a version marker
-// (digit, dot, dash) is a fixed tag; a bare lowercase branch name without such
-// markers is movable. A short hex-only string is treated as a fixed revision
-// label, matching the canonical golden fixture revision.
+// digestPattern matches an opaque immutable digest of the form algo:hex, where
+// the hex part is at least 32 characters. It is the second immutable identity
+// kind alongside a fixed Git commit SHA.
+var digestPattern = regexp.MustCompile(`^[a-z0-9]+:[0-9a-f]{32,}$`)
+
+// hexCommitPattern matches a Git commit object ID: 40 or 64 lowercase hex
+// characters.
+var hexCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$|^[0-9a-f]{64}$`)
+
+// isPinnedRevision reports whether a revision is a fixed identity. Only two
+// syntactically immutable forms are accepted:
+//
+//   - a Git commit object ID: a 40- or 64-character lowercase hex string (the
+//     SHA-1 of a commit), or
+//   - an opaque digest in the form algo:hex with a hex part of at least 32
+//     characters (e.g. an OCI sha256 digest).
+//
+// Branch names, mutable tags (release-1, main2, moving refs) and any other
+// human-readable version string are never a fixed identity; the immutable
+// identity is proven by content addressing, never by a syntactic label.
 func isPinnedRevision(revision string) bool {
 	trimmed := strings.TrimSpace(revision)
 	if trimmed == "" {
 		return false
 	}
-	if len(trimmed) == 64 && sha256Digest.MatchString("sha256:" + trimmed) {
+	// A Git commit object ID: 40 or 64 lowercase hex characters.
+	if hexCommitPattern.MatchString(strings.ToLower(trimmed)) {
 		return true
 	}
-	// A branch name is a bare lowercase identifier with no version markers.
-	marksVersion := false
-	for _, r := range trimmed {
-		if r == '.' || r == '-' || (r >= '0' && r <= '9') {
-			marksVersion = true
-			break
-		}
+	// An opaque digest algo:hex (hex part >= 32 chars).
+	if digestPattern.MatchString(trimmed) {
+		return true
 	}
-	if !marksVersion {
-		allLetters := true
-		for _, r := range trimmed {
-			if r < 'a' || r > 'z' {
-				allLetters = false
-				break
-			}
-		}
-		if allLetters {
-			// All-lowercase-letters with no version marker is a movable branch.
-			return false
-		}
-	}
-	// A slash denotes a namespace/branch path, which is movable.
-	if strings.Contains(trimmed, "/") {
-		return false
-	}
-	return true
+	// Everything else (branch names, mutable tags, moving refs, human-readable
+	// version strings) is movable and rejected.
+	return false
 }
 
 func (c CandidateSubmission) normalize() CandidateSubmission {

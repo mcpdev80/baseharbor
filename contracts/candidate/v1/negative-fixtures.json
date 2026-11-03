@@ -5,7 +5,7 @@
       "contract_version": "baseharbor.candidate/v1",
       "target": { "name": "lab" },
       "consent": { "acknowledged": true, "by": "operator" },
-      "source": { "kind": "source", "repository": "example/app", "revision": "abc123" }
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" }
     }
   },
   {
@@ -52,7 +52,7 @@
       "app": { "id": "00000000-0000-0000-0000-000000000004" },
       "target": { "name": "lab" },
       "consent": { "acknowledged": true, "by": "operator" },
-      "source": { "kind": "source", "repository": "example/app", "revision": "abc123" },
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567" },
       "image": { "kind": "image", "reference": "example/app", "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222" }
     }
   },
@@ -63,7 +63,7 @@
       "app": { "id": "00000000-0000-0000-0000-000000000005" },
       "target": { "name": "lab" },
       "consent": { "acknowledged": true, "by": "operator" },
-      "source": { "kind": "source", "repository": "example/app", "revision": "abc123", "secretRef": "secrets/db-password" }
+      "source": { "kind": "source", "repository": "example/app", "revision": "0123456789abcdef0123456789abcdef01234567", "secretRef": "secrets/db-password" }
     }
   }
 ]

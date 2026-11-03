@@ -9,10 +9,9 @@ Quadlet-Einheit, die an ein Target angewandt wird. Er ist kein proprietäres
 Pflichtbündel, -katalog, -Archivprotokoll, -Stage-DSL, neues Lebenszyklus-
 dienst oder allgemeine Migrations-Engine.
 
-Lese [Lieferung-Provider-Vertrag v1]
-(delivery-provider-contract-v1.md) für den Modus/Besitzer/Auswahl/Platzierung-
-Vertrag und [Anwendungs-Vertrag v1] (application-contract-v1.md) für die
-portable Anwendungsabsicht.
+Lese [Lieferung-Provider-Vertrag v1](delivery-provider-contract-v1.md) für den
+Modus/Besitzer/Auswahl/Platzierung-Vertrag und [Anwendungs-Vertrag v1](application-contract-v1.md)
+für die portable Anwendungsabsicht.
 
 ## Unverändliche Einreichung
 
@@ -68,8 +67,8 @@ die es tatsächlich verifizieren kann.
 
 Fehlende erforderliche verifizierbare Migrationsevidence blockiert die jeweils anwendbare
 Operation. BaseHarbor meldet nicht unterstützte oder unbekannte Migrationsfähigkeiten; sie
-leidet keine Kompatität automatisch ab, führt keine Migrationen aus und liefert keine
-allgemeine Migrations-Engine. Nicht unterstützte Migrationen fehlen vor der Mutation.
+leitet keine Kompatität automatisch ab, führt keine Migrationen aus und liefert keine
+allgemeine Migrations-Engine. Nicht unterstützte Migrationen schlagen vor der Mutation fehl.
 
 ## Stage-Versionen
 
@@ -83,8 +82,8 @@ Datensatzfelder; sie führen keine neue normative Stage-Achse oder DSL ein.
 Wiederverwendet bestehende Werkzeuge und Eigentümer. Kein proprietäres Release-,
 Registry-, Build-, Pipeline- oder Controller-Framework. Keine Standard- CI- oder
 GitOps-Voraussetzung für lokale Arbeit. Runtime-spezifisches nicht unterstütztes
-Verhalten bleibt ausdrücklich. Dieser Schnitt ist durch die Entscheidung [Native Lieferung, Artefakte und
-unabhängige Stage-Versionen] (Planning-Repo, `2026-10-18-r27-native-delivery-and-stages`)
+Verhalten bleibt ausdrücklich. Dieser Schnitt ist durch die Entscheidung
+[Native Lieferung, Artefakte und unabhängige Stage-Versionen](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/docs/decisions/2026-10-18-r27-native-delivery-and-stages.md)
 beschränkt.
 
 ## Fixtures
