@@ -29,11 +29,14 @@ Besitzererschaft ist zurückgestellt (siehe Beschluss 2 und die Folgekarten).
 
 ### 2. Zweideutige Besitzer schlagen bei Konflikt fehl (closed)
 
-Wenn der gespeicherte Datensatz einen Widersprechenden aktiven Besitz belegt — eine
-protokollierte Konflikt-Flagge oder ein persistierter Besitzer, der dem gespeicherten
-Liefermodus widerspricht — schlägt das Speichern fail-closed fehl: BaseHarbor meldet den
-Konflikt beim Speichern des Datensatzes und verweigert das Speichern. Wo genau ein Besitzer
-in portable Intent ausdrückbar ist, gilt die Aufnahmebedingung dieses Beschlusses. Der Guard sitzt in
+Ein gespeicherter Datensatz blockiert ein Speichern auf genau zwei Arten: die
+protokollierte Konflikt-Flagge ist gesetzt, oder der persistierter Besitzer ist
+`external` und das Speichern ist direkt — in beiden Fällen schlägt das Speichern
+beim Datensatz-Speichern fail-closed fehl. Ein delegiertes Speichern wird durch
+einen persistierten Besitzer `baseharbor` nicht verweigert; maßgeblich ist für es
+die Konflikt-Flagge. Der Guard führt keine symmetrische Modus-gegen-Besitzer-Matrix
+und beobachtet keine lebenden Versöhner: Wo der gespeicherte Stand genau einen
+Besitzer ausdrückt, gilt die Aufnahmebedingung dieses Beschlusses. Der Guard sitzt in
 `internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
 vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
 Ein direktes Speichern wird verweigert, wenn der persistierte Besitzer `external` ist; ein
