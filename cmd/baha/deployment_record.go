@@ -24,18 +24,29 @@ func init() {
 	deployment.TenantOwnerResolver = func(targetName string) (bool, error) {
 		resolved, isTenant, ok := tenantResolvedForTarget(targetName)
 		if !ok {
-			// Not a resolvable tenant target: leave single-installation-owner
-			// enforcement (below) as the sole authority for Core-governed targets.
-			return true, nil
-		}
-		if !isTenant {
-			return true, nil
-		}
-		scope, err := connectorScopeForTarget(resolved)
-		if err != nil {
+			// Not a resolvable tenant target: do NOT grant. Return (false, nil)
+			// so VerifyDeploymentOwner falls through to the authoritative
+			// single-installation-owner check for Core-governed targets
+			// instead of admitting this target without an owner.
 			return false, nil
 		}
-		return scope.Validate() == nil, nil
+		if !isTenant {
+			// Resolvable but not a genuine tenant: same fail-through. Grant
+			// nothing so the Core owner check stays the sole authority.
+			return false, nil
+		}
+		// Genuine tenant: only a valid enrolled access scope grants access.
+		scope, err := connectorScopeForTarget(resolved)
+		if err != nil {
+			// Propagate the real error (unresolved access / changed binding) so
+			// the failure is explicit, never a silent fall-through admission.
+			return false, err
+		}
+		if scope.Validate() != nil {
+			// Tenant without a valid scope: fail closed through the Core check.
+			return false, nil
+		}
+		return true, nil
 	}
 }
 

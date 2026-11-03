@@ -81,17 +81,25 @@ var TenantOwnerResolver func(targetName string) (bool, error)
 
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	if TenantOwnerResolver != nil {
-		if authorized, resolveErr := TenantOwnerResolver(targetName); resolveErr != nil {
+		// Grant-only hook: only an affirmative (true, nil) authorizes the
+		// (Coreless) tenant target through this path. Any other result —
+		// (false, nil), (false, err), or (true, err) — means the hook did not
+		// authorize access, so resolution falls through to the standard
+		// single-installation-owner verification below. A resolver that does not
+		// grant can never bypass that check: it is never an early return and
+		// never a foreign-installation shortcut in the !authorized branch.
+		authorized, resolveErr := TenantOwnerResolver(targetName)
+		if resolveErr != nil {
 			return resolveErr
-		} else if authorized {
+		}
+		if authorized {
 			// The consumer has established a genuine authorized-owner path for
 			// this (Coreless) tenant target; the single-installation-owner
-			// requirement does not apply. A resolver that returns false keeps the
-			// fail-closed behavior below.
+			// requirement does not apply.
 			return nil
-		} else {
-			return ErrDeploymentOwnerForeign
 		}
+		// Not granted by the hook: fall through to the authoritative
+		// coreinstallation.Load owner check instead of returning early.
 	}
 	installation, err := coreinstallation.Load(targetRoot)
 	if err != nil {

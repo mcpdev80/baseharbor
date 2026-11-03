@@ -65,7 +65,15 @@ func configureTestTarget(t *testing.T) deployment.ResolvedTarget {
 func configureTestTargetEmpty(t *testing.T) deployment.ResolvedTarget {
 	target := configureTestTarget(t)
 	if stateRoot, err := deployment.TargetStateRoot(target.Name); err == nil {
-		_ = os.RemoveAll(stateRoot)
+		// A removal failure or unresolved target root is a setup error, not a
+		// benign no-op: the test asserts a specific empty data root, so a
+		// swallowed error would silently leave installation-owned state behind
+		// and let the assertion pass on the wrong filesystem. Fail closed.
+		if err := os.RemoveAll(stateRoot); err != nil {
+			t.Fatalf("remove installation-owned state for %s: %v", target.Name, err)
+		}
+	} else {
+		t.Fatalf("resolve target root for empty fixture: %v", err)
 	}
 	return target
 }

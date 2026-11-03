@@ -42,6 +42,26 @@ func backendBindingFixtureEmpty(t *testing.T, kind capability.ProviderKind) reso
 	if _, err := os.Stat(installRoot); err == nil {
 		_ = os.RemoveAll(installRoot)
 	}
+	// backendBindingFixture removed the Core installation, leaving a Coreless
+	// target. Register a valid node-connector access binding so the grant-only
+	// TenantOwnerResolver hook admits this Coreless target through the owner
+	// seam (the removed fail-open adapter previously admitted Coreless targets
+	// without an owner). This keeps the fixture Coreless, matching its name and
+	// the negative-path tests that assert a pending owner does not become a
+	// verified sibling consumer.
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Access["connector"] = deployment.AccessDefinition{Provider: "baseharbor-node-connector", Reference: "node-backend"}
+	definition := cfg.Targets[r.Target.Name]
+	definition.TenantID = "11111111-1111-4111-8111-111111111111"
+	definition.Runtime = deployment.RuntimeDefinition{Provider: "podman"}
+	definition.Access = deployment.TargetAccess{Reference: "connector"}
+	cfg.Targets[r.Target.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
 	return r
 }
 

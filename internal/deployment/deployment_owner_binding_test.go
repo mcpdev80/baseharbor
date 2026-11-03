@@ -42,7 +42,7 @@ func provisionOwnerForTarget(t *testing.T, target string) {
 		t.Fatalf("resolve runtime root for %s: %v", target, err)
 	}
 	writeInstallationAuthoritative(t, target, filepath.Join(targetRoot, "runtime"))
-}// TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
+} // TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
 // loadable only when a single Core installation governs the Target, and that a
 // missing installation fails closed without mutating the record.
 func TestDeploymentOwnerBindingPositiveAndMissing(t *testing.T) {
@@ -264,3 +264,87 @@ func TestDeploymentOwnerTenantBypassRemoved(t *testing.T) {
 	}
 }
 
+// TestTenantOwnerResolverGrantOnly verifies that TenantOwnerResolver is a
+// grant-only hook: only an affirmative (true, nil) authorizes the tenant target
+// through this seam. Every other result falls through to the standard
+// single-installation-owner verification — it can never bypass it.
+func TestTenantOwnerResolverGrantOnly(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	target := "node-target"
+	deploymentID := "11111111-1111-4111-8111-111111111111"
+	runtimeRoot := filepath.Join(data, "baseharbor", "targets", target, "runtime")
+
+	// (false, nil): the hook did not grant. Falls through to coreinstallation.Load,
+	// which has no installation under this Target and therefore fails closed with
+	// ErrDeploymentOwnerMissing — proving the hook never short-circuits to a
+	// foreign or silent admission.
+	prev := TenantOwnerResolver
+	defer func() { TenantOwnerResolver = prev }()
+	TenantOwnerResolver = func(string) (bool, error) { return false, nil }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); !errors.Is(err, ErrDeploymentOwnerMissing) {
+		t.Fatalf("(false,nil) did not fall through to owner check: %v", err)
+	}
+
+	// (false, err): the hook reported a real error, which must propagate as-is.
+	TenantOwnerResolver = func(string) (bool, error) { return false, ErrDeploymentOwnerForeign }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); !errors.Is(err, ErrDeploymentOwnerForeign) {
+		t.Fatalf("(false,err) did not propagate hook error: %v", err)
+	}
+
+	// (true, err): likewise a hook error, even on an affirmative grant.
+	TenantOwnerResolver = func(string) (bool, error) { return true, ErrDeploymentOwnerForeign }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); !errors.Is(err, ErrDeploymentOwnerForeign) {
+		t.Fatalf("(true,err) did not propagate hook error: %v", err)
+	}
+
+	// (true, nil): the hook granted access; the single-installation-owner
+	// requirement does not apply and the call succeeds.
+	TenantOwnerResolver = func(string) (bool, error) { return true, nil }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); err != nil {
+		t.Fatalf("(true,nil) grant must authorize the tenant target: %v", err)
+	}
+
+	// (false, nil) again with a genuine authoritative installation present: the
+	// fall-through owner check now succeeds, confirming the non-grant path really
+	// reaches coreinstallation.Load rather than short-circuiting.
+	provisionOwnerForTarget(t, target)
+	TenantOwnerResolver = func(string) (bool, error) { return false, nil }
+	if err := VerifyDeploymentOwner(target, filepath.Join(data, "baseharbor", "targets", target, "runtime"), deploymentID); err != nil {
+		t.Fatalf("(false,nil) fall-through to a real owner did not pass: %v", err)
+	}
+}
+
+// TestDeploymentOwnerTenantBypassGrantOnlyThroughSeam proves that even a
+// tenant target with no Core installation fails closed when the hook does not
+// grant, and that only an explicit grant admits it. The hook is set directly on
+// the seam so the assertion exercises VerifyDeploymentOwner, not the cmd/baha
+// routing.
+func TestDeploymentOwnerTenantBypassGrantOnlyThroughSeam(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	target := "node-target"
+	deploymentID := "11111111-1111-4111-8111-111111111111"
+	runtimeRoot := filepath.Join(data, "baseharbor", "targets", target, "runtime")
+
+	prev := TenantOwnerResolver
+	defer func() { TenantOwnerResolver = prev }()
+
+	// A tenant target with no Core installation and a non-granting hook fails closed.
+	TenantOwnerResolver = func(string) (bool, error) { return false, nil }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); !errors.Is(err, ErrDeploymentOwnerMissing) {
+		t.Fatalf("non-granting hook must fall through to missing-owner: %v", err)
+	}
+
+	// An explicit grant admits the Coreless tenant target with no installation.
+	TenantOwnerResolver = func(string) (bool, error) { return true, nil }
+	if err := VerifyDeploymentOwner(target, runtimeRoot, deploymentID); err != nil {
+		t.Fatalf("granting hook must admit tenant target: %v", err)
+	}
+}
