@@ -33,6 +33,26 @@ class EphemeralReuseTests(unittest.TestCase):
             self.checks, self.runtime, self.jobs, paths, previous_run=1234,
             demo_matches=demo, dependencies=dependencies or {})
 
+    def test_full_fallback_runtime_matrix_is_valid_github_strategy(self):
+        source_plan = {
+            "include": [
+                {"id": "atomic/docker/lifecycle", "runtime": "docker", "gate": "lifecycle"},
+                {"id": "atomic/podman/lifecycle", "runtime": "podman", "gate": "lifecycle"},
+            ],
+            "required": True,
+            "unsupported": [],
+        }
+        matrix = reuse.strategy_runtime_matrix(source_plan)
+        self.assertEqual({"include"}, set(matrix))
+        self.assertEqual(source_plan["include"], matrix["include"])
+        self.assertNotIn("required", matrix)
+        self.assertNotIn("unsupported", matrix)
+
+    def test_reused_runtime_row_preserves_reuse_from(self):
+        rows = self.decide(["docs/guide.md"], demo=True)["runtime_matrix"]
+        matrix = reuse.strategy_runtime_matrix(rows)
+        self.assertEqual("1234", matrix["include"][0]["reuse_from"])
+
     def test_24_hour_window_and_missing_timestamps(self):
         self.assertTrue(reuse.within_24_hours(self.previous, self.current))
         self.previous["created_at"] = "2026-11-02T16:59:59Z"
