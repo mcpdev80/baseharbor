@@ -99,6 +99,16 @@ func realIssuer(t *testing.T) (*serviceaccess.LocalIssuer, string) {
 	if err != nil {
 		t.Fatalf("ensure local issuer: %v", err)
 	}
+	// Establish a valid signed CRL so the read-only revocation status is
+	// readable (not-revoked) rather than failing closed for a missing CRL.
+	// A throwaway revocation minted here is never observed on the tested path.
+	seed, err := iss.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := iss.Revoke(context.Background(), seed.Serial); rerr != nil {
+		t.Fatalf("mint CRL: %v", rerr)
+	}
 	trust, err := iss.TrustBundle(context.Background())
 	if err != nil {
 		t.Fatalf("trust bundle: %v", err)
@@ -229,10 +239,19 @@ func TestRevocationIsReadonlyCrlUnchanged(t *testing.T) {
 		t.Fatalf("ensure local issuer: %v", err)
 	}
 	crlPath := filepath.Join(dir, "revocations.pem")
+	// Establish a valid signed CRL so the read-only revocation status is
+	// readable (not-revoked). A missing CRL now fails closed per the boundary
+	// contract, so the "valid connection verifies" case needs a CRL present.
+	seed, err := iss.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rerr := iss.Revoke(context.Background(), seed.Serial); rerr != nil {
+		t.Fatalf("mint CRL: %v", rerr)
+	}
+
 	before, err := os.ReadFile(crlPath)
-	if os.IsNotExist(err) {
-		before = nil
-	} else if err != nil {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -330,6 +349,131 @@ func TestRevokedMissingCrlFailsClosed(t *testing.T) {
 	}
 	if iss.Revoked(context.Background(), "01") {
 		t.Fatal("missing CRL should report not revoked")
+	}
+}
+
+// TestRevokedContextCanceledRejects proves a canceled context on the read-only
+// revocation predicate fails closed: the observed connection is ABGEWIESEN
+// (rejected as foreign), never accepted. This is one of the four error-classes
+// that must never open a path.
+func TestRevokedContextCanceledRejects(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	iss, err := serviceaccess.EnsureLocalIssuer(dir)
+	if err != nil {
+		t.Fatalf("ensure local issuer: %v", err)
+	}
+	leaf, err := iss.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "db", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, err := iss.TrustBundle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	obs := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}
+	// A canceled context must not open a path.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if ok := iss.Revoked(ctx, leaf.Serial); ok {
+		t.Fatal("canceled context must not report revoked; treated as rejection, but here the boundary mis-opened")
+	}
+	remote := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: time.Now().UTC()}
+	// A canceled context fails closed: the connection is ABGEWIESEN (either as
+	// not-ready or foreign). It must NOT be accepted.
+	if err := remote.AuthoritativeConnection(ctx, iss, obs, trust.IssuerReference); err == nil {
+		t.Fatal("canceled context should reject the connection (fail closed)")
+	}
+}
+
+// TestRevokedCorruptCrlFailsClosed proves an unparseable (corrupt) CRL fails
+// closed: the read-only predicate reports not-revoked but the boundary rejects
+// the connection (revocation status is unreadable, so it cannot be confirmed
+// safe), never accepting it.
+func TestRevokedCorruptCrlFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	iss, err := serviceaccess.EnsureLocalIssuer(dir)
+	if err != nil {
+		t.Fatalf("ensure local issuer: %v", err)
+	}
+	leaf, err := iss.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "db", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt the CRL after a valid issue so the issuer exists, then verify the
+	// predicate does not panic and the boundary still rejects the connection.
+	if err := os.WriteFile(filepath.Join(dir, "revocations.pem"), []byte("garbage-not-pem"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if ok := iss.Revoked(context.Background(), leaf.Serial); ok {
+		t.Fatal("corrupt CRL must not report revoked")
+	}
+	trust, err := iss.TrustBundle(context.Background())
+	if err != nil {
+		t.Fatalf("trust bundle: %v", err)
+	}
+	obs := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}
+	remote := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: time.Now().UTC()}
+	if err := remote.AuthoritativeConnection(context.Background(), iss, obs, trust.IssuerReference); err == nil {
+		t.Fatal("corrupt CRL must reject the connection (fail closed: status unreadable)")
+	}
+}
+
+// TestRevokedMalformedSerialRejects proves a malformed / non-positive / overflow
+// serial fails closed on the read-only predicate and rejects the connection.
+func TestRevokedMalformedSerialRejects(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	iss, err := serviceaccess.EnsureLocalIssuer(dir)
+	if err != nil {
+		t.Fatalf("ensure local issuer: %v", err)
+	}
+	for _, serial := range []string{"not-a-hex", "", "-1", "0", "0xG", "ffffffffffffffffffffffffffffffffffffffffffffffffffff"} {
+		if ok := iss.Revoked(context.Background(), serial); ok {
+			t.Fatalf("malformed serial %q must not report revoked", serial)
+		}
+	}
+}
+
+// TestRevokedProviderErrorRejects proves that when the issuer cannot read its
+// backing state (provider-fehler) the read-only predicate fails closed and the
+// observed connection is ABGEWIESEN.
+func TestRevokedProviderErrorRejects(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	iss, err := serviceaccess.EnsureLocalIssuer(dir)
+	if err != nil {
+		t.Fatalf("ensure local issuer: %v", err)
+	}
+	leaf, err := iss.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "db", TTL: 90 * 24 * time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, err := iss.TrustBundle(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Remove the issuer's authority (issuer.pem) so the load path fails
+	// (provider-fehler): the boundary can no longer confirm revocation status
+	// and must fail closed.
+	if err := os.Remove(filepath.Join(dir, "issuer.pem")); err != nil {
+		t.Fatal(err)
+	}
+	obs := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}
+	remote := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: time.Now().UTC()}
+	// With the CA gone, Status() fails the live verification (ErrNotReady) and
+	// the connection is rejected; the read-only predicate cannot confirm status.
+	if err := remote.AuthoritativeConnection(context.Background(), iss, obs, trust.IssuerReference); err == nil {
+		t.Fatal("provider error must reject the connection (fail closed)")
 	}
 }
 

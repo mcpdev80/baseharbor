@@ -17,9 +17,11 @@ import (
 )
 
 type Issuer struct {
-	ca        *x509.Certificate
-	caKey     *ecdsa.PrivateKey
-	reference string
+	ca               *x509.Certificate
+	caKey            *ecdsa.PrivateKey
+	reference        string
+	revokedStatus    bool
+	revokedStatusErr error
 }
 
 func New(t testing.TB) *Issuer {
@@ -125,8 +127,20 @@ func (i *Issuer) Revoke(context.Context, string) error { return nil }
 
 func (i *Issuer) Revoked(_ context.Context, _ string) bool { return false }
 
+func (i *Issuer) RevokedStatus(_ context.Context, _ string) (bool, error) {
+	return i.revokedStatus, i.revokedStatusErr
+}
+
 func (i *Issuer) Status(context.Context) (serviceaccess.IssuerStatus, error) {
 	return serviceaccess.IssuerStatus{IssuerReference: i.reference, Ready: true}, nil
+}
+
+func (i *Issuer) BaseSerial(_ context.Context) (string, error) {
+	return i.reference, nil
+}
+
+func (i *Issuer) BaseExpiry(_ context.Context) (time.Time, error) {
+	return time.Now().UTC().Add(90 * 24 * time.Hour), nil
 }
 
 var _ serviceaccess.Issuer = (*Issuer)(nil)

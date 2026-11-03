@@ -26,6 +26,7 @@ type Issuer interface {
 	TrustBundle(ctx context.Context) (serviceaccess.TrustBundle, error)
 	Status(ctx context.Context) (serviceaccess.IssuerStatus, error)
 	Revoked(ctx context.Context, serial string) bool
+	RevokedStatus(ctx context.Context, serial string) (revoked bool, err error)
 }
 
 // Fresh proves that the observed management connection is live, current and not
@@ -65,6 +66,12 @@ func Fresh(
 		return serviceaccess.ErrStaleObservation
 	}
 	if issuer.Revoked(ctx, observed.IssuedCertificate.Serial) {
+		return serviceaccess.ErrForeignAuthority
+	}
+	// Fail-closed tri-state check: an unreadable, missing, foreign or malformed
+	// revocation status (err != nil) rejects the connection as foreign, so an
+	// unknown status can never be accepted as safe.
+	if _, err := issuer.RevokedStatus(ctx, observed.IssuedCertificate.Serial); err != nil {
 		return serviceaccess.ErrForeignAuthority
 	}
 	return nil

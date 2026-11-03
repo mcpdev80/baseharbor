@@ -23,3 +23,15 @@ var (
 	// missing (zero) or future expiration.
 	ErrInvalidObservation = errors.New("invalid observed-at connection, not current READY")
 )
+
+// Internal read-only revocation-status failures. The boundary treats any of
+// these (err != nil) as a rejection: an unknown revocation status must never be
+// accepted as safe.
+var (
+	// errMissingRevocationStatus is returned when no CRL is present: the
+	// revocation status cannot be confirmed, so the path fails closed.
+	errMissingRevocationStatus = errors.New("revocation status unreadable: no CRL, fails closed")
+	// errMalformedSerial is returned when the serial cannot be parsed or is
+	// outside the supported range: the target cannot be checked, fails closed.
+	errMalformedSerial = errors.New("revocation target serial malformed, fails closed")
+)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/installauthority"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -101,18 +100,31 @@ func resolveManagementConnectionIssuer(ctx context.Context, resolved resolvedApp
 	return issuer, nil
 }
 
-// observedThroughBoundary issues a fresh leaf and binds the observed
-// CertificateStatus (identity = issuer reference, freshness bound = leaf
-// ExpiresAt, foreign/revoked target = leaf Serial) so the same real selection
-// is verified over one consistent observation.
+// observedThroughBoundary observes the already-selected management connection
+// through the read-only production boundary, without writing anything. The
+// management connection IS the resolved issuer, so its own live status supplies
+// the observation: identity = issuer reference, foreign/revoked target = the
+// issuer's own base (CA) serial. No leaf is issued on this path — issuance is a
+// production side-effect and never runs inside a verification boundary.
 func observedThroughBoundary(ctx context.Context, issuer serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
-	leaf, err := issuer.Issue(ctx, serviceaccess.CertificateRequest{CommonName: "management-connection", TTL: 90 * 24 * time.Hour})
-	if err != nil {
-		return serviceaccess.CertificateStatus{}, err
-	}
 	trust, err := issuer.TrustBundle(ctx)
 	if err != nil {
 		return serviceaccess.CertificateStatus{}, err
 	}
-	return serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}, nil
+	baseSerial, err := issuer.BaseSerial(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	baseExpiry, err := issuer.BaseExpiry(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	return serviceaccess.CertificateStatus{
+		Identity: trust.IssuerReference,
+		IssuedCertificate: serviceaccess.IssuedCertificate{
+			IssuerReference: trust.IssuerReference,
+			Serial:          baseSerial,
+			ExpiresAt:       baseExpiry,
+		},
+	}, nil
 }

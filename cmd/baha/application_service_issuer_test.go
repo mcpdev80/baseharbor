@@ -110,6 +110,15 @@ func TestResolveManagementConnectionIssuerRealPath(t *testing.T) {
 		if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
 			t.Fatal(err)
 		}
+		// Mint a valid signed CRL so the read-only revocation status is
+		// readable. Revoke a throwaway serial (not the observed base serial)
+		// so the base is confirmed not-revoked.
+		local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+		if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+			if rerr := local.Revoke(context.Background(), seed.Serial); rerr == nil {
+				// throwaway revocation present; base stays not-revoked
+			}
+		}
 	}
 	issuer, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil)
 	if err != nil {
@@ -164,5 +173,102 @@ func TestResolveManagementConnectionIssuerRevokedSelectsNoIssuer(t *testing.T) {
 	observed := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}
 	if err := installauthority.Fresh(context.Background(), local, observed, observed.Identity); err == nil {
 		t.Fatal("revoked observed connection verified through production path")
+	}
+}
+
+// TestResolveManagementConnectionIssuerEndToEnd proves the authorized production
+// selection wrapper (resolveManagementConnectionIssuer) itself, not a separate
+// helper, verifies a live, non-revoked local issuer end to end and fails closed
+// on every error class (revoked, unreadable/missing revocation status). It runs
+// through the real resolveApplicationServiceIssuer path and the read-only
+// installauthority.Fresh boundary; no Issue() side-effect is written on the
+// verification path.
+func TestResolveManagementConnectionIssuerEndToEnd(t *testing.T) {
+	// A live, non-revoked connection verifies through the wrapper.
+	{
+		resolved := corelessResolvedFixture(t)
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		if _, ok := localIssuer.(*serviceaccess.LocalIssuer); ok {
+			if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+				t.Fatal(err)
+			}
+			// Mint a valid signed CRL (revoking a throwaway, not the observed
+			// base serial) so the read-only revocation status is readable.
+			local, _ := localIssuer.(*serviceaccess.LocalIssuer)
+			if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+				_ = local.Revoke(context.Background(), seed.Serial)
+			}
+		}
+		issuer, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("live management connection rejected through wrapper: %v", err)
+		}
+		if _, ok := issuer.(*serviceaccess.LocalIssuer); !ok {
+			t.Fatalf("expected real LocalIssuer through wrapper, got %T", issuer)
+		}
+	}
+
+	// A revoked observed connection selects no issuer through the wrapper.
+	{
+		resolved := corelessResolvedFixture(t)
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		local, ok := localIssuer.(*serviceaccess.LocalIssuer)
+		if !ok {
+			t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+		}
+		if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+			t.Fatal(err)
+		}
+		// Revoke the base serial the wrapper observes, so the read-only
+		// RevokedStatus boundary rejects the connection as foreign.
+		baseSerial, err := local.BaseSerial(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := local.Revoke(context.Background(), baseSerial); err != nil {
+			t.Fatalf("revoke base: %v", err)
+		}
+		if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+			t.Fatal("revoked observed connection verified through wrapper (fail open)")
+		}
+	}
+
+	// An unreadable/missing revocation status fails closed through the wrapper:
+	// corrupt the CRL so the read-only status cannot be confirmed, then the
+	// wrapper must reject the connection.
+	{
+		resolved := corelessResolvedFixture(t)
+		localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+		if err != nil {
+			t.Fatalf("resolve local issuer: %v", err)
+		}
+		local, ok := localIssuer.(*serviceaccess.LocalIssuer)
+		if !ok {
+			t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+		}
+		if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+			t.Fatal(err)
+		}
+		// Mint a valid CRL, then corrupt it so the status is unreadable.
+		seed, err := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := local.Revoke(context.Background(), seed.Serial); err != nil {
+			t.Fatalf("mint CRL: %v", err)
+		}
+		crlPath := filepath.Join(local.Dir, "revocations.pem")
+		if err := os.WriteFile(crlPath, []byte("garbage-not-pem"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
+			t.Fatal("unreadable revocation status verified through wrapper (fail open)")
+		}
 	}
 }

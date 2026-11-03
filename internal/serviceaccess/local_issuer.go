@@ -180,6 +180,34 @@ func (i *LocalIssuer) Status(ctx context.Context) (IssuerStatus, error) {
 	return IssuerStatus{IssuerReference: trust.IssuerReference, Ready: err == nil}, err
 }
 
+// BaseSerial is the read-only identity of the local management connection: the
+// base (CA) certificate serial that issued every leaf. It lets the production
+// selection boundary observe the existing connection without issuing a new leaf.
+func (i *LocalIssuer) BaseSerial(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return "", err
+	}
+	return ca.SerialNumber.Text(16), nil
+}
+
+// BaseExpiry is the read-only freshness bound of the local management
+// connection: the base (CA) certificate not-after. The production selection
+// boundary uses it as the freshness bound instead of issuing a fresh leaf.
+func (i *LocalIssuer) BaseExpiry(ctx context.Context) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	ca, _, _, err := i.load()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return ca.NotAfter.UTC(), nil
+}
+
 func (i *LocalIssuer) Issue(ctx context.Context, request CertificateRequest) (IssuedCertificate, error) {
 	if err := ctx.Err(); err != nil {
 		return IssuedCertificate{}, err
@@ -321,30 +349,43 @@ func (i *LocalIssuer) revocations(ca *x509.Certificate) (*x509.RevocationList, e
 // returning false, so a connection whose revocation status cannot be read is not
 // treated as accepted.
 func (i *LocalIssuer) Revoked(ctx context.Context, serial string) bool {
+	revoked, _ := i.RevokedStatus(ctx, serial)
+	return revoked
+}
+
+// RevokedStatus is the tri-state read-only revocation boundary. It reuses the
+// private revocations() loader (revocations.pem) exactly as Renew does and
+// never writes. A canceled context, an unreadable issuer authority, a corrupt
+// or unparseable CRL, a missing CRL, or an unparseable/non-positive/overflow
+// serial all report err != nil, so the fail-closed production path rejects the
+// connection instead of treating an unknown status as safe. A CRL that loads
+// cleanly but does not contain the serial reports (false, nil).
+func (i *LocalIssuer) RevokedStatus(ctx context.Context, serial string) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return false
+		return false, err
 	}
 	ca, _, _, err := i.load()
 	if err != nil {
-		return false
+		return false, err
 	}
 	list, err := i.revocations(ca)
 	if err != nil {
-		return false
+		return false, err
 	}
 	if list == nil {
-		return false
+		// A missing CRL is an unreadable revocation status: fail closed.
+		return false, errMissingRevocationStatus
 	}
 	number, ok := new(big.Int).SetString(serial, 16)
 	if !ok || number.Sign() <= 0 || number.BitLen() > 159 {
-		return false
+		return false, errMalformedSerial
 	}
 	for _, entry := range list.RevokedCertificateEntries {
 		if entry.SerialNumber.Cmp(number) == 0 {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func writeLocalIssuerAtomic(path string, data []byte) error {

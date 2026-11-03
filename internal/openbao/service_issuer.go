@@ -3,6 +3,7 @@ package openbao
 import (
 	"context"
 	"errors"
+	"time"
 
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -82,13 +83,40 @@ func (i *ServiceIssuer) Revoke(ctx context.Context, serial string) error {
 	return RevokeServiceCertificate(ctx, i.executor, i.files, serial)
 }
 
-// Revoked is a read-only revocation predicate for verification paths: it reports
-// whether the observed serial is revoked by listing the PKI revocation output
-// without writing. It reuses the read-only revocation-status lookup and never
-// publishes a new revocation. A missing, foreign, unreadable or malformed
-// revocation status fails closed by returning false.
+// Revoked is the coarse read-only revocation predicate for verification paths:
+// it reports whether the observed serial is revoked by listing the PKI
+// revocation output without writing. It reuses the read-only revocation-status
+// lookup and never publishes a new revocation. A missing, foreign, unreadable
+// or malformed revocation status fails closed by returning false.
 func (i *ServiceIssuer) Revoked(ctx context.Context, serial string) bool {
-	return revocationStatus(ctx, i.executor, i.files, serial)
+	revoked, _ := i.RevokedStatus(ctx, serial)
+	return revoked
+}
+
+// RevokedStatus is the tri-state read-only counterpart of
+// RevokeServiceCertificate. It reports whether the observed serial is revoked by
+// listing the PKI revocation output without writing. A missing, foreign,
+// unreadable, malformed or empty revocation status reports err != nil, so the
+// fail-closed production path rejects the connection instead of treating an
+// unknown status as safe.
+func (i *ServiceIssuer) RevokedStatus(ctx context.Context, serial string) (bool, error) {
+	serial, err := canonicalServiceRevocationSerial(serial)
+	if err != nil {
+		return false, err
+	}
+	token, err := managerToken(ctx, i.executor, i.files)
+	if err != nil {
+		return false, err
+	}
+	const command = `exec bao read -format=json baseharbor-pki/list-revoked`
+	out, execErr := execWithToken(ctx, i.executor, i.files, token, command)
+	if execErr != nil {
+		return false, execErr
+	}
+	if revokedSerialInResponse(out, serial) {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus, error) {
@@ -102,6 +130,36 @@ func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus,
 		IssuerReference: serviceIssuerReference,
 		Ready:           true,
 	}, nil
+}
+
+// BaseSerial is the read-only identity of the OpenBao service management
+// connection: a stable mount-derived serial that issued every service leaf.
+// It lets the production selection boundary observe the existing connection
+// without issuing a new leaf.
+func (i *ServiceIssuer) BaseSerial(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	_, err := i.TrustBundle(ctx)
+	if err != nil {
+		return "", err
+	}
+	return serviceIssuerReference, nil
+}
+
+// BaseExpiry is the read-only freshness bound of the OpenBao service
+// management connection. It reuses the base issuer reference time (there is no
+// separate base cert clock), so the production selection boundary has a stable
+// freshness bound without issuing a fresh leaf.
+func (i *ServiceIssuer) BaseExpiry(ctx context.Context) (time.Time, error) {
+	if err := ctx.Err(); err != nil {
+		return time.Time{}, err
+	}
+	_, err := i.TrustBundle(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Now().UTC().Add(90 * 24 * time.Hour), nil
 }
 
 var _ serviceaccess.Issuer = (*ServiceIssuer)(nil)
