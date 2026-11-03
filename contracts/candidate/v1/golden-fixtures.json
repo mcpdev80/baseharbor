@@ -21,12 +21,13 @@
     }
   },
   {
-    "record": "source-absent-image-only",
+    "record": "image-only-pinned",
     "fixture": {
       "contract_version": "baseharbor.candidate/v1",
       "app": { "id": "00000000-0000-0000-0000-000000000003" },
       "target": { "name": "prod" },
-      "consent": { "acknowledged": true, "by": "operator" }
+      "consent": { "acknowledged": true, "by": "operator" },
+      "image": { "kind": "image", "reference": "example/app", "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444" }
     }
   }
 ]

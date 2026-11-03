@@ -66,9 +66,10 @@ die es tatsächlich verifizieren kann.
 - Eine Sicherung beweisen kein Schema-Kompatibilität.
 - Ein Bild-Rollback impliziert keine Datenbank-Rollback.
 
-BaseHarbor leidet keine Kompatibilität automatisch ab, führt keine Migrationen aus
-und liefert keine allgemeine Migrations-Engine. Nicht unterstützte Migrationen
-fehlen vor der Mutation.
+Fehlende erforderliche verifizierbare Migrationsevidence blockiert die jeweils anwendbare
+Operation. BaseHarbor meldet nicht unterstützte oder unbekannte Migrationsfähigkeiten; sie
+leidet keine Kompatität automatisch ab, führt keine Migrationen aus und liefert keine
+allgemeine Migrations-Engine. Nicht unterstützte Migrationen fehlen vor der Mutation.
 
 ## Stage-Versionen
 
@@ -82,9 +83,9 @@ Datensatzfelder; sie führen keine neue normative Stage-Achse oder DSL ein.
 Wiederverwendet bestehende Werkzeuge und Eigentümer. Kein proprietäres Release-,
 Registry-, Build-, Pipeline- oder Controller-Framework. Keine Standard- CI- oder
 GitOps-Voraussetzung für lokale Arbeit. Runtime-spezifisches nicht unterstütztes
-Verhalten bleibt ausdrücklich. Dieser Schnitt ist durch
-[Native Lieferung und Stages]
-(../decisions/2026-10-18-r27-native-delivery-and-stages.md) beschränkt.
+Verhalten bleibt ausdrücklich. Dieser Schnitt ist durch die Entscheidung [Native Lieferung, Artefakte und
+unabhängige Stage-Versionen] (Planning-Repo, `2026-10-18-r27-native-delivery-and-stages`)
+beschränkt.
 
 ## Fixtures
 

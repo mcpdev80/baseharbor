@@ -1,22 +1,19 @@
-// Package contracts_test validates the exact source/image submission contract:
-// a candidate is a fixed source revision, image digest, or native compose/
-// quadlet unit. A submission must carry exactly one immutable identity source
-// (source revision OR image digest, never a mutable tag alone) and never a bare
-// secret reference. Provenance is never inferred from annotations.
+// Package contracts_test validates the exact source/image submission contract
+// through the existing product path: the candidate submission is validated by
+// the fail-closed leaf in internal/delivery, not by an isolated schema-only
+// check. A candidate is a fixed source revision, image digest, or native
+// compose/quadlet unit. A submission must carry exactly one immutable identity
+// source (source revision OR image digest, never a mutable tag alone) and never
+// a bare secret reference. Provenance is never inferred from annotations.
 package contracts_test
 
 import (
 	_ "embed"
 	"encoding/json"
-	"net/url"
 	"testing"
 
-	"github.com/google/jsonschema-go/jsonschema"
-
-	"github.com/mcpdev80/baseharbor/contracts"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 )
-
-const candidateSchemaPath = "candidate/v1/candidate-contract.schema.json"
 
 //go:embed candidate/v1/golden-fixtures.json
 var goldenFixtures []byte
@@ -29,104 +26,143 @@ type candidateFixture struct {
 	Fixture json.RawMessage `json:"fixture"`
 }
 
-func candidateResolvedSchema(t *testing.T) *jsonschema.Resolved {
+// toSubmission maps a raw contract fixture onto the typed delivery leaf so the
+// schema validators exercise the real product interface, not JSON parsing.
+func toSubmission(t *testing.T, raw json.RawMessage) delivery.CandidateSubmission {
 	t.Helper()
-	raw, err := contracts.ReadSchema(contracts.Namespace + candidateSchemaPath)
-	if err != nil {
-		t.Fatalf("read schema: %v", err)
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatalf("fixture is not valid JSON: %v", err)
 	}
-	var schema jsonschema.Schema
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		t.Fatalf("unmarshal schema: %v", err)
+	var d delivery.CandidateSubmission
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("fixture did not map onto the candidate contract: %v", err)
 	}
-	resolved, err := schema.Resolve(&jsonschema.ResolveOptions{Loader: func(uri *url.URL) (*jsonschema.Schema, error) {
-		raw, err := contracts.ReadSchema(uri.String())
-		if err != nil {
-			return nil, err
+
+	contractVersion, _ := v["contract_version"].(string)
+	d.ContractVersion = contractVersion
+
+	if app, ok := v["app"].(map[string]any); ok {
+		if id, _ := app["id"].(string); id != "" {
+			d.ApplicationID = id
 		}
-		var loaded jsonschema.Schema
-		if err := json.Unmarshal(raw, &loaded); err != nil {
-			return nil, err
-		}
-		return &loaded, nil
-	}})
-	if err != nil {
-		t.Fatalf("resolve schema: %v", err)
 	}
-	return resolved
+	if target, ok := v["target"].(map[string]any); ok {
+		if name, _ := target["name"].(string); name != "" {
+			d.TargetName = name
+		}
+	}
+	if consent, ok := v["consent"].(map[string]any); ok {
+		if by, _ := consent["by"].(string); by != "" {
+			d.ConsentBy = by
+		}
+		if ack, ok := consent["acknowledged"].(bool); ok {
+			d.Acknowledged = ack
+		}
+	}
+	if source, ok := v["source"].(map[string]any); ok {
+		if repository, _ := source["repository"].(string); repository != "" {
+			d.SourceRepository = repository
+		}
+		if revision, _ := source["revision"].(string); revision != "" {
+			d.SourceRevision = revision
+		}
+		if secretRef, _ := source["secretRef"].(string); secretRef != "" {
+			d.SecretRef = secretRef
+		}
+	}
+	if image, ok := v["image"].(map[string]any); ok {
+		if reference, _ := image["reference"].(string); reference != "" {
+			d.ImageReference = reference
+		}
+		if digest, _ := image["digest"].(string); digest != "" {
+			d.ImageDigest = digest
+		}
+	}
+	return d
 }
 
-func TestCandidateGoldenFixturesAreExactAndValid(t *testing.T) {
+func loadFixtures(t *testing.T, raw []byte) []candidateFixture {
+	t.Helper()
 	var fixtures []candidateFixture
-	if err := json.Unmarshal(goldenFixtures, &fixtures); err != nil {
-		t.Fatalf("golden fixtures: %v", err)
+	if err := json.Unmarshal(raw, &fixtures); err != nil {
+		t.Fatalf("fixtures: %v", err)
 	}
 	if len(fixtures) == 0 {
-		t.Fatal("empty golden fixtures")
+		t.Fatal("empty fixtures")
 	}
-	resolved := candidateResolvedSchema(t)
-	for _, f := range fixtures {
+	return fixtures
+}
+
+// Golden fixtures prove that a valid candidate submission is accepted by the
+// real internal/delivery candidate leaf: exactly one immutable identity,
+// acknowledged consent, and a pinned source revision or image digest.
+func TestCandidateGoldenFixturesAreAcceptedByProductLeaf(t *testing.T) {
+	for _, f := range loadFixtures(t, goldenFixtures) {
 		t.Run(f.Record, func(t *testing.T) {
-			var value any
-			if err := json.Unmarshal(f.Fixture, &value); err != nil {
-				t.Fatalf("fixture is not valid JSON: %v", err)
-			}
-			if _, ok := value.(map[string]any); !ok {
-				t.Fatalf("fixture is not a JSON object: %v", f.Record)
-			}
-			if err := resolved.Validate(value); err != nil {
-				t.Fatalf("%s: valid candidate rejected: %v", f.Record, err)
+			sub := toSubmission(t, f.Fixture)
+			if err := sub.Validate(); err != nil {
+				t.Fatalf("%s: valid candidate rejected by product leaf: %v", f.Record, err)
 			}
 		})
 	}
 }
 
-func TestCandidateNegativeFixturesAreRejected(t *testing.T) {
-	var fixtures []candidateFixture
-	if err := json.Unmarshal(negativeFixtures, &fixtures); err != nil {
-		t.Fatalf("negative fixtures: %v", err)
-	}
-	resolved := candidateResolvedSchema(t)
-	for _, f := range fixtures {
+// Negative fixtures prove that a malformed candidate submission fails closed at
+// the real internal/delivery candidate leaf. Exactly one fail-closed case is
+// required per contract point: missing identity source, mutable tag only, and
+// missing acknowledged consent.
+func TestCandidateNegativeFixturesFailClosedAtProductLeaf(t *testing.T) {
+	for _, f := range loadFixtures(t, negativeFixtures) {
 		t.Run(f.Record, func(t *testing.T) {
-			var value any
-			if err := json.Unmarshal(f.Fixture, &value); err != nil {
-				t.Fatalf("fixture is not valid JSON: %v", err)
-			}
-			if _, ok := value.(map[string]any); !ok {
-				t.Fatalf("fixture is not a JSON object: %v", f.Record)
-			}
-			if err := resolved.Validate(value); err == nil {
-				t.Fatalf("%s: malformed candidate submission was accepted; a candidate must fail closed", f.Record)
+			sub := toSubmission(t, f.Fixture)
+			if err := sub.Validate(); err == nil {
+				t.Fatalf("%s: malformed candidate accepted by product leaf; a candidate must fail closed", f.Record)
 			}
 		})
 	}
 }
 
-// The digest-only negative fixture proves a mutable tag alone is never a valid
-// immutable identity; only a sha256 digest pins an image.
-func TestCandidateDigestMustBePinnedNotTagOnly(t *testing.T) {
-	resolved := candidateResolvedSchema(t)
-	tagOnly := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000002"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"automation"},"image":{"kind":"image","reference":"example/app:latest"}}`
-	var value any
-	if err := json.Unmarshal([]byte(tagOnly), &value); err != nil {
-		t.Fatal(err)
-	}
-	if err := resolved.Validate(value); err == nil {
-		t.Fatal("mutable tag-only submission accepted; a digest is required for image identity")
+// Exactly one immutable identity source: a submission carrying both a source
+// revision and an image digest is ambiguous and must fail closed.
+func TestCandidateRequiresExactlyOneIdentitySource(t *testing.T) {
+	both := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000004"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"abc123"},"image":{"kind":"image","reference":"example/app","digest":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}}`
+	sub := toSubmission(t, json.RawMessage(both))
+	if err := sub.Validate(); err == nil {
+		t.Fatal("both source and image accepted; exactly one immutable identity is required")
 	}
 }
 
-// A bare secret reference in a submission is never part of candidate identity:
-// the schema disallows unknown keys, so a stray secretRef must fail.
+// A movable branch-string is never a fixed identity on its own; only a pinned
+// source revision (or a movable branch paired with a sha256 image digest) is
+// accepted.
+func TestCandidateSourceRevisionMustBePinned(t *testing.T) {
+	loose := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"main"}}`
+	sub := toSubmission(t, json.RawMessage(loose))
+	if err := sub.Validate(); err == nil {
+		t.Fatal("movable branch-string source accepted; a source revision must be pinned")
+	}
+
+	pinned := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"abc123def456"}}`
+	sub = toSubmission(t, json.RawMessage(pinned))
+	if err := sub.Validate(); err != nil {
+		t.Fatalf("fixed source revision rejected: %v", err)
+	}
+}
+func TestCandidateConsentMustBeAcknowledged(t *testing.T) {
+	notAcked := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":false,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"abc123def456"}}`
+	sub := toSubmission(t, json.RawMessage(notAcked))
+	if err := sub.Validate(); err == nil {
+		t.Fatal("unacknowledged candidate accepted; consent.acknowledged must be true")
+	}
+}
+
+// A bare secret reference in a submission is never part of candidate identity
+// and fails closed at the product leaf.
 func TestCandidateRejectsBareSecretReference(t *testing.T) {
-	resolved := candidateResolvedSchema(t)
 	withSecret := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000005"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"abc123","secretRef":"secrets/db-password"}}`
-	var value any
-	if err := json.Unmarshal([]byte(withSecret), &value); err != nil {
-		t.Fatal(err)
-	}
-	if err := resolved.Validate(value); err == nil {
-		t.Fatal("bare secret reference accepted in submission; secrets must not enter candidate identity")
+	sub := toSubmission(t, json.RawMessage(withSecret))
+	if err := sub.Validate(); err == nil {
+		t.Fatal("bare secret reference accepted; secrets must not enter candidate identity")
 	}
 }

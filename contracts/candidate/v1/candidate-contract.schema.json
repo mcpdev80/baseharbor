@@ -2,9 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/candidate/v1/candidate-contract.schema.json",
   "title": "BaseHarbor Candidate Contract 1",
-  "description": "Exact source/image submission contract. A candidate is a fixed source revision, image digest, or native compose/quadlet unit. A submission must carry exactly one immutable identity source (source revision OR image digest, never a mutable tag alone) and never a bare secret reference. The exactly-one-source invariant is asserted in Go (candidate_contract_test.go); this schema enforces the structural identity: contract_version const, required app/target/consent bindings, a fixed source revision or a sha256-pinned image, and no unexpected keys.",
+  "description": "Exact source/image submission contract. A candidate is a fixed source revision, image digest, or native compose/quadlet unit. A submission must carry exactly one immutable identity source (source revision OR image digest, never a mutable tag alone) and never a bare secret reference. Provenance is never inferred from annotations. The exactly-one-source invariant, the consent.acknowledged=true requirement, and the pinned-source-or-image-digest rule are asserted in Go (internal/delivery candidate contract); this schema enforces the structural identity: contract_version const, required app/target/consent bindings, exactly one of source|image with a fixed source revision or a sha256-pinned image, and no unexpected keys.",
   "type": "object",
   "required": ["contract_version", "app", "target", "consent"],
+  "oneOf": [
+    { "required": ["source"] },
+    { "required": ["image"] }
+  ],
   "additionalProperties": false,
   "properties": {
     "contract_version": {
@@ -32,7 +36,7 @@
       "required": ["acknowledged", "by"],
       "additionalProperties": false,
       "properties": {
-        "acknowledged": { "type": "boolean" },
+        "acknowledged": { "type": "boolean", "const": true },
         "by": { "type": "string", "minLength": 1 }
       }
     },
@@ -57,8 +61,5 @@
       }
     },
     "stage": { "type": "string" }
-  },
-  "not": {
-    "required": ["source", "image"]
   }
 }

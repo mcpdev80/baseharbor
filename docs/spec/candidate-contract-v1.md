@@ -61,9 +61,10 @@ actually verify.
 - A backup never proves schema compatibility.
 - An image rollback never implies a database rollback.
 
-BaseHarbor does not infer compatibility automatically, does not execute
-migrations and does not ship a generic migration engine. Unsupported migrations
-fail before mutation.
+Missing required verifiable migration evidence blocks that applicable operation.
+BaseHarbor reports unsupported or unknown migration capability; it does not infer
+compatibility automatically, does not execute migrations and does not ship a
+generic migration engine. Unsupported migrations fail before mutation.
 
 ## Stage versions
 
@@ -77,8 +78,8 @@ introduces a new normative stage axis or DSL.
 Reuse native tools and existing owners. No private release, registry, build,
 pipeline or controller framework. No default CI or GitOps prerequisite for local
 work. Runtime-specific unsupported behavior remains explicit. This slice is
-constrained by [Native delivery and stages]
-(../decisions/2026-10-18-r27-native-delivery-and-stages.md).
+constrained by the [Native delivery, artifacts and independent stage
+versions] decision (planning repo, `2026-10-18-r27-native-delivery-and-stages`).
 
 ## Fixtures
 
