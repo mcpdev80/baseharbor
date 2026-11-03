@@ -10,11 +10,9 @@ import argparse
 from datetime import datetime
 import io
 import json
-import os
 from pathlib import Path
 import re
 import subprocess
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -35,14 +33,12 @@ GO_CHECK_TARGETS = {
                                 "./internal/stableid/...", "./internal/serviceaccess/..."),
     "delivery-package-tests": ("./internal/delivery/...",),
     "broker-package-tests": ("./internal/runtimebroker/...",),
-    "openbao-package-tests": ("./internal/secretstore/...",),
+    "openbao-package-tests": ("./internal/openbao",),
     "cli-package-tests": ("./cmd/baha",),
     "cli-guided-tests": ("./cmd/baha",),
     "cli-build": ("./cmd/baha",),
     "cli-vet": ("./cmd/baha",),
 }
-# Check families executed using narrowly filtered cmd/baha tests.
-CLI_TEST_CHECKS = {"cli-package-tests", "cli-guided-tests", "cli-vet"}
 SENSITIVE_PREFIXES = ("scripts/", ".github/", "deploy/", "testdata/", "spec/", "contracts/")
 SENSITIVE_EXACT = {"go.mod", "go.sum", "Makefile"}
 DOC_PREFIXES = ("docs/", "docs/de/")
@@ -209,7 +205,7 @@ def impacts(check, paths, dependencies):
     changed_source_go = [path for path in changed_go if not path.endswith("_test.go")]
     changed_docs = any(p.startswith(DOC_PREFIXES) or p in DOC_EXACT for p in paths)
     if check in DOC_CHECKS:
-        return changed_docs
+        return changed_docs or bool(changed_go)
     if check in PYTHON_CHECKS:
         return False
     if check in GLOBAL_TESTS:
