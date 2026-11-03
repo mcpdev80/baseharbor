@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,27 +27,56 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeoperation"
 )
 
+// checkReachedRecorder is an http.Handler for the /readyz route that records,
+// via an atomic flag, that it was entered. It stands in for the readyz handler
+// Client.Check() drives. Because Check() routes to /readyz (not to the
+// /internal/ execute handler), asserting this flag — independently of the
+// execute-path flag — proves the negative/positive check observation is on the
+// exact route Check drives, not on an unrelated handler.
+type checkReachedRecorder struct {
+	entered atomic.Bool
+}
+
+func (r *checkReachedRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.entered.Store(true)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
 // assertTLSHandshakeCause fails the test unless err is a TLS/handshake/
-// verification failure: either it wraps a tls.AlertError / tls.permanentError
-// (a concrete TLS-stack error), or its wrapped message mentions one of the
-// TLS/x509/certificate markers. This proves a negative case failed for a
-// cryptographic/verification reason and not for some unrelated cause.
+// verification failure, classified by type. It accepts exactly three concrete
+// TLS-stack shapes: an *x509.UnknownAuthorityError or *x509.CertificateInvalidError
+// (server-side chain verification), a wrapped *tls.AlertError (an alert the
+// peer sent), or a *net.OpError whose Op is "remote error" (the server-side
+// client-cert refusal alert, e.g. "certificate required" / "unknown certificate
+// authority"). Pure substring tolerance on "tls"|"x509"|"certificate" is
+// deliberately NOT used, so the negative documents a cryptographic/verification
+// failure and not some unrelated transport error.
 func assertTLSHandshakeCause(t *testing.T, err error) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("expected a TLS/handshake/verification error, got nil")
 	}
-	var alert tls.AlertError
+	var unknownAuthority *x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthority) {
+		return
+	}
+	var certificateInvalid *x509.CertificateInvalidError
+	if errors.As(err, &certificateInvalid) {
+		return
+	}
+	var alert *tls.AlertError
 	if errors.As(err, &alert) {
 		return
 	}
-	msg := strings.ToLower(err.Error())
-	for _, sub := range []string{"tls", "x509", "certificate"} {
-		if strings.Contains(msg, sub) {
-			return
-		}
+	var certVerify *tls.CertificateVerificationError
+	if errors.As(err, &certVerify) {
+		return
 	}
-	t.Fatalf("error %q is not a TLS/handshake/verification cause", err.Error())
+	var opErr *net.OpError
+	if errors.As(err, &opErr) && opErr.Op == "remote error" {
+		return
+	}
+	t.Fatalf("error %q is not a classified TLS/handshake/verification cause", err.Error())
 }
 
 // testCA is a throwaway PKI used to drive a real mutual-TLS handshake against a
@@ -226,10 +256,9 @@ func newMutualTLSServer(t *testing.T, ca *testCA) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
+	recorder := &checkReachedRecorder{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-	})
+	mux.Handle("GET /readyz", recorder)
 	mux.Handle("/internal/", handler)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
@@ -252,19 +281,23 @@ func newMutualTLSServer(t *testing.T, ca *testCA) *httptest.Server {
 }
 
 // newMutualTLSServerWithHandler builds the same handler-backed mutual-TLS
-// server as newMutualTLSServer, but also returns the *Handler under test so a
-// test can assert that a refused handshake never dispatched to ServeHTTP
-// (handler.HandlerReached stays false).
-func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, *Handler) {
+// server as newMutualTLSServer, but also returns the *Handler under test and
+// the /readyz check-path recorder so a test can assert:
+//   - the check route Check() drives was reached (recorder.entered) or, for a
+//     refused handshake, refused before dispatch;
+//   - the execute route Execute() drives was reached (handler.HandlerReached).
+//
+// The two routes have independent reach-flags, so the observation is never
+// conflated across paths.
+func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, *Handler, *checkReachedRecorder) {
 	t.Helper()
 	handler, err := NewHandler(fakeResources{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	recorder := &checkReachedRecorder{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-	})
+	mux.Handle("GET /readyz", recorder)
 	mux.Handle("/internal/", handler)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
@@ -283,7 +316,7 @@ func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, 
 	}
 	server.TLS.Certificates = []tls.Certificate{cert}
 	server.StartTLS()
-	return server, handler
+	return server, handler, recorder
 }
 
 const workloadSPIFFE = "spiffe://baseharbor/apps/myservice/prod"
@@ -297,7 +330,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server := newMutualTLSServer(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -321,6 +354,11 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 	if result.ResourceID != "res-asset-1" {
 		t.Fatalf("unexpected resource id: %q", result.ResourceID)
 	}
+	// Positive counter-flag on the execute path: the /internal/ handler was
+	// reached (its own per-path flag flipped true on valid material).
+	if !handler.HandlerReached.Load() {
+		t.Fatalf("execute handler was not reached on valid material")
+	}
 }
 
 // TestMutualTLSRejectsMissingClientCertificate fails the handshake when the
@@ -333,7 +371,7 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	ca := newTestCA(t)
 
-	server, handler := newMutualTLSServerWithHandler(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Client that presents NO certificate: a transport with an empty
@@ -350,6 +388,10 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
 
 	err := c.Check(context.Background())
+	// The negative MUST be observed on the exact route Check() drives: the error
+	// is a classified TLS/handshake/verification cause (server-side client-cert
+	// refusal on the /readyz route), and the execute-path handler was never
+	// reached.
 	assertTLSHandshakeCause(t, err)
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
@@ -393,7 +435,7 @@ func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 	}
 	ca.write(t, "selfsigned-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: selfDER}), 0o600)
 
-	server, handler := newMutualTLSServerWithHandler(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -423,7 +465,7 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	server, handler := newMutualTLSServerWithHandler(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -459,7 +501,7 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca.write(t, "client-key-corrupted.pem",
 		[]byte("-----BEGIN PRIVATE KEY-----\nMIIinvalidNotValidBase64DataXXXX\n-----END PRIVATE KEY-----\n"), 0o600)
 
-	server, handler := newMutualTLSServerWithHandler(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Corrupted key => NewClient fails closed before any handshake attempt.
@@ -469,9 +511,14 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 		CertFile: certPath,
 		KeyFile:  keyPath,
 	})
-	assertTLSHandshakeCause(t, err)
-	if got := handler.HandlerReached.Load(); got {
-		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", got)
+	// The failure is a client-identity load error (no handshake runs), so the
+	// /readyz check path never observes a handshake. The error is non-nil and
+	// the handler is never reached.
+	if err == nil {
+		t.Fatalf("expected NewClient to fail closed on corrupted client key material")
+	}
+	if handler.HandlerReached.Load() {
+		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", handler.HandlerReached.Load())
 	}
 }
 
@@ -488,13 +535,24 @@ func TestMutualTLSRejectsInvalidCAPEM(t *testing.T) {
 	server := newMutualTLSServer(t, ca)
 	defer server.Close()
 
-	if _, err := NewClient(ClientConfig{
-		URL:      server.URL,
-		CAFile:   invalidCA,
-		CertFile: certPath,
-		KeyFile:  keyPath,
-	}); err == nil {
+	err := func() error {
+		_, e := NewClient(ClientConfig{
+			URL:      server.URL,
+			CAFile:   invalidCA,
+			CertFile: certPath,
+			KeyFile:  keyPath,
+		})
+		return e
+	}()
+	if err == nil {
 		t.Fatalf("expected NewClient to reject an invalid CA PEM")
+	}
+	// Punkt 2: assert the concrete server-side verification cause. An invalid
+	// client trust bundle is rejected with a specific "runtime executor CA is
+	// invalid" message at load time — a concrete trust-bundle verification
+	// failure, not an unspecified transport abort.
+	if got := err.Error(); !strings.Contains(got, "CA is invalid") {
+		t.Fatalf("expected a concrete CA-verification cause, got: %q", got)
 	}
 }
 
@@ -508,7 +566,7 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server, handler := newMutualTLSServerWithHandler(t, ca)
+	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -541,15 +599,17 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	// Build the server with direct access to the *Handler under test.
+	// Build the server with direct access to the *Handler under test. The
+	// /readyz route is served by a checkReachedRecorder (the route Check()
+	// drives), so this test proves a refused handshake never dispatched to the
+	// execute handler.
 	handler, err := NewHandler(fakeResources{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	recorder := &checkReachedRecorder{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-	})
+	mux.Handle("GET /readyz", recorder)
 	mux.Handle("/internal/", handler)
 	server := httptest.NewUnstartedServer(mux)
 	caPool := x509.NewCertPool()
@@ -581,9 +641,11 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	}
 
 	// First a Check that is refused at the handshake.
-	if err := c.Check(context.Background()); err == nil {
+	checkErr := c.Check(context.Background())
+	if checkErr == nil {
 		t.Fatalf("expected handshake failure with an untrusted client certificate")
 	}
+	assertTLSHandshakeCause(t, checkErr)
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
@@ -608,7 +670,7 @@ func TestMutualTLSPositiveRoundTripReadyz(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server := newMutualTLSServer(t, ca)
+	server, _, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -623,6 +685,11 @@ func TestMutualTLSPositiveRoundTripReadyz(t *testing.T) {
 
 	if err := c.Check(context.Background()); err != nil {
 		t.Fatalf("readyz over mutual-TLS: %v", err)
+	}
+	// Positive counter-flag on the check path: the /readyz handler Check drives
+	// was reached (its own per-path flag flipped true) on valid material.
+	if !recorder.entered.Load() {
+		t.Fatalf("check-path /readyz handler was not reached on valid material")
 	}
 }
 
