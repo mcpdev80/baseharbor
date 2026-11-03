@@ -84,6 +84,12 @@ class EphemeralReuseTests(unittest.TestCase):
         self.assertIn("go-unit-tests",
                       {row["check"] for row in result["matrix"]["include"]})
 
+    def test_go_change_invalidates_green_documentation_checks(self):
+        self.checks["include"].append({"check": "documentation-audit"})
+        result = self.decide(["internal/deployment/state.go"])
+        self.assertIn("documentation-audit",
+                      {row["check"] for row in result["matrix"]["include"]})
+
     def test_unknown_dependency_requires_rerun(self):
         result = self.decide(["internal/deployment/state.go"])
         self.assertIn("cli-package-tests",
