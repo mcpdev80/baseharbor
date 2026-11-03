@@ -81,15 +81,32 @@ class ConservativeFallbackTests(unittest.TestCase):
             (repo/'changed.go').write_text('package sample\n\nfunc Good() {}\n')
             git('add', '.')
             git('commit', '-qm', 'candidate')
-            candidate = git('rev-parse', 'HEAD')
+            head = git('rev-parse', 'HEAD')
+            # The event base can predate newer target commits. Formatting must
+            # compare the actual merge parent, excluding new target-only debt.
+            git('checkout', '--detach', '-q', base)
+            (repo/'target-only.go').write_text('package sample;func TargetBad( ){ }\n')
+            git('add', '.')
+            git('commit', '-qm', 'advance target')
+            target = git('rev-parse', 'HEAD')
+            tree = git('merge-tree', '--write-tree', target, head).splitlines()[0]
+            candidate = git('commit-tree', tree, '-p', target, '-p', head, '-m', 'PR integration')
+            git('checkout', '--detach', '-q', candidate)
             # Readability has its own regression suite; exercise this real Git/gofmt step.
             (repo/'scripts').mkdir()
             (repo/'scripts/source-readability-audit.sh').write_text('exit 0\n')
             env = {**os.environ, 'BASE_SHA': base, 'INTEGRATION_SHA': candidate,
-                   'RUNNER_TEMP': directory}
+                   'RUNNER_TEMP': directory, 'HEAD_SHA': head}
             result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
                                     env=env, capture_output=True, text=True)
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            git('checkout', '--detach', '-q', head)
+            env['INTEGRATION_SHA'] = head
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            git('checkout', '--detach', '-q', candidate)
+            env['INTEGRATION_SHA'] = candidate
             (repo/'changed.go').write_text('package sample;func Bad( ){ }\n')
             result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
                                     env=env, capture_output=True, text=True)
