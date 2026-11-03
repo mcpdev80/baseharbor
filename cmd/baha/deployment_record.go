@@ -22,7 +22,16 @@ func init() {
 	// enforcement. The hook defaults to fail-closed, so no tenant target is
 	// admitted without authorization.
 	deployment.TenantOwnerResolver = func(targetName string) (bool, error) {
-		resolved, isTenant, ok := tenantResolvedForTarget(targetName)
+		_, isTenant, ok, scopeErr := tenantResolvedForTarget(targetName)
+		if scopeErr != nil {
+			// A genuine tenant whose enrolled access scope is corrupt or
+			// unreadable must surface a REAL error here, never be translated
+			// into a silent fall-through: returning (false, nil) would let a
+			// pre-existing core-owner admit the deployment despite the invalid
+			// tenant scope. Propagate (false, err) so VerifyDeploymentOwner
+			// reports the failure explicitly.
+			return false, scopeErr
+		}
 		if !ok {
 			// Not a resolvable tenant target: do NOT grant. Return (false, nil)
 			// so VerifyDeploymentOwner falls through to the authoritative
@@ -35,17 +44,8 @@ func init() {
 			// nothing so the Core owner check stays the sole authority.
 			return false, nil
 		}
-		// Genuine tenant: only a valid enrolled access scope grants access.
-		scope, err := connectorScopeForTarget(resolved)
-		if err != nil {
-			// Propagate the real error (unresolved access / changed binding) so
-			// the failure is explicit, never a silent fall-through admission.
-			return false, err
-		}
-		if scope.Validate() != nil {
-			// Tenant without a valid scope: fail closed through the Core check.
-			return false, nil
-		}
+		// Genuine tenant with a valid enrolled access scope: the scope is the
+		// authorized-owner proof. Admit through the grant-only seam.
 		return true, nil
 	}
 }
@@ -229,27 +229,34 @@ func installationRootFor(targetStateRoot string) string {
 // its scope proves the node that governs the deployment, replacing the blanket
 // TenantID bypass that the state-owner review rejected. The middle return
 // distinguishes "not a tenant at all" (enforcement stays with the Core owner)
-// from a tenant that lacks a valid enrolled binding.
-func tenantResolvedForTarget(targetName string) (deployment.ResolvedTarget, bool, bool) {
+// from a tenant that lacks a valid enrolled binding. The final return carries
+// the resolved access-scope error so the caller can propagate it as a real
+// hook error instead of translating it into a silent non-tenant fall-through.
+func tenantResolvedForTarget(targetName string) (deployment.ResolvedTarget, bool, bool, error) {
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
-		return deployment.ResolvedTarget{}, false, false
+		return deployment.ResolvedTarget{}, false, false, nil
 	}
 	resolved, err := cfg.ResolveTarget(targetName, "")
 	if err != nil {
-		return deployment.ResolvedTarget{}, false, false
+		return deployment.ResolvedTarget{}, false, false, nil
 	}
 	if resolved.TenantID == "" {
-		return resolved, false, true
+		return resolved, false, true, nil
 	}
-	scope, err := connectorScopeForTarget(resolved)
-	if err != nil {
-		return deployment.ResolvedTarget{}, false, true
+	scope, scopeErr := connectorScopeForTarget(resolved)
+	if scopeErr != nil {
+		// Do NOT collapse this into (isTenant=false, ok=true): a tenant whose
+		// enrolled scope is corrupt or unreadable must be reported as an error,
+		// never admitted through the Core-owner path.
+		return deployment.ResolvedTarget{}, false, true, scopeErr
 	}
 	if scope.Validate() != nil {
-		return deployment.ResolvedTarget{}, false, true
+		// Tenant without a valid scope: no error, just no authorization —
+		// fail closed through the Core check.
+		return deployment.ResolvedTarget{}, false, true, nil
 	}
-	return resolved, true, true
+	return resolved, true, true, nil
 }
 
 // installationRootFor resolves the Core installation runtime root

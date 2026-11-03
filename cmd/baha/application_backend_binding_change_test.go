@@ -39,8 +39,16 @@ func backendBindingFixture(t *testing.T, kind capability.ProviderKind) resolvedA
 func backendBindingFixtureEmpty(t *testing.T, kind capability.ProviderKind) resolvedApplication {
 	r := backendBindingFixture(t, kind)
 	installRoot := filepath.Join(r.TargetStateRoot, "runtime")
-	if _, err := os.Stat(installRoot); err == nil {
-		_ = os.RemoveAll(installRoot)
+	// A Stat failure or a removal failure is a setup error, not a benign
+	// no-op: this fixture asserts a Coreless target, so a swallowed error
+	// would silently leave installation-owned state behind and let the
+	// negative-path assertion pass on the wrong filesystem. Fail closed,
+	// matching the configureTestTargetEmpty helper style.
+	if _, statErr := os.Stat(installRoot); statErr != nil {
+		t.Fatalf("stat installation root for empty backend fixture: %v", statErr)
+	}
+	if err := os.RemoveAll(installRoot); err != nil {
+		t.Fatalf("remove installation root for empty backend fixture: %v", err)
 	}
 	// backendBindingFixture removed the Core installation, leaving a Coreless
 	// target. Register a valid node-connector access binding so the grant-only
