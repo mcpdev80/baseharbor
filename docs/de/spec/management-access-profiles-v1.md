@@ -87,11 +87,67 @@ type EncryptionDescriptor struct {
 }
 ```
 
-## Vertragsinvarianten (erzwungen von Schema + Go-Tests)
+## Rufbarer Produktionsweg
+
+`contracts/managementaccess/v1` ist ein compilables Go-Paket, das den Wire-
+Vertrag an die bestehende autoritative Schnittstelle bindet, statt einen
+ungebrauchten Adapter zu deklarieren. `ManagementAccessProfile.ValidateKindEnforcement`
+schlägt pro Typ fail-closed fehl: Ein Management-Profil braucht vorhandene,
+sichere Storage; eine Enrollment muss sensibel sein; eine Zugangsdat AUSGABE
+braucht einen verschlüsselten Descriptor. `ManagementAccessProfile.ValidateTrust`
+berechnet den CA-Fingerprint aus dem eigentlichen Zertifikat
+(`internal/hosttrust.ParseCA`) und lehnt einen gespeicherten Fingerprint ab, der
+nicht übereinstimmt. `ValidityWindow` lehnt ein abgelaufenes,zukünftiges oder
+verkehrtes Fenster ab. `ValidateRecipientBind` bindet den Empfänger an den
+Einmal-Enrollment-Scope (`internal/targetenrollment`) und lehnt einen fremden Pin
+ab, und `EnrollDevice` führt die Einmal-Enrollment über
+`targetenrollment.Authority` aus.
+
+## Beziehung zu `contracts/connection-profile/v1`
+
+`management-access/v1` und `connection-profile/v1` überschneiden sich bei
+Identitäts- und Trust-Feldern, erfüllen aber eine andere Aufgabe.
+`connection-profile/v1` ist **nur Transport**: es wählt den Core-Endpunkt und
+den Transport-Trust einer Verbindung. `management-access/v1` ist **nur Zugriff**:
+es deklariert, was ein nicht-geheimes Management-Profil, eine sensible
+Einmal-Enrollment oder eine verschlüsselte ZugangsdatAusgabe mitführt und was das
+Importieren dieser Objekte nicht darf.
+
+Beides vorhanden: der `connection-profile/v1`-Trust verankert den Transport und
+der `management-access/v1`-Trust muss zur selben CA hashen (`sha256`) und am
+Empfänger/Scope des Zugriffs-Records gebunden bleiben; der Transport-Binding
+erweitert den Zugriffs-Record nicht. Der `management-profile`-Typ darf keine
+Transport-`connection-profile/v1`-Rollenfelder mitführen (Umfang für den Zugriff,
+nicht für den Transport).
+
+## Wiederverwendung, Speicher und Disaster Recovery
+
+Trust wird über den gemeinsamen `internal/hosttrust`-Anker und -Fingerprint
+geprüft; der Zugriffs-Record wiederverwendet dasselbe CA-Material statt einer
+neuen Vertrauenswurzel. Einmal-Enrollment wiederverwendet
+`internal/targetenrollment` (Core-Issuer + einmaliger Store); die Knoten-Zulassung
+wiederverwendet den bestehenden `internal/targetsession`-Pfad. Zugriffs-Records
+führen keinen neuen Transport mit; sie wiederverwenden die nativen Transportmittel
+(Git, SSH, Kubernetes, Cloud), die für das Ziel bereits existieren. Speicher-Trennung:
+eine Einmal-Enrollment ist sensibel und einmalig, eine ZugangsdatAusgabe ist
+verschlüsselt, und Disaster-Recovery-Speicher steht außerhalb des sensiblen
+Einmal-Pfads (`disaster_recovery` beim Storage, `encrypted` beim Export).
+
+## Vertragsinvarianten
+
+Erzwungen von Schema + Go-Tests:
 
 - Genau eines der drei `kind`-Werte ist vorhanden.
 - `import` ist immer `{rights_granting:false, plugin_execution:false, credential_redirect:false}`.
 - Ein `device-enrollment`-Record muss sensibel sein (protected-durable oder session-only, nie ein Plaintext-Durable-Ausgabe).
 - Ein `credential-export`-Record muss mit einem realen Algorithmus und Nonce verschlüsselt sein.
-- `not_before`/`not_after` sind RFC3339; ein Record, dessen Fenster abgelaufen ist, wird durch die Gültigkeitsprüfung abgelehnt.
-- Der `management-profile`-Typ darf keine Transport-`connection-profile/v1`-Rollenfelder mitführen (Umfang für den Zugriff, nicht für den Transport).
+
+Erzwungen vom rufbaren Go-Weg:
+
+- Der gespeigte Trust-Fingerprint passt zum eigentlichen Zertifikat (`ValidateTrust`).
+- Das Gültigkeitsfenster ist geordnet, aktuell und nicht abgelaufen (`ValidityWindow`).
+- Der Empfänger ist am Einmal-Enrollment-Scope gebunden; ein fremder Pin wird abgelehnt (`ValidateRecipientBind` / `EnrollDevice`).
+
+Nicht schema-gesteuert (Doku-Verhalten, kein Gate):
+
+- Der `management-profile`-Typ darf keine Transport-`connection-profile/v1`-Rollenfelder `access.role` mitführen (Umfang für den Zugriff, nicht für den Transport).

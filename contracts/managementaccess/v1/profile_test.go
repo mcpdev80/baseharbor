@@ -1,4 +1,4 @@
-package contracts_test
+package managementaccess_test
 
 import (
 	"encoding/json"
