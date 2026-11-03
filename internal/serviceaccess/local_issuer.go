@@ -256,7 +256,7 @@ func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, requ
 	if err != nil || leaf.CheckSignatureFrom(ca) != nil {
 		return IssuedCertificate{}, errors.New("local issuer refuses unverifiable renewal")
 	}
-	list, err := i.revocations(ca)
+	list, err := i.revocations(ca, false)
 	if err != nil {
 		return IssuedCertificate{}, err
 	}
@@ -290,7 +290,7 @@ func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	path := filepath.Join(i.Dir, "revocations.pem")
 	var entries []x509.RevocationListEntry
 	sequence := big.NewInt(1)
-	list, err := i.revocations(ca)
+	list, err := i.revocations(ca, true)
 	if err != nil {
 		return err
 	}
@@ -312,13 +312,19 @@ func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	return writeLocalIssuerAtomic(path, pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: der}))
 }
 
-// revocations validates protected state before reading it, including during
-// renewal. An expired publication still retains every permanent revocation.
-func (i *LocalIssuer) revocations(ca *x509.Certificate) (*x509.RevocationList, error) {
+// revocations validates protected state before reading it. A missing CRL is
+// tolerated only when the caller is itself creating the first publication
+// (tolerateMissing=true); on every consumption path (tolerateMissing=false) a
+// missing revocation list is fail-closed, because the issuer cannot prove the
+// current leaf is not revoked.
+func (i *LocalIssuer) revocations(ca *x509.Certificate, tolerateMissing bool) (*x509.RevocationList, error) {
 	path := filepath.Join(i.Dir, "revocations.pem")
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		if tolerateMissing {
+			return nil, nil
+		}
+		return nil, errors.New("local revocation list unavailable")
 	}
 	if err != nil {
 		return nil, err

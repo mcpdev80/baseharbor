@@ -49,6 +49,16 @@ func TestLocalIssuerStableAuthorityAndActualTLS(t *testing.T) {
 	if _, err := cert.Verify(x509.VerifyOptions{Roots: roots, DNSName: "foreign.localhost"}); err == nil {
 		t.Fatal("foreign name accepted")
 	}
+	// Establish the revocation list before renewal: a missing local CRL must
+	// fail closed on the consumption path. Use a distinct serial so the leaf
+	// under test is not itself revoked.
+	other, err := i.Issue(context.Background(), CertificateRequest{CommonName: "other", TTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := i.Revoke(context.Background(), other.Serial); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := i.Renew(context.Background(), leaf, CertificateRequest{CommonName: "database", DNSNames: []string{"database.localhost"}, TTL: time.Hour}); err != nil {
 		t.Fatal(err)
 	}
@@ -144,4 +154,40 @@ func TestLocalIssuerSignedPersistentIdempotentRevocation(t *testing.T) {
 	if err := i.Revoke(context.Background(), "invalid"); err == nil {
 		t.Fatal("invalid serial accepted")
 	}
+}
+
+func TestLocalIssuerMissingCRLFailsClosed(t *testing.T) {
+	i, err := EnsureLocalIssuer(filepath.Join(t.TempDir(), "pki"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := i.Issue(context.Background(), CertificateRequest{CommonName: "client", TTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No CRL published yet: on the consumption path a missing local CRL must
+	// fail closed, not silently return (nil, nil).
+	if _, err := i.revocations(mustLoadCA(t, i), false); err == nil {
+		t.Fatal("missing local CRL accepted; revocation path did not fail closed")
+	}
+	// A first Revoke may still bootstrap a CRL from a missing one.
+	if err := i.Revoke(context.Background(), leaf.Serial); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same fail-closed bound blocks a renewal that would otherwise trust a
+	// missing revocation list.
+	if _, err := i.Renew(context.Background(), leaf, CertificateRequest{CommonName: "client", TTL: time.Hour}); err == nil {
+		t.Fatal("renewal accepted with missing local CRL")
+	}
+}
+
+func mustLoadCA(t *testing.T, i *LocalIssuer) *x509.Certificate {
+	t.Helper()
+	ca, _, _, err := i.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ca
 }
