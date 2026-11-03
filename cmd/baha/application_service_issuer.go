@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -73,4 +74,16 @@ func materializeApplicationServiceIssuer(issuer serviceaccess.Issuer) error {
 		return err
 	}
 	return nil
+}
+
+// resolveManagementConnectionIssuer adapts the real production
+// serviceaccess.Issuer into the coreinstallation.Issuer decision surface that
+// the v0.4.27 authority contract consumes. It projects only the read-only
+// boundary (Status/Revoke) through the stdlib-only installauthority leaf, so
+// coreinstallation never imports serviceaccess for authority purposes; the real
+// issuer implementation stays in serviceaccess. This is the composition-root
+// injection point for the management-connection authority, mirroring how the
+// root injects the stableid lifecycle lock into coreinstallation.
+func resolveManagementConnectionIssuer(issuer serviceaccess.Issuer) coreinstallation.Issuer {
+	return serviceaccess.NewIssuerAdapter(issuer)
 }
