@@ -252,6 +252,19 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// configureTestTarget seeds a bare authoritative Core so managed
+			// deployments have an owner; but the artifact="" probe must observe a
+			// genuinely NOT-DEPLOYED Target (empty runtime), so drop the seed's
+			// bare installation before the not-deployed/incomplete boundary check.
+			if artifact == "" {
+				if entries, rerr := os.ReadDir(root); rerr == nil {
+					for _, e := range entries {
+						if e.Name() != "docker-engine.json" {
+							_ = os.Remove(filepath.Join(root, e.Name()))
+						}
+					}
+				}
+			}
 			if artifact != "" {
 				if err := os.MkdirAll(root, 0700); err != nil {
 					t.Fatal(err)
