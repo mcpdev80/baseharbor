@@ -929,7 +929,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 			t.Logf("measured post-Edit fact: %+v", observeApplicationProviderFacts(context.Background(), afterResolved)[selected.ID])
 			t.Logf("native selected SQL registry: %+v", afterResolved.Manifest.Services)
 			if nativeRuntime, runtimeErr := detectRuntimeForTarget(ctx, target); runtimeErr == nil {
-				files := application.RuntimeFilesFor(application.DefaultStore(), afterResolved.Manifest)
+				// Probe the production runtime home: the apply lifecycle writes
+				// runtime.env to the resolved (owned-target) store, not the default
+				// repo-owner store. Verify where production actually converges.
+				files := application.RuntimeFilesFor(afterResolved.Store, afterResolved.Manifest)
 				inventory, probeErr := application.ObserveSQLConsumerInventory(ctx, application.NewRuntimeBackendProbeExecutor(nativeRuntime, files), files, afterResolved.Manifest, "default")
 				t.Logf("actual SQL consumer inventory: %+v probe=%v", inventory, probeErr)
 			} else {
