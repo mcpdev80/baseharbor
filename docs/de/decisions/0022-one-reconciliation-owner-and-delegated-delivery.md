@@ -30,7 +30,7 @@ Besitzererschaft ist zurückgestellt (siehe Beschluss 2 und die Folgekarten).
 ### 2. Zweideutige Besitzer schlagen bei Konflikt fehl (closed)
 
 Ein gespeicherter Datensatz blockiert ein Speichern auf genau zwei Arten: die
-protokollierte Konflikt-Flagge ist gesetzt, oder der persistierter Besitzer ist
+protokollierte Konflikt-Flagge ist gesetzt, oder der persistierte Besitzer ist
 `external` und das Speichern ist direkt — in beiden Fällen schlägt das Speichern
 beim Datensatz-Speichern fail-closed fehl. Ein delegiertes Speichern wird durch
 einen persistierten Besitzer `baseharbor` nicht verweigert; maßgeblich ist für es

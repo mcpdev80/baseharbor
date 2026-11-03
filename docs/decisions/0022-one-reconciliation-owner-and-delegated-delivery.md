@@ -35,7 +35,7 @@ direct — in both cases the save fails closed at record save. A delegated save
 is not refused by a persisted `baseharbor` owner; for it the conflict flag
 governs. The guard performs no symmetric mode-versus-owner matrix and observes
 no live reconciler: where the recorded state expresses exactly one owner, this
-decision's admission condition holds.
+decision's admission condition holds. The guard lives at
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied
 `Observed.Owner` cannot bypass it. A direct save is refused if the persisted owner is external; a recorded conflict of two active
