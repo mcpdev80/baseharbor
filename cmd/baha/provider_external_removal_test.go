@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -22,6 +23,14 @@ func externalRemovalTransportFixture(t *testing.T) application.ProviderImpactSco
 	configureTestTarget(t)
 	t.Chdir(t.TempDir())
 	root := t.TempDir()
+	// Seed ownership explicitly so the provider-registry ownership check can be
+	// verified from the fixture alone (no reliance on a non-group-writable tmp
+	// on the CI runner). The verification treats a group-writable ancestor as
+	// unverifiable ownership, so the seeded state dir must be owned and
+	// non-group-writable.
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("BASEHARBOR_STATE_DIR", root)
 	reg := externalprovider.Registration{ID: "team-db", ProviderID: "team/postgresql", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Endpoint: "postgres://db.example:5432/app", Trust: externalprovider.Trust{Mode: externalprovider.TrustSystem}}
 	if err := application.RegisterExternalProviderAt(root, reg); err != nil {
