@@ -41,8 +41,9 @@ An external reconciler owns reconciliation.
 
 Exactly one reconciliation owner is valid for a managed resource set. A conflicting
 observation (two active owners for the same resource set) fails closed at the
-deployment apply path, enforced by internal/delivery guard
-(internal/deployment.SaveDeploymentRecord) before any state is written.
+deployment **record-save** boundary, enforced by internal/delivery guard
+(internal/deployment.SaveDeploymentRecord) before any state is written. Live
+cross-process reconciliation outside the record-save guard is deferred.
 
 ## Placement
 
@@ -137,7 +138,7 @@ Denials the typed contract enforces:
 - Runtime Provider does not decide direct/delegated ownership.
 - Capability Provider does not decide direct/delegated ownership.
 - direct and delegated ownership cannot be active simultaneously for the same
-  managed resource set.
+  managed resource set at record save; the guard fails closed on conflict.
 - provider-native GitOps resources remain below the Delivery Provider boundary.
 - selection provenance and immutable revision may be recorded without changing
   portable Application Intent.

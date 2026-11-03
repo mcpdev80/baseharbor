@@ -31,11 +31,13 @@ einen aktiven Mutation/Versöhnungs-Besitzer.
 Wenn eine Auswahlen-Beobachtung gleichzeitig einen direkten `baseharbor`-Besitzer
 und einen delegierten `external`-Besitzer für dieselben Ressourcensatz aktiv
 beobachtet, schlägt die Beobachtung bei Konflikt fehl: BaseHarbor meldet den Konflikt
-und verweigert Anwenden oder Beobachten, bis genau ein Besitzer in portable Intent
-ausdrückbar ist. Der Guard sitzt in `internal/deployment.SaveDeploymentRecord`: er
-liest den autoritativen persistierten Vor-Besitzer vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner`
-ihn nicht umgehen kann. Eine direkte Mutation verweigert sich, während ein externer Versöhner bereits besitzt; ein
-beobachteter Konflikt zweier aktiven Besitzer schlägt bei Konflikt fehl.
+beim Speichern des Datensatzes und verweigert das Anwenden oder Beobachten bis genau ein
+Besitzer in portable Intent ausdrückbar ist. Der Guard sitzt in
+`internal/deployment.SaveDeploymentRecord`: er liest den autoritativen persistierten Vor-Besitzer
+vor jedem Schreibzugriff, so dass ein Caller-Wert in `Observed.Owner` ihn nicht umgehen kann.
+Eine direkte Mutation verweigert sich, während ein externer Versöhner bereits besitzt; ein
+beobachteter Konflikt zweier aktiven Besitzer schlägt bei Konflikt fehl. Dies ist nur der
+Speichern-des-Datensatzes-Check; die prozessübergreifende aktive Versöhnung ist abgehängt.
 
 ### 3. Direkte Lieferung bleibt ohne GitOps
 

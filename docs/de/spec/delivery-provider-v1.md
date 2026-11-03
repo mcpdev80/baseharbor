@@ -42,9 +42,9 @@ Ein externer Versöhner besitzt die Versöhnung.
 
 Für einen verwalteten Ressourcensatz ist genau ein Versöhnungs-Besitzer gültig.
 Ein Konfliktbeobachtung (zwei aktive Besitzer für denselben Ressourcensatz) schlägt
-am Bereitstellung-Anwendungspfad ohne Downgrade fehl; durchgesetzt durch den
+bereitstellungsbegrenzt beim Speichern des Datensatzes ohne Downgrade fehl; durchgesetzt durch den
 internal/delivery Guard (internal/deployment.SaveDeploymentRecord) vor jedem
-Schreibzugriff auf den Zustand.
+Schreibzugriff auf den Zustand. Live cross-prozessuale Versöhner außerhalb dieses Speicherns ist abgehängt.
 
 ## Platzierung
 
@@ -140,7 +140,7 @@ Negationen, die der typisierte Vertrag erzwingt:
 - Lieferung-Provider-Produkte treten niemals in portable Anwendungskapazitäts-Absicht ein.
 - Runtime-Provider entscheidet nicht direkt/delegiert-Besitzer.
 - Capability-Provider entscheidet nicht direkt/delegiert-Besitzer.
-- direkt und delegiert-Besitzer können für denselben verwalteten Ressourcensatz nicht gleichzeitig aktiv sein.
+- direkt und delegiert-Besitzer können beim Speichern des Datensatzes für denselben verwalteten Ressourcensatz nicht gleichzeitig aktiv sein; der Guard schlägt bei Konflikt fehl.
 - provider-native GitOps-Ressourcen bleiben unter der Lieferung-Provider-Grenze.
 - Auswahl-Herkunft und unveränderliche Revision kann ohne Veränderung der portablen Application Intent aufgehalten werden.
 

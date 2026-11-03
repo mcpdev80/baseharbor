@@ -30,13 +30,15 @@ owner at any observed moment.
 
 If a selection observes both a direct `baseharbor` owner and a delegated
 `external` owner active for the same resource set, the observation fails closed:
-BaseHarbor reports the conflict and refuses to apply or observe until exactly one
-owner is expressible in portable intent. The guard lives at
+BaseHarbor reports the conflict at **record save** and refuses to persist an apply
+or observation while exactly one owner is not expressible in portable intent. The
+guard lives at
 `internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
 previous owner before any state is written, so a caller-supplied
 `Observed.Owner` cannot bypass it. A direct (BaseHarbor-owned) mutation refuses
 while an external reconciler already owns the resource; a recorded conflict of
-two active owners refuses closed.
+two active owners refuses closed. This is the record-save check only; live
+cross-process reconciliation outside the record-save guard is deferred.
 
 ### 3. Direct delivery stays without GitOps
 
@@ -46,7 +48,7 @@ and those states stay below the Delivery Provider boundary.
 
 ## Consequences
 
-- Two competing reconcilers for one resource set are rejected before application, not after partial mutation: the one-writer guard in
+- Two competing reconcilers for one resource set are rejected at record save, not after partial mutation: the one-writer guard in
   `internal/deployment.SaveDeploymentRecord` reads the authoritative persisted owner before any state is written and fails closed.
 - BaseHarbor's own bindings/operation receipts remain BaseHarbor-owned regardless of delivery mode.
 - GitOps systems (Argo CD, Flux) stay implementations; the one-owner invariant is portable intent, not a tool.
