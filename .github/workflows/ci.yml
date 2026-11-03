@@ -552,7 +552,7 @@ jobs:
             python3 "$RUNNER_TEMP/pr-incremental-reuse.py" \
               --repo "$REPO" --branch "$BRANCH" --pr-number "$PR_NUMBER" \
               --head "$HEAD_SHA" --integration "$INTEGRATION_SHA" \
-              --run-id "$RUN_ID" --workflow-id "0" \
+              --run-id "$RUN_ID" \
               --token "$GH_TOKEN" --demo-ref "$DEMO_REF" \
               --plan pr-plan.json --runtime-matrix "$RUNNER_TEMP/pr-runtime-matrix.json" \
               --output "$GITHUB_OUTPUT"
