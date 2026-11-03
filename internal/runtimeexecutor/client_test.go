@@ -27,14 +27,14 @@ import (
 // testCA is a throwaway PKI used to drive a real mutual-TLS handshake against a
 // local runtime executor server. It is NOT wired to any production trust anchor.
 type testCA struct {
-	dir          string
-	caCertPEM    []byte
-	caKeyPEM     []byte
-	caCert       *x509.Certificate
-	caKey        *ecdsa.PrivateKey
-	serverCert   []byte
-	serverKey    []byte
-	caCertPath   string
+	dir            string
+	caCertPEM      []byte
+	caKeyPEM       []byte
+	caCert         *x509.Certificate
+	caKey          *ecdsa.PrivateKey
+	serverCert     []byte
+	serverKey      []byte
+	caCertPath     string
 	serverCertPath string
 	serverKeyPath  string
 }
@@ -49,13 +49,13 @@ func newTestCA(t *testing.T) *testCA {
 		t.Fatal(err)
 	}
 	caTemplate := x509.Certificate{
-		SerialNumber:       big.NewInt(1),
-		Subject:            pkix.Name{CommonName: "baseharbor-runtime-test-ca"},
-		NotBefore:          time.Now().Add(-time.Hour),
-		NotAfter:           time.Now().Add(24 * time.Hour),
-		IsCA:               true,
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "baseharbor-runtime-test-ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		IsCA:                  true,
 		BasicConstraintsValid: true,
-		KeyUsage:           x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 	}
 	caDER, err := x509.CreateCertificate(rand.Reader, &caTemplate, &caTemplate, &caKey.PublicKey, caKey)
 	if err != nil {
@@ -169,11 +169,11 @@ type fakeResources struct{}
 
 func (fakeResources) Create(_ context.Context, app, env, name string) (objectstorage.RuntimeResourceBinding, error) {
 	return objectstorage.RuntimeResourceBinding{
-		ResourceID: "res-" + name,
-		Endpoint:   "https://seaweedfs-access:8443",
-		Bucket:     "runtime",
-		Region:     "local",
-		AccessKeyID: "ak",
+		ResourceID:      "res-" + name,
+		Endpoint:        "https://seaweedfs-access:8443",
+		Bucket:          "runtime",
+		Region:          "local",
+		AccessKeyID:     "ak",
 		SecretAccessKey: "sk",
 	}, nil
 }
@@ -422,6 +422,79 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	}
 }
 
+// TestMutualTLSRejectsHandshakeDoesNotReachHandler proves that a negative TLS
+// handshake never dispatches to the handler body: the server requires and
+// verifies client certificates, so an untrusted client certificate is refused
+// at the handshake layer before ServeHTTP runs. The handler sets an atomic
+// HandlerReached flag on entry; a refused handshake must leave it false, and a
+// subsequent Execute over the rejected identity must not reach the handler.
+func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
+	ca := newTestCA(t)
+	// Client cert from a foreign CA the server does not trust.
+	foreignCA := newTestCA(t)
+	client := foreignCA.workloadClient(t, workloadSPIFFE)
+	certPath, keyPath := foreignCA.clientCertPaths(t, client)
+
+	// Build the server with direct access to the *Handler under test.
+	handler, err := NewHandler(fakeResources{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
+	mux.Handle("/internal/", handler)
+	server := httptest.NewUnstartedServer(mux)
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
+		t.Fatal("failed to parse test CA for client trust")
+	}
+	server.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  caPool,
+	}
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ca.serverKey})
+	cert, err := tls.X509KeyPair(ca.serverCert, serverKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.TLS.Certificates = []tls.Certificate{cert}
+	server.StartTLS()
+	defer server.Close()
+
+	c, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	// First a Check that is refused at the handshake.
+	if err := c.Check(context.Background()); err == nil {
+		t.Fatalf("expected handshake failure with an untrusted client certificate")
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	}
+
+	// Then an Execute against the same rejected identity.
+	if _, err := c.Execute(context.Background(), runtimeoperation.Request{
+		Capability:   ObjectStorageS3V1,
+		Operation:    "runtime.create",
+		ResourceName: "asset-1",
+	}); err == nil {
+		t.Fatalf("expected Execute to fail on the refused handshake")
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused Execute (HandlerReached=%v)", got)
+	}
+}
+
 // TestMutualTLSPositiveRoundTripReadyz exercises the readiness path over a real
 // mutual-TLS handshake with the correct client identity.
 func TestMutualTLSPositiveRoundTripReadyz(t *testing.T) {
@@ -452,4 +525,238 @@ var _ = bytes.MinRead
 func readClientPair(t *testing.T, dir, certPath, keyPath string) (tls.Certificate, error) {
 	t.Helper()
 	return tls.LoadX509KeyPair(certPath, keyPath)
+}
+
+// Helpers restored verbatim from 195886cc to support the regression tests below.
+
+func newCA(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "baseharbor-test-ca"},
+		NotBefore:             time.Now().Add(-time.Minute),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ca, key
+}
+
+func testTLSClient(t *testing.T) *Client {
+	t.Helper()
+	ca, caKey := newCA(t)
+	return testTLSClientWithCA(t, ca, caKey)
+}
+
+func testTLSClientWithCA(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey) *Client {
+	t.Helper()
+	dir := t.TempDir()
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caFile, certFile, keyFile := writeCertFiles(t, dir, ca, caKey, leafKey)
+
+	client, err := NewClient(ClientConfig{
+		URL:      "https://127.0.0.1:8443",
+		CAFile:   caFile,
+		CertFile: certFile,
+		KeyFile:  keyFile,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	return client
+}
+
+func writeCertFiles(t *testing.T, dir string, ca *x509.Certificate, caKey *ecdsa.PrivateKey, leafKey *ecdsa.PrivateKey) (caFile, certFile, keyFile string) {
+	t.Helper()
+	caPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})
+	caFile = filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caFile, caPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	certFile, keyFile = writeLeaf(t, dir, ca, caKey, leafKey, nil, []net.IP{net.ParseIP("127.0.0.1")})
+	return caFile, certFile, keyFile
+}
+
+func writeLeaf(t *testing.T, dir string, ca *x509.Certificate, caKey *ecdsa.PrivateKey, leafKey *ecdsa.PrivateKey, dnsNames []string, ipAddrs []net.IP) (certFile, keyFile string) {
+	t.Helper()
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "baseharbor-client"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	if len(dnsNames) > 0 {
+		template.DNSNames = dnsNames
+	}
+	if len(ipAddrs) > 0 {
+		template.IPAddresses = ipAddrs
+	}
+	leafDER, err := x509.CreateCertificate(rand.Reader, template, ca, &leafKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafDER})
+	certFile = filepath.Join(dir, "client-cert.pem")
+	if err := os.WriteFile(certFile, leafPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(leafKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER})
+	keyFile = filepath.Join(dir, "client-key.pem")
+	if err := os.WriteFile(keyFile, keyPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return certFile, keyFile
+}
+
+func caSignedTLSServer(t *testing.T, ca *x509.Certificate, caKey *ecdsa.PrivateKey, handler http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverCert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber: big.NewInt(3),
+		Subject:      pkix.Name{CommonName: "baseharbor-server"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}, ca, &serverKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := x509.ParseCertificate(serverCert)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := tls.Certificate{Certificate: [][]byte{serverCert}, Leaf: leaf, PrivateKey: serverKey}
+	srv := httptest.NewUnstartedServer(handler)
+	srv.TLS = &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequestClientCert,
+	}
+	srv.StartTLS()
+	return srv
+}
+
+// --- Restored regression tests (deleted in 195886cc..067274a1, added verbatim) ---
+
+func TestNewClientRequiresHTTPS(t *testing.T) {
+	dir := t.TempDir()
+	ca, caKey := newCA(t)
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caFile, certFile, keyFile := writeCertFiles(t, dir, ca, caKey, leafKey)
+
+	_, err = NewClient(ClientConfig{URL: "http://127.0.0.1:8443", CAFile: caFile, CertFile: certFile, KeyFile: keyFile})
+	if err == nil {
+		t.Fatal("expected failure for non-HTTPS URL")
+	}
+}
+
+func TestNewClientRejectsEmptyURL(t *testing.T) {
+	if _, err := NewClient(ClientConfig{}); err == nil {
+		t.Fatal("expected failure for empty URL")
+	}
+}
+
+func TestNewClientRejectsUnparseableURL(t *testing.T) {
+	if _, err := NewClient(ClientConfig{URL: ":///"}); err == nil {
+		t.Fatal("expected failure for unparseable URL")
+	}
+}
+
+func TestNewClientRejectsMissingCA(t *testing.T) {
+	dir := t.TempDir()
+	ca, caKey := newCA(t)
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, certFile, keyFile := writeCertFiles(t, dir, ca, caKey, leafKey)
+	if _, err := NewClient(ClientConfig{URL: "https://127.0.0.1:8443", CAFile: filepath.Join(dir, "missing.pem"), CertFile: certFile, KeyFile: keyFile}); err == nil {
+		t.Fatal("expected failure for missing CA file")
+	}
+}
+
+func TestCheckReadinessRejectsNon200(t *testing.T) {
+	ca, caKey := newCA(t)
+	client := testTLSClientWithCA(t, ca, caKey)
+	srv := caSignedTLSServer(t, ca, caKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	client.endpoint = srv.URL
+
+	if err := client.Check(context.Background()); err == nil {
+		t.Fatal("expected readiness failure on non-200")
+	}
+}
+
+func TestExecuteRoundTripRequiresClientIdentity(t *testing.T) {
+	ca, caKey := newCA(t)
+	client := testTLSClientWithCA(t, ca, caKey)
+	gotIdentity := false
+	srv := caSignedTLSServer(t, ca, caKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		gotIdentity = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"resource_id":"op-123"}`))
+	}))
+	defer srv.Close()
+	client.endpoint = srv.URL
+
+	result, err := client.Execute(context.Background(), runtimeoperation.Request{
+		Capability:   "execute",
+		Operation:    "run",
+		ResourceName: "node-a",
+	})
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if result.ResourceID != "op-123" {
+		t.Fatalf("resource_id = %q", result.ResourceID)
+	}
+	if !gotIdentity {
+		t.Fatal("server did not observe client identity (mutual TLS not enforced)")
+	}
+}
+
+func TestExecuteRejectsNon200(t *testing.T) {
+	ca, caKey := newCA(t)
+	client := testTLSClientWithCA(t, ca, caKey)
+	srv := caSignedTLSServer(t, ca, caKey, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+	client.endpoint = srv.URL
+
+	if _, err := client.Execute(context.Background(), runtimeoperation.Request{Capability: "execute", Operation: "run", ResourceName: "node-a"}); err == nil {
+		t.Fatal("expected Execute failure on non-200")
+	}
 }

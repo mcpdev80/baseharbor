@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 )
@@ -22,6 +23,10 @@ type ResourceManager interface {
 
 type Handler struct {
 	resources ResourceManager
+	// HandlerReached is set (atomically) once ServeHTTP has entered its body.
+	// A negative handshake that is refused before dispatch must leave it false,
+	// proving the handler was never invoked to service the rejected request.
+	HandlerReached atomic.Bool
 }
 
 type ExecuteRequest struct {
@@ -43,6 +48,7 @@ func NewHandler(resources ResourceManager) (*Handler, error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.HandlerReached.Store(true)
 	if r.Method != http.MethodPost || r.URL.Path != "/internal/v1/execute" {
 		http.NotFound(w, r)
 		return
