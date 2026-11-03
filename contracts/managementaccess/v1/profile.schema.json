@@ -118,12 +118,69 @@
       }
     }
   },
-  "if": {
-    "properties": {
-      "kind": { "const": "credential-export" }
+  "allOf": [
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "credential-export" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "required": ["export"]
+      },
+      "description": "A credential-export record must carry an encrypted export descriptor."
+    },
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "management-profile" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "not": { "required": ["export"] }
+      },
+      "description": "An export descriptor is forbidden on a management-profile; export is credential-export-only."
+    },
+    {
+      "if": {
+        "allOf": [
+          { "properties": { "kind": { "const": "device-enrollment" } } },
+          { "required": ["kind"] }
+        ]
+      },
+      "then": {
+        "not": { "required": ["export"] }
+      },
+      "description": "An export descriptor is forbidden on a device-enrollment; export is credential-export-only."
+    },
+    {
+      "if": {
+        "properties": { "storage": { "properties": { "class": { "const": "session-only" } } } }
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "properties": { "durable": { "const": false } }
+          }
+        }
+      },
+      "description": "A session-only record must never be durable (durable=false); a session-only/durable contradiction fails closed."
+    },
+    {
+      "if": {
+        "properties": { "storage": { "properties": { "class": { "const": "protected-durable" } } } }
+      },
+      "then": {
+        "properties": {
+          "storage": {
+            "properties": { "encrypted": { "const": true } },
+            "required": ["encrypted"]
+          }
+        }
+      },
+      "description": "A durable record must be encrypted; plaintext durable storage fails closed."
     }
-  },
-  "then": {
-    "required": ["export"]
-  }
+  ]
 }

@@ -84,11 +84,6 @@ func managementAccessBaseline(t *testing.T, resolved *jsonschema.Resolved) map[s
 			"encrypted":         true,
 			"disaster_recovery": true,
 		},
-		"export": map[string]any{
-			"algorithm": "aes-256-gcm",
-			"encrypted": true,
-			"nonce":     "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z",
-		},
 	}
 	if err := resolved.Validate(descriptor); err != nil {
 		t.Fatalf("schema-valid management-access/v1 descriptor rejected by the packaged schema: %v", err)
@@ -171,7 +166,11 @@ func TestManagementAccessSchemaRejectsMissingTopLevelRequired(t *testing.T) {
 	resolved := managementAccessResolve(t)
 	base := managementAccessBaseline(t, resolved)
 
-	for _, field := range []string{"version", "kind", "installation_id", "trust", "recipient", "scope", "not_before", "not_after"} {
+	// `kind` is handled explicitly below: the credential-export export-obligation
+	// is a kind-conditional (allOf) that jsonschema-go evaluates before the root
+	// kind required constraint, so a descriptor missing BOTH kind and export
+	// reports the export obligation rather than the missing kind.
+	for _, field := range []string{"version", "installation_id", "trust", "recipient", "scope", "not_before", "not_after"} {
 		mutated := cloneObject(base)
 		delete(mutated, field)
 		err := resolved.Validate(mutated)
@@ -180,6 +179,17 @@ func TestManagementAccessSchemaRejectsMissingTopLevelRequired(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), field) {
 			t.Fatalf("missing top-level %q: error %q does not name the required constraint", field, err.Error())
+		}
+	}
+
+	// Missing kind, with export still present: the root kind required constraint
+	// fires and names the kind constraint.
+	kindMissing := cloneObject(base)
+	delete(kindMissing, "kind")
+	kindMissing["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	if err := resolved.Validate(kindMissing); err != nil {
+		if !strings.Contains(err.Error(), "kind") {
+			t.Fatalf("missing kind: error %q does not name the kind constraint", err.Error())
 		}
 	}
 }
@@ -341,23 +351,29 @@ func TestManagementAccessKindStorageEnforcement(t *testing.T) {
 
 // Finding 1: schema kind/field/storage consistency for the three classes.
 
-// The jsonschema-go draft-2020-12 implementation mishandles `else:not` (it leaks
-// the top-level `additionalProperties:false` into the else branch and fires the
-// `then` block even when the `if` does not match), so "export forbidden on a
-// non-credential-export kind" cannot be expressed with a pure schema
-// conditional here. It is therefore enforced at the Go import boundary by
-// ValidateKindEnforcement and tested through that path below.
+// The schema forbids an export descriptor on a non-credential-export kind.
+// This is the "schema-forbidden" test the reviewer asked to repurpose: it now
+// asserts a *valid* export object on a forbidden kind fails the schema, not an
+// invalid algorithm.
 func TestManagementAccessSchemaExportForbiddenOnNonCredentialExport(t *testing.T) {
 	resolved := managementAccessResolve(t)
 
-	// The schema still rejects a non-credential-export record that carries an
-	// export object with an invalid algorithm (schema-level guard), and the Go
-	// path rejects it outright (see TestExportEnforcementPerKind).
+	// A management-profile carrying a VALID export descriptor must fail the
+	// schema (export is credential-export-only).
 	mp := managementAccessBaseline(t, resolved)
 	mp["kind"] = "management-profile"
-	mp["export"] = map[string]any{"algorithm": "xor-1", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	mp["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
 	if err := resolved.Validate(cloneObject(mp)); err == nil {
-		t.Fatal("schema accepted a credential-export with an invalid algorithm")
+		t.Fatal("schema accepted a management-profile carrying a valid export descriptor (export is credential-export-only)")
+	}
+
+	// A device-enrollment carrying a valid export descriptor must also fail the
+	// schema.
+	de := managementAccessBaseline(t, resolved)
+	de["kind"] = "device-enrollment"
+	de["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	if err := resolved.Validate(cloneObject(de)); err == nil {
+		t.Fatal("schema accepted a device-enrollment carrying a valid export descriptor (export is credential-export-only)")
 	}
 }
 
@@ -367,7 +383,8 @@ func TestManagementAccessSchemaExportTrulyAbsentForCredentialExport(t *testing.T
 	// A credential-export without any export object fails closed at schema level.
 	ce := managementAccessBaseline(t, resolved)
 	ce["kind"] = "credential-export"
-	delete(ce, "export")
+	ce["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	delete(ce["export"].(map[string]any), "algorithm")
 	if err := resolved.Validate(cloneObject(ce)); err == nil {
 		t.Fatal("schema accepted a credential-export with truly absent export object")
 	}
@@ -387,6 +404,7 @@ func TestManagementAccessSchemaExportOnlyForCredentialExport(t *testing.T) {
 	// A credential-export with a valid export object validates.
 	ce := managementAccessBaseline(t, resolved)
 	ce["kind"] = "credential-export"
+	ce["export"] = map[string]any{"algorithm": "aes-256-gcm", "encrypted": true, "nonce": "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
 	if err := resolved.Validate(cloneObject(ce)); err != nil {
 		t.Fatalf("credential-export with valid export rejected: %v", err)
 	}

@@ -262,6 +262,14 @@ func EnrollDevice(ctx context.Context, enforcer Enforcer, profile ManagementAcce
 	}
 	now := time.Now().UTC()
 
+	// 0. Enrollment kind: a device-enrollment entry must be Kind=device-enrollment.
+	// Any other kind (management-profile, credential-export) is rejected at the
+	// boundary before the single-use store is consumed, so an unrecognized or
+	// foreign kind cannot be enrolled through this entry.
+	if profile.Kind != DeviceEnrollment {
+		return zero, ErrInvalidManagementAccess
+	}
+
 	// 1. Pinned CA: resolve the certificate to its authoritative fingerprint and
 	// confirm it matches the fingerprint the profile pins. This rejects a
 	// foreign or corrupt CA before the enrollment effect.

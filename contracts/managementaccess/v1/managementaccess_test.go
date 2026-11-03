@@ -294,6 +294,33 @@ func TestEnrollDeviceNilEnforcerFailsClosed(t *testing.T) {
 	}
 }
 
+// The enrollment entry requires Kind=device-enrollment. A management-profile or
+// credential-export record that reaches EnrollDevice must fail closed BEFORE the
+// single-use store is consumed, so no enrollment effect can run on a foreign kind.
+func TestEnrollDeviceRequiresDeviceEnrollmentKind(t *testing.T) {
+	session := enrollScopeRequest(t)
+
+	// A management-profile reaching the enrollment entry fails closed.
+	mgmt := session.profile
+	mgmt.Kind = managementaccess.ManagementProfile
+	if _, err := managementaccess.EnrollDevice(context.Background(), session.adapter, mgmt, session.request); err == nil {
+		t.Fatal("EnrollDevice must reject a management-profile record at the enrollment entry")
+	}
+	if session.store.consumed {
+		t.Fatal("a management-profile must be rejected before the single-use store is consumed")
+	}
+
+	// A credential-export reaching the enrollment entry fails closed.
+	export := session.profile
+	export.Kind = managementaccess.CredentialExport
+	if _, err := managementaccess.EnrollDevice(context.Background(), session.adapter, export, session.request); err == nil {
+		t.Fatal("EnrollDevice must reject a credential-export record at the enrollment entry")
+	}
+	if session.store.consumed {
+		t.Fatal("a credential-export must be rejected before the single-use store is consumed")
+	}
+}
+
 // ---- Finding 3: wire contract JSON tags match schema (round trip) ----
 
 // wireRoundTripAgainstSchema marshals a profile, unmarshals it back, re-marshals
