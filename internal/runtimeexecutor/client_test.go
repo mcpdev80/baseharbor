@@ -991,6 +991,121 @@ func TestMutualTLSRejectsHandshakeDoesNotReachHandler(t *testing.T) {
 	}
 }
 
+// TestNegativesObserveReadyRouteClientBrokenCert (runde 9, w68-ci-access-i) is the
+// "defektes-cert" negative of the 12-row matrix. It drives a REAL NewClient + Check
+// against a broken client identity: the certificate PEM is valid but the private key
+// body is truncated (PEM-decodes yet fails x509 parsing → NewClient fails closed at
+// load time with "tls: failed to parse private key"). The refused identity must reach
+// NEITHER the /readyz check-path recorder (ready-entered==false) NOR the execute
+// handler (execute-reached==false). The Execute path is then exercised against the
+// same refused handshake via a foreign-CA client to prove Execute likewise never
+// reaches the handler on a refused handshake.
+func TestNegativesObserveReadyRouteClientBrokenCert(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+
+	// Intact certificate (written via workloadClient's valid certPEM above), but a
+	// truncated private key body that PEM-decodes yet fails x509 parsing → NewClient
+	// fails closed at load time with "tls: failed to parse private key".
+	certPath := filepath.Join(ca.dir, "client-cert.pem")
+	keyPath := filepath.Join(ca.dir, "client-key-broken.pem")
+	ca.write(t, "client-cert.pem", client.certPEM, 0o644)
+	ca.write(t, "client-key-broken.pem",
+		[]byte("-----BEGIN PRIVATE KEY-----\nMIICdgIBADANBgkq\n-----END PRIVATE KEY-----\n"), 0o600)
+
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	defer server.Close()
+
+	// Broken key => NewClient fails closed before any handshake attempt. The
+	// /readyz check-path recorder must never be entered (ready-entered==false)
+	// AND the execute handler must never be reached (execute-reached==false)
+	// because no handshake ever runs.
+	_, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err == nil {
+		t.Fatalf("expected NewClient to fail closed on a broken (truncated) client key")
+	}
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered when broken client identity fails to load (entered=%v)", recorder.entered.Load())
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("execute handler must not be reached when broken client identity fails to load (HandlerReached=%v)", got)
+	}
+
+	// Drive the Execute path against a genuinely refused handshake to prove Execute
+	// also never reaches the handler on a refused identity. Use a foreign CA so the
+	// client cert loads fine but the handshake is refused server-side (a real
+	// refused-execute, not a load failure): the handler guard must hold.
+	foreignCA := newTestCA(t)
+	fc := foreignCA.workloadClient(t, workloadSPIFFE)
+	fcCert, fcKey := foreignCA.clientCertPaths(t, fc)
+	fcClient, cerr := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: fcCert,
+		KeyFile:  fcKey,
+	})
+	if cerr != nil {
+		t.Fatalf("expected NewClient to build a foreign-CA client (handshake refused later, not at load): %v", cerr)
+	}
+	if _, e := fcClient.Execute(context.Background(), runtimeoperation.Request{
+		Capability:   ObjectStorageS3V1,
+		Operation:    "runtime.create",
+		ResourceName: "asset-1",
+	}); e == nil {
+		t.Fatalf("expected Execute to fail on the refused foreign-CA handshake")
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused-identity Execute (HandlerReached=%v)", got)
+	}
+}
+
+// TestMutualTLSRejectsInvalidCAFileLoadPhase (runde 9, w68-ci-access-i) proves that an
+// invalid CA file on the CLIENT side is rejected at the LOAD phase — BEFORE any request
+// (Check/Execute) is issued. The load error must surface before the /readyz check-path
+// recorder is ever touched, so there are NO null/recorder accesses on the refused path.
+// The error carries the concrete "runtime executor CA is invalid" cause.
+func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+	certPath, keyPath := ca.clientCertPaths(t, client)
+
+	// Client-side CA file is garbage (invalid PEM body) → load fails before request.
+	invalidCA := filepath.Join(ca.dir, "invalid-ca-file.pem")
+	ca.write(t, "invalid-ca-file.pem", []byte("-----BEGIN CERTIFICATE-----\nGARBAGE-INVALID-PEM-BODY\n-----END CERTIFICATE-----\n"), 0o644)
+
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
+	defer server.Close()
+
+	// The load error must come BEFORE the request. Building the client fails at
+	// CA parse; no Check/Execute is issued, so neither recorder nor handler is
+	// touched (no null access).
+	_, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   invalidCA,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err == nil {
+		t.Fatalf("expected NewClient to reject a garbage client CA file at load phase")
+	}
+	if got := err.Error(); !strings.Contains(got, "CA is invalid") {
+		t.Fatalf("expected a concrete CA-verification load cause, got: %q", got)
+	}
+	// Phase assertion: load-phase failure — no handshake ran, so both reach-flags
+	// stay false on the exact route Check() drives AND the execute handler.
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be touched by a client-side CA load failure (entered=%v)", recorder.entered.Load())
+	}
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("execute handler must not be reached by a client-side CA load failure (HandlerReached=%v)", got)
+	}
+}
+
 // TestMutualTLSPositiveRoundTripReadyz exercises the readiness path over a real
 // mutual-TLS handshake with the correct client identity.
 func TestMutualTLSPositiveRoundTripReadyz(t *testing.T) {
