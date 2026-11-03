@@ -7,6 +7,7 @@ The previous and current synthetic merge commits must share an identical base,
 and the previous PR head must be an ancestor of the new head.
 """
 import argparse
+from datetime import datetime
 import io
 import json
 import os
@@ -121,6 +122,19 @@ def completed_previous(repo, workflow_id, branch, pr_number, run_id, token):
             continue
         return run
     return None
+
+
+def within_24_hours(previous, current):
+    """Compare authenticated GitHub server timestamps, never local wall clocks."""
+    try:
+        now = datetime.fromisoformat(current["created_at"].replace("Z", "+00:00"))
+        before = datetime.fromisoformat(previous["created_at"].replace("Z", "+00:00"))
+        if now.tzinfo is None or before.tzinfo is None:
+            return False
+        elapsed = (now - before).total_seconds()
+        return 0 <= elapsed <= 24 * 60 * 60
+    except (TypeError, ValueError, AttributeError, KeyError):
+        return False
 
 
 def qualified_ancestry(previous_merge, current_merge, current_head):
@@ -277,7 +291,9 @@ def main():
             raise ValueError("current run is not an authenticated PR workflow")
         previous = completed_previous(a.repo, workflow_id, a.branch,
                                       int(a.pr_number), int(a.run_id), a.token)
-        if previous:
+        if previous and not within_24_hours(previous, current):
+            result["reason"] = "previous run is outside the 24-hour window"
+        elif previous:
             paths = qualified_ancestry(previous["head_sha"], a.integration, a.head)
             if paths is None:
                 result["reason"] = "previous source/base ancestry not proven"
@@ -285,7 +301,17 @@ def main():
                 result["reason"] = "unknown or sensitive changed path: full checks"
             else:
                 jobs = all_jobs(a.repo, previous["id"], a.token)
-                previous_demo = prior_demo(a.repo, previous["id"], a.token)
+                native_preconditions = {
+                    "PR · Demo Pin", "PR · Exact Candidate", "PR · Runner Interface"
+                }
+                native_ready = native_preconditions <= {
+                    job.get("name") for job in jobs
+                    if job.get("conclusion") == "success" and job.get("status") == "completed"
+                }
+                # Ecosystem inputs may include independent Console/Connector revisions.
+                deps = plan.get("required_consumer_dependencies", [])
+                native_ready = native_ready and deps in (["core", "demo"], ["core"])
+                previous_demo = prior_demo(a.repo, previous["id"], a.token) if native_ready else None
                 demo_matches = bool(previous_demo and previous_demo == a.demo_ref)
                 # Resolve dependency closures only for the selected scoped checks.
                 targets = {GO_CHECK_TARGETS.get(c["id"], GO_CHECK_TARGETS.get("cli-package-tests")
