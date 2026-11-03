@@ -173,18 +173,17 @@ Session-only-Speicher lebt in Speicher für die Lebensdauer des Prozesses und wi
 
 ```go
 type ManagementAccessProfile struct {
-    Kind          ManagementAccessKind `json:"version"`
-    Version       string               `json:"kind"`
-    InstallationID string              `json:"installation_id"`
-    TrustCAPEM    string               `json:"ca_pem"`
-    TrustSHA256   string               `json:"sha256"`
-    Recipient     string               `json:"recipient"`
-    Scope         string               `json:"scope"`
-    NotBefore     time.Time            `json:"not_before"`
-    NotAfter      time.Time            `json:"not_after"`
-    Import        ImportCapability     `json:"import"`
-    Storage       StorageDescriptor    `json:"storage"`
-    Export        *EncryptionDescriptor `json:"export,omitempty"`
+    Kind           ManagementAccessKind  `json:"kind"`
+    Version        string                `json:"version"`
+    InstallationID string                `json:"installation_id"`
+    Trust          Trust                 `json:"trust"`
+    Recipient      string                `json:"recipient"`
+    Scope          string                `json:"scope"`
+    NotBefore      time.Time             `json:"not_before"`
+    NotAfter       time.Time             `json:"not_after"`
+    Import         ImportCapability      `json:"import"`
+    Storage        Storage               `json:"storage"`
+    Export         *EncryptionDescriptor `json:"export,omitempty"`
 }
 ```
 
@@ -198,7 +197,7 @@ type EncryptionDescriptor struct {
 }
 ```
 
-Diese Profile sind rufbare Produktionsweg-Oberflächen. `contracts/managementaccess/v1` bindet den Wire-Vertrag an die bestehende autoritative Schnittstelle, statt einen ungebrauchten Adapter zu deklarieren. `ManagementAccessProfile.ValidateKindEnforcement` schlägt pro Typ fail-closed fehl: Ein Management-Profil braucht vorhandene, sichere Storage; eine Enrollment muss sensibel sein; eine Zugangsdaten-Ausgabe braucht einen verschlüsselten Descriptor. `ManagementAccessProfile.ValidateTrust` berechnet den CA-Fingerprint aus dem eigentlichen Zertifikat (`internal/hosttrust.ParseCA`) und lehnt einen gespeicherten Fingerprint ab, der nicht übereinstimmt. `ValidityWindow` lehnt ein abgelaufenes, zukünftiges oder verkehrtes Fenster ab. `ValidateRecipientBind` bindet den Empfänger an den Einmal-Enrollment-Scope (`internal/targetenrollment`) und lehnt einen fremden Pin ab, und `EnrollDevice` führt die Einmal-Enrollment über `targetenrollment.Authority` aus.
+Diese Profile sind rufbare Produktionsweg-Oberflächen. `contracts/managementaccess/v1` bindet den Wire-Vertrag an die bestehende autoritative Schnittstelle, statt einen ungebrauchten Adapter zu deklarieren. `ManagementAccessProfile.ValidateKindEnforcement` schlägt pro Typ fail-closed fehl: Ein Management-Profil braucht vorhandene, sichere Storage; eine Enrollment muss sensibel sein; eine Zugangsdaten-Ausgabe braucht einen verschlüsselten Descriptor. `ManagementAccessProfile.ValidateTrust` berechnet den CA-Fingerprint aus dem eigentlichen Zertifikat (`internal/hosttrust.ParseCA`) und lehnt einen gespeicherten Fingerprint ab, der nicht übereinstimmt; die golden-Fixtures enthalten reale generierte Testzertifikate mit passendem Fingerprint, nicht Platzhalter-PEM. `ValidityWindow` lehnt ein abgelaufenes, zukünftiges oder verkehrtes Fenster ab. `ValidateRecipientBind` bindet den Empfänger an den Einmal-Enrollment-Scope (`internal/targetenrollment`) und lehnt einen fremden Pin ab, und `EnrollDevice` führt die Einmal-Enrollment über `targetenrollment.Authority` aus.
 
 Trust wird über den gemeinsamen `internal/hosttrust`-Anker und -Fingerprint geprüft; der Zugriffs-Record wiederverwendet dasselbe CA-Material statt einer neuen Vertrauenswurzel. Einmal-Enrollment wiederverwendet `internal/targetenrollment` (Core-Issuer + einmaliger Store); die Knoten-Zulassung wiederverwendet den bestehenden `internal/targetsession`-Pfad. Zugriffs-Records führen keinen neuen Transport mit; sie wiederverwendet die nativen Transportmittel (Git, SSH, Kubernetes, Cloud), die für das Ziel bereits existieren. Disaster-Recovery-Speicher steht außerhalb des sensiblen Einmal-Pfads (`disaster_recovery` beim Storage, `encrypted` beim Export).
 
@@ -214,3 +213,4 @@ Vertragsinvarianten:
 - Das Gültigkeitsfenster ist geordnet, aktuell und nicht abgelaufen (`ValidityWindow`).
 - Der Empfänger ist am Einmal-Enrollment-Scope gebunden; ein fremder Pin wird abgelehnt (`ValidateRecipientBind` / `EnrollDevice`).
 - Nicht schema-gesteuert (Doku-Verhalten, kein Gate): Der `management-profile`-Typ darf keine Transport-`connection-profile/v1`-Rollenfelder `access.role` mitführen (Umfang für den Zugriff, nicht für den Transport).
+- Same-CA-/DR-Durchsetzung gegen einen externen `connection-profile/v1`-Transport-Anker und einen autoritativen Core-Scope-Resolver ist eine schnittstellenübergreifende Bindung; sie wird hier dokumentiert, aber nicht von dieser Karte verdrahtet, weil diese Autoritäten (connection-profile/Core-Scope-Resolver, host-trust-Anker) außerhalb dieses Write-Sets liegen und ihren eigenen_slices zugeordnet sind.

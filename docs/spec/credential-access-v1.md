@@ -171,18 +171,17 @@ Session-only storage lives in memory for the lifetime of the process and is neve
 
 ```go
 type ManagementAccessProfile struct {
-    Kind          ManagementAccessKind `json:"version"`
-    Version       string               `json:"kind"`
-    InstallationID string              `json:"installation_id"`
-    TrustCAPEM    string               `json:"ca_pem"`
-    TrustSHA256   string               `json:"sha256"`
-    Recipient     string               `json:"recipient"`
-    Scope         string               `json:"scope"`
-    NotBefore     time.Time            `json:"not_before"`
-    NotAfter      time.Time            `json:"not_after"`
-    Import        ImportCapability     `json:"import"`
-    Storage       StorageDescriptor    `json:"storage"`
-    Export        *EncryptionDescriptor `json:"export,omitempty"`
+    Kind           ManagementAccessKind  `json:"kind"`
+    Version        string                `json:"version"`
+    InstallationID string                `json:"installation_id"`
+    Trust          Trust                 `json:"trust"`
+    Recipient      string                `json:"recipient"`
+    Scope          string                `json:"scope"`
+    NotBefore      time.Time             `json:"not_before"`
+    NotAfter       time.Time             `json:"not_after"`
+    Import         ImportCapability      `json:"import"`
+    Storage        Storage               `json:"storage"`
+    Export         *EncryptionDescriptor `json:"export,omitempty"`
 }
 ```
 
@@ -196,11 +195,13 @@ type EncryptionDescriptor struct {
 }
 ```
 
-These profiles are callable production-path surfaces. `contracts/managementaccess/v1` binds the wire contract to the existing authoritative interfaces rather than declaring an unused adapter. `ManagementAccessProfile.ValidateKindEnforcement` fails closed per kind (management-profile needs present, safe storage; device-enrollment must be sensitive; credential-export needs an encrypted descriptor). `ManagementAccessProfile.ValidateTrust` recomputes the CA fingerprint from the actual certificate (`internal/hosttrust.ParseCA`) and rejects a stored fingerprint that does not match it. `ValidityWindow` rejects an elapsed, future, or inverted window. `ValidateRecipientBind` binds the recipient to the one-use enrollment scope (`internal/targetenrollment`), rejecting a foreign pin, and `EnrollDevice` performs the one-use enrollment through `targetenrollment.Authority`.
+These profiles are callable production-path surfaces. `contracts/managementaccess/v1` binds the wire contract to the existing authoritative interfaces rather than declaring an unused adapter. `ManagementAccessProfile.ValidateKindEnforcement` fails closed per kind (management-profile needs present, safe storage; device-enrollment must be sensitive; credential-export needs an encrypted descriptor). `ManagementAccessProfile.ValidateTrust` recomputes the CA fingerprint from the actual certificate (`internal/hosttrust.ParseCA`) and rejects a stored fingerprint that does not match it; the golden fixtures carry real generated test certificates with matching fingerprints, not placeholder PEM. `ValidityWindow` rejects an elapsed, future, or inverted window. `ValidateRecipientBind` binds the recipient to the one-use enrollment scope (`internal/targetenrollment`), rejecting a foreign pin, and `EnrollDevice` performs the one-use enrollment through `targetenrollment.Authority`. The wire record serializes the kind value into the JSON key `kind` and the version marker into `version`, matching the schema exactly (not a field swap).
 
-Trust is validated through the shared `internal/hosttrust` anchor and fingerprint; the access record reuses the same CA material rather than introducing a new trust root. One-use enrollment reuses `internal/targetenrollment` (Core issuer + single use store); node admission reuses the existing `internal/targetsession` path. Access records carry no new transport: they reuse native transport means (Git, SSH, Kubernetes, cloud) that already exist for the target. Disaster-recovery storage is kept out of the sensitive one-use path (`disaster_recovery` on storage, `encrypted` on export).
+Trust is validated through the shared `internal/hosttrust` anchor and fingerprint; the access record reuses the same CA material rather than introducing a new trust root. One-use enrollment reuses `internal/targetenrollment` (Core issuer + single use store). Access records carry no new transport: they reuse native transport means (Git, SSH, Kubernetes, cloud) that already exist for the target. Disaster-recovery storage is kept out of the sensitive one-use path (`disaster_recovery` on storage, `encrypted` on export).
 
 Relationship to `contracts/connection-profile/v1`: `management-access/v1` and `connection-profile/v1` overlap on identity and trust fields but play different roles. `connection-profile/v1` is **transport only**: it selects the core endpoint and transport trust for a connection. `management-access/v1` is **access only**: it declares what a non-secret management profile, a sensitive one-use enrollment, or an encrypted credential export carries, and what importing them may not do. When both appear, the `connection-profile/v1` trust anchors the transport and the `management-access/v1` trust must hash to the same CA (`sha256`) and remain bound to the recipient/scope of the access record; the transport binding does not widen the access record. The `management-profile` kind must not carry the `connection-profile/v1` transport `access.role` fields (scope for access, not for transport).
+
+Same-CA/DR enforcement with an external `connection-profile/v1` transport anchor and an authoritative Core scope resolver is a cross-slice binding; it is documented here but not yet wired by this card, because those authorities (connection-profile/Core scope resolver, host-trust anchor) are owned outside this write-set and are deferred to their owning slices.
 
 Contract invariants:
 
