@@ -113,7 +113,8 @@
         },
         "nonce": {
           "type": "string",
-          "pattern": "^[A-Za-z0-9_-]{43}$"
+          "pattern": "^[A-Za-z0-9_-]{43}$",
+          "description": "Base64url-encoded AEAD nonce. 43 base64url characters decode to 32 bytes (the documented golden fixture decodes to 32 bytes, not 12). The 43-character form is the actual wire length: any 43-character base64url value decodes to either 31 or 32 bytes depending on the final character's padding."
         }
       }
     }

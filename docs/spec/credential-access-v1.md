@@ -206,7 +206,7 @@ Deferred interfaces:
 `management-access/v1` binds to existing, accepted surfaces on develop (the `internal/hosttrust` anchor, `serviceaccess.ValidateSignedCSR` leaf verification, and `internal/targetenrollment` one-use authority). The remaining authorities are outside this card's bounded write reservation and land with their own card:
 
 - **Production consumer / entry point.** No production consumer currently imports `contracts/managementaccess/v1`; the callable path is exposed as an interface, not yet a wired endpoint.
-- **Anchor + installation/recipient/scope binding + trusted time.** The full production binding of installation identity, recipient/scope, trusted wall-clock time, and credential ownership is resolved by [t-20261018-r27-access-profiles](../../tasks/t-20261018-r27-access-profiles.md).
+- **Anchor + installation/recipient/scope binding + trusted time.** The full production binding of installation identity, recipient/scope, trusted wall-clock time, and credential ownership is enforced later, with [t-20261018-r27-authority-contract](../../tasks/t-20261018-r27-authority-contract.md) (independent anchor + installation/scope binding) and [t-20261018-r27-state-owner](../../tasks/t-20261018-r27-state-owner.md) (unaccepted, same files). No claim here asserts that this profile path verifies them now.
 - **Disaster recovery separation in a production flow.** The DR separation declared here is not yet wired into a production recovery path.
 
 Same-CA/DR enforcement with an external `connection-profile/v1` transport anchor and an authoritative Core scope resolver is a cross-slice binding; it is documented here but not yet wired by this card, because those authorities (connection-profile/Core scope resolver, host-trust anchor) are owned outside this write-set and are deferred to their owning slices.
@@ -217,7 +217,7 @@ Contract invariants:
 - `import` is always `{rights_granting:false, plugin_execution:false, credential_redirect:false}`.
 - A `device-enrollment` record must be sensitive (protected durable or session-only, never a plaintext durable export).
 - An `export` descriptor is credential-export-only: a `management-profile` or `device-enrollment` record carrying an export descriptor is rejected, and an export is required on a `credential-export`.
-- A `credential-export` record must be encrypted with a real algorithm (`aes-256-gcm` / `chacha20-poly1305`, the only supported AEAD ciphers) and a 12-byte nonce (`E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z` urlsafe-b64 for the golden fixtures).
+- A `credential-export` record must be encrypted with a real algorithm (`aes-256-gcm` / `chacha20-poly1305`, the only supported AEAD ciphers) and a nonce of 43 base64url characters (`E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z` urlsafe-b64 for the golden fixtures; 43 base64url characters decode to 32 bytes, not 12).
 - The stored trust fingerprint matches the actual certificate (`ValidateTrust`).
 - The validity window is ordered, current, and non-elapsed (`ValidityWindow`).
 - The recipient is bound to the one-use enrollment scope; a foreign pin is rejected (`ValidateRecipientBind` / `EnrollDevice`).

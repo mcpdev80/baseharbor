@@ -102,6 +102,14 @@ type EncryptionDescriptor struct {
 	Nonce     string `json:"nonce"`
 }
 
+// Supported AEAD algorithms. These are exactly the schema's `export.algorithm`
+// enum values; keeping them here lets the Go import boundary reject anything the
+// schema would reject.
+const (
+	AlgorithmAES256GCM       = "aes-256-gcm"
+	AlgorithmChacha20Poly1305 = "chacha20-poly1305"
+)
+
 // ManagementAccessProfile is the wire record. JSON tags match the schema exactly,
 // including the nested trust object. The kind value is serialized into the JSON
 // key "kind" and the version marker into the JSON key "version", which is the
@@ -128,7 +136,9 @@ var ErrInvalidManagementAccess = errors.New("invalid management-access/v1 record
 // obligations:
 //   - management-profile : trust and storage must be present and safe.
 //   - device-enrollment  : storage must be sensitive (never plaintext durable).
-//   - credential-export  : an encrypted export descriptor must be present.
+//   - credential-export  : an encrypted export descriptor must be present, with
+//     an algorithm in the supported AEAD set and a 43-character base64url nonce,
+//     matching the schema's export value domain exactly.
 //   - all kinds          : the record must be trust-consistent and its validity
 //     window must be ordered, current and non-elapsed.
 func (p ManagementAccessProfile) ValidateKindEnforcement() error {
@@ -157,6 +167,18 @@ func (p ManagementAccessProfile) ValidateKindEnforcement() error {
 		}
 	case CredentialExport:
 		if p.Export == nil || !p.Export.Encrypted || p.Export.Algorithm == "" || p.Export.Nonce == "" {
+			return ErrInvalidManagementAccess
+		}
+		// The Go import boundary mirrors the schema's export value domain exactly:
+		// the algorithm must be one of the supported AEAD ciphers and the nonce
+		// must be a 43-character base64url value (43 base64url chars decode to 32
+		// bytes — the documented golden fixture decodes to 32 bytes, not 12).
+		// Arbitrary nonempty algorithms or nonces are rejected so the Go check and
+		// the schema cannot drift.
+		if p.Export.Algorithm != AlgorithmAES256GCM && p.Export.Algorithm != AlgorithmChacha20Poly1305 {
+			return ErrInvalidManagementAccess
+		}
+		if !nonceIsBase64Url43(p.Export.Nonce) {
 			return ErrInvalidManagementAccess
 		}
 	default:
@@ -191,6 +213,29 @@ func (p ManagementAccessProfile) ValidityWindow(now time.Time) error {
 		return ErrInvalidManagementAccess
 	}
 	return nil
+}
+
+// nonceIsBase64Url43 reports whether nonce is a 43-character base64url value
+// (characters A-Z, a-z, 0-9, `-`, `_`), the exact wire domain the schema
+// declares. A 43-character base64url string decodes to 32 bytes (the documented
+// golden fixture decodes to 32 bytes, not 12); the schema only accepts 43-char
+// values, so the Go check rejects any nonce of a different length or alphabet.
+func nonceIsBase64Url43(nonce string) bool {
+	if len(nonce) != 43 {
+		return false
+	}
+	for i := 0; i < len(nonce); i++ {
+		c := nonce[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+		case c >= 'a' && c <= 'z':
+		case c >= '0' && c <= '9':
+		case c == '-' || c == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // ErrUntrustedTrust is returned when the stored fingerprint does not match the

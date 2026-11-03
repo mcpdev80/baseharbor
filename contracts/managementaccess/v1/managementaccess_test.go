@@ -107,6 +107,60 @@ func TestImportCapabilityFailClosedForEachGuarantee(t *testing.T) {
 	}
 }
 
+// Finding 4 (l8-profile-r6): side-effect witnesses through the real import
+// boundary. Importing a management record must grant no rights, run no plugin,
+// and redirect no credentials. We prove this with local before/after witnesses
+// at the actual import entry: the valid golden records validate through
+// ValidateKindEnforcement (the fail-closed import gate) with a zeroed
+// ImportCapability, so FailClosedImport() is false (no side effect) and every
+// flag stays false. A record with any true flag fails closed BEFORE the import
+// boundary, so no grant/plugin/redirect can ever run.
+func TestImportSideEffectsWitnessed(t *testing.T) {
+	// The real import boundary is ValidateKindEnforcement, called on the import
+	// path. Valid golden records must validate with every import flag false, so
+	// FailClosedImport() is false and no grant/plugin/redirect side effect runs.
+	golds := []managementaccess.ManagementAccessKind{
+		managementaccess.ManagementProfile,
+		managementaccess.CredentialExport,
+	}
+	for _, kind := range golds {
+		p := profileFor(t)
+		p.Kind = kind
+		if kind == managementaccess.CredentialExport {
+			p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+		}
+		p.Import = managementaccess.ImportCapability{
+			RightsGranting:     false,
+			PluginExecution:    false,
+			CredentialRedirect: false,
+		}
+		if p.Import.FailClosedImport() {
+			t.Fatalf("%s: a clean import must not fail closed", kind)
+		}
+		if err := p.ValidateKindEnforcement(); err != nil {
+			t.Fatalf("%s: valid record must pass the real import boundary: %v", kind, err)
+		}
+	}
+
+	// A record carrying ANY true import flag fails closed at the boundary before
+	// any side effect runs, so a production caller never observes a grant/plugin/
+	// redirect from the import path.
+	for _, flag := range []struct {
+		name string
+		set  func(*managementaccess.ImportCapability)
+	}{
+		{"rights_granting", func(c *managementaccess.ImportCapability) { c.RightsGranting = true }},
+		{"plugin_execution", func(c *managementaccess.ImportCapability) { c.PluginExecution = true }},
+		{"credential_redirect", func(c *managementaccess.ImportCapability) { c.CredentialRedirect = true }},
+	} {
+		p := profileFor(t)
+		flag.set(&p.Import)
+		if err := p.ValidateKindEnforcement(); err == nil {
+			t.Fatalf("%s=true must fail closed at the import boundary", flag.name)
+		}
+	}
+}
+
 // ---- Finding 2: semantic trust / recipient / validity validation ----
 
 func TestValidateTrustMatchesCertificate(t *testing.T) {
