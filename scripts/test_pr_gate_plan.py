@@ -20,7 +20,9 @@ MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
 GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
          'integration/static/public-contracts', 'atomic/docker/lifecycle',
          'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data',
-          'atomic/docker/observability', 'atomic/podman/observability']
+          'atomic/docker/observability', 'atomic/podman/observability',
+          'atomic/docker/control-plane-recovery', 'atomic/podman/control-plane-recovery',
+          'atomic/docker/backup-restore', 'atomic/podman/backup-restore']
 REQ = {'releases': ['v0.4.26'],
        'gates': [{'id': g, 'required_for': ['v0.4.26']} for g in GATES]}
 
@@ -934,11 +936,12 @@ class MappingTests(unittest.TestCase):
                 self.assertEqual('resolved', result['coverage_status'])
                 self.assertFalse(result['unresolved_coverage'])
                 self.assertFalse(result['broad_required'])
-                self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
-                                 sorted(result['selected_gates']))
+                expected = [] if name.endswith('_test.go') else ['atomic/docker/lifecycle', 'atomic/podman/lifecycle']
+                self.assertEqual(expected, sorted(result['selected_gates']))
                 ids = {c['id'] for c in result['required_validation_checks']}
-                self.assertIn('cli-vet', ids)
-                self.assertIn('cli-build', ids)
+                self.assertIn('broker-package-tests', ids)
+                if not name.endswith('_test.go'):
+                    self.assertTrue({'cli-vet', 'cli-build'} <= ids)
 
     def test_resolver_routing_allowlist_runs_focused_resolver_checks_resolved(self):
         # core-1220 permanent lane: only the exact reviewed resolver files resolve
@@ -1266,14 +1269,17 @@ class LogsRenderingBindingTests(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('logs_runner', ROOT / 'pr-check-runner.py')
         runner = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(runner)
-        for result in (SimpleNamespace(returncode=1, stdout='failed'),
-                       SimpleNamespace(returncode=0, stdout='[no test files]')):
+        for result in (SimpleNamespace(returncode=1, stdout='', stderr='failed'),
+                       SimpleNamespace(returncode=0, stdout='', stderr='[no test files]')):
             with self.subTest(result=result), patch.object(runner.subprocess, 'run', return_value=result):
                 with self.assertRaises(RuntimeError):
                     runner.execute_validation('logs-package-tests', '.')
         with patch.object(runner.subprocess, 'run', return_value=SimpleNamespace(
-                returncode=0, stdout='=== RUN   TestRender\n--- PASS: TestRender\n')):
-            self.assertEqual(['internal/logs'], runner.execute_validation('logs-package-tests', '.'))
+                returncode=0, stderr='', stdout='\n'.join(json.dumps(row) for row in [
+                    {'Action': 'run', 'Package': 'example/internal/logs', 'Test': 'TestRender'},
+                    {'Action': 'pass', 'Package': 'example/internal/logs', 'Test': 'TestRender'},
+                    {'Action': 'pass', 'Package': 'example/internal/logs'}]) + '\n')):
+            self.assertEqual(['./internal/logs'], runner.execute_validation('logs-package-tests', '.'))
 
 
 class CliGofmtTestBindingTests(unittest.TestCase):
@@ -1329,7 +1335,7 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         # every PR that touched docker_engine ROT despite correct code.
         result = planner.plan(diff(paths('internal/runtime/docker_engine.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
         checks = {c['id'] for c in result['required_validation_checks']}
@@ -1343,13 +1349,15 @@ class RuntimeDockerEngineMappingTests(unittest.TestCase):
         # files.  Verify it maps to the same gate.
         result = planner.plan(diff(paths('internal/runtime/openbao_runtime_prepare.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
 
-    def test_docker_engine_test_file_selects_lifecycle_gate(self):
+    def test_docker_engine_test_file_executes_its_package(self):
         result = planner.plan(diff(paths('internal/runtime/docker_engine_test.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle'], result['selected_gates'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('runtime-provider-package-tests',
+                      {row['id'] for row in result['required_validation_checks']})
 
     def test_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
         # Even if docker_engine is resolved, a second unreviewed file must
@@ -1384,13 +1392,11 @@ class CliEngineMappingTests(unittest.TestCase):
         self.assertIn('cli-build', checks)
         self.assertIn('cli-vet', checks)
 
-    def test_cli_docker_engine_podman_test_selects_both_lifecycle_gates(self):
-        # round2 B: the new dedicated test file for CLI-side docker engine binding
-        # exercises both Docker and Podman lifecycles.  Must map to both gates.
+    def test_cli_docker_engine_podman_test_runs_actual_unit_tests(self):
         result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
-                         result['selected_gates'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertIn('cli-package-tests', {row['id'] for row in result['required_validation_checks']})
         self.assertFalse(result['unresolved_coverage'])
 
     def test_cli_docker_engine_bundled_with_unreviewed_stays_unresolved(self):
@@ -1421,7 +1427,7 @@ class CliEngineMappingTests(unittest.TestCase):
 
 
 class RestartIntegrationMappingTests(unittest.TestCase):
-    def test_runtime_restart_integration_test_maps_both_lifecycle_gates(self):
+    def test_runtime_restart_integration_test_maps_both_recovery_gates(self):
         # gatemap-r2 Gap 1 (blocks #1245).  cmd/baha/runtime_restart_integration_test.go
         # is the control-plane restart proof the Lifecycle-Gates drive (targeted
         # integration.yml dispatches its TestExistingControlPlaneRestartRequiresAndUses
@@ -1432,7 +1438,7 @@ class RestartIntegrationMappingTests(unittest.TestCase):
         # catch-all that previously blocked PR Selected checks.
         result = planner.plan(diff(paths('cmd/baha/runtime_restart_integration_test.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
-        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+        self.assertEqual(['atomic/docker/control-plane-recovery', 'atomic/podman/control-plane-recovery'],
                          result['selected_gates'])
         self.assertFalse(result['unresolved_coverage'])
         self.assertFalse(result['broad_required'])
@@ -2106,20 +2112,28 @@ class OpenBaoExactRetryRouteTests(unittest.TestCase):
         runner = self.runner()
         names = runner.OPENBAO_REQUIRED_TESTS
         discovery = '\n'.join(names)
-        execution = ''.join('=== RUN   ' + n + '\n--- PASS: ' + n + ' (0.00s)\n' for n in names)
+        def stream(skip=None):
+            events = []
+            for name in names:
+                events.extend([{'Action': 'run', 'Package': 'example/internal/openbao', 'Test': name},
+                               {'Action': 'skip' if name == skip else 'pass',
+                                'Package': 'example/internal/openbao', 'Test': name}])
+            events.append({'Action': 'pass', 'Package': 'example/internal/openbao'})
+            return '\n'.join(json.dumps(row) for row in events) + '\n'
+        execution = stream()
         for listed, output, code, success in (
                 (discovery, execution, 0, True), ('', execution, 0, False),
                 ('\n'.join(names[:-1]), execution, 0, False),
                 (discovery, '', 0, False), (discovery, execution, 1, False),
-                (discovery, execution.replace('--- PASS: ' + names[0], '--- SKIP: ' + names[0]), 0, False)):
+                (discovery, stream(skip=names[0]), 0, False)):
             with self.subTest(listed=listed, code=code, success=success):
                 results = [SimpleNamespace(returncode=0, stdout=listed, stderr=''),
-                           SimpleNamespace(returncode=code, stdout=output)]
+                           SimpleNamespace(returncode=code, stdout=output, stderr='')]
                 with patch.object(runner.subprocess, 'run', side_effect=results) as process:
                     if success:
                         self.assertEqual(list(names), runner.execute_validation('openbao-package-tests', '.'))
-                        self.assertIn('./internal/openbao/...', process.call_args.args[0])
-                        self.assertIn('-run', process.call_args.args[0])
+                        self.assertIn('./internal/openbao', process.call_args.args[0])
+                        self.assertNotIn('-run', process.call_args.args[0])
                     else:
                         with self.assertRaises(RuntimeError):
                             runner.execute_validation('openbao-package-tests', '.')
@@ -2558,10 +2572,113 @@ class NormalCISelectionTests(unittest.TestCase):
         self.assertEqual('unresolved', unknown['coverage_status'])
 
     def test_authority_package_routes_to_tests_without_native_matrix(self):
-        result = planner.plan(diff(paths(*sorted(planner.AUTHORITY_PACKAGE_PATHS))), REQ, MAP)
+        result = planner.plan(diff(paths('internal/coreinstallation/authority.go',
+                                         'internal/stableid/id.go',
+                                         'internal/serviceaccess/local_issuer.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertIn('authority-package-tests', {row['id'] for row in result['required_validation_checks']})
         self.assertEqual([], result['selected_gates'])
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DeploymentPackageRoutingTests(unittest.TestCase):
+    def test_state_changes_run_package_consumers_and_both_lifecycles(self):
+        for change in [{'status': kind, 'path': 'internal/deployment/deployment_store.go'}
+                       for kind in ('added', 'modified', 'deleted')]:
+            with self.subTest(change=change):
+                result = planner.plan(diff([change]), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'])
+                self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                                 result['selected_gates'])
+                self.assertTrue({'deployment-package-tests', 'source-contracts', 'cli-build'} <=
+                                {row['id'] for row in result['required_validation_checks']})
+
+    def test_test_only_changes_execute_package_without_native_matrix(self):
+        result = planner.plan(diff(paths('internal/deployment/one_writer_guard_test.go',
+                                         'internal/deployment/preferences_retention_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual([], result['selected_gates'])
+        self.assertEqual(['deployment-package-tests'],
+                         [row['id'] for row in result['required_validation_checks']])
+
+    def test_rename_cannot_hide_production_or_unknown_nested_package(self):
+        result = planner.plan(diff([{'status': 'renamed',
+            'old_path': 'internal/deployment/deployment_store.go',
+            'new_path': 'internal/deployment/nested/state.go'}]), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+
+class AuthorityPackageCompletenessTests(unittest.TestCase):
+    def test_each_known_authority_package_covers_new_direct_source_and_tests(self):
+        for package in planner.AUTHORITY_PACKAGES:
+            for filename in ('new_source.go', 'new_source_test.go'):
+                result = planner.plan(diff(paths(package + '/' + filename)), REQ, MAP)
+                self.assertEqual('resolved', result['coverage_status'], result)
+                self.assertTrue({'authority-package-tests', 'source-contracts', 'cli-build'} <=
+                                {row['id'] for row in result['required_validation_checks']})
+                self.assertEqual([], result['selected_gates'])
+
+    def test_unknown_nested_authority_package_stays_unresolved(self):
+        result = planner.plan(diff(paths('internal/serviceaccess/new_package/auth.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+
+
+class RuntimePackageCompletenessTests(unittest.TestCase):
+    def test_nested_runtime_tests_are_actually_selected_without_native_matrix(self):
+        for path in ('internal/runtime/remoteprojection/quadlet_test.go',
+                     'internal/runtime/model/plan_test.go',
+                     'internal/runtime/terminal/process_linux_test.go'):
+            result = planner.plan(diff(paths(path)), REQ, MAP)
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertEqual(['runtime-provider-package-tests'],
+                             [row['id'] for row in result['required_validation_checks']])
+            self.assertEqual([], result['selected_gates'])
+
+    def test_shared_quadlet_production_requires_both_runtime_checks(self):
+        result = planner.plan(diff(paths('internal/runtime/remoteprojection/quadlet.go')), REQ, MAP)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+        self.assertIn('runtime-provider-package-tests',
+                      {row['id'] for row in result['required_validation_checks']})
+
+
+class ConcreteUnitTestExecutionTests(unittest.TestCase):
+    def test_broker_unit_changes_execute_the_broker_package(self):
+        result = planner.plan(diff(paths('internal/runtimebroker/broker_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['broker-package-tests'], [row['id'] for row in result['required_validation_checks']])
+        self.assertEqual([], result['selected_gates'])
+
+    def test_cli_engine_name_regression_executes_instead_of_guided_only(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine_podman_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', {row['id'] for row in result['required_validation_checks']})
+        self.assertEqual([], result['selected_gates'])
+
+
+class CurrentProductSeamRoutingTests(unittest.TestCase):
+    def test_mixed_cli_tests_run_with_deployment_owner_implementation(self):
+        result = planner.plan(diff(paths('cmd/baha/deployment_record.go',
+                                         'cmd/baha/app_context_incomplete_test.go',
+                                         'internal/deployment/deployment_store.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue({'cli-package-tests', 'deployment-package-tests', 'source-contracts'} <=
+                        {row['id'] for row in result['required_validation_checks']})
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
+
+    def test_issuer_bridge_runs_authority_openbao_and_cli_consumers(self):
+        for name in ('cmd/baha/application_service_issuer.go', 'internal/openbao/service_issuer.go',
+                     'internal/openbao/service_pki.go', 'internal/testsupport/serviceissuer/issuer.go'):
+            result = planner.plan(diff(paths(name)), REQ, MAP)
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertTrue({'cli-package-tests', 'authority-package-tests', 'openbao-package-tests', 'source-contracts'} <=
+                            {row['id'] for row in result['required_validation_checks']})
+
+    def test_native_backup_source_runs_its_own_existing_gates(self):
+        result = planner.plan(diff(paths('cmd/baha/app_backup_restore_integration_test.go')), REQ, MAP)
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertEqual(['atomic/docker/backup-restore', 'atomic/podman/backup-restore'], result['selected_gates'])

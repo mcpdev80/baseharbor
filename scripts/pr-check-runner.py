@@ -87,7 +87,8 @@ OPENBAO_REQUIRED_TESTS = (
     'TestPureTransportErrorStaysTransient',
 )
 
-VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
+VALIDATIONS = {'go-unit-tests', 'go-vet', 'go-build',
+               'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                'pages-candidate-build', 'source-contracts', 'cli-guided-tests',
                'cli-gofmt', 'cli-vet', 'cli-build', 'capability-package-tests',
                 'openbao-package-tests', 'logs-package-tests', 'runtime-provider-package-tests',
@@ -95,7 +96,7 @@ VALIDATIONS = {'documentation-audit', 'mkdocs-en-strict', 'mkdocs-de-strict',
                 'ci-executor-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
-               'authority-package-tests', 'delivery-package-tests', 'cli-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
                'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
@@ -106,8 +107,47 @@ CI_EXECUTION_SUITES = (
     'test_pr_selected_runtime_matrix', 'test_ecosystem_release_pins',
     'test_targeted_gate_ref', 'test_artifact_gc', 'test_pre_release_check_plan',
     'test_pre_release_integration', 'test_consumer_source_pins',
-    'test_frozen_candidate_promotion',
+    'test_frozen_candidate_promotion', 'test_ci_check_routes',
+    'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',
 )
+
+
+def go_package_tests(repository, packages, label, *, allow_skips=False, required_tests=()):
+    """Keep Go tool diagnostics separate from its JSON test-event stream."""
+    result = subprocess.run(['go', 'test', *packages, '-count=1', '-json'],
+        cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    diagnostics = (result.stdout or '') + (result.stderr or '')
+    if result.returncode:
+        raise RuntimeError(label + ' package tests failed (exit ' +
+                           str(result.returncode) + '): ' + diagnostics)
+    try:
+        events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+    except ValueError as error:
+        raise RuntimeError(label + ' package tests emitted invalid Go JSON: ' + diagnostics) from error
+    if any(not isinstance(event, dict) or not isinstance(event.get('Action'), str)
+           or ('Package' in event and not isinstance(event['Package'], str))
+           or ('Test' in event and not isinstance(event['Test'], str)) for event in events):
+        raise RuntimeError(label + ' package tests emitted invalid Go events: ' + diagnostics)
+    if any(event['Action'] == 'fail' for event in events):
+        raise RuntimeError(label + ' package tests reported failure: ' + diagnostics)
+    for package in packages:
+        suffix = '/' + package.removeprefix('./')
+        rows = [event for event in events if event.get('Package', '').endswith(suffix)]
+        ran = {event['Test'] for event in rows if event['Action'] == 'run' and event.get('Test')}
+        passed = {event['Test'] for event in rows if event['Action'] == 'pass' and event.get('Test')}
+        skipped = {event['Test'] for event in rows if event['Action'] == 'skip' and event.get('Test')}
+        # Whole CLI/Logs/OpenBao packages include separate opt-in native tests.
+        # Named required tests must always run and pass, including OpenBao's bootstrap checks.
+        finished = passed | skipped if allow_skips else passed
+        if (not ran or not passed or not ran <= finished or (skipped and not allow_skips)
+                or not any(event['Action'] == 'pass' and not event.get('Test') for event in rows)):
+            raise RuntimeError(label.lower() + ' package lacks passing test execution: ' + package +
+                               '\n' + diagnostics)
+        missing = set(required_tests) - (ran & passed)
+        if missing:
+            raise RuntimeError('required ' + label + ' tests missing PASS: ' +
+                               ', '.join(sorted(missing)) + '\n' + diagnostics)
+    return packages
 
 
 def execute_validation(check, repository):
@@ -116,72 +156,33 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'cli-package-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'authority-package-tests':
         # Some slices precede stableid; test every present authority package.
         packages = ['./' + name for name in ('internal/coreinstallation',
-                    'internal/stableid', 'internal/serviceaccess')
+                    'internal/stableid', 'internal/serviceaccess', 'internal/installauthority')
                     if (Path(repository) / name).is_dir()]
         if not packages:
             raise RuntimeError('no authority packages found')
-        executed = subprocess.run(['go', 'test', *packages, '-count=1', '-json'],
-                                  cwd=Path(repository), text=True,
-                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if executed.returncode:
-            raise RuntimeError('Authority package tests failed: ' + executed.stdout)
-        events = [json.loads(line) for line in executed.stdout.splitlines() if line.strip()]
-        for package in packages:
-            suffix = '/' + package.removeprefix('./')
-            rows = [event for event in events if event.get('Package', '').endswith(suffix)]
-            ran = {event['Test'] for event in rows if event.get('Action') == 'run'
-                   and event.get('Test', '').startswith('Test')}
-            passed = {event['Test'] for event in rows if event.get('Action') == 'pass'
-                      and event.get('Test')}
-            if (not ran or not ran <= passed or
-                    not any(event.get('Action') == 'pass' and not event.get('Test')
-                            for event in rows)):
-                raise RuntimeError('authority package lacks passing test execution: ' + package)
-        return packages
-    if check == 'delivery-package-tests':
-        package = Path(repository) / 'internal/delivery'
-        if not package.is_dir():
-            raise RuntimeError('delivery package missing')
-        executed = subprocess.run(['go', 'test', './internal/delivery', '-count=1', '-json'],
-            cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if executed.returncode:
-            raise RuntimeError('Delivery package tests failed: ' + executed.stdout)
-        events = [json.loads(line) for line in executed.stdout.splitlines() if line.strip()]
-        ran = {row['Test'] for row in events if row.get('Action') == 'run' and row.get('Test')}
-        passed = {row['Test'] for row in events if row.get('Action') == 'pass' and row.get('Test')}
-        if (not ran or not ran <= passed or
-                not any(row.get('Action') == 'pass' and not row.get('Test') for row in events)):
-            raise RuntimeError('delivery package lacks passing test execution')
-        return ['./internal/delivery']
+        return go_package_tests(repository, packages, 'Authority')
+    if check in ('delivery-package-tests', 'deployment-package-tests', 'broker-package-tests'):
+        name = 'runtimebroker' if check == 'broker-package-tests' else check.removesuffix('-package-tests')
+        package = 'internal/' + name
+        if not (Path(repository) / package).is_dir():
+            raise RuntimeError(name + ' package missing')
+        return go_package_tests(repository, ['./' + package], name.capitalize())
     if check == 'cli-package-tests':
-        result = subprocess.run(['go', 'test', './cmd/baha', '-count=1', '-json'],
-            cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if result.returncode:
-            raise RuntimeError('CLI package tests failed: ' + result.stdout)
-        events = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
-        if not any(row.get('Action') == 'pass' and row.get('Test') for row in events):
-            raise RuntimeError('CLI package tests did not execute')
-        return ['./cmd/baha']
+        return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
     if check == 'logs-package-tests':
-        executed = subprocess.run(
-            ['go', 'test', './internal/logs', '-count=1', '-v'],
-            cwd=Path(repository), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if executed.returncode:
-            raise RuntimeError('Logs package tests failed: ' + executed.stdout)
-        if not re.search(r'(?m)^=== RUN   Test\w+', executed.stdout):
-            raise RuntimeError('Logs package tests did not execute')
-        return ['internal/logs']
+        # Native opt-in scenarios run in their separately selected runtime jobs.
+        return go_package_tests(repository, ['./internal/logs'], 'Logs', allow_skips=True)
     if check == 'openbao-package-tests':
         # Require the frozen bootstrap unit families; native opt-in acceptance
         # tests keep their separate runtime gates. Discover once and run once.
         repo = Path(repository)
         listed = subprocess.run(
-            ['go', 'test', './internal/openbao/...', '-list', '.'],
+            ['go', 'test', './internal/openbao', '-list', '.'],
             cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if listed.returncode:
             raise RuntimeError('OpenBao test discovery failed: ' + listed.stderr.strip())
@@ -192,17 +193,9 @@ def execute_validation(check, repository):
         missing = set(OPENBAO_REQUIRED_TESTS) - set(matches)
         if missing:
             raise RuntimeError('missing required OpenBao tests: ' + ', '.join(sorted(missing)))
-        pattern = '^(' + '|'.join(re.escape(name) for name in OPENBAO_REQUIRED_TESTS) + ')$'
-        executed = subprocess.run(
-            ['go', 'test', './internal/openbao/...', '-run', pattern, '-count=1', '-v'],
-            cwd=repo, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        if executed.returncode:
-            raise RuntimeError('OpenBao package tests failed: ' + executed.stdout)
-        for name in OPENBAO_REQUIRED_TESTS:
-            if not re.search(r'(?m)^=== RUN   ' + re.escape(name) + r'(?:$|/)', executed.stdout):
-                raise RuntimeError('required OpenBao test did not execute: ' + name)
-            if not re.search(r'(?m)^--- PASS: ' + re.escape(name) + r'(?:$|\s)', executed.stdout):
-                raise RuntimeError('OpenBao test missing PASS: ' + name)
+        # Include all new unit tests, while retaining the mandatory bootstrap checks.
+        go_package_tests(repository, ['./internal/openbao'], 'OpenBao', allow_skips=True,
+                         required_tests=OPENBAO_REQUIRED_TESTS)
         return list(OPENBAO_REQUIRED_TESTS)
     if check in ('receipt-execution-tests', 'ci-executor-tests'):
         # Execute the registered suites and reject missing or empty modules.

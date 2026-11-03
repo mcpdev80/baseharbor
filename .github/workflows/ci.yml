@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - develop
       - 'runtime-validation/ci/**'
       - 'runtime-validation/source-preflight/**'
       - 'runtime-validation/ha/**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches:
       - develop
       - main
@@ -386,9 +386,49 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
+  source_format:
+    name: PR · Source format
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Check source format and readability
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          INTEGRATION_SHA: ${{ github.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$INTEGRATION_SHA"
+          read -r -a source_parents <<< "$(git rev-list --parents -n 1 "$INTEGRATION_SHA")"
+          if [ "${#source_parents[@]}" -eq 3 ] && [ "${source_parents[2]}" = "$HEAD_SHA" ]; then
+            format_base="${source_parents[1]}"
+            git merge-base --is-ancestor "$BASE_SHA" "$format_base"
+          elif [ "${#source_parents[@]}" -eq 2 ] && [ "$INTEGRATION_SHA" = "$HEAD_SHA" ]; then
+            format_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          else
+            echo "format candidate has unexpected PR source parents" >&2
+            exit 1
+          fi
+          git diff --name-only -z --diff-filter=ACMRT "$format_base" "$INTEGRATION_SHA" -- '*.go' > "$RUNNER_TEMP/format-paths"
+          mapfile -d '' -t go_files < "$RUNNER_TEMP/format-paths"
+          if [ "${#go_files[@]}" -gt 0 ]; then
+            files="$(gofmt -l -- "${go_files[@]}")"
+            test -z "$files" || { echo "$files"; exit 1; }
+          fi
+          bash scripts/source-readability-audit.sh
+
   pr_plan:
     name: PR · Trusted Plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 8
     outputs:
@@ -450,6 +490,7 @@ jobs:
           git show "$controller:scripts/pr-gate-plan.py" > "$RUNNER_TEMP/pr-gate-plan.py"
           git show "$controller:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
           python3 "$RUNNER_TEMP/pr-gate-plan.py" --diff "$RUNNER_TEMP/pr-diff.json" --requirements scripts/release-requirements.json --mapping scripts/pr-gate-map-v1.json > pr-plan.json
+          python3 -c 'import json; p=json.load(open("pr-plan.json")); print("::warning::No narrow mapping: conservative checks selected.") if p.get("fallback_used") else None'
           echo "trusted_base_sha=$(python3 -c 'import json; print(json.load(open("pr-plan.json"))["target_base_sha"])')" >> "$GITHUB_OUTPUT"
           # Run the check-runner from the same trusted base checkout as the
           # planner, so a validation id emitted by the planner is always an id
@@ -477,7 +518,7 @@ jobs:
   pr_runner_interface:
     name: PR · Runner Interface
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -501,7 +542,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.resolve.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.consumer_mode == 'ecosystem'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -533,7 +574,7 @@ jobs:
     needs: pr_plan
     outputs:
       demo_ref: ${{ steps.verify.outputs.demo_ref }}
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && (needs.pr_plan.outputs.runtime_required == 'true' || needs.pr_plan.outputs.public_contracts_required == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 8
     permissions:
@@ -580,7 +621,7 @@ jobs:
   pr_candidate:
     name: PR · Exact Candidate
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && github.event.pull_request.user.id == github.event.repository.owner.id && github.event.pull_request.head.repo.id == github.event.repository.id
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -619,7 +660,7 @@ jobs:
   pr_focused:
     name: PR · Focused Python
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -639,6 +680,9 @@ jobs:
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_runner_isolation.py
+          python3 scripts/test_ci_check_routes.py
+          python3 scripts/test_pr_ci_fallback.py
+          python3 scripts/test_pr_runtime_source.py
           python3 scripts/test_pr_gate_dependencies.py
           git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
           python3 scripts/test_pr_selected_runtime_matrix.py
@@ -652,7 +696,7 @@ jobs:
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
     needs: pr_plan
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.pr_plan.outputs.matrix) }}
@@ -689,6 +733,9 @@ jobs:
                   test -f site/index.html
                   ;;
               esac ;;
+            go-unit-tests) go test ./... -count=1 ;;
+            go-vet) go vet ./... ;;
+            go-build) go build ./... ;;
             source-contracts)
               go test ./internal/application/... ./contracts/... -count=1 ;;
             cli-guided-tests) go test ./cmd/baha -run '^TestGuided' -count=1 ;;
@@ -710,7 +757,7 @@ jobs:
             cli-build) go build -o "$RUNNER_TEMP/baha-validation" ./cmd/baha ;;
             capability-package-tests) go test ./internal/capability/... -count=1 ;;
             runtime-provider-package-tests)
-              go test ./internal/runtime ./internal/health ./internal/providers/runtime/podman -count=1 -v | tee "$RUNNER_TEMP/runtime-provider-package-tests.log"
+              go test ./internal/runtime/... ./internal/health ./internal/providers/runtime/podman -count=1 -v | tee "$RUNNER_TEMP/runtime-provider-package-tests.log"
               grep -q '^--- PASS: TestPortableCoreRuntimeBoundary ' "$RUNNER_TEMP/runtime-provider-package-tests.log"
               grep -q '^--- PASS: TestRuntimeProviderPackageBoundaries ' "$RUNNER_TEMP/runtime-provider-package-tests.log"
               grep -q '^--- PASS: TestLocalAuthorityRequiresActualCompleteNativeInfo ' "$RUNNER_TEMP/runtime-provider-package-tests.log"
@@ -735,7 +782,7 @@ jobs:
               python3 -m unittest scripts/test_pr_gate_plan.py ;;
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
-            ci-executor-tests|authority-package-tests|delivery-package-tests|cli-package-tests)
+            ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests)
               if [ "$VALIDATION" = ci-executor-tests ]; then
                 git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
               fi
@@ -765,7 +812,7 @@ jobs:
   pr_public_contracts:
     name: PR · Public Contracts
     needs: [pr_plan, pr_demo_pin]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.public_contracts_required == 'true' && needs.pr_demo_pin.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -796,7 +843,7 @@ jobs:
   pr_runtime_selected:
     name: PR · Selected Runtime
     needs: [pr_plan, pr_candidate, pr_demo_pin, pr_consumer_pins, pr_runner_interface]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_plan.outputs.runtime_required == 'true' && needs.pr_candidate.result == 'success' && needs.pr_runner_interface.result == 'success' && (needs.pr_demo_pin.result == 'success' || needs.pr_consumer_pins.result == 'success')
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -814,8 +861,8 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
-    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop'
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts]
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
