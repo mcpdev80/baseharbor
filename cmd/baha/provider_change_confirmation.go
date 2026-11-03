@@ -66,10 +66,13 @@ func readProviderImpactAcknowledgements(reader *bufio.Reader, out io.Writer, pla
 		}
 		fmt.Fprintf(out, "%s (%d/%d, plan %s)? [y/N]: ", label, stage, plan.ConfirmationsRequired, plan.PlanID)
 		answer, err := reader.ReadString('\n')
-		if os.Getenv("DIAG_CONSENT") != "" {
-			fmt.Printf("DIAG_CONSENT stage=%d answer=%q\n", stage, strings.TrimSpace(answer))
-		}
 		if err != nil && !errors.Is(err, io.EOF) {
+			return consent, err
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer != "y" && answer != "yes" {
+			return consent, nil
+		}
 		if stage == 1 {
 			consent.First = true
 		} else {

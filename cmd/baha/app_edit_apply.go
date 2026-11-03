@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"reflect"
 	"sort"
 
@@ -262,9 +261,6 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 	result, changeErr := appMachineChangeDesired(ctx, appMachineDesiredChangeRequest{
 		Desired: request, Proposal: proposal, Consent: consent,
 	}, authorities.Read, authorities.Choices, authorities.Plan, authorities.Authorize, machineApply)
-	if os.Getenv("DIAG_CONSENT") != "" && changeErr != nil {
-		fmt.Printf("DIAG_CONSENT appMachineChangeDesired changeErr=%v\n", changeErr)
-	}
 	if !executed {
 		// A refused plan has no execution receipt to present and does not claim
 		// a changed application. Preserve the original admission failure.
