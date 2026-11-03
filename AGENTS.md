@@ -79,6 +79,12 @@ Rulesets remain disabled during the current CI repair. Do not claim live Require
 
 ## CI execution discipline
 
+Ordinary branch pushes do not start CI. Draft PRs run workflow policy, source
+formatting and readability checks. Marking a PR ready and subsequent pushes run
+its selected checks. Bundle local commits into coherent pushes. Merging into
+`develop` writes the small receipt without a duplicate Source & Quality run.
+Explicit validation branches and manual validation remain available.
+
 - Batch related implementation, test and formatting changes into one coherent
   verification candidate. Run available focused local or isolated prechecks
   before pushing; do not use one-file pushes as a CI debugging loop.
@@ -97,8 +103,10 @@ Rulesets remain disabled during the current CI repair. Do not claim live Require
   and why cheaper checks are insufficient. Do not trade away required coverage,
   safety, runner isolation, actual test execution or fail-closed checks.
 - Select checks from actual impact. Run targeted native runtime gates only when
-  needed to prove uncovered behavior. Unknown impact must block explicitly;
-  never automatically launch the complete release matrix for a PR.
+  needed to prove uncovered behavior. Valid paths without a narrow mapping select
+  broad Go unit/vet/build checks and applicable Docker/Podman lifecycles. Invalid
+  source/diff/catalog data still fails; never automatically launch the complete
+  release matrix for a PR.
 - Run affected checks directly. Label deliberate negative pilots and their expected failure.
 - Repeated pushes that unnecessarily cancel running checks are a process
   defect. Do not hide the churn by disabling required checks or cancellation

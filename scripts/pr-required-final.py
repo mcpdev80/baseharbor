@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-BASE_JOBS = ('workflow_policy', 'pr_plan', 'pr_focused', 'pr_validations')
+BASE_JOBS = ('workflow_policy', 'source_format', 'pr_plan', 'pr_focused', 'pr_validations')
 
 
 def verify(plan, needs, *, head=None, integration=None):
