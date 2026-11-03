@@ -6,6 +6,90 @@ import (
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
+// Restored verbatim from origin/develop — preserved as-is (no rename, no rewrite).
+func TestRuntimeSelectionDefaultsLegacyState(t *testing.T) {
+	selection, err := RuntimeSelectionFromValues(map[string]string{
+		"BASEHARBOR_ENVIRONMENT": "production",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Provider != bhruntime.ProviderDocker {
+		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderDocker)
+	}
+	if selection.Profile != RuntimeProfileStandard {
+		t.Fatalf("profile = %q, want %q", selection.Profile, RuntimeProfileStandard)
+	}
+}
+
+// Restored verbatim from origin/develop — the four-environment invariant.
+func TestRuntimeSelectionDoesNotInferFromEnvironmentName(t *testing.T) {
+	for _, environment := range []string{"dev", "staging", "production", "enterprise"} {
+		selection, err := RuntimeSelectionFromValues(map[string]string{
+			"BASEHARBOR_ENVIRONMENT": environment,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selection.Provider != bhruntime.ProviderDocker || selection.Profile != RuntimeProfileStandard {
+			t.Fatalf("environment %q changed runtime selection: %#v", environment, selection)
+		}
+	}
+}
+
+// Restored verbatim from origin/develop — explicit ApplyRuntimeSelection round-trip.
+func TestRuntimeSelectionRoundTripPreservesOtherState(t *testing.T) {
+	values := map[string]string{
+		"BASEHARBOR_HOSTNAME": "mail.example.test",
+		"BASEHARBOR_TLS_MODE": "existing",
+	}
+	want := RuntimeSelection{
+		Provider: bhruntime.ProviderDocker,
+		Profile:  RuntimeProfileStandard,
+	}
+	if err := ApplyRuntimeSelection(values, want); err != nil {
+		t.Fatal(err)
+	}
+	if values["BASEHARBOR_HOSTNAME"] != "mail.example.test" || values["BASEHARBOR_TLS_MODE"] != "existing" {
+		t.Fatalf("unrelated deployment state changed: %#v", values)
+	}
+	got, err := RuntimeSelectionFromValues(values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("selection = %#v, want %#v", got, want)
+	}
+}
+
+// Restored verbatim from origin/develop — fails closed on an unknown profile.
+func TestRuntimeSelectionRejectsUnknownProfile(t *testing.T) {
+	if _, err := RuntimeSelectionFromValues(map[string]string{
+		RuntimeProfileEnvKey: "enterprise-ha",
+	}); err == nil {
+		t.Fatal("unknown runtime profile unexpectedly accepted")
+	}
+}
+
+// Restored verbatim from origin/develop — accepts a named future provider.
+func TestRuntimeSelectionAcceptsKnownFutureProvider(t *testing.T) {
+	selection, err := RuntimeSelectionFromValues(map[string]string{
+		RuntimeProviderEnvKey: "kubernetes",
+		RuntimeProfileEnvKey:  "standard",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Provider != bhruntime.ProviderKubernetes {
+		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderKubernetes)
+	}
+	if selection.Profile != RuntimeProfileStandard {
+		t.Fatalf("profile = %q, want %q", selection.Profile, RuntimeProfileStandard)
+	}
+}
+
+// ---- New assertions (added beside the restored develop coverage) ----
+
 // An empty profile defaults to standard — a new deployment without an explicit
 // profile still selects a concrete, safe runtime profile.
 func TestParseRuntimeProfileDefaultsToStandard(t *testing.T) {
@@ -115,79 +199,6 @@ func TestApplyRuntimeProviderStateRejectsNil(t *testing.T) {
 		t.Fatal("nil target: expected a closed error, got nil")
 	}
 }
-
-// ---- Restored regression coverage (develop) ----
-// The current branch had replaced these develop tests with a new provider+profile
-// matrix instead of extending them. These three bodies are restored verbatim from
-// origin/develop so the four-environment invariant, the future-provider acceptance,
-// and the explicit ApplyRuntimeSelection round-trip are covered again. The new
-// assertions below are added beside them; no existing test name is dropped.
-
-// A bare environment name must never imply a provider or profile — every environment
-// still selects the explicit, safe default (Docker + standard profile).
-func TestRuntimeSelectionDoesNotInferFromEnvironmentName(t *testing.T) {
-	for _, environment := range []string{"dev", "staging", "production", "enterprise"} {
-		selection, err := RuntimeSelectionFromValues(map[string]string{
-			"BASEHARBOR_ENVIRONMENT": environment,
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if selection.Provider != bhruntime.ProviderDocker || selection.Profile != RuntimeProfileStandard {
-			t.Fatalf("environment %q changed runtime selection: %#v", environment, selection)
-		}
-	}
-}
-
-// ApplyRuntimeSelection writes a normalized provider+profile and round-trips the
-// explicit selection back through RuntimeSelectionFromValues, preserving unrelated
-// deployment-owned state such as hostname and TLS mode.
-func TestRuntimeSelectionRoundTripPreservesOtherState(t *testing.T) {
-	values := map[string]string{
-		"BASEHARBOR_HOSTNAME": "mail.example.test",
-		"BASEHARBOR_TLS_MODE": "existing",
-	}
-	want := RuntimeSelection{
-		Provider: bhruntime.ProviderDocker,
-		Profile:  RuntimeProfileStandard,
-	}
-	if err := ApplyRuntimeSelection(values, want); err != nil {
-		t.Fatal(err)
-	}
-	if values["BASEHARBOR_HOSTNAME"] != "mail.example.test" || values["BASEHARBOR_TLS_MODE"] != "existing" {
-		t.Fatalf("unrelated deployment state changed: %#v", values)
-	}
-	got, err := RuntimeSelectionFromValues(values)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != want {
-		t.Fatalf("selection = %#v, want %#v", got, want)
-	}
-}
-
-// an explicit future provider is accepted when named outright — selection stays
-// explicit and independently configurable for upcoming environments.
-func TestRuntimeSelectionAcceptsKnownFutureProvider(t *testing.T) {
-	selection, err := RuntimeSelectionFromValues(map[string]string{
-		RuntimeProviderEnvKey: "kubernetes",
-		RuntimeProfileEnvKey:  "standard",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if selection.Provider != bhruntime.ProviderKubernetes {
-		t.Fatalf("provider = %q, want %q", selection.Provider, bhruntime.ProviderKubernetes)
-	}
-	if selection.Profile != RuntimeProfileStandard {
-		t.Fatalf("profile = %q, want %q", selection.Profile, RuntimeProfileStandard)
-	}
-}
-
-// ---- New assertions (added beside restored coverage) ----
-// These extend the matrix without touching the restored names: the provider-only
-// legacy writer still defaults the standard profile, and an explicit environment
-// plus future provider combination stays explicit (never coerced from the name).
 
 // ApplyRuntimeProviderState still materializes the standard profile when none was
 // persisted, so protected deployment state is a complete provider+profile selection.
