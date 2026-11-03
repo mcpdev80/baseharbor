@@ -198,6 +198,13 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	}
 	guardRecord := record
 	guardRecord.Observed.Owner = guardOwner
+	// Carry a conflict observed in the persisted previous record into the guard
+	// evaluation. guardRecord is a copy of the caller-supplied record, which
+	// cannot invent a conflict; only an authoritative persisted conflict is
+	// honoured here, so a caller-supplied Conflict is never trusted.
+	if previousExists && previous.Observed.Conflict {
+		guardRecord.Observed.Conflict = true
+	}
 	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
 	}
@@ -220,7 +227,14 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
+	// Persist the GUARDED record, not the caller-supplied one. The guard above
+	// resolved the authoritative owner into guardRecord (and carried any prior
+	// Conflict flag); serialising `record` here would persist the caller-supplied
+	// Observed.Owner, which a delegated update can forge — a later direct read
+	// would then see the forged/empty owner and bypass the guard. Persisting
+	// guardRecord keeps the persisted owner canonical; when the guard refuses a
+	// mutation the file is never written (store bytes unchanged).
+	data, err := json.MarshalIndent(guardRecord, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode deployment record: %w", err)
 	}
