@@ -521,6 +521,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [ "${{ steps.plan.outputs.runtime_required }}" != true ] && [ "${{ steps.plan.outputs.public_contracts_required }}" != true ]; then
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ -n "$EXPLICIT_PR_DEMO_SHA" ]; then
             demo_sha="$EXPLICIT_PR_DEMO_SHA"
           else
