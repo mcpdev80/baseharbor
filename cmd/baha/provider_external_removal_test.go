@@ -6,15 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
-	"github.com/mcpdev80/baseharbor/internal/externalprovider"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
+	tsexternalprovider "github.com/mcpdev80/baseharbor/internal/testsupport/externalprovider"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -22,34 +21,8 @@ func externalRemovalTransportFixture(t *testing.T) application.ProviderImpactSco
 	t.Helper()
 	configureTestTarget(t)
 	t.Chdir(t.TempDir())
-	root := t.TempDir()
-	// Seed ownership explicitly so the provider-registry ownership check can be
-	// verified from the fixture alone (no reliance on a non-group-writable tmp
-	// on the CI runner). The verification treats a group-writable ancestor as
-	// unverifiable ownership, so the seeded state dir must be owned and
-	// non-group-writable.
-	if err := os.Chmod(root, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("BASEHARBOR_STATE_DIR", root)
-	reg := externalprovider.Registration{ID: "team-db", ProviderID: "team/postgresql", Provider: capability.Provider{Kind: capability.ProviderPostgreSQL, Capabilities: []capability.Kind{capability.SQL}}, Endpoint: "postgres://db.example:5432/app", Trust: externalprovider.Trust{Mode: externalprovider.TrustSystem}}
-	if err := application.RegisterExternalProviderAt(root, reg); err != nil {
-		t.Fatal(err)
-	}
-	r, err := (capability.RegistryStore{Path: filepath.Join(root, "provider-registry.json")}).Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	store := capability.RegistryStore{Path: filepath.Join(root, "targets", "docker-dev", "provider-registry.json")}
-	if err := store.Update(func(target *capability.Registry) error {
-		if err := target.Register(r.Instances[0]); err != nil {
-			return err
-		}
-		return target.BindDeployment(capability.Resource{Application: "web", Kind: capability.SQL, Name: "default", Provider: capability.ProviderPostgreSQL}, application.MustNewApplicationID(), "dev", r.Instances[0].ID)
-	}); err != nil {
-		t.Fatal(err)
-	}
-	plan, err := application.PlanExternalProviderRemovalAt(root, reg.ID)
+	root := tsexternalprovider.SeedProviderRegistryOwner(t, "docker-dev")
+	plan, err := application.PlanExternalProviderRemovalAt(root, "team-db")
 	if err != nil {
 		t.Fatal(err)
 	}
