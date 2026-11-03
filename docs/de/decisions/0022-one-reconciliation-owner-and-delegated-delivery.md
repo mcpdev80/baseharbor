@@ -53,3 +53,20 @@ Nachteile:
 
 - Delegierte Lieferung trägt zusätzliche revisions-/besitzer-Zustände, die direkte Lieferung wegLässt.
 - Der Invariant wird beim Beobachtungszeitpunkt geprüft; er verhindert nicht, dass ein Operator zwei Systeme konfiguriert, sondern nur, dass BaseHarbor das Ergebnis still akzeptiert.
+
+### Umfang und abgehängtes Dependency
+
+Der one-owner-Invariant wird beim Speichern des Datensatzes in
+`internal/deployment.SaveDeploymentRecord` durchgesetzt: der autoritative
+persistierte Vor-Besitzer regelt den Guard und ist der einzige Wert, der als
+Beobachtungs-Besitzer des Datensatzes persistiert wird, so dass ein Caller-Wert
+in `Observed.Owner` keine direkte Mutation über einen externen Besitzer
+Fälschung kann, und ein beobachteter Konflikt zweier aktiven Besitzer schlägt
+bei Konflikt fehl. Dies schützt nur die Speichern-des-Datensatzes-Grenze. Die
+prozessübergreifende, aktive Beobachtung des verwalteten Ressourcensatz durch ein
+Versöhner — d. h. ein live externer Versöhner, der außerhalb von
+`SaveDeploymentRecord` mutiert, bevor der nächste BaseHarbor-Schreibzugriff
+erfolgt — ist ein ausdrückliches, noch nicht implementiertes Dependency: es wird
+abgehängt, bis `t-20261018-r27-state-owner` und `t-20261018-r27-authority-contract`
+beide akzeptiert sind. Kein Laufzeit-Schloss wird über den durch den
+SaveDeploymentRecord-Guard durchgesetzten Umfang hinaus behauptet.

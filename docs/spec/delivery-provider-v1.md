@@ -142,4 +142,18 @@ Denials the typed contract enforces:
 - selection provenance and immutable revision may be recorded without changing
   portable Application Intent.
 
+## Scope and deferred dependency
+
+The one-owner invariant is enforced at record-save time in
+`internal/deployment.SaveDeploymentRecord`: the persisted previous owner governs
+the guard and is the only value persisted as the deployment's observed owner, so a
+caller-supplied `Observed.Owner` cannot forge a direct apply over an external
+owner, and a recorded conflict of two active owners fails closed. This guards the
+record-save boundary only. Cross-process, active-reconciler observation of the
+managed resource set — a live external reconciler that mutates outside
+`SaveDeploymentRecord` before the next BaseHarbor write — is an explicit,
+not-yet-implemented dependency, deferred until
+`t-20261018-r27-state-owner` and `t-20261018-r27-authority-contract` are both
+accepted. No runtime lock is asserted beyond what the record-save guard enforces.
+
 Argo CD and Flux are possible implementations, not contract semantics.
