@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
 // TestReviewerRetainsPreferences is the exact reviewer-repro from review-1333e:
@@ -292,5 +294,100 @@ func TestPreviousConflictStillFailsClosed(t *testing.T) {
 	}
 	if err := SaveDeploymentRecord(same); !errors.Is(err, ErrConflictingOneWriter) {
 		t.Fatalf("same-owner update under carried conflict must refuse with ErrConflictingOneWriter, got %v", err)
+	}
+}
+
+// TestRetentionPreviousInvalidSelectionFailsClosed proves that a nil save against
+// a previous record that the full loader rejects (invalid delivery selection)
+// fails closed: the save is refused and the previously owned preferences stay.
+func TestRetentionPreviousInvalidSelectionFailsClosed(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:                    DeploymentRecordVersion,
+		Identity:                   id,
+		Source:                     DeploymentSource{Kind: "repository"},
+		Applied:                    AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed:                   ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor},
+		DesiredProviderPreferences: json.RawMessage(`[{"profile":"default"}]`),
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	// Corrupt the persisted selection so the full loader rejects the previous
+	// record on re-read (invalid delivery selection).
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.Delivery = delivery.Selection{Mode: delivery.ModeDirect, Provider: "not a valid provider"}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	// Nil save against the corrupt previous record must be refused, not silently
+	// succeed and drop the retained preferences.
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}); err == nil {
+		t.Fatalf("nil save against previous invalid-selection record must fail closed, got nil error")
+	}
+}
+
+// TestRetentionPreviousInvalidRemoteProjectFailsClosed proves that a nil save
+// against a previous record rejected by the full loader for an invalid
+// remote-project binding fails closed.
+func TestRetentionPreviousInvalidRemoteProjectFailsClosed(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:                    DeploymentRecordVersion,
+		Identity:                   id,
+		Source:                     DeploymentSource{Kind: "repository"},
+		Applied:                    AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed:                   ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor},
+		DesiredProviderPreferences: json.RawMessage(`[{"profile":"default"}]`),
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	// Inject a remote-project binding that does not match target/runtime so the
+	// full loader rejects the previous record.
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.RemoteProject = &targetsession.ProjectRecord{
+		Scope: targetenrollment.Scope{
+			TargetID: "other-target",
+			Runtime:  "k8s",
+		},
+	}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}); err == nil {
+		t.Fatalf("nil save against previous invalid-remote-project record must fail closed, got nil error")
 	}
 }
