@@ -51,6 +51,9 @@ func promptConfirmCandidateSubmission(resolved resolvedApplication, out io.Write
 		SourceRevision:   resolved.DeploymentRecord.Source.Digest,
 		ImageDigest:      "",
 	}
+	// Derive the bound digest from the same helper finalizeCandidateConsent
+	// uses for the same submission, so the digest shown here is exactly the
+	// digest the write binds.
 	digest := delivery.CandidateConsentDigest(submission)
 	if digest == "" {
 		return
@@ -70,6 +73,14 @@ func promptConfirmCandidateSubmission(resolved resolvedApplication, out io.Write
 // submission identity that was validated — a wrong or absent digest can never be
 // persisted. An empty confirm returns nil, which the apply path rejects before
 // persisting.
+//
+// The digest the operator confirmed is never trusted as-is: the helper computes
+// the digest of the exact submission being bound and compares it against the
+// supplied confirm in constant time. A mismatch is a contract violation and is
+// rejected before any state is written, so a stale, partial, or forged confirm
+// can never bind a submission. The prompt (promptConfirmCandidateSubmission)
+// derives the displayed digest from this same helper with this same submission,
+// so the shown digest always equals the bound digest.
 func finalizeCandidateConsent(rawDigest, by string, submission delivery.CandidateSubmission) (*delivery.CandidateConsent, error) {
 	if strings.TrimSpace(rawDigest) == "" {
 		return nil, nil
@@ -77,13 +88,20 @@ func finalizeCandidateConsent(rawDigest, by string, submission delivery.Candidat
 	if strings.TrimSpace(by) == "" {
 		by = "operator"
 	}
-	digest := delivery.CandidateConsentDigest(submission)
-	if digest == "" {
+	// Single source of truth: the digest bound to the submission this leaf
+	// validated, derived from the same helper the prompt prints.
+	computed := delivery.CandidateConsentDigest(submission)
+	if computed == "" {
 		return nil, errConsentRequiredForCandidateSubmission
+	}
+	// Fail closed: the operator's confirm must match the submission identity
+	// exactly (constant-time to avoid leaking the digest via timing).
+	if !delivery.ConstantTimeDigestMatch(strings.TrimSpace(rawDigest), computed) {
+		return nil, errCandidateConsentDigestMismatch
 	}
 	return &delivery.CandidateConsent{
 		By:     by,
 		At:     time.Now().UTC(),
-		Digest: digest,
+		Digest: computed,
 	}, nil
 }

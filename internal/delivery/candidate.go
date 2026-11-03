@@ -74,6 +74,10 @@ type CandidateConsent struct {
 // over the typed struct, so the digest binds the exact submission contents and
 // no incidental key ordering. It reuses the established delivery-paket digest
 // convention (sha256 over a canonical json.Marshal), not a new hash scheme.
+//
+// Both the confirmation prompt and the persisted consent MUST derive the bound
+// digest from this single helper with the exact same submission, so the digest
+// an operator sees can never differ from the digest the write binds.
 func CandidateConsentDigest(c CandidateSubmission) string {
 	raw, err := json.Marshal(c)
 	if err != nil {
@@ -171,6 +175,14 @@ func constantTimeEqual(got, expected string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(expected)) == 1
+}
+
+// ConstantTimeDigestMatch reports whether the operator-supplied confirm digest
+// equals the digest the candidate leaf validated, in constant time so the
+// comparison never leaks the expected digest through timing. An empty value
+// never matches, so a missing or whitespace-only confirm can never bind.
+func ConstantTimeDigestMatch(got, expected string) bool {
+	return constantTimeEqual(got, expected)
 }
 
 // validatePinnedSource accepts only a fixed source revision. A mutable branch or

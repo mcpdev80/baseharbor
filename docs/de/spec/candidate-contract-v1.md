@@ -108,7 +108,7 @@ Wiederverwendet bestehende Werkzeuge und Eigentümer. Kein proprietäres Release
 Registry-, Build-, Pipeline- oder Controller-Framework. Keine Standard- CI- oder
 GitOps-Voraussetzung für lokale Arbeit. Runtime-spezifisches nicht unterstütztes
 Verhalten bleibt ausdrücklich. Dieser Schnitt ist durch die Entscheidung
-[Native Lieferung, Artefakte und unabhängige Stage-Versionen](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/baseharbor-plan/decisions/2026-10-18-r27-native-delivery-and-stages.md)
+[Native Lieferung, Artefakte und unabhängige Stage-Versionen](https://github.com/mcpdev80/baseharbor-plan/blob/HEAD/decisions/2026-10-18-r27-native-delivery-and-stages.md)
 beschränkt.
 
 ## Fixtures

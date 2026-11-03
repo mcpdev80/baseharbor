@@ -15,7 +15,7 @@
       "contract_version": "baseharbor.candidate/v1",
       "app": { "id": "00000000-0000-0000-0000-000000000002" },
       "target": { "name": "lab" },
-      "consent": { "by": "automation", "at": "2026-11-03T00:00:00Z", "digest": "7c518261535ed332f389de16120ed703d8fca50af30a3f30658e3d3584f6515" },
+      "consent": { "by": "automation", "at": "2026-11-03T00:00:00Z", "digest": "7c518261535ed332f389de161e20ed703d8fca50af30a3f30658e3d3584f6515" },
       "image": { "kind": "image", "reference": "example/app:release", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
       "stage": "stable"
     }

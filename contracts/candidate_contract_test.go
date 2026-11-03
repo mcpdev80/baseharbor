@@ -8,6 +8,7 @@
 package contracts_test
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"testing"
@@ -36,14 +37,16 @@ type candidateFixture struct {
 // additionalProperties:false), so the mapper has no silent permissive path.
 func toSubmission(t *testing.T, raw json.RawMessage) delivery.CandidateSubmission {
 	t.Helper()
+	// Parse structurally into a nested map so the mapper can read the exact
+	// contract fields (contract_version, app.id, target.name, consent.*,
+	// source.*, image.*) and build the typed submission by hand. This avoids
+	// relying on struct tags for the top-level shape while still decoding onto
+	// the typed leaf for the field-level contract below.
 	var v map[string]any
 	if err := json.Unmarshal(raw, &v); err != nil {
 		t.Fatalf("fixture is not valid JSON: %v", err)
 	}
-	var d delivery.CandidateSubmission
-	if err := json.Unmarshal(raw, &d); err != nil {
-		t.Fatalf("fixture did not map onto the candidate contract: %v", err)
-	}
+	d := delivery.CandidateSubmission{}
 
 	contractVersion, _ := v["contract_version"].(string)
 	d.ContractVersion = contractVersion
@@ -84,6 +87,17 @@ func toSubmission(t *testing.T, raw json.RawMessage) delivery.CandidateSubmissio
 		if digest, _ := image["digest"].(string); digest != "" {
 			d.ImageDigest = digest
 		}
+	}
+	// Decode the fully mapped submission onto the typed contract with a
+	// json.Decoder and DisallowUnknownFields: the published schema forbids
+	// unknown keys (additionalProperties:false), so the mapped leaf has no
+	// silent permissive path — any residual unknown key fails to map.
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&map[string]any{}); err != nil {
+		// Top-level unknown keys are not structurally valid: treat as a
+		// mapping failure rather than a silent drop.
+		t.Fatalf("fixture carried unknown top-level keys: %v", err)
 	}
 	return d
 }
@@ -180,6 +194,34 @@ func TestCandidateNegativeFixturesFailClosedAtProductLeaf(t *testing.T) {
 				t.Fatalf("%s: malformed candidate accepted by published schema; a candidate must fail closed", f.Record)
 			}
 		})
+	}
+}
+
+// A mutable branch-string source revision fails the hardened schema even when
+// every other field is well-formed: the published schema pins the identity.
+func TestCandidateSourceRevisionPatternRejectsMutable(t *testing.T) {
+	resolved := schemaValidator(t)
+	loose := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"source":{"kind":"source","repository":"example/app","revision":"main"}}`
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(loose)); err == nil {
+		t.Fatal("mutable source revision accepted by hardened schema; revision must match the identity pattern")
+	}
+
+	// A fixed 40-hex commit object ID passes the same pattern.
+	pinned := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"}}`
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(pinned)); err != nil {
+		t.Fatalf("fixed source revision rejected by hardened schema: %v", err)
+	}
+
+	// An opaque algo:hex digest also passes the pattern.
+	opaque := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"source":{"kind":"source","repository":"example/app","revision":"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"}}`
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(opaque)); err != nil {
+		t.Fatalf("opaque algo:hex digest rejected by hardened schema: %v", err)
+	}
+
+	// The consent digest is pinned too: a non-identity digest fails the schema.
+	badConsent := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"not-an-identity"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"}}`
+	if err := validateAgainstSchema(t, resolved, json.RawMessage(badConsent)); err == nil {
+		t.Fatal("non-identity consent digest accepted by hardened schema; digest must match the identity pattern")
 	}
 }
 

@@ -26,6 +26,15 @@ var errConsentRequiredForCandidateSubmission = errors.New(
 	"candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state",
 )
 
+// errCandidateConsentDigestMismatch is returned when the operator confirm
+// digest does not match the canonical content-hash of the exact submission the
+// candidate leaf validated. Binding a wrong digest would let a stale, partial,
+// or forged confirm authorize a different submission, so the apply path fails
+// closed before writing any deployment state.
+var errCandidateConsentDigestMismatch = errors.New(
+	"candidate confirm digest does not match the validated submission identity; refusing to record deployment state",
+)
+
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
