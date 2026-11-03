@@ -1,0 +1,32 @@
+[
+  {
+    "record": "source-exact-revision",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000001" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "operator" },
+      "source": { "kind": "source", "repository": "example/app", "revision": "abc123def456" }
+    }
+  },
+  {
+    "record": "image-digest-pinned",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000002" },
+      "target": { "name": "lab" },
+      "consent": { "acknowledged": true, "by": "automation" },
+      "image": { "kind": "image", "reference": "example/app:release", "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+      "stage": "stable"
+    }
+  },
+  {
+    "record": "source-absent-image-only",
+    "fixture": {
+      "contract_version": "baseharbor.candidate/v1",
+      "app": { "id": "00000000-0000-0000-0000-000000000003" },
+      "target": { "name": "prod" },
+      "consent": { "acknowledged": true, "by": "operator" }
+    }
+  }
+]
