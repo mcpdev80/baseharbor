@@ -1,7 +1,9 @@
 package deployment
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -42,7 +44,35 @@ func provisionOwnerForTarget(t *testing.T, target string) {
 		t.Fatalf("resolve runtime root for %s: %v", target, err)
 	}
 	writeInstallationAuthoritative(t, target, filepath.Join(targetRoot, "runtime"))
-} // TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
+}
+
+// makeInstallationForeign rewrites the Core installation.json under root so its
+// spec.target is a different (foreign) Target while remaining a syntactically
+// valid Core installation. VerifyDeploymentOwner then rejects it as
+// ErrDeploymentOwnerForeign because the installation's Target does not own the
+// deployment directory's Target.
+func makeInstallationForeign(t *testing.T, root string) {
+	t.Helper()
+	path := filepath.Join(root, "installation.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read installation to foreign-ize it: %v", err)
+	}
+	var state coreinstallation.State
+	if err := json.Unmarshal(data, &state); err != nil {
+		t.Fatalf("parse installation to foreign-ize it: %v", err)
+	}
+	state.Spec.Target = "foreign-target"
+	out, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		t.Fatalf("re-encode installation: %v", err)
+	}
+	if err := os.WriteFile(path, append(out, '\n'), 0o600); err != nil {
+		t.Fatalf("write foreign installation: %v", err)
+	}
+}
+
+// TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
 // loadable only when a single Core installation governs the Target, and that a
 // missing installation fails closed without mutating the record.
 func TestDeploymentOwnerBindingPositiveAndMissing(t *testing.T) {
@@ -167,10 +197,20 @@ func TestDeploymentOwnerSeamEnforcedOnRealSaveLoadList(t *testing.T) {
 
 	identity := testDeploymentIdentity(t, target, "app-seam", "dev")
 
-	// Missing owner: a second target with no Core installation fails closed.
-	_, found, err := FindDeployment("other", identity.ApplicationID, identity.Environment)
-	if err != nil || found {
-		t.Fatalf("missing-owner target should fail closed: found=%t err=%v", found, err)
+	// Missing deployment on an owned target: a second target with a Core owner
+	// but zero deployments returns the concrete empty/missing semantics the
+	// seam contract defines — not a blanket nil. A missing deployment is
+	// reported as found==false with a nil error, and an owned-but-empty target
+	// lists empty with a nil error. This is the not-found path, distinct from a
+	// missing/foreign/corrupt OWNER (which fails closed below).
+	provisionOwnerForTarget(t, "other")
+	_, found, listErr := FindDeployment("other", identity.ApplicationID, identity.Environment)
+	if listErr != nil || found {
+		t.Fatalf("owned-but-empty target must report empty (found), not an error: found=%t err=%v", found, listErr)
+	}
+	emptyList, emptyErr := ListDeployments("other")
+	if emptyErr != nil || len(emptyList) != 0 {
+		t.Fatalf("owned-but-empty target must list empty: len=%d err=%v", len(emptyList), emptyErr)
 	}
 
 	// Positive: a record written against the owned Target loads back and lists.
@@ -195,18 +235,44 @@ func TestDeploymentOwnerSeamEnforcedOnRealSaveLoadList(t *testing.T) {
 		t.Fatalf("list against owned target: len=%d err=%v", len(listed), err)
 	}
 
-	// Foreign: a distinct installation for a different Target cannot own it.
+	// Foreign owner on an EXISTING record: provision a valid owner for a target,
+	// save a real record for it, then rewrite that installation so its
+	// spec.target is a different (foreign) Target. The public Load seam must then
+	// fail closed with the SPECIFIC ErrDeploymentOwnerForeign for the existing
+	// record (not merely any non-nil error), proving a foreign installation
+	// cannot own a deployment that already exists on disk.
+	foreignRoot, rerr := TargetStateRoot("remote")
+	if rerr != nil {
+		t.Fatalf("resolve remote runtime root: %v", rerr)
+	}
+	foreignRoot = filepath.Join(foreignRoot, "runtime")
 	provisionOwnerForTarget(t, "remote")
-	foreign := identity
-	foreign.Target = "remote"
-	if _, err := LoadDeploymentRecord(foreign); err == nil {
+	foreignRecord := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: testDeploymentIdentity(t, "remote", "app-foreign", "dev"),
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(foreignRecord); err != nil {
+		t.Fatalf("save against owned remote target failed: %v", err)
+	}
+	makeInstallationForeign(t, foreignRoot)
+	foreignLoad, foreignLoadErr := LoadDeploymentRecord(foreignRecord.Identity)
+	if foreignLoadErr == nil {
 		t.Fatal("foreign installation was admitted on the load seam")
+	}
+	if !errors.Is(foreignLoadErr, ErrDeploymentOwnerForeign) {
+		t.Fatalf("foreign-owner load must be ErrDeploymentOwnerForeign, got: %#v (id=%s)", foreignLoadErr, foreignLoad.Identity)
 	}
 }
 
-// TestDeploymentOwnerSeamRejectsCorruptStateThroughList proves corrupt state on
-// the owned list path is surfaced (best-effort warnings) rather than silently
-// adopted, and that a non-best-effort list fails closed.
+// TestDeploymentOwnerSeamRejectsCorruptStateThroughList proves that a corrupt
+// OWNER on the owned list path is surfaced rather than silently adopted: the
+// non-best-effort public ListDeployments fails closed with the specific owner
+// error, the best-effort public ListDeploymentsForDisplay surfaces a concrete
+// warning instead of hard-failing, and the on-disk record bytes are left
+// unchanged by either list. It exercises the PUBLIC seams against a corrupt
+// OWNER (not the private listDeploymentRecords against corrupt record data).
 func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", "")
 	data := t.TempDir()
@@ -217,34 +283,75 @@ func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
 	provisionOwnerForTarget(t, target)
 
 	identity := testDeploymentIdentity(t, target, "app-corrupt", "dev")
-	root, err := DeploymentRoot(identity)
-	if err != nil {
-		t.Fatal(err)
+	// Save a real record against the valid owner and capture its bytes so the
+	// corrupt-owner list can prove the record was not mutated.
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: identity,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}); err != nil {
+		t.Fatalf("save against owned target failed: %v", err)
 	}
-	if err := os.MkdirAll(root, 0o700); err != nil {
-		t.Fatal(err)
+	recordPath := filepath.Join(xdgDataRoot(t, target), "deployments", identity.DeploymentID, "deployment.json")
+	validBytes, readErr := os.ReadFile(recordPath)
+	if readErr != nil {
+		t.Fatalf("read back the saved record bytes: %v", readErr)
 	}
-	if err := os.WriteFile(filepath.Join(root, "deployment.json"), []byte("{not json"), 0o600); err != nil {
-		t.Fatal(err)
+	if len(validBytes) == 0 {
+		t.Fatal("saved record wrote no bytes")
 	}
 
-	warnings := map[string]bool{}
-	deploymentsDir := filepath.Dir(filepath.Dir(root))
-	records, warns, lerr := listDeploymentRecords(deploymentsDir, target, true)
-	for _, w := range warns {
-		if se, ok := DeploymentRecordState(w); ok {
-			warnings[se.Kind] = true
-		}
+	// Corrupt the saved OWNER: overwrite the Core installation.json (which lives
+	// under the target's runtime root) with invalid content so
+	// coreinstallation.Load fails and the seam treats the owner as
+	// foreign/incompatible (not missing).
+	ownerRoot, rerr := TargetStateRoot(target)
+	if rerr != nil {
+		t.Fatalf("resolve owner root: %v", rerr)
 	}
-	if lerr != nil {
-		t.Fatalf("best-effort list must not hard-fail: %v", lerr)
+	if err := os.WriteFile(filepath.Join(ownerRoot, "runtime", "installation.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("corrupt the saved owner installation: %v", err)
 	}
-	if len(records) != 0 {
-		t.Fatalf("corrupt record was loaded: %#v", records)
+
+	// Non-best-effort public list fails closed with the specific owner error.
+	if _, listErr := ListDeployments(target); listErr == nil {
+		t.Fatal("non-best-effort ListDeployments did not fail closed on corrupt owner")
+	} else if !errors.Is(listErr, ErrDeploymentOwnerForeign) {
+		t.Fatalf("non-best-effort list must be ErrDeploymentOwnerForeign, got: %v", listErr)
 	}
-	if !warnings["corrupt"] && !warnings["incomplete"] {
-		t.Fatalf("corrupt state not surfaced as warning: %#v", warnings)
+
+	// Best-effort public list surfaces a concrete warning rather than hard-failing.
+	listed, warns, ferr := ListDeploymentsForDisplay(target)
+	if ferr != nil {
+		t.Fatalf("best-effort ListDeploymentsForDisplay must not hard-fail: %v", ferr)
 	}
+	if len(listed) != 0 {
+		t.Fatalf("corrupt-owner list must not load any record: %#v", listed)
+	}
+	if len(warns) == 0 {
+		t.Fatal("best-effort list surfaced no warning for the corrupt owner")
+	}
+
+	// The owner corruption must not have touched the on-disk record bytes.
+	afterBytes, readErr2 := os.ReadFile(recordPath)
+	if readErr2 != nil {
+		t.Fatalf("read back the record after the corrupt-owner list: %v", readErr2)
+	}
+	if !bytes.Equal(validBytes, afterBytes) {
+		t.Fatalf("corrupt-owner list mutated the on-disk record: valid=%q after=%q", validBytes, afterBytes)
+	}
+}
+
+// xdgDataRoot resolves the canonical targets/<target> data root this test's
+// XDG_DATA_HOME maps to, mirroring DataRoot for a target.
+func xdgDataRoot(t *testing.T, target string) string {
+	t.Helper()
+	root, err := TargetStateRoot(target)
+	if err != nil {
+		t.Fatalf("resolve data root for %s: %v", target, err)
+	}
+	return root
 }
 
 // TestDeploymentOwnerTenantBypassRemoved proves the blanket TenantID bypass that

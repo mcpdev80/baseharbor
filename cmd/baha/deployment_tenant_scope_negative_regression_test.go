@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -52,15 +53,20 @@ func TestTenantScopeErrorRefusedAgainstExistingCoreOwner(t *testing.T) {
 		Environment:   manifest.Environment,
 	}
 
-	// A tenant target whose Access reference is not a genuine node-connector
-	// enrollment yields a real connector-scope error from connectorScopeForTarget.
+	// Start with a GUELTIGEM (valid) enrolled scope: a baseharbor-node-connector
+	// access reference grants through the grant-only TenantOwnerResolver hook so
+	// the tenant is admitted on the write seam even with an existing Core-owner.
+	// A real record is saved here first so the byte comparison below has a real
+	// baseline: the corrupt-scope regression can only prove "bytes unchanged" if
+	// a valid record was actually persisted before the scope was corrupted. This
+	// is the setup the earlier version lacked (it asserted the file was absent
+	// and then loaded that absent record, which could not distinguish a
+	// fail-closed write seam from a silent one).
 	cfgDoc := deployment.Config{
 		Version:       deployment.ConfigVersion,
 		DefaultTarget: tenant,
 		Access: map[string]deployment.AccessDefinition{
-			// Non-connector provider => connectorScopeForTarget fails with a
-			// real scope error, not the "valid scope" grant.
-			"connector": {Provider: "docker", Reference: "node-corrupt"},
+			"connector": {Provider: "baseharbor-node-connector", Reference: "node-a"},
 		},
 		Targets: map[string]deployment.TargetDefinition{
 			tenant: {
@@ -86,27 +92,61 @@ func TestTenantScopeErrorRefusedAgainstExistingCoreOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	record := deployment.DeploymentRecord{
+	validRecord := deployment.DeploymentRecord{
 		Version:  deployment.DeploymentRecordVersion,
 		Identity: identity,
 		Source:   deployment.DeploymentSource{Kind: "repository"},
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "podman"},
 	}
-
-	// Save on the real write seam must be refused with a tenant-scope-chain
-	// error, never admitted through the existing core-owner.
-	saveErr := deployment.SaveDeploymentRecord(record)
-	assertRejectionInChain(t, "Save", saveErr)
-
-	// No deployment state may have been written under the existing owner.
+	// Save on the real write seam must be admitted for a valid enrolled scope.
+	if err := deployment.SaveDeploymentRecord(validRecord); err != nil {
+		t.Fatalf("valid-scope tenant must be admitted on the write seam: %v", err)
+	}
 	statePath := deploymentStatePath(t, tenant, identity.DeploymentID)
-	if _, statErr := os.Stat(statePath); !os.IsNotExist(statErr) {
-		t.Fatal("refused corrupt-scope tenant persisted state under existing owner")
+	validBytes, readErr := os.ReadFile(statePath)
+	if readErr != nil {
+		t.Fatalf("read back the valid-scope record bytes: %v", readErr)
+	}
+	if len(validBytes) == 0 {
+		t.Fatal("valid-scope record wrote no bytes to the write seam")
 	}
 
-	// Load on the same seam must also be refused with a tenant-scope-chain error.
+	// Now corrupt the enrolled access scope: a non-connector provider makes
+	// connectorScopeForTarget fail with a real connector-scope error, which the
+	// TenantOwnerResolver hook propagates as a genuine rejection (never a silent
+	// fall-through admitted by the existing Core-owner).
+	cfgDoc.Access["connector"] = deployment.AccessDefinition{Provider: "docker", Reference: "node-corrupt"}
+	if err := cfgDoc.Save(); err != nil {
+		t.Fatalf("rewrite config to corrupt scope: %v", err)
+	}
+
+	// Save on the real write seam must now be refused with a tenant-scope-chain
+	// error, never admitted through the existing core-owner, and MUST NOT
+	// overwrite the valid record that is already on disk.
+	saveErr := deployment.SaveDeploymentRecord(validRecord)
+	assertRejectionInChain(t, "Save (corrupt scope)", saveErr)
+	if _, statErr := os.Stat(statePath); statErr != nil && !os.IsNotExist(statErr) {
+		t.Fatalf("corrupt-scope save should leave the existing state in place: %v", statErr)
+	}
+	corruptedBytes, readErr2 := os.ReadFile(statePath)
+	if readErr2 != nil {
+		t.Fatalf("read back the record after the refused corrupt-scope save: %v", readErr2)
+	}
+	if !bytes.Equal(validBytes, corruptedBytes) {
+		t.Fatalf("corrupt-scope save mutated the valid record on disk: valid=%q corrupt=%q", validBytes, corruptedBytes)
+	}
+
+	// Load on the same seam must also be refused with a tenant-scope-chain error,
+	// still leaving the valid record bytes untouched.
 	_, loadErr := deployment.LoadDeploymentRecord(identity)
-	assertRejectionInChain(t, "Load", loadErr)
+	assertRejectionInChain(t, "Load (corrupt scope)", loadErr)
+	afterBytes, readErr3 := os.ReadFile(statePath)
+	if readErr3 != nil {
+		t.Fatalf("read back the record after the refused corrupt-scope load: %v", readErr3)
+	}
+	if !bytes.Equal(validBytes, afterBytes) {
+		t.Fatalf("corrupt-scope load mutated the valid record on disk: valid=%q after=%q", validBytes, afterBytes)
+	}
 }
 
 // TestValidTenantScopeGrantedAgainstExistingCoreOwner is the companion positive
