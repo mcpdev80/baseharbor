@@ -411,7 +411,7 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           INTEGRATION_SHA: ${{ github.sha }}
-          MIGRATION_CONTROLLER: __CI_CONTROLLER__
+          MIGRATION_CONTROLLER: a6756c5cd0f2a8ec43b0b7f777bf215bff2b9248
         run: |
           set -euo pipefail
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" "$INTEGRATION_SHA" refs/heads/develop:refs/remotes/origin/pr-target-tip
