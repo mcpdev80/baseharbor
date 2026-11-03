@@ -705,7 +705,7 @@ func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 	}
 	ca.write(t, "selfsigned-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: selfDER}), 0o600)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -720,6 +720,13 @@ func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 
 	err = c.Check(context.Background())
 	assertTLSHandshakeCause(t, err)
+	// The negative MUST be observed on the EXACT route Check() drives: the
+	// /readyz checkReachedRecorder (readyReached==false) AND the execute-path
+	// handler (executeReached==false). Both flags must stay false on a refused
+	// handshake — observing only the execute handler was the wrong-recorder bug.
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a refused self-signed handshake (entered=%v)", recorder.entered.Load())
+	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
@@ -873,7 +880,7 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server, handler, _ := newMutualTLSServerWithHandler(t, ca)
+	server, handler, recorder := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -888,6 +895,13 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 
 	err = c.Check(context.Background())
 	assertTLSHandshakeCause(t, err)
+	// The negative MUST be observed on the EXACT route Check() drives: the
+	// /readyz checkReachedRecorder (readyReached==false) AND the execute-path
+	// handler (executeReached==false). Both flags must stay false on a refused
+	// handshake — observing only the execute handler was the wrong-recorder bug.
+	if recorder.entered.Load() {
+		t.Fatalf("readyz check-path recorder must not be entered by a refused wrong-server-CA handshake (entered=%v)", recorder.entered.Load())
+	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
