@@ -268,7 +268,7 @@ def filter_selected(matrix, runtime_matrix, jobs, paths, *, previous_run, demo_m
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for arg in ("repo", "branch", "head", "integration", "workflow-id", "run-id",
+    for arg in ("repo", "branch", "head", "integration", "run-id",
                 "pr-number", "token", "demo-ref", "plan", "runtime-matrix", "output"):
         parser.add_argument("--" + arg, required=True)
     a = parser.parse_args()
