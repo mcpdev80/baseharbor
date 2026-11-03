@@ -41,25 +41,19 @@ func repoCandidateFixture(t *testing.T) resolvedApplication {
 }
 
 // candidateSubmissionForResolved mirrors the exact apply-path choke point
-// (cmd/baha/deployment_record.go): it builds the CandidateSubmission from the
-// resolved record's repository source and fingerprints the source the same way
-// recordAppliedDeployment does, so the computed digest is the digest the real
-// write will bind.
-func candidateSubmissionForResolved(t *testing.T, r resolvedApplication) delivery.CandidateSubmission {
+// (cmd/baha/deployment_record.go) and the prompt (cmd/baha/app_candidate_consent.go):
+// it builds the CandidateSubmission from the resolved record's repository source
+// and fingerprints the source the same way recordDeploymentBeforeMutation does,
+// so the computed digest is the digest the real write binds. It returns the
+// submission together with the exact revision shown to the operator, so the test
+// exercises the same input both sides fingerprint.
+func candidateSubmissionForResolved(t *testing.T, r resolvedApplication) (delivery.CandidateSubmission, string) {
 	t.Helper()
-	fingerprint, err := repositoryDesiredStateFingerprint(context.Background(), r)
-	if err != nil || fingerprint == "" {
-		t.Fatalf("source fingerprint: %v", err)
+	submission, revision := candidateSubmissionForResolvedApp(context.Background(), r)
+	if submission.SourceRevision == "" {
+		t.Fatal("computed candidate submission has no source revision")
 	}
-	submission := delivery.CandidateSubmission{
-		ContractVersion:  delivery.CandidateContractVersion,
-		ApplicationID:    r.DeploymentRecord.Identity.ApplicationID,
-		TargetName:       r.DeploymentRecord.Identity.Target,
-		SourceRepository: r.DeploymentRecord.Source.Repository,
-		SourceRevision:   fingerprint,
-		ImageDigest:      "",
-	}
-	return submission
+	return submission, revision
 }
 
 // TestConsentRejectsWrongDigestWriteNothing is a real apply-path test of Punkt 1:
@@ -69,7 +63,7 @@ func candidateSubmissionForResolved(t *testing.T, r resolvedApplication) deliver
 // exactly the digest finalizeCandidateConsent computed for the submission.
 func TestConsentRejectsWrongDigestWriteNothing(t *testing.T) {
 	r := repoCandidateFixture(t)
-	submission := candidateSubmissionForResolved(t, r)
+	submission, _ := candidateSubmissionForResolved(t, r)
 	want := delivery.CandidateConsentDigest(submission)
 	if want == "" {
 		t.Fatal("computed candidate digest is empty")
@@ -111,11 +105,11 @@ func TestConsentRejectsWrongDigestWriteNothing(t *testing.T) {
 // shared helper with the same submission.
 func TestPromptDigestEqualsBindDigest(t *testing.T) {
 	r := repoCandidateFixture(t)
-	submission := candidateSubmissionForResolved(t, r)
+	submission, _ := candidateSubmissionForResolved(t, r)
 	bound := delivery.CandidateConsentDigest(submission)
 
 	var prompt strings.Builder
-	promptConfirmCandidateSubmission(r, &prompt)
+	promptConfirmCandidateSubmission(context.Background(), r, &prompt)
 	if !strings.Contains(prompt.String(), bound) {
 		t.Fatalf("prompt does not contain the bound digest %q; prompt=%q", bound, prompt.String())
 	}

@@ -161,7 +161,7 @@ func runApplicationApplyLifecycle(ctx context.Context, store application.Store, 
 	// the exact candidate identity that will be bound (its canonical content
 	// hash) so the operator can confirm it, then require --confirm-candidate
 	// with that exact digest. Without the flag the apply fails closed.
-	promptConfirmCandidateSubmission(execution.resolved, out)
+	promptConfirmCandidateSubmission(ctx, execution.resolved, out)
 	pending, err := recordDeploymentBeforeMutation(ctx, execution.resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return evidence, fmt.Errorf("record deployment before mutation: %w", err)

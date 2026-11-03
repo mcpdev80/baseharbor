@@ -11,7 +11,10 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
@@ -31,75 +34,89 @@ type candidateFixture struct {
 	Fixture json.RawMessage `json:"fixture"`
 }
 
+// candidateContractDocument is the typed top-level shape of a candidate
+// submission fixture. Decoding onto these concrete structs — not map[string]any
+// — is what makes json.Decoder.DisallowUnknownFields actually reject unknown
+// keys at every depth, so the mapper cannot silently drop an unknown nested key
+// that the published schema forbids.
+type candidateContractDocument struct {
+	ContractVersion string `json:"contract_version"`
+	App             struct {
+		ID string `json:"id"`
+	} `json:"app"`
+	Target struct {
+		Name string `json:"name"`
+	} `json:"target"`
+	Consent struct {
+		By           string `json:"by"`
+		At           string `json:"at"`
+		Digest       string `json:"digest"`
+		Acknowledged bool   `json:"acknowledged"`
+	} `json:"consent"`
+	Source struct {
+		Kind       string `json:"kind"`
+		Repository string `json:"repository"`
+		Revision   string `json:"revision"`
+		SecretRef  string `json:"secretRef"`
+	} `json:"source"`
+	Image struct {
+		Kind      string `json:"kind"`
+		Reference string `json:"reference"`
+		Digest    string `json:"digest"`
+	} `json:"image"`
+	// stage is an optional top-level label allowed by the published schema.
+	Stage string `json:"stage"`
+}
+
 // toSubmission maps a raw contract fixture onto the typed delivery leaf so the
 // schema validators exercise the real product interface, not JSON parsing. It
-// fails closed on any unknown key (matching the published schema's
-// additionalProperties:false), so the mapper has no silent permissive path.
+// fails closed on ANY unknown key (top-level or nested) via DisallowUnknownFields
+// over the concrete struct — matching the published schema's
+// additionalProperties:false at every level — so the mapper has no silent
+// permissive path. Unknown keys never reach the typed leaf.
 func toSubmission(t *testing.T, raw json.RawMessage) delivery.CandidateSubmission {
 	t.Helper()
-	// Parse structurally into a nested map so the mapper can read the exact
-	// contract fields (contract_version, app.id, target.name, consent.*,
-	// source.*, image.*) and build the typed submission by hand. This avoids
-	// relying on struct tags for the top-level shape while still decoding onto
-	// the typed leaf for the field-level contract below.
-	var v map[string]any
-	if err := json.Unmarshal(raw, &v); err != nil {
-		t.Fatalf("fixture is not valid JSON: %v", err)
-	}
-	d := delivery.CandidateSubmission{}
 
-	contractVersion, _ := v["contract_version"].(string)
-	d.ContractVersion = contractVersion
+	// Typed nested decode: DisallowUnknownFields only rejects unknown keys when
+	// decoding onto concrete struct fields, never onto map[string]any.
+	doc, decodeErr := decodeCandidateDocument(raw)
+	if decodeErr != nil {
+		t.Fatalf("fixture carried unknown key(s) rejected by the typed mapper (unknown keys must fail closed): %v", decodeErr)
+	}
 
-	if app, ok := v["app"].(map[string]any); ok {
-		if id, _ := app["id"].(string); id != "" {
-			d.ApplicationID = id
-		}
+	// Build the typed delivery leaf from the decoded struct fields. Unknown
+	// keys never reached here — the decode above already failed closed.
+	return delivery.CandidateSubmission{
+		ContractVersion:  doc.ContractVersion,
+		ApplicationID:    doc.App.ID,
+		TargetName:       doc.Target.Name,
+		ConsentBy:        doc.Consent.By,
+		Acknowledged:     doc.Consent.Acknowledged,
+		SourceRepository: doc.Source.Repository,
+		SourceRevision:   doc.Source.Revision,
+		SecretRef:        doc.Source.SecretRef,
+		ImageReference:   doc.Image.Reference,
+		ImageDigest:      doc.Image.Digest,
 	}
-	if target, ok := v["target"].(map[string]any); ok {
-		if name, _ := target["name"].(string); name != "" {
-			d.TargetName = name
-		}
-	}
-	if consent, ok := v["consent"].(map[string]any); ok {
-		if by, _ := consent["by"].(string); by != "" {
-			d.ConsentBy = by
-		}
-		if ack, ok := consent["acknowledged"].(bool); ok {
-			d.Acknowledged = ack
-		}
-	}
-	if source, ok := v["source"].(map[string]any); ok {
-		if repository, _ := source["repository"].(string); repository != "" {
-			d.SourceRepository = repository
-		}
-		if revision, _ := source["revision"].(string); revision != "" {
-			d.SourceRevision = revision
-		}
-		if secretRef, _ := source["secretRef"].(string); secretRef != "" {
-			d.SecretRef = secretRef
-		}
-	}
-	if image, ok := v["image"].(map[string]any); ok {
-		if reference, _ := image["reference"].(string); reference != "" {
-			d.ImageReference = reference
-		}
-		if digest, _ := image["digest"].(string); digest != "" {
-			d.ImageDigest = digest
-		}
-	}
-	// Decode the fully mapped submission onto the typed contract with a
-	// json.Decoder and DisallowUnknownFields: the published schema forbids
-	// unknown keys (additionalProperties:false), so the mapped leaf has no
-	// silent permissive path — any residual unknown key fails to map.
+}
+
+// decodeCandidateDocument decodes a raw JSON candidate fixture onto the typed
+// struct with DisallowUnknownFields and an EOF check. It returns the decoded
+// document and a non-nil error when the fixture carries any unknown key (at any
+// depth) or trailing content — never silently dropping a key. This non-terminating
+// form lets counter-tests assert the fail-closed behaviour without killing the
+// test runner mid-run.
+func decodeCandidateDocument(raw json.RawMessage) (candidateContractDocument, error) {
+	var doc candidateContractDocument
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&map[string]any{}); err != nil {
-		// Top-level unknown keys are not structurally valid: treat as a
-		// mapping failure rather than a silent drop.
-		t.Fatalf("fixture carried unknown top-level keys: %v", err)
+	if err := dec.Decode(&doc); err != nil {
+		return doc, fmt.Errorf("unknown key: %w", err)
 	}
-	return d
+	if _, err := dec.Token(); err != io.EOF {
+		return doc, fmt.Errorf("trailing content: %w", err)
+	}
+	return doc, nil
 }
 
 // validateSubmission enforces the candidate leaf with an explicit consent.
@@ -289,4 +306,97 @@ func TestCandidateSchemaForbidsUnknownKeys(t *testing.T) {
 	if err := validateAgainstSchema(t, resolved, json.RawMessage(unknown)); err == nil {
 		t.Fatal("published schema accepted an unknown key; additionalProperties must be false")
 	}
+}
+
+// Typed mapper counter-probe (r27 round 7, finding 2): the mapper decodes onto
+// the concrete struct with DisallowUnknownFields, so an unknown TOP-LEVEL key
+// must fail closed at toSubmission. A silently dropped top-level key would let
+// an unknown field reach the leaf, contradicting additionalProperties:false.
+func TestTypedMapperRejectsUnknownTopLevelKey(t *testing.T) {
+	withUnknown := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator"},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"},"staged":"nope"}`
+	if got := toSubmissionErr(t, withUnknown); got == "" {
+		t.Fatal("unknown top-level key accepted by typed mapper; DisallowUnknownFields must fail closed")
+	}
+}
+
+// Shared case-parity vector (r27 round 7, finding 3): the Go leaf
+// (internal/delivery) and the published schema must agree on every case form of
+// a fixed source revision. Go accepts [0-9a-fA-F] and compares canonically
+// (lowercased); the schema pattern is the same [0-9a-fA-F]. This vector drives
+// identical case inputs through BOTH validators so a divergence in either case
+// handling fails closed here.
+func TestCandidateSourceRevisionCaseParityThroughBothValidators(t *testing.T) {
+	resolved := schemaValidator(t)
+	// Identical revision in four case forms; all four are the same fixed
+	// identity and must be accepted by both validators, or rejected by both.
+	cases := []string{
+		"0123456789abcdef0123456789abcdef01234567",                                // lowercase
+		"0123456789ABCDEF0123456789ABCDEF01234567",                                // uppercase
+		"0123456789AbCdEf0123456789AbCdEf01234567",                                // mixed
+		"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // opaque lowercase
+		"sha256:0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF", // opaque uppercase
+	}
+	for _, revision := range cases {
+		source := fmt.Sprintf(`{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"by":"operator","at":"2026-11-03T00:00:00Z","digest":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},"source":{"kind":"source","repository":"example/app","revision":%q}}`, revision)
+
+		// Go leaf: build the typed submission and validate it with a consent
+		// whose digest pins THIS submission's exact content-hash, so the
+		// consent-digest check passes and only the revision-case contract is
+		// exercised.
+		sub := toSubmission(t, json.RawMessage(source))
+		sub.Consent = &delivery.CandidateConsent{By: "operator", At: timeNowUTC(), Digest: delivery.CandidateConsentDigest(sub)}
+		gotErr := sub.Validate(sub.Consent)
+		gotOK := gotErr == nil
+
+		// Schema: validate the same document.
+		schemaErr := validateAgainstSchema(t, resolved, json.RawMessage(source))
+		schemaOK := schemaErr == nil
+
+		// The two validators must agree: same pass/fail outcome for every case.
+		if gotOK != schemaOK {
+			t.Fatalf("case parity violated for %q: Go leaf accepted=%v, schema accepted=%v (go err=%v, schema err=%v)", revision, gotOK, schemaOK, gotErrString(gotErr), schemaErr)
+		}
+	}
+}
+
+// timeNowUTC returns the current UTC time for consent stamps.
+func timeNowUTC() time.Time {
+	return time.Now().UTC()
+}
+
+// gotErrString returns the error string, or "" when err is nil, for compact
+// divergence messages.
+func gotErrString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// Typed mapper counter-probe (r27 round 7, finding 2): an unknown key nested
+// one level deep (inside an existing object such as consent) must fail closed,
+// because DisallowUnknownFields only rejects unknown keys when decoding onto
+// concrete struct fields. A map[string]any round-trip would silently drop it.
+func TestTypedMapperRejectsUnknownNestedKey(t *testing.T) {
+	withNested := `{"contract_version":"baseharbor.candidate/v1","app":{"id":"00000000-0000-0000-0000-000000000001"},"target":{"name":"lab"},"consent":{"acknowledged":true,"by":"operator","scoped":true},"source":{"kind":"source","repository":"example/app","revision":"0123456789abcdef0123456789abcdef01234567"}}`
+	if got := toSubmissionErr(t, withNested); got == "" {
+		t.Fatal("unknown nested key accepted by typed mapper; DisallowUnknownFields must fail closed at every depth")
+	}
+}
+
+// toSubmissionErr runs toSubmission on a raw JSON fixture and returns the
+// failure message (empty when the fixture is structurally valid), without
+// terminating the test. Unknown keys must produce a non-nil error so the mapper
+// fails closed instead of silently dropping them.
+func toSubmissionErr(t *testing.T, raw string) string {
+	t.Helper()
+	defer func() {
+		if rec := recover(); rec != nil {
+			t.Fatalf("toSubmission panicked on %s: %v", raw, rec)
+		}
+	}()
+	if _, err := decodeCandidateDocument(json.RawMessage(raw)); err != nil {
+		return err.Error()
+	}
+	return ""
 }

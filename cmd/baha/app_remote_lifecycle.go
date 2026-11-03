@@ -135,7 +135,7 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	}
 	// Operator confirmation before any candidate submission is persisted (same
 	// fail-closed choke point as the local apply path).
-	promptConfirmCandidateSubmission(resolved, out)
+	promptConfirmCandidateSubmission(ctx, resolved, out)
 	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err

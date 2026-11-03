@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // candidateConsentOverrideKey carries the operator-provided candidate digest
@@ -39,17 +40,20 @@ func candidateConsentOverride(ctx context.Context) string {
 // the operator can confirm it and pass --confirm-candidate with that digest;
 // the apply then fails closed without that flag. Non-candidate sources are
 // unaffected.
-func promptConfirmCandidateSubmission(resolved resolvedApplication, out io.Writer) {
-	if resolved.DeploymentRecord == nil || resolved.DeploymentRecord.Source.Kind != "repository" {
+//
+// The displayed digest is derived from the SAME desired-state input the write
+// binds: repositoryDesiredStateFingerprint(ctx, resolved) — the one helper both
+// recordDeploymentBeforeMutation (the candidate choke point) and this prompt run
+// over the same resolved application. The prompt never reads the persisted
+// DeploymentRecord.Source.Digest, so an already-recorded pending record can no
+// longer freeze the shown identity at an old digest: every re-run recomputes
+// from the current source. A nil record still fingerprints the freshly resolved
+// source, so a nil-record prompt shows the digest of the new submission, not
+// an empty value.
+func promptConfirmCandidateSubmission(ctx context.Context, resolved resolvedApplication, out io.Writer) {
+	submission, current := candidateSubmissionForResolvedApp(ctx, resolved)
+	if submission.SourceRevision == "" {
 		return
-	}
-	submission := delivery.CandidateSubmission{
-		ContractVersion:  delivery.CandidateContractVersion,
-		ApplicationID:    resolved.DeploymentRecord.Identity.ApplicationID,
-		TargetName:       resolved.DeploymentRecord.Identity.Target,
-		SourceRepository: resolved.DeploymentRecord.Source.Repository,
-		SourceRevision:   resolved.DeploymentRecord.Source.Digest,
-		ImageDigest:      "",
 	}
 	// Derive the bound digest from the same helper finalizeCandidateConsent
 	// uses for the same submission, so the digest shown here is exactly the
@@ -59,11 +63,46 @@ func promptConfirmCandidateSubmission(resolved resolvedApplication, out io.Write
 		return
 	}
 	fmt.Fprintf(out, "\nCandidate to bind for confirmation:\n")
-	fmt.Fprintf(out, "  app.id      %s\n", resolved.DeploymentRecord.Identity.ApplicationID)
-	fmt.Fprintf(out, "  target.name %s\n", resolved.DeploymentRecord.Identity.Target)
-	fmt.Fprintf(out, "  source %s\n", resolved.DeploymentRecord.Source.Digest)
+	fmt.Fprintf(out, "  app.id      %s\n", submission.ApplicationID)
+	fmt.Fprintf(out, "  target.name %s\n", submission.TargetName)
+	fmt.Fprintf(out, "  source %s\n", current)
 	fmt.Fprintf(out, "  confirm-hash %s\n", digest)
 	fmt.Fprintf(out, "Re-run with --confirm-candidate %s to acknowledge this exact submission.\n", digest)
+}
+
+// candidateSubmissionForResolved builds the repository-owned CandidateSubmission
+// for a resolved application the SAME way recordDeploymentBeforeMutation binds
+// it: the source revision is repositoryDesiredStateFingerprint(ctx, resolved),
+// not the persisted DeploymentRecord.Source.Digest. It returns the submission
+// together with the exact revision string that is shown to the operator, so the
+// prompt and the write fingerprint the same input over the same resolved
+// application. A nil record is handled transparently — the fingerprint is still
+// computed from the freshly resolved source, so a nil-record prompt shows the
+// new submission's digest rather than an empty value.
+func candidateSubmissionForResolvedApp(ctx context.Context, resolved resolvedApplication) (delivery.CandidateSubmission, string) {
+	identity := resolved.DeploymentRecord
+	if identity == nil {
+		identity = &deployment.DeploymentRecord{
+			Identity: resolved.DeploymentIdentity,
+			Source:   deployment.DeploymentSource{Kind: "repository", Repository: resolved.repositoryRoot()},
+		}
+	}
+	revision := identity.Source.Digest
+	fingerprint, fingerprintErr := repositoryDesiredStateFingerprint(ctx, resolved)
+	if fingerprintErr == nil && fingerprint != "" {
+		// The write binds this fingerprint; the prompt must show the same digest,
+		// even when the persisted record already carries a different (older) digest.
+		revision = fingerprint
+	}
+	submission := delivery.CandidateSubmission{
+		ContractVersion:  delivery.CandidateContractVersion,
+		ApplicationID:    identity.Identity.ApplicationID,
+		TargetName:       identity.Identity.Target,
+		SourceRepository: identity.Source.Repository,
+		SourceRevision:   revision,
+		ImageDigest:      "",
+	}
+	return submission, revision
 }
 
 // finalizeCandidateConsent turns a non-empty operator confirm into an explicit

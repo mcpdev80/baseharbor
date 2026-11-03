@@ -206,19 +206,28 @@ func (c CandidateSubmission) validatePinnedImage() error {
 // digestPattern matches an opaque immutable digest of the form algo:hex, where
 // the hex part is at least 32 characters. It is the second immutable identity
 // kind alongside a fixed Git commit SHA.
-var digestPattern = regexp.MustCompile(`^[a-z0-9]+:[0-9a-f]{32,}$`)
+var digestPattern = regexp.MustCompile(`^[a-z0-9]+:[0-9a-fA-F]{32,}$`)
 
-// hexCommitPattern matches a Git commit object ID: 40 or 64 lowercase hex
-// characters.
-var hexCommitPattern = regexp.MustCompile(`^[0-9a-f]{40}$|^[0-9a-f]{64}$`)
+// hexCommitPattern matches a Git commit object ID: a 40- or 64-character hex
+// string. Hex digits are case-insensitive here and in the published schema
+// (pattern [0-9a-fA-F]); Go accepts both upper- and lowercase and compares the
+// identity canonically after lowercasing, so a fixed revision is accepted with
+// the exact same result by the Go leaf and the schema.
+var hexCommitPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}$|^[0-9a-fA-F]{64}$`)
 
 // isPinnedRevision reports whether a revision is a fixed identity. Only two
 // syntactically immutable forms are accepted:
 //
-//   - a Git commit object ID: a 40- or 64-character lowercase hex string (the
-//     SHA-1 of a commit), or
+//   - a Git commit object ID: a 40- or 64-character hex string (the SHA-1 of a
+//     commit), in either case, or
 //   - an opaque digest in the form algo:hex with a hex part of at least 32
-//     characters (e.g. an OCI sha256 digest).
+//     characters (e.g. an OCI sha256 digest), in either case.
+//
+// The Go leaf and the published schema share one case rule for hex: both accept
+// [0-9a-fA-F] and treat the identity canonically (Go lowercases before the
+// hex match). isPinnedRevision documents that equivalence so a revision that
+// passes one validator cannot pass the other — the single source of truth for
+// case parity is this helper plus the schema pattern, never a per-call lower().
 //
 // Branch names, mutable tags (release-1, main2, moving refs) and any other
 // human-readable version string are never a fixed identity; the immutable
@@ -228,11 +237,12 @@ func isPinnedRevision(revision string) bool {
 	if trimmed == "" {
 		return false
 	}
-	// A Git commit object ID: 40 or 64 lowercase hex characters.
+	// A Git commit object ID: 40 or 64 hex characters (either case, matched
+	// canonically — the single source of truth shared with the schema).
 	if hexCommitPattern.MatchString(strings.ToLower(trimmed)) {
 		return true
 	}
-	// An opaque digest algo:hex (hex part >= 32 chars).
+	// An opaque digest algo:hex (hex part >= 32 chars, either case).
 	if digestPattern.MatchString(trimmed) {
 		return true
 	}
