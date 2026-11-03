@@ -198,14 +198,17 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	}
 	guardRecord := record
 	guardRecord.Observed.Owner = guardOwner
-	// Carry a conflict observed in the persisted previous record into the guard
-	// evaluation. guardRecord is a copy of the caller-supplied record, which
-	// cannot invent a conflict; only an authoritative persisted conflict is
-	// honoured here, so the persisted/previous value governs and the caller
-	// value is discarded (not merely ORed). The caller-supplied Conflict is
-	// never trusted.
+	// Resolve the authoritative conflict for the guard: only a conflict observed
+	// in the persisted previous record counts. On a first save (no previous
+	// record) the caller-supplied Conflict is discarded, never honoured — the
+	// claim that a caller cannot drive a rejection on first write holds. On a
+	// subsequent save the persisted/previous value governs and the caller value
+	// is overwritten (not merely ORed). The caller-supplied Conflict is thus
+	// never trusted at first or subsequent save.
 	if previousExists {
 		guardRecord.Observed.Conflict = previous.Observed.Conflict
+	} else {
+		guardRecord.Observed.Conflict = false
 	}
 	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}

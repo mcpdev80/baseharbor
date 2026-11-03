@@ -358,3 +358,91 @@ func TestPreviousConflictIsCarried(t *testing.T) {
 		t.Fatalf("same-owner update under carried conflict must be refused with ErrConflictingOneWriter, got %v", err)
 	}
 }
+
+// TestFirstSaveCallerConflictTruePasses is the exact reviewer recipe for point 2:
+// on a first save (previousExists==false) the caller-supplied
+// Observed.Conflict must NOT drive a rejection. The caller cannot invent a
+// conflict; the store's own determination is the only thing that counts.
+func TestFirstSaveCallerConflictTruePasses(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	rec := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor, Conflict: true},
+	}
+	if err := SaveDeploymentRecord(rec); err != nil {
+		t.Fatalf("first-save caller conflict=true must NOT be rejected, got %v", err)
+	}
+}
+
+// TestFirstSaveCallerConflictFalsePasses confirms a benign caller conflict on the
+// first save also passes (sanity for the discard path).
+func TestFirstSaveCallerConflictFalsePasses(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	rec := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor, Conflict: false},
+	}
+	if err := SaveDeploymentRecord(rec); err != nil {
+		t.Fatalf("first-save caller conflict=false must pass, got %v", err)
+	}
+}
+
+// TestFirstSaveCallerConflictDiscardedUnderStoredFalse proves the discard is real:
+// a first save with caller conflict=true persists Conflict=false, i.e. the store
+// never wrote a conflict it did not itself observe.
+func TestFirstSaveCallerConflictDiscardedUnderStoredFalse(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	rec := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor, Conflict: true},
+	}
+	if err := SaveDeploymentRecord(rec); err != nil {
+		t.Fatalf("first-save caller conflict=true must pass, got %v", err)
+	}
+	got, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load after first save: %v", err)
+	}
+	if got.Observed.Conflict {
+		t.Fatalf("first-save caller conflict=true must be discarded, persisted Conflict must be false")
+	}
+	if got.Observed.Owner != delivery.OwnerBaseHarbor {
+		t.Fatalf("persisted owner must be canonical baseharbor, got %q", got.Observed.Owner)
+	}
+}
+
+// TestFirstSaveDelegatedCallerConflictPasses confirms the discard is mode-agnostic:
+// a delegated first save with caller conflict=true also passes.
+func TestFirstSaveDelegatedCallerConflictPasses(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+
+	rec := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied: AppliedDeployment{RuntimeProvider: "k8s", Delivery: delivery.Selection{
+			Mode: delivery.ModeDelegated, Provider: "gitops/argocd", Owner: delivery.OwnerExternal, Placement: delivery.PlacementExternal,
+		}},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerExternal, Conflict: true},
+	}
+	if err := SaveDeploymentRecord(rec); err != nil {
+		t.Fatalf("first-save delegated caller conflict=true must pass, got %v", err)
+	}
+}
