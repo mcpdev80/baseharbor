@@ -112,6 +112,38 @@ class EphemeralReuseTests(unittest.TestCase):
         self.assertIn("new-unrecognized-check",
                       {row["check"] for row in result["matrix"]["include"]})
 
+    def test_non_ancestor_sha_fails_closed(self):
+        old = "a" * 40
+        new = "b" * 40
+        current = "c" * 40
+        with mock.patch.object(reuse.subprocess, "run") as run, \
+             mock.patch.object(reuse, "git") as git:
+            git.side_effect = [old + " " + "d" * 40 + " " + "e" * 40,
+                               new + " " + "d" * 40 + " " + current]
+            run.side_effect = [mock.Mock(returncode=0), mock.Mock(returncode=1)]
+            self.assertIsNone(reuse.qualified_ancestry(old, new, current))
+
+    def test_changed_base_sha_fails_closed(self):
+        old = "a" * 40
+        new = "b" * 40
+        current = "c" * 40
+        with mock.patch.object(reuse.subprocess, "run", return_value=mock.Mock(returncode=0)), \
+             mock.patch.object(reuse, "git") as git:
+            git.side_effect = [old + " " + "d" * 40 + " " + "e" * 40,
+                               new + " " + "f" * 40 + " " + current]
+            self.assertIsNone(reuse.qualified_ancestry(old, new, current))
+
+    def test_fake_or_similarly_named_jobs_are_not_green(self):
+        self.jobs = [
+            job("PR · Validation · go-build-looks-good"),
+            job("PR · Validation · go-unit-tests", "failure"),
+            job("PR · Selected Runtime (atomic/docker/lifecycle-fake, docker, lifecycle) / docker · lifecycle")
+        ]
+        result = self.decide(["docs/guide.md"], demo=True)
+        self.assertEqual({"go-build", "go-unit-tests", "cli-package-tests"},
+                         {item["check"] for item in result["matrix"]["include"]})
+        self.assertEqual("", result["runtime_matrix"]["include"][0]["reuse_from"])
+
     def test_empty_selected_checks_have_inert_matrix_only(self):
         self.checks["include"] = [{"check": "go-build"}]
         result = self.decide(["docs/guide.md"])
