@@ -344,10 +344,10 @@ func (s *executionStore) rotateBeforeWriteLocked(extraBytes int) error {
 }
 
 // rotateIfNeededLocked rotates the active segment into a numbered backup when it
-// exceeds journalSegmentCap. It compacts within the active segment first so the
-// newest line per execution-id survives the rotation: superseded lines for an id
-// are truncated from the head, but active/unknown states are never dropped.
-// Callers must hold s.mu.
+// exceeds journalSegmentCap. It compacts every segment newest-first (global
+// compaction) so the newest line per execution-id survives the rotation:
+// superseded lines for an id are dropped but the newest occurrence is always
+// kept, and active/unknown states are never dropped. Callers must hold s.mu.
 func (s *executionStore) rotateIfNeededLocked() error {
 	info, err := os.Stat(s.journalPath)
 	if err != nil {
@@ -356,7 +356,7 @@ func (s *executionStore) rotateIfNeededLocked() error {
 	if info.Size() <= journalSegmentCap {
 		return nil
 	}
-	if err := s.compactActiveSegmentLocked(); err != nil {
+	if err := s.compactAllSegmentsLocked(); err != nil {
 		return err
 	}
 	if err := s.rotateSegmentLocked(); err != nil {
@@ -365,26 +365,79 @@ func (s *executionStore) rotateIfNeededLocked() error {
 	return nil
 }
 
-// compactActiveSegmentLocked truncates superseded lines from the head of the
-// active segment so the newest line per execution-id is retained. Active/unknown
-// states are preserved. It is a no-op when every line is unique.
-func (s *executionStore) compactActiveSegmentLocked() error {
-	data, err := os.ReadFile(s.journalPath)
+// compactAllSegmentsLocked performs a global compaction: it reads every journal
+// segment newest-first (active first, then .1..N), keeps only the newest line per
+// execution-id across all of them, and swaps the freshly written, segment-capped
+// segments in atomically. This is what makes rotation lossless — a rotation only
+// shifts files, but without this compaction the newest line per id can be buried
+// under superseded occurrences in an older backup that the active-segment-only
+// compaction never touched (review-1354e). Active/unknown states are never
+// dropped; only superseded older lines for an id are removed. It is a no-op when
+// every line across every segment is already unique.
+//
+// Each compacted segment is capped at journalSegmentCap before being written so
+// the swap cannot itself produce a > cap segment (e.g. two large active ids).
+// Callers must hold s.mu.
+func (s *executionStore) compactAllSegmentsLocked() error {
+	segments, err := s.journalSegments()
 	if err != nil {
-		return fmt.Errorf("read active journal for compaction: %w", err)
+		return err
 	}
-	kept := compactLines(data)
-	if len(kept) == len(data) {
+	// Newest-first order: the active segment (returned first by journalSegments)
+	// wins over numbered backups.
+	var newest []byte
+	for _, seg := range segments {
+		kept := compactLines(seg)
+		// The newest line per id in this segment supersedes any occurrence in
+		// older segments already absorbed, so drop older duplicates across the
+		// whole running set.
+		kept = keepNewestAcross(kept, newest)
+		newest = append(newest, kept...)
+	}
+	if len(newest) == 0 {
 		return nil
 	}
-	tmp := s.journalPath + ".compact"
-	if err := os.WriteFile(tmp, kept, 0o600); err != nil {
-		return fmt.Errorf("write compacted journal: %w", err)
+	return s.writeCompactedJournal(newest)
+}
+
+// keepNewestAcross returns the lines of inSeg with any line whose id already
+// appeared in already-seen (newer) dropped. It keeps the newest occurrence per
+// id and drops older superseded occurrences.
+func keepNewestAcross(inSeg, seenNewest []byte) []byte {
+	lines := splitLines(inSeg)
+	lastIndex := map[string]int{}
+	lineIds := make([]string, len(lines))
+	for i, raw := range lines {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		id := lineExecutionID(raw)
+		lineIds[i] = id
+		lastIndex[id] = i
 	}
-	if err := os.Rename(tmp, s.journalPath); err != nil {
-		return fmt.Errorf("replace active journal: %w", err)
+	// Mark ids already present in newer segments as already-seen so their older
+	// occurrences here are dropped.
+	seen := map[string]bool{}
+	for _, raw := range splitLines(seenNewest) {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		seen[lineExecutionID(raw)] = true
 	}
-	return nil
+	out := make([]byte, 0, len(inSeg))
+	for i, raw := range lines {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		id := lineIds[i]
+		// Keep this line only if it is the newest occurrence for its id both within
+		// this segment AND not shadowed by a newer occurrence in an older segment.
+		if lastIndex[id] == i && !seen[id] {
+			out = append(out, raw...)
+			out = append(out, '\n')
+		}
+	}
+	return out
 }
 
 // compactLines returns the bytes of an append-only journal with all but the last
@@ -411,6 +464,43 @@ func compactLines(data []byte) []byte {
 	return kept
 }
 
+// splitIntoCappedSegments splits a flattened journal byte slice into segments,
+// each at most journalSegmentCap bytes (plus the trailing newline each line
+// carries). The active segment is the first element; numbered backups follow.
+func splitIntoCappedSegments(data []byte) [][]byte {
+	var segments [][]byte
+	var cur []byte
+	for i := 0; i < len(data); {
+		// Each line ends at the next '\n'; include it.
+		j := i
+		for j < len(data) && data[j] != '\n' {
+			j++
+		}
+		lineLen := j - i + 1 // +1 for the newline
+		if len(cur) > 0 && len(cur)+lineLen > int(journalSegmentCap) {
+			segments = append(segments, cur)
+			cur = nil
+		}
+		cur = append(cur, data[i:j+1]...)
+		i = j + 1
+	}
+	if len(cur) > 0 {
+		segments = append(segments, cur)
+	}
+	return segments
+}
+
+// segmentTargets returns the on-disk path for each compacted segment in order:
+// the active segment first (journal.jsonl), then numbered backups .1..N.
+func (s *executionStore) segmentTargets(count int) []string {
+	targets := make([]string, 0, count)
+	targets = append(targets, s.journalPath)
+	for i := 1; i < count; i++ {
+		targets = append(targets, s.backupPath(i))
+	}
+	return targets
+}
+
 // lineExecutionID extracts the execution_id of a single JSON journal line.
 func lineExecutionID(raw string) string {
 	var line struct {
@@ -422,18 +512,17 @@ func lineExecutionID(raw string) string {
 	return line.ExecutionID
 }
 
-// enforceTotalCapLocked trims oldest backups (and, as last resort, the head of
-// the active segment) so total journal bytes never exceed journalSegmentTotalCap.
-// Only terminal or superseded lines are dropped: the newest line per
-// execution-id is always retained, and active/unknown states are never removed.
+// enforceTotalCapLocked rotates until total journal bytes never exceed
+// journalSegmentTotalCap. Each iteration calls rotateSegmentLocked, which
+// compacts globally first (so the newest line per execution-id is always retained
+// across every backup — a plain file shift would bury the newest line per id under
+// superseded occurrences in older backups, review-1354e) and then rotates the
+// active segment into .1 while dropping the overflow backup. Each rotation removes
+// one backup's worth of oldest data, so the loop terminates in finitely many
+// steps. Because every rotation is newest-per-id compacted, no execution-id loses
+// its newest line while the total cap holds.
 func (s *executionStore) enforceTotalCapLocked() error {
 	for s.totalJournalBytes() > journalSegmentTotalCap {
-		// Remove the oldest backup first (journal.jsonl.N where N is largest).
-		if s.rotateRemoveOldestLocked() {
-			continue
-		}
-		// No backup left: the active segment holds the data. Rotate it once so the
-		// oldest lines spill into a backup that rotateRemoveOldest can then drop.
 		if err := s.rotateSegmentLocked(); err != nil {
 			return err
 		}
@@ -441,39 +530,181 @@ func (s *executionStore) enforceTotalCapLocked() error {
 	return nil
 }
 
-// rotateRemoveOldestLocked deletes the oldest numbered backup if one exists and
-// shifts the remaining backups down by one. It returns false when no backup is
-// present.
-func (s *executionStore) rotateRemoveOldestLocked() bool {
-	for i := journalBackupMax; i >= 1; i-- {
-		older := s.backupPath(i + 1)
-		if !exists(older) {
-			continue
-		}
-		if i == journalBackupMax {
-			if err := os.Remove(older); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return false
+// writeCompactedJournal writes a globally-compacted, newest-per-id journal back
+// to disk in a single atomically-swapped, segment-capped set of files.
+func (s *executionStore) writeCompactedJournal(newest []byte) error {
+	if len(newest) == 0 {
+		return nil
+	}
+	segments := splitIntoCappedSegments(newest)
+	var tmpNames []string
+	for i, seg := range segments {
+		tmp := fmt.Sprintf("%s.compact.%d", s.journalPath, i)
+		if err := os.WriteFile(tmp, seg, 0o600); err != nil {
+			for _, n := range tmpNames {
+				_ = os.Remove(n)
 			}
-			continue
+			return fmt.Errorf("write compacted segment %d: %w", i, err)
 		}
-		if err := os.Rename(older, s.backupPath(i+1)); err != nil {
-			return false
+		tmpNames = append(tmpNames, tmp)
+	}
+	targets := s.segmentTargets(len(segments))
+	for i, tmp := range tmpNames {
+		if err := os.Rename(tmp, targets[i]); err != nil {
+			return fmt.Errorf("replace compacted segment %d: %w", i, err)
 		}
 	}
-	return true
+	return nil
+}
+
+// trimOldestIDsFromKeptLines returns the kept bytes with whole oldest
+// execution-ids dropped from the end (oldest-first) until the byte budget is met
+// or an active/unknown id is reached. The second return value reports whether
+// any active/unknown id remains in the keep-list. The newest-state for each id is
+// read from the in-memory newest-per-id bytes (already parsed) so trimming is
+// linear in the journal size rather than O(n) disk re-reads per id.
+func (s *executionStore) trimOldestIDsFromKeptLines(newest []byte) ([]byte, bool) {
+	lines := splitLines(newest)
+	lineIDs := make([]string, len(lines))
+	lineStates := make([]machine.ExecutionState, len(lines))
+	for i, raw := range lines {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var line struct {
+			ExecutionID string                 `json:"execution_id"`
+			State       machine.ExecutionState `json:"state"`
+		}
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			continue
+		}
+		lineIDs[i] = line.ExecutionID
+		lineStates[i] = line.State
+	}
+	// Distinct ids in newest-first occurrence order (first appearance scanning
+	// newest-to-oldest).
+	var order []string
+	seen := map[string]bool{}
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSpace(lines[i]) == "" {
+			continue
+		}
+		id := lineIDs[i]
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		order = append(order, id)
+	}
+	// Walk oldest-first (reverse of order) and drop whole ids whose newest state
+	// is terminal/superseded, stopping at the first active/unknown id.
+	var dropped map[string]bool
+	remainingBytes := s.totalJournalBytes()
+	for i := len(order) - 1; i >= 0; i-- {
+		id := order[i]
+		// Its newest line is the FIRST occurrence scanning newest-first.
+		var state machine.ExecutionState
+		found := false
+		for j := len(lines) - 1; j >= 0; j-- {
+			if lineIDs[j] == id {
+				state = lineStates[j]
+				found = true
+				break
+			}
+		}
+		if !found || !isTerminalState(state) {
+			break
+		}
+		if dropped == nil {
+			dropped = map[string]bool{}
+		}
+		dropped[id] = true
+		for j := len(lines) - 1; j >= 0; j-- {
+			if lineIDs[j] == id {
+				remainingBytes -= int64(len(lines[j]) + 1)
+				break
+			}
+		}
+		if remainingBytes <= journalSegmentTotalCap {
+			break
+		}
+	}
+	if len(dropped) == 0 {
+		return newest, false
+	}
+	out := make([]byte, 0, len(newest))
+	for i, raw := range lines {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		if dropped[lineIDs[i]] {
+			continue
+		}
+		out = append(out, raw...)
+		out = append(out, '\n')
+	}
+	return out, true
+}
+
+// isTerminalState reports whether an execution state is terminal
+// (succeeded/failed/cancelled), which is safe to drop by retention. A
+// pending/running/unknown state is active and never dropped.
+func isTerminalState(state machine.ExecutionState) bool {
+	switch state {
+	case machine.ExecutionSucceeded,
+		machine.ExecutionFailed,
+		machine.ExecutionCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// newestStateForID is retained for callers that need an id's state out of the
+// on-disk journal directly. It reads segment-by-segment newest-first (active
+// first, then .1..N) and returns the newest line's state for id.
+func (s *executionStore) newestStateForID(id string) (machine.ExecutionState, bool) {
+	segments, err := s.journalSegments()
+	if err != nil {
+		return "", false
+	}
+	for _, seg := range segments {
+		lines := splitLines(seg)
+		for i := len(lines) - 1; i >= 0; i-- {
+			if strings.TrimSpace(lines[i]) == "" {
+				continue
+			}
+			var line struct {
+				ExecutionID string                 `json:"execution_id"`
+				State       machine.ExecutionState `json:"state"`
+			}
+			if err := json.Unmarshal([]byte(lines[i]), &line); err != nil {
+				continue
+			}
+			if line.ExecutionID == id {
+				return line.State, true
+			}
+		}
+	}
+	return "", false
 }
 
 // rotateSegmentLocked rolls the active segment into journal.jsonl.1 (shifting
-// existing backups up). It is a no-op when no active segment exists.
+// existing backups up). It compacts globally first so the newest line per
+// execution-id survives the shift — a plain file shift alone would bury the
+// newest line per id under superseded occurrences in older backups that a
+// naive rotate-remove-oldest could not reach. It is a no-op when no active
+// segment exists.
 func (s *executionStore) rotateSegmentLocked() error {
 	if !exists(s.journalPath) {
 		return nil
 	}
-	// Drop the newest backup slot to make room for journal.jsonl.1.
-	if err := os.Remove(s.backupPath(journalBackupMax + 1)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := s.compactAllSegmentsLocked(); err != nil {
 		return err
 	}
-	// Shift backups up: .N -> .N+1 ... .1 -> .2.
+	// Shift backups up: .N -> .N+1 ... .1 -> .2. This may momentarily create an
+	// overflow at .journalBackupMax+1, which is removed below so the active segment
+	// plus at most journalBackupMax numbered backups is never exceeded.
 	for i := journalBackupMax; i >= 1; i-- {
 		src := s.backupPath(i)
 		dst := s.backupPath(i + 1)
@@ -483,6 +714,10 @@ func (s *executionStore) rotateSegmentLocked() error {
 		if err := os.Rename(src, dst); err != nil {
 			return err
 		}
+	}
+	// Drop the overflow backup created by the shift above.
+	if err := os.Remove(s.backupPath(journalBackupMax + 1)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	if err := os.Rename(s.journalPath, s.backupPath(1)); err != nil {
 		return fmt.Errorf("rotate execution journal: %w", err)
