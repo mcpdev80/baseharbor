@@ -7,7 +7,7 @@ import pathlib
 import re
 import subprocess
 
-from private_consumer_evidence import REPOSITORIES, WORKFLOW
+from consumer_source_pins import REPOSITORIES, WORKFLOW
 
 
 def exact(value):
