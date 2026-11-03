@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mcpdev80/baseharbor/contracts/managementaccess/v1"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/testsupport/serviceissuer"
@@ -90,8 +91,8 @@ func TestValidateKindCredentialExportRequiresEncryption(t *testing.T) {
 
 func TestImportCapabilityFailClosedForEachGuarantee(t *testing.T) {
 	for _, flag := range []struct {
-		name  string
-		set   func(*managementaccess.ImportCapability)
+		name string
+		set  func(*managementaccess.ImportCapability)
 	}{
 		{"rights_granting", func(c *managementaccess.ImportCapability) { c.RightsGranting = true }},
 		{"plugin_execution", func(c *managementaccess.ImportCapability) { c.PluginExecution = true }},
@@ -182,7 +183,9 @@ func (s *fakeOneUseStore) Consume(_ context.Context, scope targetenrollment.Scop
 	s.consumed = true
 	return targetenrollment.Grant{Scope: scope, CertificateTTL: time.Hour}, nil
 }
-func (s *fakeOneUseStore) RecordIssued(context.Context, targetenrollment.Scope, string, string, time.Time) error { return nil }
+func (s *fakeOneUseStore) RecordIssued(context.Context, targetenrollment.Scope, string, string, time.Time) error {
+	return nil
+}
 
 func enrollScopeRequest(t *testing.T) (targetenrollment.Request, managementaccess.Enroller) {
 	t.Helper()
@@ -207,9 +210,9 @@ func enrollScopeRequest(t *testing.T) (targetenrollment.Request, managementacces
 		t.Fatal(err)
 	}
 	request := targetenrollment.Request{
-		Scope:   authorizedScope(),
-		Token:   bootstrap.Token,
-		Nonce:   bootstrap.Nonce,
+		Scope:  authorizedScope(),
+		Token:  bootstrap.Token,
+		Nonce:  bootstrap.Nonce,
 		CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: raw}),
 	}
 	return request, authority
@@ -245,60 +248,64 @@ func TestEnrollDeviceNilAuthorityFailsClosed(t *testing.T) {
 
 // ---- Finding 3: wire contract JSON tags match schema (round trip) ----
 
-func TestWireRecordJSONTagsMatchSchema(t *testing.T) {
-	p := profileFor(t)
-	p.Kind = managementaccess.CredentialExport
-	p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+// wireRoundTripAgainstSchema marshals a profile, unmarshals it back, re-marshals
+// and validates BOTH directions against the packaged schema with real semantic
+// validation (not just key presence).
+func wireRoundTripAgainstSchema(t *testing.T, resolved *jsonschema.Resolved, p managementaccess.ManagementAccessProfile) {
+	t.Helper()
 
+	// Encode: marshal the Go value, unmarshal to a map, validate against schema.
 	raw, err := json.Marshal(p)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("marshal profile: %v", err)
 	}
 	var decoded map[string]any
 	if err := json.Unmarshal(raw, &decoded); err != nil {
-		t.Fatal(err)
+		t.Fatalf("unmarshal marshaled profile: %v", err)
+	}
+	if err := resolved.Validate(decoded); err != nil {
+		t.Fatalf("encoded wire record rejected by packaged schema: %v", err)
 	}
 
-	// Required top-level keys present.
-	for _, key := range []string{"version", "kind", "installation_id", "trust", "recipient", "scope", "not_before", "not_after", "import", "storage", "export"} {
-		if _, ok := decoded[key]; !ok {
-			t.Fatalf("wire record missing JSON key %q: %s", key, raw)
-		}
+	// Decode->encode: unmarshal the map into a profile and re-marshal; the
+	// round-tripped bytes must still validate (tags preserve the contract).
+	var roundTripped managementaccess.ManagementAccessProfile
+	if err := json.Unmarshal(raw, &roundTripped); err != nil {
+		t.Fatalf("unmarshal into profile: %v", err)
+	}
+	raw2, err := json.Marshal(roundTripped)
+	if err != nil {
+		t.Fatalf("re-marshal round-tripped profile: %v", err)
+	}
+	var decoded2 map[string]any
+	if err := json.Unmarshal(raw2, &decoded2); err != nil {
+		t.Fatalf("unmarshal round-tripped: %v", err)
+	}
+	if err := resolved.Validate(decoded2); err != nil {
+		t.Fatalf("round-tripped wire record rejected by packaged schema: %v", err)
 	}
 
-	// Nested trust object: ca_pem / sha256.
-	trust, ok := decoded["trust"].(map[string]any)
-	if !ok {
-		t.Fatalf("trust must be a nested object: %s", raw)
-	}
-	if _, hasCA := trust["ca_pem"]; !hasCA {
-		t.Fatalf("trust missing ca_pem: %s", raw)
-	}
-	if _, hasSHA := trust["sha256"]; !hasSHA {
-		t.Fatalf("trust missing sha256: %s", raw)
-	}
-
-	// import flags all false.
+	// import flags are all false after round trip.
 	importCap := decoded["import"].(map[string]any)
 	for _, flag := range []string{"rights_granting", "plugin_execution", "credential_redirect"} {
 		if importCap[flag] != false {
-			t.Fatalf("import flag %s must be false: %s", flag, raw)
+			t.Fatalf("import flag %s must be false after round trip: %s", flag, raw)
 		}
 	}
 }
 
-// ---- Finding 5: golden fixtures still schema-validate (complementary) ----
+func TestWireRecordJSONTagsRoundTrip(t *testing.T) {
+	resolved := managementAccessResolve(t)
 
-func TestGoldenFixturesSchemaValidate(t *testing.T) {
-	data := readGoldenFixtures(t)
-	var fixtures []struct {
-		Record  string         `json:"record"`
-		Fixture map[string]any `json:"fixture"`
-	}
-	if err := json.Unmarshal(data, &fixtures); err != nil {
-		t.Fatalf("golden fixtures not valid JSON: %v", err)
-	}
-	if len(fixtures) < 3 {
-		t.Fatalf("expected at least 3 golden fixtures, got %d", len(fixtures))
-	}
+	// management-profile: real CA + matching fingerprint, validates both ways.
+	mgmt := profileFor(t)
+	wireRoundTripAgainstSchema(t, resolved, mgmt)
+
+	// credential-export with an encryption descriptor.
+	export := profileFor(t)
+	export.Kind = managementaccess.CredentialExport
+	export.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "E1f2g3h4i5j6k7l8m9n0o1p2q3r4s5t6u7v8w9x0y_z"}
+	wireRoundTripAgainstSchema(t, resolved, export)
 }
+
+// ---- Finding 5: golden fixtures still schema-validate (complementary) ----

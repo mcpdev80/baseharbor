@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/hosttrust"
-	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
 // ManagementAccessKind enumerates the three portable record kinds.
@@ -80,10 +80,10 @@ type Trust struct {
 // export); a management-profile storage must not advertise unsafe durable
 // plaintext.
 type Storage struct {
-	Class              StorageClass `json:"class"`
-	Durable            bool         `json:"durable"`
-	Encrypted          bool         `json:"encrypted"`
-	DisasterRecovery   bool         `json:"disaster_recovery"`
+	Class            StorageClass `json:"class"`
+	Durable          bool         `json:"durable"`
+	Encrypted        bool         `json:"encrypted"`
+	DisasterRecovery bool         `json:"disaster_recovery"`
 }
 
 // FailClosedStorage reports a storage configuration that violates the contract:
@@ -101,20 +101,21 @@ type EncryptionDescriptor struct {
 }
 
 // ManagementAccessProfile is the wire record. JSON tags match the schema exactly,
-// including the nested trust object and the version/kind position swap that the
-// schema requires (version marker lives on the Kind field, kind value on the
-// Version field).
+// including the nested trust object. The kind value is serialized into the JSON
+// key "kind" and the version marker into the JSON key "version", which is the
+// schema's required key layout (schema.additionalProperties=false enumerates
+// exactly "version" with its const and "kind" with its enum).
 type ManagementAccessProfile struct {
-	Kind           ManagementAccessKind `json:"version"`   // baseharbor.management-access/v1 marker
-	Version        string               `json:"kind"`      // management-profile | device-enrollment | credential-export
-	InstallationID string               `json:"installation_id"`
-	Trust          Trust                `json:"trust"`
-	Recipient      string               `json:"recipient"`
-	Scope          string               `json:"scope"`
-	NotBefore      time.Time            `json:"not_before"`
-	NotAfter       time.Time            `json:"not_after"`
-	Import         ImportCapability     `json:"import"`
-	Storage        Storage              `json:"storage"`
+	Kind           ManagementAccessKind  `json:"kind"`    // management-profile | device-enrollment | credential-export
+	Version        string                `json:"version"` // baseharbor.management-access/v1 marker
+	InstallationID string                `json:"installation_id"`
+	Trust          Trust                 `json:"trust"`
+	Recipient      string                `json:"recipient"`
+	Scope          string                `json:"scope"`
+	NotBefore      time.Time             `json:"not_before"`
+	NotAfter       time.Time             `json:"not_after"`
+	Import         ImportCapability      `json:"import"`
+	Storage        Storage               `json:"storage"`
 	Export         *EncryptionDescriptor `json:"export,omitempty"`
 }
 
