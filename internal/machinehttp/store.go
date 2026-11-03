@@ -144,86 +144,102 @@ func (s *executionStore) get(id string) (machine.Execution, bool) {
 
 func (s *executionStore) start(id string) error {
 	now := time.Now().UTC()
-	return s.update(id, func(record *executionRecord) {
-		record.execution.State = machine.ExecutionRunning
-		record.execution.StartedAt = &now
-		s.emitLocked(record, machine.MachineEvent{
-			Kind:        machine.EventOperationStarted,
-			ExecutionID: id,
-			OperationID: record.execution.OperationID,
-			Actor:       &record.execution.Actor,
-			Context:     &record.execution.Context,
-			State:       machine.ExecutionRunning,
+	return s.update(id,
+		func(record *executionRecord) {
+			record.execution.State = machine.ExecutionRunning
+			record.execution.StartedAt = &now
+		},
+		func(record *executionRecord) {
+			s.emitLocked(record, machine.MachineEvent{
+				Kind:        machine.EventOperationStarted,
+				ExecutionID: id,
+				OperationID: record.execution.OperationID,
+				Actor:       &record.execution.Actor,
+				Context:     &record.execution.Context,
+				State:       machine.ExecutionRunning,
+			})
 		})
-	})
 }
 
 func (s *executionStore) progress(id string, progress machine.OperationProgress) error {
 	copy := progress
-	return s.update(id, func(record *executionRecord) {
-		record.execution.Progress = &copy
-		s.emitLocked(record, machine.MachineEvent{
-			Kind:        machine.EventOperationProgress,
-			ExecutionID: id,
-			OperationID: record.execution.OperationID,
-			State:       record.execution.State,
-			Progress:    &copy,
+	return s.update(id,
+		func(record *executionRecord) {
+			record.execution.Progress = &copy
+		},
+		func(record *executionRecord) {
+			s.emitLocked(record, machine.MachineEvent{
+				Kind:        machine.EventOperationProgress,
+				ExecutionID: id,
+				OperationID: record.execution.OperationID,
+				State:       record.execution.State,
+				Progress:    &copy,
+			})
 		})
-	})
 }
 
 func (s *executionStore) succeed(id string, result []byte) error {
 	now := time.Now().UTC()
 	resultCopy := append([]byte(nil), result...)
-	return s.update(id, func(record *executionRecord) {
-		record.execution.State = machine.ExecutionSucceeded
-		record.execution.FinishedAt = &now
-		record.execution.Result = resultCopy
-		record.execution.Error = nil
-		s.emitLocked(record, machine.MachineEvent{
-			Kind:        machine.EventOperationSucceeded,
-			ExecutionID: id,
-			OperationID: record.execution.OperationID,
-			State:       machine.ExecutionSucceeded,
-			Result:      resultCopy,
+	return s.update(id,
+		func(record *executionRecord) {
+			record.execution.State = machine.ExecutionSucceeded
+			record.execution.FinishedAt = &now
+			record.execution.Result = resultCopy
+			record.execution.Error = nil
+		},
+		func(record *executionRecord) {
+			s.emitLocked(record, machine.MachineEvent{
+				Kind:        machine.EventOperationSucceeded,
+				ExecutionID: id,
+				OperationID: record.execution.OperationID,
+				State:       machine.ExecutionSucceeded,
+				Result:      resultCopy,
+			})
 		})
-	})
 }
 
 func (s *executionStore) fail(id string, err error) error {
 	now := time.Now().UTC()
 	classified := machine.Classify(err)
-	return s.update(id, func(record *executionRecord) {
-		record.execution.State = machine.ExecutionFailed
-		record.execution.FinishedAt = &now
-		record.execution.Error = classified
-		s.emitLocked(record, machine.MachineEvent{
-			Kind:        machine.EventOperationFailed,
-			ExecutionID: id,
-			OperationID: record.execution.OperationID,
-			State:       machine.ExecutionFailed,
-			Error:       classified,
+	return s.update(id,
+		func(record *executionRecord) {
+			record.execution.State = machine.ExecutionFailed
+			record.execution.FinishedAt = &now
+			record.execution.Error = classified
+		},
+		func(record *executionRecord) {
+			s.emitLocked(record, machine.MachineEvent{
+				Kind:        machine.EventOperationFailed,
+				ExecutionID: id,
+				OperationID: record.execution.OperationID,
+				State:       machine.ExecutionFailed,
+				Error:       classified,
+			})
 		})
-	})
 }
 
-func (s *executionStore) update(id string, fn func(*executionRecord)) error {
+// update applies a state mutation and emits the resulting event under a strict
+// persist-before-publish order (review finding 2, round 4). mutate(record) sets
+// the new in-memory state; onCommit(record) publishes on subscriber channels.
+// The mutation is applied first so appendJournalLocked writes the NEW state, but
+// onCommit is only invoked AFTER the append has succeeded: a failed append rolls
+// the record back to prior state and returns the error without ever publishing an
+// event for a state that was never durably committed (fail closed).
+func (s *executionStore) update(id string, mutate func(*executionRecord), onCommit func(*executionRecord)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	record, ok := s.records[id]
 	if !ok {
 		return errors.New("execution not found")
 	}
-	// Snapshot prior state for rollback on a failed commit.
 	prior := *record
-	fn(record)
-	// Durably commit the new state before it is observable. On flush failure the
-	// in-memory record is rolled back so an unsafe write is never seen and the
-	// error reaches the caller (review finding 2, fail closed).
+	mutate(record)
 	if err := s.appendJournalLocked(record); err != nil {
 		*record = prior
 		return err
 	}
+	onCommit(record)
 	return nil
 }
 
@@ -240,8 +256,13 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	if s.journalPath == "" {
 		return nil
 	}
+	// Hard per-entry limit (review finding 3, mission runde 4): marshal first so
+	// we can measure the real line length, then reject with an error any single
+	// entry that would exceed the segment cap before it is ever appended. This is
+	// what keeps a 5 MiB actor from producing a > 4 MiB journal segment.
 	line, err := json.Marshal(struct {
 		ExecutionID string                   `json:"execution_id"`
+		OperationID string                   `json:"operation_id"`
 		State       machine.ExecutionState   `json:"state"`
 		Actor       machine.ActorRef         `json:"actor,omitempty"`
 		Context     machine.OperationContext `json:"context,omitempty"`
@@ -249,6 +270,7 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 		FinishedAt  *time.Time               `json:"finished_at,omitempty"`
 	}{
 		ExecutionID: record.execution.ExecutionID,
+		OperationID: record.execution.OperationID,
 		State:       record.execution.State,
 		Actor:       record.execution.Actor,
 		Context:     record.execution.Context,
@@ -257,6 +279,9 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	})
 	if err != nil {
 		return fmt.Errorf("marshal execution journal line: %w", err)
+	}
+	if int64(len(line)) > journalSegmentCap {
+		return fmt.Errorf("execution journal entry %d bytes exceeds hard segment cap %d: reject oversized entry (finding 3)", len(line), journalSegmentCap)
 	}
 	if err := s.appendJournalLineLocked(line); err != nil {
 		return err
@@ -474,13 +499,20 @@ func (s *executionStore) load() error {
 		return err
 	}
 	seen := map[string]bool{}
-	for _, seg := range segments {
+	// Iterate oldest segment first so the newest line per id (in the active
+	// segment) wins the overwrite below. journalSegments() returns the active
+	// segment first (newest), then numbered backups newest (.1) to oldest (.3);
+	// reversing means an older backup cannot overwrite a newer active line — a
+	// previously latent ordering bug that surfaces once running states are restored
+	// on load (mission runde 4 / review finding 1).
+	for _, seg := range reverseSegments(segments) {
 		for i, raw := range splitLines(seg) {
 			if strings.TrimSpace(raw) == "" {
 				continue
 			}
 			var line struct {
 				ExecutionID string                   `json:"execution_id"`
+				OperationID string                   `json:"operation_id"`
 				State       machine.ExecutionState   `json:"state"`
 				Actor       machine.ActorRef         `json:"actor,omitempty"`
 				Context     machine.OperationContext `json:"context,omitempty"`
@@ -499,17 +531,13 @@ func (s *executionStore) load() error {
 			if !validExecutionState(line.State) {
 				return fmt.Errorf("corrupt execution journal line %d: invalid execution state %q", i+1, line.State)
 			}
-			// Never restore an active/unknown execution from a rotated backup: a
-			// crash may have left it mid-write, and an active execution must be
-			// reconciled by the lifecycle, not resurrected as live.
-			switch line.State {
-			case machine.ExecutionPending, machine.ExecutionSucceeded, machine.ExecutionFailed, machine.ExecutionCancelled:
-			default:
-				continue
-			}
 			// Append-only: later lines are newer, so overwrite — the last valid
 			// line per id across all segments wins (both within a segment and across
-			// the active-then-backwards segment order).
+			// the active-then-backwards segment order). The last persisted state is
+			// restored verbatim, including a running execution (mission runde 4 /
+			// review finding 1): a Pending→Running line reopened after a crash must
+			// come back as running, never downgraded to pending. Semantic validation
+			// above already rejects any non-real state, so the value here is trusted.
 			if !seen[line.ExecutionID] {
 				seen[line.ExecutionID] = true
 			}
@@ -517,6 +545,7 @@ func (s *executionStore) load() error {
 				execution: machine.Execution{
 					ContractVersion: machine.ExecutionContractVersion,
 					ExecutionID:     line.ExecutionID,
+					OperationID:     line.OperationID,
 					Actor:           line.Actor,
 					Context:         line.Context,
 					State:           line.State,
@@ -581,6 +610,17 @@ func validExecutionState(state machine.ExecutionState) bool {
 	default:
 		return false
 	}
+}
+
+// reverseSegments returns the journal byte slices from oldest to newest so the
+// load loop overwrites older states with newer ones (the newest active segment
+// wins). journalSegments() returns newest-first (active, .1, .2, .3).
+func reverseSegments(segs [][]byte) [][]byte {
+	out := make([][]byte, 0, len(segs))
+	for i := len(segs) - 1; i >= 0; i-- {
+		out = append(out, segs[i])
+	}
+	return out
 }
 
 // splitLines splits journal bytes on newlines, tolerating a trailing newline.

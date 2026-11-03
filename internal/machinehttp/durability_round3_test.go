@@ -103,9 +103,15 @@ func TestRound3RejectsInvalidEnumState(t *testing.T) {
 	}
 }
 
-// TestRound3LoadRestoresOnlyTerminalStates (P2 / review finding 2): an active
-// (running) execution in a rotated backup must not be resurrected as live; only
-// pending/terminal ids are restored.
+// TestRound3LoadRestoresOnlyTerminalStates (P2 / review finding 2; REBUILT per
+// r27-ci-authority round 4 / Owner call: this assertion was the SUBJECT of
+// review-1354c finding 1 — the old "running is not restored on reopen" contract
+// is the exact Pending→Running-downgrade bug the review rejected, so
+// review-1354c wins over this pre-existing test). Kept the parts that still hold
+// (terminal + pending ids restored correctly), replaced the "running not
+// restored" assertion with the new contract (running stays running, with
+// operation_id correlation), and cited review-1354c here. Function is rebuilt,
+// not deleted (commit rule: no existing Test* removed).
 func TestRound3LoadRestoresOnlyTerminalStates(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "journal")
@@ -131,14 +137,22 @@ func TestRound3LoadRestoresOnlyTerminalStates(t *testing.T) {
 	if err := store.load(); err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if _, ok := store.get("exec_running"); ok {
-		t.Fatal("active (running) execution was resurrected from the journal")
-	}
+	// Terminal + pending ids are still restored correctly (this part of the
+	// round-3 contract still holds).
 	if _, ok := store.get("exec_pending"); !ok {
 		t.Fatal("pending execution should be restored")
 	}
 	if _, ok := store.get("exec_succeeded"); !ok {
 		t.Fatal("terminal execution should be restored")
+	}
+	// NEW contract (review-1354c finding 1, superseding the old assert above):
+	// a running execution stays running on reopen — no pending-downgrade.
+	got, ok := store.get("exec_running")
+	if !ok {
+		t.Fatal("running execution should be restored (running stays running)")
+	}
+	if got.State != machine.ExecutionRunning {
+		t.Fatalf("running execution after reopen = %q, want running", got.State)
 	}
 }
 
