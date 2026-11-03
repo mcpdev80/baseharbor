@@ -625,14 +625,14 @@ func TestCorruptedOwnerPreviousConflictStillRefused(t *testing.T) {
 // preserved lower-cased, and whitespace/upper-case is normalised.
 func TestCorruptedOwnerNormaliseHelperDirect(t *testing.T) {
 	cases := map[string]string{
-		"":                          "",
-		"baseharbor":                "baseharbor",
-		"external":                  "external",
-		"corrupt-third-party":       "",
-		"BASEHARBOR":                "baseharbor",
-		"  external  ":              "external",
-		"  corrupt-third-party  ":   "",
-		"BaseHarbor":                "baseharbor",
+		"":                        "",
+		"baseharbor":              "baseharbor",
+		"external":                "external",
+		"corrupt-third-party":     "",
+		"BASEHARBOR":              "baseharbor",
+		"  external  ":            "external",
+		"  corrupt-third-party  ": "",
+		"BaseHarbor":              "baseharbor",
 	}
 	for in, want := range cases {
 		if got := normalisePersistedOwner(in); got != want {

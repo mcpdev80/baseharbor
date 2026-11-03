@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/delivery"
-	"github.com/mcpdev80/baseharbor/internal/targetsession"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 // TestReviewerRetainsPreferences is the exact reviewer-repro from review-1333e:
