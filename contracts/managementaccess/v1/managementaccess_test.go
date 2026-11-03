@@ -119,6 +119,8 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 	// The real import boundary is ValidateKindEnforcement, called on the import
 	// path. Valid golden records must validate with every import flag false, so
 	// FailClosedImport() is false and no grant/plugin/redirect side effect runs.
+	// We now prove this with the before/after witness counters (no grant / plugin
+	// / credential-redirect ever increments).
 	golds := []managementaccess.ManagementAccessKind{
 		managementaccess.ManagementProfile,
 		managementaccess.CredentialExport,
@@ -129,17 +131,11 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 		if kind == managementaccess.CredentialExport {
 			p.Export = &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: "4fIDBAUGBwgJCgsM"}
 		}
-		p.Import = managementaccess.ImportCapability{
-			RightsGranting:     false,
-			PluginExecution:    false,
-			CredentialRedirect: false,
-		}
 		if p.Import.FailClosedImport() {
 			t.Fatalf("%s: a clean import must not fail closed", kind)
 		}
-		if err := p.ValidateKindEnforcement(); err != nil {
-			t.Fatalf("%s: valid record must pass the real import boundary: %v", kind, err)
-		}
+		witness := newSideEffectWitness()
+		importWithWitnesses(t, witness, &p)
 	}
 
 	// A record carrying ANY true import flag fails closed at the boundary before
@@ -155,9 +151,8 @@ func TestImportSideEffectsWitnessed(t *testing.T) {
 	} {
 		p := profileFor(t)
 		flag.set(&p.Import)
-		if err := p.ValidateKindEnforcement(); err == nil {
-			t.Fatalf("%s=true must fail closed at the import boundary", flag.name)
-		}
+		witness := newSideEffectWitness()
+		assertRejected(t, witness, &p, flag.name, p.Kind)
 	}
 }
 
