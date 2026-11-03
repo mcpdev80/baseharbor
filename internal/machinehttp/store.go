@@ -3,7 +3,13 @@ package machinehttp
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,6 +17,17 @@ import (
 )
 
 const maxExecutionEvents = 512
+
+// journalDir returns the directory that persists execution-journal records under
+// a state-root. An empty state-root leaves the store purely in-memory (existing
+// behavior); the production caller supplies the runtime state-root so the
+// journal survives process restarts.
+func journalDir(stateRoot string) string {
+	if stateRoot == "" {
+		return ""
+	}
+	return filepath.Join(stateRoot, "journal")
+}
 
 type executionRecord struct {
 	execution   machine.Execution
@@ -20,12 +37,32 @@ type executionRecord struct {
 }
 
 type executionStore struct {
-	mu      sync.RWMutex
-	records map[string]*executionRecord
+	mu          sync.RWMutex
+	records     map[string]*executionRecord
+	journalPath string
 }
 
 func newExecutionStore() *executionStore {
 	return &executionStore{records: map[string]*executionRecord{}}
+}
+
+// newPersistedExecutionStore loads any existing journal from stateRoot and
+// persists every subsequent mutation to it. stateRoot == "" keeps the store
+// in-memory. A corrupt journal line fails closed (never silently skipped).
+func newPersistedExecutionStore(stateRoot string) (*executionStore, error) {
+	store := &executionStore{records: map[string]*executionRecord{}}
+	dir := journalDir(stateRoot)
+	if dir == "" {
+		return store, nil
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create execution journal dir %q: %w", dir, err)
+	}
+	store.journalPath = filepath.Join(dir, "journal.jsonl")
+	if err := store.load(); err != nil {
+		return nil, err
+	}
+	return store, nil
 }
 
 func newExecutionID() (string, error) {
@@ -141,7 +178,112 @@ func (s *executionStore) update(id string, fn func(*executionRecord)) error {
 		return errors.New("execution not found")
 	}
 	fn(record)
+	if err := s.appendJournalLocked(record); err != nil {
+		return err
+	}
 	return nil
+}
+
+// appendJournalLocked writes the record's current state as one append-only
+// journal line. Callers must hold s.mu. A persistence error is surfaced to the
+// caller (fail closed on write) rather than swallowed.
+func (s *executionStore) appendJournalLocked(record *executionRecord) error {
+	if s.journalPath == "" {
+		return nil
+	}
+	line, err := json.Marshal(struct {
+		ExecutionID string                     `json:"execution_id"`
+		State       machine.ExecutionState     `json:"state"`
+		StartedAt   *time.Time                 `json:"started_at,omitempty"`
+		FinishedAt  *time.Time                 `json:"finished_at,omitempty"`
+		Progress    *machine.OperationProgress `json:"progress,omitempty"`
+		Result      json.RawMessage            `json:"result,omitempty"`
+		Error       *machine.Error             `json:"error,omitempty"`
+	}{
+		ExecutionID: record.execution.ExecutionID,
+		State:       record.execution.State,
+		StartedAt:   record.execution.StartedAt,
+		FinishedAt:  record.execution.FinishedAt,
+		Progress:    record.execution.Progress,
+		Result:      record.execution.Result,
+		Error:       record.execution.Error,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal execution journal line: %w", err)
+	}
+	f, err := os.OpenFile(s.journalPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return fmt.Errorf("open execution journal %q: %w", s.journalPath, err)
+	}
+	defer f.Close()
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("append execution journal line: %w", err)
+	}
+	return nil
+}
+
+// load reconstructs in-memory records from the journal. It fails closed on a
+// corrupt line: the first unparseable record is an error, never a silent skip.
+func (s *executionStore) load() error {
+	data, err := os.ReadFile(s.journalPath)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return fmt.Errorf("read execution journal %q: %w", s.journalPath, err)
+	}
+	for i, raw := range splitLines(data) {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var line struct {
+			ExecutionID string                     `json:"execution_id"`
+			State       machine.ExecutionState     `json:"state"`
+			StartedAt   *time.Time                 `json:"started_at,omitempty"`
+			FinishedAt  *time.Time                 `json:"finished_at,omitempty"`
+			Progress    *machine.OperationProgress `json:"progress,omitempty"`
+			Result      json.RawMessage            `json:"result,omitempty"`
+			Error       *machine.Error             `json:"error,omitempty"`
+		}
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			return fmt.Errorf("corrupt execution journal line %d in %q: %w", i+1, s.journalPath, err)
+		}
+		if line.ExecutionID == "" {
+			return fmt.Errorf("corrupt execution journal line %d in %q: missing execution_id", i+1, s.journalPath)
+		}
+		record := &executionRecord{
+			execution: machine.Execution{
+				ContractVersion: machine.ExecutionContractVersion,
+				ExecutionID:     line.ExecutionID,
+				State:           line.State,
+				StartedAt:       line.StartedAt,
+				FinishedAt:      line.FinishedAt,
+				Progress:        line.Progress,
+				Result:          line.Result,
+				Error:           line.Error,
+			},
+			nextSeq:     0,
+			subscribers: map[chan machine.MachineEvent]struct{}{},
+		}
+		s.records[line.ExecutionID] = record
+	}
+	return nil
+}
+
+// splitLines splits journal bytes on newlines, tolerating a trailing newline.
+func splitLines(data []byte) []string {
+	var lines []string
+	start := 0
+	for i, b := range data {
+		if b == '\n' {
+			lines = append(lines, string(data[start:i]))
+			start = i + 1
+		}
+	}
+	if start < len(data) {
+		lines = append(lines, string(data[start:]))
+	}
+	return lines
 }
 
 func (s *executionStore) emitLocked(record *executionRecord, event machine.MachineEvent) {

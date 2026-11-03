@@ -3,6 +3,8 @@ package machinehttp
 import (
 	"fmt"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -39,10 +41,10 @@ func journalContext() machine.OperationContext {
 	}
 }
 
-// TestExecutionJournalDurableTransitions asserts the create -> running -> succeeded
-// and create -> running -> failed paths record durably, with a structured result /
-// structured error, and emit the expected ordered events.
-func TestExecutionJournalDurableTransitions(t *testing.T) {
+// TestExecutionJournalInMemoryTransitions asserts the create -> running -> succeeded
+// and create -> running -> failed paths drive the same-process store and emit the
+// expected ordered events. Same-process map, no persistence claim.
+func TestExecutionJournalInMemoryTransitions(t *testing.T) {
 	store := newExecutionStore()
 
 	exec, err := store.create("status", journalActor(), journalContext())
@@ -216,5 +218,100 @@ func TestExecutionJournalBoundedSequenceFuzz(t *testing.T) {
 
 	if _, ok := store.get("exec_unknown_step"); ok {
 		t.Fatal("journal fabricated a record for a never-created ID during the run")
+	}
+}
+
+// TestExecutionJournalDurableReopen verifies minimal disk persistence: a record
+// written through one store instance is visible through a brand-new store
+// instance over the same state-root (reopen/Load), so transitions survive a
+// restart. It uses a real temp state-root so <state-root>/journal/ is exercised.
+func TestExecutionJournalDurableReopen(t *testing.T) {
+	root := t.TempDir()
+
+	writeStore, err := newPersistedExecutionStore(root)
+	if err != nil {
+		t.Fatalf("newPersistedExecutionStore: %v", err)
+	}
+	exec, err := writeStore.create("status", journalActor(), journalContext())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := writeStore.start(exec.ExecutionID); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if err := writeStore.succeed(exec.ExecutionID, []byte(`{"ok":true}`)); err != nil {
+		t.Fatalf("succeed: %v", err)
+	}
+	// The journal file must exist on disk after mutation.
+	if _, err := os.Stat(filepath.Join(root, "journal", "journal.jsonl")); err != nil {
+		t.Fatalf("expected persisted journal at %s/journal/journal.jsonl: %v", root, err)
+	}
+
+	readStore, err := newPersistedExecutionStore(root)
+	if err != nil {
+		t.Fatalf("newPersistedExecutionStore (reopen): %v", err)
+	}
+	got, ok := readStore.get(exec.ExecutionID)
+	if !ok {
+		t.Fatal("transition not durable: execution missing after reopen")
+	}
+	if got.State != machine.ExecutionSucceeded {
+		t.Fatalf("state after reopen = %q, want succeeded", got.State)
+	}
+	if string(got.Result) != `{"ok":true}` {
+		t.Fatalf("result after reopen = %q, want {\"ok\":true}", string(got.Result))
+	}
+}
+
+// TestExecutionJournalCorruptLogFailsClosed verifies a corrupt journal line is
+// an error, never silently skipped.
+func TestExecutionJournalCorruptLogFailsClosed(t *testing.T) {
+	root := t.TempDir()
+	store, err := newPersistedExecutionStore(root)
+	if err != nil {
+		t.Fatalf("newPersistedExecutionStore: %v", err)
+	}
+	exec, err := store.create("exec_corrupt", journalActor(), journalContext())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := store.succeed(exec.ExecutionID, []byte("{}")); err != nil {
+		t.Fatalf("succeed: %v", err)
+	}
+	journal := filepath.Join(root, "journal", "journal.jsonl")
+	// Append an unparseable line to the existing journal.
+	f, err := os.OpenFile(journal, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatalf("open journal for corruption: %v", err)
+	}
+	if _, err := f.WriteString("not-json-at-all\n"); err != nil {
+		t.Fatalf("append corrupt line: %v", err)
+	}
+	f.Close()
+
+	if _, err := newPersistedExecutionStore(root); err == nil {
+		t.Fatal("corrupt journal line did not fail closed")
+	}
+}
+
+// TestPersistedStoreEmptyRootIsInMemory verifies that with an empty state-root
+// the store stays in-memory and writes nothing to disk (existing behavior).
+func TestPersistedStoreEmptyRootIsInMemory(t *testing.T) {
+	store, err := newPersistedExecutionStore("")
+	if err != nil {
+		t.Fatalf("newPersistedExecutionStore(\"\"): %v", err)
+	}
+	if store.journalPath != "" {
+		t.Fatal("empty state-root must keep the store in-memory (no journal path)")
+	}
+	exec, err := store.create("status", journalActor(), journalContext())
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := store.succeed(exec.ExecutionID, []byte("{}")); err != nil {
+		t.Fatalf("succeed: %v", err)
+	}
+	if _, ok := store.get(exec.ExecutionID); !ok {
+		t.Fatal("in-memory store lost the record")
 	}
 }

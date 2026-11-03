@@ -242,7 +242,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {
-		machineHandler, err := machinehttp.New(machineExecutor)
+		machineHandler, err := machinehttp.New(machineExecutor, cfg.RuntimeOperationsDir)
 		if err != nil {
 			return err
 		}
