@@ -30,6 +30,26 @@ var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative inst
 // identity is preserved and the mismatch is rejected, never adopted.
 var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
 
+// verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
+// production read/write path in this package. It derives the Target's runtime
+// root (targets/<target>/runtime) from the canonical data layout and delegates
+// to the exported VerifyDeploymentOwner, so the authoritative check runs at the
+// storage seam and cannot be bypassed by a caller that only holds an identity.
+//
+// Tenant-managed targets are Coreless by design; the check is resolved through
+// the same VerifyDeploymentOwner path and fails closed unless an authorized
+// tenant owner path is established by the governing contract.
+func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
+	if err := ValidateTargetName(targetName); err != nil {
+		return err
+	}
+	targetRoot, err := TargetStateRoot(targetName)
+	if err != nil {
+		return err
+	}
+	return VerifyDeploymentOwner(targetName, filepath.Join(targetRoot, "runtime"), deploymentID)
+}
+
 // VerifyDeploymentOwner enforces the one-installation-owner rule for deployment
 // state. It loads the Core installation that governs targetRoot (the runtime
 // root of the selected Target) and proves that installation owns the Target's
@@ -43,13 +63,34 @@ var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not ow
 // fails closed and preserves the existing record identity. The deployment
 // directory itself need not pre-exist: first-run init creates it under the owner,
 // so absence of the directory is not itself a missing-owner condition.
+//
+// Durable identity binding of a deployment to the owner installation's
+// installation.ID is intentionally out of scope for this seam: the storage
+// owner is proven here at the Target's runtime root. The durable
+// installation.ID binding that closes copied/rewritten-identity attacks is
+// provided by the authority contract (follow-up), not invented by this layer.
+//
+// Tenant-managed targets are Coreless by design: they have no single Core
+// installation to own the deployment, so the one-installation-owner binding
+// does not apply. A tenant target is authorized only through the consumer-
+// provided tenantOwnerResolver, which routes access to its genuine authorized
+// installation owner (for example a validated remote project binding). The
+// resolver defaults to fail-closed, so no tenant target is admitted without an
+// explicit authorized path.
+var TenantOwnerResolver func(targetName string) (bool, error)
+
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
-	// Tenant-managed targets are Coreless by design: they have no single Core
-	// installation to own the deployment, so the one-installation-owner binding
-	// does not apply. Only Core-governed targets (no TenantID) are enforced.
-	if cfg, cfgErr := LoadConfig(); cfgErr == nil {
-		if def, ok := cfg.Targets[targetName]; ok && strings.TrimSpace(def.TenantID) != "" {
+	if TenantOwnerResolver != nil {
+		if authorized, resolveErr := TenantOwnerResolver(targetName); resolveErr != nil {
+			return resolveErr
+		} else if authorized {
+			// The consumer has established a genuine authorized-owner path for
+			// this (Coreless) tenant target; the single-installation-owner
+			// requirement does not apply. A resolver that returns false keeps the
+			// fail-closed behavior below.
 			return nil
+		} else {
+			return ErrDeploymentOwnerForeign
 		}
 	}
 	installation, err := coreinstallation.Load(targetRoot)
@@ -246,6 +287,13 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := validateRemoteProject(record); err != nil {
 		return err
 	}
+	// Authoritative ownership is enforced on the production write seam before any
+	// directory is created or any record is written: a missing or foreign
+	// installation fails closed and nothing is mutated. A tenant target is
+	// admitted only through the consumer-provided tenantOwnerResolver hook.
+	if err := verifyDeploymentOwnerAtSeam(record.Identity.Target, record.Identity.DeploymentID); err != nil {
+		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "missing", Err: err}
+	}
 	root, err := DeploymentRoot(record.Identity)
 	if err != nil {
 		return err
@@ -285,6 +333,9 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 }
 
 func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
+	if err := verifyDeploymentOwnerAtSeam(id.Target, id.DeploymentID); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "missing", Err: err}
+	}
 	root, err := DeploymentRoot(id)
 	if err != nil {
 		return DeploymentRecord{}, err
@@ -445,6 +496,18 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 		}
 		deploymentID := entry.Name()
 		path := filepath.Join(root, deploymentID, "deployment.json")
+		// Authoritative ownership is enforced on the listing seam as well: each
+		// deployment directory is verified against the Target's Core installation
+		// before its record is read. Fail-closed on unavailable owner, unless a
+		// best-effort listing is requested, in which case the mismatch surfaces
+		// as a per-target warning rather than aborting the whole list.
+		if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
+			if bestEffort {
+				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: "missing", Err: err})
+				continue
+			}
+			return nil, nil, err
+		}
 		record, err := loadDeploymentRecordFile(target, deploymentID, path, nil)
 		if err != nil {
 			if bestEffort {

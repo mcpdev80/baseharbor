@@ -13,6 +13,32 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
+func init() {
+	// Route tenant-managed (Coreless) targets through a genuine authorized-owner
+	// path instead of the blanket TenantID bypass the review rejected: a tenant
+	// deployment is admitted only when the selected Target's Access binding
+	// resolves to an enrolled baseharbor-node-connector node with a valid access
+	// scope. Every other target keeps the single Core installation-owner
+	// enforcement. The hook defaults to fail-closed, so no tenant target is
+	// admitted without authorization.
+	deployment.TenantOwnerResolver = func(targetName string) (bool, error) {
+		resolved, isTenant, ok := tenantResolvedForTarget(targetName)
+		if !ok {
+			// Not a resolvable tenant target: leave single-installation-owner
+			// enforcement (below) as the sole authority for Core-governed targets.
+			return true, nil
+		}
+		if !isTenant {
+			return true, nil
+		}
+		scope, err := connectorScopeForTarget(resolved)
+		if err != nil {
+			return false, nil
+		}
+		return scope.Validate() == nil, nil
+	}
+}
+
 func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) (deployment.DeploymentRecord, error) {
 	return recordDeploymentBeforeMutation(ctx, resolved, "configured")
 }
@@ -173,7 +199,6 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 
 // installationRootFor resolves the Core installation runtime root
 // (targets/<target>/runtime) that VerifyDeploymentOwner reads, from a resolved
-// Target state root (targets/<target>). It derives the Target name from the
 // resolved path and reuses deployment.TargetStateRoot so the shared
 // "baseharbor/" data prefix is applied consistently. It returns "" when the
 // Target name cannot be recovered or validated, so a caller without a
@@ -186,3 +211,34 @@ func installationRootFor(targetStateRoot string) string {
 	}
 	return filepath.Join(root, "runtime")
 }
+
+// tenantResolvedForTarget resolves a tenant-managed Target's Access binding and
+// reports whether it is an enrolled tenant (with a valid access scope). The
+// resolved binding is the genuine authorized-owner path for a Coreless target:
+// its scope proves the node that governs the deployment, replacing the blanket
+// TenantID bypass that the state-owner review rejected. The middle return
+// distinguishes "not a tenant at all" (enforcement stays with the Core owner)
+// from a tenant that lacks a valid enrolled binding.
+func tenantResolvedForTarget(targetName string) (deployment.ResolvedTarget, bool, bool) {
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return deployment.ResolvedTarget{}, false, false
+	}
+	resolved, err := cfg.ResolveTarget(targetName, "")
+	if err != nil {
+		return deployment.ResolvedTarget{}, false, false
+	}
+	if resolved.TenantID == "" {
+		return resolved, false, true
+	}
+	scope, err := connectorScopeForTarget(resolved)
+	if err != nil {
+		return deployment.ResolvedTarget{}, false, true
+	}
+	if scope.Validate() != nil {
+		return deployment.ResolvedTarget{}, false, true
+	}
+	return resolved, true, true
+}
+
+// installationRootFor resolves the Core installation runtime root

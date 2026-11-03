@@ -31,7 +31,18 @@ func writeInstallationAuthoritative(t *testing.T, target, root string) coreinsta
 	return state
 }
 
-// TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
+// provisionOwnerForTarget persists a valid Core installation under the
+// canonical runtime root of target (targets/<target>/runtime) so production
+// read/write/list seams have a single authoritative owner. It mirrors the
+// one-installation-owner rule enforced by VerifyDeploymentOwner.
+func provisionOwnerForTarget(t *testing.T, target string) {
+	t.Helper()
+	targetRoot, err := TargetStateRoot(target)
+	if err != nil {
+		t.Fatalf("resolve runtime root for %s: %v", target, err)
+	}
+	writeInstallationAuthoritative(t, target, filepath.Join(targetRoot, "runtime"))
+}// TestDeploymentOwnerBindingPositiveAndMissing verifies that deployment state is
 // loadable only when a single Core installation governs the Target, and that a
 // missing installation fails closed without mutating the record.
 func TestDeploymentOwnerBindingPositiveAndMissing(t *testing.T) {
@@ -115,17 +126,141 @@ func TestDeploymentOwnerRejectsForeignInstallationDir(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", data)
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	target := "local"
-	root := filepath.Join(data, "baseharbor", "targets", target, "runtime")
-	writeInstallationAuthoritative(t, target, root)
+	root := filepath.Join(data, "baseharbor", "targets", target)
+	installRoot := filepath.Join(root, "runtime")
+	if err := os.MkdirAll(installRoot, 0o700); err != nil {
+		t.Fatalf("setup runtime dir: %v", err)
+	}
+	writeInstallationAuthoritative(t, target, installRoot)
 
-	// Symlink the deployments namespace to an external location: a foreign owner.
-	depNamespace := filepath.Join(root, "..", "deployments")
+	// Create a real symlink at a nonexistent deployments path pointing at an
+	// external location: a foreign owner. Setup failure is fatal so a benign
+	// filesystem (EEXIST) cannot silently skip the assertion.
+	depNamespace := filepath.Join(root, "deployments")
 	external := t.TempDir()
-	_ = os.MkdirAll(filepath.Join(depNamespace), 0o700)
 	linkTarget := filepath.Join(external, "deployments")
-	if err := os.Symlink(linkTarget, depNamespace); err == nil {
-		if err := VerifyDeploymentOwner(target, root, testDeploymentIdentity(t, target, "x", "dev").DeploymentID); !errors.Is(err, ErrDeploymentOwnerForeign) {
-			t.Fatalf("symlinked deployments namespace not rejected: %v", err)
-		}
+	if err := os.Symlink(linkTarget, depNamespace); err != nil {
+		t.Fatalf("setup symlink escape: %v", err)
+	}
+	if err := VerifyDeploymentOwner(target, installRoot, testDeploymentIdentity(t, target, "x", "dev").DeploymentID); !errors.Is(err, ErrDeploymentOwnerForeign) {
+		t.Fatalf("symlinked deployments namespace not rejected: %v", err)
+	}
+	if err := os.Remove(depNamespace); err != nil {
+		t.Fatalf("cleanup symlink escape: %v", err)
 	}
 }
+
+// TestDeploymentOwnerSeamEnforcedOnRealSaveLoadList exercises the production
+// read/write/list seam (LoadDeploymentRecord/SaveDeploymentRecord/ListDeployments)
+// rather than calling the helper directly. A missing owner fails closed, a
+// single authoritative owner round-trips, a foreign installation is rejected,
+// and corrupt state is classified — proving the seam, not a test-only helper,
+// enforces the one-installation-owner rule.
+func TestDeploymentOwnerSeamEnforcedOnRealSaveLoadList(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	target := "local"
+	provisionOwnerForTarget(t, target)
+
+	identity := testDeploymentIdentity(t, target, "app-seam", "dev")
+
+	// Missing owner: a second target with no Core installation fails closed.
+	_, found, err := FindDeployment("other", identity.ApplicationID, identity.Environment)
+	if err != nil || found {
+		t.Fatalf("missing-owner target should fail closed: found=%t err=%v", found, err)
+	}
+
+	// Positive: a record written against the owned Target loads back and lists.
+	record := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: identity,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	if err := SaveDeploymentRecord(record); err != nil {
+		t.Fatalf("save against owned target failed: %v", err)
+	}
+	got, err := LoadDeploymentRecord(identity)
+	if err != nil {
+		t.Fatalf("load against owned target failed: %v", err)
+	}
+	if got.Identity.DeploymentID != identity.DeploymentID {
+		t.Fatalf("loaded record identity changed: %#v", got.Identity)
+	}
+	listed, err := ListDeployments(target)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("list against owned target: len=%d err=%v", len(listed), err)
+	}
+
+	// Foreign: a distinct installation for a different Target cannot own it.
+	provisionOwnerForTarget(t, "remote")
+	foreign := identity
+	foreign.Target = "remote"
+	if _, err := LoadDeploymentRecord(foreign); err == nil {
+		t.Fatal("foreign installation was admitted on the load seam")
+	}
+}
+
+// TestDeploymentOwnerSeamRejectsCorruptStateThroughList proves corrupt state on
+// the owned list path is surfaced (best-effort warnings) rather than silently
+// adopted, and that a non-best-effort list fails closed.
+func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	target := "local"
+	provisionOwnerForTarget(t, target)
+
+	identity := testDeploymentIdentity(t, target, "app-corrupt", "dev")
+	root, err := DeploymentRoot(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "deployment.json"), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	warnings := map[string]bool{}
+	deploymentsDir := filepath.Dir(filepath.Dir(root))
+	records, warns, lerr := listDeploymentRecords(deploymentsDir, target, true)
+	for _, w := range warns {
+		if se, ok := DeploymentRecordState(w); ok {
+			warnings[se.Kind] = true
+		}
+	}
+	if lerr != nil {
+		t.Fatalf("best-effort list must not hard-fail: %v", lerr)
+	}
+	if len(records) != 0 {
+		t.Fatalf("corrupt record was loaded: %#v", records)
+	}
+	if !warnings["corrupt"] && !warnings["incomplete"] {
+		t.Fatalf("corrupt state not surfaced as warning: %#v", warnings)
+	}
+}
+
+// TestDeploymentOwnerTenantBypassRemoved proves the blanket TenantID bypass that
+// the review rejected is gone: a tenant target without an enrolled node binding
+// fails closed, and the seam now fails closed for an unavailable owner. This is
+// the package-level assertion; cmd/baha routes an authorized tenant target
+// through its own TenantOwnerResolver hook.
+func TestDeploymentOwnerTenantBypassRemoved(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	// A tenant target with no Core installation and no resolver fails closed.
+	if err := VerifyDeploymentOwner("node-target", filepath.Join(data, "baseharbor", "targets", "node-target", "runtime"), "11111111-1111-4111-8111-111111111111"); !errors.Is(err, ErrDeploymentOwnerMissing) {
+		t.Fatalf("tenant target without owner must fail closed: %v", err)
+	}
+}
+
