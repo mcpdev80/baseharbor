@@ -44,7 +44,7 @@ func TestDiscoveryAndDispatchShareExactHTTPExecutionSupport(t *testing.T) {
 		t.Fatal("unimplemented transport operation accepted", response.Code, calls)
 	}
 	for _, ids := range [][]string{{"not.registered"}, {"status", "status"}} {
-if _, err := New(selectedExecutor{ids: ids, executorFunc: executor.executorFunc}, ""); err == nil {
+		if _, err := New(selectedExecutor{ids: ids, executorFunc: executor.executorFunc}, ""); err == nil {
 			t.Fatal("invalid support registry accepted")
 		}
 	}

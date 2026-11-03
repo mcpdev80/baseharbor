@@ -221,10 +221,13 @@ func TestExecutionJournalBoundedSequenceFuzz(t *testing.T) {
 	}
 }
 
-// TestExecutionJournalDurableReopen verifies minimal disk persistence: a record
+// TestExecutionJournalDurableReopen verifies durable persistence: a record
 // written through one store instance is visible through a brand-new store
-// instance over the same state-root (reopen/Load), so transitions survive a
-// restart. It uses a real temp state-root so <state-root>/journal/ is exercised.
+// instance over the same state-root (reopen/Load), so the accepted identity and
+// terminal transition survive a restart. It uses a real temp state-root so
+// <state-root>/journal/ is exercised. The structured result is intentionally
+// NOT persisted to the journal (secret/artifact safety, review finding 4): only
+// id/state/actor/context/timestamps are durable.
 func TestExecutionJournalDurableReopen(t *testing.T) {
 	root := t.TempDir()
 
@@ -258,8 +261,14 @@ func TestExecutionJournalDurableReopen(t *testing.T) {
 	if got.State != machine.ExecutionSucceeded {
 		t.Fatalf("state after reopen = %q, want succeeded", got.State)
 	}
-	if string(got.Result) != `{"ok":true}` {
-		t.Fatalf("result after reopen = %q, want {\"ok\":true}", string(got.Result))
+	// Id, actor and context are durable; the structured result is intentionally
+	// not written to the journal (secret-safe). The pending-identity survives so
+	// the accepted commitment is correlation-able after restart.
+	if got.ExecutionID == "" || got.Actor.Subject == "" || got.Context.Application == "" {
+		t.Fatalf("accepted identity not durable after reopen: %#v", got)
+	}
+	if len(got.Result) != 0 {
+		t.Fatalf("result should not be persisted to the journal: %q", string(got.Result))
 	}
 }
 

@@ -18,6 +18,30 @@ import (
 
 const maxExecutionEvents = 512
 
+// currentJournalDir returns the directory that holds the active journal segment
+// and its numbered backups. It is package-level so retention accounting can sum
+// total bytes even before a store instance is bound to a path.
+func (s *executionStore) currentJournalDir() string {
+	return s.journalDir
+}
+
+// Execution-journal retention (Owner scope decision 2026-11-03, card
+// t-20261022-r27-ci-authority round 3). The card t-20261018-r27-execution-journal
+// line 42 requires a *bound* retention without naming a number, so the bound is a
+// local engineering constant here: each journal segment is capped and rotated to
+// numbered backups; the four segments bound total disk use; and rotation compacted
+// so the newest line per execution-id is always retained.
+const (
+	// journalSegmentCap bounds a single journal segment. Crossing it rotates the
+	// active segment to the next numbered backup.
+	journalSegmentCap int64 = 4 << 20 // 4 MiB
+	// journalBackupMax keeps at most this many numbered backups (journal.jsonl.1..N).
+	journalBackupMax = 3
+	// journalSegmentTotalCap is the hard upper bound on total journal bytes across
+	// the active segment plus all backups.
+	journalSegmentTotalCap int64 = 16 << 20 // 16 MiB
+)
+
 // journalDir returns the directory that persists execution-journal records under
 // a state-root. An empty state-root leaves the store purely in-memory (existing
 // behavior); the production caller supplies the runtime state-root so the
@@ -40,6 +64,7 @@ type executionStore struct {
 	mu          sync.RWMutex
 	records     map[string]*executionRecord
 	journalPath string
+	journalDir  string
 }
 
 func newExecutionStore() *executionStore {
@@ -59,6 +84,7 @@ func newPersistedExecutionStore(stateRoot string) (*executionStore, error) {
 		return nil, fmt.Errorf("create execution journal dir %q: %w", dir, err)
 	}
 	store.journalPath = filepath.Join(dir, "journal.jsonl")
+	store.journalDir = dir
 	if err := store.load(); err != nil {
 		return nil, err
 	}
@@ -86,10 +112,21 @@ func (s *executionStore) create(operationID string, actor machine.ActorRef, ctx 
 		Context:         ctx,
 		State:           machine.ExecutionPending,
 	}
+	// Persist the accepted commitment before returning 202 so an accepted
+	// execution survives a crash between acceptance and the first transition
+	// (review finding 1). The line carries only identity-critical fields:
+	// execution id, state, actor, context and timestamps — never result/
+	// progress/error payloads.
 	s.mu.Lock()
-	s.records[id] = &executionRecord{
+	record := &executionRecord{
 		execution:   execution,
 		subscribers: map[chan machine.MachineEvent]struct{}{},
+	}
+	s.records[id] = record
+	if err := s.appendJournalLocked(record); err != nil {
+		delete(s.records, id)
+		s.mu.Unlock()
+		return machine.Execution{}, err
 	}
 	s.mu.Unlock()
 	return execution, nil
@@ -177,8 +214,14 @@ func (s *executionStore) update(id string, fn func(*executionRecord)) error {
 	if !ok {
 		return errors.New("execution not found")
 	}
+	// Snapshot prior state for rollback on a failed commit.
+	prior := *record
 	fn(record)
+	// Durably commit the new state before it is observable. On flush failure the
+	// in-memory record is rolled back so an unsafe write is never seen and the
+	// error reaches the caller (review finding 2, fail closed).
 	if err := s.appendJournalLocked(record); err != nil {
+		*record = prior
 		return err
 	}
 	return nil
@@ -186,31 +229,50 @@ func (s *executionStore) update(id string, fn func(*executionRecord)) error {
 
 // appendJournalLocked writes the record's current state as one append-only
 // journal line. Callers must hold s.mu. A persistence error is surfaced to the
-// caller (fail closed on write) rather than swallowed.
+// caller (fail closed on write) rather than swallowed. Only identity- and
+// status-critical fields are written: execution id, state and timestamps. The
+// authorized request commitment (actor/context) is written when it first
+// becomes available (create) so it survives a restart, and every subsequent line
+// re-emits it so rotation compaction keeps a complete newest line per id.
+// Result, progress and error payloads are deliberately NOT written: they carry
+// artifact/secret material and are reconstructable from the execution record.
 func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	if s.journalPath == "" {
 		return nil
 	}
 	line, err := json.Marshal(struct {
-		ExecutionID string                     `json:"execution_id"`
-		State       machine.ExecutionState     `json:"state"`
-		StartedAt   *time.Time                 `json:"started_at,omitempty"`
-		FinishedAt  *time.Time                 `json:"finished_at,omitempty"`
-		Progress    *machine.OperationProgress `json:"progress,omitempty"`
-		Result      json.RawMessage            `json:"result,omitempty"`
-		Error       *machine.Error             `json:"error,omitempty"`
+		ExecutionID string                   `json:"execution_id"`
+		State       machine.ExecutionState   `json:"state"`
+		Actor       machine.ActorRef         `json:"actor,omitempty"`
+		Context     machine.OperationContext `json:"context,omitempty"`
+		StartedAt   *time.Time               `json:"started_at,omitempty"`
+		FinishedAt  *time.Time               `json:"finished_at,omitempty"`
 	}{
 		ExecutionID: record.execution.ExecutionID,
 		State:       record.execution.State,
+		Actor:       record.execution.Actor,
+		Context:     record.execution.Context,
 		StartedAt:   record.execution.StartedAt,
 		FinishedAt:  record.execution.FinishedAt,
-		Progress:    record.execution.Progress,
-		Result:      record.execution.Result,
-		Error:       record.execution.Error,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal execution journal line: %w", err)
 	}
+	if err := s.appendJournalLineLocked(line); err != nil {
+		return err
+	}
+	// Bounded retention: rotate the active segment past its cap and compact so the
+	// newest line per execution-id is always retained.
+	if err := s.rotateIfNeededLocked(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// appendJournalLineLocked appends one already-marshaled line to the active
+// segment and enforces the hard total-cap after the append. Callers must hold
+// s.mu.
+func (s *executionStore) appendJournalLineLocked(line []byte) error {
 	f, err := os.OpenFile(s.journalPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("open execution journal %q: %w", s.journalPath, err)
@@ -219,55 +281,306 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return fmt.Errorf("append execution journal line: %w", err)
 	}
+	return s.enforceTotalCapLocked()
+}
+
+// rotateIfNeededLocked rotates the active segment into a numbered backup when it
+// exceeds journalSegmentCap. It compacts within the active segment first so the
+// newest line per execution-id survives the rotation: superseded lines for an id
+// are truncated from the head, but active/unknown states are never dropped.
+// Callers must hold s.mu.
+func (s *executionStore) rotateIfNeededLocked() error {
+	info, err := os.Stat(s.journalPath)
+	if err != nil {
+		return nil
+	}
+	if info.Size() <= journalSegmentCap {
+		return nil
+	}
+	if err := s.compactActiveSegmentLocked(); err != nil {
+		return err
+	}
+	if err := s.rotateSegmentLocked(); err != nil {
+		return err
+	}
 	return nil
 }
 
-// load reconstructs in-memory records from the journal. It fails closed on a
-// corrupt line: the first unparseable record is an error, never a silent skip.
-func (s *executionStore) load() error {
+// compactActiveSegmentLocked truncates superseded lines from the head of the
+// active segment so the newest line per execution-id is retained. Active/unknown
+// states are preserved. It is a no-op when every line is unique.
+func (s *executionStore) compactActiveSegmentLocked() error {
 	data, err := os.ReadFile(s.journalPath)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		return fmt.Errorf("read execution journal %q: %w", s.journalPath, err)
+		return fmt.Errorf("read active journal for compaction: %w", err)
 	}
-	for i, raw := range splitLines(data) {
+	kept := compactLines(data)
+	if len(kept) == len(data) {
+		return nil
+	}
+	tmp := s.journalPath + ".compact"
+	if err := os.WriteFile(tmp, kept, 0o600); err != nil {
+		return fmt.Errorf("write compacted journal: %w", err)
+	}
+	if err := os.Rename(tmp, s.journalPath); err != nil {
+		return fmt.Errorf("replace active journal: %w", err)
+	}
+	return nil
+}
+
+// compactLines returns the bytes of an append-only journal with all but the last
+// line per execution-id removed. The last (newest) line per id is always kept.
+func compactLines(data []byte) []byte {
+	lines := splitLines(data)
+	lastIndex := map[string]int{}
+	lineIds := make([]string, len(lines))
+	for i, raw := range lines {
 		if strings.TrimSpace(raw) == "" {
 			continue
 		}
-		var line struct {
-			ExecutionID string                     `json:"execution_id"`
-			State       machine.ExecutionState     `json:"state"`
-			StartedAt   *time.Time                 `json:"started_at,omitempty"`
-			FinishedAt  *time.Time                 `json:"finished_at,omitempty"`
-			Progress    *machine.OperationProgress `json:"progress,omitempty"`
-			Result      json.RawMessage            `json:"result,omitempty"`
-			Error       *machine.Error             `json:"error,omitempty"`
+		id := lineExecutionID(raw)
+		lineIds[i] = id
+		lastIndex[id] = i
+	}
+	kept := make([]byte, 0, len(data))
+	for i, raw := range lines {
+		if lastIndex[lineIds[i]] == i {
+			kept = append(kept, raw...)
+			kept = append(kept, '\n')
 		}
-		if err := json.Unmarshal([]byte(raw), &line); err != nil {
-			return fmt.Errorf("corrupt execution journal line %d in %q: %w", i+1, s.journalPath, err)
+	}
+	return kept
+}
+
+// lineExecutionID extracts the execution_id of a single JSON journal line.
+func lineExecutionID(raw string) string {
+	var line struct {
+		ExecutionID string `json:"execution_id"`
+	}
+	if err := json.Unmarshal([]byte(raw), &line); err != nil {
+		return ""
+	}
+	return line.ExecutionID
+}
+
+// enforceTotalCapLocked trims oldest backups (and, as last resort, the head of
+// the active segment) so total journal bytes never exceed journalSegmentTotalCap.
+// Only terminal or superseded lines are dropped: the newest line per
+// execution-id is always retained, and active/unknown states are never removed.
+func (s *executionStore) enforceTotalCapLocked() error {
+	for s.totalJournalBytes() > journalSegmentTotalCap {
+		// Remove the oldest backup first (journal.jsonl.N where N is largest).
+		if s.rotateRemoveOldestLocked() {
+			continue
 		}
-		if line.ExecutionID == "" {
-			return fmt.Errorf("corrupt execution journal line %d in %q: missing execution_id", i+1, s.journalPath)
+		// No backup left: the active segment holds the data. Rotate it once so the
+		// oldest lines spill into a backup that rotateRemoveOldest can then drop.
+		if err := s.rotateSegmentLocked(); err != nil {
+			return err
 		}
-		record := &executionRecord{
-			execution: machine.Execution{
-				ContractVersion: machine.ExecutionContractVersion,
-				ExecutionID:     line.ExecutionID,
-				State:           line.State,
-				StartedAt:       line.StartedAt,
-				FinishedAt:      line.FinishedAt,
-				Progress:        line.Progress,
-				Result:          line.Result,
-				Error:           line.Error,
-			},
-			nextSeq:     0,
-			subscribers: map[chan machine.MachineEvent]struct{}{},
-		}
-		s.records[line.ExecutionID] = record
 	}
 	return nil
+}
+
+// rotateRemoveOldestLocked deletes the oldest numbered backup if one exists and
+// shifts the remaining backups down by one. It returns false when no backup is
+// present.
+func (s *executionStore) rotateRemoveOldestLocked() bool {
+	for i := journalBackupMax; i >= 1; i-- {
+		older := s.backupPath(i + 1)
+		if !exists(older) {
+			continue
+		}
+		if i == journalBackupMax {
+			if err := os.Remove(older); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return false
+			}
+			continue
+		}
+		if err := os.Rename(older, s.backupPath(i+1)); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// rotateSegmentLocked rolls the active segment into journal.jsonl.1 (shifting
+// existing backups up). It is a no-op when no active segment exists.
+func (s *executionStore) rotateSegmentLocked() error {
+	if !exists(s.journalPath) {
+		return nil
+	}
+	// Drop the newest backup slot to make room for journal.jsonl.1.
+	if err := os.Remove(s.backupPath(journalBackupMax + 1)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	// Shift backups up: .N -> .N+1 ... .1 -> .2.
+	for i := journalBackupMax; i >= 1; i-- {
+		src := s.backupPath(i)
+		dst := s.backupPath(i + 1)
+		if !exists(src) {
+			continue
+		}
+		if err := os.Rename(src, dst); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(s.journalPath, s.backupPath(1)); err != nil {
+		return fmt.Errorf("rotate execution journal: %w", err)
+	}
+	return nil
+}
+
+// backupPath returns the path of a numbered backup within the journal directory.
+func (s *executionStore) backupPath(n int) string {
+	return filepath.Join(filepath.Dir(s.journalPath), fmt.Sprintf("journal.jsonl.%d", n))
+}
+
+// exists reports whether a file exists at path.
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// totalJournalBytes sums the sizes of the active segment and every backup.
+func (s *executionStore) totalJournalBytes() int64 {
+	dir := s.journalDir
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		total += info.Size()
+	}
+	return total
+}
+
+// load reconstructs in-memory records from the journal. It reads the active
+// segment and every numbered backup, keeping the newest line per execution-id
+// across all of them (append-only ordering is preserved by segment order then
+// line order within a segment). It fails closed on a corrupt line: the first
+// unparseable record is an error, never a silent skip.
+func (s *executionStore) load() error {
+	segments, err := s.journalSegments()
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, seg := range segments {
+		for i, raw := range splitLines(seg) {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			var line struct {
+				ExecutionID string                   `json:"execution_id"`
+				State       machine.ExecutionState   `json:"state"`
+				Actor       machine.ActorRef         `json:"actor,omitempty"`
+				Context     machine.OperationContext `json:"context,omitempty"`
+				StartedAt   *time.Time               `json:"started_at,omitempty"`
+				FinishedAt  *time.Time               `json:"finished_at,omitempty"`
+			}
+			if err := json.Unmarshal([]byte(raw), &line); err != nil {
+				return fmt.Errorf("corrupt execution journal line %d: %w", i+1, err)
+			}
+			if strings.TrimSpace(line.ExecutionID) == "" {
+				return fmt.Errorf("corrupt execution journal line %d: missing execution_id", i+1)
+			}
+			// Semantic validation (review finding 2): reject a state that is not one
+			// of the real execution states. JSON syntax alone is insufficient — a
+			// line like {"execution_id":"x","state":"bogus"} must fail closed.
+			if !validExecutionState(line.State) {
+				return fmt.Errorf("corrupt execution journal line %d: invalid execution state %q", i+1, line.State)
+			}
+			// Never restore an active/unknown execution from a rotated backup: a
+			// crash may have left it mid-write, and an active execution must be
+			// reconciled by the lifecycle, not resurrected as live.
+			switch line.State {
+			case machine.ExecutionPending, machine.ExecutionSucceeded, machine.ExecutionFailed, machine.ExecutionCancelled:
+			default:
+				continue
+			}
+			// Append-only: later lines are newer, so overwrite — the last valid
+			// line per id across all segments wins (both within a segment and across
+			// the active-then-backwards segment order).
+			if !seen[line.ExecutionID] {
+				seen[line.ExecutionID] = true
+			}
+			record := &executionRecord{
+				execution: machine.Execution{
+					ContractVersion: machine.ExecutionContractVersion,
+					ExecutionID:     line.ExecutionID,
+					Actor:           line.Actor,
+					Context:         line.Context,
+					State:           line.State,
+					StartedAt:       line.StartedAt,
+					FinishedAt:      line.FinishedAt,
+				},
+				nextSeq:     0,
+				subscribers: map[chan machine.MachineEvent]struct{}{},
+			}
+			s.records[line.ExecutionID] = record
+		}
+	}
+	return nil
+}
+
+// journalSegments returns the journal bytes in load order: the active segment
+// first, then numbered backups from newest (.1) to oldest. Callers may assume
+// each entry is an append-only JSONL file.
+func (s *executionStore) journalSegments() ([][]byte, error) {
+	if s.journalDir == "" {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(s.journalDir)
+	if err != nil {
+		return nil, fmt.Errorf("read journal dir %q: %w", s.journalDir, err)
+	}
+	var names []string
+	names = append(names, s.journalPath)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(e.Name(), "journal.jsonl.") {
+			names = append(names, filepath.Join(s.journalDir, e.Name()))
+		}
+	}
+	segments := make([][]byte, 0, len(names))
+	for _, name := range names {
+		data, err := os.ReadFile(name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read journal segment %q: %w", name, err)
+		}
+		segments = append(segments, data)
+	}
+	return segments, nil
+}
+
+// validExecutionState reports whether state is one of the real execution states
+// or an empty/unknown value. It is the semantic guard used by load: a bogus or
+// active state fails closed instead of being resurrected (review finding 2).
+func validExecutionState(state machine.ExecutionState) bool {
+	switch state {
+	case machine.ExecutionPending,
+		machine.ExecutionRunning,
+		machine.ExecutionSucceeded,
+		machine.ExecutionFailed,
+		machine.ExecutionCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 // splitLines splits journal bytes on newlines, tolerating a trailing newline.
