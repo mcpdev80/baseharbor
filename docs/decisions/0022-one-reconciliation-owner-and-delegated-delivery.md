@@ -53,8 +53,7 @@ and those states stay below the Delivery Provider boundary.
 owner — the persisted conflict flag is set, or the persisted owner is `external` for a direct save
 (the one-writer guard in `internal/deployment`); this reads recorded state only, not live reconciler
 activity, whose detection is deferred to `t-20261018-r27-authority-contract` and
-`t-20261018-r27-state-owner`. Zero, absent or unrecognised persisted owner is treated as unset and
-follows the `Selection.Normalize` direct default; it is not an attestation of any external activity.
+`t-20261018-r27-state-owner`. Zero, absent or unrecognised persisted owner is treated as unset, and the owner then follows the normalized selection being saved (`baseharbor` for direct, `external` for delegated saves); this is not an attestation of any external activity.
   `internal/deployment.SaveDeploymentRecord` reads the persisted owner and the recorded conflict flag before writing state; a recorded conflict refuses the save fail-closed.
 - BaseHarbor's own bindings/operation receipts remain BaseHarbor-owned regardless of delivery mode.
 - GitOps systems (Argo CD, Flux) stay implementations; the one-owner invariant is portable intent, not a tool.

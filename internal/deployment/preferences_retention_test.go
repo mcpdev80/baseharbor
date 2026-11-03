@@ -451,46 +451,52 @@ func TestRetentionInvalidRemoteProjectByteStable(t *testing.T) {
 }
 
 // TestRetentionVanishedRecordFailsClosed proves that a nil save against a
-// previous record that is GONE between the guard-load and the retention-load
-// (the file was removed after the guard confirmed it exists) fails closed on
-// the ENOENT path. The guard-load and the retention re-read are two separate
-// file reads inside SaveDeploymentRecord; a concurrent writer deleting the file
-// between those two reads leaves previousExists=true while the loader returns
-// os.ErrNotExist. Because the two reads are in-process, the race is reproduced
-// by driving the same two reads the function performs: guard-load first, then
-// delete the file, then the retention re-read, and asserting the re-read (as
-// wired into SaveDeploymentRecord) fails closed rather than silently dropping
-// the owned preferences.
+// previous record that vanishes between the guard-read and the retention-read
+// fails closed through the REAL SaveDeploymentRecord path. It uses the
+// package-internal seam testHookAfterGuardRead, which fires after the guard has
+// read the persisted previous record (previousExists=true, owner established)
+// and immediately before the retention re-read: the seam deletes the on-disk
+// record so the retention full-loader returns os.ErrNotExist on the in-process
+// second read. The save must be refused (fail-closed) and the on-disk file must
+// stay absent (byte-proof: ENOENT is only acceptable because the record was
+// already gone after the guard confirmed it existed). This test fails against
+// the pre-fix code that swallowed the ENOENT loader error (silently dropping
+// the owned preferences).
 func TestRetentionVanishedRecordFailsClosed(t *testing.T) {
 	id, path := byteStabilityFixture(t)
 
-	// Guard-load: the previous record exists (previousExists=true), as
-	// SaveDeploymentRecord asserts before it enters the retention branch.
-	owner, conflict, exists, loadErr := loadPersistedOwnerForGuard(id.Target, id.DeploymentID, path)
-	if loadErr != nil {
-		t.Fatalf("guard-load: %v", loadErr)
+	// Anchor the seam: it fires once, after the guard-read, before the retention
+	// read. Remove the previous record there to simulate a vanish between reads.
+	removed := false
+	testHookAfterGuardRead = func() {
+		if removed {
+			return
+		}
+		removed = true
+		if err := os.Remove(path); err != nil {
+			t.Fatalf("seam remove record: %v", err)
+		}
 	}
-	if !exists {
-		t.Fatalf("fixture guard-load must see a previous record, got previousExists=false (owner=%q)", owner)
+	defer func() { testHookAfterGuardRead = nil }()
+
+	before, statErr := os.Stat(path)
+	if statErr != nil {
+		t.Fatalf("stat previous record before save: %v", statErr)
 	}
-	if conflict {
-		t.Fatalf("fixture must not carry a conflict flag")
+	if before == nil {
+		t.Fatalf("fixture previous record must exist before save")
 	}
 
-	// Concurrent writer removes the file between the two reads.
-	if err := os.Remove(path); err != nil {
-		t.Fatalf("remove record: %v", err)
+	// Real SaveDeploymentRecord path: guard reads the previous (exists), seam
+	// deletes it, the retention re-read surfaces ENOENT and the save fails closed.
+	if SaveDeploymentRecord(nilSave(id)) == nil {
+		t.Fatalf("nil save against vanished previous record must fail closed, got nil error")
 	}
 
-	// Retention re-read: the full loader now returns os.ErrNotExist wrapped in a
-	// DeploymentRecordStateError. As wired into SaveDeploymentRecord this must be
-	// treated as fail-closed (previousExists was true), not silently dropped.
-	_, retErr := loadDeploymentRecordFile(id.Target, id.DeploymentID, path, nil)
-	if retErr == nil {
-		t.Fatalf("retention re-read after removal must return an error")
-	}
-	if !errors.Is(retErr, os.ErrNotExist) {
-		t.Fatalf("retention re-read must surface os.ErrNotExist, got %v", retErr)
+	// Byte-proof: the record file must remain absent — the vanished file was
+	// deleted after the guard confirmed it existed, so nothing may be rewritten.
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("after refused save the vanished record must stay absent (ENOENT), got stat err=%v", statErr)
 	}
 }
 

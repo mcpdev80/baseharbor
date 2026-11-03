@@ -56,9 +56,9 @@ konkurrierenden aktiven Besitzer belegt — die protokollierte Konflikt-Flagge g
 persistierte Besitzer `external` für ein direktes Speichern steht (der One-Writer-Guard in
 `internal/deployment`); dabei wird nur gespeicherter Stand gelesen, nicht lebende Versöhner-Aktivität,
 deren Erkennung gemäß `t-20261018-r27-authority-contract` und `t-20261018-r27-state-owner`
-zurückgestellt ist. Ein fehlender, leerer oder nicht erkannter persistierter Besitzer gilt als
-ungesetzt und folgt der Direktvorgabe von `Selection.Normalize`; darin liegt keine Bestätigung
-irgendeiner externen Aktivität.
+zurückgestellt ist. Ein fehlender, leerer oder nicht erkannter persistierter Besitzer gilt als ungesetzt; der Besitzer
+folgt dann der normalisierten gespeicherten Selektion (`baseharbor` bei direktem, `external` bei
+delegiertem Speichern); darin liegt keine Bestätigung irgendeiner externen Aktivität.
     `internal/deployment.SaveDeploymentRecord` liest den persistierten Besitzer und die protokollierte Konflikt-Flagge vor dem Schreiben; ein protokollierter Konflikt weist das Speichern fail-closed ab.
 - BaseHarbors eigenen Bindungen/Betriebs-Empfänge bleiben BaseHarbor-besessen unabhängig vom Lieferung-Modus.
 - GitOps-Systeme (Argo CD, Flux) bleiben Implementierungen; der one-owner-Invariant ist portable Intent, kein Werkzeug.

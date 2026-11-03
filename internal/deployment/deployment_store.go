@@ -17,6 +17,17 @@ import (
 
 const DeploymentRecordVersion = 2
 
+// testHookAfterGuardRead is a package-internal test seam (production path keeps
+// it nil, so no behaviour changes): it fires inside SaveDeploymentRecord exactly
+// after the one-writer guard has read the persisted previous record (the guard
+// has established previousExists and the authoritative owner) and immediately
+// before the preferences-retention re-read. A test uses it to deterministically
+// mutate the on-disk record — e.g. delete deployment.json to reproduce a record
+// that vanishes between the two in-process reads — so the real SaveDeploymentRecord
+// path (not just the loaders in isolation) can be asserted fail-closed. Style
+// follows the existing cmd/baha observedAt seam.
+var testHookAfterGuardRead func()
+
 type DeploymentIdentity struct {
 	DeploymentID  string `json:"deployment_id"`
 	ApplicationID string `json:"application_id"`
@@ -219,6 +230,15 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	}
 	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
 		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
+	}
+	// Test seam (package-internal only, production path untouched): fired exactly
+	// after the guard-read (previousExists + persisted owner established) and
+	// before the retention re-read, mirroring the cmd/baha observedAt seam style.
+	// A test may use it to deterministically mutate the on-disk record (e.g.
+	// delete it to reproduce the vanish-between-reads race) between the two
+	// in-process reads. nil default means no observable behaviour change.
+	if testHookAfterGuardRead != nil {
+		testHookAfterGuardRead()
 	}
 	if err := validateRemoteProject(record); err != nil {
 		return err
