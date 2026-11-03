@@ -869,6 +869,57 @@ class CommitReceiptTest(TestCase):
                          base={'ref': 'develop', 'repo': {'id': 1360667669}})
             with self.assertRaises(verifier.ReceiptError):
                 writer.publish_commit(Path(tmp), product, 7, lambda _: value)
+class TrustedPublicationTest(TestCase):
+    def test_git_resolves_basic_header_without_persisting_or_echoing_it(self):
+        import base64
+        token = 'synthetic-publication-token'
+        credential = base64.b64encode(('x-access-token:' + token).encode()).decode()
+        run = subprocess.run
+
+        def inspect_git(command, **kwargs):
+            self.assertNotIn(token, str(command))
+            self.assertNotIn(credential, str(command))
+            resolved = run(['git', 'config', '--get-urlmatch', 'http.extraheader',
+                            'https://github.com/mcpdev80/baseharbor-plan'],
+                           capture_output=True, env=kwargs['env'])
+            self.assertEqual(resolved.stdout.strip(),
+                             ('AUTHORIZATION: basic ' + credential).encode())
+            return subprocess.CompletedProcess(command, 128, b'',
+                                               (token + ' ' + credential).encode())
+
+        with patch.dict(os.environ, {'PLANNING_RECEIPT_WRITE_TOKEN': token}, clear=True), \
+                patch.object(writer, '_is_real_remote', return_value=True), \
+                patch.object(writer.subprocess, 'run', side_effect=inspect_git):
+            rc, _, error = writer._push_authed(Path('.'), ['push', 'origin', 'HEAD'])
+        self.assertEqual(rc, 128)
+        self.assertNotIn(token.encode(), error)
+        self.assertNotIn(credential.encode(), error)
+
+    def test_commit_cli_uses_default_main_for_events_and_recovery(self):
+        import contextlib
+        import io
+        args = ['receipt_writer.py', '--planning', '.', '--product', '.',
+                '--commit-pr', '1342', '--publish']
+        for event, ref, allowed in [('pull_request_target', 'main', True),
+                                    ('workflow_dispatch', 'main', True),
+                                    ('workflow_dispatch', 'develop', False),
+                                    ('pull_request', 'main', False)]:
+            with self.subTest(event=event, ref=ref), \
+                    patch.dict(os.environ, {'GITHUB_EVENT_NAME': event,
+                        'GITHUB_REPOSITORY': 'mcpdev80/baseharbor',
+                        'GITHUB_REF': 'refs/heads/' + ref}, clear=True), \
+                    patch('sys.argv', args), \
+                    patch.object(writer, 'git', return_value=b'a' * 40), \
+                    patch.object(writer, 'publish_commit', return_value=('path', 'intro', 'pub')) as publish, \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                if allowed:
+                    writer.main()
+                    publish.assert_called_once()
+                else:
+                    with self.assertRaises(SystemExit):
+                        writer.main()
+                    publish.assert_not_called()
+
 
 
 if __name__ == '__main__':
