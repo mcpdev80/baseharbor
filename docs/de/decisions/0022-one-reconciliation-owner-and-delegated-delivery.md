@@ -51,18 +51,22 @@ nicht braucht; diese Zustände bleiben unter der Lieferung-Provider-Grenze.
 
 ## Folgen
 
-- Zwei konkurrierende Versöhner für dieselbe Ressourcenmenge werden beim Datensatz-Speichern abgewiesen
-(der Guard in `internal/deployment`); dies ist eine Speicherprüfung, keine Laufzeit-Erkennung — diese ist
-gemäß `t-20261018-r27-authority-contract` und `t-20261018-r27-state-owner` zurückgestellt. Ein fehlender
-oder unbekannter gespeicherter Besitzer gilt als ungesetzt und folgt der Direktvorgabe von
-`Selection.Normalize`; darin liegt keine Bestätigung irgendeiner externen Aktivität.
+- Speichern wird beim Datensatz-Speichern verweigert, wenn der gespeicherte Besitzstand einen
+konkurrierenden aktiven Besitzer belegt — die protokollierte Konflikt-Flagge gesetzt ist oder der
+persistierte Besitzer `external` für ein direktes Speichern steht (der One-Writer-Guard in
+`internal/deployment`); dabei wird nur gespeicherter Stand gelesen, nicht lebende Versöhner-Aktivität,
+deren Erkennung gemäß `t-20261018-r27-authority-contract` und `t-20261018-r27-state-owner`
+zurückgestellt ist. Ein fehlender, leerer oder nicht erkannter persistierter Besitzer gilt als
+ungesetzt und folgt der Direktvorgabe von `Selection.Normalize`; darin liegt keine Bestätigung
+irgendeiner externen Aktivität.
+    `internal/deployment.SaveDeploymentRecord` liest den persistierten Besitzer und die protokollierte Konflikt-Flagge vor dem Schreiben; ein protokollierter Konflikt weist das Speichern fail-closed ab.
 - BaseHarbors eigenen Bindungen/Betriebs-Empfänge bleiben BaseHarbor-besessen unabhängig vom Lieferung-Modus.
 - GitOps-Systeme (Argo CD, Flux) bleiben Implementierungen; der one-owner-Invariant ist portable Intent, kein Werkzeug.
 
 Nachteile:
 
 - Delegierte Lieferung trägt zusätzliche revisions-/besitzer-Zustände, die direkte Lieferung wegLässt.
-- Der Invariant wird beim Beobachtungszeitpunkt geprüft; er verhindert nicht, dass ein Operator zwei Systeme konfiguriert, sondern nur, dass BaseHarbor das Ergebnis still akzeptiert.
+- Der Invariant wird beim Speichern des Datensatzes geprüft; er verhindert nicht, dass ein Operator zwei Systeme konfiguriert, sondern nur, dass BaseHarbor das Ergebnis still akzeptiert.
 
 ### Umfang und abgehängtes Dependency
 

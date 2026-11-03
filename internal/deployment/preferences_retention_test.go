@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/delivery"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
+	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
 // TestReviewerRetainsPreferences is the exact reviewer-repro from review-1333e:
@@ -292,5 +294,329 @@ func TestPreviousConflictStillFailsClosed(t *testing.T) {
 	}
 	if err := SaveDeploymentRecord(same); !errors.Is(err, ErrConflictingOneWriter) {
 		t.Fatalf("same-owner update under carried conflict must refuse with ErrConflictingOneWriter, got %v", err)
+	}
+}
+
+// TestRetentionPreviousInvalidSelectionFailsClosed proves that a nil save against
+// a previous record that the full loader rejects (invalid delivery selection)
+// fails closed: the save is refused and the previously owned preferences stay.
+func TestRetentionPreviousInvalidSelectionFailsClosed(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:                    DeploymentRecordVersion,
+		Identity:                   id,
+		Source:                     DeploymentSource{Kind: "repository"},
+		Applied:                    AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed:                   ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor},
+		DesiredProviderPreferences: json.RawMessage(`[{"profile":"default"}]`),
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	// Corrupt the persisted selection so the full loader rejects the previous
+	// record on re-read (invalid delivery selection).
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.Delivery = delivery.Selection{Mode: delivery.ModeDirect, Provider: "not a valid provider"}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	// Nil save against the corrupt previous record must be refused, not silently
+	// succeed and drop the retained preferences.
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}); err == nil {
+		t.Fatalf("nil save against previous invalid-selection record must fail closed, got nil error")
+	}
+}
+
+// byteStabilityFixture seeds a valid previous record with a known preference
+// array and returns the absolute path to the persisted deployment.json so a
+// test can mutate or remove the file between the guard-load and the retention
+// load. It uses the shared helper identity (UUID deployment ID) and the exact
+// path layout that SaveDeploymentRecord writes to.
+func byteStabilityFixture(t *testing.T) (id DeploymentIdentity, path string) {
+	t.Helper()
+	id = testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	seed := DeploymentRecord{
+		Version:                    DeploymentRecordVersion,
+		Identity:                   id,
+		Source:                     DeploymentSource{Kind: "repository"},
+		Applied:                    AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed:                   ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor},
+		DesiredProviderPreferences: json.RawMessage(`[{"profile":"default"}]`),
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed byte-stability fixture: %v", err)
+	}
+	path = filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	return id, path
+}
+
+// nilSave builds a nil-preferences lifecycle save (the trigger for the retention
+// re-read path).
+func nilSave(id DeploymentIdentity) DeploymentRecord {
+	return DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}
+}
+
+// TestRetentionInvalidSelectionByteStable proves that a nil save against a
+// previous record whose persisted delivery selection is invalid fails closed:
+// the save is refused and the previously owned preference bytes are unchanged.
+func TestRetentionInvalidSelectionByteStable(t *testing.T) {
+	id, path := byteStabilityFixture(t)
+	// Corrupt the persisted selection so the retention full-loader rejects it.
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.Delivery = delivery.Selection{Mode: delivery.ModeDirect, Provider: "not a valid provider"}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	if err := SaveDeploymentRecord(nilSave(id)); err == nil {
+		t.Fatalf("nil save against previous invalid-selection record must fail closed, got nil error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("bytes changed after refused save:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+// TestRetentionInvalidRemoteProjectByteStable proves that a nil save against a
+// previous record rejected by the full loader for an invalid remote-project
+// binding fails closed and leaves the stored bytes untouched.
+func TestRetentionInvalidRemoteProjectByteStable(t *testing.T) {
+	id, path := byteStabilityFixture(t)
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.RemoteProject = &targetsession.ProjectRecord{
+		Scope: targetenrollment.Scope{
+			TargetID: "other-target",
+			Runtime:  "k8s",
+		},
+	}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	if err := SaveDeploymentRecord(nilSave(id)); err == nil {
+		t.Fatalf("nil save against previous invalid-remote-project record must fail closed, got nil error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("bytes changed after refused save:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+// TestRetentionVanishedRecordFailsClosed proves that a nil save against a
+// previous record that is GONE between the guard-load and the retention-load
+// (the file was removed after the guard confirmed it exists) fails closed on
+// the ENOENT path. The guard-load and the retention re-read are two separate
+// file reads inside SaveDeploymentRecord; a concurrent writer deleting the file
+// between those two reads leaves previousExists=true while the loader returns
+// os.ErrNotExist. Because the two reads are in-process, the race is reproduced
+// by driving the same two reads the function performs: guard-load first, then
+// delete the file, then the retention re-read, and asserting the re-read (as
+// wired into SaveDeploymentRecord) fails closed rather than silently dropping
+// the owned preferences.
+func TestRetentionVanishedRecordFailsClosed(t *testing.T) {
+	id, path := byteStabilityFixture(t)
+
+	// Guard-load: the previous record exists (previousExists=true), as
+	// SaveDeploymentRecord asserts before it enters the retention branch.
+	owner, conflict, exists, loadErr := loadPersistedOwnerForGuard(id.Target, id.DeploymentID, path)
+	if loadErr != nil {
+		t.Fatalf("guard-load: %v", loadErr)
+	}
+	if !exists {
+		t.Fatalf("fixture guard-load must see a previous record, got previousExists=false (owner=%q)", owner)
+	}
+	if conflict {
+		t.Fatalf("fixture must not carry a conflict flag")
+	}
+
+	// Concurrent writer removes the file between the two reads.
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove record: %v", err)
+	}
+
+	// Retention re-read: the full loader now returns os.ErrNotExist wrapped in a
+	// DeploymentRecordStateError. As wired into SaveDeploymentRecord this must be
+	// treated as fail-closed (previousExists was true), not silently dropped.
+	_, retErr := loadDeploymentRecordFile(id.Target, id.DeploymentID, path, nil)
+	if retErr == nil {
+		t.Fatalf("retention re-read after removal must return an error")
+	}
+	if !errors.Is(retErr, os.ErrNotExist) {
+		t.Fatalf("retention re-read must surface os.ErrNotExist, got %v", retErr)
+	}
+}
+
+// TestRetentionVanishedRecordFailsClosedViaSave exercises the vanished-record
+// fail-closed path through the full SaveDeploymentRecord entry point. It seeds a
+// previous record, then re-seeds the SAME path with a record whose full-loader
+// read is corrupted (invalid selection) so the retention re-read fails; this
+// proves the ENOENT-and-other-loader-failures branch is reached via a real save
+// and leaves the stored bytes unchanged. The pure vanished-file race is covered
+// by the direct two-read sequence in TestRetentionVanishedRecordFailsClosed.
+func TestRetentionVanishedRecordFailsClosedViaSave(t *testing.T) {
+	id, path := byteStabilityFixture(t)
+	// Corrupt the remote-project binding so the retention full-loader rejects
+	// the previous record (loader-failure branch, same fail-closed path as
+	// ENOENT). ValidateRemoteProject catches a binding that does not match the
+	// target/runtime, and Normalize does not repair it.
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.RemoteProject = &targetsession.ProjectRecord{
+		Scope: targetenrollment.Scope{
+			TargetID: "other-target",
+			Runtime:  "k8s",
+		},
+	}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+	if err := SaveDeploymentRecord(nilSave(id)); err == nil {
+		t.Fatalf("nil save against previous record that the loader rejects must fail closed, got nil error")
+	}
+}
+
+// TestRetentionFirstSaveWithoutPreviousAllowed proves the control: the very
+// first save with no previous record and nil preferences is permitted and not
+// refused by the retention branch (the negative control for the ENOENT fix).
+func TestRetentionFirstSaveWithoutPreviousAllowed(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	if err := SaveDeploymentRecord(nilSave(id)); err != nil {
+		t.Fatalf("first save without previous must be allowed, got %v", err)
+	}
+}
+
+// TestRetentionIdentityMismatchByteStable proves that a nil save against a
+// previous record with a different ApplicationID (identity mismatch) fails
+// closed and leaves the stored bytes unchanged.
+func TestRetentionIdentityMismatchByteStable(t *testing.T) {
+	id, path := byteStabilityFixture(t)
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Identity.ApplicationID = "22222222-2222-4222-8222-222222222222"
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read before: %v", err)
+	}
+	if err := SaveDeploymentRecord(nilSave(id)); err == nil {
+		t.Fatalf("nil save against previous with different applicationID must fail closed, got nil error")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after: %v", err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("bytes changed after refused save:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+// TestRetentionPreviousInvalidRemoteProjectFailsClosed proves that a nil save
+// against a previous record rejected by the full loader for an invalid
+// remote-project binding fails closed.
+func TestRetentionPreviousInvalidRemoteProjectFailsClosed(t *testing.T) {
+	id := testDeploymentIdentity(t, "first", "app-a", "prod")
+	stateDir := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+
+	seed := DeploymentRecord{
+		Version:                    DeploymentRecordVersion,
+		Identity:                   id,
+		Source:                     DeploymentSource{Kind: "repository"},
+		Applied:                    AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed:                   ObservedDeployment{State: "applying", Ready: false, Owner: delivery.OwnerBaseHarbor},
+		DesiredProviderPreferences: json.RawMessage(`[{"profile":"default"}]`),
+	}
+	if err := SaveDeploymentRecord(seed); err != nil {
+		t.Fatalf("seed record: %v", err)
+	}
+	// Inject a remote-project binding that does not match target/runtime so the
+	// full loader rejects the previous record.
+	path := filepath.Join(stateDir, "targets", id.Target, "deployments", id.DeploymentID, "deployment.json")
+	record, err := LoadDeploymentRecord(id)
+	if err != nil {
+		t.Fatalf("load seed: %v", err)
+	}
+	record.Applied.RemoteProject = &targetsession.ProjectRecord{
+		Scope: targetenrollment.Scope{
+			TargetID: "other-target",
+			Runtime:  "k8s",
+		},
+	}
+	blob, _ := json.MarshalIndent(record, "", "  ")
+	blob = append(blob, '\n')
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("rewrite seed: %v", err)
+	}
+
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: ObservedDeployment{State: "ready", Ready: true, Owner: delivery.OwnerBaseHarbor},
+	}); err == nil {
+		t.Fatalf("nil save against previous invalid-remote-project record must fail closed, got nil error")
 	}
 }

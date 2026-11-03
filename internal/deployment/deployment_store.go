@@ -243,6 +243,13 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 				}
 				record.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
 				guardRecord.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
+			} else if retErr != nil {
+				// previous record exists (the guard load confirmed it above) but
+				// the full loader rejects it now — including os.ErrNotExist, because
+				// the record vanished between the guard-load and this retention-load.
+				// Fail closed: never silently drop previously owned preferences or
+				// skip identity validation. No silent fallback.
+				return fmt.Errorf("cannot retain preferences: previous record unreadable: %w", retErr)
 			}
 		}
 	}

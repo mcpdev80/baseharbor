@@ -49,19 +49,20 @@ and those states stay below the Delivery Provider boundary.
 
 ## Consequences
 
-- Two competing reconcilers for one resource set are refused persistence at record save (the one-writer
-guard in `internal/deployment`); this is a persistence check, not live runtime detection, which is
-deferred to `t-20261018-r27-authority-contract` and `t-20261018-r27-state-owner`. Zero or unknown
-persisted owner is treated as unset and follows the `Selection.Normalize` direct default; it is not an
-attestation of any external activity.
-  `internal/deployment.SaveDeploymentRecord` reads the authoritative persisted owner before any state is written and fails closed.
+- Saves are refused at record save when the recorded ownership state attests a competing active
+owner — the persisted conflict flag is set, or the persisted owner is `external` for a direct save
+(the one-writer guard in `internal/deployment`); this reads recorded state only, not live reconciler
+activity, whose detection is deferred to `t-20261018-r27-authority-contract` and
+`t-20261018-r27-state-owner`. Zero, absent or unrecognised persisted owner is treated as unset and
+follows the `Selection.Normalize` direct default; it is not an attestation of any external activity.
+  `internal/deployment.SaveDeploymentRecord` reads the persisted owner and the recorded conflict flag before writing state; a recorded conflict refuses the save fail-closed.
 - BaseHarbor's own bindings/operation receipts remain BaseHarbor-owned regardless of delivery mode.
 - GitOps systems (Argo CD, Flux) stay implementations; the one-owner invariant is portable intent, not a tool.
 
 Trade-offs:
 
 - Delegated delivery carries extra revision/ownership state that direct delivery omits.
-- The invariant is checked at observation time; it does not prevent an operator from configuring two systems, only from BaseHarbor silently accepting the result.
+- The invariant is checked at record-save time; it does not prevent an operator from configuring two systems, only from BaseHarbor silently accepting the result.
 
 ### Scope and deferred dependency
 
