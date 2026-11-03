@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net"
 	"net/http"
@@ -17,12 +18,36 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/objectstorage"
 	"github.com/mcpdev80/baseharbor/internal/runtimeoperation"
 )
+
+// assertTLSHandshakeCause fails the test unless err is a TLS/handshake/
+// verification failure: either it wraps a tls.AlertError / tls.permanentError
+// (a concrete TLS-stack error), or its wrapped message mentions one of the
+// TLS/x509/certificate markers. This proves a negative case failed for a
+// cryptographic/verification reason and not for some unrelated cause.
+func assertTLSHandshakeCause(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected a TLS/handshake/verification error, got nil")
+	}
+	var alert tls.AlertError
+	if errors.As(err, &alert) {
+		return
+	}
+	msg := strings.ToLower(err.Error())
+	for _, sub := range []string{"tls", "x509", "certificate"} {
+		if strings.Contains(msg, sub) {
+			return
+		}
+	}
+	t.Fatalf("error %q is not a TLS/handshake/verification cause", err.Error())
+}
 
 // testCA is a throwaway PKI used to drive a real mutual-TLS handshake against a
 // local runtime executor server. It is NOT wired to any production trust anchor.
@@ -226,6 +251,41 @@ func newMutualTLSServer(t *testing.T, ca *testCA) *httptest.Server {
 	return server
 }
 
+// newMutualTLSServerWithHandler builds the same handler-backed mutual-TLS
+// server as newMutualTLSServer, but also returns the *Handler under test so a
+// test can assert that a refused handshake never dispatched to ServeHTTP
+// (handler.HandlerReached stays false).
+func newMutualTLSServerWithHandler(t *testing.T, ca *testCA) (*httptest.Server, *Handler) {
+	t.Helper()
+	handler, err := NewHandler(fakeResources{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	})
+	mux.Handle("/internal/", handler)
+	server := httptest.NewUnstartedServer(mux)
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
+		t.Fatal("failed to parse test CA for client trust")
+	}
+	server.TLS = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ClientAuth: tls.RequireAndVerifyClientCert,
+		ClientCAs:  caPool,
+	}
+	serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ca.serverKey})
+	cert, err := tls.X509KeyPair(ca.serverCert, serverKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.TLS.Certificates = []tls.Certificate{cert}
+	server.StartTLS()
+	return server, handler
+}
+
 const workloadSPIFFE = "spiffe://baseharbor/apps/myservice/prod"
 
 // TestMutualTLSExecutePositive drives a real two-way TLS handshake: the client
@@ -264,10 +324,44 @@ func TestMutualTLSExecutePositive(t *testing.T) {
 }
 
 // TestMutualTLSRejectsMissingClientCertificate fails the handshake when the
-// client presents a certificate that is not signed by any CA the server trusts
-// (the server requires and verifies client certs, so an untrusted/self-signed
-// client identity is rejected at the TLS layer).
+// client presents no certificate at all: the client is built without its own
+// identity, and the server (which requires and verifies client certs) refuses
+// the handshake. The refusal happens at the TLS layer before ServeHTTP runs;
+// the handler sets an atomic HandlerReached flag on entry, so a refused
+// handshake must leave it false, and the error must carry a TLS/handshake/
+// verification cause.
 func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
+	ca := newTestCA(t)
+
+	server, handler := newMutualTLSServerWithHandler(t, ca)
+	defer server.Close()
+
+	// Client that presents NO certificate: a transport with an empty
+	// Certificate slice and no GetClientCertificate callback.
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(ca.caCertPEM) {
+		t.Fatal("failed to parse test CA for client trust")
+	}
+	tr := &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      roots,
+		Certificates: []tls.Certificate{},
+	}}
+	c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
+
+	err := c.Check(context.Background())
+	assertTLSHandshakeCause(t, err)
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
+	}
+}
+
+// TestMutualTLSRejectsSelfSignedClientCert fails the handshake when the client
+// presents a self-signed identity that is not issued by any CA the server
+// trusts. The refusal happens at the TLS layer before ServeHTTP runs; the
+// handler must not be reached and the error must carry a TLS/handshake/
+// verification cause.
+func TestMutualTLSRejectsSelfSignedClientCert(t *testing.T) {
 	ca := newTestCA(t)
 	// Self-signed client cert NOT issued by the server's test CA.
 	selfKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -299,7 +393,7 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	}
 	ca.write(t, "selfsigned-key.pem", pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: selfDER}), 0o600)
 
-	server := newMutualTLSServer(t, ca)
+	server, handler := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -312,20 +406,24 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if err := c.Check(context.Background()); err == nil {
-		t.Fatalf("expected handshake failure with an untrusted self-signed client certificate")
+	err = c.Check(context.Background())
+	assertTLSHandshakeCause(t, err)
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
 }
 
 // TestMutualTLSRejectsForeignClientCA fails when the client presents a
-// certificate from a different CA that the server does not trust.
+// certificate from a different CA that the server does not trust. The refusal
+// happens at the TLS layer; the handler must not be reached and the error must
+// carry a TLS/handshake/verification cause.
 func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	ca := newTestCA(t)
 	foreignCA := newTestCA(t)
 	client := foreignCA.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := foreignCA.clientCertPaths(t, client)
 
-	server := newMutualTLSServer(t, ca)
+	server, handler := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -338,13 +436,17 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if err := c.Check(context.Background()); err == nil {
-		t.Fatalf("expected handshake failure with a client certificate from an untrusted CA")
+	err = c.Check(context.Background())
+	assertTLSHandshakeCause(t, err)
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
 }
 
 // TestMutualTLSRejectsCorruptedClientCertKey fails when the client certificate
-// or key material is corrupted (fail-closed): the handshake must not succeed.
+// or key material is corrupted (fail-closed): the key cannot be loaded so the
+// client is never constructed and the handshake never runs. The error must carry
+// a TLS/handshake/verification cause and the handler must never be reached.
 func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca := newTestCA(t)
 	client := ca.workloadClient(t, workloadSPIFFE)
@@ -357,7 +459,7 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 	ca.write(t, "client-key-corrupted.pem",
 		[]byte("-----BEGIN PRIVATE KEY-----\nMIIinvalidNotValidBase64DataXXXX\n-----END PRIVATE KEY-----\n"), 0o600)
 
-	server := newMutualTLSServer(t, ca)
+	server, handler := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	// Corrupted key => NewClient fails closed before any handshake attempt.
@@ -367,8 +469,9 @@ func TestMutualTLSRejectsCorruptedClientCertKey(t *testing.T) {
 		CertFile: certPath,
 		KeyFile:  keyPath,
 	})
-	if err == nil {
-		t.Fatalf("expected NewClient to reject corrupted client key material")
+	assertTLSHandshakeCause(t, err)
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a client that failed to load (HandlerReached=%v)", got)
 	}
 }
 
@@ -397,14 +500,15 @@ func TestMutualTLSRejectsInvalidCAPEM(t *testing.T) {
 
 // TestMutualTLSRejectsWrongServerCA fails when the client trusts a different CA
 // than the one the server presents (server authentication must also fail
-// closed).
+// closed). The refusal happens at the TLS layer; the handler must not be
+// reached and the error must carry a TLS/handshake/verification cause.
 func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 	ca := newTestCA(t)
 	otherCA := newTestCA(t)
 	client := ca.workloadClient(t, workloadSPIFFE)
 	certPath, keyPath := ca.clientCertPaths(t, client)
 
-	server := newMutualTLSServer(t, ca)
+	server, handler := newMutualTLSServerWithHandler(t, ca)
 	defer server.Close()
 
 	c, err := NewClient(ClientConfig{
@@ -417,8 +521,10 @@ func TestMutualTLSRejectsWrongServerCA(t *testing.T) {
 		t.Fatalf("NewClient: %v", err)
 	}
 
-	if err := c.Check(context.Background()); err == nil {
-		t.Fatalf("expected client to reject a server whose chain does not chain to its trusted CA")
+	err = c.Check(context.Background())
+	assertTLSHandshakeCause(t, err)
+	if got := handler.HandlerReached.Load(); got {
+		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
 	}
 }
 
