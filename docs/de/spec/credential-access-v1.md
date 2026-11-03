@@ -126,7 +126,7 @@ Eine künftige inkompatible Neuzuteilung von Eigentumssemantik erfordert eine ex
 
 ## Management-Zugriffs-Profile
 
-Dieser Abschnitt ist der normative Faltungspunkt für den portablen Management-Zugriffs-Vertrag, der zuvor in `docs/de/spec/management-access-profiles-v1.md` dokumentiert war. Er deklariert, was ein nicht-geheimes Management-Profil, eine sensible Einmal-Geräte-Registrierung und ein explizit verschlüsseltes Zugangsdaten-Export-Payload mitführt, und was das Importieren dieser Objekte nicht darf. Er deklariert keine Anbieterrealisation und führt keine Geheimnisse mit.
+Dieser Abschnitt ist der normative Faltungspunkt für den portablen Management-Zugriffs-Vertrag, der zuvor in `docs/spec/management-access-profiles-v1.md` dokumentiert war. Er deklariert, was ein nicht-geheimes Management-Profil, eine sensible Einmal-Geräte-Registrierung und ein explizit verschlüsseltes Zugangsdaten-Export-Payload mitführt, und was das Importieren dieser Objekte nicht darf. Er deklariert keine Anbieterrealisation und führt keine Geheimnisse mit.
 
 `ManagementAccessKind` ist der portable Management-Zugriffs-Typ-Marker:
 
@@ -146,10 +146,11 @@ Die Importfähigkeit ist fail-closed. Ein Record ist nur dann vertragsgültig f�
 
 ```go
 type ImportCapability struct {
-    RightsGranting     bool `json:"rights_granting"`
-    PluginExecution    bool `json:"plugin_execution"`
+    RightsGranting   bool `json:"rights_granting"`
+    PluginExecution  bool `json:"plugin_execution"`
     CredentialRedirect bool `json:"credential_redirect"`
 }
+```
 
 Ein Record ist nur dann vertragsgültig für den Import, wenn jedes Feld `false`
 ist. Jeder Record, der ein wahres Flag ankündigt, wird abgelehnt, bevor er einen
