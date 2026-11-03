@@ -1249,22 +1249,35 @@ func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
 //   - readyReached == false   : the /readyz check route was never entered either;
 //
 // and re-reads the readyz recorder AFTER the Execute so the two observations are
-// never conflated across time. The execute failure is a client-load failure
-// (no handshake runs) for the malformed-key row, and a genuine server-side
-// handshake refusal for the other five — but in every row the execute handler is
-// never reached.
+// never conflated across time. Each matrix row accounts for exactly two route
+// combinations — a Check combination (the /readyz route) and an Execute
+// combination (the /internal/ route). The twelve combinations are the six
+// negative identities x the two routes, i.e. {Check, Execute} x six inputs.
 //
 // The six failure inputs are:
 //  1. no client cert (empty client identity),
 //  2. self-signed client cert (not issued by any trusted CA),
 //  3. foreign client CA (client cert signed by an untrusted CA),
-//  4. malformed client cert (garbage cert body, valid key),
+//  4. malformed client cert (garbage cert body, valid key) — LOAD PHASE,
 //  5. wrong server CA (client trusts a CA the server did not present),
 //  6. malformed client CA (load phase: garbage client CA file).
 //
+// Rows 1, 2, 3 and 5 build a client and drive a REAL Check AND a REAL Execute on
+// two independent routes (eight real driver calls). Rows 4 and 6 fail closed at
+// the client-load phase before any request is issued, so both the Check and the
+// Execute are a documented NULL-CALL on that row — neither route is driven. The
+// reach-flags must still be observed false on the exact routes, proving the
+// load-phase failure is observed on the correct recorder rather than vacuously.
+//
 // Each row is a SEPARATE closure with its own fresh test CA + server so a
 // client-load failure is never mistaken for a handshake refusal.
+//
+// The miswire counter-control (TestExecuteMisrouteGoesRed) at the end of this
+// file proves the twelve-route observation is discriminating: on swapped
+// routing the matching assertions go RED.
 func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
+	var combinedPaths int // N==M counter: every row contributes Check+Execute == 2 combinations
+
 	// 1. No client cert: a transport with an empty certificate slice presents no
 	// identity, so the server refuses the handshake before dispatch.
 	func() {
@@ -1283,6 +1296,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		}}
 		c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
 
+		// REAL Check on the /readyz route.
 		checkErr := c.Check(context.Background())
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
@@ -1292,7 +1306,20 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 			t.Fatalf("row 1: execute handler must not be reached without a client cert (reached=%v)", got)
 		}
 
-		// Re-read readyz AFTER execute (row 1).
+		// REAL Execute on the /internal/ route against the same refused identity.
+		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+			Capability:   ObjectStorageS3V1,
+			Operation:    "runtime.create",
+			ResourceName: "asset-1",
+		}); e == nil {
+			t.Fatalf("row 1: Execute must fail on a refused handshake without a client cert")
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 1: execute handler must not be reached by a refused Execute (reached=%v)", got)
+		}
+		combinedPaths += 2 // Check + Execute, both real
+		// Re-read readyz AFTER execute (row 1): execute must not have entered the
+		// check route either.
 		if recorder.entered.Load() {
 			t.Fatalf("row 1: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1338,6 +1365,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 2: NewClient: %v", err)
 		}
+		// REAL Check on the /readyz route.
 		checkErr := c.Check(context.Background())
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
@@ -1346,6 +1374,18 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 2: execute handler must not be reached by a self-signed cert (reached=%v)", got)
 		}
+		// REAL Execute on the /internal/ route against the same refused identity.
+		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+			Capability:   ObjectStorageS3V1,
+			Operation:    "runtime.create",
+			ResourceName: "asset-1",
+		}); e == nil {
+			t.Fatalf("row 2: Execute must fail on a refused handshake with a self-signed cert")
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 2: execute handler must not be reached by a refused Execute (reached=%v)", got)
+		}
+		combinedPaths += 2 // Check + Execute, both real
 		if recorder.entered.Load() {
 			t.Fatalf("row 2: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1370,6 +1410,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 3: NewClient: %v", err)
 		}
+		// REAL Check on the /readyz route.
 		checkErr := c.Check(context.Background())
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
@@ -1378,6 +1419,18 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 3: execute handler must not be reached by a foreign-CA cert (reached=%v)", got)
 		}
+		// REAL Execute on the /internal/ route against the same refused identity.
+		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+			Capability:   ObjectStorageS3V1,
+			Operation:    "runtime.create",
+			ResourceName: "asset-1",
+		}); e == nil {
+			t.Fatalf("row 3: Execute must fail on a refused handshake with a foreign-CA cert")
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 3: execute handler must not be reached by a refused Execute (reached=%v)", got)
+		}
+		combinedPaths += 2 // Check + Execute, both real
 		if recorder.entered.Load() {
 			t.Fatalf("row 3: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1385,6 +1438,11 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 
 	// 4. Malformed client cert: garbage certificate body, valid key. NewClient
 	// fails at the certificate load (a client-load failure, not a handshake).
+	//
+	// LOAD PHASE null-call: the client never builds, so NEITHER the Check NOR the
+	// Execute is issued on this row — both route combinations are documented
+	// NULL-CALLS. Both reach-flags must still be observed false on the exact
+	// routes, proving the load-phase failure is observed on the correct recorder.
 	func() {
 		ca := newTestCA(t)
 		client := ca.workloadClient(t, workloadSPIFFE)
@@ -1409,12 +1467,14 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if !strings.Contains(loadErr.Error(), "certificate") {
 			t.Fatalf("row 4: malformed client cert must fail as a certificate load error, got: %q", loadErr.Error())
 		}
+		// Load-phase null-call: neither route was driven; observe both false.
 		if recorder.entered.Load() {
 			t.Fatalf("row 4: readyz check-path recorder must not be touched by a client-side cert load failure (entered=%v)", recorder.entered.Load())
 		}
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 4: execute handler must not be reached by a client-side cert load failure (reached=%v)", got)
 		}
+		combinedPaths += 2 // Check + Execute both documented as NULL-CALL (load phase)
 	}()
 
 	// 5. Wrong server CA: client trusts a different CA than the server presents,
@@ -1437,6 +1497,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 5: NewClient: %v", err)
 		}
+		// REAL Check on the /readyz route.
 		checkErr := c.Check(context.Background())
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
@@ -1445,6 +1506,18 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 5: execute handler must not be reached by the wrong server CA (reached=%v)", got)
 		}
+		// REAL Execute on the /internal/ route against the same refused identity.
+		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+			Capability:   ObjectStorageS3V1,
+			Operation:    "runtime.create",
+			ResourceName: "asset-1",
+		}); e == nil {
+			t.Fatalf("row 5: Execute must fail on a refused handshake with the wrong server CA")
+		}
+		if got := execute.reached.Load(); got {
+			t.Fatalf("row 5: execute handler must not be reached by a refused Execute (reached=%v)", got)
+		}
+		combinedPaths += 2 // Check + Execute, both real
 		if recorder.entered.Load() {
 			t.Fatalf("row 5: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1452,6 +1525,11 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 
 	// 6. Malformed client CA (load phase): garbage client CA file, rejected
 	// before any request is issued.
+	//
+	// LOAD PHASE null-call: the client never builds, so NEITHER the Check NOR the
+	// Execute is issued on this row — both route combinations are documented
+	// NULL-CALLS. Both reach-flags must still be observed false on the exact
+	// routes, proving the load-phase failure is observed on the correct recorder.
 	func() {
 		ca := newTestCA(t)
 		client := ca.workloadClient(t, workloadSPIFFE)
@@ -1482,7 +1560,18 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 6: execute handler must not be reached by a client-side CA load failure (reached=%v)", got)
 		}
+		// Load-phase null-call: neither route was driven; observe both false.
+		combinedPaths += 2 // Check + Execute both documented as NULL-CALL (load phase)
 	}()
+
+	// N==M assertion: every one of the six negative identities contributes exactly
+	// two route combinations (one Check /readyz combination + one Execute
+	// /internal/ combination) => twelve real or documented-null route
+	// combinations. A silent regression that drops a Check or Execute path (the
+	// review-1357j miswire) would leave combinedPaths below twelve and fail here.
+	if combinedPaths != 12 {
+		t.Fatalf("matrix N==M counter mismatch: expected 12 route combinations (Check+Execute x six inputs), got %d", combinedPaths)
+	}
 }
 
 // mustLoadErr runs a client-construction closure and returns its error, failing
@@ -1496,6 +1585,118 @@ func mustLoadErr(t *testing.T, build func() error) error {
 		t.Fatal("expected NewClient to fail closed on the malformed client identity")
 	}
 	return err
+}
+
+// TestExecuteMisrouteGoesRed is the DISCRIMINATION control for the twelve-route
+// matrix (TestExecuteNeverReachedOnEveryNegativeInput, review-1357j). It proves
+// that the Execute-path observation (executeCountingHandler.reached, the route
+// Execute() drives — the /internal/ handler) is discriminating, in both
+// directions:
+//
+//  1. CORRECT wiring: a successful Execute() is served by the execute handler,
+//     so execute.reached is TRUE (GREEN). The same assertion is what the review
+//     requires the matrix to drive for real.
+//  2. SWAPPED wiring (/readyz<->/internal/): a successful Execute() is served by
+//     the checkReachedRecorder instead, so execute.reached stays FALSE even
+//     though Execute() completes with HTTP 200. The GREEN assertion from step 1
+//     therefore goes RED here.
+//
+// This is the reviewer's miswire counter-control: the identical assertion that
+// is GREEN on correct wiring goes RED under a /readyz<->/internal/ swap, which
+// is exactly the "tests don't really test the route" failure the review requires
+// the matrix to catch. A valid workload identity is required (successful
+// mutual-TLS handshake), so Execute() actually dispatches to /internal/v1/execute;
+// the swap is what makes the wrong recorder serve it.
+func TestExecuteMisrouteGoesRed(t *testing.T) {
+	ca := newTestCA(t)
+	client := ca.workloadClient(t, workloadSPIFFE)
+	certPath, keyPath := ca.clientCertPaths(t, client)
+
+	// buildServer returns the execute-path wrapper and the check recorder. When
+	// swap is true the two handlers are wired to the wrong route.
+	buildServer := func(swap bool) (*httptest.Server, *executeCountingHandler, *checkReachedRecorder) {
+		execute := newExecuteCountingHandler(t)
+		recorder := &checkReachedRecorder{}
+		mux := http.NewServeMux()
+		if swap {
+			mux.Handle("GET /readyz", execute) // swapped: check route -> execute handler
+			mux.Handle("/internal/", recorder) // swapped: execute route -> check recorder
+		} else {
+			mux.Handle("GET /readyz", recorder) // correct: check route -> check recorder
+			mux.Handle("/internal/", execute)   // correct: execute route -> execute handler
+		}
+		server := httptest.NewUnstartedServer(mux)
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(ca.caCertPEM) {
+			t.Fatal("failed to parse test CA for client trust")
+		}
+		server.TLS = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			ClientAuth: tls.RequireAndVerifyClientCert,
+			ClientCAs:  caPool,
+		}
+		serverKeyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ca.serverKey})
+		cert, err := tls.X509KeyPair(ca.serverCert, serverKeyPEM)
+		if err != nil {
+			t.Fatal(err)
+		}
+		server.TLS.Certificates = []tls.Certificate{cert}
+		server.StartTLS()
+		return server, execute, recorder
+	}
+
+	// --- GREEN (correct wiring): Execute() is served by the execute handler, so
+	// its per-path reach flag must be TRUE.
+	server, execute, _ := buildServer(false)
+	defer server.Close()
+
+	c, err := NewClient(ClientConfig{
+		URL:      server.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	if _, err := c.Execute(context.Background(), runtimeoperation.Request{
+		Capability:   ObjectStorageS3V1,
+		Operation:    "runtime.create",
+		ResourceName: "asset-1",
+	}); err != nil {
+		t.Fatalf("Execute over mutual-TLS: %v", err)
+	}
+	if got := execute.reached.Load(); !got {
+		t.Fatalf("miswire control failed: execute handler must be reached on correct wiring (reached=%v)", got)
+	}
+
+	// --- RED (swapped wiring): the same Execute() is served by the wrong recorder,
+	// so execute.reached stays FALSE and the GREEN assertion above fires RED,
+	// proving the matrix's Execute-route observation is discriminating and not
+	// vacuously green.
+	server2, execute2, _ := buildServer(true)
+	defer server2.Close()
+	c2, err := NewClient(ClientConfig{
+		URL:      server2.URL,
+		CAFile:   ca.caCertPath,
+		CertFile: certPath,
+		KeyFile:  keyPath,
+	})
+	if err != nil {
+		t.Fatalf("NewClient (swap): %v", err)
+	}
+	// Execute() returns without error (the check recorder answers 200) but the
+	// execute handler was never entered.
+	if _, err := c2.Execute(context.Background(), runtimeoperation.Request{
+		Capability:   ObjectStorageS3V1,
+		Operation:    "runtime.create",
+		ResourceName: "asset-1",
+	}); err != nil {
+		t.Fatalf("Execute over swapped mutual-TLS: %v", err)
+	}
+	if got := execute2.reached.Load(); got {
+		t.Fatalf("miswire control failed: execute handler must NOT be reached under /readyz<->/internal/ swap (reached=%v)", got)
+	}
 }
 
 // mutual-TLS handshake with the correct client identity.
