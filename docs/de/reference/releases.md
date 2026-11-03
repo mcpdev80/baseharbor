@@ -73,49 +73,25 @@ Wenn eine vorgeschlagene Änderung die Laufzeitidentität, die anhaltende Migrat
 
 Rollback-Regel: Verschieben oder schreiben Sie kein veröffentlichtes Tag. Wenn ein Hotfix selbst defekt ist, geben Sie die Freigabeänderung auf der freigegebenen Zeile zurück und veröffentlichen Sie eine neue Hotfix-Version.
 
-Evidence-Regel: Die Release-Ausgabe und Release-Notes müssen den genauen BaseHarbor-Kandidaten SHA, die externe Demo-Revision, die von der Pre-Release-Validierung verwendet wird, und die erfolgreichen Release-Grenznachweise identifizieren.
+Quellregel: Die Release-Ausgabe und Release-Notes müssen den genauen BaseHarbor-Kandidaten SHA, die externe Demo-Revision, die von der Pre-Release-Validierung verwendet wird, und die erfolgreichen Release-Grenznachweise identifizieren.
 
 ## Vorbereitung der Freisetzung
 
-Normale Freisetzungen werden am `develop` und gefördert zu `main` nur nachdem der Release Candidate nachgewiesen wurde. Hotfix-Releases folgen dem Haupt-basierten Workflow oben.
+Normale Releases werden auf `develop` vorbereitet und erst nach Prüfung des unveränderlichen Kandidaten nach `main` übernommen. Hotfixes beginnen auf `main`. Der [vollständige Release-Audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) umfasst Implementierung, Ökosystem, EN/DE-Dokumentation, Pages-Kandidatenbuild, Changelog und verständliche Release Notes.
 
-Die obligatorische End-to-End-Checkliste ist`docs/internal/pre-release-documentation-audit.md` (interne, nicht publizierte Prüfanweisung). Trotz seines historischen Dateinamens handelt es sich um das kanonischen **vollständige Vorab-Release-Audit** und umfasst Umfang/Ausgaben, BaseHarbor-Implementierung, Verträge, EN/DE-Dokumente, Roadmap/Staleness, Changelog/Release-Notes,` baseharbor-demo`, GitHub Pages, Exact-Candidate Evidence, Promotion, Publishing und Post-Release-Verifikation. Ein Release darf Checklisten-Abschnitte nicht überspringen, da der Feature Code oder normale CI bereits grün ist.
+1. Implementierung, Verträge, Dokumentation und Release Notes fertigstellen.
+2. Exakte Core-, Demo-, Console- und Connector-Commits festlegen, soweit sie zum Release gehören.
+3. Betroffene Tests während der Entwicklung gezielt ausführen und Fehler beheben.
+4. Den vollständigen Pre-Release erst nach ausdrücklicher Genehmigung am unveränderlichen Kandidaten ausführen. Normale Pflichtjobs müssen erfolgreich sein; fehlgeschlagene, abgebrochene oder fehlende Pflichtarbeit blockiert.
+5. Einen Release-PR mit dem geprüften Release-Inhalt nach `main` öffnen. Promotion, Tagging und Veröffentlichung brauchen jeweils den autorisierten Auftrag.
+6. Nach der Freigabe einen unveränderlichen Tag auf dem konkreten `main`-Commit erstellen. Der Release-Workflow führt die wiederverwendbaren vollständigen Pre-Release-Prüfungen am exakten Tag aus und veröffentlicht anschließend die Artefakte.
+7. Binärdateien, Prüfsummen, Version/Commit, Runtime-Image, Provenance und veröffentlichte Dokumentation tatsächlich prüfen.
 
-1. Überprüfung der endgültigen Umsetzung `develop` dagegen `docs/DEVELOPMENT_GUIDELINES.md`, einschließlich Eigentum, Isolation, Geheimsicherheit, ausfallgeschlossenes Verhalten, Tests und Dokumentationskonsistenz.
-2. Überprüfen und aktualisieren Sie alle betroffenen kanonischen Dokumentationen, einschließlich der beiden EN/DE-Varianten, wo sie existieren. Suchen Sie explizit nach veralteten Versionsnummern, Implementierungsstatus-Ansprüchen, Beispielen und Zukunftsaussagen.
-3. Verschieben Sie relevante Einträge aus `[Unreleased]` in eine datierte `## [X.Y.Z] - YYYY-MM-DD` Abschnitt in `CHANGELOG.md` (or ` X.Y.Z.H`für einen v0.4 Hotfix).
-4. Schreiben Sie menschenlesbare Release Notes unter `docs/releases/vX.Y.Z.md` (or ` vX.Y.Z.H.md`für einen v0.4 Hotfix). Sie sind die kanonischen GitHub Release-Nachricht und müssen erklären, was sich geändert hat, warum es wichtig ist, Kompatibilität/Upgrade-Impact, Sicherheitsimplikationen und absichtlich verschobenes Arbeiten; eine rohe Commit-Liste oder generiertes Git-Log ist keine akzeptable Release-Nachricht.
-5. Beenden und verschmelzen Sie die exakte externe `baseharbor-demo` Revision für die Freigabe-Validierung vorgesehen, dann aufnehmen seine unveränderliche 40-Zeichen Commit SHA in `docs/releases/vX.Y.Z.demo-ref` (or ` vX.Y.Z.H.demo-ref `). Umzug` baseharbor-demo/main`ist nie ein akzeptabler Auslösestift.
-6. Überprüfen Sie den Kompatibilitätseffekt und wählen Sie den dokumentierten Release-Versionsschritt aus.
-7. Starten Sie zunächst die lokale/hugging Face-Validierung, wenn dies praktisch ist.
-8. Erst nach der Implementierung, Dokumentation, CHANGELOG, README, menschenlesbare Release Notes, die externe `baseharbor-demo` und die versionierte Demo-Ref-Datei sind komplett, führen Sie den obligatorischen GitHub Pre-Release-Workflow gegen die genaue Release-Candidate SHA. Pre-Release ist ein Orchestrator über unabhängig rerunnable Atomic Gates: Static Contract/DX Gates laufen ohne Containerlaufzeit, während Docker und Podman Gates erklärt minimale Ressourcenprofile. Jedes Gate lädt Beweise gebunden an den genauen BaseHarbor SHA, Demo SHA, Laufzeit und Gate Namen.
-9. Wenn die Basislinie Fehler findet, lassen Sie erfolgreiche Gates nicht erneut laufen. Befestigen Sie einen Ausfallbereich zu einem Zeitpunkt und starten Sie genau das gescheiterte Atomgate durch `Targeted Atomic Gate` mit dem unveränderten Kandidaten/Demo SHA, bis er grün ist. Eine Codeänderung entwertet die betroffenen Beweise und verlangt, dass die entsprechenden Gates erneut ausgeführt werden; nicht zusammenhängende grüne Beweise werden nicht nur deshalb verworfen, weil ein anderes Gate fehlgeschlagen ist.
-10. Sobald alle Atomtore einzeln grün auf dem letzten unveränderten Kandidaten sind, führen Sie den kompletten Vorab-Orchester einmal als Freigabe-Grenzgenehmigung. Das endgültige Beweismanifest muss das komplette zu erwartende Atomtor für den genauen BaseHarbor Kandidaten SHA enthalten und externe Demo SHA pinned.
-11. Öffnen Sie eine Freigabe PR von `develop` to ` main`. Mischen Sie keine unabhängigen Änderungen in dieser PR.
-12. Zusammenführen `develop -> main` erst nachdem das Pre-Release-Gate grün ist und der Release diff verstanden wird.
-13. Erstellen Sie das unveränderliche Release-Tag auf dem resultierenden `main` Commit freigeben und schieben.
-14. Der Release-Workflow verbraucht die erfolgreiche, unveränderliche Pre-Release-Zulassung, anstatt die gleiche Source/Runtime/Demo-Akzeptanz-Suite zu wiederholen. Er führt nur Release-Only-Checks durch, die noch nicht abgedeckt sind, veröffentlicht das passende Runtime-Image, GitHub Release, Archive und Provenienz.
-15. Überprüfen Sie die resultierende GitHub Release, Binärdateien, Prüfsummen, Provenienz, passendes Laufzeitbild und referenzierte Pre-Release-Evidenz, bevor Sie die Veröffentlichung für nutzbar erklären.
+CI, Pre-Release und Release verwenden keine Gate-Manifeste, Evidence-Wiederverwendung, erneute Run-/Job-Prüfung oder zusätzliche Receipt-Freigabe. Der einzige CI-Vermerk enthält Merge-SHA und PR-Nummer; siehe [minimale CI-Receipts](../development/minimal-ci-receipts.md). Builds und Images als Eingaben, unveränderliche Consumer-Pins und veröffentlichte Artefakt-Prüfsummen bleiben erhalten.
 
-Verschieben Sie niemals ein veröffentlichtes Versions-Tag. Beheben Sie eine schlechte Version mit einem neuen Patch-Release.
+### Historische Ökosystem-Eingaben
 
-### Unveränderliche Ökosystem-Eingaben für v0.4.24
-
-Für v0.4.24 und v0.4.25 bindet die `integration-candidate.json` des finalen Connector-Commits die exakten Core-, Console- und Demo-Commits. Das Console-Manifest muss denselben Core und dieselbe Demo binden; die `baseharbor-core.ref` der Demo muss diesem Core-Commit entsprechen. Dies ersetzt für diese Releases die Core-eigene `.demo-ref`: Das gegenseitige Pinnen zukünftiger Git-Commits würde eine zyklische Abhängigkeit erzeugen. Gezielte atomare Pushes für v0.4.25 verwenden denselben kanonischen Matrix-Resolver wie der Pre-Release-Quellschritt; gemischte oder bewegliche Quellen werden vor der Ausführung abgelehnt.
-
-Eine explizite `only_gates`-Auswahl oder ein Branch unter
-`validation/pre-release/selected/*` führt nur die ausgewählten Qualifikationen
-aus und überspringt den abschließenden Freigabejob. Einzelartefakte sind Nachweise;
-sie können keine Release-Freigabe erzeugen.
-Für einen unveränderten Kandidaten kann ein temporärer Ref namens
-`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` direkt
-auf dessen unveränderlichen Commit zeigen. Der bestehende Selektor prüft jede
-angeforderte ID; eine andere kleine Gruppe erfordert keine Quell- oder Consumer-
-Pin-Änderung.
-
-`scripts/ecosystem_release_pins.py` prüft alle Bindungen und erstellt das öffentliche Manifest der Consumer-Nachweise. Der Pre-Release-Workflow akzeptiert eine optionale exakte `consumer_ref` oder löst den geprüften Connector-Integrationsbranch einmalig auf und hält dessen 40-stelligen SHA fest. Die Freigabe bewahrt diese unveränderliche Consumer-Quelle; die Release-Nachprüfung löst dieselben Commits auf. Der vollständige native Connector-Job prüft auch das exakte Console-Browser-Receipt. Sein authentifiziertes Artefakt kann deshalb die Console-Integration ohne Wiederholung derselben Journey belegen. Alle bisherigen atomaren Gates bleiben erforderlich.
-
-Das Vorbereiten dieser Eingaben startet oder genehmigt keinen Pre-Release. Die geprüfte SHA-Matrix und die abgeschlossene Pre-Release-Abnahme stehen in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+Die veröffentlichten v0.4.24-/v0.4.25-Aufzeichnungen und ihre unveränderlichen Consumer-Pins bleiben historische Daten. Ihre früheren Browser-Receipts, Run-Artefakte und Freigabemanifeste sind keine aktive CI-Voraussetzung. Aktuelle Prüfungen verwenden die tatsächlichen festgelegten Quellstände und führen die erforderlichen Tests direkt aus.
 
 ## Freigabe von Artefakten
 

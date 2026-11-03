@@ -64,7 +64,7 @@ Hotfix workflow:
 4. Use focused validation while implementing individual fixes.
 5. Update changelog, release notes and any affected operator/reference documentation.
 6. Run the complete pre-release gate exactly once at the release boundary against the final hotfix candidate.
-7. Open the hotfix release PR to `main` only after the candidate evidence is green.
+7. Open the hotfix release PR to `main` only after the candidate checks are green.
 8. Publish the immutable four-part tag and matching runtime image from the merged `main` commit.
 9. Verify release artifacts/provenance, then forward-port the same fixes to `develop`.
 10. Remove temporary hotfix/validation branches only after publication and forward-port are complete.
@@ -73,47 +73,25 @@ If a proposed change alters runtime identity, persisted-state migration, public 
 
 Rollback rule: do not move or rewrite a published tag. If a hotfix itself is defective, revert the release change on the released line as appropriate and publish a new hotfix version.
 
-Evidence rule: the release issue and release notes must identify the exact BaseHarbor candidate SHA, the external demo revision used by pre-release validation, and the successful release-boundary evidence.
+Source rule: the release issue and release notes must identify the exact BaseHarbor candidate SHA, the external demo revision used by pre-release validation, and the successful release-boundary test results.
 
 ## Release preparation
 
-Normal releases are prepared on `develop` and promoted to `main` only after the release candidate is proven. Hotfix releases follow the main-based workflow above.
+Normal releases are prepared on `develop` and promoted to `main` after validating the immutable candidate. Hotfixes start from `main`. The [complete release audit](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md) covers implementation, ecosystem consumers, EN/DE docs, the Pages candidate build, changelog and human-readable release notes.
 
-The mandatory end-to-end checklist is [`docs/internal/pre-release-documentation-audit.md`](https://github.com/mcpdev80/baseharbor/blob/develop/docs/internal/pre-release-documentation-audit.md). Despite its historical filename, it is the canonical **complete pre-release audit** and covers scope/issues, BaseHarbor implementation, contracts, EN/DE docs, roadmap/staleness, changelog/release notes, `baseharbor-demo`, GitHub Pages, exact-candidate evidence, promotion, publishing and post-release verification. A release must not skip checklist sections because the feature code or normal CI is already green.
+1. Complete implementation, contracts, documentation and release notes.
+2. Freeze exact Core, Demo, Console and Connector commits where required by the release scope.
+3. Run affected tests during development and fix diagnosed failures.
+4. Run complete pre-release validation on the immutable candidate only after explicit authorization. Normal required jobs must succeed; failing, cancelled or missing required work blocks.
+5. Open a release PR containing the validated release content against `main`. Promotion, tagging and publication each require the authorized scope.
+6. After authorization create an immutable tag on the explicit resulting `main` commit. The release workflow executes reusable full Pre-Release checks on that exact tag, then publishes the artifacts.
+7. Verify binaries, checksums, version/commit metadata, runtime image, provenance and published documentation.
 
-1. Review the final implementation on `develop` against `docs/DEVELOPMENT_GUIDELINES.md`, including ownership, isolation, secret-safety, fail-closed behavior, tests and documentation consistency.
-2. Review and update all affected canonical documentation, including both EN/DE variants where they exist. Search explicitly for stale version numbers, implementation-status claims, examples and future-work statements.
-3. Move relevant entries from `[Unreleased]` into a dated `## [X.Y.Z] - YYYY-MM-DD` section in `CHANGELOG.md` (or `X.Y.Z.H` for a v0.4 hotfix).
-4. Write human-readable release notes at `docs/releases/vX.Y.Z.md` (or `vX.Y.Z.H.md` for a v0.4 hotfix). They are the canonical GitHub Release message and must explain what changed, why it matters, compatibility/upgrade impact, security implications and intentionally deferred work; a raw commit list or generated Git log is not an acceptable release message.
-5. Finish and merge the exact external `baseharbor-demo` revision intended for release validation, then record its immutable 40-character commit SHA in `docs/releases/vX.Y.Z.demo-ref` (or `vX.Y.Z.H.demo-ref`). Moving `baseharbor-demo/main` is never an acceptable release pin.
-6. Review compatibility impact and select the documented release-version increment.
-7. Run local/Hugging Face validation first where practical.
-8. Only after implementation, documentation, CHANGELOG, README, human-readable release notes, the external `baseharbor-demo` and the versioned demo-ref file are complete, run the mandatory GitHub pre-release workflow against the exact release-candidate SHA. Pre-release is an orchestrator over independently rerunnable atomic gates: static contract/DX gates run without a container runtime, while Docker and Podman gates use declared minimal resource profiles. Every gate uploads evidence bound to the exact BaseHarbor SHA, demo SHA, runtime and gate name.
-9. If the baseline finds failures, do not rerun successful gates. Fix one failure area at a time and rerun exactly the failed atomic gate through `Targeted Atomic Gate` with the unchanged candidate/demo SHA until it is green. A code change invalidates the affected evidence and requires the relevant gates to be rerun; unrelated green evidence is not discarded merely because another gate failed.
-10. Once all atomic gates are individually green on the final unchanged candidate, run the complete pre-release orchestrator once as the release-boundary approval. The final evidence manifest must contain the complete expected atomic gate set for the exact BaseHarbor candidate SHA and pinned external demo SHA.
-11. Open one release PR from `develop` to `main`. Do not mix unrelated changes into this PR.
-12. Merge `develop -> main` only after the pre-release gate is green and the release diff is understood.
-13. Create the immutable release tag on the resulting `main` release commit and push it.
-14. The release workflow consumes the successful immutable pre-release approval instead of rerunning the same source/runtime/demo acceptance suite. It performs only release-only checks not already covered, publishes the matching runtime image, GitHub Release, archives and provenance.
-15. Verify the resulting GitHub Release, binaries, checksums, provenance, matching runtime image and referenced pre-release evidence before declaring the release usable. A pushed tag without a successful published release is not release completion.
+CI, Pre-Release and Release do not use gate manifests, evidence reuse, completed-run/job re-verification or a separate receipt approval chain. The only CI record contains merge SHA and PR number; see [minimal CI receipts](../development/minimal-ci-receipts.md). Build/image inputs, immutable consumer pins and published artifact checksums remain required.
 
-Never move a published version tag. Fix a bad release with a new patch release.
+### Historical ecosystem inputs
 
-### Immutable v0.4.24 ecosystem inputs
-
-For v0.4.24 and v0.4.25, the final Connector commit's `integration-candidate.json` binds the exact Core, Console and Demo commits. The Console manifest must bind the same Core and Demo, and the Demo's `baseharbor-core.ref` must equal that Core commit. This replaces the Core-owned `.demo-ref` for these releases: mutually pinning future Git commits would create a circular dependency. Targeted v0.4.25 atomic pushes use the same canonical matrix resolver as the pre-release source step; a mixed or mutable source is rejected before execution.
-
-An explicit `only_gates` selection or `validation/pre-release/selected/*` branch
-runs only the selected qualification set and skips the final approval job.
-Its individual artifacts are evidence; they cannot create release approval.
-For an unchanged candidate, a temporary ref named
-`validation/pre-release/selected/gates/<comma-separated exact gate IDs>` can point
-directly at its immutable commit. The existing selector validates every requested
-ID; no source commit or consumer pin changes to choose a different small group.
-
-`scripts/ecosystem_release_pins.py` validates all bindings and resolves the public consumer evidence manifest. The pre-release workflow accepts an optional exact `consumer_ref`, or resolves the reviewed Connector integration branch once and freezes its 40-character SHA. Approval retains that immutable consumer origin; release revalidation resolves the same commits. The complete native Connector job also verifies the exact Console browser receipt, so its authenticated artifact can prove Console integration without repeating the same journey. All existing atomic gates remain required.
-
-Preparing these inputs does not start or approve a pre-release. The tested SHA matrix and completed pre-release validation are recorded in [PR #837](https://github.com/mcpdev80/baseharbor/pull/837).
+Published v0.4.24/v0.4.25 records and immutable consumer pins remain historical data. Their former browser receipts, run artifacts and approval manifests are not active CI prerequisites. Current checks use the actual pinned source commits and execute their required tests directly.
 
 ## Release artifacts
 

@@ -19,7 +19,7 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(1, len(rows))
         self.assertEqual('atomic/docker/backup-restore', rows[0]['gate_id'])
         self.assertEqual('d'*40, rows[0]['integration_sha'])
-        self.assertEqual('existing-verifier-only', rows[0]['evidence'])
+        self.assertNotIn('evidence', rows[0])
         self.assertEqual('requires-trusted-isolated-runner', rows[0]['admission'])
 
     def test_only_declared_demo_pin_for_backup(self):

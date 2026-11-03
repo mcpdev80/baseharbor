@@ -292,38 +292,6 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ needs.resolve.outputs.runtime }}"
 
-      - name: Generate reference journey evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/reference-journey-evidence"
-          mkdir -p "$out"
-          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
-          cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
-          cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
-          jq -n \
-            --arg schema "baseharbor.pre-release.reference-journey/v1" \
-            --arg candidate_sha "${{ steps.candidate.outputs.sha }}" \
-            --arg demo_ref "${{ needs.resolve.outputs.demo_ref }}" \
-            --arg outcome "${{ steps.journey.outcome }}" \
-            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
-            --arg runtime "${{ needs.resolve.outputs.runtime }}" \
-            --argjson run_id "$GITHUB_RUN_ID" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg duration_seconds "${{ steps.journey.outputs.duration_seconds }}" \
-            '{
-              schema: $schema,
-              candidate_sha: $candidate_sha,
-              demo_ref: $demo_ref,
-              runtime: $runtime,
-              workflow_run_id: $run_id,
-              workflow_run_attempt: $run_attempt,
-              cleanup_outcome: $cleanup_outcome,
-              duration_seconds: (if $duration_seconds == "" then null else ($duration_seconds | tonumber) end),
-              outcome: $outcome
-            }' > "$out/manifest.json"
-
       - name: Summarize journey groups and duration
         if: always()
         shell: bash
@@ -343,12 +311,3 @@ jobs:
               else:
                   output.write('| Setup | No group report; inspect the first failed step |\n')
           PY_SUMMARY
-
-      - name: Upload reference journey evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: pre-release-reference-journey-evidence-${{ needs.resolve.outputs.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/reference-journey-evidence
-          if-no-files-found: error
-          retention-days: 30
