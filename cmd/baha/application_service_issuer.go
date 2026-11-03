@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/installauthority"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -94,7 +95,11 @@ func resolveManagementConnectionIssuer(ctx context.Context, resolved resolvedApp
 	if err != nil {
 		return nil, err
 	}
-	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity); err != nil {
+	// The wrapper supplies the observation time of this status to the boundary so
+	// freshness is checked against when the connection was actually observed,
+	// not against a certificate expiry that is normally in the future.
+	observedAt := time.Now().UTC()
+	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity, observedAt, time.Minute); err != nil {
 		return nil, fmt.Errorf("management connection not verified as a live, current, non-revoked authority: %w", err)
 	}
 	return issuer, nil
@@ -126,5 +131,6 @@ func observedThroughBoundary(ctx context.Context, issuer serviceaccess.Issuer) (
 			Serial:          baseSerial,
 			ExpiresAt:       baseExpiry,
 		},
+		ObservedAt: time.Now().UTC(),
 	}, nil
 }

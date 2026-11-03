@@ -64,6 +64,17 @@ Managerverbindung; er wird **nie** zur Autorität der Installation.
 - Die Installation-Identität, der Deployment-Besitzer und die Mutations-Sperre sind
   derselbe semantischen Kern, nicht drei konkurrierende Autoritäten.
 
+- Die Lifecycle-Sperren-Primitiven (`AcquireLifecycleLock`,
+  `AcquireStateFileLock`) sitzen in der stdlib-only Leaf `internal/stableid`.
+  Sie wurden verhaltensgleich dorthin verlagert (von `coreinstallation`), um den
+  Import-Zyklus `coreinstallation -> serviceaccess` aufzubrechen und dabei eine
+  einzelne Sperren-Autorität beizubehalten. `coreinstallation` exportiert beide
+  mit unveränderten Signaturen erneut, und `serviceaccess` nutzt die Leaf
+  direkt. Pro-Aufruf-Regressionstests (`internal/stableid/lock_test.go`,
+  `internal/coreinstallation/lifecycle_lock_regression_test.go`) prüfen die
+  Gleichheit mit den Produktions-Aufrufstellen. Dies ist eine verhaltengleiche
+  Verlagerung, keine neue Authority.
+
 ### 3. Lokale DirekAusführung wiederverwendet den semantischen Kern ohne
    Login/Server/SQL/Secrets/Identity-Bundle
 

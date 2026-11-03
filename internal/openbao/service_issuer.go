@@ -113,10 +113,7 @@ func (i *ServiceIssuer) RevokedStatus(ctx context.Context, serial string) (bool,
 	if execErr != nil {
 		return false, execErr
 	}
-	if revokedSerialInResponse(out, serial) {
-		return true, nil
-	}
-	return false, nil
+	return revokedSerialInResponse(out, serial)
 }
 
 func (i *ServiceIssuer) Status(ctx context.Context) (serviceaccess.IssuerStatus, error) {

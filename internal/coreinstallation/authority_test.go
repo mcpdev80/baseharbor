@@ -51,7 +51,7 @@ func TestIncompleteSelectionRejected(t *testing.T) {
 
 func TestFreshWithinExpiresAt(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
-	o := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: now.Add(-30 * time.Minute)}
+	o := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: now.Add(-30 * time.Minute), MaxAge: time.Hour}
 	if err := o.Fresh(now); err != nil {
 		t.Fatalf("fresh observation rejected: %v", err)
 	}
@@ -60,11 +60,15 @@ func TestFreshWithinExpiresAt(t *testing.T) {
 func TestFreshExpiredPastExpiresAt(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	obs := serviceaccess.CertificateStatus{
-		Identity:            "ref",
-		IssuedCertificate:   serviceaccess.IssuedCertificate{ExpiresAt: now.Add(-2 * time.Hour)},
+		Identity: "ref",
+		IssuedCertificate: serviceaccess.IssuedCertificate{ExpiresAt: now.Add(-2 * time.Hour)},
+		ObservedAt: now.Add(-2 * time.Hour),
 	}
+	// The observation is older than the freshness window: stale, not merely a
+	// past certificate expiry. Certificates normally expire in the future, so
+	// a past expiry is not itself the freshness signal.
 	if err := obs.Fresh(now); err != serviceaccess.ErrStaleObservation {
-		t.Fatalf("expired observation accepted, got %v", err)
+		t.Fatalf("stale observation accepted, got %v", err)
 	}
 }
 
@@ -202,8 +206,11 @@ func TestAuthoritativeConnectionZeroExpiryFailsClosed(t *testing.T) {
 		Identity:            ref,
 		IssuedCertificate:   serviceaccess.IssuedCertificate{}, // zero ExpiresAt
 	}
-	if err := remoteTest(t, iss, obs, ref); err != ErrInvalidObservation {
-		t.Fatalf("zero expiration should fail closed, got %v", err)
+	// A zero observation time fails closed regardless of certificate expiry:
+	// freshness is observed-at based, not certificate-expiry based.
+	remote := ObservedState{Installation: "411f3c2d-0000-4000-8000-000000000001", Target: "prod-us", ObservedAt: time.Time{}}
+	if err := remote.AuthoritativeConnection(context.Background(), iss, obs, ref); err != ErrInvalidObservation {
+		t.Fatalf("zero observed-at should fail closed, got %v", err)
 	}
 }
 

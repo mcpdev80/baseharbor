@@ -120,6 +120,10 @@ type ObservedState struct {
 	// ObservedAt is the observation time of the last confirmed management
 	// connection. It is not a deadline.
 	ObservedAt time.Time `json:"observed_at"`
+	// MaxAge is the observation freshness window. The observation is fresh only
+	// when now-ObservedAt <= MaxAge. The zero value fails closed: any past
+	// observation is stale.
+	MaxAge time.Duration `json:"max_age"`
 }
 
 // RejectOwnership proves that a remote client never owns authoritative state and
@@ -137,21 +141,31 @@ func (o ObservedState) RejectOwnership() error {
 	return ErrRemoteStateRejected
 }
 
-// Fresh applies the freshness policy to an observation time:
+// Fresh applies the freshness policy to an observation time. It is the single
+// authoritative freshness policy consumed by every verification boundary,
+// including installauthority.Fresh, so there is one policy, not a second copy.
 //
 //   - a zero observation time is not authoritative (ErrInvalidObservation);
 //   - a future observation time is not an authoritative observation of the past
 //     (ErrFutureObservation);
+//   - an observation older than MaxAge relative to now is stale (ErrStaleObservation);
 //   - an observation within the window is fresh.
 //
-// The observation is authoritative exactly when it is recent enough and not in
-// the future.
+// The observation is authoritative exactly when it is non-zero, not in the
+// future and recent enough (now-ObservedAt <= MaxAge).
 func (o ObservedState) Fresh(now time.Time) error {
 	if o.ObservedAt.IsZero() {
 		return ErrInvalidObservation
 	}
 	if o.ObservedAt.After(now) {
 		return ErrFutureObservation
+	}
+	window := o.MaxAge
+	if window == 0 {
+		window = 5 * time.Minute
+	}
+	if now.Sub(o.ObservedAt) > window {
+		return ErrStaleObservation
 	}
 	return nil
 }
@@ -198,9 +212,11 @@ func (o ObservedState) AuthoritativeConnection(
 		return err
 	}
 	// 4. Liveness + identity + foreign/revoked rejection over the real
-	// production selection path. The read-only Revoked(serial) boundary
-	// confirms the observed serial without changing issuer state.
-	if err := installauthority.Fresh(ctx, issuer, observed, authoritativeConnection); err != nil {
+	// production selection path. The read-only tri-state RevokedStatus boundary
+	// confirms the observed serial without changing issuer state and fails
+	// closed on an unreadable revocation status. The observed-at freshness bound
+	// is supplied from the same observation this method already validated.
+	if err := installauthority.Fresh(ctx, issuer, observed, authoritativeConnection, o.ObservedAt, o.MaxAge); err != nil {
 		return mapBoundaryErr(err)
 	}
 	// A foreign connection never selects a local runtime.
@@ -211,8 +227,8 @@ func (o ObservedState) AuthoritativeConnection(
 // current and not foreign, and that a revoked identity is rejected. It is the
 // minimal executable realization of the management-connection role against the
 // production serviceaccess.Issuer boundary: liveness and identity through
-// Status, freshness through the observed IssuedCertificate.ExpiresAt, and the
-// foreign/revoked rejection through the read-only Revoked(serial).
+// Status, freshness through a captured observed-at time, and the foreign/revoked
+// rejection through the read-only tri-state RevokedStatus.
 func VerifyConnectionIdentity(
 	ctx context.Context,
 	issuer serviceaccess.Issuer,
@@ -222,7 +238,11 @@ func VerifyConnectionIdentity(
 	if issuer == nil {
 		return ErrMissingAuthority
 	}
-	return installauthority.Fresh(ctx, issuer, observed, authoritativeConnection)
+	observedAt := observed.ObservedAt
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+	return installauthority.Fresh(ctx, issuer, observed, authoritativeConnection, observedAt, time.Minute)
 }
 
 // mapBoundaryErr maps a serviceaccess boundary sentinel to the corresponding

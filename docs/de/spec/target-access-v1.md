@@ -46,7 +46,7 @@ und fallen niemals zurück auf lokale Ausführung.
 Eine maßgebliche State-/Lock-Autorität verwaltet jedes Managed Deployment: die
 Core verwaltet Deployment-State direkt (`internal/deployment`), und die
 Target-Konfigurationsmutation nimmt einen einzigen Besitzer über `.installation.lock`
-+ `coreinstallation.AcquireStateFileLock`. Es gibt keinen zweiten lokalen Besitzer
++ `coreinstallation.AcquireStateFileLock`). Die Lifecycle-Sperren-Primitiven sitzen in der stdlib-only Leaf `internal/stableid` und wurden verhaltengleich dorthin verlagert (von `coreinstallation`), um den Import-Zyklus `coreinstallation -> serviceaccess` aufzubrechen; `coreinstallation` exportiert beide mit unveränderten Signaturen erneut. Es gibt keinen zweiten lokalen Besitzer
 keine Reconciliation zwischen einem „lokalen Cache" und einer „lokalen Wahrheit".
 
 Remote-Clients besitzen niemals maßeblichen Zustand. Kein maßeblicher Remote-Zustand

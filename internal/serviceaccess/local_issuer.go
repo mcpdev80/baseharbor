@@ -370,11 +370,14 @@ func (i *LocalIssuer) RevokedStatus(ctx context.Context, serial string) (bool, e
 	}
 	list, err := i.revocations(ca)
 	if err != nil {
-		return false, err
-	}
-	if list == nil {
-		// A missing CRL is an unreadable revocation status: fail closed.
+		// An unparseable or unverifiable CRL is an unreadable revocation
+		// status: fail closed rather than treat it as not-revoked.
 		return false, errMissingRevocationStatus
+	}
+	// A missing (absent) CRL is a valid, readable "not revoked" status, not an
+	// error: the issuer simply has not published any revocation yet.
+	if list == nil {
+		return false, nil
 	}
 	number, ok := new(big.Int).SetString(serial, 16)
 	if !ok || number.Sign() <= 0 || number.BitLen() > 159 {

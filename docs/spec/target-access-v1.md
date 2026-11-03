@@ -45,7 +45,7 @@ and never fall back to local execution.
 One authoritative state/lock owner governs each managed deployment: the Core owns
 deployment state directly (`internal/deployment`), and Target configuration
 mutation takes a single owner via `.installation.lock` +
-`coreinstallation.AcquireStateFileLock`. There is no second local owner and no
+`coreinstallation.AcquireStateFileLock`). The lifecycle-lock primitives live in the stdlib-only leaf `internal/stableid` and were behaviour-preserving relocated there (from `coreinstallation`) to break the `coreinstallation -> serviceaccess` import cycle; `coreinstallation` re-exports them with unchanged signatures. There is no second local owner and no
 reconciliation between a "local cache" and a "remote truth".
 
 Remote clients never own authoritative state. No authoritative remote state is

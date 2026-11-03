@@ -25,7 +25,6 @@ import (
 type Issuer interface {
 	TrustBundle(ctx context.Context) (serviceaccess.TrustBundle, error)
 	Status(ctx context.Context) (serviceaccess.IssuerStatus, error)
-	Revoked(ctx context.Context, serial string) bool
 	RevokedStatus(ctx context.Context, serial string) (revoked bool, err error)
 }
 
@@ -35,10 +34,11 @@ type Issuer interface {
 //   - identity:   the observed reference must equal authoritativeConnection;
 //   - liveness:   Status(ctx).Ready must be true; a failed live check is not
 //     downgraded to current READY;
-//   - freshness:  the observed IssuedCertificate.ExpiresAt is the
-//     bound; now <= ExpiresAt is fresh, a missing (zero) or future expiration
-//     fails closed;
-//   - foreign:    a revoked observed serial fails closed as foreign.
+//   - freshness:  the observation is authoritative only when observedAt is
+//     non-zero, not in the future and not older than maxAge relative to now —
+//     this is the single observed-at freshness policy;
+//   - foreign:    a single read-only tri-state revocation call rejects a
+//     revoked serial or any unreadable revocation status as foreign.
 //
 // Every failure returns the matching sentinel error; no local fallback is
 // selected.
@@ -47,6 +47,8 @@ func Fresh(
 	issuer Issuer,
 	observed serviceaccess.CertificateStatus,
 	authoritativeConnection string,
+	observedAt time.Time,
+	maxAge time.Duration,
 ) error {
 	if observed.Identity != authoritativeConnection {
 		return serviceaccess.ErrForeignAuthority
@@ -58,20 +60,29 @@ func Fresh(
 	if err != nil || !status.Ready {
 		return serviceaccess.ErrNotReady
 	}
-	exp := observed.IssuedCertificate.ExpiresAt
-	if exp.IsZero() {
+	// Observed-at freshness is the single source: a zero or future observation
+	// and a stale observation (now-observedAt past the bound) fail closed before
+	// any revocation work. A missing bound falls back to the default recent
+	// window so the boundary never opens on an unbounded observation.
+	if observedAt.IsZero() {
 		return serviceaccess.ErrInvalidObservation
 	}
-	if time.Now().After(exp) {
+	if observedAt.After(time.Now()) {
+		return serviceaccess.ErrInvalidObservation
+	}
+	window := maxAge
+	if window == 0 {
+		window = 5 * time.Minute
+	}
+	if time.Now().Sub(observedAt) > window {
 		return serviceaccess.ErrStaleObservation
 	}
-	if issuer.Revoked(ctx, observed.IssuedCertificate.Serial) {
-		return serviceaccess.ErrForeignAuthority
-	}
-	// Fail-closed tri-state check: an unreadable, missing, foreign or malformed
-	// revocation status (err != nil) rejects the connection as foreign, so an
-	// unknown status can never be accepted as safe.
-	if _, err := issuer.RevokedStatus(ctx, observed.IssuedCertificate.Serial); err != nil {
+	// Exactly one authoritative tri-state revocation call: an unreadable,
+	// missing or malformed status (err != nil) rejects, and a revoked serial
+	// rejects. There is no window between two calls in which the status could
+	// change, so "unknown" can never be accepted as safe.
+	revoked, revErr := issuer.RevokedStatus(ctx, observed.IssuedCertificate.Serial)
+	if revErr != nil || revoked {
 		return serviceaccess.ErrForeignAuthority
 	}
 	return nil

@@ -61,6 +61,16 @@ connection; it **never** becomes the installation's authority.
 - The installation identity, the deployment owner and the mutation lock are the
   same semantic core, not three competing authorities.
 
+- The lifecycle-lock primitives (`AcquireLifecycleLock`,
+  `AcquireStateFileLock`) live in the stdlib-only leaf `internal/stableid`. They
+  were behaviour-preserving relocated there (from `coreinstallation`) to break
+  the `coreinstallation -> serviceaccess` import cycle while keeping one lock
+  authority. `coreinstallation` re-exports both with unchanged signatures, and
+  `serviceaccess` consumes the leaf directly. Per-caller regression tests
+  (`internal/stableid/lock_test.go`, `internal/coreinstallation/lifecycle_lock_
+  regression_test.go`) assert parity with the production call sites. This is a
+  behaviour-preserving relocation, not a new authority.
+
 ### 3. Local direct execution reuses the semantic core without a login/server/SQL/Secrets/Identity bundle
 
 Local execution of an already-selected operation uses the same Core types and

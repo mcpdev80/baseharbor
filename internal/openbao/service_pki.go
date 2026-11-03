@@ -309,39 +309,49 @@ func RevokeServiceCertificate(ctx context.Context, executor Executor, files bhru
 
 // revocationStatus is the read-only counterpart of RevokeServiceCertificate. It
 // reports whether the observed serial is revoked by listing the PKI revocation
-// output without writing. It never changes state; a missing, foreign,
-// unreadable or malformed revocation status fails closed by returning false.
+// output without writing. It never changes state and never writes. It is the
+// coarse boolean view over the tri-state RevokedStatus boundary; a missing,
+// foreign, unreadable or malformed revocation status fails closed by returning
+// false.
 func revocationStatus(ctx context.Context, executor Executor, files bhruntime.Files, serial string) bool {
-	serial, err := canonicalServiceRevocationSerial(serial)
+	revoked, err := NewServiceIssuer(executor, files).RevokedStatus(ctx, serial)
 	if err != nil {
 		return false
 	}
-	token, err := managerToken(ctx, executor, files)
-	if err != nil {
-		return false
-	}
-	const command = `exec bao read -format=json baseharbor-pki/list-revoked`
-	out, execErr := execWithToken(ctx, executor, files, token, command)
-	if execErr != nil {
-		return false
-	}
-	return revokedSerialInResponse(out, serial)
+	return revoked
 }
 
 // revokedSerialInResponse reports whether the (canonicalized) serial appears in
 // a JSON revocation-list response. It tolerates the several shapes the mount
 // may return without trusting any field for control flow beyond a substring
 // match against the canonical serial.
-func revokedSerialInResponse(out, serial string) bool {
-	if out == "" {
-		return false
+// revokedSerialInResponse parses the JSON revocation-list response and reports
+// whether the (canonicalized) serial appears in it. It distinguishes a valid,
+// empty revocation list (a readable "not revoked" status) from an unreadable or
+// malformed response, which is reported via a non-nil error at the caller. An
+// exact canonical serial match is required; a bare substring match is not
+// sufficient, so a serial can never collide with an unrelated field.
+func revokedSerialInResponse(out, serial string) (bool, error) {
+	trimmed := strings.TrimSpace(out)
+	if trimmed == "" {
+		// A valid, empty revocation list is readable and reports not revoked.
+		return false, nil
 	}
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(strings.TrimSpace(line), serial) {
-			return true
+	type listPayload struct {
+		Data struct {
+			Serials []string `json:"serials"`
+		} `json:"data"`
+	}
+	var payload listPayload
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return false, fmt.Errorf("parse openbao revocation status: %w", err)
+	}
+	for _, s := range payload.Data.Serials {
+		if strings.TrimSpace(s) == serial {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 func managerToken(ctx context.Context, executor Executor, files bhruntime.Files) (string, error) {

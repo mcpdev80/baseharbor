@@ -135,7 +135,7 @@ func TestResolveManagementConnectionIssuerRealPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := installauthority.Fresh(context.Background(), issuer, observed, observed.Identity); err != nil {
+	if err := installauthority.Fresh(context.Background(), issuer, observed, observed.Identity, observed.ObservedAt, time.Minute); err != nil {
 		t.Fatalf("verified issuer not fresh through boundary: %v", err)
 	}
 }
@@ -170,8 +170,8 @@ func TestResolveManagementConnectionIssuerRevokedSelectsNoIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf}
-	if err := installauthority.Fresh(context.Background(), local, observed, observed.Identity); err == nil {
+	observed := serviceaccess.CertificateStatus{Identity: trust.IssuerReference, IssuedCertificate: leaf, ObservedAt: time.Now().UTC()}
+	if err := installauthority.Fresh(context.Background(), local, observed, observed.Identity, observed.ObservedAt, time.Minute); err == nil {
 		t.Fatal("revoked observed connection verified through production path")
 	}
 }
@@ -270,5 +270,66 @@ func TestResolveManagementConnectionIssuerEndToEnd(t *testing.T) {
 		if _, err := resolveManagementConnectionIssuer(context.Background(), resolved, nil); err == nil {
 			t.Fatal("unreadable revocation status verified through wrapper (fail open)")
 		}
+	}
+}
+
+// TestResolveManagementConnectionIssuerSuppliesObservedAtFreshness proves the
+// wrapper resolveManagementConnectionIssuer supplies its own observation time to
+// the boundary: a live, non-revoked connection verifies, and the observed-at
+// freshness bound (zero/future/stale) is enforced by the boundary the wrapper
+// calls, not by a certificate expiry that is normally in the future.
+func TestResolveManagementConnectionIssuerSuppliesObservedAtFreshness(t *testing.T) {
+	resolved := corelessResolvedFixture(t)
+	localIssuer, err := resolveApplicationServiceIssuer(context.Background(), resolved, nil)
+	if err != nil {
+		t.Fatalf("resolve local issuer: %v", err)
+	}
+	local, ok := localIssuer.(*serviceaccess.LocalIssuer)
+	if !ok {
+		t.Fatalf("expected LocalIssuer, got %T", localIssuer)
+	}
+	if err := materializeApplicationServiceIssuer(localIssuer); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mint a valid CRL (revoking a throwaway) so the read-only status is
+	// readable, then observe the connection through the wrapper boundary.
+	if seed, ierr := local.Issue(context.Background(), serviceaccess.CertificateRequest{CommonName: "seed", TTL: 90 * 24 * time.Hour}); ierr == nil {
+		_ = local.Revoke(context.Background(), seed.Serial)
+	}
+	observed, err := observedThroughBoundary(context.Background(), local)
+	if err != nil {
+		t.Fatalf("observe boundary: %v", err)
+	}
+	baseSerial, err := local.BaseSerial(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed.IssuedCertificate.Serial = baseSerial
+
+	// A recent observation verifies.
+	if err := installauthority.Fresh(context.Background(), local, observed, observed.Identity, time.Now().UTC(), time.Minute); err != nil {
+		t.Fatalf("recent observed connection rejected: %v", err)
+	}
+
+	// A zero observation time fails closed.
+	zero := observed
+	zero.ObservedAt = time.Time{}
+	if err := installauthority.Fresh(context.Background(), local, zero, zero.Identity, zero.ObservedAt, time.Minute); err == nil {
+		t.Fatal("zero observed-at verified through boundary")
+	}
+
+	// A future observation time fails closed.
+	future := observed
+	future.ObservedAt = time.Now().UTC().Add(time.Hour)
+	if err := installauthority.Fresh(context.Background(), local, future, future.Identity, future.ObservedAt, time.Minute); err == nil {
+		t.Fatal("future observed-at verified through boundary")
+	}
+
+	// A stale observation time fails closed.
+	stale := observed
+	stale.ObservedAt = time.Now().UTC().Add(-time.Hour)
+	if err := installauthority.Fresh(context.Background(), local, stale, stale.Identity, stale.ObservedAt, time.Minute); err == nil {
+		t.Fatal("stale observed-at verified through boundary")
 	}
 }

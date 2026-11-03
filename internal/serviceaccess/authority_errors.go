@@ -17,10 +17,10 @@ var (
 	// current readiness.
 	ErrNotReady = errors.New("management connection not verified as ready, not current READY")
 	// ErrStaleObservation is returned when the observed connection is past its
-	// Issuer.ExpiresAt freshness bound.
+	// observed-at freshness bound.
 	ErrStaleObservation = errors.New("stale observed-at connection, not current READY")
 	// ErrInvalidObservation is returned when the observed connection carries a
-	// missing (zero) or future expiration.
+	// missing (zero) or future observation time.
 	ErrInvalidObservation = errors.New("invalid observed-at connection, not current READY")
 )
 
