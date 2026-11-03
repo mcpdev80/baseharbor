@@ -61,6 +61,45 @@ class ConservativeFallbackTests(unittest.TestCase):
                 env={**os.environ, 'GITHUB_REPOSITORY': 'mcpdev80/baseharbor', 'GITHUB_BASE_REF': 'develop'}, text=True)
             self.assertTrue(json.loads(out)['fallback_used'])
 
+    def test_format_checks_changed_files_without_blocking_on_unchanged_debt(self):
+        ci = yaml.safe_load((ROOT.parent/'.github/workflows/ci.yml').read_text())
+        steps = ci['jobs']['source_format']['steps']
+        self.assertEqual(0, steps[0]['with']['fetch-depth'])
+        command = steps[-1]['run']
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            def git(*args):
+                return subprocess.check_output(['git', '-C', str(repo), *args], text=True).strip()
+            git('init', '-q')
+            git('config', 'user.email', 'test@example.invalid')
+            git('config', 'user.name', 'CI test')
+            (repo/'unchanged.go').write_text('package sample;func Bad( ){ }\n')
+            (repo/'changed.go').write_text('package sample\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+            (repo/'changed.go').write_text('package sample\n\nfunc Good() {}\n')
+            git('add', '.')
+            git('commit', '-qm', 'candidate')
+            candidate = git('rev-parse', 'HEAD')
+            # Readability has its own regression suite; exercise this real Git/gofmt step.
+            (repo/'scripts').mkdir()
+            (repo/'scripts/source-readability-audit.sh').write_text('exit 0\n')
+            env = {**os.environ, 'BASE_SHA': base, 'INTEGRATION_SHA': candidate,
+                   'RUNNER_TEMP': directory}
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
+                                    env=env, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            (repo/'changed.go').write_text('package sample;func Bad( ){ }\n')
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
+                                    env=env, capture_output=True, text=True)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn('changed.go', result.stdout)
+            env['BASE_SHA'] = 'missing-ref'
+            result = subprocess.run(['bash', '-euo', 'pipefail', '-c', command], cwd=repo,
+                                    env=env, capture_output=True, text=True)
+            self.assertNotEqual(0, result.returncode)
+
     def test_workflow_tests_ready_updates_without_duplicate_develop_push(self):
         ci = yaml.safe_load((ROOT.parent/'.github/workflows/ci.yml').read_text())
         trigger = ci.get('on', ci.get(True))

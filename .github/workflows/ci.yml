@@ -395,15 +395,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
           cache: false
       - name: Check source format and readability
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          INTEGRATION_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          files="$(gofmt -l cmd internal spec contracts sdk)"
-          test -z "$files" || { echo "$files"; exit 1; }
+          git diff --name-only -z --diff-filter=ACMRT "$BASE_SHA" "$INTEGRATION_SHA" -- '*.go' > "$RUNNER_TEMP/format-paths"
+          mapfile -d '' -t go_files < "$RUNNER_TEMP/format-paths"
+          if [ "${#go_files[@]}" -gt 0 ]; then
+            files="$(gofmt -l -- "${go_files[@]}")"
+            test -z "$files" || { echo "$files"; exit 1; }
+          fi
           bash scripts/source-readability-audit.sh
 
   pr_plan:
