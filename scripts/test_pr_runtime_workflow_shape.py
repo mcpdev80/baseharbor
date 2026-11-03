@@ -34,6 +34,8 @@ class RuntimeWorkflowRoutingTests(unittest.TestCase):
             with self.subTest(step=index):
                 # Multiline conditions still begin with the same safe predicate.
                 self.assertRegex(block, r"(?m)^      if: inputs.reuse_from == ''(?: && .+)?$")
+                self.assertEqual(1, len(re.findall(r"(?m)^      if:", block)),
+                                 "duplicate YAML if key in runtime step")
 
 
 if __name__ == "__main__":
