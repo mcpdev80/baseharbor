@@ -266,6 +266,20 @@ def filter_selected(matrix, runtime_matrix, jobs, paths, *, previous_run, demo_m
     }
 
 
+def strategy_runtime_matrix(runtime_plan):
+    """GitHub strategy.matrix accepts include/exclude and array axes, not planning metadata."""
+    if not isinstance(runtime_plan, dict):
+        raise ValueError("invalid runtime plan")
+    entries = runtime_plan.get("include")
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("runtime plan missing include rows")
+    for row in entries:
+        if not isinstance(row, dict) or not all(isinstance(row.get(key), str)
+                for key in ("id", "runtime", "gate")):
+            raise ValueError("invalid runtime matrix row")
+    return {"include": entries}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for arg in ("repo", "branch", "head", "integration", "run-id",
@@ -275,7 +289,7 @@ def main():
     plan = json.loads(Path(a.plan).read_text())
     checks = plan["required_validation_checks"]
     matrix = {"include": [{"check": c["id"]} for c in checks] or [{"check": "not-required"}]}
-    runtime_matrix = json.loads(Path(a.runtime_matrix).read_text())
+    runtime_matrix = strategy_runtime_matrix(json.loads(Path(a.runtime_matrix).read_text()))
     result = {"matrix": matrix, "runtime_matrix": runtime_matrix,
               "reused_checks": [], "reused_gates": [], "previous_run": None,
               "reason": "no qualified previous run"}
