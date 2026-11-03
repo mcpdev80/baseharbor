@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Conservative v0.4.26 PR area-to-existing-gate selection (#892)."""
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -60,6 +59,24 @@ CODE_CHECKS = [
     {'id': 'source-contracts', 'owner': 'CI source / contracts',
      'command': 'go test ./internal/application/... ./contracts/...'},
 ]
+AUTHORITY_PACKAGE_CHECKS = [
+    {'id': 'authority-package-tests', 'owner': 'installation authority and stable identity',
+     'command': 'python3 scripts/pr-check-runner.py execute --check authority-package-tests --repository .'},
+]
+AUTHORITY_PACKAGE_PATHS = {
+    'internal/coreinstallation/authority.go', 'internal/coreinstallation/authority_test.go',
+    'internal/coreinstallation/lifecycle_lock.go', 'internal/coreinstallation/lock_unix.go',
+    'internal/coreinstallation/lock_windows.go', 'internal/serviceaccess/local_issuer.go',
+    'internal/stableid/lock.go', 'internal/stableid/lock_test.go',
+    'internal/stableid/lock_unix.go', 'internal/stableid/lock_windows.go',
+}
+
+DELIVERY_PACKAGE_CHECKS = [{'id': 'delivery-package-tests', 'owner': 'delivery owner and selection contract',
+    'command': 'python3 scripts/pr-check-runner.py execute --check delivery-package-tests --repository .'}]
+
+CLI_PACKAGE_CHECKS = [{'id': 'cli-package-tests', 'owner': 'cmd/baha package tests',
+    'command': 'go test ./cmd/baha -count=1'}]
+
 RUNTIME_PROVIDER_CHECKS = [
     {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
      'command': 'go test ./internal/runtime ./internal/health ./internal/providers/runtime/podman -count=1'},
@@ -163,12 +180,6 @@ APPID_ENV_ROBUST_TEST_REVIEWED_FILES = {
 # Exact final-check repair: await mandatory policy and bounded authenticated
 # API job readiness. The adapter comes only from the immutable trusted base;
 # the verifier and original identity guards stay unchanged. No runtime exception.
-WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD = '013d7e4d491afc58a31c7934b371ab0dc35f3346'
-WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    'scripts/pr-authenticated-results.py': 'modified',
-    'scripts/test_pr_authenticated_results.py': 'modified',
-}
 
 # Independently reviewed public MCP bootstrap: pin an omitted initial revision
 # through the existing read owner, then revalidate; apply consent stays strict.
@@ -299,21 +310,7 @@ DISPATCH_GATE_REF_REVIEWED_FILES = {
 }
 # Bind complete v0.4.26 resolver routing, final consumer origin and required
 # producer dependencies. Existing CI runs the real shell/approval regressions.
-ECOSYSTEM_RESOLVER_REVIEWED_HEAD = '46e80866db0dfeecc10c4472a0f1f585d11ff164'
-ECOSYSTEM_RESOLVER_REVIEWED_FILES = {
-    '.github/workflows/pre-release.yml': 'modified',
-    '.github/workflows/release.yml': 'modified',
-    '.github/workflows/targeted-demo-acceptance.yml': 'modified',
-    'scripts/pre-release-resume.py': 'modified',
-    'scripts/test_ecosystem_release_pins.py': 'modified',
-    'scripts/test_pre_release_resume.py': 'modified',
-}
 
-EVIDENCE_REUSE_REVIEWED_HEAD = 'c7e629c2876772493edc037769f1643c45c92fe8'
-EVIDENCE_REUSE_REVIEWED_FILES = {
-    'scripts/pre-release-resume.py': 'modified',
-    'scripts/test_pre_release_resume.py': 'modified',
-}
 
 # Narrow, audited read-only file allowlist. Lifecycle, backup/restore,
 # command routing and any newly added CLI source remain unresolved.
@@ -452,11 +449,6 @@ GC_999_REVIEWED_FILES = {
     '.github/workflows/ci.yml': 'modified',
     'scripts/test_artifact_gc.py': 'modified',
 }
-BINDING_PR_1007_REVIEWED_FILES = {
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-}
 
 
 RUNTIME_RESET_REVIEWED_HEAD = 'e6616b4504130d5143d32dd85acf65419e943f07'
@@ -475,14 +467,6 @@ MCP_PRECONDITIONS_REVIEWED_FILES = {
     'cmd/baha/mcp_preconditions_test.go': 'added',
 }
 
-EVIDENCE_RETENTION_REVIEWED_HEAD = '2e3325e142995aedd3d69a2e5569452127cbc58f'
-EVIDENCE_RETENTION_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    '.github/workflows/artifact-gc.yml': 'modified',
-    '.github/workflows/docker-runtime-acceptance.yml': 'modified',
-    '.github/workflows/podman-acceptance.yml': 'modified',
-    'scripts/test_artifact_gc.py': 'modified',
-}
 
 SQL_RUNTIME_LAYOUT_REVIEWED_HEAD = '887eece62ffdfe2ba694ceb1f332dc5a74ce7872'
 SQL_RUNTIME_LAYOUT_REVIEWED_FILES = {
@@ -506,33 +490,6 @@ CORE_991_REVIEWED_FILES = {
 # SHA commits cryptographically bind file contents and tree; path matching alone never qualifies.
 # This is NOT a general CI allowlist: missing, additional, renamed or unrelated
 # paths continue through the conservative unresolved classifier.
-AUDITED_CORE_893_PATHS = frozenset([
-    ".github/workflows/ci.yml",
-    ".github/workflows/pre-release-runtime-suite.yml",
-    "scripts/PR_RUNTIME_REQUEST_INTERFACE.md",
-    "scripts/documentation-audit.sh",
-    "scripts/pr-authenticated-results.py",
-    "scripts/pr-check-runner.py",
-    "scripts/pr-gate-dependencies.py",
-    "scripts/pr-required-final.py",
-    "scripts/pr-runtime-request.py",
-    "scripts/pr-selected-runtime-matrix.py",
-    "scripts/pr-verified-atomic-evidence.py",
-    "scripts/test_pr_authenticated_results.py",
-    "scripts/test_pr_check_runner.py",
-    "scripts/test_pr_gate_dependencies.py",
-    "scripts/test_pr_required_final.py",
-    "scripts/test_pr_runtime_request.py",
-    "scripts/test_pr_selected_runtime_matrix.py",
-    "scripts/test_pr_verified_atomic_evidence.py"
-])
-CORE_893_REVIEWED_HEAD_SHA = 'b0acfc32ddf4d940294a43f98db4618d3aba83cd'
-CORE_893_TRUSTED_MERGE_BASE_SHA = '14d864dfd38801a56e54901ea520f3b02db134b2'
-CORE_893_GATE_QUALIFICATION = {
-    'integration/static/public-contracts',
-    'atomic/docker/backup-restore',
-    'atomic/podman/backup-restore',
-}
 
 # Immutable independently reviewed #953 CI/executor change; source-tree binding
 # is the commit SHA, not a reusable matching-path exemption.  The stable
@@ -541,35 +498,14 @@ CORE_752_CI_HEAD = '211d19b13a206040f0f32506e5f5f85d4a467287'
 # Original review base is embodied in the authenticated reviewed commit ancestry.
 # The current merge-base changes after normal develop integration.
 CORE_752_CI_MERGE_BASE = 'e8b021fe63c61abc0990a560e5f2915bb70c2c13'
-CORE_752_CI_PATHS = frozenset({
-    '.github/workflows/ci.yml',
-    'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-    'scripts/test_pr_check_runner.py', 'scripts/test_pr_gate_plan.py',
-})
 
 # Independent manager qualification of the corrected #957 source. This record
 # is read only from trusted develop; it cannot authorize an unreviewed follow-up.
-WIZARD_CI_REVIEWED_HEAD = '1a94d171166d0402b95740a5f71b52482fb61d9a'
-WIZARD_CI_REVIEWED_PATHS = frozenset({
-    '.github/workflows/ci.yml', 'scripts/pr-check-runner.py',
-    'scripts/pr-gate-plan.py', 'scripts/test_pr_check_runner.py',
-    'scripts/test_pr_gate_plan.py', 'scripts/test_pr_required_final.py',
-    'scripts/test_pr_wizard_workflow_route.py',
-})
 
 # Independent Maintainer source review for registration CI (#974), not task
 # acceptance or authorization of future core-921 production registration edits.
 # Evidence: run 38929047340; actual hosted route pilots remain required after
 # integration. The immutable commit and exact statuses bind this bootstrap.
-REGISTRATION_CI_REVIEWED_HEAD = 'bb9c713ab0449b0c8243e7535a51b8e43195bf0c'
-REGISTRATION_CI_REVIEWED_FILES = {
-    'cmd/baha/registration_ci_readiness_test.go': 'added',
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_check_runner.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    'scripts/test_pr_registration_ci.py': 'added',
-}
 
 # Independently reviewed production registration, SDK error/consent semantics,
 # and coreless SQL fixture. Full native MCP run 39605072620 passed every step,
@@ -735,93 +671,25 @@ CORE_754_TEST_CHECK = 'wizard-core754-mcp-tests'
 PLANNING_SCRIPTS = {'scripts/pr-gate-plan.py', 'scripts/test_pr_gate_plan.py',
                     'scripts/pr-diff-base.py', 'scripts/test_pr_diff_base.py'}
 PLANNING_WORKFLOWS = {'.github/workflows/pages.yml'}
-# Receipt control-plane (v0.4.27 PR1/PR2): the three canonical scripts, their
-# focused regressions and the three receipt-*.yml control-plane workflows carry a
-# bounded, reviewed scope (canonical fields, attempt-1-only live pilot, dormant
-# job-level never-true guards, fail-closed base-SHA task link). These are exact
-# path-prefixes bound to existing CI/WIZARD/PYTEST classes, not a directory-level
-# exemption: a receipt production source change stays bound to pr-planner-tests
-# + focused script suite (PR1 core) and a receipt workflow change stays bound to
-# ci-policy + ci-actionlint + pr-planner-tests (PR2 control plane). Any path that
-# is not one of these exact prefixes keeps the fail-closed fallthrough below and
-# stays unresolved; an added, deleted, renamed or unreviewed receipt file is not
-# covered. This durable mapping covers every later PR1/PR2 receipt PR without a
-# per-candidate bootstrap and precedes the runtime-workflow / ci-executor
-# fallthroughs so it is not masked by them.
+# Commit receipts record only the merged SHA and PR. Their normal regression
+# tests run with CI helper changes; no separate evidence or approval path exists.
 RECEIPT_CONTROL_PLANE_SCRIPTS = frozenset({
-    'scripts/receipt_writer.py', 'scripts/receipt_verifier.py',
-    'scripts/receipt_tasklink.py', 'scripts/ci-workflow-policy.sh',
+    'scripts/receipt_writer.py', 'scripts/ci-workflow-policy.sh',
 })
 RECEIPT_CONTROL_PLANE_TEST_SCRIPTS = frozenset({
-    'scripts/test_receipt_writer.py', 'scripts/test_receipt_verifier.py',
-    'scripts/test_receipt_chain.py', 'scripts/test_ci_workflow_policy_receipts.py',
-    'scripts/test_receipt_tasklink.py',
-    'scripts/test_receipt_postrun.py',
+    'scripts/test_receipt_writer.py', 'scripts/test_receipt_postrun.py',
 })
-RECEIPT_CANDIDATE_REVIEWED_HEAD = '4f0ce579d3865b0fe86b431071ecf2af31203543'
-RECEIPT_CANDIDATE_REVIEWED_FILES = {
-    '.github/workflows/ci.yml': 'modified',
-    '.github/workflows/receipt-approval.yml': 'modified',
-    '.github/workflows/receipt-post-run.yml': 'modified',
-    '.github/workflows/receipt-shadow.yml': 'modified',
-    'docs/de/development/minimal-ci-receipts.md': 'modified',
-    'docs/development/minimal-ci-receipts.md': 'modified',
-    'evidence-r27/ci1-repair.md': 'added',
-    'evidence-r27/cy1.md': 'added',
-    'evidence-r27/cy3.md': 'added',
-    'evidence-r27/f1-fix.md': 'added',
-    'evidence-r27/f1x.md': 'added',
-    'evidence-r27/f1z2.md': 'added',
-    'evidence-r27/f345b.md': 'added',
-    'evidence-r27/f3b-fix.md': 'added',
-    'evidence-r27/f8-corrective.md': 'added',
-    'evidence-r27/g1x.md': 'added',
-    'evidence-r27/g1y.md': 'added',
-    'evidence-r27/g2x.md': 'added',
-    'evidence-r27/r5i.md': 'added',
-    'evidence-r27/s2-v3staging.md': 'added',
-    'evidence-r27/w1.md': 'added',
-    'evidence-r27/w3.md': 'added',
-    'evidence-r27/w4b3.md': 'added',
-    'evidence-r27/w4c.md': 'added',
-    'evidence-r27/w5.md': 'added',
-    'evidence-r27/x1-fix.md': 'added',
-    'evidence/g1/evidence-r27/g1.md': 'added',
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/receipt_tasklink.py': 'modified',
-    'scripts/receipt_verifier.py': 'modified',
-    'scripts/receipt_writer.py': 'modified',
-    'scripts/test_ci_workflow_policy_receipts.py': 'modified',
-    'scripts/test_pr_check_runner.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    'scripts/test_receipt_chain.py': 'modified',
-    'scripts/test_receipt_postrun.py': 'added',
-    'scripts/test_receipt_tasklink.py': 'modified',
-    'scripts/test_receipt_verifier.py': 'modified',
-    'scripts/test_receipt_writer.py': 'modified',
-}
-RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({
-    '.github/workflows/receipt-approval.yml',
-    '.github/workflows/receipt-post-run.yml',
-    '.github/workflows/receipt-shadow.yml',
-})
-PINBUMP_INVENTORY = {
-    'scripts/pr-check-runner.py': 'modified',
-    'scripts/pr-gate-plan.py': 'modified',
-    'scripts/test_pr_gate_plan.py': 'modified',
-    '.github/workflows/ci.yml': 'modified',
-    'scripts/test_pr_authenticated_results.py': 'modified',
-}
+RECEIPT_CONTROL_PLANE_WORKFLOWS = frozenset({'.github/workflows/receipt-post-run.yml'})
+
 CI_CHECKS = [
     {'id': 'pr-planner-tests', 'owner': 'scripts/test_pr_gate_plan.py',
      'command': 'python3 -m unittest scripts/test_pr_gate_plan.py'},
     {'id': 'ci-policy', 'owner': 'scripts/ci-workflow-policy.sh',
      'command': 'bash scripts/ci-workflow-policy.sh'},
-    {'id': 'ci-executor-verifier-tests', 'owner': 'core-893 CI executor/verifier',
-     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_pre_release_resume.py scripts/test_evidence_api_transport.py scripts/test_select_evidence_attempts.py'},
+    {'id': 'ci-executor-tests', 'owner': 'normal selected CI regressions',
+     'command': 'python3 scripts/pr-check-runner.py execute --check ci-executor-tests --repository .'},
     {'id': 'receipt-execution-tests', 'owner': 'v0.4.27 receipt control plane',
-     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_verifier.py scripts/test_receipt_chain.py scripts/test_ci_workflow_policy_receipts.py scripts/test_receipt_tasklink.py scripts/test_receipt_postrun.py'},
+     'command': 'PYTHONPATH=scripts python3 -m unittest scripts/test_receipt_writer.py scripts/test_receipt_postrun.py'},
 ]
 
 WORKFLOW_SYNTAX_CHECKS = [
@@ -878,127 +746,6 @@ def openbao_retry_checks(diff, repository='.', context_repository=None,
         return None
     return CODE_CHECKS + OPENBAO_CHECKS
 
-
-def trusted_binding_checks(diff, repository='.', context_repository=None,
-                           context_target_branch=None):
-    """Verify the frozen binding from the authenticated target, never PR content.
-
-    Re-run the real diff resolver so caller-supplied inventories, integration
-    parents and merge trees cannot substitute for Git evidence. This bounded
-    record enables only the three CI scripts, optionally with ci.yml and its
-    mandatory syntax check, through an exact immutable inventory. The pin-bump
-    inventory extends the allowed set with the same four CI paths plus the
-    authenticated-results test, still through an exact immutable tuple.
-    Hash the frozen reviewed blobs; later source may only add exact Git-computed
-    first-parent merges of authenticated target history. This permits strict
-    up-to-date integration without accepting candidate-authored follow-ups.
-    """
-    valid, _ = validated_diff(diff)
-    if not valid or diff['broad_required'] or not diff.get('integration_sha'):
-        return None
-    context_repository = (os.environ.get('GITHUB_REPOSITORY', '')
-                          if context_repository is None else context_repository)
-    context_target_branch = (os.environ.get('GITHUB_BASE_REF', '')
-                            if context_target_branch is None else context_target_branch)
-    if (context_repository != 'mcpdev80/baseharbor' or
-            context_target_branch != 'develop'):
-        return None
-
-    def git(*args):
-        return subprocess.run(['git', '-C', str(repository), *args],
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              check=True).stdout
-
-    try:
-        raw = git('show', diff['target_base_sha'] +
-                  ':docs/internal/ci-binding-qualifications.md').decode('utf-8')
-        blocks = re.findall(r'^```json\n(.*?)\n```$', raw,
-                            flags=re.MULTILINE | re.DOTALL)
-        # The trusted register may accumulate one entry per reviewed candidate.
-        # Every fenced block must be a complete, well-formed supported inventory;
-        # a stray fence, duplicate anchor or weakened
-        # record fails the whole register closed.
-        if not blocks or raw.count('```') != 2 * len(blocks):
-            return None
-
-        def unique_object(pairs):
-            result = {}
-            for key, value in pairs:
-                if key in result:
-                    raise ValueError('duplicate qualification key')
-                result[key] = value
-            return result
-
-        script_files = {path: 'modified' for path in (
-            'scripts/pr-check-runner.py', 'scripts/pr-gate-plan.py',
-            'scripts/test_pr_gate_plan.py')}
-        receipt_files = RECEIPT_CANDIDATE_REVIEWED_FILES
-        workflow_files = {**script_files, '.github/workflows/ci.yml': 'modified'}
-        pinbump_files = PINBUMP_INVENTORY
-        records = []
-        for block in blocks:
-            record = json.loads(block, object_pairs_hook=unique_object)
-            if not isinstance(record, dict):
-                return None
-            checks = (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                      if record.get('files') in (workflow_files, pinbump_files)
-                      else CI_CHECKS)
-            expected_ids = {check['id'] for check in checks}
-            if (not isinstance(record, dict) or set(record) != {
-                    'repository', 'target_branch', 'reviewed_head', 'files',
-                    'file_hashes', 'required_checks'} or
-                    record['repository'] != context_repository or
-                    record['target_branch'] != context_target_branch or
-                    not isinstance(record['reviewed_head'], str) or
-                    re.fullmatch(r'[0-9a-f]{40}', record['reviewed_head']) is None or
-                    record['files'] not in (script_files, receipt_files, workflow_files, pinbump_files) or
-                    not isinstance(record['file_hashes'], dict) or
-                    set(record['file_hashes']) != set(record['files']) or
-                    any(not isinstance(value, str) or
-                        re.fullmatch(r'[0-9a-f]{64}', value) is None
-                        for value in record['file_hashes'].values()) or
-                    not isinstance(record['required_checks'], list) or
-                    len(record['required_checks']) != len(expected_ids) or
-                    set(record['required_checks']) != expected_ids):
-                return None
-            records.append(record)
-        anchors = [record['reviewed_head'] for record in records]
-        if len(anchors) != len(set(anchors)):
-            return None
-        # Import the resolver beside this trusted planner, not from the PR tree.
-        import importlib.util
-        spec = importlib.util.spec_from_file_location('binding_diff', ROOT / 'pr-diff-base.py')
-        resolver = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(resolver)
-        actual = resolver.resolve_pr_diff(repository, diff['target_base_sha'],
-                                          diff['head_sha'], diff['integration_sha'])
-        if actual != diff or actual['broad_required']:
-            return None
-        changes = actual['changes']
-        # A register entry qualifies only through the existing review-ancestry
-        # and frozen-blob proof; entries not binding this exact candidate never
-        # contribute, so a missing entry keeps the conservative fallback.
-        for record in records:
-            if (len(changes) != len(record['files']) or
-                    {c.get('path'): c.get('status') for c in changes} != record['files']):
-                continue
-            if not core752_reviewed_merge_chain(
-                    diff['target_base_sha'], diff['head_sha'],
-                    record['reviewed_head'], repository):
-                continue
-            for path, digest in record['file_hashes'].items():
-                if (not isinstance(digest, str) or
-                        re.fullmatch(r'[0-9a-f]{64}', digest) is None or
-                        hashlib.sha256(git('cat-file', 'blob',
-                                           record['reviewed_head'] + ':' + path)).hexdigest() != digest):
-                    break
-            else:
-                return (CI_CHECKS + WORKFLOW_SYNTAX_CHECKS
-                        if record['files'] in (workflow_files, pinbump_files)
-                        else CI_CHECKS)
-    except (OSError, subprocess.CalledProcessError, ValueError, TypeError, KeyError):
-        return None
-    return None
 
 
 def plan(diff, requirements, mapping, repository='.',
@@ -1082,9 +829,6 @@ def plan(diff, requirements, mapping, repository='.',
         (DOCKER_RUNTIME_FIXTURE_REVIEWED_HEAD, DOCKER_RUNTIME_FIXTURE_REVIEWED_FILES,
          CI_CHECKS + CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS + WORKFLOW_SYNTAX_CHECKS,
          'reviewed native Docker fixture and authenticated eight-family runtime evidence'),
-        (WORKFLOW_POLICY_DEPENDENCY_REVIEWED_HEAD, WORKFLOW_POLICY_DEPENDENCY_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed final-job dependency on mandatory authenticated workflow policy'),
         (RETIREMENT_PREFERENCES_REVIEWED_HEAD, RETIREMENT_PREFERENCES_REVIEWED_FILES,
          CODE_CHECKS + CLI_CHECKS + WIZARD_BASE_CHECKS,
          'reviewed withdrawal preferences projection preserving canonical owners'),
@@ -1109,14 +853,6 @@ def plan(diff, requirements, mapping, repository='.',
          (DISPATCH_GATE_REF_REVIEWED_HEAD, DISPATCH_GATE_REF_REVIEWED_FILES,
           CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
           'reviewed bare-SHA dispatch input resolution before atomic gate checkout'),
-        (ECOSYSTEM_RESOLVER_REVIEWED_HEAD, ECOSYSTEM_RESOLVER_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed v0.4.26 immutable ecosystem resolver activation'),
-        (EVIDENCE_REUSE_REVIEWED_HEAD, EVIDENCE_REUSE_REVIEWED_FILES,
-         CI_CHECKS,
-         'Owner-qualified input-equivalent evidence reuse with authenticated original receipts'),
-        (EVIDENCE_RETENTION_REVIEWED_HEAD, EVIDENCE_RETENTION_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed evidence-retention source'),
         (RUNTIME_RESET_REVIEWED_HEAD, RUNTIME_RESET_REVIEWED_FILES,
          CI_CHECKS + WORKFLOW_SYNTAX_CHECKS, 'reviewed scoped-reset source'),
         (PODMAN_CONSENT_REVIEWED_HEAD, PODMAN_CONSENT_REVIEWED_FILES,
@@ -1137,9 +873,6 @@ def plan(diff, requirements, mapping, repository='.',
          (GC_999_REVIEWED_HEAD, GC_999_REVIEWED_FILES,
            CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
            'reviewed exact #999 GC evidence retention candidate'),
-        (RECEIPT_CANDIDATE_REVIEWED_HEAD, RECEIPT_CANDIDATE_REVIEWED_FILES,
-         CI_CHECKS + WORKFLOW_SYNTAX_CHECKS,
-         'reviewed exact 40-file R27 receipt candidate at 4f0ce579'),
      ):
         if (valid and not diff['broad_required'] and not unresolved and
                 identifiers['integration_sha'] is not None and
@@ -1254,52 +987,8 @@ def plan(diff, requirements, mapping, repository='.',
                             'lifecycle gates must run the new cmd/baha authoring tests']}
     # The exact reviewed orchestration bundle receives named targeted coverage,
     # not a directory-level security/evidence exception.
-    if (valid and not diff['broad_required'] and
-            identifiers['head_sha'] == CORE_893_REVIEWED_HEAD_SHA and
-            identifiers['merge_base_sha'] == CORE_893_TRUSTED_MERGE_BASE_SHA and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(AUDITED_CORE_893_PATHS) and
-            set(paths) == AUDITED_CORE_893_PATHS):
-        require(CI_CHECKS)
-        selected.update(CORE_893_GATE_QUALIFICATION)
-        absent = sorted(selected - available)
-        if absent:
-            unresolved.append('reviewed core-893 gates absent from trusted catalog: ' + ', '.join(absent))
-            selected.difference_update(absent)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'unresolved' if unresolved else 'resolved',
-                'unresolved_coverage': unresolved,
-                'broad_required': bool(unresolved),
-                'selected_gates': sorted(selected),
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['exact independently reviewed core-893 executor/evidence bundle; targeted native/static qualification required']}
     # This authority lives on trusted develop. Only the reviewed source or
     # proven clean first-parent merges from trusted target history qualify.
-    if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(REGISTRATION_CI_REVIEWED_FILES) and
-            set(paths) == set(REGISTRATION_CI_REVIEWED_FILES) and
-            all(ch.get('status') == REGISTRATION_CI_REVIEWED_FILES.get(ch.get('path'))
-                for ch in diff['changes']) and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'],
-                                         identifiers['head_sha'], REGISTRATION_CI_REVIEWED_HEAD)):
-        require(CI_CHECKS)
-        require(CODE_CHECKS)
-        require(CLI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Require every listed validation; exact reviewed source '
-                    'integration does not accept registration task or future handler changes.'),
-                'reasons': ['independently reviewed exact #974 registration CI source; '
-                            'mandatory CI/source/CLI checks plus hosted focused registration regressions']}
     # core-921 reviewed production registration coverage. No path-only approval:
     # the exact shared registration handlers, the golden contract/registry, the
     # CLI/MCP parity sources and the six EN/DE reference docs must arrive as this
@@ -1387,52 +1076,11 @@ def plan(diff, requirements, mapping, repository='.',
                             'protected tmp roots in internal/application test sources only']}
     # Reuse the existing clean trusted-target merge proof, bound to the exact
     # independently reviewed wizard CI commit and its complete seven-file diff.
-    if (valid and not diff['broad_required'] and not unresolved and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(WIZARD_CI_REVIEWED_PATHS) and
-            set(paths) == WIZARD_CI_REVIEWED_PATHS and
-            all(ch.get('status') == ('added' if ch.get('path') ==
-                'scripts/test_pr_wizard_workflow_route.py' else 'modified')
-                for ch in diff['changes']) and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'],
-                                         identifiers['head_sha'], WIZARD_CI_REVIEWED_HEAD)):
-        require(CI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['independently reviewed exact #957 wizard planner/executor bundle; '
-                            'focused hosted Go/workflow-route regressions and mandatory CI checks']}
     # Review-owned trusted policy for exact #953 commit. Never read a policy
     # record from PR head. The verified diff resolver validates integration
     # parents/tree separately; a moved target base is allowed, but PR content
     # and original merge-base remain immutable.
-    if (valid and not diff['broad_required'] and not unresolved and
-            core752_reviewed_merge_chain(identifiers['target_base_sha'], identifiers['head_sha']) and
-            identifiers['integration_sha'] is not None and
-            len(paths) == len(CORE_752_CI_PATHS) and
-            set(paths) == CORE_752_CI_PATHS and
-            all(ch.get('status') == 'modified' for ch in diff['changes'])):
-        require(CI_CHECKS)
-        return {'schema': 'baseharbor.pr-gate-plan/v1', **identifiers,
-                'mapping_schema': mapping['schema'], 'release': release,
-                'coverage_status': 'resolved', 'unresolved_coverage': [],
-                'broad_required': False, 'selected_gates': [],
-                'required_validation_checks': [validations[k] for k in sorted(validations)],
-                'validation_contract': ('Enforce all required_validation_checks independently of selected_gates; '
-                    'zero selected_gates is valid only when coverage_status is resolved. '
-                    'If unresolved, final check MUST fail closed; never treat as no checks '
-                    'or automatically run the complete release catalog.'),
-                'reasons': ['independently reviewed exact #953 CI executor and planner change; '
-                            'trusted CI validations and mandatory focused Python regressions']}
     binding_checks = (openbao_retry_checks(
-        diff, repository, context_repository, context_target_branch)
-        if not unresolved else None) or (trusted_binding_checks(
         diff, repository, context_repository, context_target_branch)
         if not unresolved else None)
     if binding_checks:
@@ -1644,27 +1292,11 @@ def plan(diff, requirements, mapping, repository='.',
         elif path.endswith('_test.go') and path.startswith('cmd/baha/') and \
                 all(p.endswith('_test.go') for p in paths) and \
                 not any(_is_reviewed_test_file(path) for path in paths):
-            # Pure cmd/baha test-only source (gatemap-r6): a PR that changes ONLY
-            # unit tests in the CLI package exercises existing CLI behaviour only
-            # and cannot mutate runtime/registration/authorizer semantics, so the
-            # relevant CLI-side qualification is the existing cli-gofmt formatting
-            # gate that the CI matrix already runs for every cmd/baha change
-            # (scripts/pr-gate-plan.py WIZARD_BASE_CHECKS['cli-gofmt'],
-            # .github/workflows/ci.yml cli-gofmt handler, 'gofmt -l cmd/baha').
-            # Bind the whole cmd/baha/*_test.go family to that EXISTING gate plus
-            # the standard Go build/vet/contract checks — no new gate, no
-            # widening.  Restricted to (a) test-only PRs and (b) test files that
-            # are NOT part of an exact reviewed test-candidate: an exact-HEAD
-            # reviewed test-candidate (e.g. APPID_FIX, a lone cmd/baha/
-            # app_workload_integration_test.go) keeps its own fail-closed
-            # ancestry contract and must stay unresolved for any other head, so
-            # such files fall through to the catch-all below instead of being
-            # swept into the generic gofmt binding.  Any other cmd/baha/*.go that
-            # is not a test stays on the cli-unresolved-runtime-impact catch-all
-            # below (fail-closed).  This branch must sit BEFORE that catch-all and
-            # AFTER the mcp_/registration clauses above so mcp_ and
-            # registration-mixed source is NOT swept in.
-            area = 'cli-test-gofmt-binding'
+            # Test-only CLI changes execute the package, including newly added
+            # regression tests outside the Guided family. Native opt-in tests
+            # keep their explicit runtime routes above.
+            area = 'cli-package-tests'
+            require(CLI_PACKAGE_CHECKS)
             require(CODE_CHECKS)
             require(CLI_CHECKS)
             require(WIZARD_BASE_CHECKS)
@@ -1833,6 +1465,14 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'resolver-routing-unresolved'
             require(RESOLVER_CHECKS)
             unresolved.append('unreviewed runtime resolver routing file needs targeted qualification: ' + path)
+        elif re.fullmatch(r'internal/delivery/[^/]+\.go', path):
+            area = 'delivery-package'
+            require(DELIVERY_PACKAGE_CHECKS)
+            require(CLI_CHECKS)
+        elif path in AUTHORITY_PACKAGE_PATHS:
+            area = 'authority-package'
+            require(AUTHORITY_PACKAGE_CHECKS)
+            require(CLI_CHECKS)
         elif path.startswith('contracts/') and path.endswith(('.go', '.json')):
             area = 'contract'
             require(CODE_CHECKS)
@@ -1860,10 +1500,9 @@ def plan(diff, requirements, mapping, repository='.',
             area = 'ci-planner'
             require(CI_CHECKS)
         elif path.startswith('.github/workflows/'):
-            area = 'runtime-workflow-unresolved'
+            area = 'ci-workflow'
             require(CI_CHECKS)
             require(WORKFLOW_SYNTAX_CHECKS)
-            unresolved.append('workflow execution/cleanup/evidence impact requires native qualification: ' + path)
         elif path in ('go.mod', 'go.sum'):
             # Module and dependency files: a bump changes exactly the Go build and
             # test surface, never product or gate behaviour. Bind it to the same
@@ -1877,10 +1516,12 @@ def plan(diff, requirements, mapping, repository='.',
             require(CLI_CHECKS)
         elif (path.startswith('scripts/ci-') or path.startswith('scripts/pr-') or
               path.startswith('scripts/test_pr_') or
-              path.startswith('scripts/verify-') or 'evidence' in path):
-            area = 'ci-executor-unresolved'
+              path.startswith('scripts/verify-') or
+              (path.startswith('scripts/') and path.endswith(('.py', '.sh', '.json', '.md'))) or
+              path in ('AGENTS.md', '.github/copilot-instructions.md') or
+              path.startswith('evidence-r27/') or path.startswith('evidence/')):
+            area = 'ci-executor'
             require(CI_CHECKS)
-            unresolved.append('CI execution/evidence impact requires specific qualification: ' + path)
         else:
             area = 'unresolved'
             unresolved.append('unknown impact for ' + path)
@@ -1922,7 +1563,8 @@ def main():
     # context yields an unresolved plan, never a trusted one.
     context_repository = os.environ.get('GITHUB_REPOSITORY', '').strip()
     context_target_branch = os.environ.get('GITHUB_BASE_REF', '').strip()
-    if not context_repository or not context_target_branch:
+    if (context_repository != 'mcpdev80/baseharbor' or
+            context_target_branch != 'develop'):
         raise SystemExit(
             'refusing to qualify without authenticated runner context: '
             'GITHUB_REPOSITORY=%r GITHUB_BASE_REF=%r'

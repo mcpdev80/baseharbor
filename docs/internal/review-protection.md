@@ -1,10 +1,10 @@
 # Review protection for develop (#895)
 
-## Current policy and verified enforcement — 2026-10-19
+## Current policy — 2026-11-03
 
 The current Owner delegation is defined in [Development process](../DEVELOPMENT_GUIDELINES.md#development-process). Marcel's authorized Codex execution through @mcpdev80 may merge a PR without another approving/code-owner review, including an authorized agent's own PR. Record Owner-authorized acceptance honestly; do not manufacture an independent or GitHub self-approval.
 
-Live REST reads confirm integration ruleset23754541 is active with one approving/code-owner/last-push review for ordinary contributors and User22537373 `pull_request` bypass; the connected account reports `pull_requests_only`. Separate active ruleset25223521 requires strict `PR Selected Checks` from integration15368, has no bypass actors, and reports `never`. No rule or required check was disabled for this documentation change. Repository delegation does not grant capabilities outside the repository or override tool/platform enforcement.
+All three Core rulesets are currently disabled under the Owner's CI repair instruction. Green checks remain mandatory in the development process, but do not claim that GitHub currently enforces them. Activation is a separate operation after CI works. The normal final job checks current dependency results; no CI manifest/evidence verifier or extra receipt approval is required. Repository delegation does not override actual tool/platform enforcement.
 
 ## Historical proposal — superseded enforcement snapshot
 

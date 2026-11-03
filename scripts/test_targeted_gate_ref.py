@@ -174,20 +174,13 @@ class WorkflowWiring(unittest.TestCase):
         description = triggers['workflow_dispatch']['inputs']['ref']['description']
         self.assertIn('short SHAs are resolved', description)
 
-    def test_suite_validates_ref_before_checkout_and_hardens_uploads(self):
+    def test_suite_validates_ref_before_checkout_without_evidence_uploads(self):
         steps = self.suite['jobs']['gate']['steps']
         names = [s.get('name') for s in steps]
         self.assertLess(names.index('Validate candidate ref before checkout'),
                         names.index('Checkout BaseHarbor candidate'))
-        for name in ('Upload demo runtime diagnostics', 'Upload atomic failure diagnostics'):
-            upload = next(s for s in steps if s.get('name') == name)
-            self.assertEqual(upload['with']['if-no-files-found'], 'error')
-            self.assertIn("steps.checkout.outcome == 'success'", upload['if'])
-        self.assertEqual([s['with']['if-no-files-found'] for s in steps
-                          if s.get('uses', '').startswith('actions/upload-artifact@')
-                          if isinstance(s.get('with'), dict) and 'if-no-files-found' in s['with']].count('warn'), 0)
-        preserve = next(s for s in steps if s.get('name') == 'Preserve demo runtime diagnostics')
-        self.assertIn('preserve-summary.txt', preserve['run'])
+        self.assertFalse(any('evidence' in str(s.get('with', {}).get('name', '')).lower()
+                             for s in steps if s.get('uses', '').startswith('actions/upload-artifact@')))
 
     def test_observability_gate_executes_fullstack_and_rejects_skip_or_failure(self):
         steps = self.suite['jobs']['gate']['steps']
