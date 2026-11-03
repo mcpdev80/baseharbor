@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"reflect"
 	"slices"
 
@@ -448,6 +450,9 @@ func appMachineChangeDesired(ctx context.Context, req appMachineDesiredChangeReq
 		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr, resultErr)
 	}
 	if executionErr != nil {
+		if os.Getenv("DIAG_EXEC") != "" {
+			fmt.Printf("DIAG_EXEC adapter executionErr=%v\n", executionErr)
+		}
 		return result, errors.Join(&appMachineError{Code: "partial"}, executionErr)
 	}
 	return result, nil
