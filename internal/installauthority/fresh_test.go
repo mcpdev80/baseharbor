@@ -51,11 +51,11 @@ func freshObserved(serial string) serviceaccess.CertificateStatus {
 // only success.
 func TestFreshRevokedStatusSecondStatesRejected(t *testing.T) {
 	tests := []struct {
-		name           string
-		ready          bool
-		revokedStatus  bool
+		name             string
+		ready            bool
+		revokedStatus    bool
 		revokedStatusErr error
-		want           error
+		want             error
 	}{
 		{"not revoked accepted", true, false, nil, nil},
 		{"revoked rejected", true, true, nil, serviceaccess.ErrForeignAuthority},
