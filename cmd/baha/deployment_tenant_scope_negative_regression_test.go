@@ -5,12 +5,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 // TestTenantScopeErrorRefusedAgainstExistingCoreOwner is the strict negative
@@ -238,32 +238,30 @@ func unwrapDeploymentError(err error) error {
 }
 
 // assertRejectionInChain verifies that the seam produced a genuine rejection and
-// that the rejection belongs to the full tenant-scope rejection chain, not a
-// nil pass and not an unrelated/soft error. Every class below is an acceptable
-// ablehnung for this negative regression:
+// that it belongs to the tenant-scope chain for THIS concrete fixture, not a
+// nil pass and not an unrelated/soft error.
 //
-//   - ErrDeploymentOwnerMissing — no authoritative installation owns the Target,
-//   - ErrDeploymentOwnerForeign — a foreign/rewritten installation cannot own it,
-//   - a provider-registry error (provider-registry scope mismatch),
-//   - a connector scope error (unreadable/corrupt node-connector enrollment),
-//   - an authenticated Connector session error (session unavailable).
+// The corrupt-scope fixture (TestTenantScopeErrorRefusedAgainstExistingCoreOwner)
+// provisions a REAL Core-owner on the Target runtime root so that
+// VerifyDeploymentOwner reaches the authoritative installation check and the
+// ONLY gate that can refuse the write is the connector-scope resolution for the
+// corrupt Access reference. That resolution propagates exactly
+// targetsession.ErrUnavailable ("authenticated Connector session is
+// unavailable") — never ErrDeploymentOwnerMissing (an owner IS present) and
+// never ErrDeploymentOwnerForeign (the installation is valid, not rewritten).
 //
-// The check is deliberately class-agnostic on the positive side (any of the
-// above) but strict on the "must reject" side: a nil error or any error that
-// matches none of the accepted classes fails the test. This closes the
-// "test passes on nil" anti-pattern the mission forbids.
+// The check is therefore strict on BOTH sides: it fails on nil (no soft pass on
+// admission) and requires errors.Is(err, targetsession.ErrUnavailable). A nil
+// error or any error that is not ErrUnavailable fails the test. This closes the
+// "test passes on nil" (and "test passes on the wrong rejection reason")
+// anti-pattern the mission forbids.
 func assertRejectionInChain(t *testing.T, ctx string, got error) {
 	t.Helper()
 	if got == nil {
-		t.Fatalf("%s: expected a rejection in the tenant-scope chain, got nil (admitted)", ctx)
+		t.Fatalf("%s: expected an ErrUnavailable rejection, got nil (admitted)", ctx)
 	}
 	cause := unwrapDeploymentError(got)
-	rejected := errors.Is(cause, deployment.ErrDeploymentOwnerMissing) ||
-		errors.Is(cause, deployment.ErrDeploymentOwnerForeign) ||
-		strings.Contains(cause.Error(), "provider-registry") ||
-		strings.Contains(cause.Error(), "connector") ||
-		strings.Contains(cause.Error(), "authenticated Connector session")
-	if !rejected {
-		t.Fatalf("%s: rejection %v is not one of the accepted tenant-scope chain classes", ctx, got)
+	if !errors.Is(cause, targetsession.ErrUnavailable) {
+		t.Fatalf("%s: rejection %v is not targetsession.ErrUnavailable", ctx, got)
 	}
 }
