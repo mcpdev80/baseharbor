@@ -120,15 +120,13 @@ Pre-release must pin and record both:
 
 Both complete journeys start immediately after source validation and candidate construction, alongside four light-gate lanes per runtime. Heavy gates use two lanes and start after their own runtime light matrix completes, without waiting for the other runtime or the independent reference journeys. HA groups subsequently use two lanes per runtime after their own heavy matrix completes. A reference journey can overlap those lanes, so these runtime matrices and journeys can use up to five Docker and five Podman jobs concurrently. Each job uses an isolated GitHub-hosted runner; the integration, static and adoption jobs have separate scheduling. A failed earlier phase does not suppress later independent gates.
 
-The targeted branch `runtime-validation/targeted/batch/remaining/<suffix>` runs the remaining native atomic diagnostics in one workflow with eight concurrent jobs. It derives its gate inventory from the current release requirements, interleaves Docker and Podman, and excludes the already checked guided gates. It does not grant release approval or replace the complete final evidence set.
+The targeted branch `runtime-validation/targeted/batch/remaining/<suffix>` runs the remaining native atomic diagnostics in one workflow with eight concurrent jobs. It derives its gate inventory from the current release requirements, interleaves Docker and Podman, and excludes the already checked guided gates. It does not grant release approval or replace the complete final test set.
 
 Static contract/DX gates run without provider containers. Docker and Podman gates run independently with the smallest declared resource profile for the behavior under test, including dedicated provider-semantic gates for durable key-value, MongoDB document storage and RabbitMQ queue/pubsub/stream semantics. A failed gate is debugged and repeated independently; successful unrelated gates are not rerun during diagnosis.
 
-Use GitHub Actions **Re-run failed jobs** for the same unchanged candidate. An evidence-only rerun may use successful gate artifacts from earlier attempts. The selector always uses the newest attempt of each logical gate, including journeys; a new failure cannot be hidden by an older success. Selected manifests must match the candidate, demo pin, workflow run, runtime/gate identity, artifact attempt and successful cleanup. Superseded artifacts remain available separately. Any source fix creates a new candidate and requires its own complete evidence.
+Use GitHub Actions **Re-run failed jobs** for the same unchanged candidate where appropriate. Job results are consumed directly through workflow dependencies. No evidence-only rerun, gate manifest or earlier artifact can turn missing or failing work into success. Any source fix changes the candidate and requires its affected tests.
 
-Failure summaries retain bounded, redacted original assertions before outer cleanup. Final evidence records per-job duration, retries, repeated failure classes and the longest jobs. Queue time is reported only when Actions supplies an actual job creation timestamp; it is otherwise unknown.
-
-The release-boundary approval is valid only when the complete expected atomic gate set is reproduced on one unchanged BaseHarbor candidate SHA and one pinned external demo SHA, every required gate reports success, and the immutable evidence manifest is complete. The final release workflow consumes that approval and must not rerun the same expensive acceptance work.
+Failure summaries retain bounded, redacted original assertions before cleanup. Logs remain diagnostic output; they are not downloaded and reinterpreted by a separate CI acceptance system.
 
 ## Product rule
 

@@ -320,7 +320,7 @@ else:
                     self.assertEqual('', environment, 'unverified image must never be exported')
                     self.assertFalse(binding.exists(), 'failed image proof emitted a success receipt')
 
-    def test_native_source_runtime_and_artifact_receipts_are_not_optional(self):
+    def test_native_source_runtime_and_test_execution_are_required(self):
         for receipt in ['source-sha.txt', 'source-tree.txt', 'go-version.txt',
                         'runtime-version.txt', 'rootless.txt', 'tests.jsonl',
                         'runtime-image-build-id.txt', 'runtime-image-id.txt',
@@ -329,9 +329,8 @@ else:
                         'runtime-source-binding.json']:
             self.assertIn(receipt, self.native)
         self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', self.native)
-        self.assertIn('if: always()', self.native)
-        self.assertIn('retention-days: 30', self.native)
-        self.assertIn('if-no-files-found: error', self.native)
+        self.assertIn('TestAppBackupRestoreCLIRealDisasterRecovery', self.native)
+        self.assertNotIn('actions/upload-artifact@', self.native)
 
 
 if __name__=="__main__":
