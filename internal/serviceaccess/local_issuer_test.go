@@ -191,3 +191,23 @@ func mustLoadCA(t *testing.T, i *LocalIssuer) *x509.Certificate {
 	}
 	return ca
 }
+
+// TestLocalIssuerRevokedStatusMissingCRLReturnsError proves the tri-state
+// consumption boundary fails closed on a missing CRL: RevokedStatus returns
+// err != nil (not (false, nil)), so a missing revocation list is treated as an
+// unreadable status and the connection is rejected on the verification path.
+func TestLocalIssuerRevokedStatusMissingCRLReturnsError(t *testing.T) {
+	i, err := EnsureLocalIssuer(filepath.Join(t.TempDir(), "pki"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := i.Issue(context.Background(), CertificateRequest{CommonName: "client", TTL: time.Hour})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No CRL published yet: the read-only RevokedStatus must reject (err != nil),
+	// never accept (false, nil).
+	if revoked, revErr := i.RevokedStatus(context.Background(), leaf.Serial); revoked || revErr == nil {
+		t.Fatal("missing local CRL did not fail closed through RevokedStatus")
+	}
+}

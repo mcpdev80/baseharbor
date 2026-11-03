@@ -99,7 +99,7 @@ func resolveManagementConnectionIssuer(ctx context.Context, resolved resolvedApp
 	// boundary so freshness is checked against when the connection was actually
 	// observed (observed.ObservedAt), not against a fresh time.Now() that would
 	// never distinguish a stale observation from a live one.
-	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity, observed.ObservedAt, time.Minute); err != nil {
+	if err := installauthority.Fresh(ctx, issuer, observed, observed.Identity, observed.ObservedAt, serviceaccess.DefaultObservationMaxAge); err != nil {
 		return nil, fmt.Errorf("management connection not verified as a live, current, non-revoked authority: %w", err)
 	}
 	return issuer, nil

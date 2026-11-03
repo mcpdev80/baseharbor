@@ -240,7 +240,7 @@ func (i *LocalIssuer) Issue(ctx context.Context, request CertificateRequest) (Is
 	if err != nil {
 		return IssuedCertificate{}, err
 	}
-	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter}, nil
+	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter, Reference: ca.SerialNumber.Text(16), IssuerNotAfter: ca.NotAfter}, nil
 }
 
 func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, request CertificateRequest) (IssuedCertificate, error) {
@@ -380,10 +380,13 @@ func (i *LocalIssuer) RevokedStatus(ctx context.Context, serial string) (bool, e
 		// status: fail closed rather than treat it as not-revoked.
 		return false, errMissingRevocationStatus
 	}
-	// A missing (absent) CRL is a valid, readable "not revoked" status, not an
-	// error: the issuer simply has not published any revocation yet.
+	// A missing (absent) CRL is an unreadable revocation status on the
+	// consumption path: r4 requires fail-closed rejection of a missing or
+	// unreadable local CRL, not a tolerated "not revoked". Only the first
+	// publication path (Revocations, tolerateMissing=true) may bootstrap a CRL
+	// from a missing one; every read-only consumption call rejects a missing CRL.
 	if list == nil {
-		return false, nil
+		return false, errMissingRevocationStatus
 	}
 	number, ok := new(big.Int).SetString(serial, 16)
 	if !ok || number.Sign() <= 0 || number.BitLen() > 159 {

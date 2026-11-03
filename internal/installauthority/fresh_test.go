@@ -41,7 +41,7 @@ func (f *fakeIssuer) RevokedStatus(ctx context.Context, serial string) (bool, er
 func freshObserved(serial string) serviceaccess.CertificateStatus {
 	return serviceaccess.CertificateStatus{
 		Identity:          "authoritative-connection",
-		IssuedCertificate: serviceaccess.IssuedCertificate{Serial: serial},
+		IssuedCertificate: serviceaccess.IssuedCertificate{Serial: serial, ExpiresAt: time.Now().UTC().Add(time.Hour)},
 	}
 }
 
@@ -51,11 +51,11 @@ func freshObserved(serial string) serviceaccess.CertificateStatus {
 // only success.
 func TestFreshRevokedStatusSecondStatesRejected(t *testing.T) {
 	tests := []struct {
-		name           string
-		ready          bool
-		revokedStatus  bool
+		name             string
+		ready            bool
+		revokedStatus    bool
 		revokedStatusErr error
-		want           error
+		want             error
 	}{
 		{"not revoked accepted", true, false, nil, nil},
 		{"revoked rejected", true, true, nil, serviceaccess.ErrForeignAuthority},

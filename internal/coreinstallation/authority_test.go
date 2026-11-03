@@ -60,9 +60,9 @@ func TestFreshWithinExpiresAt(t *testing.T) {
 func TestFreshExpiredPastExpiresAt(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	obs := serviceaccess.CertificateStatus{
-		Identity: "ref",
+		Identity:          "ref",
 		IssuedCertificate: serviceaccess.IssuedCertificate{ExpiresAt: now.Add(-2 * time.Hour)},
-		ObservedAt: now.Add(-2 * time.Hour),
+		ObservedAt:        now.Add(-2 * time.Hour),
 	}
 	// The observation is older than the freshness window: stale, not merely a
 	// past certificate expiry. Certificates normally expire in the future, so
@@ -203,8 +203,8 @@ func TestAuthoritativeConnectionMissingIssuerFailsClosed(t *testing.T) {
 func TestAuthoritativeConnectionZeroExpiryFailsClosed(t *testing.T) {
 	iss, ref := realIssuer(t)
 	obs := serviceaccess.CertificateStatus{
-		Identity:            ref,
-		IssuedCertificate:   serviceaccess.IssuedCertificate{}, // zero ExpiresAt
+		Identity:          ref,
+		IssuedCertificate: serviceaccess.IssuedCertificate{}, // zero ExpiresAt
 	}
 	// A zero observation time fails closed regardless of certificate expiry:
 	// freshness is observed-at based, not certificate-expiry based.

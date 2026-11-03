@@ -22,6 +22,12 @@ var (
 	// ErrInvalidObservation is returned when the observed connection carries a
 	// missing (zero) or future observation time.
 	ErrInvalidObservation = errors.New("invalid observed-at connection, not current READY")
+	// ErrExpiredAuthority is returned when the observed connection's certificate
+	// carries a zero or past expiry on the verification path: the observed CA
+	// certificate is not a live, current authority, so the path fails closed. This
+	// is the real certificate-lifetime bound, distinct from the observed-at
+	// freshness window (ErrStaleObservation).
+	ErrExpiredAuthority = errors.New("management connection certificate expired, not current, fails closed")
 )
 
 // Internal read-only revocation-status failures. The boundary treats any of
