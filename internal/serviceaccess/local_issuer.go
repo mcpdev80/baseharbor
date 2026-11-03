@@ -374,7 +374,7 @@ func (i *LocalIssuer) RevokedStatus(ctx context.Context, serial string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	list, err := i.revocations(ca)
+	list, err := i.revocations(ca, true)
 	if err != nil {
 		// An unparseable or unverifiable CRL is an unreadable revocation
 		// status: fail closed rather than treat it as not-revoked.
