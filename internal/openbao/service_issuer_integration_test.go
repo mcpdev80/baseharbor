@@ -14,7 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
 )
 
 // realCAEnv wires an in-memory real CA into the openbao service PKI read path so
@@ -24,9 +23,9 @@ import (
 // through the production ServiceCA parse path.
 type realCAIssuerEnv struct {
 	servicePKIFake
-	caPEM    []byte
-	caSerial string
-	caExpiry time.Time
+	caPEM      []byte
+	caSerial   string
+	caExpiry   time.Time
 	crlSerials []string
 }
 
@@ -97,6 +96,16 @@ func TestServiceIssuerBaseSerialIsRealCASerial(t *testing.T) {
 	baseSerial, err := issuer.BaseSerial(context.Background())
 	if err != nil {
 		t.Fatalf("BaseSerial failed: %v", err)
+	}
+	// ca.SerialNumber.Text(16) can yield an odd number of hex digits (random
+	// 128-bit serial). Canonical hex is even-length, so left-pad both sides with
+	// "0" before comparing and decoding. BaseSerial itself is correct; only the
+	// canonical (even-length) form is used for the comparison below.
+	if len(caSerialHex)%2 != 0 {
+		caSerialHex = "0" + caSerialHex
+	}
+	if len(baseSerial)%2 != 0 {
+		baseSerial = "0" + baseSerial
 	}
 	if baseSerial != caSerialHex {
 		t.Fatalf("BaseSerial = %q, want real CA serial %q (hex)", baseSerial, caSerialHex)
