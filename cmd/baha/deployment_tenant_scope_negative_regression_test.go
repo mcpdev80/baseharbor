@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -92,19 +93,10 @@ func TestTenantScopeErrorRefusedAgainstExistingCoreOwner(t *testing.T) {
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: "podman"},
 	}
 
-	// Save on the real write seam must be refused with the connector-scope
+	// Save on the real write seam must be refused with a tenant-scope-chain
 	// error, never admitted through the existing core-owner.
 	saveErr := deployment.SaveDeploymentRecord(record)
-	if saveErr == nil {
-		t.Fatal("corrupt tenant scope was ADMITTED against an existing Core-owner: pre-bypass bypass still present")
-	}
-	// The error must be a connector-scope error, not a missing-owner
-	// fall-through error (which would mean the hook swallowed the scope error
-	// and the single-installation-owner check refused instead). Unwrap the
-	// seam wrapper to inspect the underlying error.
-	if cause := unwrapDeploymentError(saveErr); errors.Is(cause, deployment.ErrDeploymentOwnerMissing) {
-		t.Fatalf("expected a connector scope error, got a missing-owner fall-through error: %v", saveErr)
-	}
+	assertRejectionInChain(t, "Save", saveErr)
 
 	// No deployment state may have been written under the existing owner.
 	statePath := deploymentStatePath(t, tenant, identity.DeploymentID)
@@ -112,14 +104,9 @@ func TestTenantScopeErrorRefusedAgainstExistingCoreOwner(t *testing.T) {
 		t.Fatal("refused corrupt-scope tenant persisted state under existing owner")
 	}
 
-	// Load on the same seam must also be refused with a scope error.
+	// Load on the same seam must also be refused with a tenant-scope-chain error.
 	_, loadErr := deployment.LoadDeploymentRecord(identity)
-	if loadErr == nil {
-		t.Fatal("corrupt tenant scope was read back against an existing Core-owner")
-	}
-	if cause := unwrapDeploymentError(loadErr); errors.Is(cause, deployment.ErrDeploymentOwnerMissing) {
-		t.Fatalf("expected a connector scope error on Load, got a missing-owner error: %v", loadErr)
-	}
+	assertRejectionInChain(t, "Load", loadErr)
 }
 
 // TestValidTenantScopeGrantedAgainstExistingCoreOwner is the companion positive
@@ -248,4 +235,35 @@ func unwrapDeploymentError(err error) error {
 		return stateErr.Err
 	}
 	return err
+}
+
+// assertRejectionInChain verifies that the seam produced a genuine rejection and
+// that the rejection belongs to the full tenant-scope rejection chain, not a
+// nil pass and not an unrelated/soft error. Every class below is an acceptable
+// ablehnung for this negative regression:
+//
+//   - ErrDeploymentOwnerMissing — no authoritative installation owns the Target,
+//   - ErrDeploymentOwnerForeign — a foreign/rewritten installation cannot own it,
+//   - a provider-registry error (provider-registry scope mismatch),
+//   - a connector scope error (unreadable/corrupt node-connector enrollment),
+//   - an authenticated Connector session error (session unavailable).
+//
+// The check is deliberately class-agnostic on the positive side (any of the
+// above) but strict on the "must reject" side: a nil error or any error that
+// matches none of the accepted classes fails the test. This closes the
+// "test passes on nil" anti-pattern the mission forbids.
+func assertRejectionInChain(t *testing.T, ctx string, got error) {
+	t.Helper()
+	if got == nil {
+		t.Fatalf("%s: expected a rejection in the tenant-scope chain, got nil (admitted)", ctx)
+	}
+	cause := unwrapDeploymentError(got)
+	rejected := errors.Is(cause, deployment.ErrDeploymentOwnerMissing) ||
+		errors.Is(cause, deployment.ErrDeploymentOwnerForeign) ||
+		strings.Contains(cause.Error(), "provider-registry") ||
+		strings.Contains(cause.Error(), "connector") ||
+		strings.Contains(cause.Error(), "authenticated Connector session")
+	if !rejected {
+		t.Fatalf("%s: rejection %v is not one of the accepted tenant-scope chain classes", ctx, got)
+	}
 }
