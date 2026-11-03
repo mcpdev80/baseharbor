@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"sort"
 
@@ -281,6 +282,9 @@ func appEditApplyConfirmed(ctx context.Context, controller appWizardController, 
 		Presentation: presentation,
 	}
 	if changeErr == nil && result.Status != "complete" {
+		if os.Getenv("DIAG_EXEC") != "" {
+			fmt.Printf("DIAG_EXEC result.Status=%v outcomes=%d result=%+v\n", result.Status, len(result.Outcomes), result)
+		}
 		return output, &appMachineError{Code: "partial"}
 	}
 	return output, changeErr
