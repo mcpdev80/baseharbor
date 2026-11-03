@@ -73,16 +73,14 @@ jobs:
         go-version-file: go.mod
         cache: false
     - name: Reset runtime state
-      if: inputs.reuse_from == ''
       id: reset
-      if: inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static')
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
     - name: Verify Podman Quadlet runtime
-      if: inputs.reuse_from == ''
       id: quadlet
-      if: inputs.runtime == 'podman'
+      if: inputs.reuse_from == '' && (inputs.runtime == 'podman')
       shell: bash
       run: |
         set -euo pipefail
@@ -108,21 +106,19 @@ jobs:
         chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
         echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
     - name: Download prebuilt candidate
-      if: inputs.reuse_from == ''
       id: candidate_artifact
-      if: inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime'
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact != '' && inputs.gate != 'rabbitmq-runtime' && inputs.gate != 'mongodb-runtime'
         && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery' && inputs.gate != 'loki-runtime'
-        && inputs.gate != 'tempo-runtime'
+        && inputs.gate != 'tempo-runtime')
       uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
       with:
         name: ${{ inputs.candidate_artifact }}
         path: ${{ runner.temp }}/pre-release-candidate
     - name: Load prebuilt runtime image
-      if: inputs.reuse_from == ''
       id: load_image
-      if: inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' &&
+      if: inputs.reuse_from == '' && (inputs.candidate_artifact != '' && inputs.runtime != 'static' && inputs.gate != 'rabbitmq-runtime' &&
         inputs.gate != 'mongodb-runtime' && inputs.gate != 'durable-key-value' && inputs.gate != 'control-plane-recovery'
-        && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime'
+        && inputs.gate != 'loki-runtime' && inputs.gate != 'tempo-runtime')
       shell: bash
       run: |
         set -euo pipefail
@@ -177,9 +173,8 @@ jobs:
         echo "profile=$(jq -r --arg gate "$GATE" '.[$gate].profile' "$registry")" >> "$GITHUB_OUTPUT"
         echo "capabilities=$(jq -c --arg gate "$GATE" '.[$gate].capabilities' "$registry")" >> "$GITHUB_OUTPUT"
     - name: Run static gate
-      if: inputs.reuse_from == ''
       id: static_gate
-      if: inputs.runtime == 'static'
+      if: inputs.reuse_from == '' && (inputs.runtime == 'static')
       shell: bash
       env:
         GATE: ${{ inputs.gate }}
@@ -208,9 +203,8 @@ jobs:
           *) echo "Unsupported static gate: $GATE" >&2; exit 2 ;;
         esac
     - name: Run runtime gate
-      if: inputs.reuse_from == ''
       id: runtime_gate
-      if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime')
       timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
         == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities'
         && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8
@@ -397,9 +391,8 @@ jobs:
         done
         echo "::endgroup::"
     - name: Run provider integration gate
-      if: inputs.reuse_from == ''
       id: integration_gate
-      if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration'
+      if: inputs.reuse_from == '' && (inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'integration')
       shell: bash
       env:
         BASEHARBOR_TEST_RUNTIME: ${{ inputs.runtime }}
@@ -474,9 +467,8 @@ jobs:
       run: python scripts/ci-assertion-summary.py "$RUNNER_TEMP/gate-output.log" "$RUNNER_TEMP/assertion-summary.json"
         | tee -a "$GITHUB_STEP_SUMMARY"
     - name: Cleanup runtime state
-      if: inputs.reuse_from == ''
       id: cleanup
-      if: always() && inputs.runtime != 'static'
+      if: inputs.reuse_from == '' && (always() && inputs.runtime != 'static')
       shell: bash
       timeout-minutes: 3
       run: bash scripts/ci-runtime-reset.sh "${{ inputs.runtime }}"
