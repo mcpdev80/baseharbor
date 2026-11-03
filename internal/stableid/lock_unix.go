@@ -1,6 +1,6 @@
 //go:build !windows
 
-package coreinstallation
+package stableid
 
 import (
 	"golang.org/x/sys/unix"
