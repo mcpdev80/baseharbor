@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
@@ -75,9 +76,78 @@ func assertTLSHandshakeCause(t *testing.T, err error) {
 	}
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && opErr.Op == "remote error" {
-		return
+		// On a *net.OpError with Op=="remote error" the refusal alert is wrapped
+		// one or two levels deeper. Classify by the INNER cause's TLS/x509-tauglichkeit,
+		// not merely by the Op-zeichenkette: a real client-cert refusal surfaces as
+		// *net.OpError{Op:"read", Err: <tls alert/verification>} or a concrete
+		// crypto/tls or crypto/x509 error, whereas a fabricated non-TLS error
+		// (e.g. a plain *errors.errorString) must be REJECTED.
+		var alertErr *tls.AlertError
+		var recordHeader *tls.RecordHeaderError
+		var certVerify *tls.CertificateVerificationError
+		var unknownAuthority *x509.UnknownAuthorityError
+		var certInvalid *x509.CertificateInvalidError
+		if errors.As(err, &alertErr) ||
+			errors.As(err, &recordHeader) ||
+			errors.As(err, &certVerify) ||
+			errors.As(err, &unknownAuthority) ||
+			errors.As(err, &certInvalid) {
+			return
+		}
+		// The inner error of a real client-cert refusal is a crypto/tls transport
+		// error. In go1.26 the concrete refusal type is the unexported
+		// tls.alert (wrapping the "tls: certificate required" message); older
+		// versions export *tls.AlertError, *tls.RecordHeaderError or
+		// *tls.CertificateVerificationError. The discriminator is that the inner
+		// error's dynamic type belongs to the crypto/tls package (its %T string
+		// carries the "tls." qualifier) — NOT a bare *errors.errorString such as
+		// the fabricated "not a TLS error".
+		if opErr.Err != nil && isTLSInnerType(opErr.Err) {
+			return
+		}
 	}
 	t.Fatalf("error %q is not a classified TLS/handshake/verification cause", err.Error())
+}
+
+// isTLSInnerType reports whether err is a crypto/tls transport-layer refusal
+// (e.g. the unexported tls.alert, or an exported *tls.AlertError /
+// *tls.RecordHeaderError / *tls.CertificateVerificationError) or a crypto/x509
+// verification failure. A bare *errors.errorString (the fabricated non-TLS
+// case) is rejected.
+func isTLSInnerType(err error) bool {
+	if err == nil {
+		return false
+	}
+	var alertErr *tls.AlertError
+	var recordHeader *tls.RecordHeaderError
+	var certVerify *tls.CertificateVerificationError
+	var unknownAuthority *x509.UnknownAuthorityError
+	var certInvalid *x509.CertificateInvalidError
+	if errors.As(err, &alertErr) ||
+		errors.As(err, &recordHeader) ||
+		errors.As(err, &certVerify) ||
+		errors.As(err, &unknownAuthority) ||
+		errors.As(err, &certInvalid) {
+		return true
+	}
+	// crypto/tls refuses the handshake before dispatch; its refusal type carries
+	// the "tls." qualifier in its fully-qualified name (e.g. *tls.alert), which
+	// distinguishes it from an unrelated transport error.
+	typeName := fmt.Sprintf("%T", err)
+	for _, name := range []string{
+		"tls.alert",
+		"tls.AlertError",
+		"tls.RecordHeaderError",
+		"tls.CertificateVerificationError",
+		"x509.UnknownAuthorityError",
+		"x509.CertificateInvalidError",
+		"x509.UnhandledCriticalExtension",
+	} {
+		if strings.Contains(typeName, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // testCA is a throwaway PKI used to drive a real mutual-TLS handshake against a
@@ -564,11 +634,37 @@ func TestMutualTLSRejectsMissingClientCertificate(t *testing.T) {
 	// execute handler — the wrong recorder — and proved nothing about the route
 	// Check() actually drove. Both flags must stay false on a refused handshake.
 	assertTLSHandshakeCause(t, err)
+	// Negative readyReached: on the refused handshake the /readyz route Check()
+	// drives was never entered (readyReached==false).
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a client presenting no certificate (entered=%v)", recorder.entered.Load())
 	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a client presenting no certificate (HandlerReached=%v)", got)
+	}
+	// Positive readyReached (counter-flag): on valid material the same /readyz
+	// route Check() drives must be entered (readyReached==true).
+	{
+		ca2 := newTestCA(t)
+		client2 := ca2.workloadClient(t, workloadSPIFFE)
+		certPath2, keyPath2 := ca2.clientCertPaths(t, client2)
+		server2, _, rec2 := newMutualTLSServerWithHandler(t, ca2)
+		defer server2.Close()
+		c2, cerr := NewClient(ClientConfig{
+			URL:      server2.URL,
+			CAFile:   ca2.caCertPath,
+			CertFile: certPath2,
+			KeyFile:  keyPath2,
+		})
+		if cerr != nil {
+			t.Fatalf("NewClient: %v", cerr)
+		}
+		if cerr := c2.Check(context.Background()); cerr != nil {
+			t.Fatalf("readyz over mutual-TLS: %v", cerr)
+		}
+		if !rec2.entered.Load() {
+			t.Fatalf("readyz check-path recorder must be entered on valid material (entered=%v)", rec2.entered.Load())
+		}
 	}
 }
 
@@ -658,11 +754,37 @@ func TestMutualTLSRejectsForeignClientCA(t *testing.T) {
 	// handler (executeReached==false). Both flags must stay false on a refused
 	// handshake — observing only the execute handler was the wrong-recorder bug.
 	assertTLSHandshakeCause(t, err)
+	// Negative readyReached: on the refused foreign-CA handshake the /readyz
+	// route Check() drives was never entered (readyReached==false).
 	if recorder.entered.Load() {
 		t.Fatalf("readyz check-path recorder must not be entered by a refused foreign-CA handshake (entered=%v)", recorder.entered.Load())
 	}
 	if got := handler.HandlerReached.Load(); got {
 		t.Fatalf("handler must not be reached by a refused TLS handshake (HandlerReached=%v)", got)
+	}
+	// Positive readyReached (counter-flag): on valid material the same /readyz
+	// route Check() drives must be entered (readyReached==true).
+	{
+		ca2 := newTestCA(t)
+		client2 := ca2.workloadClient(t, workloadSPIFFE)
+		certPath2, keyPath2 := ca2.clientCertPaths(t, client2)
+		server2, _, rec2 := newMutualTLSServerWithHandler(t, ca2)
+		defer server2.Close()
+		c2, cerr := NewClient(ClientConfig{
+			URL:      server2.URL,
+			CAFile:   ca2.caCertPath,
+			CertFile: certPath2,
+			KeyFile:  keyPath2,
+		})
+		if cerr != nil {
+			t.Fatalf("NewClient: %v", cerr)
+		}
+		if cerr := c2.Check(context.Background()); cerr != nil {
+			t.Fatalf("readyz over mutual-TLS: %v", cerr)
+		}
+		if !rec2.entered.Load() {
+			t.Fatalf("readyz check-path recorder must be entered on valid material (entered=%v)", rec2.entered.Load())
+		}
 	}
 }
 
