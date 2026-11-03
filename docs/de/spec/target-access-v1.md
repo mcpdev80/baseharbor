@@ -14,6 +14,56 @@ Transporte, die bereits ausgewählte, bereits genehmigte, gebundene Beförderung
 
 Keine Achse ersetzt die andere.
 
+## Zuständigkeitsgrenze (Installation vs. Managerverbindung vs. Ziel)
+
+Die Zuständigkeit ist dem Transportmodell übergeordnet; sie ist selbst kein
+Transport. Drei unabhängige Auswahlen, nie verwechselt:
+
+```text
+installation  (one per machine root, opaque UUID — the durable authority)
+   ├── management-connection  (how a remote client reaches the selected Core)
+   └── target                 (the admitted environment Core operates on)
+```
+
+- **Installation** ist die einzige dauerhafte Autorität. Sie wird von
+  `internal/coreinstallation` verwaltet (`installation_id`, `owner=baseharbor`,
+  `placement=shared`, Fähigkeiten `{sql,secrets,identity}`). Ihre Auswahl
+  `{target, runtime, machineRole, ha}` ist nach der Persistierung unveränderlich;
+  eine widersprüchliche Auswahl wird abgelehnt, nicht ersetzt.
+- **Managerverbindung** ist, wie ein Remote-Client das ausgewählte Core
+  adressiert. Sie ist einer der oben genannten Zielzugangsanbieter (z. B.
+  `baseharbor-node-connector` oder `native-api`). Sie ist weder die Installation
+  noch das Ziel.
+- **Ziel** ist das admitted Environment. Es trägt keine Autorität über die
+  Installationidentität oder das Consent.
+
+Die lokale Direktausführung adressiert das ausgewählte Core **direkt** über denselben
+semantischen Kern, ohne Login/Server-Pflichtbundel oder ein unbedingtes
+SQL/Secrets/Identity-Stack. Remote-Clients **adressieren** das ausgewählte Core
+durch seine Managerverbindung; sie werden niemals zur Autorität der Installation
+und fallen niemals zurück auf lokale Ausführung.
+
+Eine maßgebliche State-/Lock-Autorität verwaltet jedes Managed Deployment: die
+Core verwaltet Deployment-State direkt (`internal/deployment`), und die
+Target-Konfigurationsmutation nimmt einen einzigen Besitzer über `.installation.lock`
++ `coreinstallation.AcquireStateFileLock`). Die Lifecycle-Sperren-Primitiven sitzen in der stdlib-only Leaf `internal/stableid` und wurden verhaltengleich dorthin verlagert (von `coreinstallation`), um den Import-Zyklus `coreinstallation -> serviceaccess` aufzubrechen; `coreinstallation` exportiert beide mit unveränderten Signaturen erneut. Es gibt keinen zweiten lokalen Besitzer
+keine Reconciliation zwischen einem „lokalen Cache" und einer „lokalen Wahrheit".
+
+Remote-Clients besitzen niemals maßeblichen Zustand. Kein maßeblicher Remote-Zustand
+wird auf Entwickler-Workstations, NFS, Home-Directory-Synchronisierung,
+Baha-to-Baha-Föderation oder sonstiger lokaler Kopie gespeichert. Eine gecachte
+„last-known"-Beobachtung ist eine veraltete Beobachtung mit eigener
+`observed-at`-Frische; bei fehlerhafter Live-Beobachtung wird sie als
+veraltet/abgelehnt gemeldet und niemals als „READY" geltend gemacht. Eine
+fehlende, fremde oder abgelaufene Managerverbindung schließt fehl. Eine
+fehlende oder fremde Session wählt niemals eine lokale Laufzeit. Eine veraltete
+Plan/Consent, eine inkompatible Revision, eine fremde Revision/Consent, eine
+verlorene Antwort, ein Prozess-Neustart, ein nicht erreichbares Ziel oder ein
+revoziertes Gerät schließen alle fehl.
+
+Siehe [ADR 0021](../decisions/0021-one-installation-authority.md) für den vollen
+Zuständigkeitsvertrag.
+
 ## Zielmodell
 
 Das bestehende Target-Modell bleibt maßgeblich:

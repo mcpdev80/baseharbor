@@ -154,6 +154,17 @@ func deploymentTargetFromDir(deploymentDir string) (string, bool) {
 	return "", false
 }
 
+// testHookAfterGuardRead is a package-internal test seam (production path keeps
+// it nil, so no behaviour changes): it fires inside SaveDeploymentRecord exactly
+// after the one-writer guard has read the persisted previous record (the guard
+// has established previousExists and the authoritative owner) and immediately
+// before the preferences-retention re-read. A test uses it to deterministically
+// mutate the on-disk record — e.g. delete deployment.json to reproduce a record
+// that vanishes between the two in-process reads — so the real SaveDeploymentRecord
+// path (not just the loaders in isolation) can be asserted fail-closed. Style
+// follows the existing cmd/baha observedAt seam.
+var testHookAfterGuardRead func()
+
 type DeploymentIdentity struct {
 	DeploymentID  string `json:"deployment_id"`
 	ApplicationID string `json:"application_id"`
@@ -202,9 +213,11 @@ type AppliedDeployment struct {
 }
 
 type ObservedDeployment struct {
-	State      string    `json:"state,omitempty"`
-	Ready      bool      `json:"ready,omitempty"`
-	VerifiedAt time.Time `json:"verified_at,omitempty"`
+	State      string                       `json:"state,omitempty"`
+	Ready      bool                         `json:"ready,omitempty"`
+	Conflict   bool                         `json:"conflict,omitempty"`
+	Owner      delivery.ReconciliationOwner `json:"owner,omitempty"`
+	VerifiedAt time.Time                    `json:"verified_at,omitempty"`
 }
 
 type DeploymentRecord struct {
@@ -215,6 +228,21 @@ type DeploymentRecord struct {
 	Applied                    AppliedDeployment  `json:"applied"`
 	Observed                   ObservedDeployment `json:"observed,omitempty"`
 }
+
+// ErrConflictingOneWriter is returned when a deployment record being applied
+// observes two active reconciliation owners for the same resource set. This is
+// ADR 0022 §2: ambiguous ownership fails closed at the apply path, before any
+// state is written.
+var ErrConflictingOneWriter = errors.New(
+	"one writer per resource: conflicting reconciliation owners observed, refusing to apply deployment record",
+)
+
+// ErrUnauthorizedMutation is returned when a direct (BaseHarbor-owned) mutation
+// is applied while an external reconciler already owns the resource. ADR 0022 §2
+// refuses direct mutation of a resource under active external ownership.
+var ErrUnauthorizedMutation = errors.New(
+	"one writer per resource: external reconciler active, direct mutation refused",
+)
 
 type DeploymentRecordStateError struct {
 	Identity DeploymentIdentity
@@ -306,17 +334,90 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err != nil {
 		return err
 	}
+	// ADR 0022 §2: the one-writer guard observes an authoritative resource owner,
+	// not the caller-supplied Observed block. A caller can forge
+	// record.Observed.Owner (e.g. Owner=baseharbor with Mode=direct) to slip past
+	// the guard, so the persisted previous record is read here — before the guard
+	// and before any state is written — and its reconciliation-owner observation
+	// governs. The previous record is the real owner observed before this
+	// mutation; the caller value can never change the outcome.
+	previousOwner, previousConflict, previousExists, loadErr := loadPersistedOwnerForGuard(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"))
+	if !previousExists && loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return loadErr
+	}
+	// Guard observation: the persisted owner governs when a previous record
+	// exists; otherwise the applied selection's mode fixes the owner (a direct
+	// (BaseHarbor-owned) apply has no prior external owner, so the guarded direct
+	// happy path stays green). The caller-supplied Observed.Owner is never used.
+	// The persisted owner is normalised before the guard: a value that is neither
+	// "" nor a recognised owner (baseharbor|external) — a corrupt or unknown
+	// persisted owner — is normalised to "" (unset) by the same rule
+	// Selection.Normalize applies to selections, so it neither silently blocks nor
+	// silently attests an owner. An absent or corrupt persisted owner therefore
+	// defers to the applied selection's mode.
+	guardOwner := record.Applied.Delivery.Owner
+	if previousExists {
+		if normalised := normalisePersistedOwner(previousOwner); normalised != "" {
+			guardOwner = delivery.ReconciliationOwner(normalised)
+		}
+	}
+	guardRecord := record
+	guardRecord.Observed.Owner = guardOwner
+	// Resolve the authoritative conflict for the guard: only a conflict observed
+	// in the persisted previous record counts. On a first save (no previous
+	// record) the caller-supplied Conflict is discarded, never honoured — the
+	// claim that a caller cannot drive a rejection on first write holds. On a
+	// subsequent save the persisted/previous value governs and the caller value
+	// is overwritten (not merely ORed). The caller-supplied Conflict is thus
+	// never trusted at first or subsequent save.
+	if previousExists {
+		guardRecord.Observed.Conflict = previousConflict
+	} else {
+		guardRecord.Observed.Conflict = false
+	}
+	if guardErr := refuseOneWriterMutation(guardRecord); guardErr != nil {
+		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "conflict", Err: guardErr}
+	}
+	// Test seam (package-internal only, production path untouched): fired exactly
+	// after the guard-read (previousExists + persisted owner established) and
+	// before the retention re-read, mirroring the cmd/baha observedAt seam style.
+	// A test may use it to deterministically mutate the on-disk record (e.g.
+	// delete it to reproduce the vanish-between-reads race) between the two
+	// in-process reads. nil default means no observable behaviour change.
+	if testHookAfterGuardRead != nil {
+		testHookAfterGuardRead()
+	}
+	if err := validateRemoteProject(record); err != nil {
+		return err
+	}
 	// Existing lifecycle callers reconstruct records. Preserve separately owned
-	// desired preferences unless an explicit replacement (including []) is supplied.
+	// desired preferences unless an explicit replacement (including []) is
+	// supplied. The retention is applied to guardRecord (not only to record)
+	// because guardRecord is the copy that gets serialised below; otherwise a
+	// lifecycle save with nil preferences would silently drop the previously
+	// persisted preferences — the exact data-loss regression this guards.
 	if record.DesiredProviderPreferences == nil {
-		previous, loadErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
-		if loadErr == nil {
-			if previous.Identity.ApplicationID != record.Identity.ApplicationID || previous.Identity.Environment != record.Identity.Environment {
-				return errors.New("cannot retain preferences from a different deployment owner")
+		if previousExists {
+			// Identity/preferences retention re-reads the previous record through
+			// the full loader (owner validation is the guard's job, done above via
+			// loadPersistedOwnerForGuard). A corrupt persisted owner does not block
+			// retention of the separately owned preferences; the guard already
+			// resolved the authoritative owner from the raw persisted value.
+			prevForRetention, retErr := loadDeploymentRecordFile(record.Identity.Target, record.Identity.DeploymentID, filepath.Join(root, "deployment.json"), nil)
+			if retErr == nil {
+				if prevForRetention.Identity.ApplicationID != record.Identity.ApplicationID || prevForRetention.Identity.Environment != record.Identity.Environment {
+					return errors.New("cannot retain preferences from a different deployment owner")
+				}
+				record.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
+				guardRecord.DesiredProviderPreferences = prevForRetention.DesiredProviderPreferences
+			} else if retErr != nil {
+				// previous record exists (the guard load confirmed it above) but
+				// the full loader rejects it now — including os.ErrNotExist, because
+				// the record vanished between the guard-load and this retention-load.
+				// Fail closed: never silently drop previously owned preferences or
+				// skip identity validation. No silent fallback.
+				return fmt.Errorf("cannot retain preferences: previous record unreadable: %w", retErr)
 			}
-			record.DesiredProviderPreferences = previous.DesiredProviderPreferences
-		} else if !errors.Is(loadErr, os.ErrNotExist) {
-			return loadErr
 		}
 	}
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
@@ -325,7 +426,16 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
+	// Persist the GUARDED record, not the caller-supplied one. The guard above
+	// resolved the authoritative owner into guardRecord (and carried any prior
+	// Conflict flag); the retention above restored owned preferences into
+	// guardRecord too. Serialising `record` here would persist the
+	// caller-supplied Observed.Owner (which a delegated update can forge) and,
+	// worse, the caller-supplied preferences (dropping retained ones); serialise
+	// guardRecord so the persisted owner and retained preferences are canonical.
+	// When the guard refuses a mutation the file is never written (store bytes
+	// unchanged).
+	data, err := json.MarshalIndent(guardRecord, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode deployment record: %w", err)
 	}
@@ -392,6 +502,34 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 		}
 	}
 	return record, nil
+}
+
+// loadPersistedOwnerForGuard reads the reconciliation owner and the conflict
+// flag from the persisted previous deployment record WITHOUT running the full
+// validate() path, so a corrupt or unrecognised persisted owner (e.g. a value
+// that is neither baseharbor nor external) can still be observed and normalised
+// before the one-writer guard. It fails closed on a missing, unparseable, or
+// structurally-broken record (identity/version/JSON failures), i.e. it only
+// returns a usable owner for a structurally-valid record whose persisted owner
+// value may be corrupt. os.ErrNotExist is preserved as a nil owner with a
+// non-nil error so the guard can distinguish "no previous record" from "previous
+// record with a corrupt owner".
+func loadPersistedOwnerForGuard(target, deploymentID, path string) (owner string, conflict bool, exists bool, err error) {
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return "", false, false, readErr
+	}
+	var record DeploymentRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return "", false, false, err
+	}
+	if record.Version != DeploymentRecordVersion {
+		return "", false, false, errors.New("unsupported deployment record version")
+	}
+	if record.Identity.Target != target || record.Identity.DeploymentID != deploymentID {
+		return "", false, false, errors.New("deployment record identity does not match storage path")
+	}
+	return string(record.Observed.Owner), record.Observed.Conflict, true, nil
 }
 
 func DeleteDeploymentRecord(id DeploymentIdentity) error {
@@ -552,4 +690,44 @@ func SourceAvailable(source DeploymentSource) bool {
 	}
 	info, err := os.Stat(source.Repository)
 	return err == nil && info.IsDir()
+}
+
+// refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
+// active reconciliation owner per managed resource set. It runs after the
+// applied selection's single-record validation and before any state is written.
+//
+// It observes the deployment's own observed state: a recorded conflict (two
+// active owners for the same resource set) fails closed, and a direct
+// (BaseHarbor-owned) mutation is refused while an external reconciler already
+// owns the resource. An absent observed state (direct mode, no external owner)
+// is the normal happy path and passes.
+func refuseOneWriterMutation(record DeploymentRecord) error {
+	applied := record.Applied.Delivery
+	observed := record.Observed
+
+	// Conflict observation wins closed: two active owners for one resource set.
+	if observed.Conflict {
+		return ErrConflictingOneWriter
+	}
+	// Direct mutation while an external reconciler already owns the resource.
+	if applied.Mode == delivery.ModeDirect && observed.Owner == delivery.OwnerExternal {
+		return ErrUnauthorizedMutation
+	}
+	return nil
+}
+
+// normalisePersistedOwner mirrors Selection.Normalize for a persisted
+// reconciliation owner read from a previous deployment record: it trims and
+// lower-cases the value, and collapses any value that is neither "" nor a
+// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner —
+// to "" (unset). This keeps the one-writer guard from either silently blocking
+// (an unknown owner that is neither direct- nor delegated-legal) or silently
+// attesting an owner that the validate() switch would otherwise reject, so the
+// absent/corrupt value defers to the applied selection's mode.
+func normalisePersistedOwner(owner string) string {
+	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
+	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {
+		return ""
+	}
+	return string(normalised)
 }

@@ -43,6 +43,7 @@ jobs:
       with:
         ref: ${{ inputs.ref }}
         persist-credentials: false
+        fetch-depth: 0
     - name: Prepare verified rootless runtime
       if: inputs.runtime != 'static'
       run: bash scripts/ci-core-rootless-runtime.sh
@@ -51,7 +52,7 @@ jobs:
       shell: bash
       run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
     - name: Set up Go
-      if: inputs.candidate_artifact == '' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
+      if: inputs.candidate_artifact == '' || inputs.gate == 'backup-restore' || inputs.gate == 'observability' || inputs.gate == 'lifecycle' || inputs.gate
         == 'rabbitmq-runtime' || inputs.gate == 'mongodb-runtime' || inputs.gate == 'durable-key-value' || inputs.gate
         == 'control-plane-recovery' || inputs.gate == 'loki-runtime' || inputs.gate == 'tempo-runtime'
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -189,7 +190,7 @@ jobs:
     - name: Run runtime gate
       id: runtime_gate
       if: inputs.runtime != 'static' && steps.resource_profile.outputs.class == 'runtime'
-      timeout-minutes: ${{ inputs.gate == 'backup-restore' && 40 || inputs.gate == 'observability' && 25 || inputs.gate
+      timeout-minutes: ${{ inputs.gate == 'backup-restore' && 55 || inputs.gate == 'observability' && 25 || inputs.gate
         == 'lifecycle' && 35 || steps.resource_profile.outputs.profile == 'recovery' && 20 || inputs.gate == 'data-capabilities'
         && 25 || steps.resource_profile.outputs.profile == 'data' && 20 || inputs.gate == 'security' && 12 || 8
         }}
@@ -198,6 +199,7 @@ jobs:
         CANDIDATE_SHA: ${{ steps.candidate.outputs.sha }}
         PR_BASE_SHA: ${{ inputs.trusted_base_sha }}
         EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         GATE: ${{ inputs.gate }}
         RUNTIME: ${{ inputs.runtime }}
       run: |
@@ -214,12 +216,44 @@ jobs:
         fi
         cd "$workdir"
         env             "${prebuilt[@]}"             BASEHARBOR_SOURCE_REF="$CANDIDATE_SHA"             BASEHARBOR_RUNTIME_IMAGE="$BASEHARBOR_RUNTIME_IMAGE"             BASEHARBOR_TEST_RUNTIME="${{ inputs.runtime }}"             DEMO_ATOMIC_GATE=1             ARTIFACT_DIR="$ARTIFACT_DIR"             bash scripts/acceptance.sh "$GATE"
+        if [ "$GATE" = backup-restore ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+          cd "$GITHUB_WORKSPACE"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "$PR_BASE_SHA"
+          git show "$PR_BASE_SHA:scripts/pr-runtime-source.py" > "$RUNNER_TEMP/pr-runtime-source.py"
+          python3 "$RUNNER_TEMP/pr-runtime-source.py" --repository "$GITHUB_WORKSPACE" \
+            --event-base "$EVENT_BASE_SHA" --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" --candidate "$CANDIDATE_SHA"
+          if git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- cmd/baha/app_backup_restore_integration_test.go; then
+            backup_changed=false
+          else
+            diff_status=$?
+            [ "$diff_status" -eq 1 ] || exit "$diff_status"
+            backup_changed=true
+          fi
+          if [ "$backup_changed" = true ]; then
+            bash scripts/ci-runtime-reset.sh "$RUNTIME"
+            unset BASEHARBOR_TARGET
+            export XDG_CONFIG_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/config"
+            export XDG_DATA_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/data"
+            export XDG_CACHE_HOME="$RUNNER_TEMP/baseharbor-backup-cli-xdg/cache"
+            BASEHARBOR_APP_BACKUP_ACCEPTANCE=true \
+              go test ./cmd/baha -run '^TestAppBackupRestoreCLIRealDisasterRecovery$' \
+                -count=1 -timeout 35m -v | tee "$RUNNER_TEMP/backup-cli-follow-up.log"
+            grep -Eq '^=== RUN +TestAppBackupRestoreCLIRealDisasterRecovery$' "$RUNNER_TEMP/backup-cli-follow-up.log"
+            grep -Eq '^--- PASS: TestAppBackupRestoreCLIRealDisasterRecovery([[:space:]]|$)' "$RUNNER_TEMP/backup-cli-follow-up.log"
+          fi
+        fi
         if [ "$GATE" = lifecycle ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
           git fetch --no-tags origin "$PR_BASE_SHA"
+          git show "$PR_BASE_SHA:scripts/pr-runtime-source.py" > "$RUNNER_TEMP/pr-runtime-source.py"
+          python3 "$RUNNER_TEMP/pr-runtime-source.py" --repository "$GITHUB_WORKSPACE" \
+            --event-base "$EVENT_BASE_SHA" --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" --candidate "$CANDIDATE_SHA"
           changed="$RUNNER_TEMP/native-integration-changed.txt"
           git diff --no-renames --name-only "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
             cmd/baha/app_repository_integration_test.go \
@@ -258,8 +292,11 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
           git fetch --no-tags origin "$PR_BASE_SHA"
+          git show "$PR_BASE_SHA:scripts/pr-runtime-source.py" > "$RUNNER_TEMP/pr-runtime-source.py"
+          python3 "$RUNNER_TEMP/pr-runtime-source.py" --repository "$GITHUB_WORKSPACE" \
+            --event-base "$EVENT_BASE_SHA" --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" --candidate "$CANDIDATE_SHA"
           if git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- \
             ':(glob)internal/health/podman_*.go' \
             ':(glob)internal/providers/runtime/podman/*.go' \
@@ -289,8 +326,11 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
           [[ "$PR_BASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$PR_BASE_SHA" = "$EVENT_BASE_SHA"
           git fetch --no-tags origin "$PR_BASE_SHA"
+          git show "$PR_BASE_SHA:scripts/pr-runtime-source.py" > "$RUNNER_TEMP/pr-runtime-source.py"
+          python3 "$RUNNER_TEMP/pr-runtime-source.py" --repository "$GITHUB_WORKSPACE" \
+            --event-base "$EVENT_BASE_SHA" --base "$PR_BASE_SHA" \
+            --head "$PR_HEAD_SHA" --candidate "$CANDIDATE_SHA"
           if git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- internal/logs/render.go; then
             logs_changed=false
           else
@@ -364,7 +404,14 @@ jobs:
             ;;
           control-plane-recovery)
             BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true \
-              go test -p 1 ./cmd/baha -count=1 -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -v
+            BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE=true \
+              go test -p 1 ./cmd/baha -count=1 -timeout 40m \
+                -run '^(TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile|TestSingleControlPlaneRestartRotationAndCleanup)$' \
+                -v | tee "$RUNNER_TEMP/control-plane-recovery.log"
+            for name in TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile TestSingleControlPlaneRestartRotationAndCleanup; do
+              grep -Eq "^=== RUN +${name}$" "$RUNNER_TEMP/control-plane-recovery.log"
+              grep -Eq "^--- PASS: ${name}([[:space:]]|$)" "$RUNNER_TEMP/control-plane-recovery.log"
+            done
             ;;
           loki-runtime)
             BASEHARBOR_LOGS_INTEGRATION=1 \

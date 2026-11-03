@@ -44,6 +44,8 @@ func TestSignedCSRRejectsForeignAuthorityKeyAndUntrustedMetadata(t *testing.T) {
 				material.Serial = "ffff"
 			case "expiry":
 				material.ExpiresAt = material.ExpiresAt.Add(time.Second)
+			case "zero-expiry":
+				material.ExpiresAt = time.Time{}
 			case "leading-pem-garbage":
 				material.Certificate = append([]byte("SECRET\n"), material.Certificate...)
 			case "trailing-pem":
@@ -59,5 +61,38 @@ func TestSignedCSRRejectsForeignAuthorityKeyAndUntrustedMetadata(t *testing.T) {
 				t.Fatal("invalid authority material accepted")
 			}
 		})
+	}
+}
+
+func TestSignedCSRExpiryFailsZeroAndPastOnSingleSharedLine(t *testing.T) {
+	authority := serviceissuer.New(t)
+	identity := "spiffe://baseharbor/platform/connectors/tenant/target/node"
+	uri, _ := url.Parse(identity)
+	_, key, _ := ed25519.GenerateKey(rand.Reader)
+	raw, err := x509.CreateCertificateRequest(rand.Reader, &x509.CertificateRequest{URIs: []*url.URL{uri}}, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := serviceaccess.CSRSigningRequest{Identity: identity, CSRPEM: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: raw}), TTL: time.Hour}
+	issued, err := authority.SignCSR(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trust, _ := authority.TrustBundle(context.Background())
+
+	now := time.Now().UTC()
+
+	// Zero ExpiresAt must be rejected (not silently treated as valid).
+	zero := issued
+	zero.ExpiresAt = time.Time{}
+	if err := serviceaccess.ValidateSignedCSR(request, zero, trust, now); err == nil {
+		t.Fatal("zero-value ExpiresAt accepted on wrapper path")
+	}
+
+	// Past ExpiresAt must be rejected.
+	past := issued
+	past.ExpiresAt = now.Add(-time.Minute)
+	if err := serviceaccess.ValidateSignedCSR(request, past, trust, now); err == nil {
+		t.Fatal("past ExpiresAt accepted on wrapper path")
 	}
 }

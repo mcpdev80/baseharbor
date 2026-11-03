@@ -66,3 +66,19 @@ The server requires TLS and uses TLS 1.2 or newer. A missing or invalid certific
 ## Shutdown
 
 The main `baha` process converts SIGINT and SIGTERM into context cancellation. `baha serve` then performs a bounded graceful HTTP shutdown before closing its PostgreSQL pool.
+
+## Authority boundary (server vs local execution)
+
+The control-plane server is a remote boundary. It addresses the selected
+installation authority, which owns authoritative deployment, provider, identity,
+consent-revision and mutation state for its admitted Targets.
+
+Local direct execution is independent from the server being present or reachable:
+it reuses the same semantic Core (`internal/coreinstallation`,
+`internal/deployment`) without mandating the OIDC/PostgreSQL/operator boundary the
+remote API requires. A remote client that cannot reach the selected installation
+addressing through its management connection fails closed; it never substitutes
+local execution for a missing foreign or expired remote authority, and a cached
+last-known state is a stale `observed-at` observation, never current `READY`.
+
+See [ADR 0021](../decisions/0021-one-installation-authority.md).

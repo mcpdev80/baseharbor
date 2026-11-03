@@ -2,6 +2,12 @@
 
 Die normale CI, Pre-Release und Release führen ihre erforderlichen Tests direkt aus. Fehlgeschlagene, abgebrochene oder fehlende Pflichtjobs blockieren den Workflow über normale Abhängigkeiten und die abschließende Ergebnisprüfung. Die CI lädt keine Gate-Manifeste herunter, bewertet abgeschlossene Actions-Läufe nicht erneut und verwendet keine zusätzliche Evidence- oder Receipt-Freigabekette.
 
+## Wann Prüfungen laufen
+
+Normale Branch-Pushes starten keine CI. Draft-PRs prüfen nur Workflow-Regeln, Quellformatierung und Lesbarkeit. Beim Markieren als prüfbereit laufen die ausgewählten Checks; weitere Pushes auf einen prüfbereiten PR wiederholen die betroffenen Prüfungen. Lokale Commits vor dem Push bündeln. Ein Merge nach `develop` schreibt die Receipt ohne doppelten Source-&-Quality-Lauf. Explizite Validierungsbranches und manuelle Validierung bleiben verfügbar.
+
+Ein gültiger geänderter Pfad ohne enge Zuordnung wählt vollständige Go-Unit-Tests, Vet und Build aus; Änderungen in Produkt-/Runtime-Bereichen zusätzlich Docker-/Podman-Lifecycle-Prüfungen. Ungültige Quellidentität, Diffs, Pfade oder Katalogkonfiguration bleiben Fehler. Der Fallback startet niemals automatisch die vollständige Release-Matrix.
+
 ## Commit-Vermerk
 
 Nach einem autorisierten Merge nach `develop` schreibt `receipt-post-run.yml` genau eine kanonische JSON-Datei nach `baseharbor-plan`:
