@@ -343,6 +343,109 @@ func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
 	}
 }
 
+// TestDeploymentOwnerMissingOnExistingRecordSeam covers the "missing owner WITH
+// an existing record" case: a record is saved against a valid single owner, then
+// only the Core installation.json (the installation-owner material) is removed
+// while the record file survives on disk. The public seams must fail closed with
+// the specific ErrDeploymentOwnerMissing (not a silent empty listing, not merely
+// any non-nil error), and the on-disk record bytes must be unchanged by every
+// operation — Load, Save with nil preferences, and ListDeployments. This proves
+// the seam rejects a deployment whose installation owner is gone but whose record
+// still exists, rather than leaking the record or rewriting it.
+func TestDeploymentOwnerMissingOnExistingRecordSeam(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	data := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	target := "local"
+	provisionOwnerForTarget(t, target)
+
+	// (1) Save a real record against the valid owner through the real save path.
+	identity := testDeploymentIdentity(t, target, "app-missing-owner", "dev")
+	if err := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: identity,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}); err != nil {
+		t.Fatalf("save record against owned target failed: %v", err)
+	}
+
+	// Capture the record bytes so we can prove no seam mutates them.
+	root, rootErr := TargetStateRoot(target)
+	if rootErr != nil {
+		t.Fatalf("resolve data root for %s: %v", target, rootErr)
+	}
+	recordPath := filepath.Join(root, "deployments", identity.DeploymentID, "deployment.json")
+	beforeBytes, readErr := os.ReadFile(recordPath)
+	if readErr != nil {
+		t.Fatalf("read saved record bytes: %v", readErr)
+	}
+	if len(beforeBytes) == 0 {
+		t.Fatal("saved record wrote no bytes")
+	}
+
+	// (2) Remove ONLY the installation.json (the installation-owner material)
+	// while the record file remains untouched on disk — exactly the "missing
+	// owner with an existing record" case.
+	ownerRuntime := filepath.Join(root, "runtime")
+	installationPath := filepath.Join(ownerRuntime, "installation.json")
+	if _, statErr := os.Stat(installationPath); statErr != nil {
+		t.Fatalf("installation.json expected before removal: %v", statErr)
+	}
+	if err := os.Remove(installationPath); err != nil {
+		t.Fatalf("remove installation.json: %v", err)
+	}
+	// The record file must still exist — proving the record survives the owner
+	// removal (as in the real scenario).
+	if _, recStat := os.Stat(recordPath); recStat != nil {
+		t.Fatalf("record must survive installation removal: %v", recStat)
+	}
+
+	// (3) LOAD must fail closed with the SPECIFIC missing-owner error and leave
+	// the record bytes unchanged.
+	_, loadErr := LoadDeploymentRecord(identity)
+	if loadErr == nil {
+		t.Fatal("LoadDeploymentRecord admitted a record whose owner is missing")
+	}
+	if !errors.Is(loadErr, ErrDeploymentOwnerMissing) {
+		t.Fatalf("load with missing owner must be ErrDeploymentOwnerMissing, got: %#v", loadErr)
+	}
+	if after, aerr := os.ReadFile(recordPath); aerr != nil || !bytes.Equal(beforeBytes, after) {
+		t.Fatalf("load mutated record: readErr=%v before=%q after=%q", aerr, beforeBytes, after)
+	}
+
+	// (3) SAVE with nil preferences must reject (fail closed) and leave the
+	// record bytes unchanged.
+	saveErr := SaveDeploymentRecord(DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: identity,
+		Source:   DeploymentSource{Kind: "repository"},
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	})
+	if saveErr == nil {
+		t.Fatal("SaveDeploymentRecord with missing owner did not reject")
+	}
+	if !errors.Is(saveErr, ErrDeploymentOwnerMissing) {
+		t.Fatalf("save with missing owner must be ErrDeploymentOwnerMissing, got: %#v", saveErr)
+	}
+	if after, aerr := os.ReadFile(recordPath); aerr != nil || !bytes.Equal(beforeBytes, after) {
+		t.Fatalf("save mutated record: readErr=%v before=%q after=%q", aerr, beforeBytes, after)
+	}
+
+	// (3) ListDeployments must fail closed with the SPECIFIC missing-owner error
+	// — never a silent empty listing — and never mutate the record bytes.
+	if _, listErr := ListDeployments(target); listErr == nil {
+		t.Fatal("ListDeployments returned a silent empty listing for a missing owner")
+	} else if !errors.Is(listErr, ErrDeploymentOwnerMissing) {
+		t.Fatalf("list with missing owner must be ErrDeploymentOwnerMissing, got: %#v", listErr)
+	}
+	if after, aerr := os.ReadFile(recordPath); aerr != nil || !bytes.Equal(beforeBytes, after) {
+		t.Fatalf("list mutated record: readErr=%v before=%q after=%q", aerr, beforeBytes, after)
+	}
+}
+
 // xdgDataRoot resolves the canonical targets/<target> data root this test's
 // XDG_DATA_HOME maps to, mirroring DataRoot for a target.
 func xdgDataRoot(t *testing.T, target string) string {
