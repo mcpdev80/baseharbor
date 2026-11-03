@@ -1,32 +1,21 @@
-# PR runtime request handoff for #896 (v1)
+# PR runtime request interface
 
-This is the narrow integration boundary between #893 and #896. The producer is
-`scripts/pr-runtime-request.py` at the reviewed #930 SHA, using trusted
-`pr-gate-plan/v1`, the actual versioned release requirements and verified
-immutable Demo, Console and Connector pins.
+`scripts/pr-runtime-request.py` selects existing Docker/Podman gates from the
+trusted plan and release requirements. Every request contains the exact target
+base, head, merge base, integration commit and required consumer source pins.
+It contains no test result, receipt or evidence reference.
 
-- Each `baseharbor.pr-runtime-request/v1` object identifies one selected,
-  existing Docker/Podman gate and exact target base, head, merge base,
-  integration and consumer commits. It is **not** authorization to execute
-  PR head code or proof of a completed test.
-- #896 owns admission, runner tenancy and isolation: one disposable target per
-  PR/run/attempt/gate, unique namespace/ports/volumes/networks and all provider,
-  secret and recovery state, plus bounded cleanup even on failure/cancellation.
-  Do not use privileged self-hosted access or secrets with untrusted PR code.
-  Forks remain unprivileged. Independent lanes must not cancel each other.
-- The runner result is **not** a free-form PR-controlled success JSON.
-  #893 consumes job conclusion and authenticated existing verifier evidence:
-  exact request input identity, run/attempt, repository/workflow provenance,
-  artifact digest, selected gate ID and result. Missing, stale, failed,
-  skipped, cancelled, timed-out or unverifiable evidence blocks
-  `PR Selected Checks`.
-- Any candidate binary/image must be built or proven reused for the exact
-  integration SHA and immutable dependencies. Cache is not evidence.
-  Candidate preparation must not depend on unrelated docs/snapshot checks.
-- #896 returns isolated runner helpers, focused negative/isolation fixtures and
-  two small Docker/Podman pilot lanes with cleanup evidence in a separate PR.
-  It must not edit #893's `ci.yml` or its final-check implementation.
-  #893 then integrates authenticated evidence and qualifies the targeted
-  Backup/Restore path. Until then required runtime gates remain blocked.
+`scripts/pr-runner-isolation.py` admits only the matching GitHub-hosted,
+credential-free PR event from GitHub's local event metadata. Repository identity,
+Owner PR, branch, source commits and run/attempt must match. Forks and self-hosted
+runners cannot enter this execution path. No Actions API witness is queried.
 
-This contract adds no runner, gate, evidence authority or execution permission.
+Each PR/run/attempt/gate has its own disposable target and workspace, namespace,
+ports, volumes, networks, provider, secret and recovery state. Atomic capacity
+limits never evict peers. Cleanup retains the lease until all its owned runtime
+resources are absent; foreign resources remain untouched.
+
+CI waits for the normal selected jobs through `needs` and checks their direct
+results. Failed, missing, skipped, cancelled or timed-out required jobs block the
+final check. Binary/image inputs must belong to the exact integration source.
+There are no gate manifests, artifact result verification or retained results.

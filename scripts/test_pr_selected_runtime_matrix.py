@@ -32,6 +32,15 @@ class RuntimeMatrix(unittest.TestCase):
         selected=workflow.split("  pr_runtime_selected:",1)[1].split("  pr_selected_final:",1)[0]
         self.assertIn("max-parallel: 2",selected)
 
+    def test_executor_job_fetches_the_source_used_by_runtime_regressions(self):
+        workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
+        match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
+        block=workflow.split('            ci-executor-tests|',1)[1].split('              ;;',1)[0]
+        self.assertIsNotNone(match)
+        self.assertIn('git fetch --no-tags origin ' + match.group(1), block)
+        self.assertLess(block.index('git fetch --no-tags origin ' + match.group(1)),
+                        block.index('execute --check "$VALIDATION"'))
+
     def test_actual_workflow_pinned_helper_schedules_all_three(self):
         workflow=(Path(__file__).resolve().parent.parent/".github/workflows/ci.yml").read_text()
         match=re.search(r'git show ([0-9a-f]{40}):scripts/pr-selected-runtime-matrix\.py',workflow)
@@ -320,7 +329,7 @@ else:
                     self.assertEqual('', environment, 'unverified image must never be exported')
                     self.assertFalse(binding.exists(), 'failed image proof emitted a success receipt')
 
-    def test_native_source_runtime_and_artifact_receipts_are_not_optional(self):
+    def test_native_source_runtime_and_test_execution_are_required(self):
         for receipt in ['source-sha.txt', 'source-tree.txt', 'go-version.txt',
                         'runtime-version.txt', 'rootless.txt', 'tests.jsonl',
                         'runtime-image-build-id.txt', 'runtime-image-id.txt',
@@ -329,9 +338,8 @@ else:
                         'runtime-source-binding.json']:
             self.assertIn(receipt, self.native)
         self.assertIn('test "$(git rev-parse HEAD)" = "$GITHUB_SHA"', self.native)
-        self.assertIn('if: always()', self.native)
-        self.assertIn('retention-days: 30', self.native)
-        self.assertIn('if-no-files-found: error', self.native)
+        self.assertIn('TestAppBackupRestoreCLIRealDisasterRecovery', self.native)
+        self.assertNotIn('actions/upload-artifact@', self.native)
 
 
 if __name__=="__main__":
