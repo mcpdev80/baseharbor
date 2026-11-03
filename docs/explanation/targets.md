@@ -250,7 +250,7 @@ inbound management listener.
 Connector-local tests and CI do not establish BaseHarbor support by themselves.
 Live admission, renewal, revocation and Docker/Podman support require pinned
 Core -> Connector -> runtime evidence; see the
-[Target Access contract](../spec/target-access-v1.md) and the
+[Target Access contract](https://github.com/mcpdev80/baseharbor/blob/HEAD/docs/spec/target-access-v1.md) and the
 [platform support matrix](../reference/platform-support.md).
 
 ## Isolated state override
