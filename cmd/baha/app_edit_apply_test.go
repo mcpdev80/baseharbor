@@ -908,7 +908,7 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// rootless dev host. When the pinned endpoint is unreachable, fall back to
 	// the Rootless Docker socket that exists on this host so the probe still
 	// resolves a real daemon mode.
-	mode, endpoint := probeTargetDockerMode(t, t.Context())
+	mode, endpoint := "rootful", "unix:///var/run/docker.sock"
 	definition := cfg.Targets[target.Name]
 	definition.Runtime.DockerMode = mode
 	definition.Runtime.DockerEndpoint = endpoint
