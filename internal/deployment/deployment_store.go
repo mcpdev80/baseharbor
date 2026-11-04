@@ -227,6 +227,13 @@ type DeploymentRecord struct {
 	Source                     DeploymentSource   `json:"source"`
 	Applied                    AppliedDeployment  `json:"applied"`
 	Observed                   ObservedDeployment `json:"observed,omitempty"`
+	// Consent is the explicit operator/automation consent that pins the exact
+	// validated candidate submission. It is additive and nil on any record
+	// written before this field existed: existing records stay loadable and the
+	// retention/normalization path is unchanged. Only a brand-new repository
+	// apply mutation requires a non-nil consent; restored or observed-only
+	// records are never re-validated against it.
+	Consent *delivery.CandidateConsent `json:"consent,omitempty"`
 }
 
 // ErrConflictingOneWriter is returned when a deployment record being applied
