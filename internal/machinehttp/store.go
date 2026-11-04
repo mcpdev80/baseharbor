@@ -2,6 +2,7 @@ package machinehttp
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -56,27 +57,36 @@ func journalDir(stateRoot string) string {
 
 type executionRecord struct {
 	execution   machine.Execution
+	requestID   string
+	inputSHA256 string
 	events      []machine.MachineEvent
 	nextSeq     uint64
 	subscribers map[chan machine.MachineEvent]struct{}
 }
 
+type persistedRequestCommitment struct {
+	executionID string
+	operationID string
+	inputSHA256 string
+	actor       machine.ActorRef
+	context     machine.OperationContext
+}
+
 type executionStore struct {
 	mu      sync.RWMutex
 	records map[string]*executionRecord
-	// operationsIndex maps an accepted operation id to the execution id created
-	// for it, so a repeat of the same operation (reconnect or duplicate) can be
-	// recognised and rejected instead of minting a second execution. It is only
-	// kept in memory alongside records; the journal stays append-only per line.
-	operationsIndex map[string]string
-	journalPath     string
-	journalDir      string
+	// requestIndex maps a caller-owned request identity to its accepted execution.
+	// The associated request commitment is retained in executionRecord and the
+	// journal, while raw input and output data stay out of ordinary records.
+	requestIndex map[string]string
+	journalPath  string
+	journalDir   string
 }
 
 func newExecutionStore() *executionStore {
 	return &executionStore{
-		records:         map[string]*executionRecord{},
-		operationsIndex: map[string]string{},
+		records:      map[string]*executionRecord{},
+		requestIndex: map[string]string{},
 	}
 }
 
@@ -85,8 +95,8 @@ func newExecutionStore() *executionStore {
 // in-memory. A corrupt journal line fails closed (never silently skipped).
 func newPersistedExecutionStore(stateRoot string) (*executionStore, error) {
 	store := &executionStore{
-		records:         map[string]*executionRecord{},
-		operationsIndex: map[string]string{},
+		records:      map[string]*executionRecord{},
+		requestIndex: map[string]string{},
 	}
 	dir := journalDir(stateRoot)
 	if dir == "" {
@@ -111,39 +121,63 @@ func newExecutionID() (string, error) {
 	return "exec_" + hex.EncodeToString(raw[:]), nil
 }
 
-// sameOperationContext reports whether two accepted-request commitments are
-// equal. The operation id binds exactly one in-flight operation, so a reconnect
-// must match the original actor and context byte-for-byte; any change is a
-// duplicate and must be rejected rather than replayed under the original id.
+// sameOperationContext reports whether two accepted request contexts match.
 func sameOperationContext(aRef machine.ActorRef, aCtx machine.OperationContext, bRef machine.ActorRef, bCtx machine.OperationContext) bool {
 	return reflect.DeepEqual(aRef, bRef) && reflect.DeepEqual(aCtx, bCtx)
 }
 
 func (s *executionStore) create(operationID string, actor machine.ActorRef, ctx machine.OperationContext) (machine.Execution, error) {
+	requestID, err := newRequestID()
+	if err != nil {
+		return machine.Execution{}, err
+	}
+	execution, _, err := s.createRequest(requestID, operationID, actor, ctx, []byte("{}"))
+	return execution, err
+}
+
+func newRequestID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return "req_" + hex.EncodeToString(raw[:]), nil
+}
+
+func validRequestID(requestID string) bool {
+	if requestID == "" || len(requestID) > 256 || strings.TrimSpace(requestID) != requestID {
+		return false
+	}
+	for _, r := range requestID {
+		if r < 0x21 || r > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *executionStore) createRequest(requestID, operationID string, actor machine.ActorRef, ctx machine.OperationContext, input []byte) (machine.Execution, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !validRequestID(requestID) {
+		return machine.Execution{}, false, machine.NewError(machine.ErrorValidationFailed,
+			"A valid Idempotency-Key is required.", "Send a non-empty printable key of at most 256 characters.", false)
+	}
+	inputDigest := sha256.Sum256(input)
+	inputSHA256 := hex.EncodeToString(inputDigest[:])
 
-	// Resolve a repeat of an already accepted operation id (a reconnect or a
-	// duplicate request) against the accepted commitment, before minting a new
-	// execution id. The operation id is the durable identity for one in-flight
-	// operation:
-	//   - a byte-identical repeat is a reconnect: return the existing execution
-	//     so the operation is replayed once, never a second time;
-	//   - a repeat with changed content is a duplicate and must fail closed with
-	//     a typed validation error, indexing no second execution.
-	if existingID, accepted := s.operationsIndex[operationID]; accepted {
-		existing := s.records[existingID].execution
-		if sameOperationContext(existing.Actor, existing.Context, actor, ctx) {
-			return existing, nil
+	if existingID, accepted := s.requestIndex[requestID]; accepted {
+		record := s.records[existingID]
+		existing := record.execution
+		if existing.OperationID == operationID && sameOperationContext(existing.Actor, existing.Context, actor, ctx) && record.inputSHA256 == inputSHA256 {
+			return existing, false, nil
 		}
-		return machine.Execution{}, machine.NewError(machine.ErrorValidationFailed,
-			"Operation already accepted.",
-			"This operation id is already accepted with different content; reconnect the original instead of starting a duplicate.",
-			false)
+		return machine.Execution{}, false, machine.NewError(machine.ErrorValidationFailed,
+			"Request identity already accepted.",
+			"This Idempotency-Key is already bound to different request content; use a fresh key for a new request.", false)
 	}
 	id, err := newExecutionID()
 	if err != nil {
-		return machine.Execution{}, err
+		return machine.Execution{}, false, err
 	}
 	execution := machine.Execution{
 		ContractVersion: machine.ExecutionContractVersion,
@@ -153,23 +187,23 @@ func (s *executionStore) create(operationID string, actor machine.ActorRef, ctx 
 		Context:         ctx,
 		State:           machine.ExecutionPending,
 	}
-	// Persist the accepted commitment before returning 202 so an accepted
-	// execution survives a crash between acceptance and the first transition
-	// (review finding 1). The line carries only identity-critical fields:
-	// execution id, state, actor, context and timestamps — never result/
-	// progress/error payloads.
+	// Persist the accepted request commitment before returning 202. The record
+	// contains the caller identity, operation, actor, context and input digest,
+	// never raw input, result, progress or error payloads.
 	record := &executionRecord{
 		execution:   execution,
+		requestID:   requestID,
+		inputSHA256: inputSHA256,
 		subscribers: map[chan machine.MachineEvent]struct{}{},
 	}
 	s.records[id] = record
-	s.operationsIndex[operationID] = id
+	s.requestIndex[requestID] = id
 	if err := s.appendJournalLocked(record); err != nil {
 		delete(s.records, id)
-		delete(s.operationsIndex, operationID)
-		return machine.Execution{}, err
+		delete(s.requestIndex, requestID)
+		return machine.Execution{}, false, err
 	}
-	return execution, nil
+	return execution, true, nil
 }
 
 func (s *executionStore) get(id string) (machine.Execution, bool) {
@@ -286,12 +320,11 @@ func (s *executionStore) update(id string, mutate func(*executionRecord), onComm
 // appendJournalLocked writes the record's current state as one append-only
 // journal line. Callers must hold s.mu. A persistence error is surfaced to the
 // caller (fail closed on write) rather than swallowed. Only identity- and
-// status-critical fields are written: execution id, state and timestamps. The
-// authorized request commitment (actor/context) is written when it first
-// becomes available (create) so it survives a restart, and every subsequent line
-// re-emits it so rotation compaction keeps a complete newest line per id.
-// Result, progress and error payloads are deliberately NOT written: they carry
-// artifact/secret material and are reconstructable from the execution record.
+// status-critical fields are written: execution id, request id, operation,
+// actor, context, input digest, state and timestamps. Every subsequent line
+// re-emits the immutable request commitment so rotation compaction keeps a
+// complete newest line per id. Raw input, result, progress and error payloads
+// are deliberately NOT written.
 func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	if s.journalPath == "" {
 		return nil
@@ -302,6 +335,8 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 	// what keeps a 5 MiB actor from producing a > 4 MiB journal segment.
 	line, err := json.Marshal(struct {
 		ExecutionID string                   `json:"execution_id"`
+		RequestID   string                   `json:"request_id,omitempty"`
+		InputSHA256 string                   `json:"input_sha256,omitempty"`
 		OperationID string                   `json:"operation_id"`
 		State       machine.ExecutionState   `json:"state"`
 		Actor       machine.ActorRef         `json:"actor,omitempty"`
@@ -310,6 +345,8 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 		FinishedAt  *time.Time               `json:"finished_at,omitempty"`
 	}{
 		ExecutionID: record.execution.ExecutionID,
+		RequestID:   record.requestID,
+		InputSHA256: record.inputSHA256,
 		OperationID: record.execution.OperationID,
 		State:       record.execution.State,
 		Actor:       record.execution.Actor,
@@ -535,6 +572,7 @@ func (s *executionStore) load() error {
 		return err
 	}
 	seen := map[string]bool{}
+	requestCommitments := map[string]persistedRequestCommitment{}
 	// Iterate oldest segment first so the newest line per id (in the active
 	// segment) wins the overwrite below. journalSegments() returns the active
 	// segment first (newest), then numbered backups newest (.1) to oldest (.3);
@@ -558,6 +596,8 @@ func (s *executionStore) load() error {
 			}
 			var line struct {
 				ExecutionID string                   `json:"execution_id"`
+				RequestID   string                   `json:"request_id,omitempty"`
+				InputSHA256 string                   `json:"input_sha256,omitempty"`
 				OperationID string                   `json:"operation_id"`
 				State       machine.ExecutionState   `json:"state"`
 				Actor       machine.ActorRef         `json:"actor,omitempty"`
@@ -577,6 +617,25 @@ func (s *executionStore) load() error {
 			if !validExecutionState(line.State) {
 				return fmt.Errorf("corrupt execution journal line %d: invalid execution state %q", i+1, line.State)
 			}
+			if line.RequestID != "" {
+				if !validRequestID(line.RequestID) || len(line.InputSHA256) != sha256.Size*2 {
+					return fmt.Errorf("corrupt execution journal line %d: invalid request commitment", i+1)
+				}
+				if _, err := hex.DecodeString(line.InputSHA256); err != nil {
+					return fmt.Errorf("corrupt execution journal line %d: invalid input digest", i+1)
+				}
+				commitment := persistedRequestCommitment{
+					executionID: line.ExecutionID,
+					operationID: line.OperationID,
+					inputSHA256: line.InputSHA256,
+					actor:       line.Actor,
+					context:     line.Context,
+				}
+				if previous, exists := requestCommitments[line.RequestID]; exists && !reflect.DeepEqual(previous, commitment) {
+					return fmt.Errorf("corrupt execution journal line %d: request commitment changed", i+1)
+				}
+				requestCommitments[line.RequestID] = commitment
+			}
 			// Append-only: later lines are newer, so overwrite — the last valid
 			// line per id across all segments wins (both within a segment and across
 			// the active-then-backwards segment order). The last persisted state is
@@ -588,6 +647,8 @@ func (s *executionStore) load() error {
 				seen[line.ExecutionID] = true
 			}
 			record := &executionRecord{
+				requestID:   line.RequestID,
+				inputSHA256: line.InputSHA256,
 				execution: machine.Execution{
 					ContractVersion: machine.ExecutionContractVersion,
 					ExecutionID:     line.ExecutionID,
@@ -602,6 +663,9 @@ func (s *executionStore) load() error {
 				subscribers: map[chan machine.MachineEvent]struct{}{},
 			}
 			s.records[line.ExecutionID] = record
+			if line.RequestID != "" {
+				s.requestIndex[line.RequestID] = line.ExecutionID
+			}
 		}
 	}
 	return nil

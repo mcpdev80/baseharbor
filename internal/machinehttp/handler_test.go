@@ -113,6 +113,7 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 		t.Fatal("discovery lacks an executable HTTP binding")
 	}
 	request := withTestPrincipal(httptest.NewRequest(executeBinding.Method, executeBinding.Href, body))
+	request.Header.Set("Idempotency-Key", "handler-success")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusAccepted {
@@ -256,6 +257,7 @@ func TestExecutionCannotBeReadByDifferentOperator(t *testing.T) {
 
 	body := strings.NewReader(`{"operation_id":"status","context":{"application":"demo","environment":"prod","target":"prod-eu"}}`)
 	create := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", body))
+	create.Header.Set("Idempotency-Key", "handler-cross-actor")
 	createRec := httptest.NewRecorder()
 	handler.ServeHTTP(createRec, create)
 	if createRec.Code != http.StatusAccepted {

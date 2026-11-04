@@ -183,17 +183,25 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx = evidence.WithActor(ctx, "http", decision.Actor.Subject)
-	execution, err := h.executions.create(operation.ID, decision.Actor, request.Context)
+	requestID := r.Header.Get("Idempotency-Key")
+	if !validRequestID(requestID) || len(r.Header.Values("Idempotency-Key")) != 1 {
+		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed,
+			"A valid Idempotency-Key is required.", "Send one non-empty printable key of at most 256 characters.", false))
+		return
+	}
+	input := append(json.RawMessage(nil), request.Input...)
+	if len(input) == 0 {
+		input = json.RawMessage("{}")
+	}
+	execution, created, err := h.executions.createRequest(requestID, operation.ID, decision.Actor, request.Context, input)
 	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the request.", true))
+		writeMachineError(w, machineErrorStatus(err), err)
 		return
 	}
 	w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
 	writeJSON(w, http.StatusAccepted, execution)
-
-	input := append(json.RawMessage(nil), request.Input...)
-	if len(input) == 0 {
-		input = json.RawMessage("{}")
+	if !created {
+		return
 	}
 	go h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
 }
