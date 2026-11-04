@@ -203,7 +203,12 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	if !created {
 		return
 	}
-	go h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	// Await the terminal journal commit before responding. The final
+	// succeed/fail line is the accepted execution's durable commitment, so it
+	// must be written before this 202 returns — never fire-and-forget. Event
+	// emission stays on the synchronous commit path (emitLocked mutates
+	// record.events under s.mu and must not run from a background goroutine).
+	h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
 }
 
 func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
