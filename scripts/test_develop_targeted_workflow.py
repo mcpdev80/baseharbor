@@ -35,14 +35,13 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
         self.assertIn("assert job['result'] == expected", release)
         self.assertIn('test "$ONLY_GATES" = "integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console"', release)
 
-    def test_develop_push_resolves_sources_and_has_required_result(self):
+    def test_development_is_not_blocked_by_moving_consumer_heads(self):
         content = self.workflow
-        self.assertIn("      - develop", content)
-        self.assertIn('if [ "$GITHUB_REF_NAME" = develop ]; then', content)
-        self.assertIn("baseharbor-demo/git/ref/heads/main", content)
-        self.assertIn("baseharbor-console/git/ref/heads/main", content)
-        self.assertIn("baseharbor-node-connector/git/ref/heads/main", content)
-        self.assertIn("github.ref_name == 'develop'", content)
+        self.assertNotIn("      - develop", content)
+        self.assertNotIn('if [ "$GITHUB_REF_NAME" = develop ]; then', content)
+        self.assertIn('test "$EVENT_NAME" = workflow_dispatch', content)
+        self.assertIn("    if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime == 'both'", content)
+        self.assertIn('      - "runtime-validation/targeted/**"', content)
 
     def test_missing_consumer_sha_cannot_launch_dual_runtime(self):
         content = self.workflow
