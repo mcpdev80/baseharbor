@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,7 +15,10 @@ import (
 // station is known (registry-owned) for that tenant. A valid-looking but unowned
 // station, or a foreign installation, fails closed.
 func TestStationPolicyResolverAuthorizesOwnedRejectsForeign(t *testing.T) {
-	dsn := "postgres://postgres:postgres@127.0.0.1:5433/baseharbor_test?sslmode=disable"
+	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
+	if dsn == "" {
+		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+	}
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, dsn)
 	if err != nil {
