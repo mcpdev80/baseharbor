@@ -39,7 +39,7 @@ def validate(core, demo, console, connector, demo_core, console_candidate, conne
     ):
         raise ValueError("ecosystem source manifest schema differs")
     release = console_candidate["release"]
-    if not isinstance(release, str) or not re.fullmatch(r"0\\.[0-9]+\\.[0-9]+", release):
+    if not isinstance(release, str) or not re.fullmatch(r"0\.[0-9]+\.[0-9]+", release):
         raise ValueError("ecosystem source manifest release label is invalid")
     if connector_candidate["release"] != release:
         raise ValueError("Console/Connector source manifest release labels differ")
