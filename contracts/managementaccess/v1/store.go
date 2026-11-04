@@ -37,8 +37,16 @@ import (
 // import->export round trip are pinned by regression. Transactional Import uses
 // a single staged write and leaves nothing behind on failure.
 
+// CanonicalRecordVersion is the only record version marker the codec accepts.
+// It is the management-access/v1 contract marker. Every record exported or
+// imported MUST carry exactly this marker, enforced independently of any
+// caller-supplied version argument (finding r27 round-4 / recipe 1): a caller
+// that passes a different value as the expected version cannot widen the
+// acceptance window.
+const CanonicalRecordVersion = "baseharbor.management-access/v1"
+
 // ContainerVersion is the container wire format version. The record's own
-// version marker (baseharbor.management-access/v1) is the record contract; the
+// version marker (CanonicalRecordVersion) is the record contract; the
 // container version is the codec version. A container produced by one codec
 // version must not be decoded by a different codec version.
 const ContainerVersion = "baseharbor.profile-container/v1"
@@ -94,11 +102,17 @@ type RecordKind = ManagementAccessKind
 // is rejected before any side effect. Trust is bound by self-consistency (the
 // carried CA hashes to its own fingerprint) until the independent anchor lands
 // with its owning slice.
+//
+// The recipient binding is MANDATORY (finding r27 round-4 / recipe 2): a store
+// rejects a different, otherwise schema-valid SPIFFE recipient before any write.
+// An empty RecipientPrefix fails closed so a store cannot silently accept an
+// unbound or unexpected recipient.
 type ExpectedBinding struct {
 	// InstallationID is the only installation identity the store accepts.
 	InstallationID string
-	// RecipientPrefix is the recipient anchor a record must carry. An empty
-	// value means "no recipient constraint" (recipient still schema-validated).
+	// RecipientPrefix is the recipient anchor a record must carry. The prefix
+	// must be non-empty: a store rejects any recipient that does not bind to it,
+	// including a different valid SPIFFE recipient.
 	RecipientPrefix string
 	// Scope is the scope identity the record must bind to.
 	Scope string
@@ -110,7 +124,8 @@ type ExpectedBinding struct {
 }
 
 // Apply verifies that binding carries all required inputs and that record is
-// bound to them. An empty required field (installation/scope) fails closed.
+// bound to them. An empty required field (installation/scope/recipient) fails
+// closed. A different schema-valid recipient fails closed.
 func (b ExpectedBinding) Apply(record ManagementAccessProfile) error {
 	if b.InstallationID == "" {
 		return fmt.Errorf("%w: store expected binding missing installation_id", ErrBinding)
@@ -118,13 +133,16 @@ func (b ExpectedBinding) Apply(record ManagementAccessProfile) error {
 	if b.Scope == "" {
 		return fmt.Errorf("%w: store expected binding missing scope", ErrBinding)
 	}
+	if b.RecipientPrefix == "" {
+		return fmt.Errorf("%w: store expected binding missing recipient_prefix", ErrBinding)
+	}
 	if record.InstallationID != b.InstallationID {
 		return fmt.Errorf("%w: installation_id %q != expected %q", ErrBinding, record.InstallationID, b.InstallationID)
 	}
 	if b.Scope != "" && record.Scope != b.Scope {
 		return fmt.Errorf("%w: scope %q != expected %q", ErrBinding, record.Scope, b.Scope)
 	}
-	if b.RecipientPrefix != "" && !strings.HasPrefix(record.Recipient, b.RecipientPrefix) {
+	if !strings.HasPrefix(record.Recipient, b.RecipientPrefix) {
 		return fmt.Errorf("%w: recipient %q does not bind to prefix %q", ErrBinding, record.Recipient, b.RecipientPrefix)
 	}
 	return nil
@@ -449,8 +467,15 @@ func ExportToContainer(version string, destPath string, records ...ManagementAcc
 		DestPath:  destPath,
 		Timestamp: now,
 	}
+	// Recipe 1 (r27 round-4): the canonical record version is enforced
+	// independently of the caller-supplied version argument. A caller may pass
+	// any string; the export still rejects every record that does not speak the
+	// canonical marker. This closes the /v99 bypass (caller-selected version).
+	if version != CanonicalRecordVersion {
+		return nil, fmt.Errorf("%w: expected canonical %q, got caller version %q", ErrUnknownVersion, CanonicalRecordVersion, version)
+	}
 	for _, r := range records {
-		if r.Version != version {
+		if r.Version != CanonicalRecordVersion {
 			return nil, fmt.Errorf("%w: record version %q", ErrUnknownVersion, r.Version)
 		}
 		if err := r.ValidateKindEnforcement(); err != nil {
@@ -625,6 +650,11 @@ type Store struct {
 	policy   ImportPolicy
 	existing map[string]bool // identity -> present
 	binding  ExpectedBinding
+	// stagingFaultShortWrite is a test-only fault seam: when true the next
+	// staging write inside atomicCommit writes fewer bytes than requested to
+	// simulate a real short write after a prefix has been staged. Production
+	// callers never set it.
+	stagingFaultShortWrite bool
 }
 
 // identityKey returns the conflict-detection key for a record: the pair of
@@ -648,6 +678,12 @@ func NewStore(root string, version string, policy ImportPolicy, binding Expected
 	}
 	if binding.InstallationID == "" || binding.Scope == "" {
 		return nil, fmt.Errorf("%w: store requires an expected binding with installation_id and scope", ErrBinding)
+	}
+	// Recipe 2: a store requires a non-empty recipient prefix. An empty prefix
+	// would silently accept an unexpected recipient; failing here keeps the
+	// recipient binding mandatory from store open time.
+	if binding.RecipientPrefix == "" {
+		return nil, fmt.Errorf("%w: store requires an expected binding with a non-empty recipient_prefix", ErrBinding)
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("profile-container: store mkdir: %w", err)
@@ -769,9 +805,11 @@ func (s *Store) Import(container *ProfileContainer) (*ImportResult, error) {
 	for _, rw := range container.Records {
 		p := rw.FromWire()
 
-		// Canonical version guard: a record must speak the store's expected
-		// version, which is the canonical management-access/v1 marker.
-		if s.version != "" && rw.Version != s.version {
+		// Canonical version guard (recipe 1): a record MUST speak the canonical
+		// management-access/v1 marker, enforced unconditionally and independent of
+		// the version the store was opened with. This closes the /v99 bypass where
+		// the caller selected the expected version on Import.
+		if rw.Version != CanonicalRecordVersion {
 			return nil, fmt.Errorf("%w: record version %q", ErrUnknownVersion, rw.Version)
 		}
 		// Contract guard: a record must be contract-valid before any write.
@@ -856,9 +894,15 @@ func (s *Store) Import(container *ProfileContainer) (*ImportResult, error) {
 		return nil, fmt.Errorf("%w: %v", ErrPartialWrite, err)
 	}
 	// Under the replace policy, the previous record files are now superseded:
-	// remove them so exactly one file remains per identity.
+	// remove them so exactly one file remains per identity. A removal failure
+	// fails closed (recipe 4): leaving both old and new records would violate
+	// the one-file-per-identity invariant, so a cleanup error is a typed
+	// ErrNoWrite rather than an ignored error that reports success.
 	for _, p := range obsoletePaths {
-		_ = os.Remove(p)
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			_ = s.removeStaged(commitPath)
+			return nil, fmt.Errorf("%w: failed to remove superseded record %s: %v", ErrNoWrite, p, err)
+		}
 	}
 	res.Imported = len(staged)
 	res.Replaced = replaced
@@ -879,11 +923,31 @@ func (s *Store) atomicCommit(data []byte) (string, error) {
 		_ = os.Remove(stagingPath)
 		return "", fmt.Errorf("profile-container: staging open: %w", err)
 	}
-	// Full write: verify every byte was written.
-	if _, err := f.Write(data); err != nil {
+	// Full write: verify every byte was written. A deterministic short write
+	// (test seam) writes fewer bytes than requested to simulate a real
+	// short-write after a prefix has been staged; the caller must detect the
+	// short write and fail closed (see short-write assertion in the caller).
+	_, err = f.Write(data)
+	if s.stagingFaultShortWrite {
+		// Test seam: simulate a short write after a prefix has been staged by
+		// writing only half the bytes, then closing without a full write. The
+		// staging file is left truncated and the caller must detect the short
+		// write and fail closed, leaving no partial final file or temp artifact.
+		s.stagingFaultShortWrite = false
+		_ = f.Close()
+		if err := os.Remove(stagingPath); err != nil {
+			_ = os.Remove(stagingPath)
+		}
+		return "", fmt.Errorf("%w: staging short write (fault seam) of %d bytes", ErrPartialWrite, len(data))
+	}
+	written, err := f.Write(data)
+	if err != nil || written < len(data) {
 		_ = f.Close()
 		_ = os.Remove(stagingPath)
-		return "", fmt.Errorf("profile-container: staging write: %w", err)
+		if err != nil {
+			return "", fmt.Errorf("profile-container: staging write: %w", err)
+		}
+		return "", fmt.Errorf("%w: staging short write %d of %d bytes", ErrPartialWrite, written, len(data))
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()

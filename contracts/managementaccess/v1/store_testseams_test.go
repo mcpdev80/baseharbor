@@ -91,6 +91,22 @@ func (s *Store) ImportForTest(container *ProfileContainer) (*ImportResult, error
 	return s.Import(container)
 }
 
+// FailNextStagingWriteForTest installs a one-shot fault seam that makes the next
+// staging write inside atomicCommit fail with a short write (fewer bytes than
+// requested), so tests can exercise a genuine short-write after a prefix has
+// been staged. The seam is consumed after the first failing call so it does not
+// leak into later imports.
+func (s *Store) FailNextStagingWriteForTest() {
+	s.stagingFaultShortWrite = true
+}
+
+// SetStagingFaultShortWriteForTest directly controls the short-write fault seam
+// (true = next staging write is a short write, false = normal). Exposed so tests
+// can enable/disable the seam deterministically without consuming it.
+func (s *Store) SetStagingFaultShortWriteForTest(v bool) {
+	s.stagingFaultShortWrite = v
+}
+
 // WriteRawContainerForTest writes a raw container bytes to a file under root
 // without validation, letting tests simulate a record that reaches the import
 // boundary already on disk (e.g. a tampered or version-mismatched record).
