@@ -14,6 +14,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 )
 
 type gitDirtyEntry struct {
@@ -249,6 +250,13 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 	}
 
 	if fetch {
+		if nativeHost := native.HostFromURL(remote); nativeHost != "" {
+			if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
+				if _, ferr := gitOutputDisabledPrompt(ctx, root, "fetch", "--prune", "--", remote); ferr != nil {
+					return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, ferr)
+				}
+			}
+		}
 		if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
 			return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
 		}
@@ -437,6 +445,43 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return "", errors.New(detail)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// withGitPromptDisabled returns a copy of env with GIT_TERMINAL_PROMPT=0 so the
+// git credential helper cannot trigger an interactive prompt. When a native
+// source services the host, git handles authentication; this only guarantees no
+// prompt is possible.
+func withGitPromptDisabled(env []string) []string {
+	clone := make([]string, len(env))
+	copy(clone, env)
+	clone = append(clone, "GIT_TERMINAL_PROMPT=0")
+	return clone
+}
+
+// gitOutputDisabledPrompt runs the git command with GIT_TERMINAL_PROMPT=0 set so
+// no interactive credential prompt is possible when a native source can service
+// the upstream host. It is a found-only gate: a native hit (or any error
+// querying the native source) leaves git's own authentication decision intact.
+func gitOutputDisabledPrompt(ctx context.Context, dir string, args ...string) (string, error) {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		return "", errors.New("git executable not found")
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Dir = dir
+	cmd.Env = withGitPromptDisabled(os.Environ())
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout

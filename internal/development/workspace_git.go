@@ -5,10 +5,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 )
 
 const WorkspaceGitStatusVersion = "baseharbor.workspace-git-status/v1"
@@ -198,6 +201,22 @@ func inspectWorkspaceRepository(ctx context.Context, root string, fetch bool) Wo
 			item.NextAction = "review 'git branch -vv' and 'git remote -v'"
 			return item
 		}
+		if nativeHost := native.HostFromURL(remote); nativeHost != "" {
+			if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
+				if _, ferr := workspaceGitOutputDisabledPrompt(ctx, root, "fetch", "--prune", "--", remote); ferr != nil {
+					item.State = WorkspaceGitUnavailable
+					item.Blocker = classifyGitFetchBlocker(ferr)
+					if item.Blocker == "authentication_failed" {
+						item.Problem = "Git could not authenticate with the configured remote"
+						item.NextAction = "run 'git fetch' directly and review your normal SSH agent, Git credential helper or platform credential manager"
+					} else {
+						item.Problem = "Git fetch failed: " + ferr.Error()
+						item.NextAction = "run 'git fetch' directly to review connectivity or authentication"
+					}
+					return item
+				}
+			}
+		}
 		if _, err := workspaceGitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
 			item.State = WorkspaceGitUnavailable
 			item.Blocker = classifyGitFetchBlocker(err)
@@ -336,6 +355,31 @@ func workspaceGitOutput(ctx context.Context, dir string, args ...string) (string
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = err.Error()
+		}
+		return "", fmt.Errorf("%s", detail)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// workspaceGitOutputDisabledPrompt runs the git command with GIT_TERMINAL_PROMPT=0
+// so no interactive credential prompt is possible when a native source can
+// service the workspace host. It is a found-only gate: a native hit leaves
+// git's own authentication decision intact.
+func workspaceGitOutputDisabledPrompt(ctx context.Context, dir string, args ...string) (string, error) {
+	path, err := exec.LookPath("git")
+	if err != nil {
+		return "", errors.New("git executable not found")
+	}
+	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
