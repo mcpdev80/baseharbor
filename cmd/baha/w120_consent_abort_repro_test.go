@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -10,17 +9,21 @@ import (
 )
 
 // TestW120RefusedApplyWritesNothingLeavesDestroyableState is the red-first
-// regression for t-20261104-r27. A candidate apply refused by the consent gate
-// (wrong --confirm-candidate digest) must leave the prior deployment record
-// UNCHANGED (rollback-free), so a later `app destroy` can proceed.
+// regression for t-20261104-r27. It drives the REAL candidate choke point
+// (recordDeploymentBeforeMutation), not merely resolveApplication(..., "destroy"),
+// and proves the rollback-free invariant that the reported bug violated.
 //
 // Before the fix the refused apply left a partial applying deployment.json whose
-// runtime has no owner; destroy failed with ErrRuntimeNotApplied.
+// runtime had no owner; `app destroy` then failed with ErrRuntimeNotApplied.
+//
+// Red on the reported-bug state: the assertion after.Observed.State == "configured"
+// fails (the record was left "applying" with a dangling owner). Green on the fix:
+// the choke point aborts before any state write, so the prior "configured" record
+// survives untouched.
 func TestW120RefusedApplyWritesNothingLeavesDestroyableState(t *testing.T) {
 	configureTestTarget(t)
-	root := t.TempDir()
+	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
-	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  demo-app:\n    build: .\n    ports:\n      - '8080:8080'\n")
 	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "demo-app")
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 
@@ -33,21 +36,24 @@ func TestW120RefusedApplyWritesNothingLeavesDestroyableState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Wrong confirm digest must fail closed at the candidate choke point.
+	// Wrong confirm digest must fail closed at the candidate choke point and
+	// write NO deployment state.
 	wrong := "0000000000000000000000000000000000000000000000000000000000000000"
 	wrongCtx := withCandidateConsentDigest(context.Background(), wrong)
 	if _, err := recordDeploymentBeforeMutation(wrongCtx, resolved, "applying", wrong); err == nil {
 		t.Fatal("wrong confirm digest accepted; candidate must fail closed")
 	}
 
-	// (c) The refused apply must have left the prior record UNCHANGED: still
-	// "configured", no consent, no success state.
+	// (a) The refused apply must have left the prior record UNCHANGED: still
+	// "configured", no consent, no success state, no previous-intent projection.
+	// This is the exact reported-bug assertion: on the buggy state the record was
+	// left "applying" with a dangling runtime owner.
 	after, err := deployment.LoadDeploymentRecord(pending.Identity)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if after.Observed.State != "configured" {
-		t.Fatalf("refused apply mutated state to %q; must leave prior record intact", after.Observed.State)
+		t.Fatalf("refused apply mutated state to %q; must leave prior record intact (rollback-free)", after.Observed.State)
 	}
 	if after.Observed.Ready {
 		t.Fatalf("refused apply recorded a ready state")
@@ -59,25 +65,29 @@ func TestW120RefusedApplyWritesNothingLeavesDestroyableState(t *testing.T) {
 		t.Fatalf("refused apply left a previous-intent projection: %q", after.Applied.GeneratedState["previous_intent"])
 	}
 
-	// (a) A destroy of the untouched record must be able to resolve the Core
-	// runtime files path (no dangling owner). We assert destroy can resolve the
-	// application and reach the destroy execution without the partial-state
-	// error; the full Docker teardown is covered by the acceptance gate.
+	// (b) The refused apply must not have left a partial applying record that
+	// blocks the destroy lifecycle. The destroyable precondition is that the
+	// deployment re-resolves on the destroy command (no dangling owner) and the
+	// persisted record is still "configured" (never mutated to "applying").
 	_, derr := resolveApplication(context.Background(), application.DefaultStore(), nil, "destroy")
 	if derr != nil {
 		t.Fatalf("destroy cannot re-resolve after refused apply: %v", derr)
 	}
-	t.Log("refused apply left prior record intact; destroy can re-resolve")
+	if after.Observed.State == "applying" {
+		t.Fatalf("refused apply left a partial applying record; destroy would fail with ErrRuntimeNotApplied (state=%q)", after.Observed.State)
+	}
+
+	t.Log("refused apply left prior record intact (rollback-free); no dangling runtime owner; destroy can re-resolve")
 }
 
-// TestW120ConsentedApplyPassesChokePointAfterRefusal proves (b): after a refused
-// apply, an apply with the CORRECT confirm digest passes the candidate choke
-// point and writes a validated applying record (the first step to READY).
+// TestW120ConsentedApplyPassesChokePointAfterRefusal proves the follow-up: after
+// a refused apply, an apply with the CORRECT confirm digest passes the candidate
+// choke point and writes a validated applying record (the first step to READY),
+// without a manual rollback or cleanup in between.
 func TestW120ConsentedApplyPassesChokePointAfterRefusal(t *testing.T) {
 	configureTestTarget(t)
-	root := t.TempDir()
+	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
-	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  demo-app:\n    build: .\n    ports:\n      - '8080:8080'\n")
 	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "demo-app")
 	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
 
