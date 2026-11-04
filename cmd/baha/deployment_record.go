@@ -112,6 +112,13 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	// digest; a mutable branch/tag or an absent identity is rejected) before any
 	// deployment state is written. Managed-app creates use a local source path
 	// and are not candidate submissions, so they are not validated here.
+	//
+	// Fail-closed means "refuse without trace": the candidate identity is bound
+	// to the deployment source the instant a partial applying record is written,
+	// so a wrong or absent confirm digest must abort BEFORE that record is
+	// persisted. A refused apply must leave the prior record (or none) untouched,
+	// so a later `app destroy` can still resolve the Core runtime files and tear
+	// down cleanly, and a follow-up apply with valid consent reaches READY.
 	if record.Source.Kind == "repository" && state == "applying" {
 		submission := delivery.CandidateSubmission{
 			ContractVersion:  delivery.CandidateContractVersion,
