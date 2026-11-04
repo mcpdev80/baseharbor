@@ -209,6 +209,14 @@ Deferred interfaces:
 - **Anker + Installations-/Empfänger/Scope-Bindung + vertrauenswürdige Zeit.** Die vollständige Produktionsbindung von Installations-Identität, Empfänger/Scope, vertrauenswürdiger Uhrzeit und Eigentum an Credentials wird später erzwungen, mit [t-20261018-r27-authority-contract](https://github.com/mcpdev80/baseharbor-plan/blob/main/tasks/t-20261018-r27-authority-contract.md) (unabhängiger Anker + Installations-/Scope-Bindung) und [t-20261018-r27-state-owner](https://github.com/mcpdev80/baseharbor-plan/blob/main/tasks/t-20261018-r27-state-owner.md) (nicht akzeptiert, gleiche Dateien). Keine Aussage hier behauptet, dass dieser Profilpfad sie jetzt prüft.
 - **Disaster-Recovery-Trennung im Produktionsablauf.** Die hier deklarierte DR-Trennung ist noch nicht in einen Produktions-Recovery-Pfad eingebunden.
 
+### Codec- und Store-Serialisierung
+
+Der v1-Codec akzeptiert einen Profil-Record nur, wenn seine serialisierte `version` exakt `baseharbor.management-access/v1` lautet. Export und Import erzwingen diesen Marker unabhängig von einer vom Aufrufer gewählten erwarteten Version. Der Import verlangt außerdem ein nicht-leeres erwartetes Empfängerpräfix und lehnt jeden Record ab, dessen `recipient` nicht an dieses Präfix gebunden ist; ein fehlendes Präfix bedeutet nie „jeden Empfänger akzeptieren“. Diese Codec-Bindung ist eine erforderliche Store-Eingabe und behauptet nicht, dass eine unabhängige Produktionsautorität bereits angebunden ist.
+
+Die Reihenfolge der kanonischen JSON-Member ist festgelegt. Der Container verwendet `version`, `dest_path`, `records`, `timestamp`. Jeder Record verwendet `version`, `kind`, `installation_id`, `trust`, `recipient`, `scope`, `not_before`, `not_after`, `import`, `storage` und danach optional `export`. Die Reihenfolge verschachtelter Objekte ist `trust: ca_pem, sha256`; `import: rights_granting, plugin_execution, credential_redirect`; `storage: class, durable, encrypted, disaster_recovery`; `export: algorithm, encrypted, nonce`. Der kanonische Golden-Container fixiert Bytes und Reihenfolge.
+
+Der Store-Import kodiert und validiert vor dem Persistieren, erstellt eine Staging-Datei im selben Verzeichnis und unternimmt genau einen Schreibversuch. Die zurückgegebene Bytezahl muss vor Sync oder Rename der angeforderten Länge entsprechen. Ein Kurzschreiben (`n < len(data)`) schlägt mit `ErrPartialWrite` fehl; die Staging-Datei wird entfernt und es wird kein finaler Record festgeschrieben. Der Writer wird nie ein zweites Mal aufgerufen, um ein Kurzschreiben nachträglich „zu vervollständigen“. Beim Ersetzen wird der neue Staging-Record festgeschrieben, bevor der veraltete Record entfernt wird. Scheitert dessen Entfernung, liefert der Import `ErrNoWrite`, entfernt den neuen Record und erhält den alten Dateiinhalt als eindeutigen Zustand auf der Platte.
+
 Vertragsinvarianten:
 
 - Genau eines der drei `kind`-Werte ist vorhanden.

@@ -211,6 +211,14 @@ Deferred interfaces:
 
 Same-CA/DR enforcement with an external `connection-profile/v1` transport anchor and an authoritative Core scope resolver is a cross-slice binding; it is documented here but not yet wired by this card, because those authorities (connection-profile/Core scope resolver, host-trust anchor) are owned outside this write-set and are deferred to their owning slices.
 
+### Codec and store serialization
+
+The v1 codec accepts a profile record only when its serialized `version` is exactly `baseharbor.management-access/v1`. Export and import enforce this marker independently of a caller-selected expected version. Import also requires a non-empty expected recipient prefix and rejects any record whose `recipient` is not bound to that prefix; an omitted prefix never means “accept any recipient.” This codec binding is a required input to the store, not an assertion that an independent production authority has been wired.
+
+Canonical JSON member order is fixed. The container order is `version`, `dest_path`, `records`, `timestamp`. Each record order is `version`, `kind`, `installation_id`, `trust`, `recipient`, `scope`, `not_before`, `not_after`, `import`, `storage`, then optional `export`. Nested order is `trust: ca_pem, sha256`; `import: rights_granting, plugin_execution, credential_redirect`; `storage: class, durable, encrypted, disaster_recovery`; `export: algorithm, encrypted, nonce`. The canonical golden container pins these bytes and order.
+
+Store import encodes and validates before persistence, creates a same-directory staging file, and makes exactly one write attempt. The returned byte count must equal the requested length before Sync or Rename. A short write (`n < len(data)`) fails with `ErrPartialWrite`; the staging file is removed and no final record is committed. The writer is never called a second time to “complete” a short write. Replacement commits the new staged record before removing the obsolete record. If obsolete-record removal fails, import returns `ErrNoWrite`, removes the new record, and preserves the old on-disk record as the unambiguous state.
+
 Contract invariants:
 
 - Exactly one of the three `kind` values is present.
