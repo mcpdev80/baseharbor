@@ -19,11 +19,11 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
         self.assertIn('{"runtime":"docker","gate":"lifecycle"}', content)
         self.assertIn('{"runtime":"podman","gate":"lifecycle"}', content)
         self.assertIn("needs: [resolve, ecosystem_source, selected_gate, consumer_integration]", content)
-        self.assertIn('"consumer_integration"):', content)
+        self.assertIn("python3 scripts/develop-ecosystem-final.py", content)
         self.assertIn("uses: ./.github/workflows/pre-release.yml", content)
         self.assertIn("develop_mode: true", content)
         self.assertIn("only_gates: integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console", content)
-        self.assertIn("if result != \"success\"", content)
+        self.assertIn("develop_ecosystem_result:", content)
 
     def test_release_workflow_reuses_actual_native_jobs_and_final(self):
         release = (Path(__file__).parents[1] / ".github/workflows/pre-release.yml").read_text()
@@ -34,6 +34,15 @@ class TargetedDevelopWorkflowTests(unittest.TestCase):
             self.assertIn(job, release)
         self.assertIn("assert job['result'] == expected", release)
         self.assertIn('test "$ONLY_GATES" = "integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console"', release)
+
+    def test_develop_push_resolves_sources_and_has_required_result(self):
+        content = self.workflow
+        self.assertIn("      - develop", content)
+        self.assertIn('if [ "$GITHUB_REF_NAME" = develop ]; then', content)
+        self.assertIn("baseharbor-demo/git/ref/heads/main", content)
+        self.assertIn("baseharbor-console/git/ref/heads/main", content)
+        self.assertIn("baseharbor-node-connector/git/ref/heads/main", content)
+        self.assertIn("github.ref_name == 'develop'", content)
 
     def test_missing_consumer_sha_cannot_launch_dual_runtime(self):
         content = self.workflow
