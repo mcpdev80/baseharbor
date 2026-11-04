@@ -57,5 +57,8 @@ func routeRepositoryRuntimeUp(ctx context.Context, in io.Reader, out, errOut io.
 		return true, err
 	}
 	fmt.Fprintln(out, "Converging selected application capabilities and their genuine dependencies...")
+	if opts.CandidateConsent != "" {
+		ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
+	}
 	return true, appApplyCommand(application.DefaultStore()).Run(ctx, nil, out, errOut)
 }
