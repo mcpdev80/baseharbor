@@ -163,9 +163,13 @@ func writeRepositoryWorkloadOnlyApp(t *testing.T, root string) {
 func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.T) {
 	root := t.TempDir()
 	old, err := os.Getwd()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.Chdir(old)
-	if err := os.Chdir(root); err != nil { t.Fatal(err) }
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -173,17 +177,25 @@ func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.
 	gitInitRepo(t, root)
 	ctx := context.Background()
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil { t.Fatal(err) }
+	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "apply")
-	if err != nil { t.Fatal(err) }
-	if _, err := recordPendingDeployment(ctx, resolved); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := recordPendingDeployment(ctx, resolved); err != nil {
+		t.Fatal(err)
+	}
 	if err := deployment.VerifyNeverDeliveredProof(resolved.DeploymentIdentity); !os.IsNotExist(err) {
 		t.Fatalf("first deployment write must consume initialization proof, got %v", err)
 	}
 	// Simulate lost deployment.json with potentially still-owned runtime: no
 	// fabricated RETIRED result and no provider/registry mutation permitted.
 	record := filepath.Join(resolved.DeploymentStateRoot, "deployment.json")
-	if err := os.Remove(record); err != nil { t.Fatal(err) }
+	if err := os.Remove(record); err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
 	if err := runWithIO(ctx, []string{"app", "destroy", "--yes"}, &out, &out); err == nil {
 		t.Fatal("lost deployment record must fail closed even if the app identity remains")
@@ -193,9 +205,13 @@ func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.
 func TestW138DestroyWithoutYesPreservesNeverDeliveredProof(t *testing.T) {
 	root := t.TempDir()
 	old, err := os.Getwd()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer os.Chdir(old)
-	if err := os.Chdir(root); err != nil { t.Fatal(err) }
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
@@ -203,9 +219,13 @@ func TestW138DestroyWithoutYesPreservesNeverDeliveredProof(t *testing.T) {
 	gitInitRepo(t, root)
 	ctx := context.Background()
 	var out bytes.Buffer
-	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil { t.Fatal(err) }
+	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "destroy")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	out.Reset()
 	_ = runWithIO(ctx, []string{"app", "destroy"}, &out, &out)
 	if err := deployment.VerifyNeverDeliveredProof(resolved.DeploymentIdentity); err != nil {
