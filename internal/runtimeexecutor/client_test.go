@@ -1276,7 +1276,7 @@ func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
 // file proves the twelve-route observation is discriminating: on swapped
 // routing the matching assertions go RED.
 func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
-	var combinedPaths int // N==M counter: every row contributes Check+Execute == 2 combinations
+	var combinedPaths int // N==M counter: incremented once per REAL Check and once per REAL Execute actually issued on a route
 
 	// 1. No client cert: a transport with an empty certificate slice presents no
 	// identity, so the server refuses the handshake before dispatch.
@@ -1305,6 +1305,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 1: execute handler must not be reached without a client cert (reached=%v)", got)
 		}
+		combinedPaths++ // ONE real Check actually issued on the /readyz route
 
 		// REAL Execute on the /internal/ route against the same refused identity.
 		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
@@ -1317,7 +1318,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 1: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths += 2 // Check + Execute, both real
+		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		// Re-read readyz AFTER execute (row 1): execute must not have entered the
 		// check route either.
 		if recorder.entered.Load() {
@@ -1374,6 +1375,8 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 2: execute handler must not be reached by a self-signed cert (reached=%v)", got)
 		}
+		combinedPaths++ // ONE real Check actually issued on the /readyz route
+
 		// REAL Execute on the /internal/ route against the same refused identity.
 		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
@@ -1385,7 +1388,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 2: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths += 2 // Check + Execute, both real
+		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 2: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1419,6 +1422,8 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 3: execute handler must not be reached by a foreign-CA cert (reached=%v)", got)
 		}
+		combinedPaths++ // ONE real Check actually issued on the /readyz route
+
 		// REAL Execute on the /internal/ route against the same refused identity.
 		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
@@ -1430,7 +1435,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 3: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths += 2 // Check + Execute, both real
+		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 3: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1468,13 +1473,15 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 			t.Fatalf("row 4: malformed client cert must fail as a certificate load error, got: %q", loadErr.Error())
 		}
 		// Load-phase null-call: neither route was driven; observe both false.
+		// This row issues NO real Check and NO real Execute (NewClient fails at the
+		// cert load), so it contributes nothing to the real-call counter below.
+		// Its two route combinations are documented NULL-CALLS, never counted as real.
 		if recorder.entered.Load() {
 			t.Fatalf("row 4: readyz check-path recorder must not be touched by a client-side cert load failure (entered=%v)", recorder.entered.Load())
 		}
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 4: execute handler must not be reached by a client-side cert load failure (reached=%v)", got)
 		}
-		combinedPaths += 2 // Check + Execute both documented as NULL-CALL (load phase)
 	}()
 
 	// 5. Wrong server CA: client trusts a different CA than the server presents,
@@ -1506,6 +1513,8 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 5: execute handler must not be reached by the wrong server CA (reached=%v)", got)
 		}
+		combinedPaths++ // ONE real Check actually issued on the /readyz route
+
 		// REAL Execute on the /internal/ route against the same refused identity.
 		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
@@ -1517,7 +1526,7 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 5: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths += 2 // Check + Execute, both real
+		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 5: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1554,23 +1563,26 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if !strings.Contains(loadErr.Error(), "CA is invalid") {
 			t.Fatalf("row 6: malformed client CA must fail as a CA load error, got: %q", loadErr.Error())
 		}
+		// This row issues NO real Check and NO real Execute (NewClient fails at the
+		// CA load), so it contributes nothing to the real-call counter below.
+		// Its two route combinations are documented NULL-CALLS, never counted as real.
 		if recorder.entered.Load() {
 			t.Fatalf("row 6: readyz check-path recorder must not be touched by a client-side CA load failure (entered=%v)", recorder.entered.Load())
 		}
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 6: execute handler must not be reached by a client-side CA load failure (reached=%v)", got)
 		}
-		// Load-phase null-call: neither route was driven; observe both false.
-		combinedPaths += 2 // Check + Execute both documented as NULL-CALL (load phase)
 	}()
 
-	// N==M assertion: every one of the six negative identities contributes exactly
-	// two route combinations (one Check /readyz combination + one Execute
-	// /internal/ combination) => twelve real or documented-null route
-	// combinations. A silent regression that drops a Check or Execute path (the
-	// review-1357j miswire) would leave combinedPaths below twelve and fail here.
-	if combinedPaths != 12 {
-		t.Fatalf("matrix N==M counter mismatch: expected 12 route combinations (Check+Execute x six inputs), got %d", combinedPaths)
+	// N==M assertion: exactly the four rows that build a client (rows 1, 2, 3, 5)
+	// each issue ONE real Check on /readyz and ONE real Execute on /internal/ =>
+	// eight real route combinations. Rows 4 and 6 are load-phase failures that build
+	// no client, so they issue NO real Check and NO real Execute and contribute
+	// nothing to combinedPaths. A silent regression that drops a real Check or
+	// Execute call (the review-1357k miswire) leaves combinedPaths below eight and
+	// fails here — the counter is now bound to the real call sites, not a flat +2.
+	if combinedPaths != 8 {
+		t.Fatalf("matrix N==M counter mismatch: expected 8 real route combinations (Check+Execute x four built clients), got %d", combinedPaths)
 	}
 }
 
