@@ -27,7 +27,7 @@ const (
 func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("BASEHARBOR_TEST_DATABASE_URL is not set; the workstation enrollment store test must run against the configured test database")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -157,7 +157,7 @@ func bootstrapWith(scope workstationenrollment.Scope, token, nonce string) works
 func TestWorkstationEnrollmentDuplicateLiveBootstrapRejected(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("BASEHARBOR_TEST_DATABASE_URL is not set; the workstation enrollment store test must run against the configured test database")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)

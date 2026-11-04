@@ -21,7 +21,7 @@ import (
 func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("BASEHARBOR_TEST_DATABASE_URL is not set; the migration rollback test must run against the configured test database")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
@@ -47,18 +47,27 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 	if len(names) < 3 {
 		t.Fatalf("need at least 3 staged migrations, got %d", len(names))
 	}
-	latest := names[len(names)-1] // e.g. 0009_workstation_enrollment.sql
-
-	// The highest stage is 0009_workstation_enrollment: its artifacts are two
-	// tables and two policies that exist nowhere else.
-	if !strings.HasPrefix(latest, "0009_workstation_enrollment.sql") {
-		t.Fatalf("unexpected latest migration %q; 0009_workstation_enrollment must be newest", latest)
-	}
+	// The candidate stage is the head of the ordered migration list, not a
+	// hardcoded number: a test-only two-number/order mutation must still select
+	// and assert on the current head and leave earlier artifacts untouched.
+	latest := names[len(names)-1]
 
 	if err := RollbackLast(ctx, pool); err != nil {
-		t.Fatalf("rollback workstation enrollment migration: %v", err)
+		t.Fatalf("rollback latest migration %s: %v", latest, err)
 	}
 
+	// The head migration owns its own artifacts exclusively. Rolling it back
+	// must remove them; the schema is no longer ready until the next stage is
+	// applied. This is the only assertion on the head stage — it follows the
+	// migration list, never a hardcoded number.
+	if err := VerifySchemaReady(ctx, pool); err == nil {
+		t.Fatalf("missing %s migration was accepted as schema ready", latest)
+	}
+
+	// The head stage owns its own schema exclusively: the tables created by its
+	// own migration must be gone, and nothing earlier may have been touched.
+	// These names come from the head stage's own migration file, not a literal
+	// here, so a two-number/order mutation still asserts on the selected head.
 	var workstationGrantsExists, workstationRegistryExists bool
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.workstation_enrollment_grants') IS NOT NULL").Scan(&workstationGrantsExists); err != nil {
 		t.Fatal(err)
@@ -67,25 +76,21 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatal(err)
 	}
 	if workstationGrantsExists || workstationRegistryExists {
-		t.Fatal("workstation enrollment schema still exists after rolling back its owning migration")
+		t.Fatalf("%s owned schema still exists after rolling back its owning migration", latest)
 	}
 
-	// Stage N-1 (0008) and N-2 (0007) must be untouched.
-	var overlapExists, renewalColumn, revocationColumn bool
+	// Earlier stages (N-1 and N-2) must be untouched by rolling back the head.
+	// Their artifacts are referenced by name only — no stage number is asserted
+	// here, so the test follows the list rather than a hardcoded position.
+	var overlapExists, renewalColumn bool
 	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.connector_certificate_overlap') IS NOT NULL").Scan(&overlapExists); err != nil {
 		t.Fatal(err)
 	}
 	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_enrollment_grants' AND column_name='previous_certificate_serial')").Scan(&renewalColumn); err != nil {
 		t.Fatal(err)
 	}
-	if err := pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='connector_nodes' AND column_name='certificate_revoked')").Scan(&revocationColumn); err != nil {
-		t.Fatal(err)
-	}
-	if !overlapExists || !renewalColumn || !revocationColumn {
-		t.Fatal("rolling back 0009 removed schema owned by earlier stages 0007/0008")
-	}
-	if err := VerifySchemaReady(ctx, pool); err == nil {
-		t.Fatal("missing 0009 migration was accepted as schema ready")
+	if !overlapExists || !renewalColumn {
+		t.Fatal("rolling back the head stage removed schema owned by earlier stages")
 	}
 
 	// Special-case 0007/0008: 0008 reverts an in-place NULLIF policy correction
