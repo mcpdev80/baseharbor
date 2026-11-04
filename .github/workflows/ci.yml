@@ -799,7 +799,7 @@ jobs:
                   test -f site/index.html
                   ;;
               esac ;;
-            go-unit-tests) go test ./... -count=1 ;;
+            go-unit-tests) bash scripts/pr-unit-database.sh ;;
             go-vet) go vet ./... ;;
             go-build) go build ./... ;;
             source-contracts)
