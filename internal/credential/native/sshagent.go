@@ -25,18 +25,19 @@ type SSHAgentSource struct {
 // natively.
 var ErrSSHAgentUnavailable = fmt.Errorf("ssh: no usable ssh-agent (SSH_AUTH_SOCK unset)")
 
-// Available reports whether an SSH agent is reachable. Absence is a documented,
-// fail-closed condition, not a silent success.
+// Available reports whether an SSH agent is configured via SSH_AUTH_SOCK.
+//
+// It is a fund-only gate: it answers ONLY whether the variable is set, never
+// whether a live socket file exists at that path. Whether a usable key is
+// present is decided fund-only by the injected runner in HasKey, never by the
+// host environment. Requiring a stat-able socket here would make the SSH branch
+// depend on whether a socket FILE happens to exist on the runner — exactly the
+// environment-dependent behaviour this gate exists to prevent (a found key must
+// be reported regardless of the agent's filesystem state). Absence is a
+// documented, fail-closed condition: no variable means no agent.
 func (s SSHAgentSource) Available(ctx context.Context) bool {
 	agent := s.envVar("SSH_AUTH_SOCK")
-	if strings.TrimSpace(agent) == "" {
-		return false
-	}
-	// A socket file must exist; a missing path means the agent is gone.
-	if _, err := os.Stat(agent); err != nil {
-		return false
-	}
-	return true
+	return strings.TrimSpace(agent) != ""
 }
 
 // HasKey reports whether the agent carries a key usable for host auth. It runs
