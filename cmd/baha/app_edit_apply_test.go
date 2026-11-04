@@ -881,6 +881,7 @@ func probeDockerDaemonMode(ctx context.Context, endpoint string) (string, bool) 
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
+	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
 	// Hosted CI provides an explicitly selected Docker daemon endpoint via
 	// the job's DOCKER_HOST. Pin it so a stale CLI context or socket cannot
