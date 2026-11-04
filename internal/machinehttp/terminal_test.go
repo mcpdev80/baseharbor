@@ -81,7 +81,7 @@ const terminalBody = `{"contract_version":"v1","context":{"environment":"dev","t
 func openTestTerminal(t *testing.T, expiry *time.Time) (*Handler, *testTerminal, string) {
 	t.Helper()
 	session := newTestTerminal()
-	h, err := New(terminalTestExecutor{session: session})
+	h, err := New(terminalTestExecutor{session: session}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

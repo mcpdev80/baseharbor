@@ -51,7 +51,7 @@ func TestHTTPInputRejectsUnknownNullTrailingAndOversizedData(t *testing.T) {
 
 func TestHTTPActualCoreExecutorStartsAndAdvertisesCanonicalOperations(t *testing.T) {
 	executor := newBahaMachineExecutor(application.Store{Root: t.TempDir()})
-	handler, err := machinehttp.New(executor)
+	handler, err := machinehttp.New(executor, "")
 	if err != nil {
 		t.Fatal("actual Core HTTP executor cannot start", err)
 	}

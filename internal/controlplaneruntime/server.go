@@ -19,8 +19,9 @@ import (
 )
 
 var (
-	ErrMissingDatabaseURL = errors.New("control-plane database URL is required")
-	ErrMissingTLSFiles    = errors.New("control-plane TLS certificate and key are required")
+	ErrMissingDatabaseURL   = errors.New("control-plane database URL is required")
+	ErrMissingTLSFiles      = errors.New("control-plane TLS certificate and key are required")
+	ErrMissingOperationsDir = errors.New("control-plane runtime operations directory is required for the machine execution journal")
 )
 
 type Config struct {
