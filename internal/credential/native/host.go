@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // CommandRunner executes an external native command with a bounded stdin. It
@@ -12,24 +13,21 @@ import (
 // deterministic output without touching the network, the agent, or any host
 // state.
 type CommandRunner interface {
-	Invoke(ctx context.Context, name string, args ...string) ([]byte, error)
+	Invoke(ctx context.Context, name string, stdin string, args ...string) ([]byte, error)
 }
 
 // ExecRunner is the production CommandRunner backed by os/exec.
 type ExecRunner struct{}
 
-// Invoke runs name+args and returns its stdout. Stderr is attached to the error
-// on failure for diagnosis without leaking secrets (helper payloads are never
-// echoed back).
-func (ExecRunner) Invoke(ctx context.Context, name string, args ...string) ([]byte, error) {
+// Invoke runs name+args with the given stdin and returns its stdout. On failure
+// the error carries only a redacted class and exit status; the raw stderr is
+// never surfaced so helper payloads and secrets cannot leak through it.
+func (ExecRunner) Invoke(ctx context.Context, name string, stdin string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.Output()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			return out, fmt.Errorf("%s: %v (stderr: %s)", name, err, string(exitErr.Stderr))
-		}
-		return out, err
+		return out, exitStatusError(name, err)
 	}
 	return out, nil
 }
@@ -61,4 +59,15 @@ func sshUnavailable(err error) error {
 		return ErrSSHAgentUnavailable
 	}
 	return fmt.Errorf("%w: %v", ErrSSHAgentUnavailable, err)
+}
+
+// exitStatusError reports an external-command failure with only a redacted class
+// and exit status. The raw stderr is dropped so helper payloads, secrets, or
+// other host material never reach the returned error.
+func exitStatusError(name string, err error) error {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+		return fmt.Errorf("%s: command failed with a non-zero exit status", name)
+	}
+	return fmt.Errorf("%s: command failed", name)
 }

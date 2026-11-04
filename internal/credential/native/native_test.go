@@ -19,7 +19,7 @@ type fakeRunner struct {
 	runErr   error
 }
 
-func (f *fakeRunner) Invoke(_ context.Context, name string, args ...string) ([]byte, error) {
+func (f *fakeRunner) Invoke(_ context.Context, name string, stdin string, args ...string) ([]byte, error) {
 	f.lastName = name
 	f.lastArgs = args
 	return f.out, f.runErr
@@ -39,14 +39,14 @@ func TestGitCredentialPresentUsesGitHelper(t *testing.T) {
 	if f.lastName != "git" {
 		t.Fatalf("expected git helper, got %q", f.lastName)
 	}
-	wantArgs := []string{"credential", "fill", "https", "github.com"}
+	wantArgs := []string{"credential", "fill"}
 	if strings.Join(f.lastArgs, ",") != strings.Join(wantArgs, ",") {
 		t.Fatalf("unexpected args: got %v want %v", f.lastArgs, wantArgs)
 	}
 }
 
 func TestGitCredentialExplicitHelperIsForwarded(t *testing.T) {
-	f := &fakeRunner{}
+	f := &fakeRunner{out: []byte("username=oath-user\n")}
 	src := native.GitCredentialSource{Helper: "!gh auth git-credential", Run: f}
 
 	if _, err := src.Resolve(context.Background(), "github.com"); err != nil {
@@ -54,6 +54,10 @@ func TestGitCredentialExplicitHelperIsForwarded(t *testing.T) {
 	}
 	if f.lastName != "!gh auth git-credential" {
 		t.Fatalf("explicit helper not forwarded, got %q", f.lastName)
+	}
+	wantArgs := []string{"fill"}
+	if strings.Join(f.lastArgs, ",") != strings.Join(wantArgs, ",") {
+		t.Fatalf("explicit helper must pass `fill`, got %v", f.lastArgs)
 	}
 }
 
