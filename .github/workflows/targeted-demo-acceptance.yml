@@ -229,19 +229,14 @@ jobs:
     needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
     runs-on: ubuntu-latest
     steps:
-      - name: Require source compatibility and both native runtimes
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require source compatibility and native integration results
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
-        run: |
-          python3 - <<'PY'
-          import json, os
-          jobs = json.loads(os.environ["JOB_RESULTS"])
-          for name in ("resolve", "ecosystem_source", "selected_gate", "consumer_integration"):
-              result = jobs.get(name, {}).get("result")
-              if result != "success":
-                  raise SystemExit(f"Develop runtime acceptance failed: {name}={result}")
-          print("Exact four-repository sources, Docker/Podman lifecycle and native Console/Connector integration passed.")
-          PY
+        run: python3 scripts/develop-ecosystem-final.py
 
   reference_journey:
     name: Reference Journey · ${{ needs.resolve.outputs.runtime }} · Full E2E
