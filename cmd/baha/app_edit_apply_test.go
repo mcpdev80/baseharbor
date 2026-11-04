@@ -946,6 +946,43 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
 
+	// The confirmed Edit adds a SQL instance, which makes the manifest request a
+	// managed service. The Edit's managed-service PKI preflight reads the Core
+	// runtime manifest (runtime/compose.yaml) from the Target's runtime root via
+	// resolveApplicationCoreRuntime -> existingTargetRuntimeFiles. A real
+	// Core-backed deployment materializes that file (and runtime.env) here; the
+	// baseline workload-only lifecycle above never does, so without this the Edit
+	// fails closed at the PKI preflight with "compose.yaml: no such file or
+	// directory". Materialize the Core runtime in test scope — this establishes
+	// the production precondition (an installed, owned Core) rather than hiding
+	// the failure: it is neither a skip nor a t.Setenv bypass.
+	runtimeRoot, rerr := targetRuntimeStateRoot(target)
+	if rerr != nil {
+		t.Fatalf("resolve Target runtime root for Core fixture: %v", rerr)
+	}
+	if _, ferr := bhruntime.EnsureFilesForProjectAndResources(runtimeRoot, bhruntime.SharedProjectName(target.Name), bhruntime.SharedResourceProjectName(target.Name), bhruntime.Ports{Postgres: 15432, OpenBao: 18200}, false); ferr != nil {
+		t.Fatalf("materialize Core runtime fixture: %v", ferr)
+	}
+
+	// The managed-service PKI preflight also requires OpenBao manager
+	// credentials (runtime/openbao-admin.env, read by
+	// OpenBao.LoadAdminCredentials via ServiceCA -> managerToken in
+	// internal/openbao). A real Core-backed deployment writes this file during
+	// Bootstrap (adminFileName = "openbao-admin.env", internal/openbao); the
+	// EnsureFilesForProjectAndResources fixture above writes compose.yaml +
+	// runtime.env but not this file, so the preflight fails closed with
+	// "OpenBao manager credentials are not configured". Materialize the admin
+	// credentials in test scope — same production precondition, not a skip: this
+	// is neither a skip nor a t.Setenv bypass. The values below are a
+	// TEST-WINDOW PLACEHOLDER only: they exist solely so the preflight can read
+	// the file and proceed to the next real boundary; they never authenticate
+	// against a real OpenBao and must never be used outside this test.
+	adminEnvPath := filepath.Join(runtimeRoot, "openbao-admin.env")
+	adminEnv := "# TEST-WINDOW PLACEHOLDER — OpenBao manager credentials for the\n# PKI preflight only. These values exist solely so the\n# managed-service preflight can read runtime/openbao-admin.env and\n# proceed; they are NOT real credentials and must never be used\n# outside this test window.\nOPENBAO_ROLE_ID=test-placeholder-role-id\nOPENBAO_SECRET_ID=test-placeholder-secret-id\n"
+	if werr := os.WriteFile(adminEnvPath, []byte(adminEnv), 0o600); werr != nil {
+		t.Fatalf("materialize OpenBao manager credentials fixture: %v", werr)
+	}
+
 	desired := application.WithSQLInstances(m, "default")
 	// The confirmed Edit adds the SQL instance, so the edit is NOT equivalent
 	// to the loaded source. Only a non-equivalent edit reaches the confirmation
