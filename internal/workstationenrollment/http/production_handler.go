@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
@@ -53,11 +54,16 @@ func NewProductionHandler(e ProductionEnrollment, resolve ScopeResolver) (*Produ
 // ServeHTTP dispatches the production bootstrap/enroll boundary. Both paths stay
 // behind the authenticated operator middleware; the caller owns registration
 // behind the identity/tenant + TLS protection.
+//
+// Go's ServeMux does not strip the matched prefix from r.URL.Path, so a handler
+// mounted at an absolute path (e.g. /api/v1/workstations/bootstrap) still has to
+// recognise its own suffix. Dispatch by suffix so both the exact mounted request
+// and the bare endpoint path reach their method; anything else fails closed.
 func (h *ProductionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/bootstrap":
+	switch {
+	case r.URL.Path == "/bootstrap" || strings.HasSuffix(r.URL.Path, "/bootstrap"):
 		h.ServeBootstrap(w, r)
-	case "/enroll":
+	case r.URL.Path == "/enroll" || strings.HasSuffix(r.URL.Path, "/enroll"):
 		h.ServeEnroll(w, r)
 	default:
 		writeError(w, http.StatusNotFound, ErrBadRequest)
@@ -134,11 +140,20 @@ func (h *ProductionHandler) ServeEnroll(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// Persist the approved registry owner as a fact: scope, issuance time,
-	// separate workstation SPIFFE identity, serial, and expiry.
+	// separate workstation SPIFFE identity, serial, and expiry. Persistence is
+	// mandatory and fail-closed: if the registry fact cannot be written the
+	// enrollment is rolled back with an error rather than returning a success
+	// response for a fact that was never recorded.
 	if rec, ok := h.Enrollment.(interface {
 		RecordRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time) error
 	}); ok {
-		_ = rec.RecordRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt)
+		if err := rec.RecordRegistryFact(r.Context(), scope, time.Now().UTC(), scope.Identity(), scope.Station, result.Serial, result.ExpiresAt); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	} else {
+		writeError(w, http.StatusInternalServerError, errors.New("production enrollment is missing the registry-fakt owner"))
+		return
 	}
 	writeJSON(w, http.StatusOK, EnrollResponse{
 		InstallationID: scope.TenantID,

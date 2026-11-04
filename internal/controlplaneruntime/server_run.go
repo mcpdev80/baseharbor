@@ -200,7 +200,7 @@ type connectorEnrollmentProvider interface {
 }
 
 type workstationEnrollmentProvider interface {
-	WorkstationEnrollmentHTTP(context.Context, ws.Store, string) (http.Handler, error)
+	WorkstationEnrollmentHTTP(context.Context, ws.Store, *pgxpool.Pool, string) (http.Handler, error)
 }
 
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
@@ -250,7 +250,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		if !ok {
 			return errors.New("Workstation enrollment requires the Core workstation-enrollment provider")
 		}
-		handler, err := provider.WorkstationEnrollmentHTTP(ctx, database.NewWorkstationEnrollmentStore(deps.pool), cfg.ConnectorAuthorityTarget)
+		handler, err := provider.WorkstationEnrollmentHTTP(ctx, database.NewWorkstationEnrollmentStore(deps.pool), deps.pool, cfg.ConnectorAuthorityTarget)
 		if err != nil {
 			return err
 		}

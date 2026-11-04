@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/mcpdev80/baseharbor/internal/database"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
@@ -20,7 +23,7 @@ import (
 // authenticated installation (tenancy), never by the workstation request: the
 // request may carry the workstation-owned station label, but the installation
 // tenant is the authenticated operator's tenant.
-func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, store ws.Store, authorityTarget string) (http.Handler, error) {
+func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, store ws.Store, pool *pgxpool.Pool, authorityTarget string) (http.Handler, error) {
 	authorityTarget = strings.TrimSpace(authorityTarget)
 	if authorityTarget == "" {
 		return nil, errors.New("Workstation enrollment requires an explicit Core authority Target")
@@ -56,7 +59,12 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	// Pin the same installation that owns enrollment. Machine input may select
 	// an execution node, but never a different SQL/Secrets/Identity authority.
 	e.coreAuthority = &target
-	return wshttp.NewProductionHandler(wsProductionEnrollmentBridge{authority, store}, wshttp.ScopeResolverFromContext())
+	// Bind the scope from the authenticated installation (tenancy) and authorize
+	// the workstation-owned station against Core policy/ownership for that
+	// installation, so the scope is never selected from the request. An unowned
+	// or foreign station fails closed before the store or issuer is touched.
+	authorize := database.NewStationPolicyResolver(pool)
+	return wshttp.NewProductionHandler(wsProductionEnrollmentBridge{authority, store}, wshttp.ScopeResolverFromPolicy(authorize))
 }
 
 // wsProductionEnrollmentBridge adapts the one-use authority and the durable

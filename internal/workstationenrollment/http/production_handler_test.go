@@ -97,6 +97,14 @@ func bootstrapBody() map[string]any {
 	return map[string]any{"station": validStation, "certificate_ttl_seconds": 3600}
 }
 
+// bootstrapBodyFor builds a bootstrap request carrying the given station and
+// installation_id (the tenant in the context is authoritative; the body value is
+// ignored by the resolver).
+func bootstrapBodyFor(t *testing.T, station, tenant string) map[string]any {
+	t.Helper()
+	return map[string]any{"station": station, "certificate_ttl_seconds": 3600, "installation_id": tenant}
+}
+
 // enrollBody builds an enroll request with a real, validly-scoped CSR so the
 // enrollment path reaches the store instead of failing on CSR validation.
 func enrollBody(t *testing.T, station, tenant, token, nonce string) map[string]any {
@@ -310,6 +318,65 @@ func TestForeignTenantScopeFailsClosed(t *testing.T) {
 	bad := tenancy.WithContext(context.Background(), &tenancy.Context{TenantID: "not-a-uuid", ExternalIdentityID: "x", Roles: []string{"editor"}})
 	if rec := do(t, h, "/enroll", enrollBody(t, validStation, tenantA, "t", "n"), bad); rec.Code != http.StatusForbidden {
 		t.Fatalf("malformed tenant enroll = %d, want 403", rec.Code)
+	}
+}
+
+// --- Scope-from-policy cases (R2: station authorized against policy, not request) ---
+
+// policyMock authorizes a station for a tenant. It records the calls and admits
+// only the explicitly-owned stations for the matching tenant.
+type policyMock struct {
+	owned map[string]bool // key: "tenant|station"
+}
+
+func (p *policyMock) AuthorizeStation(_ context.Context, tenant, station string) error {
+	if p.owned[tenant+"|"+station] {
+		return nil
+	}
+	return ws.ErrDenied
+}
+
+// policyHandler builds a ProductionHandler whose resolver binds the tenant from
+// tenancy and authorizes the station through a policy mock.
+func policyHandler(t *testing.T, e *mockEnrollment, p *policyMock) *wshttp.ProductionHandler {
+	t.Helper()
+	h, err := wshttp.NewProductionHandler(e, wshttp.ScopeResolverFromPolicy(p))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// Case 10: a valid-looking but unowned station fails closed even when the
+// authenticated tenant and a syntactically valid label are supplied. The scope
+// must come from policy, not the request.
+func TestUnownedStationFailsClosed(t *testing.T) {
+	e := newMockEnrollment(t)
+	p := &policyMock{owned: map[string]bool{}} // no station owned
+	h := policyHandler(t, e, p)
+	// Authenticated tenantA, valid station label, but not authorized -> 403.
+	if rec := do(t, h, "/enroll", enrollBody(t, validStation, tenantA, "t", "n"), ctx(t, tenantA)); rec.Code != http.StatusForbidden {
+		t.Fatalf("unowned station enroll = %d, want 403", rec.Code)
+	}
+	// A malformed station that is also unowned fails closed.
+	if rec := do(t, h, "/enroll", enrollBody(t, "bad-station/escape", tenantA, "t", "n"), ctx(t, tenantA)); rec.Code != http.StatusForbidden {
+		t.Fatalf("malformed unowned station enroll = %d, want 403", rec.Code)
+	}
+}
+
+// Case 11: an owned station under the authenticated tenant is admitted; a
+// foreign installation (tenant) is never selected from the request.
+func TestOwnedStationAdmittedForeignRejected(t *testing.T) {
+	e := newMockEnrollment(t)
+	p := &policyMock{owned: map[string]bool{tenantA + "|" + validStation: true}}
+	h := policyHandler(t, e, p)
+	// Authenticated tenantA owns validStation -> admitted.
+	if rec := do(t, h, "/bootstrap", bootstrapBodyFor(t, validStation, tenantA), ctx(t, tenantA)); rec.Code != http.StatusOK {
+		t.Fatalf("owned station bootstrap = %d, want 200", rec.Code)
+	}
+	// Authenticated tenantB does not own validStation -> fails closed.
+	if rec := do(t, h, "/bootstrap", bootstrapBodyFor(t, validStation, tenantA), ctx(t, tenantB)); rec.Code != http.StatusForbidden {
+		t.Fatalf("foreign-tenant owned station bootstrap = %d, want 403", rec.Code)
 	}
 }
 

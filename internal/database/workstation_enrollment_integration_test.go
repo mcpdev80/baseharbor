@@ -81,15 +81,17 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 		t.Fatal("wrong token digest admitted")
 	}
 
-	// Concurrency: exactly one of many simultaneous consumes wins.
-	if err := store.Create(ctx, bootstrapWith(scope, "token", "nonce")); err != nil {
+	// Concurrency: exactly one of many simultaneous consumes wins. A fresh scope
+	// is used so the grant is live (the previous scope was already consumed).
+	concurrentScope := workstationenrollment.Scope{TenantID: tenantA, Station: "concurrency"}
+	if err := store.Create(ctx, bootstrapWith(concurrentScope, "token", "nonce")); err != nil {
 		t.Fatal(err)
 	}
 	var successes atomic.Int32
 	var wg sync.WaitGroup
 	for range 24 {
 		wg.Go(func() {
-			if _, err := store.Consume(ctx, scope, "token", "nonce", time.Hour); err == nil {
+			if _, err := store.Consume(ctx, concurrentScope, "token", "nonce", time.Hour); err == nil {
 				successes.Add(1)
 			}
 		})
@@ -99,27 +101,32 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 		t.Fatalf("simultaneous DB successes = %d", successes.Load())
 	}
 
-	// Restart: a fresh pool cannot spend the same one-use grant twice.
-	pool.Close()
+	// Restart: a fresh pool cannot spend the same one-use grant twice (fail-closed
+	// replay after process restart). The replay uses the already-consumed
+	// {tenantA, station-a} scope captured before the foreign-scope loop.
+	consumedScope := workstationenrollment.Scope{TenantID: tenantA, Station: "station-a"}
 	reopened, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	if _, err := NewWorkstationEnrollmentStore(reopened).Consume(ctx, scope, "token", "nonce", time.Hour); !errors.Is(err, workstationenrollment.ErrDenied) {
+	if _, err := NewWorkstationEnrollmentStore(reopened).Consume(ctx, consumedScope, "token", "nonce", time.Hour); !errors.Is(err, workstationenrollment.ErrDenied) {
 		t.Fatal("replay after pool restart: grant re-deletable")
 	}
+	pool.Close()
 
 	// Registry-fakt: persist + read the approved owner; a missing scope fails closed.
+	// All calls here use the reopened store (the original pool is now closed).
 	factScope := workstationenrollment.Scope{TenantID: tenantA, Station: "registry"}
-	if err := store.Create(ctx, bootstrapWith(factScope, "rtoken", "rnonce")); err != nil {
+	reopenedStore := NewWorkstationEnrollmentStore(reopened)
+	if err := reopenedStore.Create(ctx, bootstrapWith(factScope, "rtoken", "rnonce")); err != nil {
 		t.Fatal(err)
 	}
 	expires := time.Now().UTC().Truncate(time.Second).Add(time.Hour)
-	if err := store.RecordRegistryFact(ctx, factScope, time.Now().UTC(), "spiffe://baseharbor/workstations/"+tenantA+"/registry", "registry", "abcd", expires); err != nil {
+	if err := reopenedStore.RecordRegistryFact(ctx, factScope, time.Now().UTC(), "spiffe://baseharbor/workstations/"+tenantA+"/registry", "registry", "abcd", expires); err != nil {
 		t.Fatal(err)
 	}
-	gotIssued, gotRecipient, gotScopeID, gotSerial, gotExpires, ok, err := store.ReadRegistryFact(ctx, factScope)
+	gotIssued, gotRecipient, gotScopeID, gotSerial, gotExpires, ok, err := reopenedStore.ReadRegistryFact(ctx, factScope)
 	if err != nil || !ok {
 		t.Fatalf("registry read failed: ok=%v err=%v", ok, err)
 	}
@@ -129,7 +136,7 @@ func TestWorkstationEnrollmentDurableStore(t *testing.T) {
 	if gotIssued.IsZero() || gotExpires.Before(time.Now()) || gotScopeID == "" {
 		t.Fatal("registry fact fields empty")
 	}
-	if _, _, _, _, _, ok, err := store.ReadRegistryFact(ctx, workstationenrollment.Scope{TenantID: tenantB, Station: "registry"}); ok || err == nil {
+	if _, _, _, _, _, ok, err := reopenedStore.ReadRegistryFact(ctx, workstationenrollment.Scope{TenantID: tenantB, Station: "registry"}); ok || err == nil {
 		t.Fatal("foreign tenant registry read admitted")
 	}
 }

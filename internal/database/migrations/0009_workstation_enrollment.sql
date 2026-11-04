@@ -20,9 +20,12 @@ CREATE TABLE workstation_enrollment_grants (
     expires_at timestamptz NOT NULL,
     certificate_ttl_seconds bigint NOT NULL CHECK (certificate_ttl_seconds BETWEEN 1 AND 86400),
     consumed_at timestamptz,
-    csr_digest text CHECK (csr_digest ~ '^[0-9a-f]{64}$'),
-    PRIMARY KEY (tenant_id, station, token_digest),
-    CHECK ((consumed_at IS NULL) = (csr_digest IS NULL))
+    -- A workstation bootstrap is a one-use credential consumed before any CSR is
+    -- presented (the CSR arrives at enroll, not at bootstrap), so unlike the
+    -- connector grant there is no CSR to bind here. The connector's
+    -- (consumed_at IS NULL) = (csr_digest IS NULL) pairing must NOT apply to this
+    -- table: a live workstation grant legitimately has a NULL csr_digest.
+    PRIMARY KEY (tenant_id, station, token_digest)
 );
 ALTER TABLE workstation_enrollment_grants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workstation_enrollment_grants FORCE ROW LEVEL SECURITY;
