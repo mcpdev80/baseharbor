@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -650,11 +651,12 @@ type Store struct {
 	policy   ImportPolicy
 	existing map[string]bool // identity -> present
 	binding  ExpectedBinding
-	// stagingFaultShortWrite is a test-only fault seam: when true the next
-	// staging write inside atomicCommit writes fewer bytes than requested to
-	// simulate a real short write after a prefix has been staged. Production
-	// callers never set it.
-	stagingFaultShortWrite bool
+	// stagingWrite is an optional fault seam for the single staging write.
+	// Production stores leave it nil and use the file's Write method.
+	stagingWrite func(io.Writer, []byte) (int, error)
+	// removeObsolete is an optional seam for replacing an existing record.
+	// Production stores leave it nil and remove the obsolete file directly.
+	removeObsolete func(string) error
 }
 
 // identityKey returns the conflict-detection key for a record: the pair of
@@ -859,9 +861,9 @@ func (s *Store) Import(container *ProfileContainer) (*ImportResult, error) {
 		obsoletePaths = s.filesContainingIdentities(staged)
 	}
 
-	// Commit: write the staged set as one new container file. A partial write
-	// leaves no committed state (the store reads identity on open, and each
-	// file is atomic via a single WriteFile).
+	// Commit the staged set as one new container file. A partial write leaves no
+	// committed state: atomicCommit writes to a same-directory staging file and
+	// renames it only after the complete buffer has been written and synced.
 	commit := &ProfileContainer{
 		Version:   ContainerVersion,
 		DestPath:  s.root,
@@ -899,8 +901,13 @@ func (s *Store) Import(container *ProfileContainer) (*ImportResult, error) {
 	// the one-file-per-identity invariant, so a cleanup error is a typed
 	// ErrNoWrite rather than an ignored error that reports success.
 	for _, p := range obsoletePaths {
-		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
-			_ = s.removeStaged(commitPath)
+		if err := s.removeObsoleteRecord(p); err != nil && !os.IsNotExist(err) {
+			if cleanupErr := s.removeStaged(commitPath); cleanupErr != nil {
+				return nil, errors.Join(
+					fmt.Errorf("%w: failed to remove superseded record %s: %v", ErrNoWrite, p, err),
+					cleanupErr,
+				)
+			}
 			return nil, fmt.Errorf("%w: failed to remove superseded record %s: %v", ErrNoWrite, p, err)
 		}
 	}
@@ -923,31 +930,22 @@ func (s *Store) atomicCommit(data []byte) (string, error) {
 		_ = os.Remove(stagingPath)
 		return "", fmt.Errorf("profile-container: staging open: %w", err)
 	}
-	// Full write: verify every byte was written. A deterministic short write
-	// (test seam) writes fewer bytes than requested to simulate a real
-	// short-write after a prefix has been staged; the caller must detect the
-	// short write and fail closed (see short-write assertion in the caller).
-	_, err = f.Write(data)
-	if s.stagingFaultShortWrite {
-		// Test seam: simulate a short write after a prefix has been staged by
-		// writing only half the bytes, then closing without a full write. The
-		// staging file is left truncated and the caller must detect the short
-		// write and fail closed, leaving no partial final file or temp artifact.
-		s.stagingFaultShortWrite = false
+	// Exactly one write attempt is made. A short write is handled before Sync or
+	// Rename; retrying the same buffer could turn a partial write into duplicate
+	// trailing JSON and invalidate the atomicity guarantee.
+	written, writeErr := s.writeStaging(f, data)
+	if writeErr != nil || written != len(data) {
 		_ = f.Close()
-		if err := os.Remove(stagingPath); err != nil {
-			_ = os.Remove(stagingPath)
+		cleanupErr := s.removeStaged(stagingPath)
+		if writeErr != nil {
+			writeErr = fmt.Errorf("%w: staging write %d of %d bytes: %v", ErrPartialWrite, written, len(data), writeErr)
+		} else {
+			writeErr = fmt.Errorf("%w: staging short write %d of %d bytes", ErrPartialWrite, written, len(data))
 		}
-		return "", fmt.Errorf("%w: staging short write (fault seam) of %d bytes", ErrPartialWrite, len(data))
-	}
-	written, err := f.Write(data)
-	if err != nil || written < len(data) {
-		_ = f.Close()
-		_ = os.Remove(stagingPath)
-		if err != nil {
-			return "", fmt.Errorf("profile-container: staging write: %w", err)
+		if cleanupErr != nil {
+			return "", errors.Join(writeErr, cleanupErr)
 		}
-		return "", fmt.Errorf("%w: staging short write %d of %d bytes", ErrPartialWrite, written, len(data))
+		return "", writeErr
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
@@ -963,6 +961,20 @@ func (s *Store) atomicCommit(data []byte) (string, error) {
 		return "", fmt.Errorf("profile-container: staging rename: %w", err)
 	}
 	return finalPath, nil
+}
+
+func (s *Store) writeStaging(dst io.Writer, data []byte) (int, error) {
+	if s.stagingWrite != nil {
+		return s.stagingWrite(dst, data)
+	}
+	return dst.Write(data)
+}
+
+func (s *Store) removeObsoleteRecord(path string) error {
+	if s.removeObsolete != nil {
+		return s.removeObsolete(path)
+	}
+	return os.Remove(path)
 }
 
 // removeStaged removes a staged artifact and defines the cleanup-failure

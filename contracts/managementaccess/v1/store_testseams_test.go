@@ -7,6 +7,7 @@
 package managementaccess
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -91,20 +92,17 @@ func (s *Store) ImportForTest(container *ProfileContainer) (*ImportResult, error
 	return s.Import(container)
 }
 
-// FailNextStagingWriteForTest installs a one-shot fault seam that makes the next
-// staging write inside atomicCommit fail with a short write (fewer bytes than
-// requested), so tests can exercise a genuine short-write after a prefix has
-// been staged. The seam is consumed after the first failing call so it does not
-// leak into later imports.
-func (s *Store) FailNextStagingWriteForTest() {
-	s.stagingFaultShortWrite = true
+// SetStagingWriteForTest replaces the one staging write for deterministic
+// short-write tests. Passing nil restores the production file writer.
+func (s *Store) SetStagingWriteForTest(write func(io.Writer, []byte) (int, error)) {
+	s.stagingWrite = write
 }
 
-// SetStagingFaultShortWriteForTest directly controls the short-write fault seam
-// (true = next staging write is a short write, false = normal). Exposed so tests
-// can enable/disable the seam deterministically without consuming it.
-func (s *Store) SetStagingFaultShortWriteForTest(v bool) {
-	s.stagingFaultShortWrite = v
+// SetRemoveObsoleteForTest replaces the obsolete-record removal step so tests
+// can inject a deterministic replacement-cleanup failure. Passing nil restores
+// os.Remove.
+func (s *Store) SetRemoveObsoleteForTest(remove func(string) error) {
+	s.removeObsolete = remove
 }
 
 // WriteRawContainerForTest writes a raw container bytes to a file under root
