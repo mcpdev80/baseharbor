@@ -44,20 +44,17 @@ import (
 // and a fresh reopen, the last (running) execution must still be recoverable —
 // rotation must never drop the newest line per id.
 func TestRound7ActiveIDSurvivesManyBigEntriesReopen(t *testing.T) {
-	// B1-OWNER-PENDING (budget vs all-running cap-verhalten): this test drives 8
-	// all-running ~2.4 MiB entries (newest-per-id set ≈ 19.2 MiB) — it exceeds the
-	// fixed 16 MiB retention budget (active + 3 backups, 4 MiB each). Luna recipe
-	// B1 (review-1354g) rejects such an over-budget active workload with
-	// "total-cap set cannot retain active execution ids within segment slots" at
-	// start[3] (the newest-per-id set first needs 4 segment slots, and the fixed
-	// budget is 3). That rejection is the correct B1 fail-closed behaviour, so this
-	// all-running scenario is unresolved by design and is paused pending an Owner
-	// decision on how to reconcile the fixed budget with an unbounded active set.
-	// The buried-id B1 probe (durability_probe_b1_test.go) still exercises B1 via a
-	// terminal-entry workload that fits the budget; only the all-running variant is
-	// gated behind the Owner decision.
-	t.Skip("B1-OWNER-PENDING (budget vs all-running cap-verhalten): 8×2.4MiB all-running ≈19.2MiB exceeds fixed 16MiB retention budget; B1 rejects this over-budget active workload — awaiting Owner decision")
-
+	// Option 1 (Owner decision PR #1354, 2026-11-04T10:26Z): the fixed 16 MiB
+	// retention budget (active segment + 3 backups, 4 MiB each) cannot hold an
+	// unbounded all-running active set — an 8×2.4 MiB all-running workload needs
+	// a 19.2 MiB newest-per-id set and Luna recipe B1 rejects it fail-closed at
+	// start[3] with "total-cap set cannot retain active execution ids within
+	// segment slots". The Owner therefore retired the all-running scenario: the
+	// seven older entries reach terminal/finished (succeeded) before the cap
+	// grips, so the newest-per-id set shrinks to what the budget holds and only
+	// the newest (last) active id must be retained. This probe proves that: it
+	// also asserts the hueche carries — the same eight entries kept all-running
+	// reject with that exact error (see TestRound7B1MutationCapRejectionRed).
 	root := t.TempDir()
 	store, err := newPersistedExecutionStore(root)
 	if err != nil {
@@ -82,6 +79,13 @@ func TestRound7ActiveIDSurvivesManyBigEntriesReopen(t *testing.T) {
 		}
 		if startErr := store.start(exec.ExecutionID); startErr != nil {
 			t.Fatalf("start %d: %v", i, startErr)
+		}
+		// Option 1: every entry but the last becomes terminal before the cap
+		// grips, so only the newest active id must survive retention.
+		if i < n-1 {
+			if succeedErr := store.succeed(exec.ExecutionID, []byte("{}")); succeedErr != nil {
+				t.Fatalf("succeed %d: %v", i, succeedErr)
+			}
 		}
 		lastID = exec.ExecutionID
 	}
@@ -117,6 +121,50 @@ func TestRound7ActiveIDSurvivesManyBigEntriesReopen(t *testing.T) {
 	} else if got.State != machine.ExecutionRunning {
 		t.Fatalf("last execution state after reopen = %q, want running", got.State)
 	}
+}
+
+// TestRound7B1MutationCapRejectionRed (Option 1 red-first control)
+// Proves the hueche carries: the same eight ~2.4 MiB entries kept ALL-running
+// reject with the exact Luna B1 error "total-cap set cannot retain active
+// execution ids within segment slots" — i.e. the cap rejection the passing
+// TestRound7ActiveIDSurvivesManyBigEntriesReopen relies on is real, not an
+// artefact of making the older entries terminal. This is a RED-first check:
+// it asserts the fail-closed error fires before any positive assertion, so a
+// regression that silently dropped the active id (instead of rejecting) would
+// surface here as this failure rather than as a hidden active-id loss.
+func TestRound7B1MutationCapRejectionRed(t *testing.T) {
+	root := t.TempDir()
+	store, err := newPersistedExecutionStore(root)
+	if err != nil {
+		t.Fatalf("newPersistedExecutionStore: %v", err)
+	}
+
+	const n = 8
+	const entrySize = 2_400_000
+	for i := 0; i < n; i++ {
+		bigTarget := make([]byte, entrySize)
+		for j := range bigTarget {
+			bigTarget[j] = 't'
+		}
+		exec, createErr := store.create(
+			strings.Repeat("op", i+1),
+			round6Actor(strings.Repeat("o", 1024)),
+			round6Context(string(bigTarget)),
+		)
+		if createErr != nil {
+			t.Fatalf("create %d: %v", i, createErr)
+		}
+		if startErr := store.start(exec.ExecutionID); startErr != nil {
+			// RED observed before the budget was met: the B1 cap rejection is real.
+			const want = "total-cap set cannot retain active execution ids within segment slots"
+			if !strings.Contains(startErr.Error(), want) {
+				t.Fatalf("start %d: unexpected error %q, want substring %q", i, startErr.Error(), want)
+			}
+			t.Logf("red-first control OK: B1 cap rejection at entry %d: %v", i, startErr)
+			return
+		}
+	}
+	t.Fatal("red-first control FAIL: eight all-running ~2.4MiB entries never hit the B1 cap rejection (active ids silently dropped?)")
 }
 
 // TestRound7CrashHalfWriteFailsClosed (Punkt 2): a valid running line followed by
