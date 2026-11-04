@@ -56,3 +56,21 @@ func WithVerifiedPrincipal(ctx context.Context, principal *identity.Principal) c
 	setPrincipal(ctx, principal)
 	return ctx
 }
+
+type membershipProviderKey struct{}
+
+// WithMembershipProvider installs the bounded MembershipProvider that maps a
+// verified operator's issuer+subject/group/app-role claims onto concrete
+// tenant memberships. It is an optional context value; without it a
+// claim-based resolution fails closed (ErrClaimsNotVerified).
+func WithMembershipProvider(ctx context.Context, provider MembershipProvider) context.Context {
+	return context.WithValue(ctx, membershipProviderKey{}, provider)
+}
+
+func membershipProviderFromContext(ctx context.Context) MembershipProvider {
+	provider, ok := ctx.Value(membershipProviderKey{}).(MembershipProvider)
+	if !ok || provider == nil {
+		return nil
+	}
+	return provider
+}
