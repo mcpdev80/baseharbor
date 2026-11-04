@@ -57,6 +57,10 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if neverDelivered, err := e.verifyOwnershipWhenNoDeploymentRecord(ctx); err != nil {
 		return err
 	} else if neverDelivered {
+		if !e.confirmed {
+			fmt.Fprintln(out, "No changes were made. Confirm with --yes to retire a never-delivered application.")
+			return nil
+		}
 		if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
 			return fmt.Errorf("application was never delivered but provider registry cleanup failed: %w", err)
 		}
