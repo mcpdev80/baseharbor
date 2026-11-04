@@ -283,6 +283,12 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
 		return errors.New("desired provider preferences must be a JSON array")
 	}
+	// Consume initialization provenance BEFORE a deployment can be persisted.
+	// If deployment.json is lost later, its absence must never be misread as
+	// proof that this application has never created runtime resources.
+	if err := ConsumeNeverDeliveredProof(record.Identity); err != nil {
+		return fmt.Errorf("invalidate never-delivered provenance: %w", err)
+	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
 	}

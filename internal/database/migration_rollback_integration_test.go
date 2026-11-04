@@ -64,19 +64,27 @@ func TestMigrationRollbackOwnsOnlyLatestChange(t *testing.T) {
 		t.Fatalf("missing %s migration was accepted as schema ready", latest)
 	}
 
-	// The head stage owns its own schema exclusively: the tables created by its
-	// own migration must be gone, and nothing earlier may have been touched.
-	// These names come from the head stage's own migration file, not a literal
-	// here, so a two-number/order mutation still asserts on the selected head.
-	var workstationGrantsExists, workstationRegistryExists bool
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.workstation_enrollment_grants') IS NOT NULL").Scan(&workstationGrantsExists); err != nil {
-		t.Fatal(err)
+	// The head stage owns its own schema exclusively: rolling it back must remove
+	// exactly the tables its own .down.sql drops, and nothing earlier may have
+	// been touched. The owned table names come from the head stage's migration
+	// file, never a literal here, so a two-number/order mutation still asserts on
+	// the selected head.
+	ownedTables, err := ownedSchemaTables(latest)
+	if err != nil {
+		t.Fatalf("read owned artifacts for %s: %v", latest, err)
 	}
-	if err := pool.QueryRow(ctx, "SELECT to_regclass('public.workstation_enrollment_registry') IS NOT NULL").Scan(&workstationRegistryExists); err != nil {
-		t.Fatal(err)
-	}
-	if workstationGrantsExists || workstationRegistryExists {
-		t.Fatalf("%s owned schema still exists after rolling back its owning migration", latest)
+	// The selected stage may legitimately own zero dropped tables (e.g. a pure
+	// policy migration). The only hard requirement is that nothing earlier was
+	// touched; the earlier-stage probes below cover that. When it does own tables,
+	// each must be gone after rollback.
+	for _, name := range ownedTables {
+		var exists bool
+		if err := pool.QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", "public."+name).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatalf("%s owned table %s still exists after rolling back its owning migration", latest, name)
+		}
 	}
 
 	// Earlier stages (N-1 and N-2) must be untouched by rolling back the head.

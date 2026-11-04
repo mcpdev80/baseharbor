@@ -77,20 +77,6 @@ CI, Pre-Release and Release run ordinary required jobs. Their dependency results
 
 Rulesets remain disabled during the current CI repair. Do not claim live Required Check enforcement until separately verified and enabled. This change authorizes no release or tag. Product audit/recovery records, source pinning, artifact checksums and build provenance retain their own semantics.
 
-## W143 lane identity
-worker: w143-worker (w143@baseharbor.local). NOT w135-worker.
-
-## Second basis note (2026-11-04, coordinator f49a3303): merge develop into this lane
-develop HEAD = e444ae117173dcf84e7aa8b17f73c020d3e2923c (kodierung verbunden).
-This lane's branch (work/w96-production-wiring-f8ef4255) is OLDER than develop.
-Action in the SAME run: `git fetch origin develop` then `git merge origin/develop`
-into this lane's own branch (no force-transfer). CONFLICT RESOLUTION: in any
-conflict under contracts/managementaccess/v1 or the three reviewed database
-integration tests, take the develop version (develop wins). A conflict that is
-provably non-resolvable per this rule => STOP + MELDEN with file:line.
-The base mission stays unchanged; this note only extends it.
-Prove ancestry with `git merge-base --is-ancestor origin/develop HEAD`.
-
 ## CI execution discipline
 
 Ordinary branch pushes do not start CI. Draft PRs run workflow policy, source
