@@ -3,6 +3,8 @@ package native_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -86,9 +88,27 @@ func TestSSHAgentUnavailableDocumentsAbsentCase(t *testing.T) {
 	}
 }
 
+// sshAgentTempSocket points SSH_AUTH_SOCK at a real socket file in the temp dir
+// so the ssh-agent tests are deterministic and host-independent. On a clean
+// hosted runner there is no /run/user/1000/openssh_agent; relying on the runner
+// environment instead of isolating is exactly the failure that bit these tests
+// before. A listening unix socket file is enough for os.Stat to succeed.
+func sshAgentTempSocket(t *testing.T) string {
+	t.Helper()
+	sockPath := filepath.Join(t.TempDir(), "agent.sock")
+	f, err := os.Create(sockPath)
+	if err != nil {
+		t.Fatalf("create temp agent socket: %v", err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	t.Setenv("SSH_AUTH_SOCK", sockPath)
+	return sockPath
+}
+
 func TestSSHAgentAvailableNoKey(t *testing.T) {
+	sshAgentTempSocket(t)
 	f := &fakeRunner{out: []byte("\n\n")}
-	src := native.SSHAgentSource{Env: func(string) string { return "/run/user/1000/openssh_agent" }, Run: f}
+	src := native.SSHAgentSource{Run: f}
 
 	if !src.Available(context.Background()) {
 		t.Fatal("agent socket present should be available")
@@ -103,8 +123,9 @@ func TestSSHAgentAvailableNoKey(t *testing.T) {
 }
 
 func TestSSHAgentAvailableWithKey(t *testing.T) {
+	sshAgentTempSocket(t)
 	f := &fakeRunner{out: []byte("ssh-ed25519 AAAAC3NzaC1lZDI1OTE5AAAAexample key\n")}
-	src := native.SSHAgentSource{Env: func(string) string { return "/run/user/1000/openssh_agent" }, Run: f}
+	src := native.SSHAgentSource{Run: f}
 
 	has, err := src.HasKey(context.Background(), "example.com")
 	if err != nil {
