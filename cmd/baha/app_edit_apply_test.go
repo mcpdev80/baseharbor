@@ -875,6 +875,24 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
 
+	// The confirmed Edit adds a SQL instance, which makes the manifest request a
+	// managed service. The Edit's managed-service PKI preflight reads the Core
+	// runtime manifest (runtime/compose.yaml) from the Target's runtime root via
+	// resolveApplicationCoreRuntime -> existingTargetRuntimeFiles. A real
+	// Core-backed deployment materializes that file (and runtime.env) here; the
+	// baseline workload-only lifecycle above never does, so without this the Edit
+	// fails closed at the PKI preflight with "compose.yaml: no such file or
+	// directory". Materialize the Core runtime in test scope — this establishes
+	// the production precondition (an installed, owned Core) rather than hiding
+	// the failure: it is neither a skip nor a t.Setenv bypass.
+	runtimeRoot, rerr := targetRuntimeStateRoot(target)
+	if rerr != nil {
+		t.Fatalf("resolve Target runtime root for Core fixture: %v", rerr)
+	}
+	if _, ferr := bhruntime.EnsureFilesForProjectAndResources(runtimeRoot, bhruntime.SharedProjectName(target.Name), bhruntime.SharedResourceProjectName(target.Name), bhruntime.Ports{Postgres: 15432, OpenBao: 18200}, false); ferr != nil {
+		t.Fatalf("materialize Core runtime fixture: %v", ferr)
+	}
+
 	desired := application.WithSQLInstances(m, "default")
 	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
 	if err != nil {
