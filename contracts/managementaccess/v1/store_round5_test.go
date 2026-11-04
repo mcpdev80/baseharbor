@@ -141,6 +141,7 @@ func TestRecipe4ShortWriteSeam(t *testing.T) {
 	if written <= 0 || written >= requested {
 		t.Fatalf("recipe 4: writer did not produce a nonzero short write: n=%d requested=%d", written, requested)
 	}
+	t.Logf("recipe 4: staging writer returned n=%d for requested=%d bytes", written, requested)
 	if calls != 1 {
 		t.Fatalf("recipe 4: atomic commit must make one write attempt, got %d", calls)
 	}
