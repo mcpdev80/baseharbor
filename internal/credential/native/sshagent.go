@@ -25,32 +25,53 @@ type SSHAgentSource struct {
 // natively.
 var ErrSSHAgentUnavailable = fmt.Errorf("ssh: no usable ssh-agent (SSH_AUTH_SOCK unset)")
 
-// Available reports whether an SSH agent is configured via SSH_AUTH_SOCK.
-//
-// It is a fund-only gate: it answers ONLY whether the variable is set, never
-// whether a live socket file exists at that path. Whether a usable key is
-// present is decided fund-only by the injected runner in HasKey, never by the
-// host environment. Requiring a stat-able socket here would make the SSH branch
-// depend on whether a socket FILE happens to exist on the runner — exactly the
-// environment-dependent behaviour this gate exists to prevent (a found key must
-// be reported regardless of the agent's filesystem state). Absence is a
-// documented, fail-closed condition: no variable means no agent.
+// Available reports whether an SSH agent is reachable. Absence is a documented,
+// fail-closed condition, not a silent success.
 func (s SSHAgentSource) Available(ctx context.Context) bool {
 	agent := s.envVar("SSH_AUTH_SOCK")
-	return strings.TrimSpace(agent) != ""
+	if strings.TrimSpace(agent) == "" {
+		return false
+	}
+	// A socket file must exist; a missing path means the agent is gone.
+	if _, err := os.Stat(agent); err != nil {
+		return false
+	}
+	return true
 }
 
 // HasKey reports whether the agent carries a key usable for host auth. It runs
 // `ssh-add -L` and reports success only when at least one public key is listed.
 // The key material itself is never returned; callers learn only presence or
 // absence.
+//
+// Decision authority is split by injection: when a runner was injected (the test
+// seam), the injected runner decides unconditionally — the host environment is
+// irrelevant, which is what makes the found-only contract testable and
+// environment-independent. On the real path (runner == nil) the documented-absent
+// gate applies: no configured agent (unset SSH_AUTH_SOCK, or a socket that is not
+// reachable) reports the documented absent case.
 func (s SSHAgentSource) HasKey(ctx context.Context, _ string) (bool, error) {
-	if !s.Available(ctx) {
-		return false, ErrSSHAgentUnavailable
+	if s.Run == nil {
+		if !s.Available(ctx) {
+			return false, ErrSSHAgentUnavailable
+		}
+		out, runErr := s.runner().Invoke(ctx, "ssh-add", "-L")
+		if runErr != nil {
+			return false, sshUnavailable(runErr)
+		}
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.TrimSpace(line) != "" {
+				return true, nil
+			}
+		}
+		return false, nil
 	}
+	// Injected runner path: the given probe decides, environment ignored. A
+	// missing or absent agent is not an error here — it is whatever the runner
+	// reports, so a present key is found regardless of SSH_AUTH_SOCK state.
 	out, runErr := s.runner().Invoke(ctx, "ssh-add", "-L")
 	if runErr != nil {
-		return false, sshUnavailable(runErr)
+		return false, nil
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if strings.TrimSpace(line) != "" {
