@@ -63,10 +63,10 @@ type RecordKind = ManagementAccessKind
 // one-use device enrollment or an encrypted credential export, plus the codec
 // version and the destination path the record was produced at.
 type ProfileContainer struct {
-	Version   string          `json:"version"`
-	DestPath  string          `json:"dest_path"`
-	Records   []RecordWire    `json:"records"`
-	Timestamp time.Time       `json:"timestamp"`
+	Version   string       `json:"version"`
+	DestPath  string       `json:"dest_path"`
+	Records   []RecordWire `json:"records"`
+	Timestamp time.Time    `json:"timestamp"`
 }
 
 // RecordWire is the record as encoded into the container. It is a thin view:
@@ -283,7 +283,7 @@ func (s *Store) scan() error {
 			continue
 		}
 		name := e.Name()
-		if len(name) < len(".json") || name[len(name)-len(".json")] != 'n' || name[len(name)-5:] != ".json" {
+		if len(name) < len(".json") || name[len(name)-len(".json"):] != ".json" {
 			continue
 		}
 		rec, err := s.readOne(filepath.Join(s.root, name))
