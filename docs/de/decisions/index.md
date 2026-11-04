@@ -27,4 +27,7 @@ ADRs bewahren Entscheidungen und Begründungen. Sie ersetzen keine aktuelle Doku
 - [0019 — Organization preferences and independent policy](0019-organization-preferences-and-independent-policy.md)
 
 - [0020 — Scoped Connector enrollment](0020-scoped-connector-enrollment.md)
+
+- [0021 — One installation authority for local and remote work](0021-one-installation-authority.md)
+
 - [0022 — Ein Versöhnungs-Besitzer und delegierte Lieferung-Grenzen](0022-one-reconciliation-owner-and-delegated-delivery.md)

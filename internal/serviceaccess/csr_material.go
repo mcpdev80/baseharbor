@@ -25,6 +25,9 @@ func ValidateSignedCSR(request CSRSigningRequest, issued IssuedCertificate, trus
 	if err != nil || leaf.IsCA || leaf.Subject.CommonName != request.Identity || len(leaf.URIs) != 1 || leaf.URIs[0].String() != request.Identity || len(leaf.DNSNames) != 0 || len(leaf.IPAddresses) != 0 || len(leaf.EmailAddresses) != 0 || len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth || len(leaf.UnknownExtKeyUsage) != 0 || leaf.KeyUsage != x509.KeyUsageDigitalSignature || !leaf.NotAfter.After(now) || leaf.NotAfter.After(now.Add(request.TTL+time.Minute)) || !issued.ExpiresAt.Equal(leaf.NotAfter) {
 		return invalid
 	}
+	if !certValidAt(issued.ExpiresAt, now) {
+		return invalid
+	}
 	key, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
 	if err != nil || !bytes.Equal(key, csr.RawSubjectPublicKeyInfo) {
 		return invalid
@@ -56,6 +59,17 @@ func ValidateSignedCSR(request CSRSigningRequest, issued IssuedCertificate, trus
 		return invalid
 	}
 	return nil
+}
+
+// certValidAt is the single shared expiry check for an issued service
+// certificate: a zero ExpiresAt is unusable and a value in the past is expired.
+// Both the wrapper path (ValidateSignedCSR) and the serviceaccess default
+// delegate here, so a single kernzeile enforces the bound.
+func certValidAt(expiresAt, now time.Time) bool {
+	if expiresAt.IsZero() {
+		return false
+	}
+	return !now.After(expiresAt)
 }
 
 func certificatePool(material []byte) (*x509.CertPool, error) {

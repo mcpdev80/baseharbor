@@ -14,6 +14,16 @@ on:
         description: Exact baseharbor-demo commit SHA to test
         required: true
         type: string
+      console_ref:
+        description: Exact Console SHA for optional four-repository develop preflight
+        required: false
+        default: ""
+        type: string
+      connector_ref:
+        description: Exact Connector SHA for optional four-repository develop preflight
+        required: false
+        default: ""
+        type: string
       runtime:
         description: Gate execution class/runtime
         required: true
@@ -23,6 +33,7 @@ on:
           - static
           - docker
           - podman
+          - both
       gate:
         description: Atomic gate from baseharbor-demo/tests/gate-resources.json
         required: true
@@ -48,6 +59,8 @@ jobs:
       runtime: ${{ steps.resolve.outputs.runtime }}
       gate: ${{ steps.resolve.outputs.gate }}
       gates: ${{ steps.resolve.outputs.gates }}
+      console_ref: ${{ steps.resolve.outputs.console_ref }}
+      connector_ref: ${{ steps.resolve.outputs.connector_ref }}
     steps:
       - name: Checkout gate tooling for ref resolution and pinned demo ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +74,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_REF: ${{ inputs.ref }}
           DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
+          DISPATCH_CONSOLE_REF: ${{ inputs.console_ref }}
+          DISPATCH_CONNECTOR_REF: ${{ inputs.connector_ref }}
           DISPATCH_RUNTIME: ${{ inputs.runtime }}
           DISPATCH_GATE: ${{ inputs.gate }}
           GH_TOKEN: ${{ github.token }}
@@ -105,7 +120,7 @@ jobs:
           fi
 
           case "$runtime" in
-            static|docker|podman|batch) ;;
+            static|docker|podman|both|batch) ;;
             *)
               echo "Unsupported targeted runtime: $runtime" >&2
               exit 2
@@ -114,7 +129,15 @@ jobs:
           test -n "$ref"
           test -n "$demo_ref"
           test -n "$gate"
-          if [ "$runtime" = batch ]; then
+          if [ "$runtime" = both ]; then
+            test "$EVENT_NAME" = workflow_dispatch
+            test "$gate" = lifecycle
+            [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$DISPATCH_CONSOLE_REF" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$DISPATCH_CONNECTOR_REF" =~ ^[0-9a-f]{40}$ ]]
+            gates='[{"runtime":"docker","gate":"lifecycle"},{"runtime":"podman","gate":"lifecycle"}]'
+          elif [ "$runtime" = batch ]; then
             test "$EVENT_NAME" = push
             test "$gate" = remaining
             gates="$(python scripts/targeted-atomic-plan.py --tag "v$version")"
@@ -130,14 +153,40 @@ jobs:
             echo "runtime=$runtime"
             echo "gate=$gate"
             echo "gates=$gates"
+            echo "console_ref=$DISPATCH_CONSOLE_REF"
+            echo "connector_ref=$DISPATCH_CONNECTOR_REF"
           } >> "$GITHUB_OUTPUT"
 
-  selected_gate:
-    if: needs.resolve.outputs.gate != 'reference-journey'
+  ecosystem_source:
+    name: Develop · Four-repo immutable source compatibility
+    if: needs.resolve.outputs.runtime == 'both'
     needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check four exact immutable source identities before runtime
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_SHA: ${{ needs.resolve.outputs.ref }}
+          DEMO_SHA: ${{ needs.resolve.outputs.demo_ref }}
+          CONSOLE_SHA: ${{ needs.resolve.outputs.console_ref }}
+          CONNECTOR_SHA: ${{ needs.resolve.outputs.connector_ref }}
+        run: |
+          set -euo pipefail
+          python3 scripts/develop-ecosystem-source.py --core "$CORE_SHA" --demo "$DEMO_SHA" --console "$CONSOLE_SHA" --connector "$CONNECTOR_SHA"
+
+  selected_gate:
+    if: always() && needs.resolve.result == 'success' && needs.resolve.outputs.gate != 'reference-journey' && (needs.resolve.outputs.runtime != 'both' || needs.ecosystem_source.result == 'success')
+    needs: [resolve, ecosystem_source]
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.resolve.outputs.gates) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -147,6 +196,35 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: ""
+
+  consumer_integration:
+    name: Develop · Native Console and Connector (Docker + Podman)
+    if: always() && needs.resolve.result == 'success' && needs.ecosystem_source.result == 'success' && needs.resolve.outputs.runtime == 'both'
+    needs: [resolve, ecosystem_source]
+    uses: ./.github/workflows/pre-release.yml
+    with:
+      develop_mode: true
+      tag: develop
+      ref: ${{ needs.resolve.outputs.ref }}
+      demo_ref: ${{ needs.resolve.outputs.demo_ref }}
+      console_ref: ${{ needs.resolve.outputs.console_ref }}
+      consumer_ref: ${{ needs.resolve.outputs.connector_ref }}
+      only_gates: integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console
+
+  develop_ecosystem_result:
+    name: Develop · Required four-repo runtime result
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime == 'both'
+    needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require source compatibility and native integration results
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python3 scripts/develop-ecosystem-final.py
 
   reference_journey:
     name: Reference Journey · ${{ needs.resolve.outputs.runtime }} · Full E2E
@@ -292,38 +370,6 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh "${{ needs.resolve.outputs.runtime }}"
 
-      - name: Generate reference journey evidence
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/reference-journey-evidence"
-          mkdir -p "$out"
-          if [ -f "$RUNNER_TEMP/assertion-summary.json" ]; then cp "$RUNNER_TEMP/assertion-summary.json" "$out/"; fi
-          cp -a "$RUNNER_TEMP/baseharbor-reference-artifacts" "$out/demo" 2>/dev/null || true
-          cp -a "$RUNNER_TEMP/reference-journey-diagnostics" "$out/diagnostics" 2>/dev/null || true
-          jq -n \
-            --arg schema "baseharbor.pre-release.reference-journey/v1" \
-            --arg candidate_sha "${{ steps.candidate.outputs.sha }}" \
-            --arg demo_ref "${{ needs.resolve.outputs.demo_ref }}" \
-            --arg outcome "${{ steps.journey.outcome }}" \
-            --arg cleanup_outcome "${{ steps.cleanup.outcome }}" \
-            --arg runtime "${{ needs.resolve.outputs.runtime }}" \
-            --argjson run_id "$GITHUB_RUN_ID" \
-            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
-            --arg duration_seconds "${{ steps.journey.outputs.duration_seconds }}" \
-            '{
-              schema: $schema,
-              candidate_sha: $candidate_sha,
-              demo_ref: $demo_ref,
-              runtime: $runtime,
-              workflow_run_id: $run_id,
-              workflow_run_attempt: $run_attempt,
-              cleanup_outcome: $cleanup_outcome,
-              duration_seconds: (if $duration_seconds == "" then null else ($duration_seconds | tonumber) end),
-              outcome: $outcome
-            }' > "$out/manifest.json"
-
       - name: Summarize journey groups and duration
         if: always()
         shell: bash
@@ -343,12 +389,3 @@ jobs:
               else:
                   output.write('| Setup | No group report; inspect the first failed step |\n')
           PY_SUMMARY
-
-      - name: Upload reference journey evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: pre-release-reference-journey-evidence-${{ needs.resolve.outputs.runtime }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/reference-journey-evidence
-          if-no-files-found: error
-          retention-days: 30

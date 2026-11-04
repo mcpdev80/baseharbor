@@ -55,11 +55,11 @@ jobs:
           cache: false
 
       - name: Record exact source and toolchain
-        id: source_receipt
+        id: source_identity
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/docker-runtime-evidence"
+          out="$RUNNER_TEMP/docker-runtime-checks"
           mkdir -p "$out/tests"
           git rev-parse HEAD | tee "$out/source-sha.txt"
           git rev-parse 'HEAD^{tree}' | tee "$out/source-tree.txt"
@@ -108,7 +108,7 @@ jobs:
           export DOCKER_HOST="$endpoint"
           export DOCKER_CONTEXT=
           docker --host "$endpoint" compose version
-          docker --host "$endpoint" version --format '{{json .}}' | tee "$RUNNER_TEMP/docker-runtime-evidence/runtime-version.json"
+          docker --host "$endpoint" version --format '{{json .}}' | tee "$RUNNER_TEMP/docker-runtime-checks/runtime-version.json"
           printf 'DOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$endpoint" >> "$GITHUB_ENV"
 
       - name: Package and verify exact candidate runtime image
@@ -117,7 +117,7 @@ jobs:
         run: |
           set -euo pipefail
           candidate_sha="$(git rev-parse HEAD)"
-          out="$RUNNER_TEMP/docker-runtime-evidence"
+          out="$RUNNER_TEMP/docker-runtime-checks"
           build_dir="$RUNNER_TEMP/docker-runtime-build"
           image="localhost/baseharbor-runtime:docker-$candidate_sha"
           mkdir -p "$build_dir"
@@ -138,7 +138,7 @@ jobs:
           python3 - "$candidate_sha" <<'PYTHON'
           import json, os, sys
           from pathlib import Path
-          path = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-evidence/runtime-binary-version.json'
+          path = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-checks/runtime-binary-version.json'
           version = json.loads(path.read_text())
           if version.get('commit') != sys.argv[1] or version.get('version') != 'dev':
               raise SystemExit('Runtime image binary must match the tested commit and Go test dev build identity.')
@@ -183,7 +183,7 @@ jobs:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
         run: |
           set -euo pipefail
-          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/main.jsonl"
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/main.jsonl"
 
       - name: Capture Docker control-plane diagnostics
         if: failure() && steps.runtime_integration.outcome == 'failure'
@@ -206,7 +206,7 @@ jobs:
           BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
         run: |
           set -euo pipefail
-          go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/recovery.jsonl"
+          go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/recovery.jsonl"
 
       - name: Verify real workload log ingestion
         id: log_ingestion
@@ -214,7 +214,7 @@ jobs:
           BASEHARBOR_LOGS_INTEGRATION: "1"
         run: |
           set -euo pipefail
-          go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/logs.jsonl"
+          go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/logs.jsonl"
 
       - name: Verify real trace ingestion
         id: trace_ingestion
@@ -222,7 +222,7 @@ jobs:
           BASEHARBOR_TRACES_INTEGRATION: "1"
         run: |
           set -euo pipefail
-          go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-evidence/tests/traces.jsonl"
+          go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/traces.jsonl"
 
       - name: Cleanup Docker runtime
         id: cleanup
@@ -232,7 +232,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
       - name: Verify all eight executed runtime tests
-        id: test_receipts
+        id: executed_tests
         if: always()
         shell: bash
         run: |
@@ -240,7 +240,7 @@ jobs:
           python3 - <<'PYTHON'
           import json, os
           from pathlib import Path
-          root = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-evidence/tests'
+          root = Path(os.environ['RUNNER_TEMP']) / 'docker-runtime-checks/tests'
           prefix = 'github.com/mcpdev80/baseharbor/'
           required = {
               'main': {
@@ -267,53 +267,6 @@ jobs:
                       raise SystemExit(name + ': missing actual test/package PASS for ' + test)
           print('All eight required Docker runtime tests executed and passed.')
           PYTHON
-
-      - name: Generate Docker runtime evidence
-        if: always()
-        shell: bash
-        env:
-          EVIDENCE_REF: ${{ inputs.ref || github.sha }}
-        run: |
-          set -euo pipefail
-          rows="$RUNNER_TEMP/docker-runtime-evidence.tsv"
-          cat >"$rows" <<EOF
-          Checkout	${{ steps.checkout.outcome }}	Exact requested ref checked out
-          Go setup	${{ steps.setup_go.outcome }}	Isolated hosted runner; Go 1.26.9; remote Go cache disabled
-          Runner reset	${{ steps.reset.outcome }}	Docker state reset before validation
-          BaseHarbor build	${{ steps.build.outcome }}	baha built from tested source
-          Source receipts	${{ steps.source_receipt.outcome }}	Exact commit, tree, repository and Go toolchain
-          Rootless setup	${{ steps.runtime_setup.outcome }}	Existing isolated hosted rootless runtime provisioner
-          Engine preflight	${{ steps.runtime_preflight.outcome }}	Verified selected rootless Docker and Compose before cleanup
-          Runtime image	${{ steps.runtime_image.outcome }}	Exact local candidate image, source revision and identical static host/container binary
-          Runtime detection	${{ steps.runtime_detection.outcome }}	Structured Doctor verifies the same engine and absent Core after reset
-          Runtime integration	${{ steps.runtime_integration.outcome }}	real repository and Compose lifecycle integration
-          Control-plane recovery	${{ steps.recovery.outcome }}	operator-held recovery/unseal behavior
-          Log ingestion	${{ steps.log_ingestion.outcome }}	real workload logs into managed Loki
-          Trace ingestion	${{ steps.trace_ingestion.outcome }}	real OTLP trace into managed Tempo
-          Executed test receipts	${{ steps.test_receipts.outcome }}	All eight exact test/package PASS receipts; skip/fail/missing block
-          EOF
-          cat >>"$rows" <<EOF
-          Cleanup	${{ steps.cleanup.outcome }}	Isolated rootless Docker resources cleaned
-          EOF
-          mkdir -p "$RUNNER_TEMP/docker-runtime-evidence/logs"
-          cp /tmp/docker-*.txt /tmp/docker-*.json "$RUNNER_TEMP/docker-runtime-evidence/logs/" 2>/dev/null || true
-          bash scripts/ci-evidence.sh \
-            "$RUNNER_TEMP/docker-runtime-evidence" \
-            "BaseHarbor Docker Runtime Evidence" \
-            "docker-runtime-acceptance" \
-            "$EVIDENCE_REF" \
-            "$(git rev-parse HEAD)" \
-            "$rows"
-
-      - name: Upload Docker runtime evidence
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: docker-runtime-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/docker-runtime-evidence
-          if-no-files-found: error
-          retention-days: 30
-
 
   provider-ha:
     if: github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/')
@@ -456,7 +409,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          out="$RUNNER_TEMP/mcp-edit-native-checks"
           mkdir -p "$out"
           git rev-parse HEAD > "$out/source.txt"
           test "$(cat "$out/source.txt")" = "$GITHUB_SHA"
@@ -475,7 +428,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          out="$RUNNER_TEMP/mcp-edit-native-checks"
           build="$RUNNER_TEMP/mcp-edit-native-image"
           mkdir -p "$out" "$build"
           source_sha="$(git rev-parse HEAD)"
@@ -529,12 +482,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out="$RUNNER_TEMP/mcp-edit-native-evidence"
+          out="$RUNNER_TEMP/mcp-edit-native-checks"
           mkdir -p "$out"
           go test -json ./cmd/baha \
             -run '^TestAppEditMCPAppEditRunsRealProviderEditLifecycle$' \
             -count=1 -timeout 40m 2> >(tee "$out/test-stderr.log" >&2) | tee "$out/test-results.jsonl"
-          python3 - "$out/test-results.jsonl" "$out/verification.json" <<'PY'
+          python3 - "$out/test-results.jsonl" <<'PY'
           import json
           from pathlib import Path
           import sys
@@ -543,16 +496,16 @@ jobs:
           test = "TestAppEditMCPAppEditRunsRealProviderEditLifecycle"
           events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines() if line.strip()]
           if not events or any(not isinstance(event, dict) for event in events):
-              raise SystemExit("native app.edit evidence missing or invalid")
+              raise SystemExit("native app.edit test output missing or invalid")
           if any(event.get("Action") in {"fail", "skip"} for event in events):
-              raise SystemExit("native app.edit evidence contains a failure or skipped test")
+              raise SystemExit("native app.edit test failed or skipped")
           exact = [event for event in events if event.get("Package") == package and event.get("Test") == test]
           package_events = [event for event in events if event.get("Package") == package and not event.get("Test")]
           if sum(event.get("Action") == "run" for event in exact) != 1 or sum(event.get("Action") == "pass" for event in exact) != 1:
               raise SystemExit("exact native app.edit test must execute and pass once")
           if sum(event.get("Action") == "pass" for event in package_events) != 1:
               raise SystemExit("exact native app.edit package must pass once")
-          Path(sys.argv[2]).write_text(json.dumps({"package": package, "test": test, "test_pass": True, "package_pass": True}) + "\n")
+          print("Required native app.edit test and package passed.")
           PY
 
       - name: Cleanup Docker runtime
@@ -561,38 +514,3 @@ jobs:
         shell: bash
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
-
-      - name: Generate native app.edit evidence
-        if: always()
-        shell: bash
-        env:
-          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
-          SETUP_OUTCOME: ${{ steps.setup_go.outcome }}
-          RESET_OUTCOME: ${{ steps.reset.outcome }}
-          INVENTORY_OUTCOME: ${{ steps.inventory.outcome }}
-          IMAGE_OUTCOME: ${{ steps.build_runtime_image.outcome }}
-          TEST_OUTCOME: ${{ steps.app_edit_native.outcome }}
-          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
-        run: |
-          set -euo pipefail
-          out="$RUNNER_TEMP/mcp-edit-native-evidence"
-          mkdir -p "$out"
-          rows="$out/results.tsv"
-          printf 'Checkout\t%s\tExact requested source\n' "$CHECKOUT_OUTCOME" > "$rows"
-          printf 'Go setup\t%s\tCandidate toolchain\n' "$SETUP_OUTCOME" >> "$rows"
-          printf 'Runtime reset\t%s\tHosted Docker fixture\n' "$RESET_OUTCOME" >> "$rows"
-          printf 'Source and runtime receipts\t%s\tActual commit, tree, Go and explicit Docker daemon\n' "$INVENTORY_OUTCOME" >> "$rows"
-          printf 'Exact Core runtime image\t%s\tSource-built local image; exact OCI revision, CLI commit and binary digest\n' "$IMAGE_OUTCOME" >> "$rows"
-          printf 'Native app.edit\t%s\tExact GoJSON test and package PASS; no skipped or failed test\n' "$TEST_OUTCOME" >> "$rows"
-          printf 'Cleanup\t%s\tHosted Docker runtime returned to clean state\n' "$CLEANUP_OUTCOME" >> "$rows"
-          bash scripts/ci-evidence.sh "$out" "BaseHarbor native MCP app.edit evidence" \
-            "mcp-edit-native" "$GITHUB_REF_NAME" "$(git rev-parse HEAD)" "$rows"
-
-      - name: Retain native app.edit evidence and original failures
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: mcp-edit-native-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/mcp-edit-native-evidence
-          if-no-files-found: error
-          retention-days: 30

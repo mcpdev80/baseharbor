@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exact GitHub PR admission plus Docker/Podman lease cleanup pilot.
 
-Synthetic consumer hashes are ONLY isolation fixtures, never valid gate evidence.
+Synthetic consumer hashes are isolation fixtures, not consumer test inputs.
 """
 import importlib.util
 import json
@@ -53,20 +53,19 @@ def execute(runtime):
               "runtime": runtime, "target_base_sha": pr["base"]["sha"],
               "head_sha": pr["head"]["sha"], "merge_base_sha": pr["base"]["sha"],
               "integration_sha": os.environ["GITHUB_SHA"], "consumer_pins": pins,
-              "admission": "requires-trusted-isolated-runner",
-              "evidence": "existing-verifier-only"}
+              "admission": "requires-trusted-isolated-runner"}
     main_request = dict(common, gate_id="atomic/" + runtime + "/backup-restore")
     peer_request = dict(common, gate_id="atomic/" + runtime + "/lifecycle")
     call(runtime, "pull", "docker.io/library/alpine:3.21")
     with tempfile.TemporaryDirectory(prefix="bh-pilot-", dir=os.environ["RUNNER_TEMP"]) as root:
         peer = isolation.prepare(peer_request, root, run_id, attempt, 2,
-                                 repository, pr["number"], None)
+                                 repository, pr["number"])
         peer_names = None
         try:
             peer_names = resources(runtime, peer)
             for outcome in ("success", "failure", "cancellation"):
                 main = isolation.prepare(main_request, root, run_id, attempt, 2,
-                                         repository, pr["number"], None)
+                                         repository, pr["number"])
                 names = None
                 try:
                     names = resources(runtime, main)
@@ -88,7 +87,6 @@ def execute(runtime):
                         remove_own(runtime, names)
                     released = isolation.finalize_cleanup(root, main["lane_id"], run_id, attempt)
                     assert released["state"] == "verified-empty-and-released"
-                    assert released["gate_evidence"] is False
                 assert Path(peer["isolation_root"]).exists()
                 assert call(runtime, "network", "inspect", peer_names[0]).returncode == 0
                 assert call(runtime, "volume", "inspect", peer_names[1]).returncode == 0

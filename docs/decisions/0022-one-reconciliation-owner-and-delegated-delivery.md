@@ -1,1 +1,80 @@
-fatal: path 'docs/decisions/0022-one-reconciliation-owner-and-delegated-delivery.md' exists on disk, but not in 'HEAD'
+# ADR 0022: One reconciliation owner and delegated delivery boundaries
+
+## Status
+
+Accepted for the post-v0.4 architecture and required before the v0.5 contract freeze.
+
+## Context
+
+ADR 0011 established that Runtime, Capability and Delivery are independent axes and
+that BaseHarbor separates portable application intent from how a desired runtime
+realization is applied. The v0.4.27 contract layer
+(`t-20261018-r27-delivery-boundary`) pins the Delivery Provider selection model into
+a typed `internal/delivery/contract.go` with positive/negative fixtures, and the
+delivery standards map lands in `docs/spec/delivery-provider-v1.md`.
+
+The remaining question is operational safety: when a reconciler mutates a managed
+resource set, whose intent wins if two owners appear at once?
+
+## Decision
+
+### 1. Exactly one active reconciliation owner per managed resource set
+
+For a managed resource set there is exactly one persisted reconciliation owner
+at record-save time, enforced at record save; runtime detection of concurrent
+ownership is deferred (see Decision 2 and the follow-up cards).
+
+- Direct delivery: the owner is `baseharbor`.
+- Delegated delivery: the owner is `external`.
+
+### 2. Ambiguous ownership fails closed
+
+A persisted record blocks a save in exactly two ways: the recorded
+conflict flag is set, or the persisted owner is `external` and the save is
+direct — in both cases the save fails closed at record save. A delegated save
+is not refused by a persisted `baseharbor` owner; for it the conflict flag
+governs. The guard performs no symmetric mode-versus-owner matrix and observes
+no live reconciler: where the recorded state expresses exactly one owner, this
+decision's admission condition holds. The guard lives at
+`internal/deployment.SaveDeploymentRecord`: it reads the authoritative persisted
+previous owner before any state is written, so a caller-supplied
+`Observed.Owner` cannot bypass it. A direct save is refused if the persisted owner is external; a recorded conflict of two active
+owners refuses closed. A persisted owner that is absent, empty, or unrecognised is treated as unset
+by the same normalization `Selection.Normalize` applies to selections, so a corrupt value never
+widens or attests ownership.
+
+### 3. Direct delivery stays without GitOps
+
+Direct delivery requires no GitOps prerequisite. Delegated delivery adds
+synchronization, revision and ownership states that direct delivery does not need,
+and those states stay below the Delivery Provider boundary.
+
+## Consequences
+
+- Saves are refused at record save when the recorded ownership state attests a competing active
+owner — the persisted conflict flag is set, or the persisted owner is `external` for a direct save
+(the one-writer guard in `internal/deployment`); this reads recorded state only, not live reconciler
+activity, whose detection is deferred to `t-20261018-r27-authority-contract` and
+`t-20261018-r27-state-owner`. Zero, absent or unrecognised persisted owner is treated as unset, and the owner then follows the normalized selection being saved (`baseharbor` for direct, `external` for delegated saves); this is not an attestation of any external activity.
+  `internal/deployment.SaveDeploymentRecord` reads the persisted owner and the recorded conflict flag before writing state; a recorded conflict refuses the save fail-closed.
+- BaseHarbor's own bindings/operation receipts remain BaseHarbor-owned regardless of delivery mode.
+- GitOps systems (Argo CD, Flux) stay implementations; the one-owner invariant is portable intent, not a tool.
+
+Trade-offs:
+
+- Delegated delivery carries extra revision/ownership state that direct delivery omits.
+- The invariant is checked at record-save time against persisted ownership state; live concurrent acceptance is out of scope until the deferred runtime detection lands.
+
+### Scope and deferred dependency
+
+The one-owner invariant is enforced at record-save time in
+`internal/deployment.SaveDeploymentRecord`: the persisted previous owner governs
+the guard and is the only value persisted as the deployment's observed owner, so
+a caller-supplied `Observed.Owner` cannot forge a direct apply over an external
+owner, and a recorded conflict of two active owners fails closed. This guards the
+**record-save** boundary only. Cross-process, active-reconciler observation of the
+managed resource set — i.e. detecting a live external reconciler that mutates
+outside `SaveDeploymentRecord` before the next BaseHarbor write — is an explicit,
+not-yet-implemented dependency: it is deferred until
+`t-20261018-r27-state-owner` and `t-20261018-r27-authority-contract` are both
+accepted. No runtime lock is asserted beyond what the record-save guard enforces.

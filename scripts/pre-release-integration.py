@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Produce candidate-owned evidence for Core contracts and rootless bootstrap.
+"""Run normal Core contract and rootless bootstrap checks.
 
 These checks do not qualify real browser journeys or private runtime consumers.
 """
 import argparse
-import importlib.util
 import json
 import os
 import pathlib
@@ -71,6 +70,7 @@ def checked_tests(command, output, timeout=900):
         elif event.get('Action') == 'skip':
             skipped.append(event['Package'] + '/' + event['Test'])
     if completed.returncode or not passed or skipped:
+        print(output.read_text(), end='')
         raise ValueError(f'contract checks failed, empty or skipped; inspect {output.name}')
     return {'command': command, 'passed': passed, 'log': output.name}
 
@@ -101,11 +101,11 @@ def verify_candidate_source(candidate, root=None):
     prefix = ['git'] if root is None else ['git', '-C', str(root)]
     actual = subprocess.check_output([*prefix, 'rev-parse', 'HEAD']).decode().strip()
     if actual != candidate:
-        raise ValueError('checked-out Core differs from the evidence candidate')
+        raise ValueError('checked-out Core differs from the candidate')
     changed = subprocess.run([*prefix, 'diff', '--quiet', candidate, '--'], check=False)
     untracked = subprocess.check_output([*prefix, 'ls-files', '--others', '--exclude-standard', '-z'])
     if changed.returncode or untracked:
-        raise ValueError('evidence candidate has changed or untracked source inputs')
+        raise ValueError('candidate has changed or untracked source inputs')
 
 
 def main():
@@ -117,41 +117,20 @@ def main():
     parser.add_argument('--output', required=True, type=pathlib.Path)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
-    # A failed rerun must never leave an earlier successful receipt in place.
-    manifest_path = args.output / 'manifest.json'
-    manifest_path.unlink(missing_ok=True)
     if any(not re.fullmatch('[0-9a-f]{40}', sha) for sha in [args.candidate, args.demo]):
         raise ValueError('candidate and demo must be exact commit SHAs')
     verify_candidate_source(args.candidate)
-    spec = importlib.util.spec_from_file_location('resume', pathlib.Path(__file__).with_name('pre-release-resume.py'))
-    resume = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(resume)
-    raw = subprocess.check_output(['git', 'show', args.candidate + ':' + resume.REQUIREMENTS_PATH])
-    requirements = resume.load_requirements(raw, args.tag)
-    requirement = next((gate for gate in requirements if gate['id'] == args.gate), None)
-    if not requirement or requirement['dependencies'] != ['core']:
-        raise ValueError('static checker cannot qualify consumer-dependent evidence')
-    run, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
-    if not run.isdigit() or not attempt.isdigit() or min(int(run), int(attempt)) < 1:
-        raise ValueError('positive GitHub origin run and attempt are required')
     runtime_bootstrap = configure_runtime_environment(args.gate)
     checks = [checked_tests(['go', 'test', '-race', '-count=1', '-json', *selection],
                             args.output / f'check-{index}.jsonl', 1800 if runtime_bootstrap else 900)
               for index, selection in enumerate(CHECKS[args.gate])]
     verify_candidate_source(args.candidate)
-    _, runtime, gate = args.gate.split('/')
-    manifest = {'schema': requirement['schema'], 'candidate_sha': args.candidate,
-                'demo_ref': args.demo, 'workflow_run_id': run,
-                'workflow_run_attempt': int(attempt), 'requirements_digest': resume.digest(requirements),
-                'id': runtime + '/' + gate, 'runtime': runtime, 'gate': gate,
-                'outcome': 'success', 'cleanup_outcome': 'success' if runtime_bootstrap else 'skipped',
-                'qualification_scope': args.gate.split('/')[-1] + '-runtime' if runtime_bootstrap else 'core-source-contracts', 'checks': checks}
-    resume.validate_manifest(manifest, args.gate, int(run), args.candidate, args.demo, int(attempt))
-    manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+    for check in checks:
+        print('Passed ' + str(len(check['passed'])) + ' checks: ' + ' '.join(check['command']))
 
 
 if __name__ == '__main__':
     try:
         main()
     except (ValueError, KeyError, OSError, subprocess.SubprocessError) as error:
-        raise SystemExit(f'integration contract evidence rejected: {error}')
+        raise SystemExit(f'integration checks failed: {error}')

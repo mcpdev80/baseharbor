@@ -29,6 +29,19 @@ SHORT = '2adae47a'
 SHORT_EXPANDED = SHORT + '0123456789abcdef0123456789abcdef'
 
 
+def write_source_validator_fixture(root):
+    # Git parent/ancestry semantics are exercised with real repositories in
+    # test_pr_runtime_source; these route tests isolate native command wiring.
+    path = root / 'source-validator.py'
+    path.write_text('import argparse, os, re\n'
+                    'p=argparse.ArgumentParser()\n'
+                    'for name in ("repository","event-base","base","head","candidate"): p.add_argument("--"+name, required=True)\n'
+                    'a=p.parse_args()\n'
+                    'assert all(re.fullmatch("[0-9a-f]{40}", getattr(a,k)) for k in ("event_base","base","head","candidate"))\n'
+                    'assert a.event_base == a.base or os.environ.get("ALLOW_ADVANCED") == "1"\n')
+    return path
+
+
 class FixtureResolver:
     """Data-driven RefResolver stand-in; records nothing that a network would see."""
 
@@ -174,20 +187,13 @@ class WorkflowWiring(unittest.TestCase):
         description = triggers['workflow_dispatch']['inputs']['ref']['description']
         self.assertIn('short SHAs are resolved', description)
 
-    def test_suite_validates_ref_before_checkout_and_hardens_uploads(self):
+    def test_suite_validates_ref_before_checkout_without_evidence_uploads(self):
         steps = self.suite['jobs']['gate']['steps']
         names = [s.get('name') for s in steps]
         self.assertLess(names.index('Validate candidate ref before checkout'),
                         names.index('Checkout BaseHarbor candidate'))
-        for name in ('Upload demo runtime diagnostics', 'Upload atomic failure diagnostics'):
-            upload = next(s for s in steps if s.get('name') == name)
-            self.assertEqual(upload['with']['if-no-files-found'], 'error')
-            self.assertIn("steps.checkout.outcome == 'success'", upload['if'])
-        self.assertEqual([s['with']['if-no-files-found'] for s in steps
-                          if s.get('uses', '').startswith('actions/upload-artifact@')
-                          if isinstance(s.get('with'), dict) and 'if-no-files-found' in s['with']].count('warn'), 0)
-        preserve = next(s for s in steps if s.get('name') == 'Preserve demo runtime diagnostics')
-        self.assertIn('preserve-summary.txt', preserve['run'])
+        self.assertFalse(any('evidence' in str(s.get('with', {}).get('name', '')).lower()
+                             for s in steps if s.get('uses', '').startswith('actions/upload-artifact@')))
 
     def test_observability_gate_executes_fullstack_and_rejects_skip_or_failure(self):
         steps = self.suite['jobs']['gate']['steps']
@@ -205,6 +211,7 @@ class WorkflowWiring(unittest.TestCase):
         block = 'set -euo pipefail\n' + condition + gate['run'].split(condition, 1)[1]
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
+            source_validator = write_source_validator_fixture(root)
             (root / 'scripts').mkdir()
             (root / 'scripts/ci-runtime-reset.sh').write_text('printf "%s\\n" "$1" > "$RUNNER_TEMP/reset"\n')
             bindir = root / 'bin'
@@ -213,6 +220,7 @@ class WorkflowWiring(unittest.TestCase):
             git.write_text('#!/bin/sh\ncase "$1" in\n'
                            '  rev-parse) printf "%s\\n" "${GIT_ACTUAL_SHA:-$CANDIDATE_SHA}";;\n'
                            '  fetch) exit "${FETCH_STATUS:-0}";;\n'
+                           '  show) cat "$FAKE_SOURCE_VALIDATOR";;\n'
                            '  diff) exit "${DIFF_STATUS:-1}";;\n'
                            '  *) exit 2;;\nesac\n')
             git.chmod(0o755)
@@ -229,6 +237,7 @@ class WorkflowWiring(unittest.TestCase):
             go.chmod(0o755)
             env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
                        GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       PR_HEAD_SHA='f' * 40, FAKE_SOURCE_VALIDATOR=str(source_validator),
                        RUNTIME='podman', GATE='observability', GITHUB_EVENT_NAME='pull_request',
                        PR_BASE_SHA='c' * 40, EVENT_BASE_SHA='c' * 40)
             for result, expected in (('pass', 0), ('zero', 1), ('missing', 1), ('skip', 1), ('empty', 1), ('fail', 1)):
@@ -273,6 +282,7 @@ class WorkflowWiring(unittest.TestCase):
         }
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
+            source_validator = write_source_validator_fixture(root)
             (root / 'scripts').mkdir()
             (root / 'scripts/ci-runtime-reset.sh').write_text('exit 0\n')
             bindir = root / 'bin'
@@ -281,6 +291,7 @@ class WorkflowWiring(unittest.TestCase):
             git.write_text('#!/bin/sh\ncase "$1" in\n'
                            'rev-parse) echo "$CANDIDATE_SHA";;\n'
                            'fetch) exit 0;;\n'
+                           'show) cat "$FAKE_SOURCE_VALIDATOR";;\n'
                            'diff) test "${DIFF_ERROR:-0}" = 0 || exit 2; printf "%s\n" "$CHANGED_PATH";;\n'
                            '*) exit 2;; esac\n')
             git.chmod(0o755)
@@ -294,6 +305,7 @@ class WorkflowWiring(unittest.TestCase):
             go.chmod(0o755)
             env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
                        GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       PR_HEAD_SHA='f' * 40, FAKE_SOURCE_VALIDATOR=str(source_validator),
                        RUNTIME='podman', GATE='lifecycle', GITHUB_EVENT_NAME='pull_request',
                        PR_BASE_SHA='c' * 40, EVENT_BASE_SHA='c' * 40, FAKE_OUTCOME='pass')
             for path, expected in mapping.items():
@@ -315,17 +327,19 @@ class WorkflowWiring(unittest.TestCase):
         block = 'set -euo pipefail\n' + start + gate['run'].split(start, 1)[1].split(end, 1)[0]
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
+            source_validator = write_source_validator_fixture(root)
             (root / 'demo/.tools/bin').mkdir(parents=True)
             bindir = root / 'bin'
             bindir.mkdir()
             git = bindir / 'git'
-            git.write_text('#!/bin/sh\ncase "$1" in rev-parse) echo "$CANDIDATE_SHA";; fetch) exit 0;; diff) exit "${DIFF_STATUS:-1}";; esac\n')
+            git.write_text('#!/bin/sh\ncase "$1" in rev-parse) echo "$CANDIDATE_SHA";; fetch) exit 0;; show) cat "$FAKE_SOURCE_VALIDATOR";; diff) exit "${DIFF_STATUS:-1}";; esac\n')
             git.chmod(0o755)
             baha = root / 'demo/.tools/bin/baha'
             baha.write_text('#!/bin/sh\ncase "$1" in version) echo "$CANDIDATE_SHA";; target) exit 0;; doctor) test ! -e baseharbor.yaml || exit 1; printf "%s\\n" "$DOCTOR_JSON";; *) exit 1;; esac\n')
             baha.chmod(0o755)
             env = dict(os.environ, PATH=f'{bindir}{os.pathsep}{os.environ["PATH"]}',
                        GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a' * 40,
+                       PR_HEAD_SHA='f' * 40, FAKE_SOURCE_VALIDATOR=str(source_validator),
                        PR_BASE_SHA='b' * 40, EVENT_BASE_SHA='b' * 40,
                        GATE='lifecycle', RUNTIME='podman', GITHUB_EVENT_NAME='pull_request',
                        workdir=str(root / 'demo'))
@@ -337,11 +351,89 @@ class WorkflowWiring(unittest.TestCase):
                                                capture_output=True, text=True)
                     self.assertEqual(expected, execution.returncode, execution.stderr)
 
+    def test_changed_backup_fixture_executes_required_native_test(self):
+        step = next(step for step in self.suite['jobs']['gate']['steps'] if step.get('id') == 'runtime_gate')
+        start = 'if [ "$GATE" = backup-restore ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        following = 'if [ "$GATE" = lifecycle ] && [ "$GITHUB_EVENT_NAME" = pull_request ]; then'
+        block = 'set -euo pipefail\n' + start + step['run'].split(start, 1)[1].split(following, 1)[0]
+        setup = next(step for step in self.suite['jobs']['gate']['steps'] if step.get('name') == 'Set up Go')
+        self.assertIn("inputs.gate == 'backup-restore'", setup['if'])
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / 'scripts').mkdir()
+            (root / 'scripts/ci-runtime-reset.sh').write_text('printf "%s\\n" "$1" > "$RUNNER_TEMP/reset"\n')
+            source_validator = write_source_validator_fixture(root)
+            git = root / 'git'
+            git.write_text('#!/bin/sh\ncase "$1" in\n'
+                           'rev-parse) echo "$CANDIDATE_SHA";;\n'
+                           'fetch) exit 0;;\n'
+                           'show) cat "$FAKE_SOURCE_VALIDATOR";;\n'
+                           'diff) exit "${DIFF_STATUS:-1}";;\n'
+                           '*) exit 2;; esac\n')
+            git.chmod(0o755)
+            go = root / 'go'
+            go.write_text('#!/usr/bin/env python3\nimport os, sys\n'
+                          'assert os.environ["BASEHARBOR_APP_BACKUP_ACCEPTANCE"] == "true"\n'
+                          'assert sys.argv[sys.argv.index("-timeout")+1] == "35m"\n'
+                          'assert "BASEHARBOR_TARGET" not in os.environ\n'
+                          'open(os.path.join(os.environ["RUNNER_TEMP"],"called"),"w").write("called")\n'
+                          'mode=os.environ["FAKE_MODE"]\n'
+                          'if mode == "failure": sys.exit(1)\n'
+                          'if mode == "zero": sys.exit(0)\n'
+                          'name="TestAppBackupRestoreCLIRealDisasterRecovery"\n'
+                          'print("=== RUN   "+name)\n'
+                          'print(("--- SKIP: " if mode == "skip" else "--- PASS: ")+name+" (1s)")\n')
+            go.chmod(0o755)
+            env = dict(os.environ, PATH=tmp+os.pathsep+os.environ['PATH'],
+                       GITHUB_WORKSPACE=tmp, RUNNER_TEMP=tmp, CANDIDATE_SHA='a'*40,
+                       PR_BASE_SHA='b'*40, EVENT_BASE_SHA='b'*40, PR_HEAD_SHA='c'*40,
+                       GATE='backup-restore', RUNTIME='podman', GITHUB_EVENT_NAME='pull_request',
+                       FAKE_SOURCE_VALIDATOR=str(source_validator))
+            for mode in ['pass', 'failure', 'skip', 'zero']:
+                with self.subTest(mode=mode):
+                    result = subprocess.run(['bash', '-euo', 'pipefail', '-c', block],
+                                            env={**env, 'FAKE_MODE': mode}, capture_output=True, text=True)
+                    self.assertEqual(mode == 'pass', result.returncode == 0, result.stdout+result.stderr)
+            (root / 'called').unlink()
+            for status, expected in [('0', 0), ('2', 2)]:
+                result = subprocess.run(['bash', '-euo', 'pipefail', '-c', block],
+                                        env={**env, 'FAKE_MODE': 'pass', 'DIFF_STATUS': status}, capture_output=True)
+                self.assertEqual(expected, result.returncode)
+                self.assertFalse((root / 'called').exists())
+
+    def test_control_plane_recovery_executes_both_required_tests(self):
+        step = next(step for step in self.suite['jobs']['gate']['steps'] if step.get('id') == 'integration_gate')
+        body = step['run'].split('  control-plane-recovery)', 1)[1].split('    ;;', 1)[0]
+        names = ['TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile',
+                 'TestSingleControlPlaneRestartRotationAndCleanup']
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            binary = root / 'go'
+            binary.write_text('#!/usr/bin/env python3\nimport os, sys\n'
+                              'assert os.environ["BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE"] == "true"\n'
+                              'assert os.environ["BASEHARBOR_RUNTIME_SINGLE_ACCEPTANCE"] == "true"\n'
+                              'assert sys.argv[sys.argv.index("-timeout")+1] == "40m"\n'
+                              'mode=os.environ["FAKE_MODE"]\n'
+                              'names='+repr(names)+'\n'
+                              'if mode == "failure": sys.exit(1)\n'
+                              'if mode == "zero": sys.exit(0)\n'
+                              'for index,name in enumerate(names):\n'
+                              ' print("=== RUN   "+name)\n'
+                              ' print(("--- SKIP: " if mode == "skip" and index == 1 else "--- PASS: ")+name+" (1s)")\n')
+            binary.chmod(0o755)
+            env = dict(os.environ, PATH=tmp+os.pathsep+os.environ['PATH'], RUNNER_TEMP=tmp)
+            for mode in ['pass', 'failure', 'skip', 'zero']:
+                with self.subTest(mode=mode):
+                    result = subprocess.run(['bash', '-euo', 'pipefail', '-c', body],
+                                            env={**env, 'FAKE_MODE': mode}, capture_output=True, text=True)
+                    self.assertEqual(mode == 'pass', result.returncode == 0, result.stdout+result.stderr)
+
     def test_observability_scope_detects_git_rename_and_delete(self):
         gate = next(s for s in self.suite['jobs']['gate']['steps'] if s.get('id') == 'runtime_gate')
         self.assertIn('git diff --no-renames --quiet "$PR_BASE_SHA" "$CANDIDATE_SHA" -- internal/logs/render.go', gate['run'])
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
+            source_validator = write_source_validator_fixture(root)
             def git(*args):
                 return subprocess.run(['git', '-C', tmp, *args], check=True,
                                       capture_output=True, text=True).stdout.strip()

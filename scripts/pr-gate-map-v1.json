@@ -1,29 +1,6 @@
 {
   "schema": "baseharbor.pr-gate-map/v1",
   "release": "v0.4.26",
-  "policy": "conservative-v1",
-  "notes": "Two unsuccessful refinement rounds mean retaining the full-catalog fallback; no dependency analyzer. Do not interpret a selected gate as completed evidence.",
-  "areas": {
-    "prose": {
-      "prefixes": [
-        "atomic/static/",
-        "integration/static/"
-      ],
-      "exact": []
-    },
-    "docker": {
-      "prefixes": [
-        "atomic/static/",
-        "integration/static/",
-        "atomic/docker/",
-        "ha/docker/",
-        "integration/docker/"
-      ],
-      "exact": [
-        "adoption/conformance",
-        "adoption/realworld-compose",
-        "journey/docker"
-      ]
-    }
-  }
+  "policy": "explicit-path-and-package",
+  "notes": "Executable mappings live in pr-gate-plan.py. Valid unknown paths select conservative Go unit/vet/build checks and applicable runtime lifecycles. Invalid source or catalog data still fails; PRs never launch the full release catalog automatically."
 }

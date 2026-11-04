@@ -36,6 +36,14 @@ func TestActualLocalIssuerGatewaySANReconciliationPreservesAuthority(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Establish the local revocation list before reconciliation: a missing CRL
+	// fails closed on the managed-consumption path.
+	if _, issueErr := issuer.Issue(context.Background(), CertificateRequest{CommonName: "bootstrap", TTL: time.Hour}); issueErr != nil {
+		t.Fatal(issueErr)
+	}
+	if err := issuer.Revoke(context.Background(), "01"); err != nil {
+		t.Fatal(err)
+	}
 	firstCertificate, err := os.ReadFile(first.ServerCertificate)
 	if err != nil {
 		t.Fatal(err)

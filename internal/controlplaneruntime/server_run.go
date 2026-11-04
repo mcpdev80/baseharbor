@@ -242,7 +242,14 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {
-		machineHandler, err := machinehttp.New(machineExecutor)
+		// Production boundary fail-closed (review finding 3): the execution
+		// journal must persist to a configured state-root. An empty ops-dir would
+		// silently fall back to in-memory storage, which is not a durable
+		// state-root, so refuse to start rather than accept a silent fallback.
+		if strings.TrimSpace(cfg.RuntimeOperationsDir) == "" {
+			return ErrMissingOperationsDir
+		}
+		machineHandler, err := machinehttp.New(machineExecutor, cfg.RuntimeOperationsDir)
 		if err != nil {
 			return err
 		}
