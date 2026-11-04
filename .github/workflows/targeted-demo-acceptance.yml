@@ -41,6 +41,7 @@ on:
         type: string
   push:
     branches:
+      - develop
       - "runtime-validation/targeted/**"
 
 permissions:
@@ -87,6 +88,16 @@ jobs:
             runtime="$DISPATCH_RUNTIME"
             gate="$DISPATCH_GATE"
           else
+            if [ "$GITHUB_REF_NAME" = develop ]; then
+              # Resolve moving consumer branches to immutable SHAs exactly once.
+              # Missing or non-matching source pins fail closed in ecosystem_source.
+              ref="$GITHUB_SHA"
+              demo_ref="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+              DISPATCH_CONSOLE_REF="$(gh api repos/mcpdev80/baseharbor-console/git/ref/heads/main --jq '.object.sha')"
+              DISPATCH_CONNECTOR_REF="$(gh api repos/mcpdev80/baseharbor-node-connector/git/ref/heads/main --jq '.object.sha')"
+              runtime=both
+              gate=lifecycle
+            else
             prefix="runtime-validation/targeted/"
             case "$GITHUB_REF_NAME" in
               "$prefix"*) ;;
@@ -117,6 +128,7 @@ jobs:
               demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
             fi
             [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+            fi
           fi
 
           case "$runtime" in
@@ -130,7 +142,7 @@ jobs:
           test -n "$demo_ref"
           test -n "$gate"
           if [ "$runtime" = both ]; then
-            test "$EVENT_NAME" = workflow_dispatch
+            [[ "$EVENT_NAME" == workflow_dispatch || ( "$EVENT_NAME" == push && "$GITHUB_REF_NAME" == develop ) ]]
             test "$gate" = lifecycle
             [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
             [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
@@ -213,7 +225,7 @@ jobs:
 
   develop_ecosystem_result:
     name: Develop · Required four-repo runtime result
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime == 'both'
+    if: always() && ((github.event_name == 'workflow_dispatch' && inputs.runtime == 'both') || (github.event_name == 'push' && github.ref_name == 'develop'))
     needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
     runs-on: ubuntu-latest
     steps:
