@@ -901,13 +901,13 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Derive the Target Docker mode from the daemon that the pinned DOCKER_HOST
-	// actually reaches, rather than hard-coding it. Production resolves the same
-	// mode itself (inspectTargetDockerEngine -> ResolveDockerEngine); mirroring
-	// it here makes the happy-path converge on both a rootful CI runner and a
-	// rootless dev host. When the pinned endpoint is unreachable, fall back to
-	// the Rootless Docker socket that exists on this host so the probe still
-	// resolves a real daemon mode.
+	// Pin the daemon endpoint and rootful mode exactly as develop / wt-ci-access
+	// do. The happy-path converges green on CI only where a verifiable postgres
+	// backend answers the Edit's SQL-consumer resume (ADR-0022); the daemon mode
+	// here is not the blocker (the CI go-unit failure at line 1022 is the
+	// "partial" fail-closed on the consumer RESUME, not a mode mismatch), so we
+	// keep this byte-identical to develop rather than probing. probeTargetDockerMode
+	// exists separately for the inverted-mode ADR-0022 proof (Fix #2).
 	mode, endpoint := "rootful", "unix:///var/run/docker.sock"
 	definition := cfg.Targets[target.Name]
 	definition.Runtime.DockerMode = mode
