@@ -31,6 +31,7 @@ type runtimeUpOptions struct {
 	Environment         string
 	TrustHostCA         bool
 	SkipMemoryPreflight bool
+	CandidateConsent    string
 }
 
 func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
@@ -43,6 +44,13 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// `up` is an apply path: the repository-owned candidate submission is bound
+	// only on explicit operator/automation confirmation, exactly like `app apply`.
+	// Route the parsed --confirm-candidate override through the same leaf so a
+	// repository apply can clear the candidate gate in the normal up flow; the
+	// fail-closed candidate contract is unchanged (no new consent semantics, no
+	// second gate).
+	ctx = withCandidateConsentDigest(ctx, opts.CandidateConsent)
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		return err
 	}
@@ -101,6 +109,12 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 			}
 			i++
 			opts.RecoveryFile = args[i]
+		case "--confirm-candidate":
+			if i+1 >= len(args) {
+				return opts, usageError("--confirm-candidate requires DIGEST", "Re-run with --confirm-candidate <the printed confirm-hash>.")
+			}
+			i++
+			opts.CandidateConsent = args[i]
 		default:
 			if strings.HasPrefix(args[i], "--environment=") {
 				opts.Environment = strings.TrimSpace(strings.TrimPrefix(args[i], "--environment="))
@@ -116,7 +130,11 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				}
 				continue
 			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file")
+			if strings.HasPrefix(args[i], "--confirm-candidate=") {
+				opts.CandidateConsent = strings.TrimPrefix(args[i], "--confirm-candidate=")
+				continue
+			}
+			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
 		}
 	}
 	return opts, nil
