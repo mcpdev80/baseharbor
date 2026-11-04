@@ -67,6 +67,16 @@ func WithMembershipProvider(ctx context.Context, provider MembershipProvider) co
 	return context.WithValue(ctx, membershipProviderKey{}, provider)
 }
 
+// WithMembershipProviderIfAbsent installs provider only when the caller has
+// not already supplied one. Production composition can add its database-backed
+// resolver without replacing an explicitly scoped provider.
+func WithMembershipProviderIfAbsent(ctx context.Context, provider MembershipProvider) context.Context {
+	if membershipProviderFromContext(ctx) != nil || provider == nil {
+		return ctx
+	}
+	return WithMembershipProvider(ctx, provider)
+}
+
 func membershipProviderFromContext(ctx context.Context) MembershipProvider {
 	provider, ok := ctx.Value(membershipProviderKey{}).(MembershipProvider)
 	if !ok || provider == nil {

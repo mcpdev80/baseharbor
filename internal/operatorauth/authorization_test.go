@@ -171,3 +171,21 @@ func TestTenantMachinePermissionsFailClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestWithMembershipProviderIfAbsentPreservesExplicitProvider(t *testing.T) {
+	principal := &identity.Principal{
+		Issuer: "https://issuer.example", Subject: "operator-explicit",
+		IssuerVerified: true, Groups: []string{"editor"},
+	}
+	ctx := WithVerifiedPrincipal(context.Background(), principal)
+	ctx = WithMembershipProvider(ctx, claimStub{memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}})
+	ctx = WithMembershipProviderIfAbsent(ctx, claimStub{})
+
+	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
+		Operation: machine.Operation{ID: "app.show", Safety: machine.SafetyReadOnly, PolicyRequired: true},
+		Context:   OperationContext{Environment: "prod", Target: "target-a"},
+	})
+	if err != nil || !decision.Allowed {
+		t.Fatalf("default production provider replaced the caller's explicit provider: %#v %v", decision, err)
+	}
+}
