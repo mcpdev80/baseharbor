@@ -735,6 +735,7 @@ jobs:
           python3 scripts/test_pr_gate_plan.py
           python3 scripts/test_pr_required_final.py
           python3 scripts/test_pr_stage_boundary.py
+          python3 scripts/test_pr_consumer_followup.py
           python3 scripts/test_pr_check_runner.py
           python3 scripts/test_pr_wizard_workflow_route.py
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
@@ -978,6 +979,10 @@ jobs:
           git fetch --no-tags origin "$CONTROLLER_SHA"
           git show "$CONTROLLER_SHA:scripts/pr-required-final.py" > "$RUNNER_TEMP/pr-required-final.py"
           python3 "$RUNNER_TEMP/pr-required-final.py" --plan pr-plan.json
+      - name: Show consumer follow-up without blocking PR
+        if: always() && needs.pr_plan.result == 'success'
+        continue-on-error: true
+        run: python3 scripts/pr-consumer-followup.py --plan pr-plan.json --summary "$GITHUB_STEP_SUMMARY"
       - name: Show normal job results
         if: always()
         env:
