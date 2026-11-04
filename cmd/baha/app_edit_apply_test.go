@@ -17,6 +17,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -938,7 +939,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// absence of a SQL provider before the confirmed Edit creates one.
 	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer setupCancel()
-	if err := executeApplicationApplyLifecycle(setupCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
+	// The repository apply binds the candidate on explicit operator confirmation:
+	// show the canonical confirm hash and require --confirm-candidate with it.
+	confirmCtx := withConfirmCandidateForSetup(setupCtx, target, m.Name, root)
+	if err := executeApplicationApplyLifecycle(confirmCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err != nil {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
 
@@ -1015,8 +1019,54 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	// (1/2 "confirm the displayed outcome without a working alternative" and
 	// 2/2). Supply both "y" acknowledgements or the edit stops partial.
 	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	// The repository apply binds the candidate on explicit operator confirmation:
+	// the Edit lifecycle reuses the same apply choke point, so carry the canonical
+	// confirm digest for the repository candidate this Edit will bind. Without it
+	// the confirmed Edit fails closed at the candidate consent choke point.
+	editConfirmCtx := withConfirmCandidateForSetup(context.Background(), target, m.Name, root)
+	ctx, cancel := context.WithTimeout(editConfirmCtx, 4*time.Minute)
 	defer cancel()
+	// The confirmed Edit binds the repository candidate on explicit operator
+	// confirmation: the Edit rewrites the repository manifest (adds the SQL
+	// service), so the candidate identity the choke binds is the fingerprint of
+	// the EDITED manifest, not the pre-edit one. Compute that edited manifest's
+	// confirm digest here — by applying the same SQL binding the wizard performs
+	// and resolving the resulting authored manifest exactly as the apply
+	// lifecycle does — and feed it through the input stream and context. This
+	// proves the Edit wires the candidate consent through to the choke
+	// (befund 1, punkt 1).
+	edited := application.WithSQLInstances(m, "default")
+	editedManifestBytes := []byte(edited.AuthoredYAML())
+	if err := os.WriteFile(sourcePath, editedManifestBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editedResolved, rerr := resolveApplication(ctx, application.DefaultStore(), []string{m.Name}, "apply")
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	fp, ferr := repositoryDesiredStateFingerprint(ctx, editedResolved)
+	if ferr != nil || fp == "" {
+		t.Fatal("could not fingerprint the edited edit source")
+	}
+	submission := delivery.CandidateSubmission{
+		ContractVersion:  delivery.CandidateContractVersion,
+		ApplicationID:    editedResolved.DeploymentIdentity.ApplicationID,
+		TargetName:       editedResolved.DeploymentIdentity.Target,
+		SourceRepository: editedResolved.DeploymentRecord.Source.Repository,
+		SourceRevision:   fp,
+	}
+	confirmDigest := delivery.CandidateConsentDigest(submission)
+	if confirmDigest == "" {
+		t.Fatal("could not compute the edited edit candidate confirm digest")
+	}
+	// Restore the original source: the real Edit below must detect the SQL change
+	// as a real edit (loaded != desired). The edited manifest we wrote was only
+	// needed to fingerprint the post-Edit candidate identity the choke binds.
+	if err := os.WriteFile(sourcePath, oldSource, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input = strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n" + confirmDigest + "\n")
+	ctx = withCandidateConsentDigest(ctx, confirmDigest)
 	var out bytes.Buffer
 	result, err := runAppEdit(ctx, application.DefaultStore(), []string{m.Name}, input, &out, &out)
 	if err != nil {

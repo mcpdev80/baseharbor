@@ -117,7 +117,8 @@ func TestNamedBackendRemovalRequiresImpactAndPreservesPeerData(t *testing.T) {
 	}
 	// An interrupted prior apply retains the original manifest even after the
 	// generated definition is updated. Repeating the cleanup remains possible.
-	if _, err := recordDeploymentBeforeMutation(context.Background(), resolved, "applying"); err != nil {
+	confirmCtx, confirm := withConfirmCandidateDigestForResolved(context.Background(), resolved)
+	if _, err := recordDeploymentBeforeMutation(confirmCtx, resolved, "applying", confirm); err != nil {
 		t.Fatal(err)
 	}
 	canonical, err := application.RuntimeComposeYAMLForProject(resolved.Manifest, files.ResourceProject)

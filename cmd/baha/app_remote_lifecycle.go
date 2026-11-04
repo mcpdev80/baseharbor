@@ -133,7 +133,10 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 	if !status.Ready {
 		return errors.New("bound Core service PKI is not ready")
 	}
-	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying")
+	// Operator confirmation before any candidate submission is persisted (same
+	// fail-closed choke point as the local apply path).
+	promptConfirmCandidateSubmission(ctx, resolved, out)
+	pending, err := recordDeploymentBeforeMutation(ctx, resolved, "applying", candidateConsentOverride(ctx))
 	if err != nil {
 		return err
 	}

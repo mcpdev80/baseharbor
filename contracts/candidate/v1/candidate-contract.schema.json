@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mcpdev80/baseharbor/blob/HEAD/contracts/candidate/v1/candidate-contract.schema.json",
+  "title": "BaseHarbor Candidate Contract 1",
+  "description": "Exact source/image submission contract. A candidate is a fixed source revision, image digest, or native compose/quadlet unit. A submission must carry exactly one immutable identity source (source revision OR image digest, never a mutable tag alone) and never a bare secret reference. Provenance is never inferred from annotations. The exactly-one-source invariant, the explicit operator/automation consent that pins the validated submission, and the pinned-source-or-image-digest rule are asserted in Go (internal/delivery candidate contract); this schema enforces the structural identity: contract_version const, required app/target/consent bindings, exactly one of source|image with a fixed source revision or a sha256-pinned image, and no unexpected keys. Consent is mandatory and carries the identity through by/at/digest; acknowledged is no longer a structural field (identity lives in the consent).",
+  "type": "object",
+  "required": ["contract_version", "app", "target", "consent"],
+  "oneOf": [
+    { "required": ["source"] },
+    { "required": ["image"] }
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "const": "baseharbor.candidate/v1"
+    },
+    "app": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "consent": {
+      "type": "object",
+      "required": ["by", "at", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "by": { "type": "string", "minLength": 1, "description": "operator/automation principal that explicitly acknowledged the candidate submission" },
+        "at": { "type": "string", "format": "date-time", "description": "RFC 3339 time the operator/automation acknowledged the candidate submission" },
+        "digest": { "type": "string", "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[a-z0-9]+:[0-9a-fA-F]{32,})$", "description": "canonical content-hash of the validated submission; the persisted consent binds the exact submission that was validated" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind", "repository", "revision"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "source" },
+        "repository": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "pattern": "^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64}|[a-z0-9]+:[0-9a-fA-F]{32,})$" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "required": ["kind", "reference", "digest"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "type": "string", "const": "image" },
+        "reference": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "stage": { "type": "string" }
+  }
+}

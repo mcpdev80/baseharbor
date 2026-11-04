@@ -149,7 +149,8 @@ func TestBackendPlacementOwnerPinsOriginalAcrossPolicyChangeAndRetry(t *testing.
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
 	r = captureBackendSelectionForTest(t, r)
 	for attempt := 0; attempt < 2; attempt++ {
-		if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying"); err != nil {
+		confirmCtx, confirm := withConfirmCandidateDigestForResolved(context.Background(), r)
+		if _, err := recordDeploymentBeforeMutation(confirmCtx, r, "applying", confirm); err != nil {
 			t.Fatal(err)
 		}
 		prior, err := retainedApplicationBackendIntent(r)
@@ -203,13 +204,8 @@ func TestInterruptedBackendReplacementProtectsBothRealizationsFromSiblingApply(t
 	old := actual.Bindings[0].ProviderInstanceID
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
 	r = captureBackendSelectionForTest(t, r)
-	// The pending owner binds an authoritative Core installation for the Target
-	// so the deployment-owner seam passes; the sibling plan verifies the owner's
-	// control-plane as observed below.
-	if err := registerInstallationForTarget(t, r.Target.Name); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := recordDeploymentBeforeMutation(context.Background(), r, "applying"); err != nil {
+	confirmCtx, confirm := withConfirmCandidateDigestForResolved(context.Background(), r)
+	if _, err := recordDeploymentBeforeMutation(confirmCtx, r, "applying", confirm); err != nil {
 		t.Fatal(err)
 	}
 	if err := application.RetainPendingProviderOwnersAt(r.TargetStateRoot, r.Manifest); err != nil {
@@ -380,7 +376,8 @@ func TestWithdrawnSharedBackendRetainsOriginalApplicationInventory(t *testing.T)
 			}
 			t.Setenv(application.ProviderScopeEnv(kind), "shared")
 			r = captureBackendSelectionForTest(t, r)
-			if _, err := recordDeploymentBeforeMutation(t.Context(), r, "applying"); err != nil {
+			confirmCtx, confirm := withConfirmCandidateDigestForResolved(t.Context(), r)
+			if _, err := recordDeploymentBeforeMutation(confirmCtx, r, "applying", confirm); err != nil {
 				t.Fatal(err)
 			}
 			if err := application.ReconcileReferenceProviderRegistryAt(r.TargetStateRoot, r.Manifest); err != nil {
@@ -390,7 +387,8 @@ func TestWithdrawnSharedBackendRetainsOriginalApplicationInventory(t *testing.T)
 				t.Fatal(err)
 			}
 			r.Manifest.Services.SQL, r.Manifest.Services.Cache, r.Manifest.Services.KeyValue = false, false, false
-			if _, err := recordDeploymentBeforeMutation(t.Context(), r, "applying"); err != nil {
+			confirmCtx, confirm = withConfirmCandidateDigestForResolved(t.Context(), r)
+			if _, err := recordDeploymentBeforeMutation(confirmCtx, r, "applying", confirm); err != nil {
 				t.Fatal(err)
 			}
 			if err := recordAppliedDeployment(t.Context(), r, application.RuntimeFiles{}); err != nil {
