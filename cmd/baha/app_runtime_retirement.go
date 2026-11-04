@@ -47,6 +47,12 @@ func (e *applicationDestroyExecution) verifyOwnershipWhenNoDeploymentRecord(_ co
 	if stored.ApplicationID != e.resolved.DeploymentIdentity.ApplicationID || stored.ApplicationID != e.resolved.Manifest.ApplicationID {
 		return false, fmt.Errorf("cannot verify application ownership for destroy: application identity mismatch")
 	}
+	// The identity alone does not prove an absence of previously created runtime.
+	// A persisted deployment consumes this one-shot proof before it is written.
+	// Missing record without the proof may be a lost/corrupt deployment record.
+	if err := deployment.VerifyNeverDeliveredProof(e.resolved.DeploymentIdentity); err != nil {
+		return false, fmt.Errorf("cannot establish never-delivered state (existing runtime may require recovery): %w", err)
+	}
 	return true, nil
 }
 

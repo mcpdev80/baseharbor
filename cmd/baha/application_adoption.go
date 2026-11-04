@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"os"
@@ -93,6 +94,12 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	if _, err := owner.Sync(m); err != nil {
 		_ = os.Remove(path)
 		return applicationAdoptionResult{}, err
+	}
+	// A positive, one-shot proof exists only for a newly initialized app.
+	// First deployment persistence consumes it BEFORE touching runtime state.
+	// Older applications without this proof cannot claim "never delivered".
+	if err := deployment.CreateNeverDeliveredProof(target.Name, m.ApplicationID, m.Name, m.Environment); err != nil {
+		return applicationAdoptionResult{}, fmt.Errorf("record never-delivered provenance: %w", err)
 	}
 	return result, nil
 }
