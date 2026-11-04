@@ -735,6 +735,9 @@ jobs:
           git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
           python3 scripts/test_pr_selected_runtime_matrix.py
           python3 scripts/test_ecosystem_release_pins.py
+          python3 scripts/test_develop_ecosystem_source.py
+          python3 scripts/test_develop_targeted_workflow.py
+          python3 scripts/test_develop_ecosystem_final.py
           python3 scripts/test_targeted_gate_ref.py
           # The trusted runner executes the small commit-receipt test suite.
           git fetch --no-tags origin "${{ needs.pr_plan.outputs.controller_sha }}"

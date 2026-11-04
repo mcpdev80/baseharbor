@@ -14,6 +14,16 @@ on:
         description: Exact baseharbor-demo commit SHA to test
         required: true
         type: string
+      console_ref:
+        description: Exact Console SHA for optional four-repository develop preflight
+        required: false
+        default: ""
+        type: string
+      connector_ref:
+        description: Exact Connector SHA for optional four-repository develop preflight
+        required: false
+        default: ""
+        type: string
       runtime:
         description: Gate execution class/runtime
         required: true
@@ -23,6 +33,7 @@ on:
           - static
           - docker
           - podman
+          - both
       gate:
         description: Atomic gate from baseharbor-demo/tests/gate-resources.json
         required: true
@@ -30,6 +41,7 @@ on:
         type: string
   push:
     branches:
+      - develop
       - "runtime-validation/targeted/**"
 
 permissions:
@@ -48,6 +60,8 @@ jobs:
       runtime: ${{ steps.resolve.outputs.runtime }}
       gate: ${{ steps.resolve.outputs.gate }}
       gates: ${{ steps.resolve.outputs.gates }}
+      console_ref: ${{ steps.resolve.outputs.console_ref }}
+      connector_ref: ${{ steps.resolve.outputs.connector_ref }}
     steps:
       - name: Checkout gate tooling for ref resolution and pinned demo ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +75,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_REF: ${{ inputs.ref }}
           DISPATCH_DEMO_REF: ${{ inputs.demo_ref }}
+          DISPATCH_CONSOLE_REF: ${{ inputs.console_ref }}
+          DISPATCH_CONNECTOR_REF: ${{ inputs.connector_ref }}
           DISPATCH_RUNTIME: ${{ inputs.runtime }}
           DISPATCH_GATE: ${{ inputs.gate }}
           GH_TOKEN: ${{ github.token }}
@@ -72,6 +88,16 @@ jobs:
             runtime="$DISPATCH_RUNTIME"
             gate="$DISPATCH_GATE"
           else
+            if [ "$GITHUB_REF_NAME" = develop ]; then
+              # Resolve moving consumer branches to immutable SHAs exactly once.
+              # Missing or non-matching source pins fail closed in ecosystem_source.
+              ref="$GITHUB_SHA"
+              demo_ref="$(gh api repos/mcpdev80/baseharbor-demo/git/ref/heads/main --jq '.object.sha')"
+              DISPATCH_CONSOLE_REF="$(gh api repos/mcpdev80/baseharbor-console/git/ref/heads/main --jq '.object.sha')"
+              DISPATCH_CONNECTOR_REF="$(gh api repos/mcpdev80/baseharbor-node-connector/git/ref/heads/main --jq '.object.sha')"
+              runtime=both
+              gate=lifecycle
+            else
             prefix="runtime-validation/targeted/"
             case "$GITHUB_REF_NAME" in
               "$prefix"*) ;;
@@ -102,10 +128,11 @@ jobs:
               demo_ref="$(tr -d '[:space:]' < "$demo_ref_file")"
             fi
             [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+            fi
           fi
 
           case "$runtime" in
-            static|docker|podman|batch) ;;
+            static|docker|podman|both|batch) ;;
             *)
               echo "Unsupported targeted runtime: $runtime" >&2
               exit 2
@@ -114,7 +141,15 @@ jobs:
           test -n "$ref"
           test -n "$demo_ref"
           test -n "$gate"
-          if [ "$runtime" = batch ]; then
+          if [ "$runtime" = both ]; then
+            [[ "$EVENT_NAME" == workflow_dispatch || ( "$EVENT_NAME" == push && "$GITHUB_REF_NAME" == develop ) ]]
+            test "$gate" = lifecycle
+            [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$demo_ref" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$DISPATCH_CONSOLE_REF" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$DISPATCH_CONNECTOR_REF" =~ ^[0-9a-f]{40}$ ]]
+            gates='[{"runtime":"docker","gate":"lifecycle"},{"runtime":"podman","gate":"lifecycle"}]'
+          elif [ "$runtime" = batch ]; then
             test "$EVENT_NAME" = push
             test "$gate" = remaining
             gates="$(python scripts/targeted-atomic-plan.py --tag "v$version")"
@@ -130,14 +165,40 @@ jobs:
             echo "runtime=$runtime"
             echo "gate=$gate"
             echo "gates=$gates"
+            echo "console_ref=$DISPATCH_CONSOLE_REF"
+            echo "connector_ref=$DISPATCH_CONNECTOR_REF"
           } >> "$GITHUB_OUTPUT"
 
-  selected_gate:
-    if: needs.resolve.outputs.gate != 'reference-journey'
+  ecosystem_source:
+    name: Develop · Four-repo immutable source compatibility
+    if: needs.resolve.outputs.runtime == 'both'
     needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Check four exact immutable source identities before runtime
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CORE_SHA: ${{ needs.resolve.outputs.ref }}
+          DEMO_SHA: ${{ needs.resolve.outputs.demo_ref }}
+          CONSOLE_SHA: ${{ needs.resolve.outputs.console_ref }}
+          CONNECTOR_SHA: ${{ needs.resolve.outputs.connector_ref }}
+        run: |
+          set -euo pipefail
+          python3 scripts/develop-ecosystem-source.py --core "$CORE_SHA" --demo "$DEMO_SHA" --console "$CONSOLE_SHA" --connector "$CONNECTOR_SHA"
+
+  selected_gate:
+    if: always() && needs.resolve.result == 'success' && needs.resolve.outputs.gate != 'reference-journey' && (needs.resolve.outputs.runtime != 'both' || needs.ecosystem_source.result == 'success')
+    needs: [resolve, ecosystem_source]
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.resolve.outputs.gates) }}
     uses: ./.github/workflows/pre-release-runtime-suite.yml
@@ -147,6 +208,35 @@ jobs:
       runtime: ${{ matrix.runtime }}
       gate: ${{ matrix.gate }}
       candidate_artifact: ""
+
+  consumer_integration:
+    name: Develop · Native Console and Connector (Docker + Podman)
+    if: always() && needs.resolve.result == 'success' && needs.ecosystem_source.result == 'success' && needs.resolve.outputs.runtime == 'both'
+    needs: [resolve, ecosystem_source]
+    uses: ./.github/workflows/pre-release.yml
+    with:
+      develop_mode: true
+      tag: develop
+      ref: ${{ needs.resolve.outputs.ref }}
+      demo_ref: ${{ needs.resolve.outputs.demo_ref }}
+      console_ref: ${{ needs.resolve.outputs.console_ref }}
+      consumer_ref: ${{ needs.resolve.outputs.connector_ref }}
+      only_gates: integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console
+
+  develop_ecosystem_result:
+    name: Develop · Required four-repo runtime result
+    if: always() && ((github.event_name == 'workflow_dispatch' && inputs.runtime == 'both') || (github.event_name == 'push' && github.ref_name == 'develop'))
+    needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require source compatibility and native integration results
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: python3 scripts/develop-ecosystem-final.py
 
   reference_journey:
     name: Reference Journey · ${{ needs.resolve.outputs.runtime }} · Full E2E
