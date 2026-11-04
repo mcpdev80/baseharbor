@@ -22,7 +22,13 @@ func appEditRegisteredCommand(store application.Store) *cli.Command {
 			if noInput(ctx) || !readerIsTerminal(appNewInput) {
 				return usageError("app edit requires a terminal", "Use an interactive session; --yes cannot replace consequence consent.")
 			}
-			_, err := runAppEdit(ctx, store, args, appNewInput, out, errOut)
+			// A repository-owned candidate submission is bound only on explicit
+			// operator/automation confirmation: the confirm digest pins the exact
+			// candidate identity the Edit will bind. Without the flag the
+			// candidate choke fails closed, exactly like app apply.
+			confirm, rest := stripConfirmCandidateOverride(args)
+			ctx = withCandidateConsentDigest(ctx, confirm)
+			_, err := runAppEdit(ctx, store, rest, appNewInput, out, errOut)
 			return err
 		},
 	}

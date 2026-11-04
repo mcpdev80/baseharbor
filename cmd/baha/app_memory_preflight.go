@@ -52,6 +52,31 @@ func stripMemoryPreflightOverride(args []string) ([]string, bool) {
 	return filtered, skip
 }
 
+// stripConfirmCandidateOverride extracts the --confirm-candidate flag from the
+// argument list. It accepts either "--confirm-candidate <digest>" or the
+// "--confirm-candidate=<digest>" form and returns the raw digest (empty when
+// the flag is absent) alongside the remaining arguments.
+func stripConfirmCandidateOverride(args []string) (string, []string) {
+	digest := ""
+	filtered := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--confirm-candidate":
+			if i+1 >= len(args) {
+				return digest, filtered
+			}
+			digest = args[i+1]
+			i++
+		case strings.HasPrefix(arg, "--confirm-candidate="):
+			digest = strings.TrimPrefix(arg, "--confirm-candidate=")
+		default:
+			filtered = append(filtered, arg)
+		}
+	}
+	return digest, filtered
+}
+
 func runHostMemoryPreflight(ctx context.Context, in io.Reader, out io.Writer, provider bhruntime.ProviderKind, estimate hostresource.MemoryEstimate, mutating bool) error {
 	switch provider {
 	case bhruntime.ProviderDocker, bhruntime.ProviderPodman:
