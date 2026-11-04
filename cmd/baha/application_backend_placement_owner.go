@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 
@@ -105,7 +103,12 @@ func resolveAppliedBackendSelection(resolved resolvedApplication) (application.M
 	record, err := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
 	if err == nil {
 		encoded = record.Applied.GeneratedState["backend_placements"]
-	} else if !errors.Is(err, os.ErrNotExist) {
+	} else if state, ok := deployment.DeploymentRecordState(err); !ok || state.Kind != "incomplete" {
+		// A missing deployment record (Kind "incomplete") is not an error here:
+		// an application that was never delivered (e.g. refused by the consent
+		// choke) has no prior backend placements to retain. Inherit nothing so
+		// the current manifest wins and the destroy path can resolve ownership
+		// from the application/stack identity instead of failing closed.
 		return application.Manifest{}, err
 	}
 	applied, err := retainedBackendPlacementProjection(resolved, m, encoded)
