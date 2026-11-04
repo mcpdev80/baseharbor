@@ -52,6 +52,8 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	if err != nil {
 		return applicationAdoptionResult{}, err
 	}
+	// Never attest a fresh application when an existing identity is being adopted.
+	freshIdentity := !snapshot.PreviouslyRegistered && len(snapshot.ApplicationIDs) == 0 && m.ApplicationID == ""
 	m, err = application.ResolveIdentity(m, snapshot)
 	if err != nil {
 		return applicationAdoptionResult{}, err
@@ -98,8 +100,10 @@ func persistRepositoryApplication(ctx context.Context, root string, m applicatio
 	// A positive, one-shot proof exists only for a newly initialized app.
 	// First deployment persistence consumes it BEFORE touching runtime state.
 	// Older applications without this proof cannot claim "never delivered".
-	if err := deployment.CreateNeverDeliveredProof(target.Name, m.ApplicationID, m.Name, m.Environment); err != nil {
-		return applicationAdoptionResult{}, fmt.Errorf("record never-delivered provenance: %w", err)
+	if freshIdentity {
+		if err := deployment.CreateNeverDeliveredProof(target.Name, m.ApplicationID, m.Name, m.Environment); err != nil {
+			return applicationAdoptionResult{}, fmt.Errorf("record never-delivered provenance: %w", err)
+		}
 	}
 	return result, nil
 }
