@@ -868,9 +868,14 @@ func probeDockerDaemonMode(ctx context.Context, endpoint string) (string, bool) 
 		ID              string
 		SecurityOptions []string
 	}
-	if json.Unmarshal(out, &info) != nil || strings.TrimSpace(info.ID) == "" {
+	if json.Unmarshal(out, &info) != nil {
 		return "", false
 	}
+	// The daemon identity (ID) is only a guard for production's fail-closed
+	// ResolveDockerEngine probe. Here the whole point is to READ the mode, so a
+	// daemon that answers `info` but suppresses its ID (e.g. a restricted CI
+	// rootful socket) still yields a usable mode instead of falling back and
+	// being misread as rootless.
 	mode := "rootful"
 	for _, option := range info.SecurityOptions {
 		if option == "rootless" || option == "name=rootless" {
