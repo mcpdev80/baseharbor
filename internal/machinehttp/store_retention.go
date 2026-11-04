@@ -156,10 +156,22 @@ func lineExecutionID(raw string) string {
 // steps. Because every rotation is newest-per-id compacted, no execution-id loses
 // its newest line while the total cap holds.
 func (s *executionStore) enforceTotalCapLocked() error {
+	// Capture the on-disk active set BEFORE the rotation loop. Luna recipe B1
+	// rejects the write if any active id that was durably present before the
+	// rotations is dropped by compaction while enforcing the total cap.
+	before := s.onDiskActiveIDs()
 	for s.totalJournalBytes() > journalSegmentTotalCap {
 		if err := s.rotateSegmentLocked(); err != nil {
 			return err
 		}
+	}
+	// Post-loop integrity check (Luna recipe B1): if an active id that was on disk
+	// before the rotations is no longer there, the enforcement lost an active
+	// record. Reject rather than ship a journal with a hole where an active record
+	// used to be.
+	after := s.onDiskActiveIDs()
+	if lost := s.lostActiveIDsOnDisk(before, after); len(lost) > 0 {
+		return fmt.Errorf("machinehttp: total-cap enforcement dropped active execution ids %v", lost)
 	}
 	return nil
 }
@@ -171,6 +183,40 @@ func (s *executionStore) writeCompactedJournal(newest []byte) error {
 		return nil
 	}
 	segments := splitIntoCappedSegments(newest)
+	// Luna recipe B1 (review-1354g): the fixed retention budget after a rotation
+	// is the active segment plus journalBackupMax numbered backups. rotateSegmentLocked
+	// shifts .0->.1 ... .(N-1)->.N and then removes the overflow, so a compaction
+	// that writes K segments keeps only the first K-1 (the newest) — the oldest
+	// segment is dropped on the shift. The active segment is itself fresh after the
+	// shift, so the newest-per-id set must fit within journalBackupMax survivors.
+	// A set needing more slots drops its oldest segment on the shift; the write is
+	// rejected (fail closed) if that overflow segment still holds an active
+	// (pending/running/unknown) record's newest line. Terminal-only overflow is
+	// safe to drop (B1 protects only active ids), so the overflow is accepted when
+	// every active record's newest line is among the surviving K-1 segments.
+	if len(segments) > journalBackupMax {
+		overflow := segments[journalBackupMax]
+		overflowActive := false
+		for _, raw := range splitLines(overflow) {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			var line struct {
+				ExecutionID string                 `json:"execution_id"`
+				State       machine.ExecutionState `json:"state"`
+			}
+			if err := json.Unmarshal([]byte(raw), &line); err != nil {
+				continue
+			}
+			if !isTerminalState(line.State) {
+				overflowActive = true
+				break
+			}
+		}
+		if overflowActive {
+			return fmt.Errorf("machinehttp: total-cap set cannot retain active execution ids within segment slots (recipe B1)")
+		}
+	}
 	var tmpNames []string
 	for i, seg := range segments {
 		tmp := fmt.Sprintf("%s.compact.%d", s.journalPath, i)
@@ -321,4 +367,96 @@ func (s *executionStore) newestStateForID(id string) (machine.ExecutionState, bo
 		}
 	}
 	return "", false
+}
+
+// lostActiveIDsOnDisk returns the set of pending/running/unknown execution-ids
+// whose newest line was present on disk BEFORE the rotation loop and is missing
+// from it AFTER — i.e. an active record the total-cap enforcement actually
+// dropped. It is the concrete enforcement of Luna recipe B1: an active record
+// that compaction dropped must be reported so the caller rejects the write
+// instead of shipping a journal with a hole where an active record used to be.
+//
+// It compares the on-disk active set before and after the loop rather than
+// against s.records: a record added to memory during the very write being
+// enforced has not flushed its first line yet, so its absence from disk must not
+// count as a loss. Callers must hold s.mu.
+func (s *executionStore) lostActiveIDsOnDisk(before, after map[string]bool) []string {
+	var lost []string
+	for id := range before {
+		if !after[id] {
+			lost = append(lost, id)
+		}
+	}
+	return lost
+}
+
+// onDiskActiveIDs returns the set of pending/running/unknown execution-ids whose
+// newest line is physically present in the on-disk journal segments.
+func (s *executionStore) onDiskActiveIDs() map[string]bool {
+	segments, err := s.journalSegments()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	active := map[string]bool{}
+	for _, seg := range reverseSegments(segments) {
+		for _, raw := range splitLines(seg) {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			var line struct {
+				ExecutionID string                 `json:"execution_id"`
+				State       machine.ExecutionState `json:"state"`
+			}
+			if err := json.Unmarshal([]byte(raw), &line); err != nil {
+				continue
+			}
+			if seen[line.ExecutionID] {
+				continue
+			}
+			seen[line.ExecutionID] = true
+			if isTerminalState(line.State) {
+				continue
+			}
+			active[line.ExecutionID] = true
+		}
+	}
+	return active
+}
+
+// lostActiveIDsInSet reports which active (pending/running/unknown) execution-id
+// currently on disk is NOT retained in the compacted `newest` byte set. It is the
+// pre-write gate for Luna recipe B1: if the newest-per-id set cannot hold every
+// active record that is already persisted (e.g. it would overflow the fixed
+// number of segment slots and drop the newest line of an active id), the write
+// is rejected rather than dropping an active line.
+//
+// It compares the on-disk active set against `newest` (both read from disk) so it
+// ignores an id that is only in memory but whose line has not been flushed yet:
+// `create` inserts the record into s.records before persisting it, so a write's
+// own not-yet-appended line must never count as "lost" against this gate.
+// Callers must hold s.mu.
+func (s *executionStore) lostActiveIDsInSet(newest []byte) []string {
+	onDisk := s.onDiskActiveIDs()
+	present := map[string]bool{}
+	for _, raw := range splitLines(newest) {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		var line struct {
+			ExecutionID string                 `json:"execution_id"`
+			State       machine.ExecutionState `json:"state"`
+		}
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			continue
+		}
+		present[line.ExecutionID] = true
+	}
+	var lost []string
+	for id := range onDisk {
+		if !present[id] {
+			lost = append(lost, id)
+		}
+	}
+	return lost
 }

@@ -307,6 +307,10 @@ func (s *executionStore) appendJournalLocked(record *executionRecord) error {
 // otherwise unwritable active segment — where no rotation is possible — fails
 // closed: the line is appended and the append error propagates so NO event is
 // ever published for a write that could not be durably committed.
+//
+// Recipe B3 (review-1354g): durability is committed as write→Sync→Close, and a
+// failure at any of those steps returns an error before commit so `update`
+// rolls the in-memory state back and publishes no event.
 func (s *executionStore) appendJournalLineLocked(line []byte) error {
 	if err := s.rotateBeforeWriteLocked(len(line) + 1); err != nil {
 		return err
@@ -315,9 +319,21 @@ func (s *executionStore) appendJournalLineLocked(line []byte) error {
 	if err != nil {
 		return fmt.Errorf("open execution journal %q: %w", s.journalPath, err)
 	}
-	defer f.Close()
+	// Recipe B3 commit path: write, fsync, close — each error fails closed. The
+	// explicit Close (not `defer`) means a Close-time flush failure is surfaced
+	// here, before the transition is committed and before any event is published;
+	// `update` rolls the in-memory state back and never emits for a write that
+	// could not be durably committed.
 	if _, err := f.Write(append(line, '\n')); err != nil {
+		_ = f.Close()
 		return fmt.Errorf("append execution journal line: %w", err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("fsync execution journal line: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close execution journal line: %w", err)
 	}
 	return s.enforceTotalCapLocked()
 }
@@ -486,9 +502,19 @@ func (s *executionStore) load() error {
 	// previously latent ordering bug that surfaces once running states are restored
 	// on load (mission runde 4 / review finding 1).
 	for _, seg := range reverseSegments(segments) {
-		for i, raw := range splitLines(seg) {
+		lines := splitLines(seg)
+		for i, raw := range lines {
 			if strings.TrimSpace(raw) == "" {
 				continue
+			}
+			// Luna recipe B2 (review-1354g): a trailing fragment without its
+			// terminating newline was never committed as a complete JSONL record —
+			// an interrupted append, even one whose bytes are individually valid
+			// JSON. Classify it as corrupt/uncertain and fail closed on load rather
+			// than silently restoring it as pending. Only a newline-terminated
+			// line is a durable record.
+			if i == len(lines)-1 && !bytesHasTrailingNewline(seg) {
+				return fmt.Errorf("corrupt execution journal line %d: unterminated final record (interrupted append)", i+1)
 			}
 			var line struct {
 				ExecutionID string                   `json:"execution_id"`
@@ -601,6 +627,14 @@ func reverseSegments(segs [][]byte) [][]byte {
 		out = append(out, segs[i])
 	}
 	return out
+}
+
+// bytesHasTrailingNewline reports whether data ends with a newline byte. An
+// append-only journal line is only a durable record once its terminating '\n'
+// has been flushed; a final fragment without it is an interrupted write and
+// must fail closed on load (Luna recipe B2).
+func bytesHasTrailingNewline(data []byte) bool {
+	return len(data) > 0 && data[len(data)-1] == '\n'
 }
 
 // splitLines splits journal bytes on newlines, tolerating a trailing newline.
