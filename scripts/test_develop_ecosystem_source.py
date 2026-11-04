@@ -1,5 +1,8 @@
 """Develop source preflight rejects stale, malformed and mis-pinned consumers."""
 import importlib.util
+import base64
+import json
+from unittest.mock import patch
 from pathlib import Path
 import unittest
 
@@ -30,6 +33,19 @@ class PreflightTests(unittest.TestCase):
                     connector_candidate=self.connector_pin)
         args.update(changes)
         return mod.validate(**args)
+
+    def test_github_contents_wrapped_base64_is_decoded_strictly(self):
+        raw = b"a" * 40 + b"\n"
+        encoded = base64.b64encode(raw).decode()
+        wrapped = encoded[:15] + "\n" + encoded[15:30] + "\n" + encoded[30:]
+        reply = {"type": "file", "encoding": "base64", "size": len(raw), "content": wrapped}
+        with patch.object(mod.subprocess, "check_output", return_value=json.dumps(reply)):
+            result = mod.read_source(mod.REPOS["demo"], "b" * 40, "baseharbor-core.ref")
+        self.assertEqual(raw.decode(), result)
+        reply["content"] = encoded[:-1] + "!"
+        with patch.object(mod.subprocess, "check_output", return_value=json.dumps(reply)):
+            with self.assertRaises(ValueError):
+                mod.read_source(mod.REPOS["demo"], "b" * 40, "baseharbor-core.ref")
 
     def test_compatible_is_only_source_preflight_not_runtime_success(self):
         result = self.verify()

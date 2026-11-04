@@ -65,7 +65,13 @@ def read_source(repo, sha, path):
         0 < reply.get("size", 0) <= 65536
     ):
         raise ValueError("source file metadata differs")
-    return base64.b64decode(reply["content"], validate=True).decode("utf-8")
+    # GitHub Contents API inserts MIME-style newlines into base64 content.
+    # Ignore only ASCII whitespace; retain strict alphabet and padding validation.
+    encoded = reply["content"]
+    if not isinstance(encoded, str):
+        raise ValueError("source file encoding differs")
+    encoded = "".join(encoded.split())
+    return base64.b64decode(encoded, validate=True).decode("utf-8")
 
 
 def main():
