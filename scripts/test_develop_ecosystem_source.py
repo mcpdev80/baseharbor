@@ -35,9 +35,9 @@ class PreflightTests(unittest.TestCase):
         return mod.validate(**args)
 
     def test_github_contents_wrapped_base64_is_decoded_strictly(self):
-        raw = b"a" * 40 + b"\\n"
+        raw = b"a" * 40 + b"\n"
         encoded = base64.b64encode(raw).decode()
-        wrapped = encoded[:15] + "\\n" + encoded[15:30] + "\\n" + encoded[30:]
+        wrapped = encoded[:15] + "\n" + encoded[15:30] + "\n" + encoded[30:]
         reply = {"type": "file", "encoding": "base64", "size": len(raw), "content": wrapped}
         with patch.object(mod.subprocess, "check_output", return_value=json.dumps(reply)):
             result = mod.read_source(mod.REPOS["demo"], "b" * 40, "baseharbor-core.ref")
