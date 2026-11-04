@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -830,34 +831,53 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 // endpoint is unreachable it falls back to the Rootless Docker socket that
 // exists on this host so the probe still resolves a real daemon mode. This makes
 // the happy-path converge on both a rootful CI runner and a rootless dev host.
+//
+// It reads the daemon's real mode directly from `docker info` security options
+// instead of calling ResolveDockerEngine, which fail-closes on any mode mismatch
+// before the caller can observe the mode. The single verified probe never falls
+// back to a second engine, matching production's fail-closed contract.
 func probeTargetDockerMode(t *testing.T, ctx context.Context) (string, string) {
 	t.Helper()
 	pinned := os.Getenv("DOCKER_HOST")
 	if pinned == "" {
 		pinned = "unix:///var/run/docker.sock"
 	}
-	if engine, err := inspectTargetDockerEngine(ctx, deployment.ResolvedTarget{
-		Name:            "docker-dev",
-		RuntimeProvider: "docker",
-		AccessProvider:  "local",
-		DockerEndpoint:  pinned,
-	}); err == nil && engine != nil {
-		return engine.Mode, engine.Endpoint
+	for _, candidate := range []string{pinned, "unix:///run/user/1000/docker.sock"} {
+		if mode, ok := probeDockerDaemonMode(ctx, candidate); ok {
+			return mode, candidate
+		}
 	}
-	// Fallback: the pinned endpoint is unreachable. On a rootless dev host the
-	// Rootless Docker socket exists and is reachable; probe it so the mode is
-	// still derived from a real daemon rather than guessed.
-	rootless := "unix:///run/user/1000/docker.sock"
-	if engine, err := inspectTargetDockerEngine(ctx, deployment.ResolvedTarget{
-		Name:            "docker-dev",
-		RuntimeProvider: "docker",
-		AccessProvider:  "local",
-		DockerEndpoint:  rootless,
-	}); err == nil && engine != nil {
-		return engine.Mode, engine.Endpoint
+	t.Fatalf("no reachable Docker daemon to derive target mode from (pinned=%s rootless=%s)", pinned, "unix:///run/user/1000/docker.sock")
+	return "rootless", "unix:///run/user/1000/docker.sock"
+}
+
+// probeDockerDaemonMode runs `docker --host <endpoint> info` once and returns the
+// daemon's real mode (rootless/rootful) derived from its security options. It
+// returns ok=false when the endpoint is unreachable so the caller can try the
+// next candidate. It never applies production's fail-closed mode-mismatch check,
+// because the whole point is to observe the mode before any Target intent is set.
+func probeDockerDaemonMode(ctx context.Context, endpoint string) (string, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "--host", endpoint, "info", "--format", "{{json .}}")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
 	}
-	t.Fatalf("no reachable Docker daemon to derive target mode from (pinned=%s rootless=%s)", pinned, rootless)
-	return "rootless", rootless
+	var info struct {
+		ID              string
+		SecurityOptions []string
+	}
+	if json.Unmarshal(out, &info) != nil || strings.TrimSpace(info.ID) == "" {
+		return "", false
+	}
+	mode := "rootful"
+	for _, option := range info.SecurityOptions {
+		if option == "rootless" || option == "name=rootless" {
+			mode = "rootless"
+		}
+	}
+	return mode, true
 }
 
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
