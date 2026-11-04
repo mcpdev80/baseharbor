@@ -22,7 +22,7 @@ type Inventory struct {
 	SSHAvailable  bool
 	SSHHasKey     bool
 	KubeAvailable bool
-	Registry bool // registry config file present; auth may still be empty
+	Registry      bool // registry config file present; auth may still be empty
 }
 
 // RegistrySource documents the documented-absent/present case for a native
@@ -51,5 +51,5 @@ var ErrKubeUnavailable = fmt.Errorf("kube: no native kube context reachable")
 func (KubeSource) Available(ctx context.Context) bool { return false }
 
 // Cleanup is a no-op for the kube/registry markers.
-func (KubeSource) Cleanup() error { return nil }
+func (KubeSource) Cleanup() error     { return nil }
 func (RegistrySource) Cleanup() error { return nil }
