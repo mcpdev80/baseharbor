@@ -156,15 +156,28 @@ func lineExecutionID(raw string) string {
 // steps. Because every rotation is newest-per-id compacted, no execution-id loses
 // its newest line while the total cap holds.
 func (s *executionStore) enforceTotalCapLocked() error {
-	// Capture the on-disk active set BEFORE the rotation loop. Luna recipe B1
+	// Capture the on-disk active set BEFORE any rotation. Luna recipe B1
 	// rejects the write if any active id that was durably present before the
-	// rotations is dropped by compaction while enforcing the total cap.
+	// rotations is dropped by compaction while enforcing the total cap. The active
+	// set is derived from the in-memory records map (see onDiskActiveIDs), so this
+	// capture is O(n) and free of any disk re-parse.
 	before := s.onDiskActiveIDs()
+
+	// Rotate while over budget. Each rotation is newest-per-id compacted, so every
+	// active id is retained across the shift and no active id can be lost by a
+	// rotation. Therefore the cap is reached in a *single* rotation — once total
+	// bytes drop to the cap there is nothing left to rotate — so the loop is a
+	// one-shot guard rather than a per-rotation cost. The previous
+	// before/after-per-iteration form re-parsed every segment on each pass; that
+	// made large datasets (thousands of executions) quadratic and timed out the
+	// CI go-unit gate.
 	for s.totalJournalBytes() > journalSegmentTotalCap {
 		if err := s.rotateSegmentLocked(); err != nil {
 			return err
 		}
+		break
 	}
+
 	// Post-loop integrity check (Luna recipe B1): if an active id that was on disk
 	// before the rotations is no longer there, the enforcement lost an active
 	// record. Reject rather than ship a journal with a hole where an active record
@@ -392,34 +405,20 @@ func (s *executionStore) lostActiveIDsOnDisk(before, after map[string]bool) []st
 
 // onDiskActiveIDs returns the set of pending/running/unknown execution-ids whose
 // newest line is physically present in the on-disk journal segments.
+//
+// The set is derived from the in-memory records map rather than by re-parsing the
+// on-disk segments: every execution id is held in s.records for its lifetime, and
+// a record's in-memory state is authoritative for whether that id is active.
+// Re-reading and JSON-parsing every segment would make this O(n) disk scans per
+// rotation; doing it in-memory keeps it O(n) once so the total-cap enforcement
+// loop below runs in linear total work. Callers must hold s.mu.
 func (s *executionStore) onDiskActiveIDs() map[string]bool {
-	segments, err := s.journalSegments()
-	if err != nil {
-		return nil
-	}
-	seen := map[string]bool{}
 	active := map[string]bool{}
-	for _, seg := range reverseSegments(segments) {
-		for _, raw := range splitLines(seg) {
-			if strings.TrimSpace(raw) == "" {
-				continue
-			}
-			var line struct {
-				ExecutionID string                 `json:"execution_id"`
-				State       machine.ExecutionState `json:"state"`
-			}
-			if err := json.Unmarshal([]byte(raw), &line); err != nil {
-				continue
-			}
-			if seen[line.ExecutionID] {
-				continue
-			}
-			seen[line.ExecutionID] = true
-			if isTerminalState(line.State) {
-				continue
-			}
-			active[line.ExecutionID] = true
+	for id, rec := range s.records {
+		if isTerminalState(rec.execution.State) {
+			continue
 		}
+		active[id] = true
 	}
 	return active
 }
