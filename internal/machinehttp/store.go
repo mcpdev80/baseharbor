@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -61,21 +62,32 @@ type executionRecord struct {
 }
 
 type executionStore struct {
-	mu          sync.RWMutex
-	records     map[string]*executionRecord
-	journalPath string
-	journalDir  string
+	mu      sync.RWMutex
+	records map[string]*executionRecord
+	// operationsIndex maps an accepted operation id to the execution id created
+	// for it, so a repeat of the same operation (reconnect or duplicate) can be
+	// recognised and rejected instead of minting a second execution. It is only
+	// kept in memory alongside records; the journal stays append-only per line.
+	operationsIndex map[string]string
+	journalPath     string
+	journalDir      string
 }
 
 func newExecutionStore() *executionStore {
-	return &executionStore{records: map[string]*executionRecord{}}
+	return &executionStore{
+		records:         map[string]*executionRecord{},
+		operationsIndex: map[string]string{},
+	}
 }
 
 // newPersistedExecutionStore loads any existing journal from stateRoot and
 // persists every subsequent mutation to it. stateRoot == "" keeps the store
 // in-memory. A corrupt journal line fails closed (never silently skipped).
 func newPersistedExecutionStore(stateRoot string) (*executionStore, error) {
-	store := &executionStore{records: map[string]*executionRecord{}}
+	store := &executionStore{
+		records:         map[string]*executionRecord{},
+		operationsIndex: map[string]string{},
+	}
 	dir := journalDir(stateRoot)
 	if dir == "" {
 		return store, nil
@@ -99,7 +111,36 @@ func newExecutionID() (string, error) {
 	return "exec_" + hex.EncodeToString(raw[:]), nil
 }
 
+// sameOperationContext reports whether two accepted-request commitments are
+// equal. The operation id binds exactly one in-flight operation, so a reconnect
+// must match the original actor and context byte-for-byte; any change is a
+// duplicate and must be rejected rather than replayed under the original id.
+func sameOperationContext(aRef machine.ActorRef, aCtx machine.OperationContext, bRef machine.ActorRef, bCtx machine.OperationContext) bool {
+	return reflect.DeepEqual(aRef, bRef) && reflect.DeepEqual(aCtx, bCtx)
+}
+
 func (s *executionStore) create(operationID string, actor machine.ActorRef, ctx machine.OperationContext) (machine.Execution, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Resolve a repeat of an already accepted operation id (a reconnect or a
+	// duplicate request) against the accepted commitment, before minting a new
+	// execution id. The operation id is the durable identity for one in-flight
+	// operation:
+	//   - a byte-identical repeat is a reconnect: return the existing execution
+	//     so the operation is replayed once, never a second time;
+	//   - a repeat with changed content is a duplicate and must fail closed with
+	//     a typed validation error, indexing no second execution.
+	if existingID, accepted := s.operationsIndex[operationID]; accepted {
+		existing := s.records[existingID].execution
+		if sameOperationContext(existing.Actor, existing.Context, actor, ctx) {
+			return existing, nil
+		}
+		return machine.Execution{}, machine.NewError(machine.ErrorValidationFailed,
+			"Operation already accepted.",
+			"This operation id is already accepted with different content; reconnect the original instead of starting a duplicate.",
+			false)
+	}
 	id, err := newExecutionID()
 	if err != nil {
 		return machine.Execution{}, err
@@ -117,18 +158,17 @@ func (s *executionStore) create(operationID string, actor machine.ActorRef, ctx 
 	// (review finding 1). The line carries only identity-critical fields:
 	// execution id, state, actor, context and timestamps — never result/
 	// progress/error payloads.
-	s.mu.Lock()
 	record := &executionRecord{
 		execution:   execution,
 		subscribers: map[chan machine.MachineEvent]struct{}{},
 	}
 	s.records[id] = record
+	s.operationsIndex[operationID] = id
 	if err := s.appendJournalLocked(record); err != nil {
 		delete(s.records, id)
-		s.mu.Unlock()
+		delete(s.operationsIndex, operationID)
 		return machine.Execution{}, err
 	}
-	s.mu.Unlock()
 	return execution, nil
 }
 
