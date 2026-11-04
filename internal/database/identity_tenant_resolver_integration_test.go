@@ -15,7 +15,7 @@ import (
 func TestIdentityTenantResolverUsesIdentityScopedRLS(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("testumgebung nicht hergestellt: BASEHARBOR_TEST_DATABASE_URL fehlt")
 	}
 
 	ctx := context.Background()
@@ -82,7 +82,9 @@ INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
 		t.Fatal(err)
 	}
 
-	runtimeDSN := "postgres://baseharbor_resolver_ci:" + runtimePassword + "@127.0.0.1:5432/baseharbor_test?sslmode=disable"
+	runtimeDSN := os.Getenv("BASEHARBOR_TEST_DATABASE_URL") +
+		"&user=baseharbor_resolver_ci&password=" + runtimePassword +
+		"&connect_timeout=5"
 	runtimeConfig, err := pgxpool.ParseConfig(runtimeDSN)
 	if err != nil {
 		t.Fatal(err)
