@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/runtime/terminal"
 )
 
@@ -127,7 +128,7 @@ func TestTerminalInputResizeExitAndNoSideEffectReplay(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		r := withTestPrincipal(httptest.NewRequest("GET", "https://core.example/api/v1/machine/terminals/"+id+"/events", nil))
-		h.ServeHTTP(events, r.WithContext(identity.WithPrincipal(ctx, mustTestPrincipal(r))))
+		h.ServeHTTP(events, r.WithContext(reapplyTestEnforcement(ctx, mustTestPrincipal(r))))
 		close(done)
 	}()
 	select {
@@ -172,7 +173,22 @@ func TestTerminalInputResizeExitAndNoSideEffectReplay(t *testing.T) {
 
 func mustTestPrincipal(r *http.Request) *identity.Principal {
 	p, _ := identity.FromContext(r.Context())
+	if p != nil {
+		p.IssuerVerified = true
+		p.Groups = []string{"editor"}
+	}
 	return p
+}
+
+// reapplyTestEnforcement re-attaches the operatorauth enforcement context and a
+// bounded provider after an identity.WithPrincipal re-wrap replaces the context.
+// Terminal and stream tests reconstruct the request context manually; the
+// production path carries the enforcement context on r.Context() from the
+// middleware, so this mirrors that for the test.
+func reapplyTestEnforcement(ctx context.Context, principal *identity.Principal) context.Context {
+	ctx = identity.WithPrincipal(ctx, principal)
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+	return operatorauth.WithMembershipProvider(ctx, operatorauthClaimStub{})
 }
 
 func TestTerminalForeignActorExpiryDisconnectAndReplayFailClosed(t *testing.T) {
@@ -201,7 +217,7 @@ func TestTerminalForeignActorExpiryDisconnectAndReplayFailClosed(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		r := withTestPrincipal(httptest.NewRequest("GET", "https://core.example/api/v1/machine/terminals/"+id+"/events", nil))
-		h.ServeHTTP(httptest.NewRecorder(), r.WithContext(identity.WithPrincipal(ctx, mustTestPrincipal(r))))
+		h.ServeHTTP(httptest.NewRecorder(), r.WithContext(reapplyTestEnforcement(ctx, mustTestPrincipal(r))))
 		close(done)
 	}()
 	select {

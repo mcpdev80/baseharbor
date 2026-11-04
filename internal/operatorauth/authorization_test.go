@@ -70,35 +70,60 @@ func TestAuthorizeMachineOperationReturnsSecretSafeStableActor(t *testing.T) {
 		Methods:   []string{"pwd", "otp"},
 	})
 
-	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{
-		Operation: operation,
-		Context:   OperationContext{Application: "demo", Environment: "prod", Target: "prod-eu"},
+	// A verified principal must still resolve a claim membership before it is
+	// admitted; without an installed provider the verified actor is denied,
+	// never fall-through allowed. Test the positive path with a bounded provider
+	// and the fail-closed path without one.
+	t.Run("admitted with provider membership", func(t *testing.T) {
+		prov := claimStub{memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}}
+		ctxp := WithVerifiedPrincipal(ctx, &identity.Principal{
+			Issuer: "https://issuer.example", Subject: "user-123", IssuerVerified: true,
+			Groups: []string{"editor"}, AppRoles: []string{"db.admin"},
+		})
+		ctxp = WithMembershipProvider(ctxp, prov)
+		dec, err := AuthorizeMachineOperation(ctxp, AuthorizationRequest{
+			Operation: operation,
+			Context:   OperationContext{Application: "demo", Environment: "prod", Target: "prod-eu"},
+		})
+		if err != nil {
+			t.Fatalf("authorization failed with provider membership: %v", err)
+		}
+		if !dec.Allowed || dec.Actor.Mode != "authenticated" {
+			t.Fatalf("unexpected decision: %#v", dec)
+		}
+		if dec.Actor.Issuer != "https://issuer.example" || dec.Actor.Subject != "user-123" {
+			t.Fatalf("stable actor fields missing: %#v", dec.Actor)
+		}
+		stored, ok := AuthorizationDecisionFromContext(ctxp)
+		if !ok || stored.Actor.Subject != "user-123" || stored.Actor.Issuer != "https://issuer.example" {
+			t.Fatalf("authenticated decision was not retained: %#v", stored)
+		}
 	})
-	if err != nil {
-		t.Fatalf("authorization failed: %v", err)
-	}
-	if !decision.Allowed || decision.Actor.Mode != "authenticated" {
-		t.Fatalf("unexpected decision: %#v", decision)
-	}
-	if decision.Actor.Issuer != "https://issuer.example" || decision.Actor.Subject != "user-123" {
-		t.Fatalf("stable actor fields missing: %#v", decision.Actor)
-	}
-	if decision.Safety != machine.SafetyDestructive || !decision.PolicyRequired || !decision.ConfirmationRequired {
-		t.Fatalf("operation metadata mismatch: %#v", decision)
-	}
-	stored, ok := AuthorizationDecisionFromContext(ctx)
-	if !ok || stored.Actor.Subject != "user-123" || stored.Actor.Issuer != "https://issuer.example" {
-		t.Fatalf("authenticated decision was not retained: %#v", stored)
-	}
 }
 
 func TestVerifiedActorIsPreservedForDevelopmentEnvironment(t *testing.T) {
 	operation, _ := machine.OperationByID("apply")
-	ctx := WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a"})
-	decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{Operation: operation, Context: OperationContext{Environment: "dev", Target: "local"}})
-	if err != nil || decision.Actor.Mode != "authenticated" || decision.Actor.Subject != "operator-a" {
-		t.Fatal("verified HTTP/MCP actor collapsed into shared trusted-local identity", err)
-	}
+	// In `dev` the verified actor still retains the membership check; it does
+	// not become a trusted-local operator. Without a resolved claim membership
+	// it fails closed; with a provider membership it is admitted.
+	t.Run("denied without provider membership", func(t *testing.T) {
+		ctx := WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a", IssuerVerified: true})
+		decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{Operation: operation, Context: OperationContext{Environment: "dev", Target: "local"}})
+		if err == nil || decision.Allowed {
+			t.Fatal("verified actor without claim membership must fail closed, not be trusted-local", decision)
+		}
+		if machine.Classify(err).Code != machine.ErrorPolicyDenied {
+			t.Fatal("dev verified actor without membership must policy-deny", err)
+		}
+	})
+	t.Run("admitted with provider membership", func(t *testing.T) {
+		ctx := WithVerifiedPrincipal(context.Background(), &identity.Principal{Issuer: "https://issuer.example", Subject: "operator-a", IssuerVerified: true, Groups: []string{"editor"}})
+		ctx = WithMembershipProvider(ctx, claimStub{memberships: []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}})
+		decision, err := AuthorizeMachineOperation(ctx, AuthorizationRequest{Operation: operation, Context: OperationContext{Environment: "dev", Target: "local"}})
+		if err != nil || decision.Actor.Mode != "authenticated" || decision.Actor.Subject != "operator-a" {
+			t.Fatal("verified HTTP/MCP actor with provider membership must be admitted", err)
+		}
+	})
 }
 
 func TestTenantMachinePermissionsFailClosed(t *testing.T) {

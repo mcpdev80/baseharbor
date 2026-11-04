@@ -15,6 +15,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/identity"
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
 type executorFunc func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
@@ -283,10 +285,34 @@ func TestExecutionCannotBeReadByDifferentOperator(t *testing.T) {
 func withTestPrincipal(request *http.Request) *http.Request {
 	request.TLS = &tls.ConnectionState{}
 	principal := &identity.Principal{
-		Issuer:    "https://issuer.example",
-		Subject:   "operator-123",
-		Assurance: "urn:mfa",
-		Methods:   []string{"pwd", "otp"},
+		Issuer:         "https://issuer.example",
+		Subject:        "operator-123",
+		Assurance:      "urn:mfa",
+		Methods:        []string{"pwd", "otp"},
+		IssuerVerified: true,
+		Groups:         []string{"editor"},
 	}
-	return request.WithContext(identity.WithPrincipal(request.Context(), principal))
+	// Mirror the production path: the principal must be visible via
+	// identity.FromContext (discovery/handler principal checks) and, because the
+	// production boundary now requires a verified principal with a resolved claim
+	// membership, registered in the operatorauth enforcement context with a
+	// bounded provider.
+	ctx := identity.WithPrincipal(request.Context(), principal)
+	ctx = operatorauth.WithVerifiedPrincipal(ctx, principal)
+	ctx = operatorauth.WithMembershipProvider(ctx, operatorauthClaimStub{})
+	return request.WithContext(ctx)
+}
+
+// operatorauthClaimStub is the minimal bounded provider binding these machinehttp
+// tests need: it maps the verified principal onto a single-tenant editor
+// membership so the claim-to-membership boundary admits it. It lives here because
+// the production path now requires a verified principal with a resolved claim
+// membership; the shared operatorauth test stub is not exported.
+type operatorauthClaimStub struct{}
+
+func (operatorauthClaimStub) ResolveClaimMembership(ctx context.Context, principal *identity.Principal) ([]tenancy.Membership, error) {
+	if principal == nil || !principal.IssuerVerified {
+		return nil, operatorauth.ErrClaimsNotVerified
+	}
+	return []tenancy.Membership{{TenantID: "tenant-a", Role: "editor"}}, nil
 }
