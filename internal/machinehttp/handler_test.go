@@ -47,7 +47,7 @@ func (e streamingExecutor) OpenExecStream(context.Context, machine.StreamRequest
 func TestHandlerRequiresHTTPSAndAuthenticatedPrincipal(t *testing.T) {
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
 		return json.RawMessage(`{"ok":true}`), nil
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 		}
 		report(machine.OperationProgress{Stage: "observe", Message: "Reading semantic state.", Percent: 50})
 		return json.RawMessage(`{"contract_version":"v1","ready":true}`), nil
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,8 @@ func TestProtectedLogStreamCarriesBoundedMetadata(t *testing.T) {
 			return nil, errors.New("not used")
 		},
 		logs: "line one\nline two\n",
-	})
+	}, "")
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestProtectedLogStreamCarriesBoundedMetadata(t *testing.T) {
 func TestExecBoundaryIsProtectedAndCapabilityGated(t *testing.T) {
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
 		return nil, errors.New("not used")
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,7 +249,7 @@ func TestExecBoundaryIsProtectedAndCapabilityGated(t *testing.T) {
 func TestExecutionCannotBeReadByDifferentOperator(t *testing.T) {
 	handler, err := New(executorFunc(func(_ context.Context, _ machine.Operation, _ machine.OperationContext, _ json.RawMessage, _ ProgressReporter) (json.RawMessage, error) {
 		return json.RawMessage(`{"contract_version":"v1","ok":true}`), nil
-	}))
+	}), "")
 	if err != nil {
 		t.Fatal(err)
 	}

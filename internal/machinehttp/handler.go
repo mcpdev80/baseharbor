@@ -47,15 +47,19 @@ type Handler struct {
 	terminals         *terminalStore
 }
 
-func New(executor Executor) (*Handler, error) {
+func New(executor Executor, stateRoot string) (*Handler, error) {
 	if executor == nil {
 		return nil, errors.New("machine HTTP executor is required")
+	}
+	executions, err := newPersistedExecutionStore(stateRoot)
+	if err != nil {
+		return nil, err
 	}
 	h := &Handler{
 		operations:    make([]machine.Operation, 0),
 		operationByID: make(map[string]machine.Operation),
 		executor:      executor,
-		executions:    newExecutionStore(),
+		executions:    executions,
 		mux:           http.NewServeMux(),
 		terminals:     newTerminalStore(),
 	}

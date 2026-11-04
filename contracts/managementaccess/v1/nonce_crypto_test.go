@@ -171,12 +171,12 @@ func TestNonceContractRejectsInvalidAlphabetPaddingWrongLength(t *testing.T) {
 	now := time.Now().UTC()
 	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
 	baseP := managementaccess.ManagementAccessProfile{
-		Kind:        managementaccess.CredentialExport,
-		Version:     "baseharbor.management-access/v1",
-		Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
-		NotBefore:   now.Add(-time.Minute),
-		NotAfter:    now.Add(time.Hour),
-		Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
+		Kind:      managementaccess.CredentialExport,
+		Version:   "baseharbor.management-access/v1",
+		Trust:     managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+		NotBefore: now.Add(-time.Minute),
+		NotAfter:  now.Add(time.Hour),
+		Export:    &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
 	}
 	// A fully valid baseline profile with the golden nonce validates.
 	if err := baseP.ValidateKindEnforcement(); err != nil {
@@ -218,19 +218,19 @@ func TestNonceContractAcceptsValid16CharVariants(t *testing.T) {
 	caPEM, caSHA := generateTestCA(t, "BaseHarbor Management Test CA")
 	mk := func(nonce string) managementaccess.ManagementAccessProfile {
 		return managementaccess.ManagementAccessProfile{
-			Kind:        managementaccess.CredentialExport,
-			Version:     "baseharbor.management-access/v1",
-			Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
-			NotBefore:   now.Add(-time.Minute),
-			NotAfter:    now.Add(time.Hour),
-			Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: nonce},
+			Kind:      managementaccess.CredentialExport,
+			Version:   "baseharbor.management-access/v1",
+			Trust:     managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+			NotBefore: now.Add(-time.Minute),
+			NotAfter:  now.Add(time.Hour),
+			Export:    &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: nonce},
 		}
 	}
 	for _, nonce := range []string{
-		aes256GcmNonceGolden,        // canonical golden
-		"5fIDBAUGBwgJCgsM",          // first char changed -> different 12 bytes, still valid
-		"ABCDEFGHIJKLMNOP",            // fully different canonical 16 chars
-		"9Xy3Kp8Qr2Zt7Lm4",          // fully different canonical 16 chars
+		aes256GcmNonceGolden, // canonical golden
+		"5fIDBAUGBwgJCgsM",   // first char changed -> different 12 bytes, still valid
+		"ABCDEFGHIJKLMNOP",   // fully different canonical 16 chars
+		"9Xy3Kp8Qr2Zt7Lm4",   // fully different canonical 16 chars
 	} {
 		if err := mk(nonce).ValidateKindEnforcement(); err != nil {
 			t.Fatalf("valid 16-character nonce %q must be accepted, got %v", nonce, err)
@@ -286,12 +286,12 @@ func TestNonceContractRejectsNegativeVariantsWithFreshBaselineProfiles(t *testin
 	// freshBaseline returns a brand-new valid profile per call (no shared Export pointer).
 	freshBaseline := func() managementaccess.ManagementAccessProfile {
 		return managementaccess.ManagementAccessProfile{
-			Kind:        managementaccess.CredentialExport,
-			Version:     "baseharbor.management-access/v1",
-			Trust:       managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
-			NotBefore:   now.Add(-time.Minute),
-			NotAfter:    now.Add(time.Hour),
-			Export:      &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
+			Kind:      managementaccess.CredentialExport,
+			Version:   "baseharbor.management-access/v1",
+			Trust:     managementaccess.Trust{CAPEM: caPEM, SHA256: caSHA},
+			NotBefore: now.Add(-time.Minute),
+			NotAfter:  now.Add(time.Hour),
+			Export:    &managementaccess.EncryptionDescriptor{Algorithm: "aes-256-gcm", Encrypted: true, Nonce: aes256GcmNonceGolden},
 		}
 	}
 	base := freshBaseline()
@@ -300,9 +300,9 @@ func TestNonceContractRejectsNegativeVariantsWithFreshBaselineProfiles(t *testin
 	}
 
 	negatives := []string{
-		"4!IDBAUGBwgJCgsM", // invalid alphabet: '!' is not base64url
+		"4!IDBAUGBwgJCgsM",  // invalid alphabet: '!' is not base64url
 		"4fIDBAUGBwgJCgsM=", // padding character '=' outside the 16-char domain
-		"4fIDBAUGBwgJCGs",  // 15 chars -> 11 bytes: short of the 12-byte AEAD nonce
+		"4fIDBAUGBwgJCGs",   // 15 chars -> 11 bytes: short of the 12-byte AEAD nonce
 		"4fIDBAUGBwgJCgsMx", // 17 chars -> not a valid raw base64url length
 	}
 	for _, bad := range negatives {

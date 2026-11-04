@@ -3,7 +3,7 @@ run-name: Pre-Release · ${{ inputs.tag || github.ref_name }}
 permissions:
   contents: read
 concurrency:
-  group: baseharbor-release-qualification
+  group: ${{ inputs.develop_mode && format('baseharbor-develop-{0}', github.run_id) || 'baseharbor-release-qualification' }}
   cancel-in-progress: false
 jobs:
   source:
@@ -54,9 +54,30 @@ jobs:
         INPUT_TAG: ${{ inputs.tag }}
         INPUT_DEMO_REF: ${{ inputs.demo_ref }}
         INPUT_CONSUMER_REF: ${{ inputs.consumer_ref }}
+        INPUT_CONSOLE_REF: ${{ inputs.console_ref }}
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
+        if [ "${{ inputs.develop_mode }}" = true ]; then
+          test "$EVENT_NAME" = workflow_call
+          core_sha="$(git rev-parse HEAD)"
+          [[ "${{ inputs.ref }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$core_sha" = "${{ inputs.ref }}"
+          [[ "$INPUT_DEMO_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$INPUT_CONSOLE_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$INPUT_CONSUMER_REF" =~ ^[0-9a-f]{40}$ ]]
+          python3 scripts/develop-ecosystem-source.py \
+            --core "$core_sha" --demo "$INPUT_DEMO_REF" \
+            --console "$INPUT_CONSOLE_REF" --connector "$INPUT_CONSUMER_REF"
+          {
+            echo "tag=develop"
+            echo "candidate_sha=$core_sha"
+            echo "demo_ref=$INPUT_DEMO_REF"
+            echo "consumer_ref=$INPUT_CONSUMER_REF"
+            echo "console_ref=$INPUT_CONSOLE_REF"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         if [ -n "$INPUT_TAG" ]; then
           tag="$INPUT_TAG"
         else
@@ -240,6 +261,11 @@ jobs:
         elif [[ "$GITHUB_REF_NAME" == validation/pre-release/selected/* ]]; then
           ONLY_GATES="$(python3 -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))))' "docs/releases/$TAG.selected-gates.json")"
           test -n "$ONLY_GATES"
+        fi
+        if [ "${{ inputs.develop_mode }}" = true ]; then
+          # v0.4.26 is the existing gate-inventory baseline, NOT the build/release identity.
+          test "$ONLY_GATES" = "integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console"
+          TAG=v0.4.26
         fi
         python3 scripts/pre-release-check-plan.py --tag "$TAG" --only-gates "$ONLY_GATES" >> "$GITHUB_OUTPUT"
   runtime_candidate:
@@ -1723,6 +1749,16 @@ jobs:
     - validation/pre-release/**
   workflow_call:
     inputs:
+      develop_mode:
+        description: Run exact-source develop acceptance using existing consumer integration gates
+        required: false
+        default: false
+        type: boolean
+      console_ref:
+        description: Exact Console SHA (required for develop acceptance)
+        required: false
+        default: ''
+        type: string
       tag:
         required: true
         type: string
