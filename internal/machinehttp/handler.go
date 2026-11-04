@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -208,27 +209,37 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	// must be written before this 202 returns — never fire-and-forget. Event
 	// emission stays on the synchronous commit path (emitLocked mutates
 	// record.events under s.mu and must not run from a background goroutine).
-	h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	// A terminal persist error propagates to the caller (the 202 is already
+	// coded, so it is logged and the execution is left non-terminal/fail-closed
+	// per the store contract); see runExecution.
+	runErr := h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	if runErr != nil {
+		log.Printf("machinehttp: terminal persist for execution %s failed: %v", execution.ExecutionID, runErr)
+	}
 }
 
-func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
+func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) error {
 	parent = machine.WithExecutionCorrelation(parent, executionID)
 	ctx, cancel := context.WithTimeout(parent, executionMaxRuntime)
 	defer cancel()
 	if err := h.executions.start(executionID); err != nil {
-		return
+		return err
 	}
 	result, err := h.executor.Execute(ctx, operation, operationContext, input, func(progress machine.OperationProgress) {
 		_ = h.executions.progress(executionID, progress)
 	})
 	if err != nil {
-		_ = h.executions.fail(executionID, err)
-		return
+		// A terminal failure persist MUST surface, not be swallowed.
+		return h.executions.fail(executionID, err)
 	}
 	if len(result) == 0 {
 		result = json.RawMessage("{}")
 	}
-	_ = h.executions.succeed(executionID, result)
+	// A terminal success persist failure MUST surface as a handler error: the
+	// store rolls back to a non-terminal state and returns the write/sync/close
+	// error, so this returns it to the caller rather than returning success for
+	// a write that could not be durably committed.
+	return h.executions.succeed(executionID, result)
 }
 
 func (h *Handler) handleExecution(w http.ResponseWriter, r *http.Request) {
