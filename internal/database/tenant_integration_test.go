@@ -188,8 +188,6 @@ DROP TABLE IF EXISTS connector_nodes CASCADE;
 DROP TABLE IF EXISTS application_ownerships CASCADE;
 DROP TABLE IF EXISTS memberships CASCADE;
 DROP TABLE IF EXISTS external_identities CASCADE;
-DROP TABLE IF EXISTS workstation_enrollment_grants CASCADE;
-DROP TABLE IF EXISTS workstation_enrollment_registry CASCADE;
 DROP TABLE IF EXISTS tenants CASCADE;
 DROP TABLE IF EXISTS baseharbor_schema_migrations CASCADE;
 `)

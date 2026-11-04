@@ -25,39 +25,38 @@ var (
 )
 
 type Config struct {
-	ListenAddr                   string
-	DatabaseURL                  string
-	ConnectorEnrollmentEnabled   bool
-	ConnectorAuthorityTarget     string
-	WorkstationEnrollmentEnabled bool
-	ConnectorListenAddr          string
-	ConnectorTLSCertFile         string
-	ConnectorTLSKeyFile          string
-	ConnectorTLSCAFile           string
-	OIDCIssuer                   string
-	OIDCAudiences                []string
-	TLSCertFile                  string
-	TLSKeyFile                   string
-	TLSClientCAFile              string
-	RuntimeAppName               string
-	RuntimeEnvironment           string
-	RuntimeSecretsEnabled        bool
-	RuntimeOpenBaoURL            string
-	RuntimeOpenBaoCAFile         string
-	RuntimeCredentialsFile       string
-	RuntimeTokenFile             string
-	RuntimePermissionsFile       string
-	RuntimeServiceTokensFile     string
-	RuntimeExecutorURL           string
-	RuntimeExecutorCAFile        string
-	RuntimeExecutorCertFile      string
-	RuntimeExecutorKeyFile       string
-	RuntimeOperationsDir         string
-	RuntimeMetricsTargetsDir     string
-	RuntimeDocsListenAddr        string
-	RuntimeBuildVersion          string
-	RuntimeBuildCommit           string
-	ShutdownTimeout              time.Duration
+	ListenAddr                 string
+	DatabaseURL                string
+	ConnectorEnrollmentEnabled bool
+	ConnectorAuthorityTarget   string
+	ConnectorListenAddr        string
+	ConnectorTLSCertFile       string
+	ConnectorTLSKeyFile        string
+	ConnectorTLSCAFile         string
+	OIDCIssuer                 string
+	OIDCAudiences              []string
+	TLSCertFile                string
+	TLSKeyFile                 string
+	TLSClientCAFile            string
+	RuntimeAppName             string
+	RuntimeEnvironment         string
+	RuntimeSecretsEnabled      bool
+	RuntimeOpenBaoURL          string
+	RuntimeOpenBaoCAFile       string
+	RuntimeCredentialsFile     string
+	RuntimeTokenFile           string
+	RuntimePermissionsFile     string
+	RuntimeServiceTokensFile   string
+	RuntimeExecutorURL         string
+	RuntimeExecutorCAFile      string
+	RuntimeExecutorCertFile    string
+	RuntimeExecutorKeyFile     string
+	RuntimeOperationsDir       string
+	RuntimeMetricsTargetsDir   string
+	RuntimeDocsListenAddr      string
+	RuntimeBuildVersion        string
+	RuntimeBuildCommit         string
+	ShutdownTimeout            time.Duration
 }
 
 func (c Config) operatorAPIEnabled() bool {
@@ -79,11 +78,6 @@ func (c Config) Validate() error {
 		}
 	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" {
 		return errors.New("Connector authority Target requires enrollment to be enabled")
-	}
-	if c.WorkstationEnrollmentEnabled {
-		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" {
-			return errors.New("Workstation enrollment requires the operator API and a database")
-		}
 	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
 		return ErrMissingTLSFiles
