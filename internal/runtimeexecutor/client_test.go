@@ -1276,7 +1276,12 @@ func TestMutualTLSRejectsInvalidCAFileLoadPhase(t *testing.T) {
 // file proves the twelve-route observation is discriminating: on swapped
 // routing the matching assertions go RED.
 func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
-	var combinedPaths int // N==M counter: incremented once per REAL Check and once per REAL Execute actually issued on a route
+	// combinedPaths is the N==M counter. It is driven by the wrappedCheck and
+	// wrappedExecute helpers below: every REAL dispatch the test actually issues
+	// (one Check on /readyz + one Execute on /internal/v1/execute) increments it by
+	// exactly one. Removing a real dispatch call therefore sinks the counter too,
+	// which is what makes the matrix discriminating against review-1357k.
+	var combinedPaths int
 
 	// 1. No client cert: a transport with an empty certificate slice presents no
 	// identity, so the server refuses the handshake before dispatch.
@@ -1296,8 +1301,9 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		}}
 		c := &Client{endpoint: server.URL, http: &http.Client{Transport: tr}}
 
-		// REAL Check on the /readyz route.
-		checkErr := c.Check(context.Background())
+		// REAL Check on the /readyz route (wrapped: drives the real /readyz dispatch
+		// and counts it, so dropping this call sinks the N==M counter).
+		checkErr := wrappedCheck(&combinedPaths, c.Check)
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
 			t.Fatalf("row 1: readyz check-path recorder must not be entered without a client cert (entered=%v)", recorder.entered.Load())
@@ -1305,10 +1311,10 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 1: execute handler must not be reached without a client cert (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Check actually issued on the /readyz route
 
-		// REAL Execute on the /internal/ route against the same refused identity.
-		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+		// REAL Execute on the /internal/ route against the same refused identity
+		// (wrapped: drives the real /internal/v1/execute dispatch and counts it).
+		if _, e := wrappedExecute(&combinedPaths, c.Execute, context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
 			Operation:    "runtime.create",
 			ResourceName: "asset-1",
@@ -1318,7 +1324,6 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 1: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		// Re-read readyz AFTER execute (row 1): execute must not have entered the
 		// check route either.
 		if recorder.entered.Load() {
@@ -1366,8 +1371,9 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 2: NewClient: %v", err)
 		}
-		// REAL Check on the /readyz route.
-		checkErr := c.Check(context.Background())
+		// REAL Check on the /readyz route (wrapped: drives the real /readyz dispatch
+		// and counts it, so dropping this call sinks the N==M counter).
+		checkErr := wrappedCheck(&combinedPaths, c.Check)
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
 			t.Fatalf("row 2: readyz check-path recorder must not be entered by a self-signed cert (entered=%v)", recorder.entered.Load())
@@ -1375,10 +1381,10 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 2: execute handler must not be reached by a self-signed cert (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Check actually issued on the /readyz route
 
-		// REAL Execute on the /internal/ route against the same refused identity.
-		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+		// REAL Execute on the /internal/ route against the same refused identity
+		// (wrapped: drives the real /internal/v1/execute dispatch and counts it).
+		if _, e := wrappedExecute(&combinedPaths, c.Execute, context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
 			Operation:    "runtime.create",
 			ResourceName: "asset-1",
@@ -1388,7 +1394,6 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 2: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 2: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1413,8 +1418,9 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 3: NewClient: %v", err)
 		}
-		// REAL Check on the /readyz route.
-		checkErr := c.Check(context.Background())
+		// REAL Check on the /readyz route (wrapped: drives the real /readyz dispatch
+		// and counts it, so dropping this call sinks the N==M counter).
+		checkErr := wrappedCheck(&combinedPaths, c.Check)
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
 			t.Fatalf("row 3: readyz check-path recorder must not be entered by a foreign-CA cert (entered=%v)", recorder.entered.Load())
@@ -1422,10 +1428,10 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 3: execute handler must not be reached by a foreign-CA cert (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Check actually issued on the /readyz route
 
-		// REAL Execute on the /internal/ route against the same refused identity.
-		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+		// REAL Execute on the /internal/ route against the same refused identity
+		// (wrapped: drives the real /internal/v1/execute dispatch and counts it).
+		if _, e := wrappedExecute(&combinedPaths, c.Execute, context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
 			Operation:    "runtime.create",
 			ResourceName: "asset-1",
@@ -1435,7 +1441,6 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 3: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 3: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1504,8 +1509,9 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row 5: NewClient: %v", err)
 		}
-		// REAL Check on the /readyz route.
-		checkErr := c.Check(context.Background())
+		// REAL Check on the /readyz route (wrapped: drives the real /readyz dispatch
+		// and counts it, so dropping this call sinks the N==M counter).
+		checkErr := wrappedCheck(&combinedPaths, c.Check)
 		assertTLSHandshakeCause(t, checkErr)
 		if recorder.entered.Load() {
 			t.Fatalf("row 5: readyz check-path recorder must not be entered by the wrong server CA (entered=%v)", recorder.entered.Load())
@@ -1513,10 +1519,10 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 5: execute handler must not be reached by the wrong server CA (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Check actually issued on the /readyz route
 
-		// REAL Execute on the /internal/ route against the same refused identity.
-		if _, e := c.Execute(context.Background(), runtimeoperation.Request{
+		// REAL Execute on the /internal/ route against the same refused identity
+		// (wrapped: drives the real /internal/v1/execute dispatch and counts it).
+		if _, e := wrappedExecute(&combinedPaths, c.Execute, context.Background(), runtimeoperation.Request{
 			Capability:   ObjectStorageS3V1,
 			Operation:    "runtime.create",
 			ResourceName: "asset-1",
@@ -1526,7 +1532,6 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 		if got := execute.reached.Load(); got {
 			t.Fatalf("row 5: execute handler must not be reached by a refused Execute (reached=%v)", got)
 		}
-		combinedPaths++ // ONE real Execute actually issued on the /internal/ route
 		if recorder.entered.Load() {
 			t.Fatalf("row 5: readyz check-path recorder must not be entered after a refused execute (entered=%v)", recorder.entered.Load())
 		}
@@ -1584,6 +1589,26 @@ func TestExecuteNeverReachedOnEveryNegativeInput(t *testing.T) {
 	if combinedPaths != 8 {
 		t.Fatalf("matrix N==M counter mismatch: expected 8 real route combinations (Check+Execute x four built clients), got %d", combinedPaths)
 	}
+}
+
+// wrappedCheck drives ONE real Client.Check dispatch (the /readyz route) and
+// counts it in *counter before any assertion runs. Counting is coupled to the
+// actual dispatch: if a caller deletes or comments out the wrappedCheck call,
+// *counter is no longer incremented by one, so the N==M assertion sinks and the
+// matrix goes RED. Rows that never build a client (load-phase) never call
+// wrappedCheck and therefore correctly contribute zero real Check calls.
+func wrappedCheck(counter *int, check func(context.Context) error) error {
+	*counter++
+	return check(context.Background())
+}
+
+// wrappedExecute drives ONE real Client.Execute dispatch (the /internal/v1/execute
+// route) and counts it in *counter before any assertion runs. Counting is coupled
+// to the actual dispatch: deleting or commenting out the wrappedExecute call drops
+// *counter by one, so the N==M assertion sinks (8 -> 7) and the matrix goes RED.
+func wrappedExecute(counter *int, execute func(context.Context, runtimeoperation.Request) (runtimeoperation.Result, error), ctx context.Context, req runtimeoperation.Request) (runtimeoperation.Result, error) {
+	*counter++
+	return execute(ctx, req)
 }
 
 // mustLoadErr runs a client-construction closure and returns its error, failing
