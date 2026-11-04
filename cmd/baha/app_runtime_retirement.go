@@ -40,8 +40,12 @@ func (e *applicationDestroyExecution) verifyOwnershipWhenNoDeploymentRecord(_ co
 	// neverDelivered=true so destroy retires the never-realized workload with
 	// rc=0 instead of failing closed.
 	store := application.Store{Root: filepath.Join(e.resolved.RepositoryRoot, ".baseharbor", "apps")}
-	if _, _, lerr := store.Load(e.resolved.Manifest.Name); lerr != nil {
-		return false, nil
+	stored, _, loadErr := store.Load(e.resolved.Manifest.Name)
+	if loadErr != nil {
+		return false, fmt.Errorf("cannot verify application ownership for destroy: %w", loadErr)
+	}
+	if stored.ApplicationID != e.resolved.DeploymentIdentity.ApplicationID || stored.ApplicationID != e.resolved.Manifest.ApplicationID {
+		return false, fmt.Errorf("cannot verify application ownership for destroy: application identity mismatch")
 	}
 	return true, nil
 }
