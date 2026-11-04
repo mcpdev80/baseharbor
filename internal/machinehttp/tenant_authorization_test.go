@@ -19,7 +19,7 @@ func TestViewerCannotAdmitMachineMutation(t *testing.T) {
 			handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
 				called <- struct{}{}
 				return json.RawMessage("{}"), nil
-			}))
+			}), "")
 			if err != nil {
 				t.Fatal(err)
 			}
