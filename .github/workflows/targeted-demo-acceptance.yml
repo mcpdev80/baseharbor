@@ -197,10 +197,24 @@ jobs:
       gate: ${{ matrix.gate }}
       candidate_artifact: ""
 
+  consumer_integration:
+    name: Develop · Native Console and Connector (Docker + Podman)
+    if: always() && needs.resolve.result == 'success' && needs.ecosystem_source.result == 'success' && needs.resolve.outputs.runtime == 'both'
+    needs: [resolve, ecosystem_source]
+    uses: ./.github/workflows/pre-release.yml
+    with:
+      develop_mode: true
+      tag: develop
+      ref: ${{ needs.resolve.outputs.ref }}
+      demo_ref: ${{ needs.resolve.outputs.demo_ref }}
+      console_ref: ${{ needs.resolve.outputs.console_ref }}
+      consumer_ref: ${{ needs.resolve.outputs.connector_ref }}
+      only_gates: integration/docker/remote-target,integration/podman/remote-target,integration/static/live-console
+
   develop_ecosystem_result:
-    name: Develop · Required Docker and Podman result
+    name: Develop · Required four-repo runtime result
     if: always() && github.event_name == 'workflow_dispatch' && inputs.runtime == 'both'
-    needs: [resolve, ecosystem_source, selected_gate]
+    needs: [resolve, ecosystem_source, selected_gate, consumer_integration]
     runs-on: ubuntu-latest
     steps:
       - name: Require source compatibility and both native runtimes
@@ -210,12 +224,11 @@ jobs:
           python3 - <<'PY'
           import json, os
           jobs = json.loads(os.environ["JOB_RESULTS"])
-          for name in ("resolve", "ecosystem_source", "selected_gate"):
+          for name in ("resolve", "ecosystem_source", "selected_gate", "consumer_integration"):
               result = jobs.get(name, {}).get("result")
               if result != "success":
                   raise SystemExit(f"Develop runtime acceptance failed: {name}={result}")
-          print("Exact source preflight and both Docker/Podman lifecycle gates passed.")
-          print("Console and Connector native qualification must be tracked separately.")
+          print("Exact four-repository sources, Docker/Podman lifecycle and native Console/Connector integration passed.")
           PY
 
   reference_journey:
