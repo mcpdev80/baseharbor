@@ -179,8 +179,14 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 		}
 		// Carry the freshly validated Edit consent only for this lifecycle
 		// invocation; the lifecycle rebinds it only to an unchanged authorization
-		// surface after the source mutation.
+		// surface after the source mutation. The operator's --confirm-candidate
+		// override from the caller context is propagated too so the repository
+		// candidate choke below can bind the exact edit submission on confirm;
+		// without the flag the choke fails closed, exactly like app apply.
 		lifecycleCtx := withProviderChangeConsent(ctx, &consent)
+		if override := candidateConsentOverride(ctx); override != "" {
+			lifecycleCtx = withCandidateConsentDigest(lifecycleCtx, override)
+		}
 		outcomes, runErr := runLifecycle(lifecycleCtx, store, args, plan, mutate, out, errOut)
 		if runErr != nil {
 			return outcomes, runErr
