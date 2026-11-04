@@ -13,7 +13,18 @@ func readWorkloadRuntimeEnv(m Manifest, path string) (map[string]string, error) 
 	if HasOTLPTelemetry(m) {
 		return readProtectedOTLPRuntimeEnv(path)
 	}
-	return readRuntimeEnv(path)
+	values, err := readRuntimeEnv(path)
+	if errors.Is(err, os.ErrNotExist) {
+		// A workload that was applied but whose stage runtime was never
+		// materialized (e.g. a provider-change abort at the double-confirmation
+		// before `EnsureRuntime` ran) has no runtime.env on disk. The destroy
+		// path must retire from ownership evidence (the deployment record and
+		// what actually exists), not fail on the missing fixed filename: an
+		// absent runtime.env means no prior bindings to tear down. A present
+		// but corrupt/unreadable runtime.env still fails closed.
+		return map[string]string{}, nil
+	}
+	return values, err
 }
 
 // Reapply can reuse this deployment's authorization at the same authority. A

@@ -607,6 +607,20 @@ func applyRepositoryWorkload(ctx context.Context, out io.Writer, compose bhrunti
 }
 
 func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	// State-oriented ownership check: the workload runtime is materialized under
+	// files.Dir (state/<environment>/runtime) by EnsureRuntime during apply. A
+	// deployment that was applied but whose runtime was never materialized
+	// (e.g. a provider-change abort at the double-confirmation before
+	// EnsureRuntime ran) has no runtime directory and therefore no owned
+	// workload containers to stop. Deriving the destroy set from what actually
+	// exists on disk, skip the stop when the runtime directory is absent
+	// instead of failing on the missing fixed runtime.env / override path.
+	if _, statErr := os.Stat(files.Dir); statErr != nil {
+		if os.IsNotExist(statErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inventory application workload runtime: %w", statErr)
+	}
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return false, err
