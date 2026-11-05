@@ -181,11 +181,19 @@ func waitForEventGated(
 			return h, true
 		}
 	}
-	select {
-	case e := <-events:
-		return e, true
-	case <-ctx.Done():
-		return machine.MachineEvent{}, false
+	// Drain the live channel until a matching terminal event arrives or ctx
+	// cancels. Non-matching events (e.g. the already-emitted started event that
+	// arrived on the channel before this wait) must not satisfy the assertion —
+	// only a terminal succeeded/failed commit does.
+	for {
+		select {
+		case e := <-events:
+			if match(e) {
+				return e, true
+			}
+		case <-ctx.Done():
+			return machine.MachineEvent{}, false
+		}
 	}
 }
 
@@ -439,7 +447,13 @@ func TestTerminalStateBackgroundMutationFailsMutant(t *testing.T) {
 
 	root := t.TempDir()
 	const requestID = "req-bg-mutant"
+	// Block the executor so the backgrounded runExecution never completes during
+	// the test window: no terminal event can ever land on the 202's tail. A
+	// non-blocking executor would commit instantly even when backgrounded and
+	// make this probe vacuous.
+	blocker := make(chan struct{})
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
+		<-blocker
 		return json.RawMessage(`{"done":true}`), nil
 	}), root)
 	if err != nil {
@@ -484,5 +498,7 @@ func TestTerminalStateBackgroundMutationFailsMutant(t *testing.T) {
 		// expected: no terminal event was committed synchronously.
 	}
 	scancel()
+	// Unblock the executor so the background goroutine can finish, then join.
+	close(blocker)
 	wg.Wait()
 }
