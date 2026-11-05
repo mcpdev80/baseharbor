@@ -10,10 +10,38 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 	repositoryinspect "github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 )
 
-func inspectRepositorySource(ctx context.Context, source string) (repositoryinspect.Result, error) {
+// cloneNonInteractive clones source with native authentication only. When a
+// native source (git credential helper or ssh agent) can service the host, it
+// starts git non-interactively so no credential prompt is possible and the
+// read-only inspection proceeds; otherwise it returns false so the caller falls
+// back to the standard clone. The native result is found-only: it never
+// reports that authentication succeeded.
+func cloneNonInteractive(ctx context.Context, out io.Writer, source string) (usedNative bool, err error) {
+	host := native.HostFromURL(source)
+	if host == "" {
+		return false, nil
+	}
+	nativeHit, herr := native.PreInteractiveNoPrompt(ctx, host)
+	if herr != nil {
+		if out != nil {
+			fmt.Fprintf(out, "[info] native authentication unavailable for %s: %v\n", source, herr)
+		}
+		return false, nil
+	}
+	if !nativeHit {
+		return false, nil
+	}
+	if out != nil {
+		fmt.Fprintf(out, "[info] reusing native authentication for %s (no interactive prompt)\n", source)
+	}
+	return true, nil
+}
+
+func inspectRepositorySource(ctx context.Context, source string, out io.Writer) (repositoryinspect.Result, error) {
 	if !looksLikeRemoteGitSource(source) {
 		return repositoryinspect.Inspect(ctx, source)
 	}
@@ -34,6 +62,11 @@ func inspectRepositorySource(ctx context.Context, source string) (repositoryinsp
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = io.Discard
 	cmd.Stderr = &stderr
+	if nativeUsed, nerr := cloneNonInteractive(ctx, out, source); nativeUsed {
+		cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
+	} else if nerr != nil {
+		return repositoryinspect.Result{}, nerr
+	}
 	if err := cmd.Run(); err != nil {
 		detail := strings.TrimSpace(strings.ReplaceAll(stderr.String(), source, "<remote>"))
 		if detail == "" {

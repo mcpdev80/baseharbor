@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/credential/native"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -120,6 +121,13 @@ func resolveGit(ctx context.Context, source Source) (Resolution, Config, error) 
 		return Resolution{}, Config{}, err
 	}
 	defer os.RemoveAll(tmp)
+	if nativeHost := native.HostFromURL(source.Location); nativeHost != "" {
+		if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
+			if _, cerr := runDisabledPrompt(ctx, "git", "clone", "--quiet", "--no-checkout", source.Location, tmp); cerr != nil {
+				return Resolution{}, Config{}, fmt.Errorf("%w: clone organization Git source: %v", ErrSourceUnavailable, cerr)
+			}
+		}
+	}
 	if _, err := run(ctx, "git", "clone", "--quiet", "--no-checkout", source.Location, tmp); err != nil {
 		return Resolution{}, Config{}, fmt.Errorf("%w: clone organization Git source: %v", ErrSourceUnavailable, err)
 	}
@@ -278,6 +286,26 @@ func firstDigest(out string) string {
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			return "", err
+		}
+		return "", fmt.Errorf("%w: %s", err, detail)
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
+// runDisabledPrompt runs the git command with GIT_TERMINAL_PROMPT=0 so no
+// interactive credential prompt is possible when a native source can service
+// the org-config Git host. It is a found-only gate: a native hit leaves git's
+// own authentication decision intact.
+func runDisabledPrompt(ctx context.Context, name string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
