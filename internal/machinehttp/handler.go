@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -45,6 +46,13 @@ type Handler struct {
 	executions        *executionStore
 	mux               *http.ServeMux
 	terminals         *terminalStore
+	// backgroundRunExecution gates how the terminal execution is launched after
+	// the 202 is coded. When nil (the production default) runExecution is called
+	// synchronously so its terminal journal commit is durably written before the
+	// 202 returns. Test code may set it to background the call and prove that a
+	// backgrounded execution does NOT commit its terminal state on the 202's
+	// tail. This seam never alters production behavior.
+	backgroundRunExecution func(ctx context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage)
 }
 
 func New(executor Executor, stateRoot string) (*Handler, error) {
@@ -183,39 +191,66 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx = evidence.WithActor(ctx, "http", decision.Actor.Subject)
-	execution, err := h.executions.create(operation.ID, decision.Actor, request.Context)
-	if err != nil {
-		writeMachineError(w, http.StatusInternalServerError, machine.Wrap(machine.ErrorInternal, err, "Retry the request.", true))
+	requestID := r.Header.Get("Idempotency-Key")
+	if !validRequestID(requestID) || len(r.Header.Values("Idempotency-Key")) != 1 {
+		writeMachineError(w, http.StatusBadRequest, machine.NewError(machine.ErrorValidationFailed,
+			"A valid Idempotency-Key is required.", "Send one non-empty printable key of at most 256 characters.", false))
 		return
 	}
-	w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
-	writeJSON(w, http.StatusAccepted, execution)
-
 	input := append(json.RawMessage(nil), request.Input...)
 	if len(input) == 0 {
 		input = json.RawMessage("{}")
 	}
-	go h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	execution, created, err := h.executions.createRequest(requestID, operation.ID, decision.Actor, request.Context, input)
+	if err != nil {
+		writeMachineError(w, machineErrorStatus(err), err)
+		return
+	}
+	w.Header().Set("Location", "/api/v1/machine/executions/"+execution.ExecutionID)
+	writeJSON(w, http.StatusAccepted, execution)
+	if !created {
+		return
+	}
+	// Await the terminal journal commit before responding. The final
+	// succeed/fail line is the accepted execution's durable commitment, so it
+	// must be written before this 202 returns — never fire-and-forget. Event
+	// emission stays on the synchronous commit path (emitLocked mutates
+	// record.events under s.mu and must not run from a background goroutine).
+	// A terminal persist error propagates to the caller (the 202 is already
+	// coded, so it is logged and the execution is left non-terminal/fail-closed
+	// per the store contract); see runExecution.
+	if h.backgroundRunExecution != nil {
+		h.backgroundRunExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	} else {
+		runErr := h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+		if runErr != nil {
+			log.Printf("machinehttp: terminal persist for execution %s failed: %v", execution.ExecutionID, runErr)
+		}
+	}
 }
 
-func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
+func (h *Handler) runExecution(parent context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) error {
 	parent = machine.WithExecutionCorrelation(parent, executionID)
 	ctx, cancel := context.WithTimeout(parent, executionMaxRuntime)
 	defer cancel()
 	if err := h.executions.start(executionID); err != nil {
-		return
+		return err
 	}
 	result, err := h.executor.Execute(ctx, operation, operationContext, input, func(progress machine.OperationProgress) {
 		_ = h.executions.progress(executionID, progress)
 	})
 	if err != nil {
-		_ = h.executions.fail(executionID, err)
-		return
+		// A terminal failure persist MUST surface, not be swallowed.
+		return h.executions.fail(executionID, err)
 	}
 	if len(result) == 0 {
 		result = json.RawMessage("{}")
 	}
-	_ = h.executions.succeed(executionID, result)
+	// A terminal success persist failure MUST surface as a handler error: the
+	// store rolls back to a non-terminal state and returns the write/sync/close
+	// error, so this returns it to the caller rather than returning success for
+	// a write that could not be durably committed.
+	return h.executions.succeed(executionID, result)
 }
 
 func (h *Handler) handleExecution(w http.ResponseWriter, r *http.Request) {
