@@ -150,7 +150,8 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 // remain fail-closed. A valid one-shot proof is required before discovery.
 func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, targetRoot string, m application.Manifest, command string, ownerErr error) bool {
 	if command != "destroy" || !errors.Is(ownerErr, deployment.ErrDeploymentOwnerMissing) ||
-		target.TenantID != "" || target.AccessProvider != "local" || target.AccessReference != "local" || target.Scope != "local" {
+		target.TenantID != "" || target.AccessProvider != "local" || target.AccessReference != "local" ||
+		(target.Scope != "local" && !(target.Name == "local" && target.Scope == "default")) {
 		return false
 	}
 	if _, err := os.Lstat(filepath.Join(targetRoot, "deployments")); !errors.Is(err, os.ErrNotExist) {
