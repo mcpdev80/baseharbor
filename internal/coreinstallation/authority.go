@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"path/filepath"
+
 	"github.com/mcpdev80/baseharbor/internal/installauthority"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
@@ -62,6 +64,19 @@ var ErrFutureObservation = errors.New("observation timestamp is in the future, n
 // ErrInvalidObservation is returned when the observation timestamp is zero; a
 // missing observation time is not authoritative.
 var ErrInvalidObservation = errors.New("observation timestamp is missing, not authoritative")
+
+// ErrUnverifiableInstallation is returned when the installation that is the
+// input to ResolverForTargetSelection is not a genuine, verified baseharbor
+// Core installation. The live management-connection identity must derive from a
+// verified installation; an unverifiable one fails closed before any issuer
+// material is produced.
+var ErrUnverifiableInstallation = errors.New("installation not verifiable as a genuine baseharbor Core installation, fails closed")
+
+// ErrForeignTarget is returned when the target whose protected state is scanned
+// for the live management-connection identity is not the target bound to the
+// verified installation. A foreign target selects no issuer material: the
+// installation and the target are two distinct authorities.
+var ErrForeignTarget = errors.New("target not bound to the verified installation, fails closed")
 
 // Selection names the installation and the Target as two independent selections.
 // The management connection is the third, distinct authority and is validated
@@ -263,4 +278,133 @@ func AssertStateIsGenuineInstallation(state State) error {
 		return ErrMissingAuthority
 	}
 	return nil
+}
+
+// issuerStateDir is the protected sub-directory of a verified installation's
+// target state that owns the live management-connection identity (the base CA
+// authority). It is the single, fixed location the resolver reads: it never
+// fabricates issuer material and never opens a second trust source.
+func issuerStateDir(targetStateRoot string) string {
+	return filepath.Join(targetStateRoot, "service-access", "issuer")
+}
+
+// ResolverForTargetSelection is the single new exported resolver exposed by the
+// accepted authority boundary internal/coreinstallation. It answers the exact
+// question ConnectionSelection.Resolve asks for — the live management-connection
+// issuer material — from the VERIFIED INSTALLATION plus the TARGET's own
+// identity/state facts alone, without fabricating any application context.
+//
+// The v0.4.27 contract keeps the management connection separate from the
+// placement Target and from the installation. The live identity of that
+// management connection (the base CA serial, expiry and revocation) is owned by
+// the verified installation in the protected target state at
+// <targetStateRoot>/service-access/issuer and is exposed — already accepted — by
+// the provider-neutral serviceaccess.Issuer boundary. resolveApplication, the
+// app-lifecycle command graph and their resolvedApplication/workload inputs are
+// NOT required to read that identity: only the installation root (via Load) and
+// the target state root the installation owns are.
+//
+// ResolverForTargetSelection therefore:
+//   - accepts the verified installation State (State.Load already validated it as
+//     a genuine baseharbor installation, Owner == "baseharbor", and its identity
+//     capability) and the target state root the installation owns;
+//   - proves the target state root belongs to this verified installation by
+//     loading it back through coreinstallation.Load and requiring the loaded
+//     installation ID and bound Target to match — a foreign target yields
+//     ErrForeignTarget, never a permissive empty;
+//   - materializes and reads back the base CA through the serviceaccess.Issuer
+//     boundary (the same production path does on the application lifecycle); a
+//     root that holds no verifiable installation yields ErrUnverifiableInstallation;
+//   - returns the issuer plus the live observation the selection boundary needs.
+//
+// The resolver only DERIVES (it does not decide): the authoritative
+// liveness/identity/foreign-freshness verification still runs on
+// ConnectionSelection.Resolve through the single production boundary. A missing
+// installation fails closed with ErrUnverifiableInstallation before any issuer
+// material is produced, so a bare `use`/`activate` path that cannot verify an
+// installation never silently succeeds.
+func ResolverForTargetSelection(
+	ctx context.Context,
+	verifiedInstallation State,
+	targetStateRoot string,
+) (serviceaccess.Issuer, serviceaccess.CertificateStatus, error) {
+	// Fail closed before any issuer material: an installation that is not a
+	// genuine, verified baseharbor Core installation supplies no authority.
+	if err := AssertStateIsGenuineInstallation(verifiedInstallation); err != nil {
+		return nil, serviceaccess.CertificateStatus{}, ErrUnverifiableInstallation
+	}
+	if targetStateRoot == "" {
+		return nil, serviceaccess.CertificateStatus{}, ErrUnverifiableInstallation
+	}
+	// The target-state root must be THIS verified installation's own root. The
+	// accepted production binding (cmd/baha/application_management_dependency.go)
+	// loads the installation from the target-state root and requires
+	// state.Spec.Target == the selected Target name: a root that does not load
+	// back as the verified installation is a foreign target and fails closed.
+	if err := verifyTargetRootBoundToInstallation(targetStateRoot, verifiedInstallation); err != nil {
+		return nil, serviceaccess.CertificateStatus{}, err
+	}
+	// Materialize and read back the base CA from the verified installation's own
+	// protected target state through the already-accepted serviceaccess.Issuer
+	// boundary. A root that holds no verifiable installation fails closed with a
+	// named error before any issuer material is produced.
+	issuerDir := issuerStateDir(targetStateRoot)
+	issuer, err := serviceaccess.EnsureLocalIssuer(issuerDir)
+	if err != nil {
+		return nil, serviceaccess.CertificateStatus{}, ErrUnverifiableInstallation
+	}
+	observed, err := observedThroughTargetBoundary(ctx, issuer)
+	if err != nil {
+		return nil, serviceaccess.CertificateStatus{}, ErrUnverifiableInstallation
+	}
+	return issuer, observed, nil
+}
+
+// verifyTargetRootBoundToInstallation proves that the given target-state root is
+// the verified installation's own root. It loads the installation from that root
+// (the same accepted production binding cmd/baha/application_management_
+// dependency.go uses) and requires the loaded state to be the verified
+// installation bound to the same Target. A target root that does not load back
+// as the verified installation is a foreign target and fails closed with
+// ErrForeignTarget; a root that does not hold a verifiable installation is
+// ErrUnverifiableInstallation.
+func verifyTargetRootBoundToInstallation(targetStateRoot string, verifiedInstallation State) error {
+	state, err := Load(targetStateRoot)
+	if err != nil {
+		return ErrUnverifiableInstallation
+	}
+	if state.ID != verifiedInstallation.ID || state.Spec.Target != verifiedInstallation.Spec.Target {
+		return ErrForeignTarget
+	}
+	return nil
+}
+
+// observedThroughTargetBoundary is the read-only observation boundary that
+// supplies the live connection identity (issuer reference, base serial, base
+// expiry) observed through the existing issuer — the same read-only shape
+// production uses — without issuing a new leaf. It is a package var so the
+// observation can be substituted in tests while production always runs this
+// function.
+var observedThroughTargetBoundary = func(ctx context.Context, issuer serviceaccess.Issuer) (serviceaccess.CertificateStatus, error) {
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	baseSerial, err := issuer.BaseSerial(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	baseExpiry, err := issuer.BaseExpiry(ctx)
+	if err != nil {
+		return serviceaccess.CertificateStatus{}, err
+	}
+	return serviceaccess.CertificateStatus{
+		Identity: trust.IssuerReference,
+		IssuedCertificate: serviceaccess.IssuedCertificate{
+			IssuerReference: trust.IssuerReference,
+			Serial:          baseSerial,
+			ExpiresAt:       baseExpiry,
+		},
+		ObservedAt: time.Now().UTC(),
+	}, nil
 }
