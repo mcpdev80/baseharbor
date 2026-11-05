@@ -274,6 +274,36 @@ Antrag auf `dev` behält sich diese Prüfung vor; sie wird nicht zu einem vertra
 Diese Rolle überprüfen ergänzt effektive Politik und Ressourcenbesitz. Es tut
 keine Mieterisolation für das Inventar oder die Laufzeitressourcen eines Adapters festlegen.
 
+## Verifizierte Anspruchs-Abbildung und Teamgrenze
+
+Maschinenautorisierung schlägt für eine verifizierte Operator-Identität fehl
+(closed): eine reine `issuer`/`subject`-Paar gewährt nichts. Der verifizierte
+Transport-Principal führt provider-neutrale `group`/`app-role`-Ansprüche, diese
+Ansprüche gewähren jedoch allein kein Recht und sind nur bedeutsam, wenn das
+Token, das sie erzeugte, gegen seinen Aussteller verifiziert ist
+(`issuer_verified` gesetzt). Anspruchsgebundener Betrieb erfordert daher eine
+`MembershipProvider`, die den verifizierten `issuer`/`subject` und die
+verifizierten `group`/`app-role`-Ansprüche auf die aktuellen konkreten
+Mietermitgliedschaften und den aktuellen Widerrufsstatus dieser einen Installation
+abbildet.
+
+- Ein verifizierter Operator ohne gelösten Anspruch-Membership wird abgewiesen,
+  auch wenn kein `MembershipProvider` installiert ist. Eine verifizierte Identität
+  allein öffnet nicht die Tür; `dev` behält diese Prüfung bei und wird nicht zu
+  einem vertrauenswürdigen lokalen Betreiber.
+- Ein Anspruch löst sich nur zum Tenant, seine verifizierten Ansprüche nennen.
+  Ein `team-a`-Anspruch darf keinen `tenant-b`-Betrieb freigeben, und mehrdeutige
+  Mitgliedschaften, mehr als einen Tenant umfassen, schlagen fehl. Dies ist die
+  Teamgrenze auf der Freigabe-Entscheidungsebene, nur im Tenant-Löser.
+- Ein entzogener oder widerrufener Anspruch oder Mitgliedschaft — Provider, kein
+  Mitglied liefert oder Fehler beim Widerrufs-Lookup meldet — lehnt den nächsten
+  Betrieb ab. Anbieter-Gruppe-Änderungen sind innerhalb der Lebenszeit eines
+  ausgestellten Tokens nicht sofort widerrufbar; dieses begrenzte Fenster ist die
+  einzige begrenzte Ausnahme.
+- Die vorhandenen Tenant/Rollen-RBAC-Prüfungen bleiben erhalten, werden nicht
+  durch die Anspruchs-Abbildung ersetzt; die Anspruch-Abbindung verbindet
+  verifizierte Ansprüche mit ihnen.
+
 ### Verbrauch von Navigationsergebnissen
 
 `app.list `, ` target.list `, ` workspace.list `und` runtime.list`die erzeugten

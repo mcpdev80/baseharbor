@@ -14,6 +14,9 @@ import (
 func TestResolveRegisteredApplicationRecoversIncompleteDeploymentFromProtectedState(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatal(err)
+	}
 	targetRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +53,9 @@ func TestResolveRegisteredApplicationRecoversIncompleteDeploymentFromProtectedSt
 func TestResolveRegisteredApplicationFailsClosedWhenIncompleteStateCannotBeReconstructed(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	target := deployment.ResolvedTarget{Name: "local", RuntimeProvider: "docker"}
+	if err := registerInstallationForTarget(t, target.Name); err != nil {
+		t.Fatal(err)
+	}
 	targetRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatal(err)

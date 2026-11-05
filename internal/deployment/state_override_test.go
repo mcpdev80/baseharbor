@@ -16,6 +16,7 @@ func TestBug865StateOverrideIsolatesConfigurationAndDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreignPath, _ := ConfigPath()
+	provisionOwnerForTarget(t, "local")
 	before, _ := os.ReadFile(foreignPath)
 	id := testDeploymentIdentity(t, "local", "foreign", "dev")
 	if err := SaveDeploymentRecord(DeploymentRecord{Identity: id, Applied: AppliedDeployment{RuntimeProvider: "docker"}}); err != nil {

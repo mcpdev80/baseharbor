@@ -1,6 +1,7 @@
 package openbao
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
@@ -53,6 +55,14 @@ func roundTripNativeSQLProject(t *testing.T, manifest application.Manifest, proj
 		Applied:  deployment.AppliedDeployment{RuntimeProvider: project.Scope.Runtime, RemoteProject: &project},
 		Observed: deployment.ObservedDeployment{State: "provider_published"},
 	}
+	// The deployment-owner seam (ADR-0022 one-installation-owner) requires the
+	// Target to carry an authoritative Core installation before its state is
+	// loadable. Seed the Core owner here so the round-trip exercises the
+	// production protected registry, not a Coreless fail-closed. Real
+	// installation.json in the target-state-root runtime; no global bypass.
+	if seedNativeSQLTargetOwner(t, project.Scope.TargetID, project.Scope.Runtime); err != nil {
+		t.Fatal("seed authoritative Core owner for native SQL target", err)
+	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
 		t.Fatal("native SQL project registry persistence failed", err)
 	}
@@ -61,4 +71,34 @@ func roundTripNativeSQLProject(t *testing.T, manifest application.Manifest, proj
 		t.Fatal("native SQL durable registry restoration changed the project", err)
 	}
 	return restored
+}
+
+// seedNativeSQLTargetOwner provisions an authoritative Core installation for the
+// native-SQL test Target so the deployment-owner seam (verifyDeploymentOwnerAtSeam
+// -> coreinstallation.Load) passes before the protected registry round-trip. The
+// Core's Target matches targetName; a bare installation.json in the
+// target-state-root runtime, no global bypass, no skip, no off-switch.
+func seedNativeSQLTargetOwner(t *testing.T, targetName, runtime string) error {
+	t.Helper()
+	targetRoot, err := deployment.TargetStateRoot(targetName)
+	if err != nil {
+		t.Fatalf("resolve target state root for %s: %v", targetName, err)
+	}
+	installRoot := filepath.Join(targetRoot, "runtime")
+	spec := coreinstallation.Spec{Target: targetName, Runtime: runtime, MachineRole: coreinstallation.Development}
+	if err := os.MkdirAll(installRoot, 0700); err != nil {
+		t.Fatalf("create Core runtime root for %s: %v", targetName, err)
+	}
+	if _, runErr := coreinstallation.Run(context.Background(), installRoot, spec, coreinstallation.Steps{
+		Preflight: func(context.Context, coreinstallation.State) error { return nil },
+		SQL:       func(context.Context, coreinstallation.State) error { return nil },
+		Secrets:   func(context.Context, coreinstallation.State) error { return nil },
+		Identity: func(context.Context, coreinstallation.State) (string, error) {
+			return "https://identity.localhost:8443/realms/baseharbor", nil
+		},
+		Verify: func(context.Context, coreinstallation.State) error { return nil },
+	}); runErr != nil {
+		t.Fatalf("seed authoritative Core owner for %s: %v", targetName, runErr)
+	}
+	return nil
 }

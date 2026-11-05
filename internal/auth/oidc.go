@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -32,6 +33,45 @@ func NewOIDCVerifier(ctx context.Context, cfg Config) (*OIDCVerifier, error) {
 	return newOIDCVerifier(strings.TrimSpace(cfg.Issuer), cfg.Audiences, func(audience string) *oidc.IDTokenVerifier {
 		return provider.Verifier(&oidc.Config{ClientID: audience})
 	})
+}
+
+// extractClaimStringSet normalizes one or more claim values that may be a single
+// string, a slice of strings, or absent into a sorted, de-duplicated, trimmed
+// string slice. It never leaks structured token material beyond the plain claim
+// values and is safe for a nil receiver.
+func extractClaimStringSet(values ...any) []string {
+	seen := make(map[string]struct{})
+	for _, v := range values {
+		switch t := v.(type) {
+		case string:
+			if s := strings.TrimSpace(t); s != "" {
+				seen[s] = struct{}{}
+			}
+		case []string:
+			for _, s := range t {
+				if s = strings.TrimSpace(s); s != "" {
+					seen[s] = struct{}{}
+				}
+			}
+		case []any:
+			for _, item := range t {
+				if s, ok := item.(string); ok {
+					if s = strings.TrimSpace(s); s != "" {
+						seen[s] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	roles := make([]string, 0, len(seen))
+	for role := range seen {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	return roles
 }
 
 func newOIDCVerifier(issuer string, audiences []string, makeVerifier func(string) *oidc.IDTokenVerifier) (*OIDCVerifier, error) {
@@ -76,19 +116,27 @@ func (v *OIDCVerifier) Verify(ctx context.Context, rawToken string) (*identity.P
 			return nil, ErrInvalidToken
 		}
 		var claims struct {
-			ACR string   `json:"acr"`
-			AMR []string `json:"amr"`
+			ACR      string   `json:"acr"`
+			AMR      []string `json:"amr"`
+			Groups   any      `json:"group"`
+			Groups2  any      `json:"groups"`
+			Roles    any      `json:"roles"`
+			AppRole  any      `json:"app_role"`
+			AppRole2 any      `json:"app-role"`
 		}
 		if err := token.Claims(&claims); err != nil {
 			return nil, ErrInvalidToken
 		}
 		return &identity.Principal{
-			Issuer:    token.Issuer,
-			Subject:   token.Subject,
-			Audience:  append([]string(nil), token.Audience...),
-			Assurance: strings.TrimSpace(claims.ACR),
-			Methods:   append([]string(nil), claims.AMR...),
-			ExpiresAt: &token.Expiry,
+			Issuer:         token.Issuer,
+			Subject:        token.Subject,
+			Audience:       append([]string(nil), token.Audience...),
+			Assurance:      strings.TrimSpace(claims.ACR),
+			Methods:        append([]string(nil), claims.AMR...),
+			ExpiresAt:      &token.Expiry,
+			Groups:         extractClaimStringSet(claims.Groups, claims.Groups2),
+			AppRoles:       extractClaimStringSet(claims.Roles, claims.AppRole, claims.AppRole2),
+			IssuerVerified: true,
 		}, nil
 	}
 	return nil, ErrInvalidToken

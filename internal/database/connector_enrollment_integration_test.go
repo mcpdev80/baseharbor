@@ -16,7 +16,7 @@ import (
 func TestConnectorEnrollmentPersistentAtomicScope(t *testing.T) {
 	dsn := os.Getenv("BASEHARBOR_TEST_DATABASE_URL")
 	if dsn == "" {
-		t.Skip("BASEHARBOR_TEST_DATABASE_URL is not set")
+		t.Fatal("testumgebung nicht hergestellt: BASEHARBOR_TEST_DATABASE_URL fehlt")
 	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)

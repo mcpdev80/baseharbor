@@ -6,9 +6,22 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"time"
 )
 
 var ErrExists = errors.New("application already exists")
+
+// isTransientBuildDir reports whether name is the in-progress build directory
+// Create leaves behind before its atomic rename. Build directories are named
+// "<app>.<pid>.tmp<nanos>", so a valid application slug (letters, digits and
+// hyphens only, no dots) can never collide with one.
+func isTransientBuildDir(name string) bool {
+	if !strings.Contains(name, ".tmp") {
+		return false
+	}
+	return validateSlug("application name", name) != nil
+}
 
 type Store struct {
 	Root      string
@@ -41,20 +54,36 @@ func (s Store) Create(m Manifest) (string, error) {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	if err := os.Mkdir(appDir, 0o700); err != nil {
+	// Build the app in a uniquely named sibling temp directory and atomically
+	// rename it into place. The atomic directory rename guarantees List never
+	// observes a half-built app (a directory without its manifest), which
+	// would otherwise surface a spurious "not found" during concurrent first
+	// registration. The per-try unique temp name keeps concurrent creators
+	// from clobbering each other's in-progress builds, and normalizes the
+	// Mkdir/rename EEXIST races to the same ErrExists sentinel callers retry on.
+	tmpName := fmt.Sprintf("%s.%d.tmp%d", appDir, os.Getpid(), time.Now().UnixNano())
+	if err := os.Mkdir(tmpName, 0o700); err != nil {
+		if os.IsExist(err) {
+			return "", fmt.Errorf("%w: %s", ErrExists, m.Name)
+		}
 		return "", err
 	}
-	path := filepath.Join(appDir, "baseharbor.yaml")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(m.YAML()), 0o600); err != nil {
-		_ = os.RemoveAll(appDir)
+	finalPath := filepath.Join(appDir, "baseharbor.yaml")
+	buildPath := filepath.Join(tmpName, "baseharbor.yaml")
+	if err := os.WriteFile(buildPath, []byte(m.YAML()), 0o600); err != nil {
+		_ = os.RemoveAll(tmpName)
 		return "", err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.RemoveAll(appDir)
+	if err := os.Rename(tmpName, appDir); err != nil {
+		_ = os.RemoveAll(tmpName)
+		if os.IsExist(err) {
+			return "", fmt.Errorf("%w: %s", ErrExists, m.Name)
+		}
 		return "", err
 	}
-	return path, nil
+	// Report the durable, renamed path (not the transient build path) so the
+	// returned manifest location survives the atomic rename.
+	return finalPath, nil
 }
 
 func (s Store) Load(name string) (Manifest, string, error) {
@@ -84,6 +113,13 @@ func (s Store) List() ([]Manifest, error) {
 	items := make([]Manifest, 0, len(entries))
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		// An in-progress Create builds the app under a uniquely named
+		// "*.tmp<nanos>" directory and atomically renames it into place. Skip
+		// these transient entries so List never surfaces a half-built app as an
+		// application identity.
+		if isTransientBuildDir(entry.Name()) {
 			continue
 		}
 		m, _, err := s.Load(entry.Name())

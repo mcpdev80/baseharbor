@@ -22,6 +22,22 @@ func existingPrivateRuntimeOwner(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
+// VerifyRuntimeFileOwner reports whether path is an exclusively owned regular
+// runtime file (the ownership evidence the destroy/retire path derives a stop
+// set from), or nil when it is missing. A present-but-unowned runtime file
+// returns (nil, nil) — it is not an owned materialization and must never be
+// treated as one. This backs the ownership-gated workload-stop path and the
+// protected OTLP reader; the shared readWorkloadRuntimeEnv reader is kept
+// strictly fail-closed (missing runtime.env is an error) so it cannot silently
+// fail open for other workload callers.
+func VerifyRuntimeFileOwner(path string) (bool, error) {
+	owner, err := existingPrivateRuntimeOwner(path)
+	if err != nil {
+		return false, err
+	}
+	return owner != nil, nil
+}
+
 func writePrivateRuntimeOwnerFile(path string, content []byte) error {
 	if err := checkPrivateRuntimeOwnerParents(path); err != nil {
 		return err

@@ -123,6 +123,41 @@ func forwardMigrationNames() ([]string, error) {
 	return names, nil
 }
 
+// ownedSchemaTables returns the table names the given forward migration stage
+// owns by reading its own .down.sql: every DROP <thing> table clause there names
+// exactly what that stage removes on rollback. The result is derived from the
+// migration file itself, never hardcoded, so a test-only rename of the stage
+// prefix still asserts on the correct stage's artifacts.
+func ownedSchemaTables(stage string) ([]string, error) {
+	downName := strings.TrimSuffix(stage, ".sql") + ".down.sql"
+	sqlBytes, err := migrationFS.ReadFile("migrations/" + downName)
+	if err != nil {
+		return nil, fmt.Errorf("read rollback %s: %w", downName, err)
+	}
+	return extractDroppedTables(string(sqlBytes)), nil
+}
+
+// extractDroppedTables parses the lowercase, trimmed tokens of every
+// `DROP TABLE <name>` clause in a .down.sql body. It matches only the table
+// name token (letters, digits, underscore, dot) after the `table` keyword so a
+// DROP IF EXISTS or trailing clause cannot confuse it.
+func extractDroppedTables(downText string) []string {
+	var tables []string
+	lower := strings.ToLower(downText)
+	words := strings.Fields(lower)
+	for i := 0; i < len(words); i++ {
+		if words[i] == "table" && i+1 < len(words) {
+			toks := strings.FieldsFunc(words[i+1], func(r rune) bool {
+				return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' || r == '.')
+			})
+			if len(toks) > 0 {
+				tables = append(tables, strings.Join(toks, ""))
+			}
+		}
+	}
+	return tables
+}
+
 func migrationApplied(ctx context.Context, pool *pgxpool.Pool, version string) (bool, error) {
 	var exists bool
 	err := pool.QueryRow(ctx,
