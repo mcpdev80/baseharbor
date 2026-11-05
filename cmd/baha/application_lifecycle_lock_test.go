@@ -72,7 +72,11 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Preview: the consequence plan the operator acknowledges.
+	// Preview: the consequence plan the operator acknowledges. The stages
+	// mirror what the preview itself requires (ConfirmationsRequired 2 for a
+	// destructive plan, explicit data-deletion consent); with them set, the
+	// acknowledgement stage checks cannot be the refusal's cause, so the
+	// stale-impact-consent branch below isolates the revision binding itself.
 	plan, err := buildApplicationDestructionPlan(context.Background(), resolved, true)
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +95,7 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 
 	// The production authorization path must refuse the outdated consent and
 	// must NOT fall back to prompting (non-interactive: fail closed).
-	ctx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID})
+	ctx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true, DeleteData: true})
 	current, authErr := authorizeApplicationDestruction(ctx, resolved, true, &bytes.Buffer{})
 	if authErr == nil {
 		t.Fatal("stale destruction consent admitted; production path must require re-preview")
@@ -105,7 +109,7 @@ func TestStaleDestructionConsentRequiresRepreview(t *testing.T) {
 
 	// Acknowledging with the FRESH plan id must pass the consent gate (the
 	// refusal above proved staleness binding, not a policy veto).
-	okCtx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: current.Scope.PlanID})
+	okCtx := withProviderChangeConsent(nonInteractiveContext(context.Background()), &application.ProviderChangeConsent{PlanID: current.Scope.PlanID, First: true, Second: true, DeleteData: true})
 	if _, err := authorizeApplicationDestruction(okCtx, resolved, true, &bytes.Buffer{}); err != nil && strings.Contains(err.Error(), "stale-impact-consent") {
 		t.Fatalf("current-plan consent refused as stale: %v", err)
 	}
