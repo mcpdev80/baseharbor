@@ -84,7 +84,7 @@ func TestAppNewWizardCancelLeavesNoProject(t *testing.T) {
 
 func TestAppNewWizardCreatesValidatedProject(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
-	configureTestTarget(t)
+	configureTestTargetWithOwner(t)
 	parent := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	t.Setenv("HOME", t.TempDir())

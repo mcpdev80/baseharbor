@@ -14,6 +14,9 @@ import (
 func TestOneWriterGuardPositiveDirectPasses(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -41,6 +44,9 @@ func TestOneWriterGuardPositiveDirectPasses(t *testing.T) {
 func TestOneWriterGuardPositiveDelegatedPasses(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -76,6 +82,9 @@ func TestAttackerEmptyOwnerDoesNotMutateExternalProof(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -134,6 +143,9 @@ func TestAttackerForgedBaseharborOwnerCannotMasquerade(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -173,6 +185,9 @@ func TestAttackerForgedBaseharborOwnerCannotMasquerade(t *testing.T) {
 func TestPersistedDirectOwnerPassesDirectApply(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -207,6 +222,9 @@ func TestForgedDelegatedUpdateThenDirectRefused(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -265,6 +283,9 @@ func TestRejectedWriteLeavesBytesIdentical(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -310,6 +331,9 @@ func TestPreviousConflictIsCarried(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	// Persist a baseharbor-owned record, then hand-inject a conflict flag into
 	// the stored file (a conflict is never written via SaveDeploymentRecord
@@ -366,6 +390,9 @@ func TestPreviousConflictIsCarried(t *testing.T) {
 func TestFirstSaveCallerConflictTruePasses(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	rec := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -384,6 +411,9 @@ func TestFirstSaveCallerConflictTruePasses(t *testing.T) {
 func TestFirstSaveCallerConflictFalsePasses(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	rec := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -404,6 +434,9 @@ func TestFirstSaveCallerConflictDiscardedUnderStoredFalse(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	rec := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -432,6 +465,9 @@ func TestFirstSaveCallerConflictDiscardedUnderStoredFalse(t *testing.T) {
 func TestFirstSaveDelegatedCallerConflictPasses(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	rec := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -470,6 +506,9 @@ func TestCorruptedOwnerDirectPassesUnsetPathIsWideningNeutral(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -525,6 +564,9 @@ func TestCorruptedOwnerDelegatedOwnExternalGoverns(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -579,6 +621,9 @@ func TestCorruptedOwnerPreviousConflictStillRefused(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,

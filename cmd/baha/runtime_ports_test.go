@@ -54,6 +54,8 @@ func TestParseRuntimeUpOptionsRejectsInvalidPort(t *testing.T) {
 func TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive(t *testing.T) {
 	dataRoot := t.TempDir()
 	t.Setenv("XDG_DATA_HOME", dataRoot)
+	t.Setenv("XDG_CONFIG_HOME", dataRoot)
+	t.Setenv("HOME", dataRoot)
 
 	var out bytes.Buffer
 	path, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(""), &out, runtimeUpOptions{Yes: true}, "initialize")
@@ -68,6 +70,8 @@ func TestRecoveryFileForRepositoryUpUsesTargetDefaultNonInteractive(t *testing.T
 
 func TestRecoveryFileForRepositoryUpInteractivePromptIsVisible(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "openbao-recovery.json")
 	var out bytes.Buffer
 	got, err := recoveryFileForRepositoryUp(context.Background(), strings.NewReader(path+"\n"), &out, runtimeUpOptions{}, "initialize")
@@ -96,6 +100,9 @@ func TestRecoveryFileForRepositoryUpBlocksUntilInteractiveInput(t *testing.T) {
 		_, err := recoveryFileForRepositoryUp(context.Background(), reader, io.Discard, runtimeUpOptions{}, "initialize")
 		done <- err
 	}()
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
 	select {
 	case err := <-done:
@@ -219,6 +226,8 @@ func bufioReader(value string) *bufio.Reader {
 
 func TestRecoveryFileForRepositoryUpRepromptsExistingBootstrapOutput(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 	existing := filepath.Join(dir, "openbao-recovery.json")
 	next := filepath.Join(dir, "openbao-recovery-new.json")
 	if err := os.WriteFile(existing, []byte("existing"), 0o600); err != nil {
@@ -243,6 +252,8 @@ func TestRecoveryFileForRepositoryUpRepromptsExistingBootstrapOutput(t *testing.
 
 func TestRecoveryFileForRepositoryUpRepromptsMissingUnsealFile(t *testing.T) {
 	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
 	missing := filepath.Join(dir, "missing.json")
 	existing := filepath.Join(dir, "existing.json")
 	if err := os.WriteFile(existing, []byte("{}"), 0o600); err != nil {

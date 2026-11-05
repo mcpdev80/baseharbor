@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
@@ -69,6 +70,19 @@ func validateTargetDockerBinding(ctx context.Context, target deployment.Resolved
 		}
 	}
 	if legacy {
+		// A validly provisioned Core installation (authoritative owner) is a
+		// bound Core for the Target by contract: the deployment seam
+		// (VerifyDeploymentOwner -> coreinstallation.Load) already proved the
+		// one-installation-owner binding, so a genuine Core owner governs the
+		// Target regardless of whether the docker-engine.json probe landed here
+		// first. The owner-seed writes installation.json (a non-docker-engine
+		// file) to the runtime root, which the probe below would otherwise read
+		// as "existing Core state without a Docker engine binding". Accept the
+		// authoritative Core here; absent or foreign/invalid Core state still
+		// falls through to the owned-resources check below and stays rejected.
+		if _, loadErr := coreinstallation.Load(root); loadErr == nil {
+			return nil
+		}
 		owned, err := provider.ListOwnedProjectResources(ctx, targetRuntimeProjectName(target))
 		if err != nil || len(owned) == 0 {
 			return fmt.Errorf("Target %s has existing Core state without a Docker engine binding, but ownership at %s is not proven; existing rootful resources are preserved; explicitly configure the original Docker endpoint/context and mode before continuing", target.Name, engine.Endpoint)

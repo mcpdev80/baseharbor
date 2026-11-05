@@ -26,7 +26,11 @@ func (e *applicationDestroyExecution) verifyOwnershipWhenNoDeploymentRecord(_ co
 		return false, nil
 	}
 	state, ok := deployment.DeploymentRecordState(err)
-	if !ok || state.Kind != "incomplete" {
+	// The protected never-delivered proof also permits a Coreless LOCAL destroy
+	// when the deployment namespace has never been created. A missing, foreign
+	// or corrupt owner remains fatal for any already-persisted deployment.
+	localNeverDelivered := eligibleNeverDeliveredLocalDestroy(e.resolved.Target, e.resolved.TargetStateRoot, e.manifest, "destroy", err)
+	if !ok || (state.Kind != "incomplete" && !localNeverDelivered) {
 		// A corrupt or otherwise invalid record is a real ownership problem;
 		// only the "missing record" case is a clean never-delivered retire.
 		return false, err
