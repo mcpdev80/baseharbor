@@ -15,8 +15,22 @@ import (
 // can intentionally stop needed functionality; consequences require consent,
 // not an automatic continuation-policy veto.
 func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, requests []ProviderChangeRequest, observation ProviderImpactObservation) (ProviderImpactPlan, error) {
+	// A non-retiring add/resume only needs complete observations for the
+	// provider(s) it actually changes. Unchanged management/ancillary providers
+	// may have an unknown global inventory without authorizing any retirement.
+	// describeProviderChange independently proves each impacted provider's
+	// material, effect, dependency, and consumer observations below. All other
+	// operations (including stop/remove/replace/update) still require the full
+	// inventory and fail closed when it is incomplete.
+	isolatedNonRetiring := len(requests) > 0
+	for _, request := range requests {
+		if request.Operation != "add" && request.Operation != "resume" {
+			isolatedNonRetiring = false
+			break
+		}
+	}
 	p := ProviderImpactPlan{Version: ProviderImpactVersion, Target: snapshot.Target, Revision: observation.Revision,
-		Complete: union.Complete && observation.InventoryComplete, ConfirmationsRequired: 1, Impacts: []ProviderImpact{}}
+		Complete: union.Complete && (observation.InventoryComplete || isolatedNonRetiring), ConfirmationsRequired: 1, Impacts: []ProviderImpact{}}
 	if snapshot.Target == "" || union.Target != snapshot.Target || union.Version != ProviderPlanVersion {
 		return p, &ProviderChangeError{Code: "invalid-provider-union"}
 	}
