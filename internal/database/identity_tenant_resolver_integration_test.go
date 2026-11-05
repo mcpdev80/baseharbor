@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mcpdev80/baseharbor/internal/identity"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 )
 
@@ -148,5 +150,42 @@ INSERT INTO memberships (id, tenant_id, external_identity_id, role) VALUES
 	}
 	if _, err := resolver.ResolveTenant(ctx, &identity.Principal{}); !errors.Is(err, ErrInvalidPrincipal) {
 		t.Fatalf("invalid principal error = %v, want ErrInvalidPrincipal", err)
+	}
+
+	claimPrincipal := &identity.Principal{
+		Issuer: "https://issuer.example", Subject: "subject-a", IssuerVerified: true,
+		Groups: []string{"editor"},
+	}
+	claimContext := operatorauth.WithVerifiedPrincipal(ctx, claimPrincipal)
+	claimContext = operatorauth.WithMembershipProvider(claimContext, resolver)
+	decision, err := operatorauth.AuthorizeMachineOperation(claimContext, operatorauth.AuthorizationRequest{
+		Operation: machine.Operation{ID: "app.show", Safety: machine.SafetyReadOnly, PolicyRequired: true},
+		Context:   operatorauth.OperationContext{Environment: "prod", Target: "target-a"},
+	})
+	if err != nil || !decision.Allowed || decision.Actor.Subject != claimPrincipal.Subject {
+		t.Fatalf("current DB-backed editor membership was not claim-mapped: %#v %v", decision, err)
+	}
+
+	ambiguousPrincipal := &identity.Principal{
+		Issuer: "https://issuer.example", Subject: "subject-ambiguous", IssuerVerified: true,
+		Groups: []string{"viewer"},
+	}
+	ambiguousContext := operatorauth.WithVerifiedPrincipal(ctx, ambiguousPrincipal)
+	ambiguousContext = operatorauth.WithMembershipProvider(ambiguousContext, resolver)
+	if decision, err := operatorauth.AuthorizeMachineOperation(ambiguousContext, operatorauth.AuthorizationRequest{
+		Operation: machine.Operation{ID: "app.show", Safety: machine.SafetyReadOnly, PolicyRequired: true},
+		Context:   operatorauth.OperationContext{Environment: "prod", Target: "target-a"},
+	}); err == nil || decision.Allowed {
+		t.Fatalf("same claimed role spanning two teams was not denied: %#v %v", decision, err)
+	}
+
+	if _, err := admin.Exec(ctx, "DELETE FROM memberships WHERE external_identity_id = $1 AND role = 'editor'", identityA); err != nil {
+		t.Fatalf("revoke current editor membership: %v", err)
+	}
+	if decision, err := operatorauth.AuthorizeMachineOperation(claimContext, operatorauth.AuthorizationRequest{
+		Operation: machine.Operation{ID: "app.show", Safety: machine.SafetyReadOnly, PolicyRequired: true},
+		Context:   operatorauth.OperationContext{Environment: "prod", Target: "target-a"},
+	}); err == nil || decision.Allowed {
+		t.Fatalf("revoked DB-backed membership remained authorized: %#v %v", decision, err)
 	}
 }

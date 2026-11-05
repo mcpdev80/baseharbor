@@ -274,6 +274,33 @@ request in `dev` retains this check; it does not become a trusted local operator
 This role check supplements effective policy and resource ownership. It does
 not establish tenant isolation for an adapter's inventory or runtime resources.
 
+## Verified claim mapping and team boundary
+
+Machine authorization is fail closed for a verified operator identity: an
+`issuer`/`subject` pair alone grants nothing. The verified transport principal
+carries provider-neutral `group`/`app-role` claims, but these claims never
+grant a right on their own and are only meaningful when the token that produced
+them verified against its issuer (`issuer_verified` set). A claim-scoped machine
+operation therefore requires a `MembershipProvider` that maps the verified
+`issuer`/`subject` and the verified `group`/`app-role` claims onto the current,
+concrete tenant memberships and the current revocation state of that one
+installation.
+
+- A verified operator with no resolved claim membership is denied, including
+  when no `MembershipProvider` is installed. A verified identity alone does not
+  open the door; `dev` retains this check and does not become a trusted local
+  operator.
+- A claim resolves only to the tenant its verified claims name. A `team-a`
+  claim must not authorize a `tenant-b` operation, and ambiguous memberships that
+  span more than one tenant fail closed. This is the two-team boundary at the
+  authorization-decision level, not only inside the tenant resolver.
+- A withdrawn or revoked claim or membership — a provider that returns no
+  membership or reports an error on the revocation lookup — denies the next
+  operation. Provider group changes are not revoked instantly within an issued
+  token's lifetime; this window is the only bounded exception.
+- The existing tenant/role RBAC checks are preserved and are not replaced by the
+  claim mapping; claim mapping binds verified claims onto them.
+
 ### Navigation result consumption
 
 `app.list`, `target.list`, `workspace.list` and `runtime.list` use the generated

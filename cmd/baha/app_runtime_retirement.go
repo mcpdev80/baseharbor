@@ -4,11 +4,83 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"io"
 )
 
+// verifyOwnershipWhenNoDeploymentRecord reports whether the current destroy is
+// operating on a never-delivered application: no on-disk deployment record
+// exists (Kind "incomplete"), ownership is instead carried by the application
+// identity (repository .baseharbor/apps store or shared-backend state), and no
+// prior runtime/provider state was ever realized. It returns
+// (neverDelivered=true, nil) when the destroy should take the clean
+// never-delivered path, (false, nil) when a real deployment record exists, and
+// (false, err) for a genuinely corrupt or otherwise unresolvable record.
+func (e *applicationDestroyExecution) verifyOwnershipWhenNoDeploymentRecord(_ context.Context) (bool, error) {
+	record, err := deployment.LoadDeploymentRecord(e.resolved.DeploymentIdentity)
+	if err == nil {
+		_ = record
+		return false, nil
+	}
+	state, ok := deployment.DeploymentRecordState(err)
+	if !ok || state.Kind != "incomplete" {
+		// A corrupt or otherwise invalid record is a real ownership problem;
+		// only the "missing record" case is a clean never-delivered retire.
+		return false, err
+	}
+	// No deployment record exists. Verify ownership from the application/stack
+	// identity rather than a deployment record: the repository .baseharbor/apps
+	// store is the canonical owner for an application that was initialized but
+	// never delivered. Presence of the identity proves the environment is in a
+	// well-defined "never delivered" state; its absence is simply nothing to
+	// own, which is likewise a clean no-op success. Both resolve to
+	// neverDelivered=true so destroy retires the never-realized workload with
+	// rc=0 instead of failing closed.
+	store := application.Store{Root: filepath.Join(e.resolved.RepositoryRoot, ".baseharbor", "apps")}
+	stored, _, loadErr := store.Load(e.resolved.Manifest.Name)
+	if loadErr != nil {
+		return false, fmt.Errorf("cannot verify application ownership for destroy: %w", loadErr)
+	}
+	if stored.ApplicationID != e.resolved.DeploymentIdentity.ApplicationID || stored.ApplicationID != e.resolved.Manifest.ApplicationID {
+		return false, fmt.Errorf("cannot verify application ownership for destroy: application identity mismatch")
+	}
+	// The identity alone does not prove an absence of previously created runtime.
+	// A persisted deployment consumes this one-shot proof before it is written.
+	// Missing record without the proof may be a lost/corrupt deployment record.
+	if err := deployment.VerifyNeverDeliveredProof(e.resolved.DeploymentIdentity); err != nil {
+		return false, fmt.Errorf("cannot establish never-delivered state (existing runtime may require recovery): %w", err)
+	}
+	return true, nil
+}
+
 func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Context, out io.Writer) error {
+	// A never-delivered application (e.g. refused by the candidate consent
+	// choke) has no on-disk deployment record. The reported bug was that the
+	// destroy path failed closed here with an "incomplete deployment state"
+	// error instead of cleaning up cleanly. When no deployment record exists,
+	// infer ownership from the application/stack identity and retire a
+	// workload that was never realized: there are no containers to stop and no
+	// provider bindings to release, only the optional registry reference.
+	if neverDelivered, err := e.verifyOwnershipWhenNoDeploymentRecord(ctx); err != nil {
+		return err
+	} else if neverDelivered {
+		if !e.confirmed {
+			fmt.Fprintln(out, "No changes were made. Confirm with --yes to retire a never-delivered application.")
+			return nil
+		}
+		if err := application.ReleaseApplicationProviderRegistryAt(e.resolved.TargetStateRoot, e.manifest); err != nil {
+			return fmt.Errorf("application was never delivered but provider registry cleanup failed: %w", err)
+		}
+		if err := recordApplicationAudit(ctx, e.resolved, "destroy", "success", "ownership verified; nothing was ever delivered", "refused or never-applied application retired; no runtime or provider state existed to remove"); err != nil {
+			return err
+		}
+		e.term.Section("Application")
+		e.term.Result("RETIRED", "application", e.manifest.Name+" never delivered; no runtime state to remove")
+		return nil
+	}
 	if err := e.runPreflight(ctx); err != nil {
 		return err
 	}
@@ -63,7 +135,7 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if err := e.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}
-	if _, err := stopRepositoryWorkload(ctx, e.compose, e.resolved, e.files); err != nil {
+	if _, err := destroyRepositoryWorkloadStop(ctx, e.compose, e.resolved, e.files); err != nil {
 		return err
 	}
 	if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
