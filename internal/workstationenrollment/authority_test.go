@@ -51,7 +51,7 @@ func newAuthority(t *testing.T) (*ws.Authority, ws.Store) {
 	t.Helper()
 	store := ws.NewMemoryStore()
 	issuer := serviceissuer.New(t)
-	authority, err := ws.New(store, issuer)
+	authority, err := ws.New(store, issuer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

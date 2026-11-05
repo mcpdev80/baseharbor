@@ -159,6 +159,18 @@ FROM workstation_enrollment_registry WHERE tenant_id=$1 AND station=$2`,
 	return issuedAt, recipient, scopeID, serial, expiresAt, true, nil
 }
 
+// CurrentSerial implements the workstation-enrollment Owner seam for the device
+// lifecycle. It returns the serial of the leaf currently authoritative for the
+// scope by reading the durable registry fact; a missing row or a failed read
+// fails closed (ok=false, err != nil), so a lifecycle operation on a workstation
+// that never enrolled cannot touch anything. This is the read half that pairs
+// with RecordRegistryFact: enrollment and a successful renewal write the current
+// serial, and Renew/Revoke read it back to anchor exactly that leaf.
+func (s *WorkstationEnrollmentStore) CurrentSerial(ctx context.Context, scope workstationenrollment.Scope) (string, bool, error) {
+	_, _, _, serial, _, ok, err := s.ReadRegistryFact(ctx, scope)
+	return serial, ok, err
+}
+
 func insertWorkstationGrant(ctx context.Context, tx pgx.Tx, b workstationenrollment.Bootstrap) error {
 	_, err := tx.Exec(ctx, `INSERT INTO workstation_enrollment_grants
 (tenant_id, station, token_digest, nonce_digest, expires_at, certificate_ttl_seconds)
