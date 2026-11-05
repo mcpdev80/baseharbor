@@ -199,10 +199,13 @@ func TestJournalCommitReadableBeforeExecutorStarts(t *testing.T) {
 // TestTerminalStateCommittedBefore202Response proves the end-state guarantee:
 // when the accepted execution finishes, its terminal state in the store AND the
 // terminal journal line are durably committed. Because handleExecute writes the
-// 202 (handler.go:202) before runExecution (handler.go:211), the terminal commit
-// happens on the 202's tail, so we wait on the store's terminal event channel —
-// which fires exactly when succeed()/fail() commits (synchronously, before
-// runExecution returns). No polling; a timeout is a failure.
+// 202 before runExecution, the terminal commit happens on the 202's tail. The
+// store commits persist-before-publish under its lock: succeed()/fail() write
+// the journal line and THEN append the terminal event to the record's history,
+// all synchronously before runExecution returns. Reading that history therefore
+// proves executor completion and terminal journal persistence without any
+// sleep/poll; on a backgrounded execution the event cannot be present
+// synchronously and the assertion fails.
 func TestTerminalStateCommittedBefore202Response(t *testing.T) {
 	root := t.TempDir()
 	const requestID = "req-terminal"
@@ -239,14 +242,11 @@ func TestTerminalStateCommittedBefore202Response(t *testing.T) {
 		t.Fatal("no terminal event recorded on 202 tail (terminal state not durably committed)")
 	}
 
-	// (b) Terminal journal line readable once the terminal commit is observed.
-	waitForCondition(t, "terminal succeeded journal line", func() bool {
-		data, rerr := os.ReadFile(filepath.Join(root, "journal", "journal.jsonl"))
-		if rerr != nil {
-			return false
-		}
-		return strings.Contains(string(data), `"state":"succeeded"`)
-	})
+	// (b) Terminal journal line: read it directly, no poll. Because the terminal
+	// event is already proven present in history (persist-before-publish), the
+	// journal line that carries it is durably written, so a single direct read
+	// is exhaustive — a missing line here is a real failure, not a timing
+	// artifact.
 	data, rerr := os.ReadFile(filepath.Join(root, "journal", "journal.jsonl"))
 	if rerr != nil {
 		t.Fatalf("read terminal journal: %v", rerr)
