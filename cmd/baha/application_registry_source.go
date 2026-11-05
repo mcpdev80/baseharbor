@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 // ErrRegistrySourceUnavailable documents that the configured enterprise
@@ -153,6 +155,70 @@ func execArtifact(ctx context.Context, name string, args ...string) (string, err
 		return "", exitStatusError(name, err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
+}
+
+// resolveRegistrySource drives the configured OCI endpoint through
+// RegistrySource.Resolve and returns an image reference that the runtime can
+// pull. It is the production seam that connects the application lifecycle to
+// RegistrySource: the release/image selection resolves the configured endpoint
+// to an immutable sha256 digest identity, and the caller pulls that exact pin.
+//
+// Resolution is best-effort for a mutable development image. The adapter fails
+// closed for a configured enterprise endpoint, but a mutable development image
+// is resolved on demand from whatever native tooling is present; when the
+// endpoint cannot be resolved (no native tool, unreachable host, no usable
+// digest) the original tag reference is returned so the existing mutable-image
+// path is preserved. Callers pull exactly what is returned.
+//
+// It defaults to resolveRegistrySourceImpl; tests install a fake runner via
+// registrySourceExec to observe the real application lifecycle's native
+// invocation.
+var resolveRegistrySource = resolveRegistrySourceImpl
+
+// registrySourceExec is the native artifact tool runner used by
+// resolveRegistrySourceImpl. It defaults to the real os/exec runner; tests
+// install a fake runner that records the invocation and canned resolve output.
+var registrySourceExec ExecFunc = execArtifact
+
+// resolveRegistrySourceImpl is the production resolveRegistrySource.
+func resolveRegistrySourceImpl(ctx context.Context, location, requested string) (string, error) {
+	location = strings.TrimSpace(location)
+	if location == "" {
+		return "", ErrRegistrySourceEmpty
+	}
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		requested = "latest"
+	}
+	identity, err := (RegistrySource{
+		Kind:      SourceOCIAddressed,
+		Location:  location,
+		Requested: requested,
+		Exec:      registrySourceExec,
+	}).Resolve(ctx)
+	if err != nil {
+		// Best-effort: surface no usable digest, fall back to the tag so a
+		// mutable development image still pulls through the native tool.
+		return location + ":" + requested, nil
+	}
+	return identity.ImmutableIdentity(), nil
+}
+
+// pullResolvedRuntimeImage is the single pull site (cmd/baha/app_broker.go) that
+// connects the runtime lifecycle to RegistrySource. It resolves the configured
+// development image endpoint through resolveRegistrySource and pulls exactly the
+// returned reference: the immutable repository@digest identity when the endpoint
+// resolves, or the mutable tag when it does not. A caller that skips
+// resolveRegistrySource and pulls the raw tag is the RED mutant this path proves.
+func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) error {
+	resolvedImage, err := resolveRegistrySource(ctx, location, requested)
+	if err != nil {
+		return fmt.Errorf("resolve development runtime image: %w", err)
+	}
+	if err := compose.PullImage(ctx, resolvedImage); err != nil {
+		return fmt.Errorf("pull resolved development runtime image: %w", err)
+	}
+	return nil
 }
 
 // canonicalArtifactRepository normalizes a resolved reference to the canonical

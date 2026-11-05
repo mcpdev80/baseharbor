@@ -55,7 +55,7 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 	refreshMutableImage := runtimebroker.IsMutableDevelopmentImage(runtimeImage)
 	if refreshMutableImage {
 		cli.ReportActivityDetail(progress, "checking current development runtime image")
-		if err := compose.PullImage(ctx, runtimeImage); err != nil {
+		if err := pullResolvedRuntimeImage(ctx, compose, runtimeImage, "edge"); err != nil {
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
