@@ -17,7 +17,7 @@ import (
 // It proves the scope-split fix from round 2: the unconditional
 // "runtime.env absent => empty bindings" absorption that round 1 had folded
 // into the shared readWorkloadRuntimeEnv reader was reverted (telemetry
-//_authorization.go now matches develop blob-for-blob). That shared reader is
+// _authorization.go now matches develop blob-for-blob). That shared reader is
 // strict again and must stay that way — it must not fail open for other
 // workload callers.
 //
