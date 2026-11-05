@@ -230,6 +230,16 @@ func (p *manifestYAMLParser) parseIndent2(lineNo int, trim string) error {
 	case p.section == "runtime" && trim == "permissions:":
 		p.runtimeField = "permissions"
 		return nil
+	case p.section == "runtime" && strings.HasPrefix(trim, "private:"):
+		value := strings.TrimSpace(strings.TrimPrefix(trim, "private:"))
+		if strings.Contains(value, ":") {
+			return fmt.Errorf("line %d: expected private: true|false", lineNo)
+		}
+		if strings.TrimSpace(value) != "true" && strings.TrimSpace(value) != "false" {
+			return fmt.Errorf("line %d: runtime.private must be true|false", lineNo)
+		}
+		p.manifest.Private, _ = strconv.ParseBool(strings.TrimSpace(value))
+		return nil
 	case p.section == "identity":
 		switch trim {
 		case "callback_paths:", "logout_paths:", "scopes:", "claims:", "authentication:":
