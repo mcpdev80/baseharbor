@@ -19,33 +19,66 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
-// waitForCondition blocks deterministically (no time.Sleep) until ok() is true or
-// the deadline elapses. A timeout is a failure, not a polling loop.
-func waitForCondition(t *testing.T, what string, ok func() bool) {
+// waitForExecutorStart blocks deterministically until the executor for id has
+// begun: the store's "operation.started" event fires when the handler calls
+// executions.start before Execute. Because the terminal state is committed on
+// the 202's tail, that same start event is the only thing the identity/reconnect
+// tests need to observe before they assert executor completion. A missing start
+// event is a real failure, not a timing artifact — this signals the exact
+// executor transition, never polls or sleeps.
+func waitForExecutorStart(t *testing.T, handler *Handler, executionID string) {
 	t.Helper()
-	const deadline = 5 * time.Second
-	notify := make(chan struct{}, 1)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			if ok() {
-				select {
-				case notify <- struct{}{}:
-					return
-				default:
-					return
-				}
-			}
-			time.Sleep(time.Millisecond)
+	history, events, cancel, ok := handler.executions.subscribe(executionID)
+	if !ok {
+		t.Fatal("subscribe failed")
+	}
+	defer cancel()
+	waitForEvent(t, "executor start", func(ev machine.MachineEvent) bool {
+		return ev.Kind == machine.EventOperationStarted
+	}, history, events)
+}
+
+// waitForTerminal blocks until the execution's history carries a terminal event
+// (succeeded/failed) on the store's event channel or in the history already
+// returned to the subscriber. The terminal event is emitted synchronously by
+// succeed()/fail() before runExecution returns, so a synchronous candidate
+// signals it on the 202's tail and a backgrounded mutant never does. No sleep,
+// no poll loop.
+func waitForTerminal(t *testing.T, handler *Handler, executionID string) machine.MachineEvent {
+	t.Helper()
+	history, events, cancel, ok := handler.executions.subscribe(executionID)
+	if !ok {
+		t.Fatal("subscribe failed")
+	}
+	defer cancel()
+	return waitForEvent(t, "terminal succeeded/failed state", func(ev machine.MachineEvent) bool {
+		return ev.Kind == machine.EventOperationSucceeded || ev.Kind == machine.EventOperationFailed
+	}, history, events)
+}
+
+// waitForEvent returns the first event satisfying match from history (checked
+// first, since a synchronous candidate has already emitted) or from the live
+// channel. It blocks until that exact event arrives; a timeout is a real
+// failure, not a polling loop.
+func waitForEvent(
+	t *testing.T,
+	what string,
+	match func(machine.MachineEvent) bool,
+	history []machine.MachineEvent,
+	events <-chan machine.MachineEvent,
+) machine.MachineEvent {
+	t.Helper()
+	for _, ev := range history {
+		if match(ev) {
+			return ev
 		}
-	}()
+	}
 	select {
-	case <-notify:
-		<-done
-	case <-time.After(deadline):
-		close(done)
-		t.Fatalf("timeout waiting for %s", what)
+	case ev := <-events:
+		return ev
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timeout waiting for %s (no matching event on 202 tail)", what)
+		return machine.MachineEvent{}
 	}
 }
 
@@ -92,7 +125,7 @@ func TestRequestIdentityBindsFullInputAndAllowsFreshSemanticRequest(t *testing.T
 	}
 
 	first := acceptedExecution(t, postExecution(handler, "req-1", `{"amount":10}`))
-	waitForCondition(t, "executor start (calls==1)", func() bool { return calls.Load() == 1 })
+	waitForExecutorStart(t, handler, first.ExecutionID)
 	if calls.Load() != 1 {
 		t.Fatalf("executor calls=%d want 1", calls.Load())
 	}
@@ -123,14 +156,11 @@ func TestRequestIdentityIndexSurvivesJournalReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := acceptedExecution(t, postExecution(firstHandler, "req-reopen", `{"x":1}`))
-	waitForCondition(t, "executor start (calls==1)", func() bool { return calls.Load() == 1 })
+	waitForExecutorStart(t, firstHandler, first.ExecutionID)
 	if calls.Load() != 1 {
 		t.Fatalf("initial executor calls=%d want 1", calls.Load())
 	}
-	waitForCondition(t, "terminal succeeded state", func() bool {
-		current, ok := firstHandler.executions.get(first.ExecutionID)
-		return ok && current.State == machine.ExecutionSucceeded
-	})
+	waitForTerminal(t, firstHandler, first.ExecutionID)
 	if current, ok := firstHandler.executions.get(first.ExecutionID); !ok || current.State != machine.ExecutionSucceeded {
 		t.Fatalf("initial execution did not finish before simulated reopen: %#v", current)
 	}
