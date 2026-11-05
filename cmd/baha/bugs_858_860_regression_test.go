@@ -257,14 +257,11 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 			// genuinely NOT-DEPLOYED Target (empty runtime), so drop the seed's
 			// bare installation before the not-deployed/incomplete boundary check.
 			if artifact == "" {
-				if entries, rerr := os.ReadDir(root); rerr == nil {
-					for _, e := range entries {
-						if e.Name() != "docker-engine.json" {
-							if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
-								t.Fatalf("remove Core fixture artifact %s: %v", e.Name(), err)
-							}
-						}
-					}
+				// No installed Core means no residual Core or Docker binding
+				// fixture artifacts whatsoever; the complete absence is what
+				// distinguishes not-deployed from partial installation.
+				if err := os.RemoveAll(root); err != nil {
+					t.Fatalf("clear seeded Core fixture for not-deployed case: %v", err)
 				}
 			}
 			if artifact != "" {
