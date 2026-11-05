@@ -33,8 +33,37 @@ func NewRequest(scope Scope, token, nonce string, csrPEM []byte, certificateTTL 
 	}, nil
 }
 
+// NewRenewRequest builds a device-lifecycle renewal request. scope must be
+// valid; csrPEM is the workstation-owned key signing request (the same key the
+// workstation enrolled with, or a freshly generated one for the same scope) and
+// certificateTTL is the desired fresh leaf lifetime. No bootstrap credential is
+// required: renewal is gated by the current identity's revocation status, not by
+// a one-use bootstrap.
+func NewRenewRequest(scope Scope, csrPEM []byte, certificateTTL time.Duration) (Request, error) {
+	if scope.Validate() != nil {
+		return Request{}, ErrDenied
+	}
+	if len(csrPEM) == 0 {
+		return Request{}, ErrDenied
+	}
+	if certificateTTL <= 0 || certificateTTL > 24*time.Hour {
+		return Request{}, ErrDenied
+	}
+	return Request{
+		requestScope:   scope,
+		token:          "",
+		nonce:          "",
+		csrPEM:         csrPEM,
+		certificateTTL: certificateTTL,
+	}, nil
+}
+
 // scopeID returns the request scope.
 func (r Request) scopeID() Scope { return r.requestScope }
+
+// Scope returns the request scope. It is the public accessor the device-lifecycle
+// contract and HTTP adapters use to read the scope a validated request carries.
+func (r Request) Scope() Scope { return r.requestScope }
 
 // ttl returns the requested certificate TTL.
 func (r Request) ttl() time.Duration { return r.certificateTTL }

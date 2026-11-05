@@ -52,7 +52,8 @@ func (e *bahaMachineExecutor) WorkstationEnrollmentHTTP(ctx context.Context, sto
 	if _, err := issuer.TrustBundle(check); err != nil {
 		return nil, errors.New("Workstation authority trust is unavailable")
 	}
-	authority, err := ws.New(store, issuer)
+	lifecycleOwner := wsProductionEnrollmentBridge{store: store}
+	authority, err := ws.New(store, issuer, lifecycleOwner)
 	if err != nil {
 		return nil, err
 	}
@@ -83,4 +84,23 @@ func (e wsProductionEnrollmentBridge) RecordRegistryFact(ctx context.Context, sc
 		return errors.New("workstation production store does not support registry-fakt persistence")
 	}
 	return store.RecordRegistryFact(ctx, scope, issuedAt, recipient, scopeID, serial, expiresAt)
+}
+
+// CurrentSerial anchors the currently issued workstation leaf for a scope for
+// the device-lifecycle Renew/Revoke methods. It reads the durable registry
+// fact (the latest issued serial per installation/station). A missing row, a
+// failed read, or an unreadable connection fail closed with ok=false, so a
+// lifecycle operation on a scope that never enrolled refuses to touch anything.
+func (e wsProductionEnrollmentBridge) CurrentSerial(ctx context.Context, scope ws.Scope) (string, bool, error) {
+	store, ok := e.store.(interface {
+		ReadRegistryFact(ctx context.Context, scope ws.Scope) (issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time, ok bool, err error)
+	})
+	if !ok {
+		return "", false, errors.New("workstation production store does not support lifecycle ownership")
+	}
+	_, _, _, serial, _, ok, err := store.ReadRegistryFact(ctx, scope)
+	if err != nil || !ok {
+		return "", false, err
+	}
+	return serial, true, nil
 }
