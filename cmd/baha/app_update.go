@@ -252,12 +252,13 @@ func inspectGitApplicationUpdate(ctx context.Context, repositoryRoot string, fet
 	if fetch {
 		if nativeHost := native.HostFromURL(remote); nativeHost != "" {
 			if nativeHit, _ := native.PreInteractiveNoPrompt(ctx, nativeHost); nativeHit {
-				if _, ferr := gitOutputDisabledPrompt(ctx, root, "fetch", "--prune", "--", remote); ferr != nil {
-					return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, ferr)
+				if _, err := gitOutputDisabledPrompt(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+					return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
 				}
+			} else if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+				return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
 			}
-		}
-		if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
+		} else if _, err := gitOutput(ctx, root, "fetch", "--prune", "--", remote); err != nil {
 			return gitUpdateState{}, fmt.Errorf("fetch Git remote %s: %w", remote, err)
 		}
 	}
