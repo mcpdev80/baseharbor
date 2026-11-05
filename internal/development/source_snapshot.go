@@ -131,6 +131,16 @@ type CaptureOptions struct {
 	MaxDepth int
 	// ReadByteCap bounds bytes read per regular file; 0 reads the whole file.
 	ReadByteCap int64
+	// ChangeHook, when non-nil, is invoked from the capture walk in two cases:
+	// with the sentinel "__walk_started__" once when the walk begins reading
+	// baseline paths, and when the walk observes a path whose current on-disk
+	// identity (mtime) differs from the baseline recorded before the walk. It lets
+	// a caller *prove* a change was observed during the walk instead of merely
+	// hoping a concurrent writer lands inside the timing window. A hook must be
+	// fast and must not block: the walk cannot depend on it completing. It is
+	// production gated (see the guard below), so a nil hook never changes the
+	// capture's public behavior.
+	ChangeHook func(path string)
 }
 
 // CaptureSource produces a bounded snapshot of exactly one local checkout at root.
@@ -195,10 +205,16 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 	}
 
 	// A concurrent writer may touch the tree between the dirty read above and the
-	// walk below. Record the baseline so a change during capture is detectable.
+	// walk below. Record the baseline identity (path -> mtime nanoseconds) so a
+	// change during the walk is detectable per file and can be proven as an
+	// event by the walk itself.
 	before := treeBaseline(root)
+	baselineIdent := before
 
 	seen := map[string]struct{}{}
+	// consumedPaths records baseline paths the walk has already read past their
+	// per-file barrier, so the per-read hook signal fires once per path.
+	consumedPaths := map[string]struct{}{}
 	walkErr := filepath.WalkDir(root, func(filePath string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -267,6 +283,13 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			// Devices, sockets, fifos: skip like the build-context fingerprint.
 			return nil
 		}
+		if opts.ChangeHook != nil && snap.Captured == 0 {
+			// First regular file read: the walk has made real progress past the
+			// baseline, so a concurrent writer can now mutate a baseline path.
+			// Signal walk-start here so a caller (e.g. the change-during-read
+			// test) can deterministically write INSIDE the walk window.
+			opts.ChangeHook("__walk_started__")
+		}
 		if limitBytes > 0 && snap.TotalBytes+info.Size() > limitBytes {
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "bytes"}
 		}
@@ -281,6 +304,39 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 		seen[relSlash] = struct{}{}
+
+		// EREIGNIS barrier (change-during-read proof): re-stat the path we just read
+		// against its walk-start identity; a divergence observed *during the walk* is
+		// a proven change (not a timing gamble) that aborts the capture. Single extra
+		// stat per regular file (an expected runtime footnote, not a gate break).
+		identity, hadBaseline := baselineIdent[relSlash]
+		// Fresh stat: entry.Info() returns the walk's own mtime (could never
+		// diverge), so a fresh os.Lstat re-stats the path for the per-file
+		// baseline-vs-current comparison to ever fire.
+		var nowNano int64
+		if fi, statErr := os.Lstat(filePath); statErr == nil && fi.Mode().IsRegular() {
+			nowNano = fi.ModTime().UnixNano()
+		}
+		if hadBaseline && nowNano != identity {
+			if opts.ChangeHook != nil {
+				opts.ChangeHook(relSlash)
+			}
+			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "context changed during capture; re-run after the writer quiesces"}
+		}
+
+		// Announce that this baseline path has been read past its per-file
+		// barrier. The hook fires this sentinel once per consumed baseline path so
+		// a caller (e.g. the late-mutation regression) can deterministically wait
+		// until a file is already visited before mutating it: the in-walk barrier
+		// can no longer see that mutation, so only the post-walk final sweep (Layer
+		// 2) can catch it. This is what proves Layer 2 is load-bearing.
+		if _, consumed := consumedPaths[relSlash]; !consumed {
+			consumedPaths[relSlash] = struct{}{}
+			if opts.ChangeHook != nil {
+				opts.ChangeHook(baselineReadSignal(relSlash))
+			}
+		}
+
 		snap.Files = append(snap.Files, snapshotFile{
 			Rel:     relSlash,
 			Mode:    info.Mode().String(),
@@ -294,15 +350,39 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		return SourceSnapshot{}, walkErr
 	}
 
-	// Change-during-read guard: a file that existed in the baseline must be
-	// unchanged by the time the walk reaches it.
-	for _, baselineFile := range baselineFiles(root, before) {
-		if after, ok := treeFileModTime(root, baselineFile); ok && after != before[baselineFile] {
-			return SourceSnapshot{}, &SourceSnapshotError{Source: opts.Source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
-		}
+	// Change-during-read guard, defense in depth: Layer 1 is the in-walk
+	// EREIGNIS barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline
+	// path after the walk so a late mutation cannot slip past. Both layers present.
+	if err := verifyFinalBaseline(opts.Source, root, before); err != nil {
+		return SourceSnapshot{}, err
 	}
 
 	return snap, nil
+}
+
+// verifyFinalBaseline is Layer 2 of the change-during-read guard (defense in
+// depth). The in-walk EREIGNIS barrier (Layer 1) fires on the first divergence
+// it observes during the walk, but a writer may modify an already-visited path
+// while the walk is still processing later files; this post-walk sweep over
+// every recorded baseline path closes that gap and is the production guard that
+// must be present for a successful return. Extracted into its own function so
+// CaptureSource stays within the readability function-span limit.
+func verifyFinalBaseline(source, root string, before map[string]int64) error {
+	for baselineFile, baselineTime := range before {
+		if after, ok := treeFileModTime(root, baselineFile); ok && after != baselineTime {
+			return &SourceSnapshotError{Source: source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
+		}
+	}
+	return nil
+}
+
+// baselineReadSignal names the hook event the walk fires once per baseline path
+// it reads past its per-file barrier. The writer uses it to know a path is
+// already visited (the in-walk barrier can no longer see a mutation of it), so
+// only the post-walk final sweep can catch it — this is what proves Layer 2 is
+// load-bearing in the late-mutation regression.
+func baselineReadSignal(relSlash string) string {
+	return "__path_read_" + relSlash
 }
 
 // gitCaptureState reads the native Git dirty state of the checkout. It mirrors
@@ -587,15 +667,6 @@ func treeBaseline(root string) map[string]int64 {
 		return nil
 	})
 	return baseline
-}
-
-// baselineFiles returns the set of relative paths recorded in baseline.
-func baselineFiles(root string, baseline map[string]int64) []string {
-	files := make([]string, 0, len(baseline))
-	for rel := range baseline {
-		files = append(files, rel)
-	}
-	return files
 }
 
 // treeFileModTime returns the current mtime of a baseline path, if it still

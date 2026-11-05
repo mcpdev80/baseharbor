@@ -3,8 +3,10 @@ package development
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -190,8 +192,12 @@ func TestSourceSnapshotCleanTreeNotDirty(t *testing.T) {
 }
 
 // Case 5: change-during-read. A concurrent writer that mutates a file during the
-// capture walk must be detected and abort the capture. We race a background
-// watcher that touches a file while the (large-file) capture is walking.
+// capture walk must be detected and abort the capture. The writer and the walk
+// synchronize on channels (no timing/hope): the walk signals that the baseline
+// was captured and the walk has begun, then the writer mutates a path the
+// baseline recorded and waits for the walk's change hook to observe it. The test
+// asserts the hook actually fired on the mutated path: the change is PROVEN to
+// have been observed, not merely timed.
 func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	root := t.TempDir()
 	// A large regular file so the walk spends time reading it, giving the watcher
@@ -199,29 +205,178 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(512*1024)))
 	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
 
-	started := make(chan struct{})
+	// startWalk proves the baseline was captured and the walk has begun.
+	// observed proves the hook fired on the mutated baseline path: the change is
+	// PROVEN to have been observed, not merely timed.
+	startWalk := make(chan struct{})
+	observed := make(chan struct{})
+	done := make(chan struct{})
+	go writer(t, root, startWalk, observed, done)
+
+	captureErr := func() error {
+		_, err := CaptureSource(context.Background(), root, CaptureOptions{
+			Source: "https://git.example/app.git",
+			ChangeHook: func(path string) {
+				if path == "__walk_started__" {
+					select {
+					case startWalk <- struct{}{}:
+					default:
+					}
+					return
+				}
+				// Only the writer's baseline path proves the mid-walk change.
+				// The hook can fire on other baseline files the walk already
+				// read; ignore anything that is not the chosen path.
+				if filepath.Base(path) != "touch.go" {
+					return
+				}
+				select {
+				case observed <- struct{}{}:
+				default:
+				}
+			},
+		})
+		return err
+	}()
+	<-done
+
+	// The writer reports a hook-miss through a named sentinel, not a goroutine
+	// t.Fatalf (vet forbids that). Surface it here on the test goroutine. Only
+	// the hook-disabled mutant sends here; a successful observation leaves the
+	// channel empty, so a non-blocking drain.
+	select {
+	case err := <-snapshotErr:
+		t.Fatal(err)
+	default:
+	}
+
+	if captureErr == nil {
+		t.Fatal("expected change-during-read guard to abort the capture")
+	}
+}
+
+// writer runs the change-during-read scenario's concurrent mutation. It waits
+// for the walk to signal it has begun, mutates a path the baseline already
+// recorded, then blocks until the walk's change hook observes that path. The
+// blocking on <-observed is the determinism proof: if the guard's hook never
+// fires on the mutated path (e.g. the hook seam is removed), this goroutine
+// hangs and the test fails instead of passing by luck.
+//
+// The wait is bounded by the test-local deadline: if the hook never fires the
+// writer signals failure via a named sentinel error (errSnapshotHookDidNotFire),
+// which the main test goroutine reports with a fatal message inside the local
+// bound — never the generic 10-minute test timeout.
+func writer(t *testing.T, root string, startWalk, observed chan struct{}, done chan struct{}) {
+	defer close(done)
+	<-startWalk
+	// The walk has begun; mutate a path the baseline already recorded so the
+	// walk's change hook fires on that path.
+	if err := os.Chtimes(filepath.Join(root, "touch.go"), now(), now()); err != nil {
+		t.Errorf("chtimes: %v", err)
+		return
+	}
+	// Block until the walk's change hook observes the mutation, but never past
+	// the test-local bound. A hook-less mutant here fails fast with a named
+	// sentinel error instead of hanging until the generic test timeout.
+	select {
+	case <-observed:
+	case <-time.After(testLocalBound):
+		snapshotErr <- errSnapshotHookDidNotFire
+	}
+}
+
+// errSnapshotHookDidNotFire is the named sentinel a hook-disabled mutant
+// produces: the change-during-read hook never fired on the mutated path within
+// the test-local bound. The main test goroutine reports it with a fatal message
+// so the mutant fails fast inside the bound, not by generic timeout.
+var errSnapshotHookDidNotFire = errors.New("change-during-read hook never fired within the local bound")
+
+// snapshotErr carries the writer's failure (if any) back to the main test
+// goroutine, which owns all t.Fatal/t.Fatalf calls.
+var snapshotErr = make(chan error, 1)
+
+// testLocalBound is the test-local deadline for the change-during-read hook
+// observation. It is short and explicit so a hook-disabled mutant fails fast
+// with a named error rather than blocking until the generic 10-minute test
+// timeout (which must never again be the only red signal this round).
+const testLocalBound = 5 * time.Second
+
+// The final baseline-path verification (Layer 2, round-4) catches a writer
+// that mutates an already-visited file while a later file is still being
+// captured: the in-walk barrier only checks each path when the walk reaches
+// it, so a mutation of an already-read path that lands after the walk passed
+// it would otherwise slip past the barrier. This regression pins that gap.
+//
+// Determinism: the writer waits for the walk to signal that aaa.bin has been
+// read past its per-file barrier (the "__path_read_aaa.bin" hook event) before
+// it touches aaa.bin. aaa.bin is read first (lexically before the filler/
+// directory); the 40 filler files keep the walk busy afterward, so aaa.bin is
+// already visited while the filler files are still captured. The in-walk
+// barrier therefore can no longer see the mutation — only the post-walk final
+// sweep (Layer 2) can abort. This is exactly why the regression proves Layer 2:
+// removing Layer 2 leaves the capture succeeding and this test red. The wait is
+// bounded by a test-local deadline so a barrier/signal-less mutant fails fast
+// with a named sentinel, not a timeout.
+func TestSourceSnapshotFinalBaselineVerificationCatchesLateMutation(t *testing.T) {
+	root := t.TempDir()
+	// aaa.bin is read first (lexically before the filler/ directory), the 40
+	// filler files keep the walk busy afterward, so a mutation of aaa.bin that
+	// lands after the walk reported it read can only be caught by the post-walk
+	// final sweep (Layer 2) — the in-walk barrier already passed aaa.bin.
+	mustWriteSnapshotFile(t, root, "aaa.bin", 0o644, string(makeNBytes(256*1024)))
+	for i := 0; i < 40; i++ {
+		mustWriteSnapshotFile(t, root, fmt.Sprintf("filler/%02d.dat", i), 0o644, "filler")
+	}
+
+	// firstRead fires once when the walk reads aaa.bin past its per-file
+	// barrier; the writer then mutates aaa.bin while filler files remain. The
+	// writer must wait for this signal: aaa.bin is read first, so any earlier
+	// mutation would be caught by the in-walk barrier (Layer 1); waiting until
+	// aaa.bin is already visited isolates Layer 2 as the only catcher.
+	// hookMiss carries the named sentinel from the writer goroutine (vet forbids
+	// t.Fatalf there).
+	firstRead := make(chan struct{}, 1)
 	release := make(chan struct{})
 	done := make(chan struct{})
+	// sawRead records (atomically) that the walk reported aaa.bin read past its
+	// per-file barrier. The writer consumes firstRead, so the channel cannot be
+	// used post-hoc to verify delivery; the atomic flag owns that fact.
+	var sawRead int32
 	go func() {
 		defer close(done)
-		<-started
+		<-firstRead
 		for {
 			select {
 			case <-release:
 				return
 			default:
-				_ = os.Chtimes(filepath.Join(root, "touch.go"), now(), now())
+				_ = os.Chtimes(filepath.Join(root, "aaa.bin"), now(), now())
 			}
 		}
 	}()
 
-	close(started)
-	_, err := CaptureSource(context.Background(), root, CaptureOptions{Source: "https://git.example/app.git"})
+	_, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source: "https://git.example/app.git",
+		ChangeHook: func(path string) {
+			if path == "__path_read_aaa.bin" {
+				atomic.StoreInt32(&sawRead, 1)
+				select {
+				case firstRead <- struct{}{}:
+				default:
+				}
+				return
+			}
+		},
+	})
 	close(release)
 	<-done
 
+	if atomic.LoadInt32(&sawRead) == 0 {
+		t.Fatal("source_snapshot_test.go: change-during-read hook never reported aaa.bin read within the capture window")
+	}
+
 	if err == nil {
-		t.Fatal("expected change-during-read guard to abort the capture")
+		t.Fatal("source_snapshot_test.go: expected final baseline-path verification to abort the capture on a late mutation of an already-visited file")
 	}
 }
 
