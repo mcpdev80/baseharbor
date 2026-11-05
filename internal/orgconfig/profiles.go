@@ -53,6 +53,11 @@ var ErrDuplicateProfile = fmt.Errorf("%w: team access profile already exists", E
 // is an escalation and must be rejected before it is persisted.
 var ErrScopeNotFound = fmt.Errorf("%w: profile references an undeclared target or environment", ErrInvalidProfile)
 
+// ErrStaleRevision fails closed when an Update carries an expected revision that
+// is older than the stored definition's revision, so the manager cannot
+// last-write-wins a concurrent change.
+var ErrStaleRevision = fmt.Errorf("%w: update revision is stale", ErrInvalidProfile)
+
 // Operation is a machine-operation verb a profile may grant. Only the verbs the
 // operator has already declared on the authority are selectable; an unknown
 // operation is rejected so a profile cannot widen the surface.
@@ -101,6 +106,12 @@ type Profile struct {
 	// Immutable records the canonical identity of the managed definition. Two
 	// profiles with the same name but different canonical shapes are a conflict.
 	Immutable string `json:"immutable" yaml:"-"`
+	// Revision is the monotonically increasing write counter of the managed
+	// definition. Every Update must carry the revision it observed; a write whose
+	// revision is older than the stored one is stale and is rejected so the
+	// manager cannot last-write-wins a concurrent change (see Update). A zero
+	// expected revision on Update is rejected: revision enforcement is mandatory.
+	Revision uint64 `json:"revision,omitempty" yaml:"revision,omitempty"`
 }
 
 // canonicalOperationOrder is the precedence order operations are compared and
@@ -227,6 +238,22 @@ func joinIdentity(parts []string) string {
 	return out
 }
 
+// isSubsetOf reports whether need is a subset of have (every element of need is
+// present in have). Operations are already canonicalised by the caller, so a
+// straight membership check is sound.
+func isSubsetOf(need, have []Operation) bool {
+	owned := make(map[Operation]bool, len(have))
+	for _, op := range have {
+		owned[op] = true
+	}
+	for _, op := range need {
+		if !owned[op] {
+			return false
+		}
+	}
+	return true
+}
+
 // Manager owns the scoped team access profiles for one installation identity.
 // A profile is a named recommendation/assignment; the Manager creates, updates
 // and revokes them without ever conferring a right. The set is keyed by name;
@@ -293,6 +320,7 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 		return Profile{}, err
 	}
 	p.Immutable = p.ImmutableIdentity()
+	p.Revision = 1 // freshly created definition starts at revision 1
 
 	existing, ok := m.profiles[p.Name]
 	if ok {
@@ -313,13 +341,36 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 // the only way to change an owned profile: a create with a different
 // definition is rejected, so an operator cannot smuggle a widening in through a
 // race against Create.
-func (m *Manager) Update(p Profile) (Profile, error) {
+//
+// Update is bound to the single authority that owns the Manager: it operates on
+// one installation identity (Manager.Owner) and widens nothing. Two
+// preconditions defend the write:
+//
+//   - expectedRevision must equal the stored definition's Revision. A smaller
+//     value is a stale write and fails closed on ErrStaleRevision (no
+//     last-write-wins); an empty (zero) expected revision is rejected so stale
+//     enforcement is mandatory and cannot be bypassed by omission.
+//   - the new operation set may not exceed the stored one. Removing operations
+//     is always allowed; adding an operation the current definition did not
+//     assign is a privilege escalation and fails closed. The effective right a
+//     caller may still exercise is never widened by an edit.
+//
+// The edit does not itself resolve the caller's actor/tenant at commit time:
+// that is the one production authority. The adapter reports profile membership
+// on that path (see internal/policy); it never grants.
+func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	if strings.TrimSpace(p.Name) == "" {
 		return Profile{}, ErrProfileNameEmpty
 	}
 	existing, ok := m.profiles[p.Name]
 	if !ok {
 		return Profile{}, ErrProfileNotFound
+	}
+	if expectedRevision == 0 {
+		return Profile{}, ErrStaleRevision
+	}
+	if expectedRevision < existing.Revision {
+		return Profile{}, fmt.Errorf("%w: expected %d, stored %d", ErrStaleRevision, expectedRevision, existing.Revision)
 	}
 	p.Operations = CanonicalOperations(p.Operations...)
 	if err := p.Validate(); err != nil {
@@ -328,11 +379,14 @@ func (m *Manager) Update(p Profile) (Profile, error) {
 	if err := m.scopeValidate(p); err != nil {
 		return Profile{}, err
 	}
-	p.Immutable = p.ImmutableIdentity()
-	if p.Immutable == existing.Immutable {
-		// No visible change; return the stored identity unchanged.
-		return existing, nil
+	if !isSubsetOf(p.Operations, existing.Operations) {
+		return Profile{}, fmt.Errorf("%w: edit may not add an operation the current definition does not assign", ErrInvalidProfile)
 	}
+	// A successful edit always bumps the revision, even when the managed
+	// definition is byte-identical, so every write is observable and the next
+	// write's expected revision advances.
+	p.Revision = existing.Revision + 1
+	p.Immutable = p.ImmutableIdentity()
 	updated := p
 	m.profiles[p.Name] = updated
 	return updated, nil

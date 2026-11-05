@@ -122,7 +122,7 @@ func TestCreateOperationCanonicalOrder(t *testing.T) {
 // TestUpdateUnknownFailsClosed proves updating an unknown profile fails closed.
 func TestUpdateUnknownFailsClosed(t *testing.T) {
 	m := NewManager("install-acme")
-	if _, err := m.Update(Profile{Name: "ghost", Target: "dev", Operations: CanonicalOperations(OpRead)}); err != ErrProfileNotFound {
+	if _, err := m.Update(1, Profile{Name: "ghost", Target: "dev", Operations: CanonicalOperations(OpRead)}); err != ErrProfileNotFound {
 		t.Fatalf("expected ErrProfileNotFound on update of unknown, got %v", err)
 	}
 }
@@ -251,5 +251,59 @@ func TestListReturnsCanonicalOrderProvesStableOrder(t *testing.T) {
 	list := m.List()
 	if len(list) != 2 || list[0].Name != "alpha" || list[1].Name != "zeta" {
 		t.Fatalf("List not sorted by name: %+v", list)
+	}
+}
+
+// TestUpdateBumpsRevisionProvesStaleDetection proves that a successful edit
+// bumps the stored revision so a later write carrying the OLD revision is
+// rejected as stale (no last-write-wins).
+func TestUpdateBumpsRevisionProvesStaleDetection(t *testing.T) {
+	m := NewManager("install-acme").BindScope(newTestScope())
+	p, err := m.Create(Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead, OpLog), Owner: "team-r"}, false)
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	if p.Revision != 1 {
+		t.Fatalf("fresh profile must start at revision 1, got %d", p.Revision)
+	}
+	// Edit that removes an operation with the observed revision -> accepted, revision bumps to 2.
+	up, err := m.Update(p.Revision, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"})
+	if err != nil {
+		t.Fatalf("valid update must succeed: %v", err)
+	}
+	if up.Revision != 2 {
+		t.Fatalf("update must bump revision to 2, got %d", up.Revision)
+	}
+	// Re-apply the OLD revision (1) -> must fail closed as stale.
+	if _, err := m.Update(1, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err == nil {
+		t.Fatal("stale revision (older than stored) must be rejected")
+	}
+	// A zero expected revision is rejected outright: stale enforcement is
+	// mandatory and cannot be bypassed by omission.
+	if _, err := m.Update(0, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err != ErrStaleRevision {
+		t.Fatalf("zero expected revision must return ErrStaleRevision, got %v", err)
+	}
+}
+
+// TestUpdateEscalationRejected proves that adding an operation the current
+// definition does not assign (read -> admin) is rejected so a profile edit can
+// never widen the effective right. Removing operations is always allowed.
+func TestUpdateEscalationRejected(t *testing.T) {
+	m := NewManager("install-acme").BindScope(newTestScope())
+	p, err := m.Create(Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}, false)
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	// Escalate read -> admin must fail closed.
+	if _, err := m.Update(p.Revision, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead, OpAdmin), Owner: "team-r"}); err == nil {
+		t.Fatal("edit adding admin to a read-only profile must be rejected (no escalation)")
+	}
+	// A down-scope (removing an operation) is allowed.
+	down, err := m.Update(p.Revision, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"})
+	if err != nil {
+		t.Fatalf("down-scope edit must succeed: %v", err)
+	}
+	if len(down.Operations) != 1 || down.Operations[0] != OpRead {
+		t.Fatalf("down-scope did not preserve read: %+v", down.Operations)
 	}
 }

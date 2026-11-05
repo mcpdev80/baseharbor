@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	"github.com/mcpdev80/baseharbor/internal/policy"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
@@ -150,8 +151,28 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 			Source:   source,
 		})
 	}
-	result.Decision = policy.Aggregate(result.Findings)
+	result.Decision = policyAggregateWithProfiles(result.Findings)
 	return result, nil
+}
+
+// policyAggregateWithProfiles binds the team access profile operation to the
+// single production decision authority: it resolves the active organization
+// (tenant) profile Manager and folds the adapter's constrained finding into the
+// aggregate. The adapter never decides alone — a foreign tenant, revoked
+// profile or unassigned operation forces the aggregate to Deny. It returns the
+// pure workload aggregate when no active organization source is configured.
+func policyAggregateWithProfiles(findings []policy.Finding) policy.Decision {
+	state, err := orgconfig.LoadActive()
+	org := strings.TrimSpace(state.Config.Organization)
+	if err != nil || org == "" {
+		return policy.Aggregate(findings)
+	}
+	manager := orgconfig.NewManager(org)
+	adapter := policy.NewAdapter(manager)
+	// The adapter resolves through the one authority it binds to; an unassigned
+	// operation or foreign tenant fails closed and drives the aggregate to Deny.
+	finding, _ := adapter.Resolve(org, org, orgconfig.OpRead)
+	return policy.ResolveFinding(findings, finding)
 }
 
 func explainApplicationPolicy(ctx context.Context, store application.Store, appArgs []string, environment string) (policy.Result, error) {
