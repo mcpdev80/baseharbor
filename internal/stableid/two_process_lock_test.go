@@ -18,8 +18,21 @@ import (
 // rejected while the first process still holds the lock, and admitted only
 // after the holder releases it. The holder signals acquire/release through
 // marker files so the sequence is deterministic, not timing-based.
+//
+// Hosted-gate compatibility: the authority-package-tests validation owner
+// (scripts/pr-check-runner.py, go_package_tests) fails an authority package
+// whose run contains ANY skipped test. The two child bodies are helper entry
+// points, not tests: with no child mode set they are no-ops (no t.Skip), and
+// TestMain below dispatches a child-mode invocation directly into the named
+// body and exits, so the default package enumeration contains exactly the
+// real cells and zero skips, while the two-process exclusion stays a real
+// OS-process contract (re-exec, no goroutine substitution).
 
-const lifecycleLockHelperEnv = "BAHA_TEST_LOCK_HELPER"
+const (
+	lifecycleLockHelperEnv       = "BAHA_TEST_LOCK_HELPER"
+	lifecycleLockHelperChildEnv  = "BAHA_TEST_LOCK_HELPER_CHILD"
+	lifecycleLockHelperAcquireEn = "BAHA_TEST_LOCK_HELPER_ACQUIRE"
+)
 
 func TestLifecycleLockExcludesTwoSeparateProcesses(t *testing.T) {
 	root := t.TempDir()
@@ -40,9 +53,10 @@ func TestLifecycleLockExcludesTwoSeparateProcesses(t *testing.T) {
 	}
 
 	// Process 2: a separate process must be excluded on the real filesystem seam.
-	second := exec.Command(os.Args[0], "-test.run=^TestLifecycleLockHelperChild$")
+	second := exec.Command(os.Args[0])
 	second.Env = append(os.Environ(),
 		lifecycleLockHelperEnv+"=1",
+		lifecycleLockHelperChildEnv+"=1",
 		"BAHA_TEST_LOCK_ROOT="+root,
 		"BAHA_TEST_LOCK_RELEASE="+released,
 	)
@@ -60,9 +74,10 @@ func TestLifecycleLockExcludesTwoSeparateProcesses(t *testing.T) {
 	}
 	holderRelease()
 	holderRelease = nil
-	third := exec.Command(os.Args[0], "-test.run=^TestLifecycleLockHelperChildAcquire$")
+	third := exec.Command(os.Args[0])
 	third.Env = append(os.Environ(),
 		lifecycleLockHelperEnv+"=1",
+		lifecycleLockHelperAcquireEn+"=1",
 		"BAHA_TEST_LOCK_ROOT="+root,
 	)
 	if out, err := third.CombinedOutput(); err != nil {
@@ -70,14 +85,11 @@ func TestLifecycleLockExcludesTwoSeparateProcesses(t *testing.T) {
 	}
 }
 
-// TestLifecycleLockHelperChild is not a test: it is the second-process body
-// driven above. While this branch runs, the process holds the lifecycle lock
-// on BAHA_TEST_LOCK_ROOT and waits for the release marker, so the parent can
-// observe mutual exclusion across real processes.
-func TestLifecycleLockHelperChild(t *testing.T) {
-	if os.Getenv(lifecycleLockHelperEnv) != "1" {
-		t.Skip("lock helper child mode not enabled")
-	}
+// lockHelperChild is the second-process body: while it runs, the process holds
+// the lifecycle lock on BAHA_TEST_LOCK_ROOT and waits for the release marker,
+// so the parent can observe mutual exclusion across real processes. The
+// refusal path prints the flock error verbatim and exits 1.
+func lockHelperChild() {
 	root := os.Getenv("BAHA_TEST_LOCK_ROOT")
 	release := os.Getenv("BAHA_TEST_LOCK_RELEASE")
 	unlock, err := AcquireLifecycleLock(root)
@@ -99,16 +111,33 @@ func TestLifecycleLockHelperChild(t *testing.T) {
 	os.Exit(0)
 }
 
-// TestLifecycleLockHelperChildAcquire proves the released lock is available to
-// a separate process: it acquires, signals nothing, and exits 0.
-func TestLifecycleLockHelperChildAcquire(t *testing.T) {
-	if os.Getenv(lifecycleLockHelperEnv) != "1" {
-		t.Skip("lock helper child mode not enabled")
-	}
+// lockHelperChildAcquire proves the released lock is available to a separate
+// process: it acquires, releases and exits 0.
+func lockHelperChildAcquire() {
 	unlock, err := AcquireLifecycleLock(os.Getenv("BAHA_TEST_LOCK_ROOT"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "post-release acquire failed: %v\n", err)
 		os.Exit(1)
 	}
 	unlock()
+	os.Exit(0)
+}
+
+// TestMain dispatches a child-mode invocation (re-exec of this test binary by
+// the cell above) directly into the named body, before the testing framework
+// enumerates anything. In a normal package run it is a pass-through, and no
+// symbol in this package skips.
+func TestMain(m *testing.M) {
+	if os.Getenv(lifecycleLockHelperEnv) == "1" {
+		switch {
+		case os.Getenv(lifecycleLockHelperChildEnv) == "1":
+			lockHelperChild()
+		case os.Getenv(lifecycleLockHelperAcquireEn) == "1":
+			lockHelperChildAcquire()
+		default:
+			fmt.Fprintln(os.Stderr, "helper mode requested without a child body selector")
+			os.Exit(2)
+		}
+	}
+	os.Exit(m.Run())
 }
