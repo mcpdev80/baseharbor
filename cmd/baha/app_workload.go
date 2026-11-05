@@ -621,6 +621,27 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 		}
 		return false, fmt.Errorf("inventory application workload runtime: %w", statErr)
 	}
+	// Ownership-gated materialization: stopRepositoryWorkload derives the stop
+	// set from what the canonical deployment actually owns. A workload that was
+	// applied but whose stage runtime.env was never materialized (e.g. a
+	// provider-change abort at the double-confirmation before EnsureRuntime ran)
+	// can leave the runtime directory present with no runtime.env on disk. That
+	// is not an owned materialization: there are no owned workload containers to
+	// stop. We must NOT fall back to the shared readWorkloadRuntimeEnv reader
+	// here — that reader is shared with apply/materialize and, as Luna's
+	// review-1382a documented (r27 round 2, lane w156), its unconditional
+	// "runtime.env absent => empty bindings" absorption silently fail-opened for
+	// every other workload caller. So: verify the runtime.env is an exclusively
+	// owned regular file (the same ownership evidence as the dir check). When it
+	// is missing, or present but not owned, derive the stop set from what
+	// actually exists — nothing owned — and return rc=0 without touching shared
+	// readers. A present, owned, but corrupt runtime.env is reported as an error
+	// below so it still fails closed.
+	if owned, err := application.VerifyRuntimeFileOwner(files.Env); err != nil {
+		return false, fmt.Errorf("inventory application workload runtime ownership: %w", err)
+	} else if !owned {
+		return false, nil
+	}
 	workload, found, err := materializeRepositoryWorkload(resolved, files)
 	if err != nil || !found {
 		return false, err
