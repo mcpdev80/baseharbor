@@ -118,6 +118,17 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			},
 			LastAppliedRef: revision,
 		},
+		References: deployment.ReferenceDimensions{
+			// Intended (desired) reference resolved from the submitted source.
+			deployment.ReferenceIntended: &deployment.ReferenceDimension{
+				Release: revision,
+			},
+			// Applied (last-applied) reference mirrors the submit-time digest so a
+			// fresh apply re-derives it; the dimension is written in isolation.
+			deployment.ReferenceApplied: &deployment.ReferenceDimension{
+				Release: revision,
+			},
+		},
 		Observed: deployment.ObservedDeployment{
 			State: state,
 			Ready: false,
@@ -239,6 +250,12 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 			},
 			LastAppliedRef: revision,
 		},
+		References: deployment.ReferenceDimensions{
+			// The last-applied reference reflects what the runtime was asked to run.
+			deployment.ReferenceApplied: &deployment.ReferenceDimension{
+				Release: revision,
+			},
+		},
 		Observed: deployment.ObservedDeployment{
 			State: state,
 			Ready: ready,
@@ -267,6 +284,21 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 	record.Observed = deployment.ObservedDeployment{State: state, Ready: ready}
 	if ready {
 		record.Observed.VerifiedAt = time.Now().UTC()
+	}
+	// Observe in isolation: the observed reference is a third dimension that must
+	// not rewrite the intended or last-applied references. Fall back to the
+	// last-applied reference when the runtime reports none.
+	observedRef := ""
+	if applied, ok := record.References[deployment.ReferenceApplied]; ok && applied != nil {
+		observedRef = applied.Release
+	}
+	record.References = deployment.ReferenceDimensions{
+		deployment.ReferenceObserved: &deployment.ReferenceDimension{
+			Release: observedRef,
+		},
+	}
+	if existing, ok := record.References[deployment.ReferenceIntended]; ok {
+		record.References[deployment.ReferenceIntended] = existing
 	}
 	return deployment.SaveDeploymentRecord(record)
 }
