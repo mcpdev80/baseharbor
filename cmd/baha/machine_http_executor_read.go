@@ -106,7 +106,7 @@ func executeHTTPInspect(ctx context.Context, operationContext machine.OperationC
 	if path == "" {
 		path = "."
 	}
-	return inspectRepositorySource(ctx, path)
+	return inspectRepositorySource(ctx, path, nil)
 }
 
 func executeHTTPWorkspaceRead(ctx context.Context, operationID string, operationContext machine.OperationContext, raw json.RawMessage) (any, error) {

@@ -80,7 +80,7 @@ func registerMCPDiscoveryReadTools(server *mcp.Server) {
 		if err := authorizeCurrentMCPContext(ctx, "inspect", "", environment, path); err != nil {
 			return machineMCPFailure(err)
 		}
-		result, err := inspectRepositorySource(ctx, path)
+		result, err := inspectRepositorySource(ctx, path, io.Discard)
 		if err != nil {
 			return machineMCPFailure(err)
 		}

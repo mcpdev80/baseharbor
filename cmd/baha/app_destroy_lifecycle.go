@@ -326,7 +326,7 @@ func (e *applicationDestroyExecution) destroyRuntimeResources(ctx context.Contex
 		}
 	}
 	if e.resolved.FromRepository {
-		if _, err := stopRepositoryWorkload(ctx, e.compose, e.resolved, e.files); err != nil {
+		if _, err := destroyRepositoryWorkloadStop(ctx, e.compose, e.resolved, e.files); err != nil {
 			return err
 		}
 		if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {

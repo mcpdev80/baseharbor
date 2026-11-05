@@ -29,6 +29,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
 type serverDependencies struct {
@@ -198,6 +199,10 @@ type connectorEnrollmentProvider interface {
 	ConnectorEnrollmentHTTP(context.Context, targetenrollment.Store, string) (http.Handler, error)
 }
 
+type workstationEnrollmentProvider interface {
+	WorkstationEnrollmentHTTP(context.Context, ws.Store, *pgxpool.Pool, string) (http.Handler, error)
+}
+
 func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, deps serverDependencies, machineExecutor machinehttp.Executor) error {
 	if !cfg.operatorAPIEnabled() {
 		return nil
@@ -239,6 +244,20 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		operatorMux.Handle(targetenrollment.RenewalAuthorizationPath, handler)
 		operatorMux.Handle(targetenrollment.StatusPath, handler)
 		operatorMux.Handle(targetenrollment.DisconnectPath, handler)
+	}
+	if cfg.WorkstationEnrollmentEnabled {
+		provider, ok := machineExecutor.(workstationEnrollmentProvider)
+		if !ok {
+			return errors.New("Workstation enrollment requires the Core workstation-enrollment provider")
+		}
+		handler, err := provider.WorkstationEnrollmentHTTP(ctx, database.NewWorkstationEnrollmentStore(deps.pool), deps.pool, cfg.ConnectorAuthorityTarget)
+		if err != nil {
+			return err
+		}
+		// The scoped one-use bootstrap exchange stays behind the existing
+		// identity/tenant middleware on the protected operator API.
+		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
+		operatorMux.Handle("/api/v1/workstations/enroll", handler)
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {
