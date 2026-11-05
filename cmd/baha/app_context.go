@@ -159,9 +159,9 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 	}
 	return deployment.VerifyNeverDeliveredProof(deployment.DeploymentIdentity{
 		ApplicationID: m.ApplicationID,
-		Target: target.Name,
-		Application: m.Name,
-		Environment: m.Environment,
+		Target:        target.Name,
+		Application:   m.Name,
+		Environment:   m.Environment,
 	}) == nil
 }
 
