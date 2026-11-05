@@ -29,8 +29,19 @@ func DescribeProviderChanges(snapshot ResolutionSnapshot, union ProviderPlan, re
 			break
 		}
 	}
+	// An incomplete union may describe other, unchanged management consumers.
+	// It is not a veto on a strictly non-retiring changed-provider operation.
+	// Any destructive operation in the union disables this scoped path.
+	if isolatedNonRetiring {
+		for _, change := range union.Changes {
+			switch change.Action {
+			case "stop", "remove-runtime", "destroy", "release", "unbind":
+				isolatedNonRetiring = false
+			}
+		}
+	}
 	p := ProviderImpactPlan{Version: ProviderImpactVersion, Target: snapshot.Target, Revision: observation.Revision,
-		Complete: union.Complete && (observation.InventoryComplete || isolatedNonRetiring), ConfirmationsRequired: 1, Impacts: []ProviderImpact{}}
+		Complete: (union.Complete && observation.InventoryComplete) || isolatedNonRetiring, ConfirmationsRequired: 1, Impacts: []ProviderImpact{}}
 	if snapshot.Target == "" || union.Target != snapshot.Target || union.Version != ProviderPlanVersion {
 		return p, &ProviderChangeError{Code: "invalid-provider-union"}
 	}
