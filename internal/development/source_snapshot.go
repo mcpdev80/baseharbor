@@ -139,8 +139,21 @@ type CaptureOptions struct {
 	// hoping a concurrent writer lands inside the timing window. A hook must be
 	// fast and must not block: the walk cannot depend on it completing. It is
 	// production gated (see the guard below), so a nil hook never changes the
-	// capture's public behavior.
+	// capture's public behavior. It is complemented by MutationAcked, which fires
+	// synchronously on the same observed-divergence event to close the
+	// write-ACK barrier for the late-mutation regression (see that field).
 	ChangeHook func(path string)
+	// MutationAcked, when non-nil, is invoked synchronously from the capture
+	// walk at the moment Layer 1 observes a path whose current on-disk identity
+	// (mtime) diverges from the baseline during the walk, before the walk may
+	// proceed past that consumed-path event. It lets a caller prove a real
+	// mutation actually happened before the capture continued: the caller
+	// signals the mutation it intends to make, waits for MutationAcked to fire on
+	// that exact path, and only then lets the walk resume. It is a strict
+	// strengthening of ChangeHook for the observed-divergence case and stays
+	// production-gated (nil never changes public behavior), so a nil ack never
+	// alters a capture.
+	MutationAcked func(path string)
 }
 
 // CaptureSource produces a bounded snapshot of exactly one local checkout at root.
@@ -310,6 +323,16 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			if opts.ChangeHook != nil {
 				opts.ChangeHook(relSlash)
 			}
+			// Write-ACK barrier (this round): fire the synchronous MutationAcked
+			// seam right after the divergence is observed, before the walk may
+			// proceed past this consumed-path event. A test that signalled its own
+			// mutation on this exact path observes the acknowledgement here and can
+			// prove the mutation actually landed before the walk continued. A nil
+			// ack (production) drops the signal, so the capture's public behavior
+			// is unchanged.
+			if opts.MutationAcked != nil {
+				opts.MutationAcked(relSlash)
+			}
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "context changed during capture; re-run after the writer quiesces"}
 		}
 
@@ -336,7 +359,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 	// Change-during-read guard, defense in depth: Layer 1 is the in-walk
 	// EREIGNIS barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline
 	// path after the walk so a late mutation cannot slip past. Both layers present.
-	if err := verifyFinalBaseline(opts.Source, root, before); err != nil {
+	if err := verifyFinalBaseline(opts.Source, root, before, opts.MutationAcked); err != nil {
 		return SourceSnapshot{}, err
 	}
 
@@ -350,9 +373,18 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 // every recorded baseline path closes that gap and is the production guard that
 // must be present for a successful return. Extracted into its own function so
 // CaptureSource stays within the readability function-span limit.
-func verifyFinalBaseline(source, root string, before map[string]int64) error {
+func verifyFinalBaseline(source, root string, before map[string]int64, MutationAcked func(string)) error {
 	for baselineFile, baselineTime := range before {
 		if after, ok := treeFileModTime(root, baselineFile); ok && after != baselineTime {
+			// Write-ACK barrier (this round): fire MutationAcked synchronously on
+			// the baseline path whose identity diverged, before the capture aborts.
+			// A test that signalled a mutation on this exact path observes the
+			// acknowledgement here and proves Layer 2 (Layer 1 already passed this
+			// path during the walk) caught a change the in-walk barrier can no
+			// longer see. A nil ack (production) drops the signal.
+			if MutationAcked != nil {
+				MutationAcked(baselineFile)
+			}
 			return &SourceSnapshotError{Source: source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
 		}
 	}
