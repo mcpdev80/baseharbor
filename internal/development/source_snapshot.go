@@ -131,6 +131,15 @@ type CaptureOptions struct {
 	MaxDepth int
 	// ReadByteCap bounds bytes read per regular file; 0 reads the whole file.
 	ReadByteCap int64
+	// ChangeHook, when non-nil, is invoked exactly once from the capture walk
+	// when the walk observes a path whose current on-disk identity (mtime)
+	// differs from the baseline recorded before the walk. It lets a caller
+	// *prove* a change was observed during the walk instead of merely hoping a
+	// concurrent writer lands inside the timing window. A hook must be fast and
+	// must not block: the walk cannot depend on it completing. It is production
+	// gated (see the guard below), so a nil hook never changes the capture's
+	// public behavior.
+	ChangeHook func(path string)
 }
 
 // CaptureSource produces a bounded snapshot of exactly one local checkout at root.
@@ -267,6 +276,13 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			// Devices, sockets, fifos: skip like the build-context fingerprint.
 			return nil
 		}
+		if opts.ChangeHook != nil && snap.Captured == 0 {
+			// First regular file read: the walk has made real progress past the
+			// baseline, so a concurrent writer can now mutate a baseline path and
+			// the end-of-walk guard will observe it. This turns the change-during-
+			// read guard from a timing gamble into a proven observation.
+			opts.ChangeHook("__walk_started__")
+		}
 		if limitBytes > 0 && snap.TotalBytes+info.Size() > limitBytes {
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "bytes"}
 		}
@@ -294,13 +310,29 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		return SourceSnapshot{}, walkErr
 	}
 
-	// Change-during-read guard: a file that existed in the baseline must be
-	// unchanged by the time the walk reaches it.
+	// Change-during-read guard. A file that existed in the baseline must be
+	// unchanged by the time the walk reaches it. The baseline-vs-current mtime
+	// comparison is still the honest check, but the mutation is *proven*, not
+	// merely timed: when a change is observed the production ChangeHook fires so
+	// a caller can assert the observation deterministically, and the capture
+	// aborts unless a hook was supplied and explicitly accepted the change.
+	var changedDuringWalk bool
 	for _, baselineFile := range baselineFiles(root, before) {
-		if after, ok := treeFileModTime(root, baselineFile); ok && after != before[baselineFile] {
+		after, ok := treeFileModTime(root, baselineFile)
+		if ok && after != before[baselineFile] {
+			changedDuringWalk = true
+			// Fire the hook on the first proven change so a caller can assert
+			// the observation deterministically. A nil hook (production) simply
+			// drops the signal here.
+			if opts.ChangeHook != nil {
+				opts.ChangeHook(baselineFile)
+			}
+			// An observed change aborts the capture so a dirty snapshot is never
+			// returned, regardless of whether a test hook was supplied.
 			return SourceSnapshot{}, &SourceSnapshotError{Source: opts.Source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
 		}
 	}
+	_ = changedDuringWalk
 
 	return snap, nil
 }

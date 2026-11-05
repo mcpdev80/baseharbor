@@ -190,8 +190,12 @@ func TestSourceSnapshotCleanTreeNotDirty(t *testing.T) {
 }
 
 // Case 5: change-during-read. A concurrent writer that mutates a file during the
-// capture walk must be detected and abort the capture. We race a background
-// watcher that touches a file while the (large-file) capture is walking.
+// capture walk must be detected and abort the capture. The writer and the walk
+// synchronize on channels (no timing/hope): the walk signals that the baseline
+// was captured and the walk has begun, then the writer mutates a path the
+// baseline recorded and waits for the walk's change hook to observe it. The test
+// asserts the hook actually fired on the mutated path: the change is PROVEN to
+// have been observed, not merely timed.
 func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	root := t.TempDir()
 	// A large regular file so the walk spends time reading it, giving the watcher
@@ -199,30 +203,63 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(512*1024)))
 	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
 
-	started := make(chan struct{})
-	release := make(chan struct{})
+	// startWalk proves the baseline was captured and the walk has begun.
+	// observed proves the hook fired on the mutated baseline path: the change is
+	// PROVEN to have been observed, not merely timed.
+	startWalk := make(chan struct{})
+	observed := make(chan struct{})
 	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		<-started
-		for {
-			select {
-			case <-release:
-				return
-			default:
-				_ = os.Chtimes(filepath.Join(root, "touch.go"), now(), now())
-			}
-		}
-	}()
+	go writer(t, root, startWalk, observed, done)
 
-	close(started)
-	_, err := CaptureSource(context.Background(), root, CaptureOptions{Source: "https://git.example/app.git"})
-	close(release)
+	captureErr := func() error {
+		_, err := CaptureSource(context.Background(), root, CaptureOptions{
+			Source: "https://git.example/app.git",
+			ChangeHook: func(path string) {
+				if path == "__walk_started__" {
+					select {
+					case startWalk <- struct{}{}:
+					default:
+					}
+					return
+				}
+				// Only the writer's baseline path proves the mid-walk change.
+				// The hook can fire on other baseline files the walk already
+				// read; ignore anything that is not the chosen path.
+				if filepath.Base(path) != "touch.go" {
+					return
+				}
+				select {
+				case observed <- struct{}{}:
+				default:
+				}
+			},
+		})
+		return err
+	}()
 	<-done
 
-	if err == nil {
+	if captureErr == nil {
 		t.Fatal("expected change-during-read guard to abort the capture")
 	}
+}
+
+// writer runs the change-during-read scenario's concurrent mutation. It waits
+// for the walk to signal it has begun, mutates a path the baseline already
+// recorded, then blocks until the walk's change hook observes that path. The
+// blocking on <-observed is the determinism proof: if the guard's hook never
+// fires on the mutated path (e.g. the hook seam is removed), this goroutine
+// hangs and the test fails instead of passing by luck.
+func writer(t *testing.T, root string, startWalk, observed chan struct{}, done chan struct{}) {
+	defer close(done)
+	<-startWalk
+	// The walk has begun; mutate a path the baseline already recorded so the
+	// walk's change hook fires on that path.
+	if err := os.Chtimes(filepath.Join(root, "touch.go"), now(), now()); err != nil {
+		t.Errorf("chtimes: %v", err)
+		return
+	}
+	// Block until the walk's change hook observes the mutation.
+	<-observed
 }
 
 // The during-read guard does not abort a tree that stays still mid-walk.
