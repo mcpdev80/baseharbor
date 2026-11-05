@@ -115,7 +115,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			if err != nil {
 				return resolvedApplication{}, err
 			}
-			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection)
+			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection, command)
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr
 			}
@@ -143,9 +143,39 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	return resolved, nil
 }
 
-func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection) (resolvedApplication, error) {
+
+ // eligibleNeverDeliveredLocalDestroy recognizes only an independently
+ // initialized, never-persisted local repository application. It is NOT a Core
+ // owner grant: no LoadDeploymentRecord or SaveDeploymentRecord check is bypassed.
+ // A foreign/corrupt Core installation and any existing deployment namespace
+ // remain fail-closed. A valid one-shot proof is required before discovery.
+func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, targetRoot string, m application.Manifest, command string, ownerErr error) bool {
+	if command != "destroy" || !errors.Is(ownerErr, deployment.ErrDeploymentOwnerMissing) ||
+		target.TenantID != "" || target.AccessProvider != "local" || target.AccessReference != "local" || target.Scope != "local" {
+		return false
+	}
+	if _, err := os.Lstat(filepath.Join(targetRoot, "deployments")); !errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	return deployment.VerifyNeverDeliveredProof(deployment.DeploymentIdentity{
+		ApplicationID: m.ApplicationID,
+		Target: target.Name,
+		Application: m.Name,
+		Environment: m.Environment,
+	}) == nil
+}
+
+func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
 	m := selection.Manifest
 	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
+	// A locally initialized application may be destroyed before its first
+	// deployment record exists. The one-shot initialization proof is consumed
+	// BEFORE the first persistence, so it cannot authorize deletion of an
+	// existing deployment. This exception changes only discovery for destroy:
+	// storage read/write ownership checks still fail closed.
+	if err != nil && len(command) > 0 && eligibleNeverDeliveredLocalDestroy(target, targetRoot, m, command[0], err) {
+		found, err = false, nil
+	}
 	if err != nil {
 		return resolvedApplication{}, err
 	}
