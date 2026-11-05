@@ -106,6 +106,7 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 		Identity: testDeploymentIdentity(t, "docker-dev", "demo", "dev"),
 		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
 	}
+	provisionOwnerForTarget(t, "docker-dev")
 	if err := SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)
 	}
@@ -121,6 +122,10 @@ func TestDeploymentRegistryIndependentFromCWD(t *testing.T) {
 func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
+	// The production seam requires a single authoritative owner; provision one so
+	// the test observes the missing-file classification (not a missing-owner
+	// rejection) for a deployment directory without a record.
+	provisionOwnerForTarget(t, "docker-dev")
 	root, err := DeploymentRoot(id)
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +155,7 @@ func TestLoadDeploymentRecordClassifiesMissingState(t *testing.T) {
 func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	for _, target := range []string{"docker-dev", "podman-dev"} {
+		provisionOwnerForTarget(t, target)
 		if err := SaveDeploymentRecord(DeploymentRecord{
 			Identity: testDeploymentIdentity(t, target, "demo", "dev"),
 			Applied:  AppliedDeployment{RuntimeProvider: target},
@@ -168,6 +174,7 @@ func TestSameApplicationEnvironmentAcrossTargets(t *testing.T) {
 
 func TestMultipleEnvironmentsWithinOneTarget(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "docker-dev")
 	for _, environment := range []string{"dev", "test"} {
 		if err := SaveDeploymentRecord(DeploymentRecord{
 			Identity: testDeploymentIdentity(t, "docker-dev", "demo", environment),
@@ -215,6 +222,7 @@ func TestDeploymentRootUsesStableDeploymentIDNotReadableNames(t *testing.T) {
 
 func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "docker-dev")
 	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
 	if err := SaveDeploymentRecord(DeploymentRecord{
 		Identity: id,
@@ -246,6 +254,7 @@ func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
 
 func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "docker-dev")
 	first := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
 	second := testDeploymentIdentity(t, "docker-dev", "renamed-alpha", "dev")
 	if first.DeploymentID == second.DeploymentID {
@@ -266,6 +275,7 @@ func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) 
 
 func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "docker-dev")
 	id := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
 	record := DeploymentRecord{
 		Identity: id,
@@ -288,6 +298,7 @@ func TestLoadDeploymentRecordAllowsReadableRenameWithStableIdentity(t *testing.T
 
 func TestDeleteDeploymentRecordRemovesEntireDeploymentRoot(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "docker-dev")
 	id := testDeploymentIdentity(t, "docker-dev", "demo", "dev")
 	record := DeploymentRecord{
 		Identity: id,
