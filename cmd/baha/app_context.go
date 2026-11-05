@@ -154,7 +154,18 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 		(target.Scope != "local" && !(target.Name == "local" && target.Scope == "default")) {
 		return false
 	}
-	if _, err := os.Lstat(filepath.Join(targetRoot, "deployments")); !errors.Is(err, os.ErrNotExist) {
+	deployments := filepath.Join(targetRoot, "deployments")
+	if info, err := os.Lstat(deployments); err == nil {
+		// Initialization may leave an empty namespace; a symlink or a
+		// populated namespace is never a never-delivered proof.
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+		entries, err := os.ReadDir(deployments)
+		if err != nil || len(entries) != 0 {
+			return false
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return false
 	}
 	return deployment.VerifyNeverDeliveredProof(deployment.DeploymentIdentity{
