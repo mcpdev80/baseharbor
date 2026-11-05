@@ -2,6 +2,7 @@ package coreinstallation
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,28 +30,42 @@ func makeVerifiedInstallation(t *testing.T) (State, string) {
 	return state, root
 }
 
+// materializeBaseCAOnAuthorizedPath writes the base CA on the single authorized
+// lifecycle phase (the same production path that the resolver must NEVER touch),
+// so the observe-only resolver can read back a genuine, already-existing issuer.
+func materializeBaseCAOnAuthorizedPath(t *testing.T, targetRoot string) {
+	t.Helper()
+	issuerDir := filepath.Join(targetRoot, "service-access", "issuer")
+	if _, err := serviceaccess.EnsureLocalIssuer(issuerDir); err != nil {
+		t.Fatalf("materialize base CA on the authorized lifecycle path: %v", err)
+	}
+}
+
 // TestResolverDeliversFromInstallationAndTarget proves the red-line: the resolver
 // returns the live issuer material (identity + base serial + expiry) derived from
 // the VERIFIED INSTALLATION + TARGET state ALONE, WITHOUT any fabricated
 // application context. The issuer is the already-accepted serviceaccess.Issuer
-// boundary.
+// boundary. The base CA is materialized on the authorized lifecycle phase so the
+// resolver only ever OBSERVES an existing issuer — it never materializes one.
 func TestResolverDeliversFromInstallationAndTarget(t *testing.T) {
 	installation, root := makeVerifiedInstallation(t)
 	targetRoot := root
-	// The production path materializes the base CA here on the application
-	// lifecycle; the resolver reads it back from this protected target state.
-	if err := os.MkdirAll(filepath.Join(targetRoot, "service-access", "issuer"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	materializeBaseCAOnAuthorizedPath(t, targetRoot)
+	before, _ := os.Stat(filepath.Join(targetRoot, "service-access", "issuer"))
 	issuer, observed, err := ResolverForTargetSelection(context.Background(), installation, targetRoot)
 	if err != nil {
 		t.Fatalf("resolver must deliver material from installation+target: %v", err)
 	}
+	if _, ok := issuer.(*serviceaccess.LocalIssuer); !ok {
+		t.Fatalf("expected serviceaccess.LocalIssuer boundary, got %T", issuer)
+	}
 	if observed.Identity == "" || observed.IssuedCertificate.Serial == "" || observed.IssuedCertificate.ExpiresAt.IsZero() {
 		t.Fatalf("resolver returned no material: %+v", observed)
 	}
-	if _, ok := issuer.(*serviceaccess.LocalIssuer); !ok {
-		t.Fatalf("expected serviceaccess.LocalIssuer boundary, got %T", issuer)
+	// observe-only: the resolver must not rewrite the existing issuer dir.
+	after, _ := os.Stat(filepath.Join(targetRoot, "service-access", "issuer"))
+	if before.ModTime().Unix() != after.ModTime().Unix() {
+		t.Fatalf("observe-only resolver must not rewrite the existing issuer dir")
 	}
 }
 
@@ -72,9 +87,7 @@ func TestResolverFailsClosedOnForeignTarget(t *testing.T) {
 	installation, _ := makeVerifiedInstallation(t)
 	foreign, foreignRoot := makeVerifiedInstallation(t)
 	foreignTarget := foreignRoot
-	if err := os.MkdirAll(filepath.Join(foreignTarget, "service-access", "issuer"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	materializeBaseCAOnAuthorizedPath(t, foreignTarget)
 	if _, _, err := ResolverForTargetSelection(context.Background(), foreign, foreignTarget); err != nil {
 		t.Fatalf("foreign installation must resolve: %v", err)
 	}
@@ -85,16 +98,59 @@ func TestResolverFailsClosedOnForeignTarget(t *testing.T) {
 
 // TestResolverFailsClosedOnUnreadableIssuer proves that a target state root which
 // cannot be read as a verified installation (not a baseharbor Core installation)
-// fails closed, never silently succeeds.
-// TestResolverFailsClosedOnUnreadableIssuer proves that a target-state root which
-// does not hold a verifiable installation fails closed, never silently succeeds.
+// fails closed, never silently succeeds. The dir holds no installation.json, so
+// there is no verifiable installation and hence no issuer to observe.
 func TestResolverFailsClosedOnUnreadableIssuer(t *testing.T) {
 	installation, _ := makeVerifiedInstallation(t)
-	// A valid 0700 dir with no installation.json: Load fails, resolver fails
-	// closed with ErrUnverifiableInstallation.
+	// A 0700 dir that holds no installation.json: it is not a verifiable
+	// installation, so there is no issuer to observe and the resolver fails
+	// closed with ErrUnverifiableInstallation — and it must not fabricate an
+	// issuer.pem into this unrelated dir.
 	unreadable := dir700(t)
 	if _, _, err := ResolverForTargetSelection(context.Background(), installation, unreadable); err != ErrUnverifiableInstallation {
 		t.Fatalf("expected ErrUnverifiableInstallation for an unreadable root, got %v", err)
+	}
+	// The read-only resolver must not have written any issuer material here.
+	if _, err := os.Stat(filepath.Join(unreadable, "service-access", "issuer", "issuer.pem")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("observe-only resolver must not fabricate issuer material in an unrelated dir")
+	}
+}
+
+// TestResolverFailsClosedOnAbsentIssuerDir proves that a verified installation
+// whose protected target state holds NO issuer directory yet fails closed: a
+// missing authority does not fabricate a new trust root during resolution.
+func TestResolverFailsClosedOnAbsentIssuerDir(t *testing.T) {
+	installation, root := makeVerifiedInstallation(t)
+	// No issuer dir exists at all — a bare verified installation has not yet
+	// materialized its base CA. The resolver must fail closed, never succeed, and
+	// must not create the directory.
+	issuerDir := filepath.Join(root, "service-access", "issuer")
+	if _, _, err := ResolverForTargetSelection(context.Background(), installation, root); err != ErrUnverifiableInstallation {
+		t.Fatalf("absent issuer dir must fail closed with ErrUnverifiableInstallation, got %v", err)
+	}
+	if _, err := os.Stat(issuerDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("observe-only resolver must not create the issuer dir, but %v now exists", issuerDir)
+	}
+}
+
+// TestResolverFailsClosedOnEmptyIssuerFile proves that a verified installation
+// whose protected issuer directory holds NO issuer.pem yet fails closed: an
+// empty/incomplete issuer is not a valid authority, and the resolver must not
+// fill it in with a fabricated CA during resolution.
+func TestResolverFailsClosedOnEmptyIssuerFile(t *testing.T) {
+	installation, root := makeVerifiedInstallation(t)
+	// The directory exists but holds no issuer.pem (a partial/uninitialized
+	// issuer). CheckLocalIssuer rejects this; the observe-only resolver must fail
+	// closed and must not write issuer.pem into the empty directory.
+	issuerDir := filepath.Join(root, "service-access", "issuer")
+	if err := os.MkdirAll(issuerDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ResolverForTargetSelection(context.Background(), installation, root); err != ErrUnverifiableInstallation {
+		t.Fatalf("empty issuer dir must fail closed with ErrUnverifiableInstallation, got %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(issuerDir, "issuer.pem")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("observe-only resolver must not fabricate issuer.pem, but it now exists")
 	}
 }
 
@@ -106,9 +162,7 @@ func TestResolverFailsClosedOnUnreadableIssuer(t *testing.T) {
 func TestResolveIntegrationOnHead(t *testing.T) {
 	installation, root := makeVerifiedInstallation(t)
 	targetRoot := root
-	if err := os.MkdirAll(filepath.Join(targetRoot, "service-access", "issuer"), 0700); err != nil {
-		t.Fatal(err)
-	}
+	materializeBaseCAOnAuthorizedPath(t, targetRoot)
 	issuer, observed, err := ResolverForTargetSelection(context.Background(), installation, targetRoot)
 	if err != nil {
 		t.Fatalf("resolver must deliver on head: %v", err)

@@ -288,6 +288,36 @@ func issuerStateDir(targetStateRoot string) string {
 	return filepath.Join(targetStateRoot, "service-access", "issuer")
 }
 
+// observeLocalIssuer reads the base CA authority that the verified installation
+// already owns at a protected target-state root through the
+// serviceaccess.Issuer boundary WITHOUT fabricating it. It is the strict
+// read-only counterpart to EnsureLocalIssuer: EnsureLocalIssuer generates and
+// persists a new base CA when issuer.pem is absent, which is exactly the
+// authority-creation-during-resolution failure round-2 removes. observeLocalIssuer
+// therefore fails closed with ErrUnverifiableInstallation whenever the issuer is
+// absent, unreadable, incomplete, partial or not canonically private — it never
+// creates the directory, issuer.pem, or a new CA, and it never opens a second
+// trust source. A missing authority must not resolve to a permissive empty.
+//
+// The observe-only shape mirrors the accepted production path in
+// cmd/baha/application_service_issuer.go (resolveApplicationServiceIssuer): the
+// existing issuer is validated with the read-only CheckLocalIssuer preflight and
+// returned as a serviceaccess.LocalIssuer whose load() is deferred to the
+// caller's demand — no issuer.pem is written here.
+func observeLocalIssuer(dir string) (serviceaccess.Issuer, error) {
+	// Read-only preflight: absent authority is a fresh realization and must be
+	// recovered, not replaced; partial/unprotected state must be recovered, not
+	// silently accepted. CheckLocalIssuer never touches disk for creation.
+	if err := serviceaccess.CheckLocalIssuer(dir); err != nil {
+		return nil, err
+	}
+	// The issuer is constructed read-only and validated on demand through its own
+	// methods (load() runs only when issuer.pem is read). A missing issuer.pem
+	// surfaces here as a missing-issuer error that the caller maps to
+	// ErrUnverifiableInstallation before any issuer material is produced.
+	return &serviceaccess.LocalIssuer{Dir: dir}, nil
+}
+
 // ResolverForTargetSelection is the single new exported resolver exposed by the
 // accepted authority boundary internal/coreinstallation. It answers the exact
 // question ConnectionSelection.Resolve asks for — the live management-connection
@@ -344,12 +374,17 @@ func ResolverForTargetSelection(
 	if err := verifyTargetRootBoundToInstallation(targetStateRoot, verifiedInstallation); err != nil {
 		return nil, serviceaccess.CertificateStatus{}, err
 	}
-	// Materialize and read back the base CA from the verified installation's own
+	// Observe and read back the base CA from the verified installation's own
 	// protected target state through the already-accepted serviceaccess.Issuer
-	// boundary. A root that holds no verifiable installation fails closed with a
-	// named error before any issuer material is produced.
+	// boundary. This is strictly READ-ONLY / derive-only: it must NOT materialize
+	// issuer material. EnsureLocalIssuer fabricates and persists a new base CA
+	// when issuer.pem is absent, so it is forbidden here — the resolver contract
+	// is to DERIVE the existing authority, never to decide or create it. A root
+	// that holds no verifiable installation fails closed with a named error
+	// before any issuer material is produced, so a missing/incomplete authority
+	// never silently fabricates a new trust root during selection.
 	issuerDir := issuerStateDir(targetStateRoot)
-	issuer, err := serviceaccess.EnsureLocalIssuer(issuerDir)
+	issuer, err := observeLocalIssuer(issuerDir)
 	if err != nil {
 		return nil, serviceaccess.CertificateStatus{}, ErrUnverifiableInstallation
 	}
