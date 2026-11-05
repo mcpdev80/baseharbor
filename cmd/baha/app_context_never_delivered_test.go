@@ -57,8 +57,18 @@ func TestNeverDeliveredLocalDestroyProofIsOneShotAndFailClosed(t *testing.T) {
 	if err := os.MkdirAll(deployments, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if !allowed(target, missing) {
+		t.Fatal("empty initialization namespace wrongly rejected")
+	}
+	occupied := filepath.Join(deployments, "previous-owner")
+	if err := os.Mkdir(occupied, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	if allowed(target, missing) {
-		t.Fatal("existing deployment namespace was ignored")
+		t.Fatal("occupied deployment namespace was ignored")
+	}
+	if err := os.Remove(occupied); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.Remove(deployments); err != nil {
 		t.Fatal(err)
