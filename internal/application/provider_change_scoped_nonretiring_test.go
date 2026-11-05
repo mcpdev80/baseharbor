@@ -13,6 +13,9 @@ func TestImpactCompletenessScopesOnlyVerifiedNonRetiringResume(t *testing.T) {
 	if err != nil || !baseline.Complete {
 		t.Fatalf("verified baseline resume unexpectedly incomplete: %+v %v", baseline, err)
 	}
+	// The old global union marks other management consumers incomplete.
+	// It must not veto this exact scoped, non-retiring provider operation.
+	union.Complete = false
 	observation.InventoryComplete = false
 	delete(observation.Providers, "identity")
 	scoped, err := DescribeProviderChanges(snapshot, union, resume, observation)
