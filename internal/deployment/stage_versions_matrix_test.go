@@ -268,3 +268,57 @@ func TestReferencesPreservedAcrossReopen(t *testing.T) {
 		t.Fatal("references did not survive reopen")
 	}
 }
+
+// TestLifecycleOrdering proves the up/apply assembly: intended is written at
+// submit, applied advances at the next apply, and observed lags until the next
+// convergence — each step rewrites exactly its own dimension.
+func TestLifecycleOrdering(t *testing.T) {
+	_, id := newTestDeployment(t)
+	// Seed an initial record so SetReference (which loads first) has state.
+	if err := SaveDeploymentRecord(DeploymentRecord{Version: DeploymentRecordVersion, Identity: id, Observed: ObservedDeployment{State: "created"}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// Submit phase: intended and applied both resolve from the source digest.
+	if err := SetReference(id, ReferenceIntended, ReferenceDimension{Kind: ReferenceIntended, Release: "v1"}); err != nil {
+		t.Fatalf("set intended v1: %v", err)
+	}
+	if err := SetReference(id, ReferenceApplied, ReferenceDimension{Kind: ReferenceApplied, Release: "v1"}); err != nil {
+		t.Fatalf("set applied v1: %v", err)
+	}
+
+	// Next apply advances applied only.
+	if err := SetReference(id, ReferenceApplied, ReferenceDimension{Kind: ReferenceApplied, Release: "v2"}); err != nil {
+		t.Fatalf("set applied v2: %v", err)
+	}
+	rec := load(t, id)
+	if rec.References[ReferenceIntended].Release != "v1" {
+		t.Errorf("intended changed by apply: got %q, want v1", rec.References[ReferenceIntended].Release)
+	}
+	if rec.References[ReferenceApplied].Release != "v2" {
+		t.Errorf("applied not advanced: got %q, want v2", rec.References[ReferenceApplied].Release)
+	}
+
+	// Next convergence updates observed only.
+	if err := SetReference(id, ReferenceObserved, ReferenceDimension{Kind: ReferenceObserved, Release: "v2"}); err != nil {
+		t.Fatalf("set observed v2: %v", err)
+	}
+	rec = load(t, id)
+	if rec.References[ReferenceIntended].Release != "v1" {
+		t.Errorf("intended changed by converge: got %q, want v1", rec.References[ReferenceIntended].Release)
+	}
+	if rec.References[ReferenceApplied].Release != "v2" {
+		t.Errorf("applied changed by converge: got %q, want v2", rec.References[ReferenceApplied].Release)
+	}
+	if rec.Stale() != nil {
+		t.Errorf("not stale after observed catches up to applied")
+	}
+
+	// Divergence after converge is reported as stale.
+	if err := SetReference(id, ReferenceObserved, ReferenceDimension{Kind: ReferenceObserved, Release: "stale-run"}); err != nil {
+		t.Fatalf("set observed stale: %v", err)
+	}
+	if load(t, id).Stale() == nil {
+		t.Fatal("expected stale after observed diverges from applied")
+	}
+}
