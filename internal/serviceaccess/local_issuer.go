@@ -270,6 +270,39 @@ func (i *LocalIssuer) Renew(ctx context.Context, current IssuedCertificate, requ
 	return i.Issue(ctx, request)
 }
 
+// SignCSR signs a workstation-owned CSR through the local authority. It never
+// generates or returns a client private key; it only produces the signed leaf
+// and the issuing CA, exactly as the managed (OpenBao) path does. A missing or
+// unverifiable issuer authority, an invalid CSR, or an out-of-window TTL all fail
+// closed.
+func (i *LocalIssuer) SignCSR(ctx context.Context, request CSRSigningRequest) (IssuedCertificate, error) {
+	if err := ctx.Err(); err != nil {
+		return IssuedCertificate{}, err
+	}
+	csr, err := request.Validate()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	ca, signingKey, ref, err := i.load()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	if request.TTL <= 0 || request.TTL > 24*time.Hour {
+		return IssuedCertificate{}, errors.New("local workstation certificate TTL must be at most 24 hours")
+	}
+	serial, err := localIssuerSerial()
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	leaf := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: request.Identity}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(request.TTL), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, URIs: csr.URIs}
+	der, err := x509.CreateCertificate(rand.Reader, leaf, ca, csr.PublicKey, signingKey)
+	if err != nil {
+		return IssuedCertificate{}, err
+	}
+	return IssuedCertificate{IssuerReference: ref, Certificate: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), IssuingCA: pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw}), Serial: serial.Text(16), ExpiresAt: leaf.NotAfter, Reference: ca.SerialNumber.Text(16), IssuerNotAfter: ca.NotAfter}, nil
+}
+
 func (i *LocalIssuer) Revoke(ctx context.Context, serial string) error {
 	if err := ctx.Err(); err != nil {
 		return err
