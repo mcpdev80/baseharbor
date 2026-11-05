@@ -250,17 +250,28 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 			},
 			LastAppliedRef: revision,
 		},
-		References: deployment.ReferenceDimensions{
-			// The last-applied reference reflects what the runtime was asked to run.
-			deployment.ReferenceApplied: &deployment.ReferenceDimension{
-				Release: revision,
-			},
-		},
 		Observed: deployment.ObservedDeployment{
 			State: state,
 			Ready: ready,
 		},
 	}
+	// Preserve the other reference dimensions: advancing the applied dimension
+	// must not drop the intended (desired) or prior observed dimension. Load the
+	// existing record, update only the applied dimension, and save the merged
+	// map so the three dimensions stay independent through the real lifecycle.
+	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if loadErr != nil {
+		return loadErr
+	}
+	if existing.References == nil {
+		existing.References = deployment.ReferenceDimensions{}
+	}
+	existing.References[deployment.ReferenceApplied] = &deployment.ReferenceDimension{
+		Kind:    deployment.ReferenceApplied,
+		Release: revision,
+		At:      time.Now().UTC(),
+	}
+	record.References = existing.References
 	if err := retainDeploymentGeneratedState(&record, ready); err != nil {
 		return err
 	}
@@ -285,21 +296,30 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 	if ready {
 		record.Observed.VerifiedAt = time.Now().UTC()
 	}
-	// Observe in isolation: the observed reference is a third dimension that must
-	// not rewrite the intended or last-applied references. Fall back to the
-	// last-applied reference when the runtime reports none.
+	// Observe in isolation: update only the observed dimension and preserve the
+	// intended and applied dimensions. Rebuild the whole map here (as the buggy
+	// original did) would drop the applied dimension on convergence, after which
+	// DeploymentRecord.Stale() sees no applied reference and passes silently.
+	// Load the existing map, overwrite only the observed cell (falling back to
+	// the applied reference when the runtime reports none), and save the merged
+	// map so all three dimensions remain independent.
+	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if loadErr != nil {
+		return loadErr
+	}
+	if existing.References == nil {
+		existing.References = deployment.ReferenceDimensions{}
+	}
 	observedRef := ""
-	if applied, ok := record.References[deployment.ReferenceApplied]; ok && applied != nil {
+	if applied, ok := existing.References[deployment.ReferenceApplied]; ok && applied != nil {
 		observedRef = applied.Release
 	}
-	record.References = deployment.ReferenceDimensions{
-		deployment.ReferenceObserved: &deployment.ReferenceDimension{
-			Release: observedRef,
-		},
+	existing.References[deployment.ReferenceObserved] = &deployment.ReferenceDimension{
+		Kind:    deployment.ReferenceObserved,
+		Release: observedRef,
+		At:      time.Now().UTC(),
 	}
-	if existing, ok := record.References[deployment.ReferenceIntended]; ok {
-		record.References[deployment.ReferenceIntended] = existing
-	}
+	record.References = existing.References
 	return deployment.SaveDeploymentRecord(record)
 }
 
