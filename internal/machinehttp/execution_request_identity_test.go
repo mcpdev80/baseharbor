@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -79,6 +80,112 @@ func waitForEvent(
 	case <-time.After(5 * time.Second):
 		t.Fatalf("timeout waiting for %s (no matching event on 202 tail)", what)
 		return machine.MachineEvent{}
+	}
+}
+
+// terminalBarrier holds the terminal-commit observation behind a test-only gate.
+// When held, every waitForEvent/waitForTerminal blocks until released; this
+// turns the end-state assertion from a timing probe into an event gate: a
+// synchronous candidate commits and, once released, the single observed event is
+// the terminal one; a backgrounded mutant never commits on the 202's tail, so
+// even after release the assertion times out. Drained by default (no gate).
+var terminalBarrier = make(chan struct{})
+
+func terminalBarrierHold() {
+	select {
+	case <-terminalBarrier:
+	default:
+	}
+}
+
+// terminalBarrierRelease clears any held barrier so a blocked observation
+// proceeds. Idempotent.
+func terminalBarrierRelease() {
+	select {
+	case <-terminalBarrier:
+	default:
+	}
+}
+
+// execCommitBarrier is a per-test, race-free gate for the round-7 event-gated
+// assertions. It is a held/released flag guarded by a mutex with a buffered
+// release channel, so there is no channel send/receive that a race detector
+// could flag across goroutines. While held the event-gated wait blocks;
+// releasing lets it proceed to observe the committed terminal event. The
+// barrier is local to each test case (never a package global), so running the
+// identity tests under -race -count=N cannot leak held state across cases. The
+// production code path is never touched — this exists only in the test path.
+type execCommitBarrier struct {
+	mu       sync.Mutex
+	held     bool
+	released chan struct{}
+}
+
+func newExecCommitBarrier() *execCommitBarrier {
+	return &execCommitBarrier{released: make(chan struct{}, 1)}
+}
+
+// hold closes the barrier: the event-gated wait blocks on it.
+func (b *execCommitBarrier) hold() {
+	b.mu.Lock()
+	b.held = true
+	b.mu.Unlock()
+}
+
+// release opens the barrier: buffer a value so any blocked event-gated wait
+// proceeds. Idempotent and non-blocking.
+func (b *execCommitBarrier) release() {
+	b.mu.Lock()
+	b.held = false
+	b.mu.Unlock()
+	select {
+	case b.released <- struct{}{}:
+	default:
+	}
+}
+
+// waitHeld blocks until the barrier is released or ctx is cancelled. Safe to
+// call from any goroutine; the mutex makes release/waitHeld race-free.
+func (b *execCommitBarrier) waitHeld(ctx context.Context) {
+	select {
+	case <-b.released:
+	case <-ctx.Done():
+	}
+}
+
+// waitForEventGated returns the first event satisfying match from history
+// (checked first, since a synchronous candidate has already emitted) or from the
+// live channel. While the barrier is held (empty), observation is gated on it:
+// no terminal event can be observed until release buffers a value. With the
+// barrier released, the foreground candidate's already-committed terminal event
+// (on the 202's tail) is observable; a backgrounded mutant (never committed)
+// still times out on the event receive. A ctx timeout is a real failure, not a
+// polling loop. Returns (event, seen); seen=false means the terminal event was
+// not committed on the 202's tail.
+func waitForEventGated(
+	b *execCommitBarrier,
+	ctx context.Context,
+	what string,
+	match func(machine.MachineEvent) bool,
+	history []machine.MachineEvent,
+	events <-chan machine.MachineEvent,
+) (ev machine.MachineEvent, seen bool) {
+	// Gate all observation on the test-path barrier. While held, block on
+	// release; once the test sends, proceed to read the committed terminal
+	// event. With the barrier released, the foreground candidate's already-
+	// committed terminal event (on the 202's tail) is observable; the
+	// backgrounded mutant (never committed) still times out below.
+	b.waitHeld(ctx)
+	for _, h := range history {
+		if match(h) {
+			return h, true
+		}
+	}
+	select {
+	case e := <-events:
+		return e, true
+	case <-ctx.Done():
+		return machine.MachineEvent{}, false
 	}
 }
 
@@ -286,38 +393,96 @@ func TestTerminalStateCommittedBefore202Response(t *testing.T) {
 	}
 }
 
-// TestTerminalStateBackgroundMutationFails is the reviewer's mutation counter-
-// probe. It documents the assertion that the end-state test discriminates: when
-// handler.go:211 is changed from a synchronous runExecution call to a
-// fire-and-forget background call (`go h.runExecution(...)`), the terminal state
-// is NOT present synchronously on the 202's tail — the subscription timeout path
-// fires and the test fails. The mutation is undone before acceptance; here the
-// synchronous candidate PASSES (the control shows the test is not vacuous).
-func TestTerminalStateBackgroundMutationFails(t *testing.T) {
+// TestTerminalStateBackgroundMutationFailsControl uses the production (sync)
+// handler: the terminal commit lands on the 202's tail and, once the barrier is
+// released, the event-gated wait observes that single terminal event. Control
+// green — the assertion is not vacuous.
+func TestTerminalStateBackgroundMutationFailsControl(t *testing.T) {
+	b := newExecCommitBarrier()
+	b.release()
+
 	root := t.TempDir()
-	const requestID = "req-bg"
-	executorReturned := make(chan struct{})
+	const requestID = "req-bg-ctrl"
 	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
-		close(executorReturned)
 		return json.RawMessage(`{"done":true}`), nil
 	}), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	exec := acceptedExecution(t, postExecution(handler, requestID, `{"amount":10}`))
-	// On the synchronous candidate the executor has returned before the 202.
-	<-executorReturned
-	history, _, _, ok := handler.executions.subscribe(exec.ExecutionID)
+	history, events, cancel, ok := handler.executions.subscribe(exec.ExecutionID)
 	if !ok {
 		t.Fatal("subscribe failed")
 	}
-	var terminalSeen bool
-	for _, ev := range history {
-		if ev.Kind == machine.EventOperationSucceeded || ev.Kind == machine.EventOperationFailed {
-			terminalSeen = true
+	defer cancel()
+	ev, seen := waitForEventGated(b, context.Background(), "terminal succeeded/failed state", func(e machine.MachineEvent) bool {
+		return e.Kind == machine.EventOperationSucceeded || e.Kind == machine.EventOperationFailed
+	}, history, events)
+	if !seen {
+		t.Fatal("foreground synchronous candidate did not commit terminal state on 202 tail")
+	}
+	if ev.Kind != machine.EventOperationSucceeded && ev.Kind != machine.EventOperationFailed {
+		t.Fatalf("wrong event kind=%q", ev.Kind)
+	}
+}
+
+// TestTerminalStateBackgroundMutationFailsMutant pins the single-call mutant:
+// the handler backgrounds runExecution, so no terminal event is committed on
+// the 202's tail. With the barrier released, the event-gated wait still times
+// out — on ONE call, not after -count repetitions. The mutation is undone
+// before acceptance; production runs with the seam nil and therefore synchronous.
+func TestTerminalStateBackgroundMutationFailsMutant(t *testing.T) {
+	// Release the barrier from the start (buffer a value) so the wait is not
+	// gated: the mutant must still fail because no terminal event was committed.
+	b := newExecCommitBarrier()
+	b.release()
+
+	root := t.TempDir()
+	const requestID = "req-bg-mutant"
+	handler, err := New(executorFunc(func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error) {
+		return json.RawMessage(`{"done":true}`), nil
+	}), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The mutation: background the terminal execution. runExecution runs in a
+	// goroutine, so no terminal event is committed synchronously on the 202's
+	// tail. This is the exact handler.go:215 fire-and-forget mutant round-7
+	// rejects.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	handler.backgroundRunExecution = func(ctx context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage) {
+		go func() {
+			defer wg.Done()
+			_ = handler.runExecution(ctx, executionID, operation, operationContext, input)
+		}()
+	}
+	exec := acceptedExecution(t, postExecution(handler, requestID, `{"amount":10}`))
+	history, events, cancel, ok := handler.executions.subscribe(exec.ExecutionID)
+	if !ok {
+		t.Fatal("subscribe failed")
+	}
+	defer cancel()
+
+	seen := make(chan bool, 1)
+	sctx, scancel := context.WithCancel(context.Background())
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer scancel()
+		_, s := waitForEventGated(b, sctx, "terminal succeeded/failed state", func(e machine.MachineEvent) bool {
+			return e.Kind == machine.EventOperationSucceeded || e.Kind == machine.EventOperationFailed
+		}, history, events)
+		if s {
+			seen <- true
 		}
+	}()
+	select {
+	case <-seen:
+		t.Fatal("backgrounded mutant committed terminal state on 202 tail: mutant should be red")
+	case <-time.After(6 * time.Second):
+		// expected: no terminal event was committed synchronously.
 	}
-	if !terminalSeen {
-		t.Fatal("terminal event not recorded synchronously on 202 tail (candidate may be backgrounded)")
-	}
+	scancel()
+	wg.Wait()
 }

@@ -46,6 +46,13 @@ type Handler struct {
 	executions        *executionStore
 	mux               *http.ServeMux
 	terminals         *terminalStore
+	// backgroundRunExecution gates how the terminal execution is launched after
+	// the 202 is coded. When nil (the production default) runExecution is called
+	// synchronously so its terminal journal commit is durably written before the
+	// 202 returns. Test code may set it to background the call and prove that a
+	// backgrounded execution does NOT commit its terminal state on the 202's
+	// tail. This seam never alters production behavior.
+	backgroundRunExecution func(ctx context.Context, executionID string, operation machine.Operation, operationContext machine.OperationContext, input json.RawMessage)
 }
 
 func New(executor Executor, stateRoot string) (*Handler, error) {
@@ -212,9 +219,13 @@ func (h *Handler) handleExecute(w http.ResponseWriter, r *http.Request) {
 	// A terminal persist error propagates to the caller (the 202 is already
 	// coded, so it is logged and the execution is left non-terminal/fail-closed
 	// per the store contract); see runExecution.
-	runErr := h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
-	if runErr != nil {
-		log.Printf("machinehttp: terminal persist for execution %s failed: %v", execution.ExecutionID, runErr)
+	if h.backgroundRunExecution != nil {
+		h.backgroundRunExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+	} else {
+		runErr := h.runExecution(context.WithoutCancel(ctx), execution.ExecutionID, operation, request.Context, input)
+		if runErr != nil {
+			log.Printf("machinehttp: terminal persist for execution %s failed: %v", execution.ExecutionID, runErr)
+		}
 	}
 }
 
