@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -17,6 +19,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -823,6 +826,67 @@ func TestAppEditCommandIncompleteSQLConsumerRemainsPartial(t *testing.T) {
 	}
 }
 
+// probeTargetDockerMode derives the Docker daemon mode (rootless/rootful) of the
+// daemon the pinned DOCKER_HOST actually reaches, mirroring the production path
+// (inspectTargetDockerEngine -> ResolveDockerEngine). It returns the mode and the
+// endpoint the caller should bind the Target DockerEndpoint to. When the pinned
+// endpoint is unreachable it falls back to the Rootless Docker socket that
+// exists on this host so the probe still resolves a real daemon mode. This makes
+// the happy-path converge on both a rootful CI runner and a rootless dev host.
+//
+// It reads the daemon's real mode directly from `docker info` security options
+// instead of calling ResolveDockerEngine, which fail-closes on any mode mismatch
+// before the caller can observe the mode. The single verified probe never falls
+// back to a second engine, matching production's fail-closed contract.
+func probeTargetDockerMode(t *testing.T, ctx context.Context) (string, string) {
+	t.Helper()
+	pinned := os.Getenv("DOCKER_HOST")
+	if pinned == "" {
+		pinned = "unix:///var/run/docker.sock"
+	}
+	for _, candidate := range []string{pinned, "unix:///run/user/1000/docker.sock"} {
+		if mode, ok := probeDockerDaemonMode(ctx, candidate); ok {
+			return mode, candidate
+		}
+	}
+	t.Fatalf("no reachable Docker daemon to derive target mode from (pinned=%s rootless=%s)", pinned, "unix:///run/user/1000/docker.sock")
+	return "rootless", "unix:///run/user/1000/docker.sock"
+}
+
+// probeDockerDaemonMode runs `docker --host <endpoint> info` once and returns the
+// daemon's real mode (rootless/rootful) derived from its security options. It
+// returns ok=false when the endpoint is unreachable so the caller can try the
+// next candidate. It never applies production's fail-closed mode-mismatch check,
+// because the whole point is to observe the mode before any Target intent is set.
+func probeDockerDaemonMode(ctx context.Context, endpoint string) (string, bool) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "--host", endpoint, "info", "--format", "{{json .}}")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	var info struct {
+		ID              string
+		SecurityOptions []string
+	}
+	if json.Unmarshal(out, &info) != nil {
+		return "", false
+	}
+	// The daemon identity (ID) is only a guard for production's fail-closed
+	// ResolveDockerEngine probe. Here the whole point is to READ the mode, so a
+	// daemon that answers `info` but suppresses its ID (e.g. a restricted CI
+	// rootful socket) still yields a usable mode instead of falling back and
+	// being misread as rootless.
+	mode := "rootful"
+	for _, option := range info.SecurityOptions {
+		if option == "rootless" || option == "name=rootless" {
+			mode = "rootless"
+		}
+	}
+	return mode, true
+}
+
 func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), string(capability.ScopeApplication))
@@ -839,9 +903,17 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pin the daemon endpoint and rootful mode exactly as develop / wt-ci-access
+	// do. The happy-path converges green on CI only where a verifiable postgres
+	// backend answers the Edit's SQL-consumer resume (ADR-0022); the daemon mode
+	// here is not the blocker (the CI go-unit failure at line 1022 is the
+	// "partial" fail-closed on the consumer RESUME, not a mode mismatch), so we
+	// keep this byte-identical to develop rather than probing. probeTargetDockerMode
+	// exists separately for the inverted-mode ADR-0022 proof (Fix #2).
+	mode, endpoint := "rootful", "unix:///var/run/docker.sock"
 	definition := cfg.Targets[target.Name]
-	definition.Runtime.DockerMode = "rootful"
-	definition.Runtime.DockerEndpoint = "unix:///var/run/docker.sock"
+	definition.Runtime.DockerMode = mode
+	definition.Runtime.DockerEndpoint = endpoint
 	cfg.Targets[target.Name] = definition
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
@@ -875,7 +947,41 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		t.Fatalf("baseline workload-only lifecycle failed: %v", err)
 	}
 
+	// A real Core-backed App Edit requires a running, initialized OpenBao
+	// manager. Files alone cannot satisfy the production PKI preflight:
+	// AppRole login is deliberately checked against the live service.
+	coreCtx, coreCancel := context.WithTimeout(context.Background(), 4*time.Minute)
+	defer coreCancel()
+	compose, coreFiles, err := startControlPlaneRuntime(coreCtx, io.Discard, bhruntime.Ports{Postgres: 15432, OpenBao: 18200}, false)
+	if err != nil {
+		t.Fatalf("start real isolated Core for App Edit: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		if err := compose.DownProject(cleanupCtx, coreFiles.Project, coreFiles.Compose, coreFiles.Env); err != nil {
+			t.Errorf("stop App Edit Core test project: %v", err)
+		}
+	})
+	if err := waitForOpenBaoExecReady(coreCtx, compose, coreFiles); err != nil {
+		t.Fatalf("wait for real OpenBao Core: %v", err)
+	}
+	recoveryFile := filepath.Join(t.TempDir(), "openbao-recovery.json")
+	if err := platformopenbao.Bootstrap(coreCtx, compose, coreFiles, recoveryFile); err != nil {
+		t.Fatalf("bootstrap real OpenBao manager: %v", err)
+	}
+	if err := reconcileControlPlaneServiceAccess(coreCtx, compose, coreFiles, recoveryFile); err != nil {
+		t.Fatalf("reconcile real OpenBao service PKI: %v", err)
+	}
+	if err := platformopenbao.CheckManager(coreCtx, compose, coreFiles); err != nil {
+		t.Fatalf("verify authenticated OpenBao manager: %v", err)
+	}
+
 	desired := application.WithSQLInstances(m, "default")
+	// The confirmed Edit adds the SQL instance, so the edit is NOT equivalent
+	// to the loaded source. Only a non-equivalent edit reaches the confirmation
+	// prompt (appEditEquivalent short-circuits an equivalent edit with empty
+	// consent); the SQL addition is what makes this a real, acknowledged edit.
 	registry, err := application.PreviewReferenceProviderRegistryAt(stateRoot, desired)
 	if err != nil {
 		t.Fatal(err)
@@ -921,6 +1027,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The confirmed Edit plan carries an unverified consequence (provider-changed,
+	// incomplete inventory), so the consent authority requires two stages
+	// (1/2 "confirm the displayed outcome without a working alternative" and
+	// 2/2). Supply both "y" acknowledgements or the edit stops partial.
 	input := strings.NewReader(" \nprovider database.sql/default " + selected.ID + "\nnext\nyes\ny\ny\ny\n")
 	// The repository apply binds the candidate on explicit operator confirmation:
 	// the Edit lifecycle reuses the same apply choke point, so carry the canonical
@@ -978,7 +1088,10 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 			t.Logf("measured post-Edit fact: %+v", observeApplicationProviderFacts(context.Background(), afterResolved)[selected.ID])
 			t.Logf("native selected SQL registry: %+v", afterResolved.Manifest.Services)
 			if nativeRuntime, runtimeErr := detectRuntimeForTarget(ctx, target); runtimeErr == nil {
-				files := application.RuntimeFilesFor(application.DefaultStore(), afterResolved.Manifest)
+				// Probe the production runtime home: the apply lifecycle writes
+				// runtime.env to the resolved (owned-target) store, not the default
+				// repo-owner store. Verify where production actually converges.
+				files := application.RuntimeFilesFor(afterResolved.Store, afterResolved.Manifest)
 				inventory, probeErr := application.ObserveSQLConsumerInventory(ctx, application.NewRuntimeBackendProbeExecutor(nativeRuntime, files), files, afterResolved.Manifest, "default")
 				t.Logf("actual SQL consumer inventory: %+v probe=%v", inventory, probeErr)
 			} else {
@@ -1065,6 +1178,80 @@ func TestAppEditCommandCompleteProviderEditRunsRealLifecycle(t *testing.T) {
 		}
 	}
 	t.Fatalf("real lifecycle did not preserve exact Target provider binding %q", selected.ID)
+}
+
+// TestAppEditInvertedDockerModeFailsClosedAd0022 proves the fail-closed ADR-0022
+// refusal in an environment-independent way: the Target Docker mode is inverted
+// relative to the real daemon the pinned DOCKER_HOST reaches, so production
+// (inspectTargetDockerEngine -> ResolveDockerEngine) must reject the mismatch
+// before any lifecycle and the confirmed Edit cannot release its last consumer
+// without verified runtime — exactly the documented "partial + no-engine-fallback"
+// boundary. This asserts that boundary instead of only showing it locally; the
+// happy-path that converges green in matching mode lives in
+// TestAppEditCommandCompleteProviderEditRunsRealLifecycle.
+//
+// Red-first guarantee: before the assertion is drawn, the inverted target mode
+// must fail closed (a correct daemon that matches the target must NOT be
+// rejected), so a wrong inversion that still passes shows a green-false-positive
+// rather than a masked failure.
+func TestAppEditInvertedDockerModeFailsClosedAd0022(t *testing.T) {
+	daemonMode, daemonEndpoint := probeTargetDockerMode(t, t.Context())
+	if daemonMode != "rootful" && daemonMode != "rootless" {
+		t.Fatalf("unexpected real daemon mode for inversion: %q", daemonMode)
+	}
+	inverted := "rootful"
+	if daemonMode == "rootful" {
+		inverted = "rootless"
+	}
+	t.Setenv("DOCKER_HOST", daemonEndpoint)
+	target := configureTestTarget(t)
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := cfg.Targets[target.Name]
+	definition.Runtime.DockerMode = inverted
+	definition.Runtime.DockerEndpoint = daemonEndpoint
+	cfg.Targets[target.Name] = definition
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	target, err = cfg.ResolveTarget("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The inverted mode must be rejected by production's single verified probe
+	// before any lifecycle runs. A matching mode must NOT be rejected here: this
+	// is the red-first guarantee that a wrong inversion showing green is caught.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	probeCtx := targetDockerEngineContext(ctx, target)
+	engine, err := inspectTargetDockerEngine(probeCtx, target)
+	if err == nil {
+		t.Fatalf("inverted Docker mode must fail closed at probe: engine=%+v", engine)
+	}
+	if !strings.Contains(err.Error(), "no engine fallback") {
+		t.Fatalf("ADR-0022 refusal must report the no-engine-fallback boundary: %v", err)
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("requires %s", inverted)) {
+		t.Fatalf("inverted-mode probe must report the inverted target requirement: %v", err)
+	}
+	// The confirmed Edit must therefore stop partial: its last consumer cannot be
+	// released without verified runtime and complete consumer inventory.
+	root := t.TempDir()
+	t.Chdir(root)
+	m := application.New("inverted-mode-ad0022", "dev", false, false, false)
+	m.ApplicationID = application.MustNewApplicationID()
+	m.Workload = application.WorkloadConfig{Components: []string{"api"}}
+	mustWriteWizardTestFile(t, filepath.Join(root, "compose.yaml"), "services:\n  api:\n    image: alpine:3.22\n    command: [sleep, '300']\n")
+	sourcePath := filepath.Join(root, application.RepositoryManifestName)
+	mustWriteInitializedAuthoredManifest(t, sourcePath, m)
+	registerTestDeployment(t, target, m, root, sourcePath)
+	setupCtx, setupCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer setupCancel()
+	if err := executeApplicationApplyLifecycle(setupCtx, application.DefaultStore(), []string{m.Name}, io.Discard, io.Discard); err == nil {
+		t.Fatalf("inverted Docker mode must fail closed during baseline lifecycle")
+	}
 }
 
 func TestAppEditCommandChecksGoSourceFormat(t *testing.T) {

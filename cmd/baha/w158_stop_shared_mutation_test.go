@@ -57,6 +57,10 @@ func (r *runningWorkloadRuntime) StopProjectFilesSelected(_ context.Context, pro
 // returning the RuntimeFiles so the caller can toggle runtime.env's presence.
 func resolveRunningWorkloadFixture(t *testing.T, withRuntimeEnv bool) (resolvedApplication, application.RuntimeFiles) {
 	t.Helper()
+	// This fixture represents an ALREADY persisted, owned deployment, not a
+	// never-delivered Coreless application. Its native runtime is mocked, but
+	// the real deployment-store owner prerequisite must still be present.
+	configureTestTarget(t)
 	root := httpsAdoptionFixture(t, false)
 	t.Chdir(root)
 	m := application.WithWorkloadComponents(application.New("demo", "dev", false, false, false), "demo-app")

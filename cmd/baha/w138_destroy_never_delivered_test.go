@@ -180,6 +180,12 @@ func TestW138MissingRecordAfterPersistenceMustNotClaimNeverDelivered(t *testing.
 	if err := runWithIO(ctx, []string{"app", "init", "demo-db", "--sql", "--workload-component", "demo-app"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
+	// This case deliberately persists a deployment before deleting its record.
+	// Provision the actual managed-state owner ONLY for this persisted-record
+	// scenario; the separate never-delivered Coreless cases remain Core-free.
+	if err := registerInstallationForTarget(t, "local"); err != nil {
+		t.Fatal(err)
+	}
 	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "apply")
 	if err != nil {
 		t.Fatal(err)

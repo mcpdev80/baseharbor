@@ -21,6 +21,19 @@ import (
 
 type executorFunc func(context.Context, machine.Operation, machine.OperationContext, json.RawMessage, ProgressReporter) (json.RawMessage, error)
 
+// hasTerminal reports whether history already carries a terminal event
+// (succeeded/failed). The terminal event is emitted synchronously by
+// succeed()/fail() before runExecution returns, so a synchronous candidate has
+// it in history; a backgrounded mutant does not.
+func hasTerminal(history []machine.MachineEvent) bool {
+	for _, ev := range history {
+		if ev.Kind == machine.EventOperationSucceeded || ev.Kind == machine.EventOperationFailed {
+			return true
+		}
+	}
+	return false
+}
+
 func (f executorFunc) SupportedOperationIDs() []string {
 	var ids []string
 	for _, operation := range machine.Operations() {
@@ -115,6 +128,7 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 		t.Fatal("discovery lacks an executable HTTP binding")
 	}
 	request := withTestPrincipal(httptest.NewRequest(executeBinding.Method, executeBinding.Href, body))
+	request.Header.Set("Idempotency-Key", "handler-success")
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusAccepted {
@@ -133,22 +147,35 @@ func TestExecutionProgressResultAndSSEAreStructuredAndSecretSafe(t *testing.T) {
 	}
 
 	var completed machine.Execution
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		binding := discovery.HTTP["execution"]
-		get := withTestPrincipal(httptest.NewRequest(binding.Method, strings.ReplaceAll(binding.Href, "{execution_id}", accepted.ExecutionID), nil))
-		getRec := httptest.NewRecorder()
-		handler.ServeHTTP(getRec, get)
-		if getRec.Code != http.StatusOK {
-			t.Fatalf("execution status = %d body=%s", getRec.Code, getRec.Body.String())
+	acceptedExecutionID := accepted.ExecutionID
+	history, eventsCh, cancel, ok := handler.executions.subscribe(acceptedExecutionID)
+	if !ok {
+		t.Fatal("subscribe failed")
+	}
+	defer cancel()
+	// The terminal state is committed on the 202's tail, so a terminal event is
+	// already present in history; a backgrounded mutant would not signal it
+	// synchronously and this wait would time out. No poll, no sleep.
+	if !hasTerminal(history) {
+		select {
+		case ev := <-eventsCh:
+			if ev.Kind != machine.EventOperationSucceeded && ev.Kind != machine.EventOperationFailed {
+				t.Fatal("unexpected non-terminal event on 202 tail")
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("terminal event not recorded synchronously on 202 tail")
 		}
-		if err := json.Unmarshal(getRec.Body.Bytes(), &completed); err != nil {
-			t.Fatal(err)
-		}
-		if completed.State == machine.ExecutionSucceeded {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	}
+	// Fetch the completed execution to assert on its fields.
+	execBinding := discovery.HTTP["execution"]
+	completedReq := withTestPrincipal(httptest.NewRequest(execBinding.Method, strings.ReplaceAll(execBinding.Href, "{execution_id}", acceptedExecutionID), nil))
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, completedReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("execution status = %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &completed); err != nil {
+		t.Fatal(err)
 	}
 	if completed.State != machine.ExecutionSucceeded {
 		t.Fatalf("execution did not complete: %#v", completed)
@@ -258,6 +285,7 @@ func TestExecutionCannotBeReadByDifferentOperator(t *testing.T) {
 
 	body := strings.NewReader(`{"operation_id":"status","context":{"application":"demo","environment":"prod","target":"prod-eu"}}`)
 	create := withTestPrincipal(httptest.NewRequest(http.MethodPost, "/api/v1/machine/executions", body))
+	create.Header.Set("Idempotency-Key", "handler-cross-actor")
 	createRec := httptest.NewRecorder()
 	handler.ServeHTTP(createRec, create)
 	if createRec.Code != http.StatusAccepted {
