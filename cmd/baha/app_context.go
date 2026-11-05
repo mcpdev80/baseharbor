@@ -143,12 +143,11 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	return resolved, nil
 }
 
-
- // eligibleNeverDeliveredLocalDestroy recognizes only an independently
- // initialized, never-persisted local repository application. It is NOT a Core
- // owner grant: no LoadDeploymentRecord or SaveDeploymentRecord check is bypassed.
- // A foreign/corrupt Core installation and any existing deployment namespace
- // remain fail-closed. A valid one-shot proof is required before discovery.
+// eligibleNeverDeliveredLocalDestroy recognizes only an independently
+// initialized, never-persisted local repository application. It is NOT a Core
+// owner grant: no LoadDeploymentRecord or SaveDeploymentRecord check is bypassed.
+// A foreign/corrupt Core installation and any existing deployment namespace
+// remain fail-closed. A valid one-shot proof is required before discovery.
 func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, targetRoot string, m application.Manifest, command string, ownerErr error) bool {
 	if command != "destroy" || !errors.Is(ownerErr, deployment.ErrDeploymentOwnerMissing) ||
 		target.TenantID != "" || target.AccessProvider != "local" || target.AccessReference != "local" || target.Scope != "local" {
