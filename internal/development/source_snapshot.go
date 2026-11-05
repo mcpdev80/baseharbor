@@ -226,14 +226,12 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		depth := strings.Count(relSlash, "/") + 1
 		if maxDepth > 0 && depth > maxDepth {
-			// A path beyond the allowed depth is a limit violation: fail the
-			// capture rather than silently truncating the snapshot.
+			// A path beyond the allowed depth is a limit violation: fail the capture
+			// rather than silently truncating the snapshot.
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "depth"}
 		}
 
 		if entry.IsDir() {
-			// Default exclusions: VCS metadata and BaseHarbor local state are
-			// never entered. Credential files are regular files, handled below.
 			if isDefaultExcluded(relSlash, entry) {
 				return filepath.SkipDir
 			}
@@ -254,10 +252,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 				return nil
 			}
 			seen[rel] = struct{}{}
-			snap.Files = append(snap.Files, snapshotFile{
-				Rel:             rel,
-				RecordedSymlink: target,
-			})
+			snap.Files = append(snap.Files, snapshotFile{Rel: rel, RecordedSymlink: target})
 			return nil
 		}
 
@@ -271,7 +266,6 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		if isDefaultExcluded(relSlash, entry) {
 			return nil
 		}
-
 		info, err := entry.Info()
 		if err != nil {
 			return err
@@ -283,8 +277,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		if opts.ChangeHook != nil && snap.Captured == 0 {
 			// First regular file read: the walk has made real progress past the
 			// baseline, so a concurrent writer can now mutate a baseline path.
-			// Signal walk-start here so a caller (e.g. the change-during-read
-			// test) can deterministically write INSIDE the walk window.
+			// Signal walk-start here so a caller can deterministically write INSIDE
+			// the walk window.
 			opts.ChangeHook("__walk_started__")
 		}
 		if limitBytes > 0 && snap.TotalBytes+info.Size() > limitBytes {
@@ -304,12 +298,10 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 
 		// EREIGNIS barrier (change-during-read proof): re-stat the path we just read
 		// against its walk-start identity; a divergence observed *during the walk* is
-		// a proven change (not a timing gamble) that aborts the capture. Single extra
-		// stat per regular file (an expected runtime footnote, not a gate break).
+		// a proven change that aborts the capture. One extra stat per file.
 		identity, hadBaseline := before[relSlash]
-		// Fresh stat: entry.Info() returns the walk's own mtime (could never
-		// diverge), so a fresh os.Lstat re-stats the path for the per-file
-		// baseline-vs-current comparison to ever fire.
+		// Fresh stat: entry.Info() returns the walk's own mtime (could never diverge),
+		// so a fresh os.Lstat re-stats the path for the per-file comparison to fire.
 		var nowNano int64
 		if fi, statErr := os.Lstat(filePath); statErr == nil && fi.Mode().IsRegular() {
 			nowNano = fi.ModTime().UnixNano()
