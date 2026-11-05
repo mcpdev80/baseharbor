@@ -44,8 +44,10 @@ func verifiedCoreForTarget(t *testing.T, name string) (coreinstallation.State, s
 			Preflight: func(context.Context, coreinstallation.State) error { return nil },
 			SQL:       func(context.Context, coreinstallation.State) error { return nil },
 			Secrets:   func(context.Context, coreinstallation.State) error { return nil },
-			Identity:  func(context.Context, coreinstallation.State) (string, error) { return "https://identity.localhost:8443/realms/baseharbor", nil },
-			Verify:    func(context.Context, coreinstallation.State) error { return nil },
+			Identity: func(context.Context, coreinstallation.State) (string, error) {
+				return "https://identity.localhost:8443/realms/baseharbor", nil
+			},
+			Verify: func(context.Context, coreinstallation.State) error { return nil },
 		}); err != nil {
 			t.Fatal(err)
 		}
