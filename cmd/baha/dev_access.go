@@ -184,6 +184,15 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 		case errors.Is(readErr, platformopenbao.ErrManagedCredentialNotFound):
 			// First reconciliation imports the existing protected bootstrap
 			// value, after which OpenBao is authoritative.
+			// Device rebind: a fresh device that never reconciled has no managed
+			// object yet. Recover the opt-in local credential and seed the managed
+			// authority exactly once; a local store that is absent fails closed
+			// instead of prompting for or accepting new material.
+			if result, rebindingErr := recoverLocalCredential(ctx, target); rebindingErr != nil {
+				return devaccess.Credentials{}, fmt.Errorf("rebind developer credential authority: %w", rebindingErr)
+			} else if result == devaccess.Unrecovered {
+				return devaccess.Credentials{}, devaccess.ErrNoRecoverableCredential
+			}
 		default:
 			return devaccess.Credentials{}, readErr
 		}
@@ -196,6 +205,81 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 		return devaccess.Credentials{}, err
 	}
 	return candidate, nil
+}
+
+// recoverLocalCredential performs the device-rebind recovery for a target using
+// the opt-in local developer credential authority. A fresh device that never
+// reconciled has no managed object yet; the local credential seeds the managed
+// authority exactly once. When neither the local store nor a managed object is
+// present the rebind fails closed (Unrecovered, no prompt, no material).
+func recoverLocalCredential(ctx context.Context, target string) (devaccess.RecoveryResult, error) {
+	recovery := devaccess.Recovery{
+		Managed: openBaoManagedAuthorityChecker{},
+		Store:   openBaoManagedCredentialStore{},
+	}
+	return recovery.Recover(ctx, target)
+}
+
+// openBaoManagedAuthorityChecker reports whether a managed-secret object already
+// exists for a target. It wires the existing OpenBao authority, never a new one.
+type openBaoManagedAuthorityChecker struct{}
+
+func (openBaoManagedAuthorityChecker) Exists(ctx context.Context, target string) (bool, error) {
+	compose, files, err := openBaoRuntime(ctx)
+	if err != nil {
+		// Before the managed secret provider exists there is no managed object.
+		return false, nil
+	}
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return false, fmt.Errorf("inspect managed credential authority: %w", err)
+	}
+	if !state.Initialized || state.Sealed {
+		return false, nil
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(target)))
+	ref := "targets/" + hex.EncodeToString(sum[:12]) + "/human/dev-management"
+	_, readErr := platformopenbao.GetManagedCredential(ctx, compose, files, ref)
+	switch {
+	case readErr == nil:
+		return true, nil
+	case errors.Is(readErr, platformopenbao.ErrManagedCredentialNotFound):
+		return false, nil
+	default:
+		return false, fmt.Errorf("inspect managed credential for rebind: %w", readErr)
+	}
+}
+
+// openBaoManagedCredentialStore seeds the managed authority once from the local
+// opt-in credential. It wires the existing SetManagedCredential path, never a
+// new secret store.
+type openBaoManagedCredentialStore struct{}
+
+func (openBaoManagedCredentialStore) Persist(ctx context.Context, target, username, password string) error {
+	compose, files, err := openBaoRuntime(ctx)
+	if err != nil {
+		return fmt.Errorf("seed managed credential authority: %w", err)
+	}
+	state, err := platformopenbao.Inspect(ctx, compose, files)
+	if err != nil {
+		return fmt.Errorf("inspect managed credential authority: %w", err)
+	}
+	if !state.Initialized || state.Sealed {
+		return errors.New("managed credential authority is not available; developer credential was not changed")
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(target)))
+	ref := "targets/" + hex.EncodeToString(sum[:12]) + "/human/dev-management"
+	data, err := json.Marshal(struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}{Username: username, Password: password})
+	if err != nil {
+		return fmt.Errorf("encode developer credential for managed storage: %w", err)
+	}
+	if err := platformopenbao.SetManagedCredential(ctx, compose, files, ref, data); err != nil {
+		return fmt.Errorf("seed managed credential authority: %w", err)
+	}
+	return nil
 }
 
 func ensureAuthoritativeDeveloperCredentials(ctx context.Context, target, environment string) (devaccess.Credentials, error) {
