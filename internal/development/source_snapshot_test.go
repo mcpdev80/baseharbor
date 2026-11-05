@@ -238,6 +238,16 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	}()
 	<-done
 
+	// The writer reports a hook-miss through a named sentinel, not a goroutine
+	// t.Fatalf (vet forbids that). Surface it here on the test goroutine. Only
+	// the hook-disabled mutant sends here; a successful observation leaves the
+	// channel empty, so a non-blocking drain.
+	select {
+	case err := <-snapshotErr:
+		t.Fatal(err)
+	default:
+	}
+
 	if captureErr == nil {
 		t.Fatal("expected change-during-read guard to abort the capture")
 	}
@@ -249,6 +259,11 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 // blocking on <-observed is the determinism proof: if the guard's hook never
 // fires on the mutated path (e.g. the hook seam is removed), this goroutine
 // hangs and the test fails instead of passing by luck.
+//
+// The wait is bounded by the test-local deadline: if the hook never fires the
+// writer signals failure via a named sentinel error (errSnapshotHookDidNotFire),
+// which the main test goroutine reports with a fatal message inside the local
+// bound — never the generic 10-minute test timeout.
 func writer(t *testing.T, root string, startWalk, observed chan struct{}, done chan struct{}) {
 	defer close(done)
 	<-startWalk
@@ -258,9 +273,31 @@ func writer(t *testing.T, root string, startWalk, observed chan struct{}, done c
 		t.Errorf("chtimes: %v", err)
 		return
 	}
-	// Block until the walk's change hook observes the mutation.
-	<-observed
+	// Block until the walk's change hook observes the mutation, but never past
+	// the test-local bound. A hook-less mutant here fails fast with a named
+	// sentinel error instead of hanging until the generic test timeout.
+	select {
+	case <-observed:
+	case <-time.After(testLocalBound):
+		snapshotErr <- errSnapshotHookDidNotFire
+	}
 }
+
+// errSnapshotHookDidNotFire is the named sentinel a hook-disabled mutant
+// produces: the change-during-read hook never fired on the mutated path within
+// the test-local bound. The main test goroutine reports it with a fatal message
+// so the mutant fails fast inside the bound, not by generic timeout.
+var errSnapshotHookDidNotFire = errors.New("change-during-read hook never fired within the local bound")
+
+// snapshotErr carries the writer's failure (if any) back to the main test
+// goroutine, which owns all t.Fatal/t.Fatalf calls.
+var snapshotErr = make(chan error, 1)
+
+// testLocalBound is the test-local deadline for the change-during-read hook
+// observation. It is short and explicit so a hook-disabled mutant fails fast
+// with a named error rather than blocking until the generic 10-minute test
+// timeout (which must never again be the only red signal this round).
+const testLocalBound = 5 * time.Second
 
 // The during-read guard does not abort a tree that stays still mid-walk.
 func TestSourceSnapshotNoGuardAbortWhenQuiet(t *testing.T) {
