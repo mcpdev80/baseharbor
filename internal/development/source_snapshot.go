@@ -289,8 +289,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		if opts.ChangeHook != nil && snap.Captured == 0 {
 			// First regular file read: the walk has made real progress past the
-			// baseline, so a concurrent writer can now mutate a baseline path.
-			// Signal walk-start here so a caller can deterministically write INSIDE
+			// baseline so a concurrent writer can now mutate a baseline path.
+			// Signal walk-start so a caller can deterministically write INSIDE
 			// the walk window.
 			opts.ChangeHook("__walk_started__")
 		}
@@ -309,12 +309,11 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		seen[relSlash] = struct{}{}
 
-		// EREIGNIS barrier (change-during-read proof): re-stat the path we just read
-		// against its walk-start identity; a divergence observed *during the walk* is
-		// a proven change that aborts the capture. One extra stat per file.
+		// EREIGNIS barrier (change-during-read proof): re-stat the path just read
+		// against its walk-start identity; a divergence during the walk aborts.
 		identity, hadBaseline := before[relSlash]
-		// Fresh stat: entry.Info() returns the walk's own mtime (could never diverge),
-		// so a fresh os.Lstat re-stats the path for the per-file comparison to fire.
+		// Fresh stat: entry.Info() returns the walk's own mtime (could never
+		// diverge), so a fresh os.Lstat re-stats the path for comparison.
 		var nowNano int64
 		if fi, statErr := os.Lstat(filePath); statErr == nil && fi.Mode().IsRegular() {
 			nowNano = fi.ModTime().UnixNano()
@@ -323,13 +322,11 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			if opts.ChangeHook != nil {
 				opts.ChangeHook(relSlash)
 			}
-			// Write-ACK barrier (this round): fire the synchronous MutationAcked
-			// seam right after the divergence is observed, before the walk may
-			// proceed past this consumed-path event. A test that signalled its own
-			// mutation on this exact path observes the acknowledgement here and can
-			// prove the mutation actually landed before the walk continued. A nil
-			// ack (production) drops the signal, so the capture's public behavior
-			// is unchanged.
+			// Write-ACK seam (round 6): fire MutationAcked synchronously after
+			// the divergence is observed, before the walk may proceed past this
+			// consumed-path event. A test that signalled its own mutation on this
+			// path observes the acknowledgement and proves the mutation landed
+			// before the walk continued. A nil ack (production) drops the signal.
 			if opts.MutationAcked != nil {
 				opts.MutationAcked(relSlash)
 			}
@@ -337,10 +334,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 
 		// Announce this baseline path read past its per-file barrier (once per
-		// path): the hook fires "__path_read_<rel>" so the late-mutation
-		// regression can deterministically wait until a file is already visited
-		// before mutating it — the in-walk barrier then can't see the mutation,
-		// so only the post-walk final sweep (Layer 2) catches it.
+		// path): the "__path_read_<rel>" event lets the late-mutation test wait
+		// until the file is visited before mutating it.
 		signalConsumedPath(consumedPaths, opts.ChangeHook, relSlash)
 
 		snap.Files = append(snap.Files, snapshotFile{
@@ -356,9 +351,9 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		return SourceSnapshot{}, walkErr
 	}
 
-	// Change-during-read guard, defense in depth: Layer 1 is the in-walk
-	// EREIGNIS barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline
-	// path after the walk so a late mutation cannot slip past. Both layers present.
+	// Change-during-read guard, defense in depth: Layer 1 is the in-walk EREIGNIS
+	// barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline path after
+	// the walk so a late mutation cannot slip past. Both layers present.
 	if err := verifyFinalBaseline(opts.Source, root, before, opts.MutationAcked); err != nil {
 		return SourceSnapshot{}, err
 	}
@@ -367,12 +362,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 }
 
 // verifyFinalBaseline is Layer 2 of the change-during-read guard (defense in
-// depth). The in-walk EREIGNIS barrier (Layer 1) fires on the first divergence
-// it observes during the walk, but a writer may modify an already-visited path
-// while the walk is still processing later files; this post-walk sweep over
-// every recorded baseline path closes that gap and is the production guard that
-// must be present for a successful return. Extracted into its own function so
-// CaptureSource stays within the readability function-span limit.
+// depth): a post-walk sweep over every recorded baseline path so a late
+// mutation cannot slip past the in-walk EREIGNIS barrier (Layer 1).
 func verifyFinalBaseline(source, root string, before map[string]int64, MutationAcked func(string)) error {
 	for baselineFile, baselineTime := range before {
 		if after, ok := treeFileModTime(root, baselineFile); ok && after != baselineTime {
