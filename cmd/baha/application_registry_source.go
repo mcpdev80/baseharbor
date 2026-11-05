@@ -182,26 +182,48 @@ var registrySourceExec ExecFunc = execArtifact
 
 // resolveRegistrySourceImpl is the production resolveRegistrySource.
 func resolveRegistrySourceImpl(ctx context.Context, location, requested string) (string, error) {
-	location = strings.TrimSpace(location)
+	// The configured endpoint (e.g. BASEHARBOR_RUNTIME_IMAGE) already carries a
+	// tag, so strip it to a bare repository and let the caller's requested
+	// channel select the tag; an empty requested keeps the location's own tag.
+	repository, tag := splitReference(location)
 	if location == "" {
 		return "", ErrRegistrySourceEmpty
 	}
-	requested = strings.TrimSpace(requested)
 	if requested == "" {
-		requested = "latest"
+		if tag != "" {
+			requested = tag
+		} else {
+			requested = "latest"
+		}
 	}
 	identity, err := (RegistrySource{
 		Kind:      SourceOCIAddressed,
-		Location:  location,
+		Location:  repository,
 		Requested: requested,
 		Exec:      registrySourceExec,
 	}).Resolve(ctx)
 	if err != nil {
-		// Best-effort: surface no usable digest, fall back to the tag so a
-		// mutable development image still pulls through the native tool.
-		return location + ":" + requested, nil
+		// Best-effort: surface no usable digest, fall back to the location as
+		// given so a mutable development image still pulls through the native
+		// tool with its original reference.
+		return location, nil
 	}
 	return identity.ImmutableIdentity(), nil
+}
+
+// splitReference separates a repository reference into its bare repository and
+// trailing tag. A reference without a tag returns an empty tag.
+func splitReference(reference string) (repository, tag string) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return "", ""
+	}
+	slash := strings.LastIndex(reference, "/")
+	colon := strings.LastIndex(reference, ":")
+	if colon > slash && !strings.Contains(reference[colon:], "@") {
+		return reference[:colon], reference[colon+1:]
+	}
+	return reference, ""
 }
 
 // pullResolvedRuntimeImage is the single pull site (cmd/baha/app_broker.go) that
