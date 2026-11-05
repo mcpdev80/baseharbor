@@ -28,6 +28,7 @@ func remoteDeploymentFixture(t *testing.T) DeploymentRecord {
 
 func TestRemoteProjectDeploymentRoundTripAndCorruption(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	provisionOwnerForTarget(t, "node-target")
 	record := remoteDeploymentFixture(t)
 	if err := SaveDeploymentRecord(record); err != nil {
 		t.Fatal(err)

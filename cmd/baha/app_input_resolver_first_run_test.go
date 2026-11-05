@@ -126,7 +126,7 @@ func TestRepositoryRuntimeInitRequiresCurrentClaimMembershipBeforeStateMutation(
 
 func prepareRepositoryRuntimeInitFirstRun(t *testing.T) (deployment.ResolvedTarget, string, application.Manifest, resolvedApplication) {
 	t.Helper()
-	target := configureTestTarget(t)
+	target := configureTestTargetWithOwner(t)
 	repo := t.TempDir()
 	manifest := application.Manifest{
 		Version:       application.CurrentVersion,

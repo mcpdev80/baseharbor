@@ -247,10 +247,41 @@ func mustTargetRoot(t *testing.T, target deployment.ResolvedTarget) string {
 func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 	for _, artifact := range []string{"", "compose.yaml", "runtime.env", "topology.json", "installation.json", "pki"} {
 		t.Run("artifact="+artifact, func(t *testing.T) {
-			target := configureTestTarget(t)
+			// This test models a genuinely uninstalled Target. The shared
+			// docker-dev name can have real orphaned runtime resources from
+			// unrelated lifecycle tests on the same runner; the production
+			// Doctor must classify those as incomplete, not not-deployed.
+			configureTestTargetEmpty(t)
+			cfg, err := deployment.LoadConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			definition := cfg.Targets[cfg.DefaultTarget]
+			delete(cfg.Targets, cfg.DefaultTarget)
+			cfg.DefaultTarget = "doctor-undeployed"
+			cfg.Targets[cfg.DefaultTarget] = definition
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			target, err := cfg.ResolveTarget("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
 			root, err := targetRuntimeStateRoot(target)
 			if err != nil {
 				t.Fatal(err)
+			}
+			// configureTestTarget seeds a bare authoritative Core so managed
+			// deployments have an owner; but the artifact="" probe must observe a
+			// genuinely NOT-DEPLOYED Target (empty runtime), so drop the seed's
+			// bare installation before the not-deployed/incomplete boundary check.
+			if artifact == "" {
+				// No installed Core means no residual Core or Docker binding
+				// fixture artifacts whatsoever; the complete absence is what
+				// distinguishes not-deployed from partial installation.
+				if err := os.RemoveAll(root); err != nil {
+					t.Fatalf("clear seeded Core fixture for not-deployed case: %v", err)
+				}
 			}
 			if artifact != "" {
 				if err := os.MkdirAll(root, 0700); err != nil {

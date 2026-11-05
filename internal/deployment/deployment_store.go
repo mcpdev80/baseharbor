@@ -10,12 +10,149 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/stableid"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
 const DeploymentRecordVersion = 2
+
+// ErrDeploymentOwnerMissing is returned when the selected Target has no
+// authoritative Core installation to own its deployment state. A deployment is
+// only loadable when a single installation governs that Target; there is no
+// second local owner and no reconciliation with a cached copy.
+var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative installation owner for its Target; the installation must be restored before its state is loadable")
+
+// ErrDeploymentOwnerForeign is returned when the Core installation under a
+// Target does not own the deployment state directory it addresses. A foreign or
+// rewritten installation cannot claim a deployment it never owned; the record
+// identity is preserved and the mismatch is rejected, never adopted.
+var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
+
+// verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
+// production read/write path in this package. It derives the Target's runtime
+// root (targets/<target>/runtime) from the canonical data layout and delegates
+// to the exported VerifyDeploymentOwner, so the authoritative check runs at the
+// storage seam and cannot be bypassed by a caller that only holds an identity.
+//
+// Tenant-managed targets are Coreless by design; the check is resolved through
+// the same VerifyDeploymentOwner path and fails closed unless an authorized
+// tenant owner path is established by the governing contract.
+func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
+	if err := ValidateTargetName(targetName); err != nil {
+		return err
+	}
+	targetRoot, err := TargetStateRoot(targetName)
+	if err != nil {
+		return err
+	}
+	return VerifyDeploymentOwner(targetName, filepath.Join(targetRoot, "runtime"), deploymentID)
+}
+
+// VerifyDeploymentOwner enforces the one-installation-owner rule for deployment
+// state. It loads the Core installation that governs targetRoot (the runtime
+// root of the selected Target) and proves that installation owns the Target's
+// deployment namespace.
+//
+// The deployment record identity is intentionally untouched: a deployment is
+// keyed by its own UUID plus Target, and its record identity is never rewritten
+// to carry the installation. Ownership is proven at the storage path, not by
+// embedding an installation reference. A missing installation fails closed; a
+// foreign installation (one whose durable identity does not own this Target)
+// fails closed and preserves the existing record identity. The deployment
+// directory itself need not pre-exist: first-run init creates it under the owner,
+// so absence of the directory is not itself a missing-owner condition.
+//
+// Durable identity binding of a deployment to the owner installation's
+// installation.ID is intentionally out of scope for this seam: the storage
+// owner is proven here at the Target's runtime root. The durable
+// installation.ID binding that closes copied/rewritten-identity attacks is
+// provided by the authority contract (follow-up), not invented by this layer.
+//
+// Tenant-managed targets are Coreless by design: they have no single Core
+// installation to own the deployment, so the one-installation-owner binding
+// does not apply. A tenant target is authorized only through the consumer-
+// provided tenantOwnerResolver, which routes access to its genuine authorized
+// installation owner (for example a validated remote project binding). The
+// resolver defaults to fail-closed, so no tenant target is admitted without an
+// explicit authorized path.
+var TenantOwnerResolver func(targetName string) (bool, error)
+
+func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
+	if TenantOwnerResolver != nil {
+		// Grant-only hook: only an affirmative (true, nil) authorizes the
+		// (Coreless) tenant target through this path. Any other result —
+		// (false, nil), (false, err), or (true, err) — means the hook did not
+		// authorize access, so resolution falls through to the standard
+		// single-installation-owner verification below. A resolver that does not
+		// grant can never bypass that check: it is never an early return and
+		// never a foreign-installation shortcut in the !authorized branch.
+		authorized, resolveErr := TenantOwnerResolver(targetName)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if authorized {
+			// The consumer has established a genuine authorized-owner path for
+			// this (Coreless) tenant target; the single-installation-owner
+			// requirement does not apply.
+			return nil
+		}
+		// Not granted by the hook: fall through to the authoritative
+		// coreinstallation.Load owner check instead of returning early.
+	}
+	installation, err := coreinstallation.Load(targetRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return ErrDeploymentOwnerMissing
+		}
+		// An invalid/foreign installation.json is not an owner either.
+		return ErrDeploymentOwnerForeign
+	}
+	_ = installation
+	// The deployment namespace is targets/<target>/deployments. The deployment
+	// directory's Target (the segment under targets/) must match the
+	// installation's own Target; a distinct Target is a foreign owner and is
+	// rejected before any deployment under it is read or written.
+	deploymentDir, dirErr := deploymentDirForTarget(targetName)
+	if dirErr == nil {
+		if deploymentTarget, found := deploymentTargetFromDir(deploymentDir); found && deploymentTarget != "" && strings.TrimSpace(deploymentTarget) != strings.TrimSpace(installation.Spec.Target) {
+			return ErrDeploymentOwnerForeign
+		}
+		// A pre-existing deployment directory must be a real, protected dir, not
+		// a symlinked escape. Missing is acceptable (first-run); a broken or
+		// symlinked path is foreign.
+		if info, statErr := os.Lstat(deploymentDir); statErr == nil {
+			if info.IsDir() == false || info.Mode()&os.ModeSymlink != 0 {
+				return ErrDeploymentOwnerForeign
+			}
+		}
+	}
+	_ = deploymentID
+	return nil
+}
+
+// deploymentDirForTarget resolves the deployments namespace of a Target
+// (targets/<target>/deployments) via the canonical layout.
+func deploymentDirForTarget(targetName string) (string, error) {
+	targetRoot, err := TargetStateRoot(targetName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(targetRoot, "deployments"), nil
+}
+
+// deploymentTargetFromDir extracts the Target segment (targets/<target>/...)
+// from a deployment directory path, if the conventional layout is present.
+func deploymentTargetFromDir(deploymentDir string) (string, bool) {
+	segments := strings.Split(filepath.Clean(deploymentDir), string(filepath.Separator))
+	for i := len(segments) - 1; i >= 0; i-- {
+		if segments[i] == "targets" && i+1 < len(segments) {
+			return segments[i+1], true
+		}
+	}
+	return "", false
+}
 
 // testHookAfterGuardRead is a package-internal test seam (production path keeps
 // it nil, so no behaviour changes): it fires inside SaveDeploymentRecord exactly
@@ -190,6 +327,16 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := record.Applied.Delivery.Validate(); err != nil {
 		return fmt.Errorf("invalid delivery selection: %w", err)
 	}
+	if err := validateRemoteProject(record); err != nil {
+		return err
+	}
+	// Authoritative ownership is enforced on the production write seam before any
+	// directory is created or any record is written: a missing or foreign
+	// installation fails closed and nothing is mutated. A tenant target is
+	// admitted only through the consumer-provided tenantOwnerResolver hook.
+	if err := verifyDeploymentOwnerAtSeam(record.Identity.Target, record.Identity.DeploymentID); err != nil {
+		return &DeploymentRecordStateError{Identity: record.Identity, Kind: "missing", Err: err}
+	}
 	root, err := DeploymentRoot(record.Identity)
 	if err != nil {
 		return err
@@ -283,9 +430,8 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if len(record.DesiredProviderPreferences) > 0 && (!json.Valid(record.DesiredProviderPreferences) || strings.TrimSpace(string(record.DesiredProviderPreferences))[0] != '[') {
 		return errors.New("desired provider preferences must be a JSON array")
 	}
-	// Consume initialization provenance BEFORE a deployment can be persisted.
-	// If deployment.json is lost later, its absence must never be misread as
-	// proof that this application has never created runtime resources.
+	// Consume initialization provenance before a deployment can be persisted:
+	// a lost deployment.json must not look like a never-deployed application.
 	if err := ConsumeNeverDeliveredProof(record.Identity); err != nil {
 		return fmt.Errorf("invalidate never-delivered provenance: %w", err)
 	}
@@ -317,6 +463,9 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 }
 
 func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
+	if err := verifyDeploymentOwnerAtSeam(id.Target, id.DeploymentID); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "missing", Err: err}
+	}
 	root, err := DeploymentRoot(id)
 	if err != nil {
 		return DeploymentRecord{}, err
@@ -505,6 +654,18 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 		}
 		deploymentID := entry.Name()
 		path := filepath.Join(root, deploymentID, "deployment.json")
+		// Authoritative ownership is enforced on the listing seam as well: each
+		// deployment directory is verified against the Target's Core installation
+		// before its record is read. Fail-closed on unavailable owner, unless a
+		// best-effort listing is requested, in which case the mismatch surfaces
+		// as a per-target warning rather than aborting the whole list.
+		if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
+			if bestEffort {
+				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: "missing", Err: err})
+				continue
+			}
+			return nil, nil, err
+		}
 		record, err := loadDeploymentRecordFile(target, deploymentID, path, nil)
 		if err != nil {
 			if bestEffort {

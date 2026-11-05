@@ -19,6 +19,9 @@ func TestReviewerRetainsPreferences(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
@@ -68,6 +71,9 @@ func TestNilRetentionDifferentOwnerRejected(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
@@ -111,6 +117,9 @@ func TestExplicitEmptyArrayReplaced(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
@@ -155,6 +164,9 @@ func TestInvalidPreferencesRejected(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	bad := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
@@ -176,6 +188,9 @@ func TestForgedOwnerBypassStillHolds(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -229,6 +244,9 @@ func TestCallerConflictNotTrusted(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -262,6 +280,9 @@ func TestPreviousConflictStillFailsClosed(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:  DeploymentRecordVersion,
@@ -304,6 +325,9 @@ func TestRetentionPreviousInvalidSelectionFailsClosed(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
@@ -353,6 +377,9 @@ func byteStabilityFixture(t *testing.T) (id DeploymentIdentity, path string) {
 	id = testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner for this target AFTER env setup
+	// so the deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
 		Identity:                   id,
@@ -540,6 +567,9 @@ func TestRetentionFirstSaveWithoutPreviousAllowed(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	if err := SaveDeploymentRecord(nilSave(id)); err != nil {
 		t.Fatalf("first save without previous must be allowed, got %v", err)
@@ -585,6 +615,9 @@ func TestRetentionPreviousInvalidRemoteProjectFailsClosed(t *testing.T) {
 	id := testDeploymentIdentity(t, "first", "app-a", "prod")
 	stateDir := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", stateDir)
+	// Seed a genuine authoritative Core owner AFTER env setup so the
+	// deployment-owner seam resolves it from the test's temp data root.
+	seedManagedTargetOwner(t, id.Target)
 
 	seed := DeploymentRecord{
 		Version:                    DeploymentRecordVersion,
