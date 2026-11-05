@@ -96,7 +96,14 @@ func (s ConnectionSelection) Resolve(
 	}
 	// 3. Verify the management connection through the single production
 	// boundary: liveness + identity + foreign/revoked rejection. A missing
-	// connection fails closed before any effect.
-	observedState := ObservedState{Installation: s.InstallationID, Target: s.TargetID}
+	// connection fails closed before any effect. The observation time the
+	// resolver supplies (observed.ObservedAt) threads into the single freshness
+	// policy: a missing observation is not authoritative, so a resolver that
+	// returns no live observation fails closed here before any effect.
+	observedState := ObservedState{
+		Installation: s.InstallationID,
+		Target:       s.TargetID,
+		ObservedAt:   observed.ObservedAt,
+	}
 	return observedState.AuthoritativeConnection(ctx, issuer, observed, authoritativeConnection)
 }

@@ -255,6 +255,14 @@ func targetCommand() *cli.Command {
 					if _, ok := cfg.Targets[args[0]]; !ok && args[0] != "local" {
 						return machine.NewError(machine.ErrorNotFound, fmt.Sprintf("target %q is not configured", args[0]), "Run baha target list to choose an existing deployment Target.", false)
 					}
+					// Bind the explicit selection through the single production
+					// management-connection boundary BEFORE persisting: a Target
+					// without a verified management connection fails closed and
+					// persists no selection. Explicit selection wins
+					// deterministically over any context-derived connection.
+					if err := bindExplicitSelectionToConnection(ctx, args[0]); err != nil {
+						return err
+					}
 					if err := writePersistedTarget(args[0]); err != nil {
 						return err
 					}
@@ -547,6 +555,19 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 
 func targetRuntimeStateRoot(target deployment.ResolvedTarget) (string, error) {
 	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "runtime"), nil
+}
+
+// targetRuntimeStateRootByName resolves the Core installation runtime root for a
+// Target name (deployment.TargetStateRoot/<name>/runtime): the exact root the
+// reading resolver coreinstallation.ResolverForTargetSelection loads. It backs
+// cmd/baha/use_target.go bindExplicitSelectionToConnection, which binds the
+// explicit selection through the management-connection boundary before persisting.
+func targetRuntimeStateRootByName(name string) (string, error) {
+	root, err := deployment.TargetStateRoot(name)
 	if err != nil {
 		return "", err
 	}
