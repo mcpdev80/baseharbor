@@ -259,8 +259,10 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 	// must not drop the intended (desired) or prior observed dimension. Load the
 	// existing record, update only the applied dimension, and save the merged
 	// map so the three dimensions stay independent through the real lifecycle.
+	// On the first apply there is no prior record yet: the missing-file error is
+	// expected, so start from an empty map instead of aborting the write.
 	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
-	if loadErr != nil {
+	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return loadErr
 	}
 	if existing.References == nil {
@@ -304,7 +306,7 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 	// the applied reference when the runtime reports none), and save the merged
 	// map so all three dimensions remain independent.
 	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
-	if loadErr != nil {
+	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
 		return loadErr
 	}
 	if existing.References == nil {
