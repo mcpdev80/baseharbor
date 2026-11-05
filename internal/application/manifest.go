@@ -33,6 +33,11 @@ type Manifest struct {
 	HA                bool
 	Availability      map[string]availability.Override
 	Consumes          []ConsumptionRequirement
+	// Private selects an application-scoped backend (own SQL + own key/value in
+	// their own network) instead of the shared environment bridge. It is a
+	// single, explicit opt-in switch: when false (the default) the existing
+	// shared-bridge behavior is unchanged. See provider_placement.go.
+	Private bool
 }
 
 type RuntimeRequirements struct {
@@ -177,6 +182,17 @@ func WithHA(m Manifest, enabled bool) Manifest {
 	m.HA = enabled
 	return m
 }
+
+// WithPrivate marks the manifest for an application-scoped ("private") backend:
+// own SQL + own key/value in their own network, without touching the shared
+// environment bridge. This is the single documented private-mode switch.
+func WithPrivate(m Manifest, enabled bool) Manifest {
+	m.Private = enabled
+	return m
+}
+
+// HasPrivate reports whether the manifest requests the private backend switch.
+func HasPrivate(m Manifest) bool { return m.Private }
 
 func WithAvailabilityOverride(m Manifest, component string, ha *bool, instances int) Manifest {
 	if m.Availability == nil {
