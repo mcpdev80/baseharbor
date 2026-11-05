@@ -260,7 +260,9 @@ func TestDoctorNotDeployedVersusIncomplete(t *testing.T) {
 				if entries, rerr := os.ReadDir(root); rerr == nil {
 					for _, e := range entries {
 						if e.Name() != "docker-engine.json" {
-							_ = os.Remove(filepath.Join(root, e.Name()))
+							if err := os.RemoveAll(filepath.Join(root, e.Name())); err != nil {
+								t.Fatalf("remove Core fixture artifact %s: %v", e.Name(), err)
+							}
 						}
 					}
 				}
