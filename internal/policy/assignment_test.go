@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
@@ -124,5 +125,73 @@ func TestResolveAggregatePreservesMandatoryDeny(t *testing.T) {
 	foreign := Finding{Code: "access-profile", Subject: "readers", Scope: "profile", Decision: Deny, Source: SourceDefault, Message: "foreign tenant"}
 	if got := ResolveFinding([]Finding{allowFinding}, foreign); got != Deny {
 		t.Fatalf("aggregate must be Deny when a mandatory foreign-tenant Deny is present, got %v", got)
+	}
+}
+
+// TestResolveAllOwnsRealProfileProvesProductionConnection proves the production
+// adapter path contributes a REAL profile finding to the aggregate — it does
+// not build an empty manager, does not use the organization name as a profile
+// name, does not hardcode an operation, and does not discard an adapter error.
+// A configured owned profile that assigns the resolved operation folds Allow
+// into the aggregate; an unknown profile, a foreign tenant, or an unassigned
+// operation all fold Deny.
+func TestResolveAllOwnsRealProfileProvesProductionConnection(t *testing.T) {
+	m := orgconfig.NewManager("install-acme")
+	if _, err := m.Create(orgconfig.Profile{Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead, orgconfig.OpChange)}, false); err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	// Owned profile + assigned operation -> Allow folds into the aggregate.
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return orgconfig.OpRead, nil },
+		func() (orgconfig.ActiveState, error) {
+			return orgconfig.ActiveState{Config: orgconfig.Config{Organization: "install-acme", Profiles: map[string]orgconfig.Profile{"readers": {Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)}}}}, nil
+		}); got != Allow {
+		t.Fatalf("owned assigned operation must fold Allow into the aggregate, got %v", got)
+	}
+
+	// Owned profile + UNASSIGNED operation -> Deny folds into the aggregate.
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return orgconfig.OpAdmin, nil },
+		func() (orgconfig.ActiveState, error) {
+			return orgconfig.ActiveState{Config: orgconfig.Config{Organization: "install-acme", Profiles: map[string]orgconfig.Profile{"readers": {Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)}}}}, nil
+		}); got != Deny {
+		t.Fatalf("unassigned operation must fold Deny into the aggregate, got %v", got)
+	}
+
+	// Unknown profile -> adapter error folds Deny, never silently dropped.
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return orgconfig.OpRead, nil },
+		func() (orgconfig.ActiveState, error) {
+			return orgconfig.ActiveState{Config: orgconfig.Config{Organization: "install-acme", Profiles: map[string]orgconfig.Profile{}}}, nil
+		}); got != Deny {
+		t.Fatalf("unknown profile must fold Deny into the aggregate, got %v", got)
+	}
+}
+
+// TestResolveAllFailsClosedWithoutConcreteOperation proves ResolveAll folds to
+// Deny when no concrete machine operation is bound (the production path cannot
+// positively assign) and folds Allow through only a real owned assignment. This
+// pins the fail-closed production contract without a live disk LoadActive.
+func TestResolveAllFailsClosedWithoutConcreteOperation(t *testing.T) {
+	// No operation bound -> fail closed (Deny), never default Allow.
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return "", ErrNoConcreteOperation },
+		func() (orgconfig.ActiveState, error) { return orgconfig.ActiveState{}, nil }); got != Deny {
+		t.Fatalf("no operation bound must fold Deny, got %v", got)
+	}
+
+	// Adapter error on resolve -> fail closed (Deny).
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return orgconfig.OpRead, errors.New("resolve failed") },
+		func() (orgconfig.ActiveState, error) { return orgconfig.ActiveState{}, nil }); got != Deny {
+		t.Fatalf("adapter error must fold Deny, got %v", got)
+	}
+
+	// No active organization -> fail closed (Deny).
+	if got := ResolveAll(nil,
+		func(Finding) (orgconfig.Operation, error) { return orgconfig.OpRead, nil },
+		func() (orgconfig.ActiveState, error) { return orgconfig.ActiveState{}, errors.New("not configured") }); got != Deny {
+		t.Fatalf("no active organization must fold Deny, got %v", got)
 	}
 }

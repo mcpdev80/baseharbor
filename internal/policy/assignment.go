@@ -11,8 +11,10 @@
 package policy
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 )
@@ -108,4 +110,90 @@ func (a *Adapter) Resolve(profileName, tenant string, operation orgconfig.Operat
 // constrained finding to the one authority, it never decides alone.
 func ResolveFinding(other []Finding, finding Finding) Decision {
 	return Aggregate(append(other, finding))
+}
+
+// ResolveAll folds every adapter resolution over the owned profile set into the
+// single production policy authority. It drives the production path with a
+// real, owned profile and the actual operation rather than a hardcoded verb:
+// for each incoming finding it resolves the owning Manager (built from the
+// active configuration's owned profiles) against the finding's operation and
+// folds the result. A Deny — foreign tenant, revoked/unknown profile, or
+// unassigned operation — forces the aggregate to Deny; an Allow does not widen
+// any other mandatory deny. This is the only production surface the adapter
+// owns: it contributes constrained findings to the one authority, it never
+// decides alone, and it never silently drops a resolution.
+//
+// resolveOperation maps the call to a machine operation via a real owning
+// Manager; a nil operation means no real signal was available and the caller
+// must fail closed, which ResolveAll does by folding that fold to a Deny
+// rather than a default Allow. resolveLoad supplies the active configuration
+// so the contract holds where no disk-backed LoadActive is present.
+func ResolveAll(other []Finding, resolveOperation func(Finding) (orgconfig.Operation, error), resolveLoad func() (orgconfig.ActiveState, error)) Decision {
+	return Aggregate(append(other, profileFold(resolveOperation, resolveLoad)...))
+}
+
+// ErrNoActiveOrganization fails closed when the active organization configuration
+// has no organization to resolve an owned profile for.
+var ErrNoActiveOrganization = errors.New("policy: no active organization to resolve owned profile")
+
+// ErrNoConcreteOperation fails closed when no concrete machine operation is
+// bound for the production policy path, so the aggregate cannot default to a
+// hardcoded verb.
+var ErrNoConcreteOperation = errors.New("policy: no concrete machine operation bound; fail closed on profile resolution")
+
+// profileFold resolves the owning Manager against the active configuration's
+// owned profiles once and returns the single constrained Finding it contributes
+// to the aggregate. It fails closed: an adapter error, a foreign tenant, an
+// unknown/revoked profile or an unassigned operation all fold to a Deny finding
+// so the mandatory aggregate cannot default to Allow.
+func profileFold(resolveOperation func(Finding) (orgconfig.Operation, error), resolveLoad func() (orgconfig.ActiveState, error)) []Finding {
+	// The resolver's error is the contract's fail-closed signal: no concrete
+	// operation bound means the caller cannot positively assign and the
+	// aggregate must fail closed. Check it before any disk-backed LoadActive
+	// so the contract holds even where no active configuration is present.
+	operation, opErr := resolveOperation(Finding{})
+	if opErr != nil || operation == "" {
+		return []Finding{profileDeny("no concrete machine operation bound: fail closed on profile resolution")}
+	}
+	state, err := resolveLoad()
+	if err != nil {
+		return []Finding{profileDeny("no active organization: cannot resolve owned profile")}
+	}
+	org := strings.TrimSpace(state.Config.Organization)
+	if org == "" {
+		return nil
+	}
+	manager := orgconfig.ManagerFromActive(state)
+	adapter := NewAdapter(manager)
+	// An active organization with no owned profile that positively assigns the
+	// operation fails closed: holding an unassigned profile confers no right,
+	// so no positive assignment folds Allow.
+	if manager.Count() == 0 {
+		return []Finding{profileDeny("no owned profile assigns the resolved operation")}
+	}
+	// Resolve the operation against every owned profile and fold the results:
+	// an assigned operation folds Allow, an unassigned/unknown/revoked
+	// operation folds Deny. The aggregate takes the worst case, so a single
+	// unassigned profile forces Deny while a positive assignment never widens
+	// a mandatory deny. This drives the production path with real owned
+	// profiles rather than a single hardcoded name.
+	var fold []Finding
+	for _, profile := range manager.List() {
+		finding, rErr := adapter.Resolve(profile.Name, org, operation)
+		if rErr != nil {
+			return []Finding{profileDeny(rErr.Error())}
+		}
+		fold = append(fold, finding)
+	}
+	return fold
+}
+
+func profileDeny(message string) Finding {
+	return Finding{
+		Code:     "access-profile",
+		Scope:    "profile",
+		Decision: Deny,
+		Source:   SourceDefault,
+		Message:  message,
+	}
 }

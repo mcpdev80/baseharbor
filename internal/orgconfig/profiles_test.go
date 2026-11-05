@@ -307,3 +307,40 @@ func TestUpdateEscalationRejected(t *testing.T) {
 		t.Fatalf("down-scope did not preserve read: %+v", down.Operations)
 	}
 }
+
+// TestUpdateRevisionMatrixProvesExactMatch proves the revision guard enforces an
+// EXACT match: only the observed revision is accepted, and every mismatch — a
+// future (revision+1) write, an equal write, and a stale (revision-1) write —
+// fails closed. The four cells are the contract: +1 red, unchanged green,
+// -1 red, and zero red.
+func TestUpdateRevisionMatrixProvesExactMatch(t *testing.T) {
+	m := NewManager("install-acme").BindScope(newTestScope())
+	p, err := m.Create(Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead, OpLog), Owner: "team-r"}, false)
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	// Cell 1 (RED): future revision (existing+1) must be rejected — the caller
+	// never observed a revision it does not know about; the guard cannot be
+	// raced forward past the stored revision.
+	if _, err := m.Update(p.Revision+1, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err == nil {
+		t.Fatal("future revision (existing+1) must be rejected (mismatched, not observed)")
+	}
+
+	// Cell 2 (GREEN): the exact observed revision is accepted.
+	if _, err := m.Update(p.Revision, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err != nil {
+		t.Fatalf("exact observed revision must be accepted, got %v", err)
+	}
+
+	// Cell 3 (RED): stale revision (existing-1) must be rejected — no
+	// last-write-wins.
+	if _, err := m.Update(p.Revision-1, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err == nil {
+		t.Fatal("stale revision (existing-1) must be rejected")
+	}
+
+	// Cell 4 (RED): zero expected revision is rejected outright — stale
+	// enforcement is mandatory and cannot be bypassed by omission.
+	if _, err := m.Update(0, Profile{Name: "readers", Target: "dev", Operations: CanonicalOperations(OpRead), Owner: "team-r"}); err != ErrStaleRevision {
+		t.Fatalf("zero expected revision must return ErrStaleRevision, got %v", err)
+	}
+}

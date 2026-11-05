@@ -156,23 +156,45 @@ func collectApplicationPolicy(ctx context.Context, store application.Store, appA
 }
 
 // policyAggregateWithProfiles binds the team access profile operation to the
-// single production decision authority: it resolves the active organization
-// (tenant) profile Manager and folds the adapter's constrained finding into the
-// aggregate. The adapter never decides alone — a foreign tenant, revoked
-// profile or unassigned operation forces the aggregate to Deny. It returns the
-// pure workload aggregate when no active organization source is configured.
+// single production decision authority: it loads the active organization
+// (tenant) Manager built from the REAL owned profiles (never an empty manager,
+// never the organization name used as a profile name), folds each resolved
+// finding through the adapter into the aggregate, and fails closed on any
+// resolution the adapter cannot positively make.
+//
+// The adapter never decides alone — a foreign tenant, revoked profile or
+// unassigned operation forces the aggregate to Deny. It returns the pure
+// workload aggregate when no active organization source is configured, or when
+// no concrete machine operation is bound for the call. An adapter error is
+// surfaced as a Deny finding, never silently dropped.
 func policyAggregateWithProfiles(findings []policy.Finding) policy.Decision {
+	return policy.ResolveAll(findings, resolveProductionOperation, loadActiveForPolicy)
+}
+
+// resolveProductionOperation maps the policy-check call to the concrete machine
+// operation the caller is actually performing. It returns an error when no real
+// operation is bound, which forces the aggregate to fail closed rather than
+// default to a hardcoded verb such as OpRead. The operation is the effective
+// policy's resolved operation for the active environment when the configuration
+// declares one; otherwise the call cannot positively assign and fails closed.
+func resolveProductionOperation(finding policy.Finding) (orgconfig.Operation, error) {
 	state, err := orgconfig.LoadActive()
-	org := strings.TrimSpace(state.Config.Organization)
-	if err != nil || org == "" {
-		return policy.Aggregate(findings)
+	if err != nil {
+		return "", policy.ErrNoActiveOrganization
 	}
-	manager := orgconfig.NewManager(org)
-	adapter := policy.NewAdapter(manager)
-	// The adapter resolves through the one authority it binds to; an unassigned
-	// operation or foreign tenant fails closed and drives the aggregate to Deny.
-	finding, _ := adapter.Resolve(org, org, orgconfig.OpRead)
-	return policy.ResolveFinding(findings, finding)
+	operation, err := orgconfig.ResolveOperation(state)
+	if err != nil || operation == "" {
+		return "", policy.ErrNoConcreteOperation
+	}
+	return operation, nil
+}
+
+// loadActiveForPolicy supplies the active organization configuration to the
+// adapter's production fold. It is the single disk-backed LoadActive on the
+// policy path so the production contract holds and the unit tests can inject a
+// mock instead.
+func loadActiveForPolicy() (orgconfig.ActiveState, error) {
+	return orgconfig.LoadActive()
 }
 
 func explainApplicationPolicy(ctx context.Context, store application.Store, appArgs []string, environment string) (policy.Result, error) {

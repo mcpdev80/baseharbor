@@ -79,6 +79,20 @@ const (
 // widen the surface and is itself a contract change.
 var ValidOperations = []Operation{OpRead, OpLog, OpChange, OpSecret, OpWrite, OpReveal, OpDestroy, OpAdmin}
 
+// validateOperation fails closed for an undeclared operation verb so the
+// active organization cannot widen the production policy surface by naming an
+// operation outside the fixed domain.
+func validateOperation(op string) error {
+	op = strings.TrimSpace(op)
+	if op == "" {
+		return nil
+	}
+	if _, ok := canonicalOperationOrder[Operation(op)]; !ok {
+		return fmt.Errorf("%w: operation %q is not a recognized operation", ErrInvalidProfile, op)
+	}
+	return nil
+}
+
 // Profile is a scoped team access profile: a named recommendation/assignment
 // for a selected set of Targets, operations, scopes and environments. It is
 // immutable once built; mutate through the Manager.
@@ -294,6 +308,88 @@ func NewManager(owner string, profiles ...Profile) *Manager {
 	return m
 }
 
+// LoadProfiles reads the owned profiles of one installation identity (tenant)
+// from the active organization configuration and returns them for a Manager the
+// production path can fold into the single policy authority. It is the mirror
+// of Create/Update/Revoke on the load side: a Manager is only as good as the
+// profiles it was built from, so the adapter's production finding is empty
+// unless the caller feeds it the real owned set here.
+//
+// An empty owner loads no profiles (an anonymous/unauthenticated caller has no
+// managed set); an active state with no persisted profiles loads an empty set,
+// which fails closed through the adapter (unknown profile). The caller decides
+// whether an empty set is a Deny or a "no active organization" no-op; this
+// function only reports what is actually owned.
+func LoadProfiles(state ActiveState, owner string) []Profile {
+	owner = strings.TrimSpace(owner)
+	config := state.Config
+	var owned []Profile
+	for _, profile := range config.Profiles {
+		if strings.TrimSpace(profile.Owner) != "" && strings.TrimSpace(profile.Owner) != owner {
+			// A profile belongs to whichever identity installed it; never
+			// enumerate another installation's profiles on this owner's path.
+			continue
+		}
+		if strings.TrimSpace(profile.Name) == "" {
+			continue
+		}
+		owned = append(owned, profile)
+	}
+	return owned
+}
+
+// ResolveOperation maps the active organization configuration to the single
+// concrete machine operation the production policy path resolves against. It
+// returns an error when the configuration declares no operation, so the caller
+// fails closed rather than defaulting to a hardcoded verb. The operation is
+// the effective policy's declared operation for the active environment, or
+// ErrNoOperation when none is declared.
+func ResolveOperation(state ActiveState) (Operation, error) {
+	if strings.TrimSpace(state.Config.Operation) != "" {
+		if _, ok := canonicalOperationOrder[Operation(state.Config.Operation)]; !ok {
+			return "", fmt.Errorf("%w: %q is not a recognized operation", ErrInvalidProfile, state.Config.Operation)
+		}
+		return Operation(state.Config.Operation), nil
+	}
+	return "", ErrNoOperation
+}
+
+// ErrNoOperation fails closed when the active organization configuration
+// declares no machine operation for the production policy path to resolve.
+var ErrNoOperation = fmt.Errorf("%w: active organization declares no machine operation", ErrInvalidProfileBase)
+
+// scopeAuthorityFromActive is the concrete scopeAuthority a Manager binds to when
+// loaded from an active state: it resolves declared Targets and environments
+// against the configuration the Manager was built from.
+type scopeAuthorityFromActive struct {
+	config Config
+}
+
+func (s scopeAuthorityFromActive) TargetKnown(target string) bool {
+	_, ok := s.config.Targets[strings.TrimSpace(target)]
+	return ok
+}
+
+func (s scopeAuthorityFromActive) EnvironmentKnown(env string) bool {
+	if strings.TrimSpace(env) == "" {
+		return true
+	}
+	_, ok := s.config.Environments[strings.TrimSpace(env)]
+	return ok
+}
+
+// ManagerFromActive builds a Manager for the active owner from an active
+// organization configuration: it loads the owner's owned profiles and binds the
+// Manager to the active authority so scope validation can run on the production
+// path. A Manager with no owned profiles (or an empty owner) is valid and
+// simply fails closed on any Resolve.
+func ManagerFromActive(state ActiveState) *Manager {
+	owner := strings.TrimSpace(state.Config.Organization)
+	m := NewManager(owner, LoadProfiles(state, owner)...)
+	m.BindScope(scopeAuthorityFromActive{config: state.Config})
+	return m
+}
+
 // BindScope binds the Manager to the configuration authority. It is idempotent:
 // a second call with the same authority is a no-op and a call with nil returns
 // a Manager that cannot scope-check (validate becomes structural only).
@@ -348,8 +444,11 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 //
 //   - expectedRevision must equal the stored definition's Revision. A smaller
 //     value is a stale write and fails closed on ErrStaleRevision (no
-//     last-write-wins); an empty (zero) expected revision is rejected so stale
-//     enforcement is mandatory and cannot be bypassed by omission.
+//     last-write-wins); a larger value is a mismatched/future revision the
+//     caller never observed and is rejected too, so the guard cannot be
+//     bypassed by guessing or racing forward past the stored revision; an empty
+//     (zero) expected revision is rejected so stale enforcement is mandatory and
+//     cannot be bypassed by omission.
 //   - the new operation set may not exceed the stored one. Removing operations
 //     is always allowed; adding an operation the current definition did not
 //     assign is a privilege escalation and fails closed. The effective right a
@@ -369,7 +468,13 @@ func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	if expectedRevision == 0 {
 		return Profile{}, ErrStaleRevision
 	}
-	if expectedRevision < existing.Revision {
+	// The precondition is an exact match: the write must carry the revision it
+	// observed. A smaller value is a stale write and fails closed on
+	// ErrStaleRevision (no last-write-wins); a larger value is a mismatched/
+	// future revision the caller never observed and is rejected too, so the
+	// guard cannot be bypassed by guessing or racing forward past the stored
+	// revision.
+	if expectedRevision != existing.Revision {
 		return Profile{}, fmt.Errorf("%w: expected %d, stored %d", ErrStaleRevision, expectedRevision, existing.Revision)
 	}
 	p.Operations = CanonicalOperations(p.Operations...)
