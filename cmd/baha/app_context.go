@@ -73,7 +73,7 @@ func resolveApplication(ctx context.Context, store application.Store, args []str
 func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
 	defer func() {
 		if err == nil {
-			resolved.Manifest, err = resolveAppliedBackendSelection(resolved)
+			resolved.Manifest, err = resolveAppliedBackendSelection(resolved, command)
 		}
 	}()
 	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
