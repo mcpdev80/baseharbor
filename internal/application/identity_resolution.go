@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 // IdentitySnapshot contains claims from the existing repository/application and
@@ -11,6 +13,33 @@ import (
 type IdentitySnapshot struct {
 	ApplicationIDs       []string
 	PreviouslyRegistered bool
+}
+
+// concurrentLoadRetries bounds how often InitializeIdentity reloads a winner's
+// manifest when a concurrent creator is mid-rename. The winner makes progress
+// on every loop iteration, so a bounded retry converges without spinning. The
+// budget and backoff are generous enough to absorb the slowdown a race
+// detector or a busy machine imposes on the winner's atomic rename.
+const concurrentLoadRetries = 1000
+
+// loadWithConcurrentRetry loads the canonical manifest, tolerating a
+// concurrent creator whose manifest is not yet durable. It returns the first
+// successful load; after the bounded retry budget it surfaces the last error
+// rather than masking an owner that genuinely does not exist.
+func (s Store) loadWithConcurrentRetry(name string) (Manifest, string, error) {
+	var lastErr error
+	for attempt := 0; attempt < concurrentLoadRetries; attempt++ {
+		m, path, err := s.Load(name)
+		if err == nil {
+			return m, path, nil
+		}
+		lastErr = err
+		if !strings.Contains(err.Error(), "not found") {
+			return Manifest{}, path, err
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return Manifest{}, "", lastErr
 }
 
 // ResolveIdentity is read-only. An empty result means explicit initialization
@@ -89,7 +118,12 @@ func (s Store) InitializeIdentity(m Manifest, snapshot IdentitySnapshot) (Manife
 	if !errors.Is(err, ErrExists) && !errors.Is(err, os.ErrExist) {
 		return Manifest{}, err
 	}
-	winner, _, err := s.Load(m.Name)
+	// A concurrent creator won the Mkdir; its manifest is written after the
+	// directory exists, so an early Load races an in-progress rename and
+	// observes an absent baseharbor.yaml. Reload with a bounded retry so all
+	// concurrent initializers converge on the winner's identity instead of
+	// surfacing a transient "not found".
+	winner, _, err := s.loadWithConcurrentRetry(m.Name)
 	if err != nil {
 		return Manifest{}, fmt.Errorf("concurrent initialization is incomplete; retry without creating another identity: %w", err)
 	}
