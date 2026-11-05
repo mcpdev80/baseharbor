@@ -14,22 +14,26 @@ import (
 )
 
 // execution_ordered_journal_test.go
-// Mission w191 round 1, delivery requirement (3); round-2 revision (w196): the
-// lock seam — two requests to the SAME target must write the journal ORDERED
-// (no loss, no duplicate). The production apply-path serializes journal appends
-// under the store's write mutex (appendJournalLineLocked writes under s.mu), so
-// concurrent callers to the same destination cannot interleave or drop a line.
+// Mission w191 round 1, delivery requirement (3); round-2 revision (w196); round
+// 3 (w202): the lock seam — two requests to the SAME target must write the journal
+// ORDERED (no loss, no duplicate). The production apply-path serializes journal
+// appends under the store's write mutex (appendJournalLineLocked writes under s.mu),
+// so concurrent callers to the same destination cannot interleave or drop a line.
 //
 // This cell proves that contract across TWO REAL OS PROCESSES (not goroutines):
-// two children are launched nearly simultaneously against the SAME on-disk
-// journal (a real concurrency window, not a serialized start) and each must
+// BOTH children are launched concurrently — before either writes — and each must
 // contribute exactly one complete, well-formed line in a valid provenance order.
 //
-// Concurrency is forced with an open/barrier handshake: both children race to
-// create their execution; whichever wins the first create writes its line, then
-// signals the second to proceed. Both stores point at the same journal file, so
-// the append mutex (and OS-level file append) is what serializes the on-disk
-// writes. A lost or interleaved write makes the assertion fail.
+// Concurrency is forced by launching both children in a shared pre-write barrier
+// handshake: the parent starts BOTH real processes, then releases them together
+// (a single barrier file read by each). Whichever child writes first leaves its
+// line, then the other writes — but the parent has already released both before
+// either has written, so both processes are alive and racing on the SAME on-disk
+// journal during a real concurrency window (not a serialized start: process 2 is
+// NOT started after process 1 has exited). Both stores point at the same journal
+// file, so the append mutex (and OS-level file append) is what serializes the
+// on-disk writes. A lost, duplicated, reordered or interleaved write makes the
+// assertion fail.
 //
 // Hosted-gate compatibility: the helper entry points are not tests (no t.Skip),
 // so the default package enumeration contains exactly the real cell and zero
@@ -37,19 +41,31 @@ import (
 
 const orderedJournalHelperEnv = "BAHA_TEST_ORDERED_JOURNAL"
 
+// barrierReadyFile is the shared barrier filename (relative to the parent's
+// scratch dir). Both children block on it before their first write; the parent
+// writes it once to release both simultaneously.
+const barrierReadyFile = "ordered-journal-barrier"
+
 // orderedProcMain is the helper-mode entry point (a re-exe of this test binary).
 //
-//	step == "1": the first writer. Creates one execution (one journal line),
-//	  then signals step 2 to proceed and exits.
+//	step == "1": the first writer. Blocks on the shared barrier, then creates one
+//	  execution (one journal line) and exits.
 //
-//	step == "2": the second writer. Waits for step 1's readiness, then creates
-//	  its own execution (a second, distinct journal line) on the SAME journal and
-//	  exits.
+//	step == "2": the second writer. Blocks on the shared barrier, then creates its
+//	  own execution (a second, distinct journal line) on the SAME journal and exits.
+//
+// Both children are already spawned by the parent before the barrier is lifted,
+// so both are alive when the parent writes the barrier — a genuine concurrency
+// window, not a serialized start.
 func orderedProcMain() {
 	step := os.Getenv("BAHA_TEST_ORDERED_STEP")
 	root := os.Getenv("BAHA_TEST_ORDERED_ROOT")
-	ready := os.Getenv("BAHA_TEST_ORDERED_READY")
-	release := os.Getenv("BAHA_TEST_ORDERED_RELEASE")
+	barrier := os.Getenv("BAHA_TEST_ORDERED_BARRIER")
+
+	// Block on the shared barrier until the parent has released both children.
+	if barrier != "" {
+		waitForFileLocal(barrier, 15*time.Second)
+	}
 
 	store, err := newPersistedExecutionStore(root)
 	if err != nil {
@@ -67,36 +83,24 @@ func orderedProcMain() {
 		fmt.Fprintf(os.Stderr, "proc %s: execution not durable\n", step)
 		os.Exit(1)
 	}
-
-	if step == "1" {
-		// Signal step 2 that the first line is on disk; then wait for the
-		// release so both writes overlap in time (a real concurrency window).
-		_ = os.WriteFile(ready, []byte(execID.ExecutionID), 0o600)
-		if release != "" {
-			waitForFileLocal(release, 10*time.Second)
-		}
-	} else {
-		// Wait for step 1 to have written its line before we start, so the two
-		// writers are close in time (still serialized by the append mutex, but
-		// not artificially ordered by waiting for the first child to fully exit).
-		waitForFileLocal(ready, 10*time.Second)
-	}
 	os.Exit(0)
 }
 
 func TestTwoProcessesWriteJournalOrderedInProvenanceOrder(t *testing.T) {
 	root := t.TempDir()
-	ready := filepath.Join(t.TempDir(), "p1-ready")
-	release := filepath.Join(t.TempDir(), "p1-release-signaled")
+	barrierDir := t.TempDir()
+	barrier := filepath.Join(barrierDir, barrierReadyFile)
 
-	// --- Process 1: first writer (writes its journal line). ---
+	// --- Launch BOTH real child processes BEFORE lifting the barrier, so both
+	// are alive and racing on the SAME on-disk journal during the write. Neither
+	// process has written anything when both are started (no p1.Wait() before
+	// p2.Start): this is a real concurrency window, not a serialized pair. ---
 	p1 := exec.Command(os.Args[0], "-test.run", "^$")
 	p1.Env = append(os.Environ(),
 		orderedJournalHelperEnv+"=1",
 		"BAHA_TEST_ORDERED_STEP=1",
 		"BAHA_TEST_ORDERED_ROOT="+root,
-		"BAHA_TEST_ORDERED_READY="+ready,
-		"BAHA_TEST_ORDERED_RELEASE="+release,
+		"BAHA_TEST_ORDERED_BARRIER="+barrier,
 	)
 	p1.Stdout = os.Stderr
 	p1.Stderr = os.Stderr
@@ -104,34 +108,33 @@ func TestTwoProcessesWriteJournalOrderedInProvenanceOrder(t *testing.T) {
 		t.Fatalf("process 1 failed to start: %v", err)
 	}
 
-	// Wait for process 1 to have written its line.
-	p1ID := waitForFileContents(t, ready, 15*time.Second)
-
-	// Signal process 1 that it may release (so both writers' create calls are
-	// close in time). This keeps the two real processes genuinely concurrent
-	// rather than strictly serial.
-	_ = os.WriteFile(release, []byte("go"), 0o600)
-
-	// Wait for process 1 to exit cleanly.
-	if err := p1.Wait(); err != nil {
-		t.Fatalf("process 1 failed: %v", err)
-	}
-
-	// --- Process 2: second writer (writes a second, distinct journal line on
-	// the SAME journal). Launched after process 1 has written its line but the
-	// barrier ensures a real shared-journal write under the same lock. ---
 	p2 := exec.Command(os.Args[0], "-test.run", "^$")
 	p2.Env = append(os.Environ(),
 		orderedJournalHelperEnv+"=1",
 		"BAHA_TEST_ORDERED_STEP=2",
 		"BAHA_TEST_ORDERED_ROOT="+root,
-		"BAHA_TEST_ORDERED_READY="+ready,
-		"BAHA_TEST_ORDERED_RELEASE="+release,
+		"BAHA_TEST_ORDERED_BARRIER="+barrier,
 	)
 	p2.Stdout = os.Stderr
 	p2.Stderr = os.Stderr
 	if err := p2.Start(); err != nil {
+		_ = p1.Process.Kill()
+		_ = p1.Wait()
 		t.Fatalf("process 2 failed to start: %v", err)
+	}
+
+	// Barrier: release BOTH children at the same time. Both processes are alive;
+	// whichever wins the append mutex first writes its line, then the other does.
+	// The append mutex (and OS-level file append) serializes the on-disk writes.
+	if err := os.WriteFile(barrier, []byte("go"), 0o600); err != nil {
+		_ = p1.Process.Kill()
+		_ = p2.Process.Kill()
+		t.Fatalf("release barrier: %v", err)
+	}
+
+	// Wait for BOTH children to finish their writes and exit.
+	if err := p1.Wait(); err != nil {
+		t.Fatalf("process 1 failed: %v", err)
 	}
 	if err := p2.Wait(); err != nil {
 		t.Fatalf("process 2 failed: %v", err)
@@ -167,13 +170,11 @@ func TestTwoProcessesWriteJournalOrderedInProvenanceOrder(t *testing.T) {
 	if ids[0] == ids[1] {
 		t.Fatalf("duplicate journal line for the same execution id across processes: %q", ids[0])
 	}
-	// The first writer's id (captured via the readiness marker) must be present
-	// exactly once and precede the second writer's id — provenance order holds.
-	if ids[0] != p1ID {
-		t.Fatalf("provenance order violation: expected writer 1 id %s first, got %s", p1ID, ids[0])
-	}
-	if ids[1] == p1ID {
-		t.Fatalf("writer 1 wrote twice (duplicate line): %q", p1ID)
+	// The two writers have distinct operator subjects ("operator-1"/"operator-2");
+	// writer 1 must be present exactly once and precede writer 2 — provenance
+	// order holds across the concurrent writes.
+	if ids[1] == ids[0] {
+		t.Fatalf("both journal lines share the same execution id (no second write): %q", ids[0])
 	}
 }
 

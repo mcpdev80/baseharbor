@@ -155,8 +155,13 @@ func resumeCellWouldFail(root string) bool {
 // Baseline (green): two distinct writers on the SAME journal each contribute one
 // distinct line in provenance order (A before B).
 //
-// Mutant run (RED): lose writer B's line on that same path; the exactly-two
-// distinct ordered lines assertion goes RED.
+// Mutant run (RED): writer B's line is lost on the REAL on-disk journal path —
+// the active journal segment is rewritten without B's line (a genuine write-loss
+// on the filesystem, not an in-memory slice edit) — and the genuine order cell
+// assertion is run against the surviving journal lines. Because one real line was
+// lost the "exactly two distinct ordered lines" assertion goes RED — the red
+// witness the guard must catch. The mutation is discarded afterwards; only the
+// red witness is kept.
 func TestMutantB_WrongOrderIsDetectable(t *testing.T) {
 	root := t.TempDir()
 	store, err := newPersistedExecutionStore(root)
@@ -199,26 +204,50 @@ func TestMutantB_WrongOrderIsDetectable(t *testing.T) {
 		t.Fatal("baseline FAIL: provenance order violation: writer A must precede writer B in the journal")
 	}
 
-	// (Mutant run, RED) Lose writer B's line on the SAME journal path. The
-	// exactly-two-distinct-ordered-lines assertion then sees only one line and
-	// goes RED — the red witness the guard must catch.
-	redLines := []string{}
+	// (Mutant run, RED) Lose writer B's line on the REAL on-disk journal path:
+	// rewrite the active journal segment WITHOUT B's line. This is a genuine
+	// write-loss on the filesystem (the append-only file is truncated to only A's
+	// line), not an in-memory slice edit.
+	journalPath := filepath.Join(root, "journal", "journal.jsonl")
+	surviving := []string{}
 	for _, ln := range lines {
-		if !strings.Contains(ln, writerB.ExecutionID) {
-			redLines = append(redLines, ln)
+		if strings.Contains(ln, writerB.ExecutionID) {
+			continue
 		}
+		surviving = append(surviving, ln)
 	}
-	if len(redLines) != 1 {
-		t.Fatalf("mutant procedural error: expected exactly one surviving line, got %d", len(redLines))
+	if len(surviving) != 1 {
+		t.Fatalf("mutant procedural error: expected exactly one surviving line, got %d", len(surviving))
 	}
-	// The red witness: the ordered cell asserts two distinct ordered lines; losing
-	// writer B's line leaves exactly one, so the cell's assertion fails. We run
-	// the real assertion against the surviving lines and, because the mutant is
-	// present, it fails — the red witness we capture (t.Log, not fatal).
-	if !orderedCellWouldFail(redLines) {
-		t.Fatal("mutant FAIL (should be RED): with writer B's write lost, the ordered cell must fail")
+	// Rewrite the on-disk journal with only the surviving line, then re-open the
+	// store so load() reflects the mutated (line-lost) on-disk state.
+	if err := os.WriteFile(journalPath, []byte(strings.Join(surviving, "\n")+"\n"), 0o600); err != nil {
+		t.Fatalf("rewrite journal to lose writer B's line: %v", err)
 	}
-	t.Log("MUTANT B RED: with writer B's write lost on the same journal, the ordered cell sees 1 line, not 2 distinct ordered lines — the order guard is real")
+	mutated, err := newPersistedExecutionStore(root)
+	if err != nil {
+		t.Fatalf("reopen mutated journal: %v", err)
+	}
+	// The execution B was supposed to create is now absent from the durable
+	// journal — the loss is real on disk, not in memory.
+	if _, ok := mutated.get(writerB.ExecutionID); ok {
+		t.Fatal("mutant FAIL: writer B's execution must be absent from the rewritten on-disk journal")
+	}
+	survivingLines, err := readJournalLines(root)
+	if err != nil {
+		t.Fatalf("read mutated journal: %v", err)
+	}
+	if len(survivingLines) != 1 {
+		t.Fatalf("mutant FAIL: the on-disk journal must carry exactly one line after losing writer B, got %d", len(survivingLines))
+	}
+	// The red witness: run the genuine order-cell assertion against the surviving
+	// on-disk journal lines. It expects exactly two distinct ordered lines; with
+	// B's line lost it sees one and goes RED — captured as a t.Log (not fatal) so
+	// the guard's sensitivity is demonstrated, not the baseline.
+	if !orderedCellWouldFail(survivingLines) {
+		t.Fatal("mutant FAIL (should be RED): with writer B's write lost on disk, the ordered cell must fail")
+	}
+	t.Log("MUTANT B RED: with writer B's line lost on the same on-disk journal path, the genuine ordered cell sees 1 line, not 2 distinct ordered lines — the order guard is real")
 }
 
 // orderedCellWouldFail reports whether the ordered-write assertion "exactly two
