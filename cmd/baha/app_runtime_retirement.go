@@ -135,7 +135,7 @@ func (e *applicationDestroyExecution) retireRuntimePreservingData(ctx context.Co
 	if err := e.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}
-	if _, err := stopRepositoryWorkload(ctx, e.compose, e.resolved, e.files); err != nil {
+	if _, err := destroyRepositoryWorkloadStop(ctx, e.compose, e.resolved, e.files); err != nil {
 		return err
 	}
 	if _, err := destroyRepositoryWorkloadRuntime(ctx, e.compose, e.resolved, e.files); err != nil {
