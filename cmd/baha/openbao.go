@@ -190,7 +190,9 @@ func openBaoRotateCommand() *cli.Command {
 	}
 }
 
-func openBaoRuntime(ctx context.Context) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
+// openBaoRuntime resolves the runtime for the effective target. It is a package
+// seam so tests can supply a minimal initialized runtime for the reconcile path.
+var openBaoRuntime = func(ctx context.Context) (bhruntime.RuntimeProvider, bhruntime.Files, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return nil, bhruntime.Files{}, err

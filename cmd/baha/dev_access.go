@@ -12,7 +12,9 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
+	"github.com/mcpdev80/baseharbor/internal/openbao"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func devCommand() *cli.Command {
@@ -143,7 +145,7 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 		// this path is imported and OpenBao becomes authoritative.
 		return candidate, nil
 	}
-	state, err := platformopenbao.Inspect(ctx, compose, files)
+	state, err := openBaoInspect(ctx, compose, files)
 	if err != nil {
 		return devaccess.Credentials{}, fmt.Errorf("inspect managed credential authority: %w", err)
 	}
@@ -153,7 +155,7 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 	if state.Sealed {
 		return devaccess.Credentials{}, errors.New("managed credential authority is sealed; developer credentials were not changed")
 	}
-	if err := platformopenbao.CheckManager(ctx, compose, files); err != nil {
+	if err := openBaoCheckManager(ctx, compose, files); err != nil {
 		return devaccess.Credentials{}, errors.New("managed credential authority is unavailable; developer credentials were not changed")
 	}
 
@@ -177,7 +179,7 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 	}
 
 	if !replace {
-		data, readErr := platformopenbao.GetManagedCredential(ctx, compose, files, ref)
+		data, readErr := managedCredentialSeam.get(ctx, compose, files, ref)
 		switch {
 		case readErr == nil:
 			return decode(data)
@@ -188,10 +190,25 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 			// object yet. Recover the opt-in local credential and seed the managed
 			// authority exactly once; a local store that is absent fails closed
 			// instead of prompting for or accepting new material.
-			if result, rebindingErr := recoverLocalCredential(ctx, target); rebindingErr != nil {
+			result, rebindingErr := recoverLocalCredential(ctx, target)
+			switch {
+			case rebindingErr != nil:
 				return devaccess.Credentials{}, fmt.Errorf("rebind developer credential authority: %w", rebindingErr)
-			} else if result == devaccess.Unrecovered {
+			case result == devaccess.Unrecovered:
+				// No opt-in local credential: fail closed, no prompt, no material.
 				return devaccess.Credentials{}, devaccess.ErrNoRecoverableCredential
+			default:
+				// The local opt-in credential seeded the managed authority exactly
+				// once (one Set on this path). The managed object is now authoritative,
+				// so read it back and return the actually-managed value instead of
+				// issuing a second SetManagedCredential(candidate). A managed object
+				// that appeared after the initial not-found lookup keeps its value:
+				// we Get, never overwrite it with the stale local candidate.
+				managed, managedErr := managedCredentialSeam.get(ctx, compose, files, ref)
+				if managedErr != nil {
+					return devaccess.Credentials{}, fmt.Errorf("read back managed credential after seed: %w", managedErr)
+				}
+				return decode(managed)
 			}
 		default:
 			return devaccess.Credentials{}, readErr
@@ -201,23 +218,75 @@ func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environm
 	if err != nil {
 		return devaccess.Credentials{}, errors.New("encode developer credential for managed storage")
 	}
-	if err := platformopenbao.SetManagedCredential(ctx, compose, files, ref, data); err != nil {
+	if err := managedCredentialSeam.set(ctx, compose, files, ref, data); err != nil {
 		return devaccess.Credentials{}, err
 	}
 	return candidate, nil
 }
 
-// recoverLocalCredential performs the device-rebind recovery for a target using
-// the opt-in local developer credential authority. A fresh device that never
-// reconciled has no managed object yet; the local credential seeds the managed
-// authority exactly once. When neither the local store nor a managed object is
-// present the rebind fails closed (Unrecovered, no prompt, no material).
-func recoverLocalCredential(ctx context.Context, target string) (devaccess.RecoveryResult, error) {
-	recovery := devaccess.Recovery{
+// devRecoveryFactory builds the device-rebind recovery bound to the existing
+// OpenBao managed authority. It is a package seam so tests can inject a recovery
+// that counts the managed Get/Set pairs on the reconcile path; production wires
+// the existing openBaoManagedAuthorityChecker/openBaoManagedCredentialStore.
+var devRecoveryFactory = func() devaccess.Recovery {
+	return devaccess.Recovery{
 		Managed: openBaoManagedAuthorityChecker{},
 		Store:   openBaoManagedCredentialStore{},
 	}
+}
+
+// recoverLocalCredential performs the device-rebind recovery for a target using
+// the opt-in local developer credential authority. A fresh device that never
+// reconciled has no managed object yet; the local credential seeds the managed
+// authority exactly once (one Set on this path) and the caller returns the
+// actually-managed value instead of issuing a second write. When neither the
+// local store nor a managed object is present the rebind fails closed
+// (Unrecovered, no prompt, no material).
+func recoverLocalCredential(ctx context.Context, target string) (devaccess.RecoveryResult, error) {
+	recovery := devRecoveryFactory()
 	return recovery.Recover(ctx, target)
+}
+
+// managedCredentialSeamFuncs is the managed-get/set boundary the dev-access
+// reconcile path depends on. managedCredentialSeam defaults to the production
+// OpenBao authority and is overridable in tests to count the managed Get/Set
+// pairs exercised by one reconcile. Exactly one production path is wired here;
+// there is no second store.
+type managedCredentialSeamFuncs struct {
+	get func(ctx context.Context, executor openbao.Executor, files bhruntime.Files, reference string) ([]byte, error)
+	set func(ctx context.Context, executor openbao.Executor, files bhruntime.Files, reference string, value []byte) error
+}
+
+// managedCredentialSeam is the single managed-get/set boundary the dev-access
+// reconcile path depends on.
+var managedCredentialSeam = managedCredentialSeamFuncs{
+	get: func(ctx context.Context, executor openbao.Executor, files bhruntime.Files, reference string) ([]byte, error) {
+		return platformopenbao.GetManagedCredential(ctx, executor, files, reference)
+	},
+	set: func(ctx context.Context, executor openbao.Executor, files bhruntime.Files, reference string, value []byte) error {
+		return platformopenbao.SetManagedCredential(ctx, executor, files, reference, value)
+	},
+}
+
+// managedCredentialSeamDefaults is the production value of managedCredentialSeam.
+var managedCredentialSeamDefaults = managedCredentialSeam
+
+// defaultOpenBaoRuntime is the production value of the openBaoRuntime seam.
+var defaultOpenBaoRuntime = openBaoRuntime
+
+// defaultDevRecoveryFactory is the production value of devRecoveryFactory.
+var defaultDevRecoveryFactory = devRecoveryFactory
+
+// openBaoInspect and openBaoCheckManager are the OpenBao runtime-boundary seams
+// the dev-access reconcile path depends on. They default to the production
+// platformopenbao authority and are overridable in tests to reach the managed
+// seam without a real runtime.
+var openBaoInspect = func(ctx context.Context, executor openbao.Executor, files bhruntime.Files) (platformopenbao.State, error) {
+	return platformopenbao.Inspect(ctx, executor, files)
+}
+
+var openBaoCheckManager = func(ctx context.Context, executor openbao.Executor, files bhruntime.Files) error {
+	return platformopenbao.CheckManager(ctx, executor, files)
 }
 
 // openBaoManagedAuthorityChecker reports whether a managed-secret object already
@@ -239,7 +308,7 @@ func (openBaoManagedAuthorityChecker) Exists(ctx context.Context, target string)
 	}
 	sum := sha256.Sum256([]byte(strings.TrimSpace(target)))
 	ref := "targets/" + hex.EncodeToString(sum[:12]) + "/human/dev-management"
-	_, readErr := platformopenbao.GetManagedCredential(ctx, compose, files, ref)
+	_, readErr := managedCredentialSeam.get(ctx, compose, files, ref)
 	switch {
 	case readErr == nil:
 		return true, nil
@@ -276,7 +345,7 @@ func (openBaoManagedCredentialStore) Persist(ctx context.Context, target, userna
 	if err != nil {
 		return fmt.Errorf("encode developer credential for managed storage: %w", err)
 	}
-	if err := platformopenbao.SetManagedCredential(ctx, compose, files, ref, data); err != nil {
+	if err := managedCredentialSeam.set(ctx, compose, files, ref, data); err != nil {
 		return fmt.Errorf("seed managed credential authority: %w", err)
 	}
 	return nil
