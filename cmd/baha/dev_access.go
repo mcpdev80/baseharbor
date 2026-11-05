@@ -247,6 +247,16 @@ func recoverLocalCredential(ctx context.Context, target string) (devaccess.Recov
 	return recovery.Recover(ctx, target)
 }
 
+// seedManagedCredentialIfAbsent seeds the fresh-device managed credential with
+// the create-only / compare-and-swap variant of the existing OpenBao managed
+// authority. It returns ErrManagedCredentialAlreadyExists when a concurrent
+// value already created the object, so the caller returns the managed winner
+// instead of clobbering it. It is the seed half of one Set per path; the
+// replace/rotate path keeps the unconditional SetManagedCredential write.
+func seedManagedCredentialIfAbsent(ctx context.Context, executor openbao.Executor, files bhruntime.Files, ref string, data []byte) error {
+	return platformopenbao.SetManagedCredentialIfAbsent(ctx, executor, files, ref, data)
+}
+
 // managedCredentialSeamFuncs is the managed-get/set boundary the dev-access
 // reconcile path depends on. managedCredentialSeam defaults to the production
 // OpenBao authority and is overridable in tests to count the managed Get/Set
@@ -320,8 +330,10 @@ func (openBaoManagedAuthorityChecker) Exists(ctx context.Context, target string)
 }
 
 // openBaoManagedCredentialStore seeds the managed authority once from the local
-// opt-in credential. It wires the existing SetManagedCredential path, never a
-// new secret store.
+// opt-in credential using a create-only/CAS write (SetManagedCredentialIfAbsent)
+// over the existing OpenBao managed mount, never a new secret store. If a
+// concurrent managed value already appeared the seed is a no-op and the existing
+// managed value wins.
 type openBaoManagedCredentialStore struct{}
 
 func (openBaoManagedCredentialStore) Persist(ctx context.Context, target, username, password string) error {
@@ -345,8 +357,8 @@ func (openBaoManagedCredentialStore) Persist(ctx context.Context, target, userna
 	if err != nil {
 		return fmt.Errorf("encode developer credential for managed storage: %w", err)
 	}
-	if err := managedCredentialSeam.set(ctx, compose, files, ref, data); err != nil {
-		return fmt.Errorf("seed managed credential authority: %w", err)
+	if seedErr := seedManagedCredentialIfAbsent(ctx, compose, files, ref, data); seedErr != nil {
+		return fmt.Errorf("seed managed credential authority: %w", seedErr)
 	}
 	return nil
 }

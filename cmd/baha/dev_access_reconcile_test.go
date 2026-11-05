@@ -35,6 +35,13 @@ type countedManaged struct {
 	sets     int
 	value    []byte
 	notfound bool // when true the next Get reports ErrManagedCredentialNotFound
+	// concurrent, when set, simulates a managed object created after the first
+	// not-found lookup. The create-only/CAS seed then no-ops (returns
+	// ErrManagedCredentialAlreadyExists) and the existing value wins.
+	concurrent []byte
+	// mutant disables the create-only guard: the seed always overwrites,
+	// modelling the round-2 unconditional SetManagedCredential write.
+	mutant bool
 }
 
 func (c *countedManaged) get(_ context.Context, _ openbao.Executor, _ bhruntime.Files, _ string) ([]byte, error) {
@@ -51,7 +58,23 @@ func (c *countedManaged) get(_ context.Context, _ openbao.Executor, _ bhruntime.
 	return out, nil
 }
 
+// set simulates the create-only/CAS seed of SetManagedCredentialIfAbsent. With
+// the guard in place (mutant false) a concurrent value was injected between the
+// Exists check and the seed makes the write a no-op: the existing managed value
+// wins, no Set is counted, and the concurrent winner becomes authoritative so
+// the caller's read-back returns it. With the guard removed (mutant true) the
+// seed always overwrites with the stale local candidate — the round-2 defect
+// round-3 closes.
 func (c *countedManaged) set(_ context.Context, _ openbao.Executor, _ bhruntime.Files, _ string, value []byte) error {
+	if c.mutant {
+		c.sets++
+		c.value = append([]byte(nil), value...)
+		return nil
+	}
+	if c.concurrent != nil {
+		c.value = append([]byte(nil), c.concurrent...)
+		return platformopenbao.ErrManagedCredentialAlreadyExists
+	}
 	c.sets++
 	c.value = append([]byte(nil), value...)
 	return nil
@@ -113,18 +136,23 @@ func TestReconcileSeedsManagedAuthorityExactlyOnce(t *testing.T) {
 	}
 }
 
-// TestReconcilePreservesConcurrentManagedValue asserts the fix never overwrites
-// a managed object that appeared after the initial not-found lookup: the
-// concurrent value wins and no Set issues on the reconcile.
+// TestReconcilePreservesConcurrentManagedValue exercises the race window
+// round-3 closes: the initial managed Get returns NOT_FOUND, Recovery runs
+// through to its Exists + seed step, and a concurrent managed value appears
+// INSIDE the test between Exists and the seed. The create-only/CAS seed then
+// no-ops without overwriting, the existing managed value wins, and exactly zero
+// overwriting Sets issue on the reconcile.
 func TestReconcilePreservesConcurrentManagedValue(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("BASEHARBOR_STATE_DIR", root)
 	seedLocalOptIn(t, "concurrentdevice")
 
 	managed := &countedManaged{
-		// Simulate a managed object created concurrently after the first
-		// not-found lookup but before Recovery reads it back.
-		value: mustEncode("concurrent", "concurrent-secret"),
+		// The concurrent value is installed only as c.concurrent (not as
+		// c.value) so the first Get still returns NOT_FOUND and Recovery runs
+		// through to its seed step; the seed itself then sees the concurrent
+		// winner and no-ops.
+		concurrent: mustEncode("concurrent", "concurrent-secret"),
 	}
 	openBaoRuntime = nilRuntime
 	openBaoInspect = initializedInspect
@@ -133,8 +161,6 @@ func TestReconcilePreservesConcurrentManagedValue(t *testing.T) {
 		get: managed.get,
 		set: managed.set,
 	}
-	// The recovery factory observes the concurrent object on Exists and does not
-	// persist; the caller's read-back must still return the concurrent value.
 	devRecoveryFactory = func() devaccess.Recovery {
 		return devaccess.Recovery{
 			Managed: &reconcileManagedProbe{managed: managed},
@@ -148,10 +174,91 @@ func TestReconcilePreservesConcurrentManagedValue(t *testing.T) {
 		t.Fatalf("reconcile returned error: %v", err)
 	}
 	if managed.sets != 0 {
-		t.Fatalf("managed Set calls = %d, want 0 (existing managed object wins, no overwrite)", managed.sets)
+		t.Fatalf("managed Set calls = %d, want 0 (concurrent managed value wins, seed no-op)", managed.sets)
 	}
 	if result.Username != "concurrent" || result.Password != "concurrent-secret" {
 		t.Fatalf("reconcile returned credential %+v, want the concurrent managed value to win", result)
+	}
+}
+
+// TestReconcileMutantUnconditionalSeedOverwritesConcurrentValue proves the
+// create-only guard is load-bearing: the round-2 unconditional seed (the
+// mutant that round-3 removes) clobbers the concurrent winner with the stale
+// local candidate. This is the RED cell the mutant must fail.
+func TestReconcileMutantUnconditionalSeedOverwritesConcurrentValue(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	seedLocalOptIn(t, "concurrentdevice")
+
+	// The mutant seed always succeeds and overwrites c.value with the local
+	// opt-in credential that Persist writes, clobbering the concurrent managed
+	// winner instead of preserving it.
+	managed := &countedManaged{
+		concurrent: mustEncode("concurrent", "concurrent-secret"),
+		mutant:     true,
+	}
+	openBaoRuntime = nilRuntime
+	openBaoInspect = initializedInspect
+	openBaoCheckManager = func(context.Context, openbao.Executor, bhruntime.Files) error { return nil }
+	managedCredentialSeam = managedCredentialSeamFuncs{
+		get: managed.get,
+		set: managed.set,
+	}
+	devRecoveryFactory = func() devaccess.Recovery {
+		return devaccess.Recovery{
+			Managed: &reconcileManagedProbe{managed: managed},
+			Store:   &reconcileLocalStore{path: filepath.Join(root, "dev", "credentials.env"), managed: managed},
+		}
+	}
+	restoreReconcileSeams(t)
+
+	_, err := reconcileDeveloperCredentialAuthority(context.Background(), "concurrentdevice", "dev", devaccess.Credentials{Username: "candidate", Password: "stale"}, false)
+	if err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+	if managed.sets != 1 {
+		t.Fatalf("mutant managed Set calls = %d, want 1 (unconditional seed overwrites)", managed.sets)
+	}
+	if string(managed.value) != string(mustEncode("developer", "local-opt-in")) {
+		t.Fatalf("mutant managed value = %q, want the local opt-in credential to have clobbered the concurrent winner", managed.value)
+	}
+}
+
+// TestReconcileFreshDeviceSeedsExactlyOnce confirms the uncontended fresh path
+// seeds the managed authority exactly once with the local opt-in value.
+func TestReconcileFreshDeviceSeedsExactlyOnce(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	seedLocalOptIn(t, "freshdevice")
+
+	managed := &countedManaged{}
+	openBaoRuntime = nilRuntime
+	openBaoInspect = initializedInspect
+	openBaoCheckManager = func(context.Context, openbao.Executor, bhruntime.Files) error { return nil }
+	managedCredentialSeam = managedCredentialSeamFuncs{
+		get: managed.get,
+		set: managed.set,
+	}
+	devRecoveryFactory = func() devaccess.Recovery {
+		return devaccess.Recovery{
+			Managed: &reconcileManagedProbe{managed: managed},
+			Store:   &reconcileLocalStore{path: filepath.Join(root, "dev", "credentials.env"), managed: managed},
+		}
+	}
+	restoreReconcileSeams(t)
+
+	result, err := reconcileDeveloperCredentialAuthority(context.Background(), "freshdevice", "dev", devaccess.Credentials{Username: "candidate", Password: "stale"}, false)
+	if err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+	if managed.sets != 1 {
+		t.Fatalf("managed Set calls = %d, want exactly 1 (single create-only seed)", managed.sets)
+	}
+	if string(managed.value) != string(mustEncode("developer", "local-opt-in")) {
+		t.Fatalf("managed value = %q, want the seeded local opt-in value", managed.value)
+	}
+	if result.Username != "developer" || result.Password != "local-opt-in" {
+		t.Fatalf("reconcile returned credential %+v, want the actually-managed seeded value", result)
 	}
 }
 

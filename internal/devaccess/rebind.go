@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // RecoveryResult reports whether a device rebind could restore the authoritative
@@ -103,8 +105,16 @@ func (r Recovery) Recover(ctx context.Context, target string) (RecoveryResult, e
 			return Recovered, nil
 		}
 		// Fresh device, local opt-in present, no managed object yet: seed the
-		// managed authority once from the local opt-in credential.
+		// managed authority once from the local opt-in credential using a
+		// create-only/CAS write. If a concurrent managed value already appeared
+		// (the race window round-3 closes) the write is a no-op and the existing
+		// managed value wins: Persist reports this via
+		// ErrManagedCredentialAlreadyExists and the caller reads the existing
+		// managed value back and returns it.
 		if err := r.Store.Persist(ctx, target, local.Username, local.Password); err != nil {
+			if errors.Is(err, deployment.ErrManagedCredentialAlreadyExists) {
+				return Recovered, nil
+			}
 			return Unrecovered, fmt.Errorf("seed managed credential authority for rebind: %w", err)
 		}
 		return Recovered, nil
