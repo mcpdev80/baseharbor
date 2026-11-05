@@ -106,6 +106,82 @@ func TestRenewMatrixDoesNotTouchB(t *testing.T) {
 	}
 }
 
+// RenewMatrixDoesNotTouchBAndC: the Owner-specified three-device independence.
+// Renewing A leaves BOTH B and C's anchored serials unchanged and issues a fresh
+// serial for A only. This closes the matrix direction the round-1 review flagged
+// (round-1 proved A-vs-B only; the full A/B/C independence needs the third C
+// identity present and verified unchanged).
+func TestRenewMatrixDoesNotTouchBAndC(t *testing.T) {
+	scopeA := workstationScope(t, "station-a")
+	scopeB := workstationScope(t, "station-b")
+	scopeC := workstationScope(t, "station-c")
+	authority, owner := newLifecycleAuthority(t, scopeA)
+	bResult := enroll(t, authority, owner, scopeB)
+	cResult := enroll(t, authority, owner, scopeC)
+	enroll(t, authority, owner, scopeA) // A last, so renew can anchor it
+
+	renewed, err := authority.Renew(
+		context.Background(),
+		mustRenewRequest(t, scopeA, 2*time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("Renew A: %v", err)
+	}
+	if renewed.Serial == "" || renewed.Serial == bResult.Serial || renewed.Serial == cResult.Serial {
+		t.Fatal("A's renewal must issue a fresh serial distinct from B and C")
+	}
+	bSerial, bOK, bErr := owner.CurrentSerial(context.Background(), scopeB)
+	cSerial, cOK, cErr := owner.CurrentSerial(context.Background(), scopeC)
+	if bErr != nil || cErr != nil || !bOK || !cOK {
+		t.Fatalf("B and C must still be anchored after A's renewal; bOk=%v cOk=%v", bOK, cOK)
+	}
+	if bSerial != bResult.Serial {
+		t.Fatalf("B identity changed by A's renewal: got %q want %q", bSerial, bResult.Serial)
+	}
+	if cSerial != cResult.Serial {
+		t.Fatalf("C identity changed by A's renewal: got %q want %q", cSerial, cResult.Serial)
+	}
+}
+
+// RevokeMatrixDoesNotTouchBAndC: revoking A makes ONLY A's serial fail the CRL
+// check while B and C stay valid, and leaves their anchored identities unchanged.
+// Uses the real CRL-backed LocalIssuer so the revocation is literal.
+func TestRevokeMatrixDoesNotTouchBAndC(t *testing.T) {
+	crl := newCRLIssuer(t)
+	if err := crl.local.Revoke(context.Background(), "01"); err != nil {
+		t.Fatal(err)
+	}
+	scopeA := workstationScope(t, "station-a")
+	scopeB := workstationScope(t, "station-b")
+	scopeC := workstationScope(t, "station-c")
+	authority, owner := newCRLAuthority(t, crl, scopeA)
+	bResult := enroll(t, authority, owner, scopeB)
+	cResult := enroll(t, authority, owner, scopeC)
+	enroll(t, authority, owner, scopeA)
+
+	if err := authority.Revoke(context.Background(), scopeA); err != nil {
+		t.Fatalf("Revoke A: %v", err)
+	}
+	// A is revoked; B and C are not.
+	if revokedA, aErr := crl.local.RevokedStatus(context.Background(), bSerialFor(owner, scopeA)); aErr != nil || !revokedA {
+		t.Fatalf("A must be revoked: revoked=%v err=%v", revokedA, aErr)
+	}
+	if revokedB, bErr := crl.local.RevokedStatus(context.Background(), bSerialFor(owner, scopeB)); bErr != nil || revokedB {
+		t.Fatalf("B must not be revoked by A's revoke: revoked=%v err=%v", revokedB, bErr)
+	}
+	if revokedC, cErr := crl.local.RevokedStatus(context.Background(), bSerialFor(owner, scopeC)); cErr != nil || revokedC {
+		t.Fatalf("C must not be revoked by A's revoke: revoked=%v err=%v", revokedC, cErr)
+	}
+	bSerial, bOK, bErr := owner.CurrentSerial(context.Background(), scopeB)
+	cSerial, cOK, cErr := owner.CurrentSerial(context.Background(), scopeC)
+	if bErr != nil || cErr != nil || !bOK || !cOK {
+		t.Fatalf("B and C must still be anchored after A's revoke; bOk=%v cOk=%v", bOK, cOK)
+	}
+	if bSerial != bResult.Serial || cSerial != cResult.Serial {
+		t.Fatalf("B/C identities must be unchanged by A's revoke")
+	}
+}
+
 // RenewIssuesFreshSerial
 func TestRenewIssuesFreshSerial(t *testing.T) {
 	scopeA := workstationScope(t, "station-a")
@@ -253,10 +329,11 @@ func TestRenewMissingIdentityFailsClosed(t *testing.T) {
 
 // --- Mutant cell: stripping the RevokedStatus check makes the security cell RED ---
 
-// RenewStrippedRevocationAcceptsRevokedScope is the mutant of
-// RenewAfterRevoked: it anchors the current serial but ignores RevokedStatus.
-// When the real LocalIssuer has revoked the scope, this mutant returns nil
-// (accepts), proving the production guard is what makes the security cell green.
+// RenewStrippedRevocationAcceptsRevokedScope is the executed mutant of
+// RenewAfterRevoked: it anchors the current serial but ignores RevokedStatus, so
+// it returns nil for a revoked scope. It mirrors the production guard exactly
+// except for the removed check, so the only difference from RenewAfterRevoked is
+// the security check the cell exists to protect.
 func RenewStrippedRevocationAcceptsRevokedScope(owner *memoryOwner, ctx context.Context, scope ws.Scope) error {
 	currentSerial, ok, err := owner.CurrentSerial(ctx, scope)
 	if err != nil || !ok {
@@ -268,23 +345,40 @@ func RenewStrippedRevocationAcceptsRevokedScope(owner *memoryOwner, ctx context.
 	return nil
 }
 
-// MutantSecurityCellRED proves that with a revoked scope, the production
-// RenewAfterRevoked refuses (green) while the mutant that strips the
-// RevokedStatus check accepts (the defect). This is the literal RED witness.
-func MutantSecurityCellRED(t *testing.T) {
+// TestMutantSecurityCellRED is the executed literal RED witness. It proves two
+// things against the real CRL-backed LocalIssuer: (1) production Renew and
+// RenewAfterRevoked both refuse a revoked scope (the guard is the security cell),
+// and (2) the mutant that strips the RevokedStatus check accepts the same revoked
+// scope — the defect. If the guard were missing, production would pass and the
+// cell would be green where it must be red; that is the defect the cell exists to
+// catch.
+func TestMutantSecurityCellRED(t *testing.T) {
 	crl := newCRLIssuer(t)
+	// Bootstrap a CRL so the enrollment consume path (which fails closed on a
+	// missing CRL) can proceed against a real revocation list.
+	if err := crl.local.Revoke(context.Background(), "01"); err != nil {
+		t.Fatal(err)
+	}
 	scopeA := workstationScope(t, "station-a")
 	authority, owner := newCRLAuthority(t, crl, scopeA)
 	enroll(t, authority, owner, scopeA)
 	if err := authority.Revoke(context.Background(), scopeA); err != nil {
 		t.Fatalf("Revoke A: %v", err)
 	}
-	// Production path refuses a revoked scope (green cell).
-	if err := authority.RenewAfterRevoked(context.Background(), scopeA); err == nil {
-		t.Fatal("production RenewAfterRevoked must refuse a revoked scope")
+	req := mustRenewRequest(t, scopeA, time.Hour)
+	// Production Renew refuses a revoked scope (the guard is the security cell).
+	if _, err := authority.Renew(context.Background(), req); err == nil {
+		t.Fatal("production Renew must refuse a revoked scope; the RevokedStatus guard is the security cell")
 	}
-	// Mutant that strips the RevokedStatus check accepts it (RED witness).
+	// RenewAfterRevoked reports the explicit error for the revoked scope.
+	if err := authority.RenewAfterRevoked(context.Background(), scopeA); err == nil {
+		t.Fatal("RenewAfterRevoked must report the explicit error for a revoked scope")
+	}
+	// Mutant that strips the RevokedStatus check accepts the revoked scope
+	// (the literal RED witness).
 	if err := RenewStrippedRevocationAcceptsRevokedScope(owner, context.Background(), scopeA); err == nil {
-		t.Fatal("the mutant must accept the revoked scope, proving the guard is the security cell")
+		// PASS: the mutant accepts — proving the guard is the security cell.
+	} else {
+		t.Fatal("the mutant must accept the revoked scope; a still-present guard would mean the cell cannot demonstrate the defect")
 	}
 }

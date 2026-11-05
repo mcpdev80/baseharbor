@@ -250,6 +250,30 @@ func (a *Authority) RenewAfterRevoked(ctx context.Context, scope Scope) error {
 	return nil
 }
 
+// RevokedState reports whether the scope's currently issued leaf is revoked. It
+// is the read half of the device lifecycle the portable contract needs: it reads
+// the tri-state RevokedStatus for the scope's current leaf and returns the flag
+// only when it is readable, so an unknown status is reported as an error rather
+// than a safe "not revoked" and can never be read as accepted. A scope with no
+// issued identity reports the same explicit error rather than a silent no-op.
+func (a *Authority) RevokedState(ctx context.Context, scope Scope) (bool, error) {
+	if ctx.Err() != nil || scope.Validate() != nil {
+		return false, ErrDenied
+	}
+	currentSerial, err := a.currentSerial(ctx, scope)
+	if err != nil {
+		return false, errors.New("workstation revocation state cannot anchor the current issued identity for scope")
+	}
+	if currentSerial == "" {
+		return false, errors.New("workstation revocation state found no issued identity for scope")
+	}
+	revoked, revErr := a.issuer.RevokedStatus(ctx, currentSerial)
+	if revErr != nil {
+		return false, errors.New("workstation revocation status is unreadable")
+	}
+	return revoked, nil
+}
+
 // currentSerial anchors the currently issued leaf serial for a scope through the
 // Owner seam. A missing owner, owner or read failure fails closed with an empty
 // serial and err != nil; ok=false means no identity was issued yet.
