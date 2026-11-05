@@ -61,6 +61,14 @@ func guidedTargetActivation(ctx context.Context, out, errOut io.Writer) error {
 			return usageError("selected target is no longer configured", "Run baha target activate again to refresh the available Targets.")
 		}
 	}
+	// Bind the guided selection through the single production
+	// management-connection boundary BEFORE persisting: a Target without a
+	// verified management connection fails closed and persists no selection.
+	// Explicit/guided selection wins deterministically over any
+	// context-derived connection.
+	if err := bindExplicitSelectionToConnection(ctx, selected); err != nil {
+		return err
+	}
 	if err := writePersistedTarget(selected); err != nil {
 		return err
 	}
