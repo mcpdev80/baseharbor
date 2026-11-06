@@ -118,7 +118,8 @@ var cliMachineOperations = map[string]string{
 	"baha list": "app.list", "baha app list": "app.list", "baha app inspect": "inspect", "baha app new": "app.new", "baha inspect": "inspect", "baha backup": "backup", "baha restore": "restore",
 	"baha plan": "plan", "baha app plan": "plan", "baha app apply": "apply", "baha app up": "apply",
 	"baha app status": "status", "baha app doctor": "doctor",
-	"baha app update": "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
+	"baha app versions": "app.versions",
+	"baha app update":   "update", "baha app evidence": "evidence", "baha app backup": "backup", "baha app restore": "restore", "baha app destroy": "destroy",
 	"baha app workspace resolve": "workspace.resolve", "baha workspace resolve": "workspace.resolve",
 	"baha app workspace status": "workspace.status", "baha workspace status": "workspace.status", "baha app workspace update": "workspace.update", "baha workspace update": "workspace.update",
 	"baha app workspace init": "workspace.init", "baha workspace init": "workspace.init", "baha app workspace map": "workspace.map", "baha workspace map": "workspace.map",
@@ -130,6 +131,7 @@ var cliMachineOperations = map[string]string{
 var cliPresentationCommands = map[string]string{
 	"baha config prompt":             "Client-local shell prompt display preferences; explicit target arguments and target inspection provide semantic context.",
 	"baha app workspace":             "Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly.",
+	"baha app secure-profile export": "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
 	"baha workspace":                 "Canonical interactive presentation of the same workspace.init/map operations.",
 	"baha target activate":           "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
 	"baha use":                       "Persists local user selection; machine clients supply explicit target arguments on each semantic operation.",
@@ -144,7 +146,7 @@ var cliPresentationCommands = map[string]string{
 	"baha open":                      "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
 	"baha new":                       "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
 	"baha tui":                       "Human interactive presentation; its product actions require individual semantic coverage.",
-	"baha app secure-profile export": "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
+	"baha app version":               "Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity.",
 }
 
 // These modes are outside the semantic tool boundary by design. Business

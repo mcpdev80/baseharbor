@@ -262,6 +262,15 @@
             "mcp_tool": "baseharbor.workspace.show"
           },
           {
+            "id": "app.versions",
+            "description": "Render readable wanted/applied/observed release and component versions for recorded deployments.",
+            "safety": "read_only",
+            "confirmation_required": false,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.versions"
+          },
+          {
             "id": "app.show",
             "description": "Inspect secret-safe application overview and recorded recovery metadata.",
             "safety": "read_only",
