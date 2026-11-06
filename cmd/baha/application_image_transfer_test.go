@@ -35,13 +35,14 @@ func (f *fakeRunner) fn(_ context.Context, name string, args ...string) (string,
 // fully controlled, so the test pins exactly the reference that reaches the
 // transport and exactly what the verify reports.
 type fakeRuntimeTarget struct {
-	runner    *fakeRunner
+	runner    ExecFunc
 	pullErr   error
 	pulledRef string
-	// digest, manifestDigest, architecture are the values Verify reports.
+	// digest, manifestDigest, architecture, os are the values Verify reports.
 	digest         string
 	manifestDigest string
 	architecture   string
+	os             string
 	verifyUnavail  bool
 }
 
@@ -66,6 +67,7 @@ func (t *fakeRuntimeTarget) Verify(ctx context.Context, ref string) (ImageTransf
 		Digest:         t.digest,
 		ManifestDigest: t.manifestDigest,
 		Architecture:   t.architecture,
+		OS:             t.os,
 	}, nil
 }
 
@@ -80,9 +82,10 @@ func TestImageTransferPreservesDigestAndReturnsImmutableIdentity(t *testing.T) {
 		"amd64|linux", // source platform
 	}}
 	target := &fakeRuntimeTarget{
-		runner:       runner,
+		runner:       runner.fn,
 		digest:       sha256a,
 		architecture: "amd64",
+		os:           "linux",
 	}
 	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app:stable", Exec: runner.fn}
 
@@ -105,7 +108,7 @@ func TestImageTransferFailsClosedWhenCopyTargetUnreachable(t *testing.T) {
 	// The transfer-target error cell: a failing target copy must propagate as an
 	// explicit error, NOT a half-success.
 	runner := &fakeRunner{}
-	target := &fakeRuntimeTarget{runner: runner, pullErr: errors.New("podman: pull: connection refused")}
+	target := &fakeRuntimeTarget{runner: runner.fn, pullErr: errors.New("podman: pull: connection refused")}
 	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
 
 	_, err := ImageTransfer(context.Background(), source, target)
@@ -128,7 +131,7 @@ func TestImageTransferFailsClosedWhenVerifyReportsWrongDigest(t *testing.T) {
 		"amd64|linux",
 	}}
 	target := &fakeRuntimeTarget{
-		runner:       runner,
+		runner:       runner.fn,
 		digest:       sha256b, // target reports sha256b
 		architecture: "amd64",
 	}
@@ -155,7 +158,7 @@ func TestImageTransferFailsClosedOnArchitectureMismatch(t *testing.T) {
 		"amd64|linux", // source verified amd64
 	}}
 	target := &fakeRuntimeTarget{
-		runner:       runner,
+		runner:       runner.fn,
 		digest:       sha256a,
 		architecture: "arm64", // target reports arm64
 	}
@@ -181,11 +184,101 @@ func TestImageTransferFailsClosedWhenVerifyUnavailable(t *testing.T) {
 		"registry.example.invalid/org/app@" + sha256a,
 		"amd64|linux",
 	}}
-	target := &fakeRuntimeTarget{runner: runner, digest: sha256a, architecture: "amd64", verifyUnavail: true}
+	target := &fakeRuntimeTarget{runner: runner.fn, digest: sha256a, architecture: "amd64", os: "linux", verifyUnavail: true}
 	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
 
 	if _, err := ImageTransfer(context.Background(), source, target); !errors.Is(err, ErrImageTransferUnavailable) {
 		t.Fatalf("unverifiable transfer must fail closed, got %v", err)
+	}
+}
+
+// platformInspectRunner models the native tool cleanly resolving the digest but
+// failing, returning empty, or returning malformed platform data.
+type platformInspectRunner struct {
+	calls      []string
+	output     []string
+	inspectErr error
+	emptyOut   bool
+	malformed  bool
+}
+
+func (p *platformInspectRunner) fn(_ context.Context, name string, args ...string) (string, error) {
+	p.calls = append(p.calls, name+" "+strings.Join(args, " "))
+	if strings.Contains(strings.Join(args, " "), "Config.Architecture") {
+		// platform inspect call
+		if p.inspectErr != nil {
+			return "", p.inspectErr
+		}
+		if p.emptyOut {
+			return "", nil
+		}
+		if p.malformed {
+			return "amd64", nil // missing the |OS separator
+		}
+		return "", nil
+	}
+	if len(p.output) > 0 {
+		out := p.output[0]
+		p.output = p.output[1:]
+		return out, nil
+	}
+	return "", nil
+}
+
+func TestImageTransferFailsClosedOnPlatformInspectCommandError(t *testing.T) {
+	// FAIL-CLOSED: a failing platform inspect on the source must fail the
+	// transfer closed, never return a transfer with unpinned architecture/OS.
+	runner := &platformInspectRunner{
+		output:     []string{"registry.example.invalid/org/app@" + sha256a},
+		inspectErr: errors.New("podman: inspect: error occurred"),
+	}
+	target := &fakeRuntimeTarget{runner: runner.fn, digest: sha256a, architecture: "amd64", os: "linux"}
+	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
+
+	if _, err := ImageTransfer(context.Background(), source, target); !errors.Is(err, ErrImageTransferUnavailable) {
+		t.Fatalf("platform inspect command error must fail closed, got %v", err)
+	}
+}
+
+func TestImageTransferFailsClosedOnPlatformInspectEmptyOutput(t *testing.T) {
+	// FAIL-CLOSED: an empty platform inspect report must fail the transfer, not
+	// pass with an empty architecture/OS.
+	runner := &platformInspectRunner{
+		output:   []string{"registry.example.invalid/org/app@" + sha256a},
+		emptyOut: true,
+	}
+	target := &fakeRuntimeTarget{runner: runner.fn, digest: sha256a, architecture: "amd64", os: "linux"}
+	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
+
+	if _, err := ImageTransfer(context.Background(), source, target); !errors.Is(err, ErrImageTransferUnavailable) {
+		t.Fatalf("empty platform inspect output must fail closed, got %v", err)
+	}
+}
+
+func TestImageTransferFailsClosedOnPlatformInspectMalformedOutput(t *testing.T) {
+	// FAIL-CLOSED: a platform inspect report missing the |OS separator must fail
+	// the transfer closed, not pass with an empty OS.
+	runner := &platformInspectRunner{
+		output:    []string{"registry.example.invalid/org/app@" + sha256a},
+		malformed: true,
+	}
+	target := &fakeRuntimeTarget{runner: runner.fn, digest: sha256a, architecture: "amd64", os: "linux"}
+	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
+
+	if _, err := ImageTransfer(context.Background(), source, target); !errors.Is(err, ErrImageTransferUnavailable) {
+		t.Fatalf("malformed platform inspect output must fail closed, got %v", err)
+	}
+}
+
+func TestImageTransferFailsClosedOnOsDrift(t *testing.T) {
+	// OS-drift cell: same digest, same architecture, but a different OS. The
+	// transferred OS must match the source-pinned OS exactly.
+	runner := &platformInspectRunner{output: []string{"registry.example.invalid/org/app@" + sha256a}}
+	target := &fakeRuntimeTarget{runner: runner.fn, digest: sha256a, architecture: "amd64", os: "windows"}
+	source := RuntimeImageTransferSource{Location: "registry.example.invalid/org/app", Exec: runner.fn}
+
+	if _, err := ImageTransfer(context.Background(), source, target); err == nil {
+		t.Fatal("OS drift must fail the transfer")
 	}
 }
 
@@ -232,20 +325,30 @@ func TestImageTransferIdentityVerifyMatches(t *testing.T) {
 		Architecture:   "amd64",
 		OS:             "linux",
 	}
-	if err := id.Verify(sha256a, sha256b, "amd64"); err != nil {
+	if err := id.Verify(sha256a, sha256b, "amd64", "linux"); err != nil {
 		t.Fatalf("matching identity must verify: %v", err)
 	}
-	if err := id.Verify(sha256b, sha256b, "amd64"); err == nil {
+	if err := id.Verify(sha256b, sha256b, "amd64", "linux"); err == nil {
 		t.Fatal("digest mismatch must fail Verify")
 	}
-	if err := id.Verify(sha256a, sha256a, "amd64"); err == nil {
+	if err := id.Verify(sha256a, sha256a, "amd64", "linux"); err == nil {
 		t.Fatal("manifest digest mismatch must fail Verify")
 	}
-	if err := id.Verify(sha256a, sha256b, "arm64"); err == nil {
+	if err := id.Verify(sha256a, sha256b, "arm64", "linux"); err == nil {
 		t.Fatal("architecture mismatch must fail Verify")
 	}
-	if err := id.Verify("", sha256b, "amd64"); err == nil {
+	if err := id.Verify(sha256a, sha256b, "amd64", "windows"); err == nil {
+		t.Fatal("os mismatch must fail Verify")
+	}
+	if err := id.Verify("", sha256b, "amd64", "linux"); err == nil {
 		t.Fatal("missing digest must fail Verify")
+	}
+	// Fail-closed on empty architecture or os on the target side.
+	if err := id.Verify(sha256a, sha256b, "", "linux"); err == nil {
+		t.Fatal("empty architecture must fail Verify")
+	}
+	if err := id.Verify(sha256a, sha256b, "amd64", ""); err == nil {
+		t.Fatal("empty os must fail Verify")
 	}
 }
 

@@ -108,12 +108,13 @@ func (i ImageTransferIdentity) ImmutableIdentity() string {
 
 // Verify proves a transferred image carries the exact identity that was pinned
 // on the source: same digest, same platform-manifest digest when one was
-// selected, and the same architecture. Any divergence is a failed transfer.
+// selected, the same architecture, and the same OS. Any divergence, including a
+// missing or empty architecture or OS on either side, is a failed transfer.
 //
-// digest, manifestDigest and architecture are the target's reported values for
-// the transferred image. A missing or unparseable digest fails the transfer
+// digest, manifestDigest, architecture and os are the target's reported values
+// for the transferred image. A missing or unparseable digest fails the transfer
 // closed: the target must prove an immutable identity.
-func (i ImageTransferIdentity) Verify(digest, manifestDigest, architecture string) error {
+func (i ImageTransferIdentity) Verify(digest, manifestDigest, architecture, os string) error {
 	if i.Digest == "" {
 		return fmt.Errorf("%w: source did not pin an immutable digest", ErrImageTransferDigestMismatch)
 	}
@@ -128,9 +129,15 @@ func (i ImageTransferIdentity) Verify(digest, manifestDigest, architecture strin
 		return fmt.Errorf("%w: manifest %q != source %q",
 			ErrImageTransferDigestMismatch, manifestDigest, i.ManifestDigest)
 	}
-	if i.Architecture != "" && !strings.EqualFold(strings.TrimSpace(architecture), i.Architecture) {
+	// Architecture and OS are mandatory and compared exactly; an empty value on
+	// either side is a failed transfer, never a skipped ("not pinned") check.
+	if !strings.EqualFold(strings.TrimSpace(architecture), strings.TrimSpace(i.Architecture)) {
 		return fmt.Errorf("%w: architecture %q != source %q",
 			ErrImageTransferArchitectureMismatch, architecture, i.Architecture)
+	}
+	if strings.ToLower(strings.TrimSpace(os)) != strings.ToLower(strings.TrimSpace(i.OS)) {
+		return fmt.Errorf("%w: os %q != source %q",
+			ErrImageTransferArchitectureMismatch, os, i.OS)
 	}
 	return nil
 }
@@ -202,7 +209,7 @@ func ImageTransfer(ctx context.Context, source ImageTransferSource, target Image
 		// closed: report the error, do not report a partial success.
 		return ImageTransferIdentity{}, fmt.Errorf("verify transferred image %s: %w", ref, err)
 	}
-	if err := identity.Verify(verified.Digest, verified.ManifestDigest, verified.Architecture); err != nil {
+	if err := identity.Verify(verified.Digest, verified.ManifestDigest, verified.Architecture, verified.OS); err != nil {
 		return ImageTransferIdentity{}, fmt.Errorf("verify transferred image %s: %w", ref, err)
 	}
 	return verified, nil
@@ -250,7 +257,10 @@ func (s RuntimeImageTransferSource) Resolve(ctx context.Context) (ImageTransferI
 	if digest == "" || !validImageDigest(digest) {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: source %q did not resolve to an immutable sha256 digest", ErrImageTransferUnavailable, location)
 	}
-	architecture, os := inspectRuntimeImagePlatform(ctx, s.Exec, ref)
+	architecture, os, err := inspectRuntimeImagePlatform(ctx, s.Exec, ref)
+	if err != nil {
+		return ImageTransferIdentity{}, err
+	}
 	return ImageTransferIdentity{
 		Repository:   repository,
 		Digest:       digest,
@@ -320,7 +330,10 @@ func inspectRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider,
 	if digest == "" || !validImageDigest(digest) {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: transferred image %q did not report an immutable sha256 digest", ErrImageTransferUnavailable, ref)
 	}
-	architecture, os := inspectRuntimeImagePlatform(ctx, exec, ref)
+	architecture, os, err := inspectRuntimeImagePlatform(ctx, exec, ref)
+	if err != nil {
+		return ImageTransferIdentity{}, err
+	}
 	return ImageTransferIdentity{
 		Repository:   repository(ref, digest),
 		Digest:       digest,
@@ -342,19 +355,29 @@ func runTransfer(ctx context.Context, exec ExecFunc, name string, args ...string
 }
 
 // inspectRuntimeImagePlatform returns the architecture and OS of the platform
-// manifest selected for ref as reported by the host's native tool. A missing or
-// unparseable report yields empty strings, which the identity Verify treats as
-// "not pinned" rather than as a mismatch.
-func inspectRuntimeImagePlatform(ctx context.Context, exec ExecFunc, ref string) (string, string) {
+// manifest selected for ref as reported by the host's native tool. It fails
+// closed on a command error or a malformed/empty report: platform identity is a
+// mandatory, parseable part of a verified transfer, so an unparseable report is
+// never treated as "not pinned" — it is a failed transfer.
+func inspectRuntimeImagePlatform(ctx context.Context, exec ExecFunc, ref string) (string, string, error) {
 	out, err := runTransfer(ctx, exec, "podman", "image", "inspect",
 		"--format", `{{.Config.Architecture}}|{{.Config.OS}}`, ref)
 	if err != nil {
-		return "", ""
+		return "", "", fmt.Errorf("%w: platform inspect failed for %q: %v",
+			ErrImageTransferUnavailable, ref, err)
 	}
-	if idx := strings.IndexByte(out, '|'); idx >= 0 {
-		return strings.TrimSpace(out[:idx]), strings.TrimSpace(out[idx+1:])
+	idx := strings.IndexByte(out, '|')
+	if idx < 0 {
+		return "", "", fmt.Errorf("%w: platform inspect %q for %q did not report architecture|OS",
+			ErrImageTransferUnavailable, out, ref)
 	}
-	return strings.TrimSpace(out), ""
+	architecture := strings.TrimSpace(out[:idx])
+	os := strings.TrimSpace(out[idx+1:])
+	if architecture == "" || os == "" {
+		return "", "", fmt.Errorf("%w: platform inspect %q for %q reported empty architecture or OS",
+			ErrImageTransferUnavailable, out, ref)
+	}
+	return architecture, os, nil
 }
 
 // splitDigestReference separates a repository reference into its bare
