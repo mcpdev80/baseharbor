@@ -301,3 +301,39 @@ func TestInviteManagedUserFallbackIdMismatchIsRefused(t *testing.T) {
 		t.Fatal("activation ran for a same-email/different-id fallback account")
 	}
 }
+
+// The ambiguity refusal must be a real property of the production path
+// (inviteManagedUser -> resolveManagedUser), not of a separate helper. Two
+// different accounts that both look owned (managed-invite marker, enabled,
+// verified) for one email must be refused with no activation. Removing the
+// production len(users)>1 guard must make this same production-path regression
+// fail (red); keeping it makes it green. This is the causal mutant-evidence
+// requirement from review-1397a.md finding 3 / act-1397b.md finding 2: the
+// guard under test is removed from the production source, the production
+// regression is rerun, and it turns red instead of passing because a later
+// ownership predicate would otherwise accept the first account.
+func TestInviteManagedUserAmbiguousEmailRefusedProductionPath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/users"):
+			if r.Method == http.MethodGet {
+				// Ambiguous: two DIFFERENT accounts that both look owned
+				// (managed-invite marker, enabled, verified) share this email.
+				w.Write([]byte(`[{"id":"a","username":"i@b.local","email":"i@b.local","enabled":true,"emailVerified":true,"attributes":{"baseharbor.scope":["managed-invite"]}},{"id":"b","username":"i@b.local","email":"i@b.local","enabled":true,"emailVerified":true,"attributes":{"baseharbor.scope":["managed-invite"]}}]`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			return
+		case strings.Contains(r.URL.Path, "/updateEmail"):
+			w.WriteHeader(http.StatusNoContent)
+			return
+		default:
+			w.Write([]byte(managedInviteRealm))
+		}
+	}))
+	defer server.Close()
+	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client()}
+	if err := admin.inviteManagedUser(context.Background(), "bh-operators-dev", "isolated", "dev", "i@b.local", managedInviteOwnership()); err == nil {
+		t.Fatal("ambiguous invite must be refused on the production path")
+	}
+}
