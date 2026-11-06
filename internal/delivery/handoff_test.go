@@ -247,6 +247,48 @@ func TestHandoffRenderIsBounded(t *testing.T) {
 	}
 }
 
+// TestDelegatedStatusTrueZeroEvidenceNeverTrue is the round-3 NEGATIVE cell.
+//
+// It places Synced/Healthy true on a DriftObservation whose digests AND
+// Evidence are all empty. This is deliberately crafted to bypass the older
+// partial-digest / partial-evidence guard:
+//
+//	if (drift.DesiredDigest != "" || drift.ObservedDigest != "" || drift.Evidence != "") && drift.Evidence == "" {
+//
+// every digest/evidence field is empty, so that guard fires its else path and
+// does NOT refuse. It is only the subsequent drift.validate() call — which
+// rejects an empty desired digest — that fails this observation closed. The
+// test asserts exactly that: no true status is rendered, and the failure is
+// driven by validate(), not the earlier guard.
+//
+// This is the ERHALT-Zelle for the validate() call: removing the validate()
+// invocation from the HandOff path turns this cell RED (the code renders the
+// unvalidated true status on the observe path); restoring validate() turns it
+// GREEN again. It therefore actually discriminates the validate() call, unlike
+// the three round-2 cells, which all survive that one-line mutant.
+func TestDelegatedStatusTrueZeroEvidenceNeverTrue(t *testing.T) {
+	drift := DriftObservation{
+		DesiredDigest:  "", // empty: older partial-digest/evidence guard does not fire
+		ObservedDigest: "", // empty
+		Evidence:       "", // empty
+		Synced:         true,
+		Healthy:        true,
+	}
+	got, err := HandOff(delegatedRequest(HandoffApply, foreignTracking(), drift))
+	if err == nil {
+		t.Fatalf("true status flags with zero digests and zero evidence must fail closed via validate(), got action=%q synced=%v healthy=%v", got.Action, got.Synced, got.Healthy)
+	}
+	// The failure must not be the earlier partial-digest/evidence guard
+	// (which only applies to non-empty digest/evidence): it must be the
+	// validate() refusal about empty required fields.
+	if !strings.Contains(err.Error(), "requires both the desired and observed digests") {
+		t.Fatalf("validate() must be the stopping guard for zero-evidence true flags, got: %v", err)
+	}
+	if got.Synced || got.Healthy {
+		t.Fatalf("true status flags with zero evidence must not be rendered synced=%v healthy=%v", got.Synced, got.Healthy)
+	}
+}
+
 // TestDelegatedStatusWithoutEvidenceNeverTrue is the round-2 NEGATIVE cell:
 // a fully present drift observation with a true Synced/Healthy flag but a
 // validate()-blocking gap (here a missing evidence reference) must fail
