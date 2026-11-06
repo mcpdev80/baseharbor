@@ -20,3 +20,11 @@ func AcquireLifecycleLock(root string) (func(), error) {
 func AcquireStateFileLock(root string) (func(), error) {
 	return stableid.AcquireStateFileLock(root)
 }
+
+// AcquireBootstrapLock re-exports the stableid bootstrap lock — a SEPARATE
+// kernel lock from the lifecycle lock — so bootstrap of a fresh durable state
+// root is serialised and exactly one process ever owns the new authority before
+// the management host binds.
+func AcquireBootstrapLock(root string) (func(), error) {
+	return stableid.AcquireBootstrapLock(root)
+}

@@ -38,8 +38,9 @@ func serveCommand(store application.Store) *cli.Command {
 				return err
 			}
 			executor := newBahaMachineExecutor(store)
+			var startup context.Context
 			if cfg.RuntimeAppName == "" {
-				startup := ctx
+				startup = ctx
 				if cfg.ConnectorEnrollmentEnabled {
 					startup = withTargetOverride(startup, cfg.ConnectorAuthorityTarget)
 				}
@@ -48,7 +49,44 @@ func serveCommand(store application.Store) *cli.Command {
 					return err
 				}
 			}
-			return controlplaneruntime.Run(ctx, cfg, store, executor)
+			// Durable management host: prove this process is the single active
+			// writer of one durable installation state root before the
+			// control-plane server binds. A missing root is a bootstrap: the
+			// caller provisions a fresh durable installation while holding an
+			// atomic bootstrap lock, so a second competing fresh bootstrap is
+			// refused with ErrManagementHostOwnedFreshRoot. A foreign or locked
+			// root fails closed with no local fallback. The verified state root
+			// is pinned into the startup context that reaches the executor and
+			// server below.
+			if host, herr := managementHostForServe(ctx); herr == nil && host != nil {
+				bootstrap, unlock, verr := host.Verify()
+				if verr != nil {
+					if unlock != nil {
+						unlock()
+					}
+					return verr
+				}
+				if bootstrap {
+					// The bootstrap lock is held here; the management-host test
+					// proves a second competing bootstrap is refused. The caller
+					// provisions the fresh durable installation on this root
+					// while the lock is held, then the server becomes the durable
+					// authority and holds the kernel lifecycle lock for its whole
+					// lifetime, so an independent writer stays excluded while
+					// lifecycle operations routed through this host execute on the
+					// owned authority (see coreInstallUnderManagedHost).
+					unlock()
+				} else {
+					// Attach: pin the owned durable state root into the startup
+					// context so the executor and server never select a
+					// different root than the one this host owns.
+					startup = withManagementHostAttached(startup, host.StateRoot())
+				}
+			}
+			// Pin the startup context (management-host attachment, connector
+			// override, authority) through controlplaneruntime.Run instead of
+			// the original ctx, so the selected root reaches every consumer.
+			return controlplaneruntime.Run(startup, cfg, store, executor)
 		},
 	}
 }
