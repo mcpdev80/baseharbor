@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -711,3 +712,75 @@ func makeNBytes(n int) []byte {
 // now returns the current time for touch-style mtime updates in the during-read
 // race.
 func now() time.Time { return time.Now() }
+
+// Regression (round 8): with a nil MutationPending hook the per-file fresh Lstat
+// is the only timing source. touch.go is held at a diverged mtime for the whole
+// walk, so the guard must observe the divergence and abort. This ratchets the
+// nil-hook path: any regression that silently accepts a changed baseline path
+// fails here.
+func TestSourceSnapshotNilHookStillRejectsChangedBaseline(t *testing.T) {
+	root := t.TempDir()
+	// big.bin is read first (lexically before touch.go) and keeps the walk busy
+	// so touch.go is read a moment after walk start. touch.go's baseline mtime
+	// was recorded at walk start (Layer 0).
+	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(64*1024*1024)))
+	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
+	mutate := filepath.Join(root, "touch.go")
+
+	// Diverged mtime: creation time + 10s, well outside mtime resolution.
+	diverged := now().Add(10 * time.Second)
+
+	walkStarted := make(chan struct{}, 1)
+	done := make(chan struct{})
+	var stop int32
+	go func() {
+		defer close(done)
+		<-walkStarted
+		// Hold touch.go's mtime at the diverged value for the rest of the walk so
+		// the guard's divergence check always sees the change.
+		for atomic.LoadInt32(&stop) == 0 {
+			_ = os.Chtimes(mutate, diverged, diverged)
+		}
+	}()
+
+	_, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source: "https://git.example/app.git",
+		ChangeHook: func(path string) {
+			if path == "__walk_started__" {
+				select {
+				case walkStarted <- struct{}{}:
+				default:
+				}
+			}
+		},
+		// Nil hook: afterMutationWait returns the baseline identity on the nil
+		// channel. The fresh per-file Lstat above is the sole timing source.
+		MutationPending: func(path string) <-chan struct{} {
+			return nil
+		},
+	})
+	atomic.StoreInt32(&stop, 1)
+	<-done
+
+	if err == nil {
+		t.Fatal("nil-hook regression FAILED: capture accepted a changed baseline path (fresh-stat overwrite)")
+	}
+}
+
+// Control for the nil-hook regression: no mutation, so the nil-hook capture
+// succeeds, proving the red in the regression cell is caused by the mutation
+// rather than by the nil hook itself.
+func TestSourceSnapshotNilHookNoMutationStaysGreen(t *testing.T) {
+	root := t.TempDir()
+	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(64*1024*1024)))
+	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
+
+	_, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source:          "https://git.example/app.git",
+		MutationPending: func(path string) <-chan struct{} { return nil },
+	})
+
+	if err != nil {
+		t.Fatalf("control failed: unchanged nil-hook capture produced an error: %v", err)
+	}
+}
