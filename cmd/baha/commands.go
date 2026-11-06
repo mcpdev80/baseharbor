@@ -261,6 +261,8 @@ func configuredApplicationCommand(store application.Store) *cli.Command {
 		appSecretCommand(store),
 		appRuntimeIdentityCommand(store),
 		appEvidenceCommand(store),
+		appVersionCommand(store),
+		appVersionsCommand(),
 	)
 	applyRemainingApplicationRuntimeProviderGuards(store, appCmd)
 

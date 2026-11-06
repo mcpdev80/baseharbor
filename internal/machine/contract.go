@@ -181,6 +181,7 @@ func Operations() []Operation {
 		{ID: "provider.init", MCPTool: "baseharbor.provider.init", Description: "Create a provider authoring scaffold.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "provider.test", MCPTool: "baseharbor.provider.test", Description: "Check provider descriptor conformance without mutation.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "workspace.show", MCPTool: "baseharbor.workspace.show", Description: "Inspect canonical source identities and application-local checkout mappings.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
+		{ID: "app.versions", MCPTool: "baseharbor.app.versions", Description: "Render readable wanted/applied/observed release and component versions for recorded deployments.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "app.show", MCPTool: "baseharbor.app.show", Description: "Inspect secret-safe application overview and recorded recovery metadata.", Safety: SafetyReadOnly, ContractVersion: ContractVersion},
 		{ID: "app.create", MCPTool: "baseharbor.app.create", Description: "Persist target-managed Application Intent without starting runtime resources.", Safety: SafetyMutating, ContractVersion: ContractVersion},
 		{ID: "app.adopt", MCPTool: "baseharbor.app.adopt", Description: "Adopt an existing repository from explicit portable Application Intent and source selection.", Safety: SafetyMutating, ContractVersion: ContractVersion},

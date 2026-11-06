@@ -24,6 +24,44 @@
       }
     },
     {
+      "operation": "app.versions",
+      "value": {
+        "contract_version": "v1",
+        "releases": [
+          {
+            "contract_version": "v1",
+            "identity": {
+              "target": "synthetic-target",
+              "application": "synthetic-demo",
+              "environment": "prod",
+              "source_kind": "repository"
+            },
+            "source": {
+              "available": true
+            },
+            "stages": {
+              "wanted": {
+                "kind": "intended",
+                "reference": "sha256:synthetic-intended",
+                "observed_at": "2026-10-06T00:00:00Z"
+              },
+              "applied": {
+                "kind": "applied",
+                "reference": "sha256:synthetic-applied",
+                "observed_at": "2026-10-05T23:00:00Z"
+              },
+              "observed": {
+                "kind": "observed",
+                "reference": "sha256:synthetic-applied",
+                "observed_at": "2026-10-05T23:00:00Z"
+              }
+            },
+            "verified_at": "0001-01-01T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
       "operation": "app.list",
       "value": {
         "contract_version": "v1",

@@ -51,6 +51,7 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.provider.init` | `mutating` | false | false |
 | `baseharbor.provider.test` | `read_only` | false | false |
 | `baseharbor.workspace.show` | `read_only` | false | false |
+| `baseharbor.app.versions` | `read_only` | false | false |
 | `baseharbor.app.show` | `read_only` | false | false |
 | `baseharbor.app.create` | `mutating` | false | false |
 | `baseharbor.app.adopt` | `mutating` | false | false |
