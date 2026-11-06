@@ -159,24 +159,23 @@ type CaptureOptions struct {
 	// Go-scheduler ordering race (not a filesystem-resolution issue): under host
 	// load the writer goroutine can be scheduled late, so the guard's re-stat can
 	// run before the writer's mutation lands, letting a real mutation slip past.
-	// It returns a channel that is CLOSED the instant the caller has entered its
-	// mutation section (its os.Chtimes has executed) for that path. When the guard
-	// re-stats a path and sees no divergence, it waits (bounded) on the returned
-	// channel for the caller's mutation section to open, then re-stats, so the
-	// caller's mutation is causally observed (a happened-before) instead of
-	// racing the guard. It must be non-blocking and cheap. It stays
-	// production-gated (nil never changes public behavior), so a nil hook never
-	// alters a capture. The wait it introduces is bounded and its overrun is a
-	// fail-fast sentinel, never the deciding timing signal of whether a mutation
-	// landed.
+	// It returns a channel CLOSED the instant the caller enters its mutation
+	// section (its os.Chtimes has executed) for that path. When the guard re-stats
+	// a path and sees no divergence, it waits (bounded) on the returned channel
+	// for the caller's mutation section to open, then re-stats, so the caller's
+	// mutation is causally observed (a happened-before) instead of racing the
+	// guard. It must be non-blocking and cheap, and stays production-gated (nil
+	// never changes public behavior), so a nil hook never alters a capture. The
+	// wait it introduces is bounded and its overrun is a fail-fast sentinel, never
+	// the deciding timing signal of whether a mutation landed.
 	MutationPending func(path string) <-chan struct{}
 }
 
 // CaptureSource produces a bounded snapshot of exactly one local checkout at root.
 // It reuses the repo's native ownership and ignore/context rules: the declared
 // source root is a hard boundary (any ".." escape fails), symlink targets are
-// rejected if they escape the root, .dockerignore/.gitignore negation rules decide
-// inclusion, and git dirty state plus a concurrent writer are detected honestly.
+// rejected if they escape the root, .dockerignore/.gitignore rules decide inclusion,
+// and git dirty state plus a concurrent writer are detected honestly.
 func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (SourceSnapshot, error) {
 	root, err := filepath.Abs(strings.TrimSpace(root))
 	if err != nil {
@@ -332,9 +331,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		// Round-7 causal happened-before: under host load the writer goroutine can
 		// be scheduled late, so the re-stat may run before the writer's mutation
 		// lands. afterMutationWait waits (bounded) on a MutationPending channel the
-		// caller closes when its mutation section opens, then re-stats; the deciding
-		// re-stat runs after the mutation becomes observable (a happened-before)
-		// instead of racing the scheduler. Overrun is a fail-fast sentinel.
+		// caller closes when its mutation section opens, then re-stats.
 		nowNano, _ = afterMutationWait(filePath, identity, opts.MutationPending)
 		if hadBaseline && nowNano != identity {
 			if opts.ChangeHook != nil {
@@ -403,11 +400,13 @@ func verifyFinalBaseline(source, root string, before map[string]int64, MutationA
 // afterMutationWait runs the round-7 causal happened-before for a single path in
 // the in-walk barrier: the caller re-stats the path and sees no divergence, so it
 // waits (bounded) on a MutationPending channel the caller closes when its mutation
-// section opens, then re-stats once more. The deciding re-stat runs after the
-// mutation becomes observable (a happened-before) instead of racing the scheduler.
-// Returns the final mtime and whether the path now diverges (true), is unchanged
-// (false), or the bound elapsed without observing a mutation (false).
+// section opens, then re-stats once more. Returns the final mtime and whether the
+// path now diverges (true), is unchanged (false), or the bound elapsed without
+// observing a mutation (false). A nil MutationPending is a no-op.
 func afterMutationWait(filePath string, identity int64, MutationPending func(path string) <-chan struct{}) (int64, bool) {
+	if MutationPending == nil {
+		return identity, false
+	}
 	pendingCh := MutationPending(filepath.ToSlash(filePath))
 	if pendingCh == nil {
 		return identity, false
@@ -432,10 +431,10 @@ func afterMutationWait(filePath string, identity int64, MutationPending func(pat
 // waitForMutation is the round-7 causal happened-before for Layer 2: the guard
 // re-stats a baseline path and sees no divergence, so it waits (bounded) on a
 // MutationPending channel the caller closes when its mutation section opens, then
-// re-stats. This turns the concurrent scheduler race into a happened-before — the
-// caller is guaranteed to enter its mutation section, so the guard waits for the
-// mutation to become observable. Returns true if the re-stat now diverges, false
-// if the bound was exhausted.
+// re-stats. This turns the scheduler race into a happened-before — the caller is
+// guaranteed to enter its mutation section, so the guard waits for the mutation
+// to become observable. Returns true if the re-stat diverges, false if the
+// bound was exhausted.
 func waitForMutation(root, baselineFile string, baselineTime int64, MutationPending func(path string) <-chan struct{}) bool {
 	if MutationPending == nil {
 		return false
@@ -465,9 +464,9 @@ func waitForMutation(root, baselineFile string, baselineTime int64, MutationPend
 }
 
 // baselineReadSignal names the hook event the walk fires once per baseline path
-// it reads past its per-file barrier. The writer uses it to know a path is already
-// visited (the in-walk barrier can no longer see a mutation of it), so only the
-// post-walk final sweep can catch it — this is what proves Layer 2 is
+// it reads past its per-file barrier. The writer uses it to know a path is
+// already visited (the in-walk barrier can no longer see a mutation of it), so
+// only the post-walk final sweep can catch it — this proves Layer 2 is
 // load-bearing in the late-mutation regression.
 func baselineReadSignal(relSlash string) string {
 	return "__path_read_" + relSlash
@@ -604,8 +603,8 @@ type contextIgnoreRule struct {
 }
 
 // loadContextIgnoreRules loads .dockerignore (preferred) or .gitignore from the
-// root, falling back to an explicit path. It reuses the dockerignore parsing of
-// the build-context fingerprint.
+// root, falling back to an explicit path. It reuses the build-context fingerprint's
+// dockerignore parsing.
 func loadContextIgnoreRules(root, explicit string) ([]contextIgnoreRule, error) {
 	candidates := []string{}
 	if strings.TrimSpace(explicit) != "" {
@@ -684,8 +683,8 @@ func contextIgnorePatternString(pattern string) string {
 	return b.String()
 }
 
-// contextIgnoreExcludes mirrors dockerIgnoreExcludes: it applies negation so a
-// later "!keep.txt" re-includes a previously excluded path.
+// contextIgnoreExcludes mirrors dockerIgnoreExcludes: it applies negation so a later
+// "!keep.txt" re-includes a previously excluded path.
 func contextIgnoreExcludes(rules []contextIgnoreRule, rel string, isDir bool) bool {
 	rel = path.Clean(rel)
 	excluded := false
@@ -790,8 +789,8 @@ func mtimeNow(path string) int64 {
 }
 
 // mutationPendingStep bounds each bounded-wait iteration in the round-7 causal
-// happened-before; it is a small, fixed poll step, never a wall-clock timing
-// signal of whether a mutation landed.
+// happened-before; it is a small, fixed poll step, never a wall-clock timing signal
+// of whether a mutation landed.
 const mutationPendingStep = 200 * time.Nanosecond
 
 // mutationPendingMax bounds the number of bounded-wait iterations before the
