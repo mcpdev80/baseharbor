@@ -68,6 +68,13 @@ func Resolve(ctx context.Context, source Source) (Resolution, Config, error) {
 	case SourceGit:
 		return resolveGit(ctx, source)
 	case SourceOCI:
+		// The OCI org-config path pulls the organization configuration from a
+		// shared OCI Distribution endpoint. It is opt-in: without the operator
+		// turning BASEHARBOR_ORG_OCI_ENABLED on, an OCI source fails closed with
+		// ErrOrgSourceRegistryDisabled and never reaches the shared endpoint.
+		// When opted in, the resolve/pull is guarded against public-default and
+		// unreachable endpoints so a refusal is explicit and carries no mutable
+		// fallback (the registry-access 1395c trap).
 		return resolveOCI(ctx, source)
 	default:
 		return Resolution{}, Config{}, fmt.Errorf("%w: kind %q", ErrUnsupportedSource, source.Kind)
@@ -188,12 +195,27 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	} else {
 		ref += ":" + requested
 	}
+	// Opt-in guard: the shared OCI endpoint is only reachable when the operator
+	// turned the switch on. Without the opt-in the OCI source fails closed with
+	// an explicit, distinct identity — never a silent default and never the
+	// merely-unavailable class a mutable fallback could cover.
+	if !orgRegistryOptInEnabled() {
+		return Resolution{}, Config{}, fmt.Errorf("%w: OCI organization source %q requires opt-in via %s",
+			ErrOrgSourceRegistryDisabled, ref, OrgRegistryOptInEnv)
+	}
+	// Fail closed against a public docker.io default before touching the native
+	// tool: a host that merely has oras installed must never turn a public
+	// default into a resolved enterprise endpoint.
+	if err := classifyOrgRegistryError(nil, ref); err != nil {
+		return Resolution{}, Config{}, err
+	}
 	out, err := run(ctx, "oras", "resolve", ref)
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
 			return Resolution{}, Config{}, fmt.Errorf("%w: oras is required to resolve OCI organization sources; install ORAS or use Git/local/system distribution", ErrSourceUnavailable)
 		}
-		return Resolution{}, Config{}, fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err)
+		return Resolution{}, Config{}, classifyOrgRegistryError(
+			fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err), ref)
 	}
 	digest := firstDigest(out)
 	if digest == "" {
@@ -206,7 +228,8 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	defer os.RemoveAll(tmp)
 	immutableRef := strings.TrimSpace(source.Location) + "@" + digest
 	if _, err := run(ctx, "oras", "pull", immutableRef, "--output", tmp); err != nil {
-		return Resolution{}, Config{}, fmt.Errorf("%w: pull organization OCI source %q: %v", ErrSourceUnavailable, immutableRef, err)
+		return Resolution{}, Config{}, classifyOrgRegistryError(
+			fmt.Errorf("%w: pull organization OCI source %q: %v", ErrSourceUnavailable, immutableRef, err), source.Location)
 	}
 	path, err := locateOrganizationFile(tmp)
 	if err != nil {
