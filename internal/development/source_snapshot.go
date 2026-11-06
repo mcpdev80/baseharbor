@@ -332,7 +332,15 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		// be scheduled late, so the re-stat may run before the writer's mutation
 		// lands. afterMutationWait waits (bounded) on a MutationPending channel the
 		// caller closes when its mutation section opens, then re-stats.
-		nowNano, _ = afterMutationWait(filePath, identity, opts.MutationPending)
+		// afterMutationWait returns the baseline identity on a nil/nil-channel hook,
+		// which must NOT overwrite the fresh Lstat above (a changed-but-unobserved
+		// path would otherwise pass as still-baseline).
+		nowNano, diverged := afterMutationWait(filePath, identity, opts.MutationPending)
+		if !diverged {
+			if fi, freshErr := os.Lstat(filePath); freshErr == nil && fi.Mode().IsRegular() {
+				nowNano = fi.ModTime().UnixNano()
+			}
+		}
 		if hadBaseline && nowNano != identity {
 			if opts.ChangeHook != nil {
 				opts.ChangeHook(relSlash)
