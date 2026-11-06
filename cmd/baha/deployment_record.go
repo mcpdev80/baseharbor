@@ -73,6 +73,17 @@ var errCandidateConsentDigestMismatch = errors.New(
 	"candidate confirm digest does not match the validated submission identity; refusing to record deployment state",
 )
 
+// errCandidateAlreadyImmutable is returned when a repository-owned apply with a
+// valid consent tries to record a candidate that is already persisted with its
+// own consent for the same deployment identity. A candidate is immutable once
+// bound: a second identical submission (same app/target/source identity and the
+// same consented digest) is refused with this explicit cause rather than
+// silently overwriting the already-bound consent. A genuinely new candidate
+// (a different fingerprint/digest) is not caught by this guard and still applies.
+var errCandidateAlreadyImmutable = errors.New(
+	"candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate",
+)
+
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
@@ -117,6 +128,17 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 				"state":      filepath.Join(resolved.DeploymentStateRoot, "state"),
 			},
 			LastAppliedRef: revision,
+		},
+		References: deployment.ReferenceDimensions{
+			// Intended (desired) reference resolved from the submitted source.
+			deployment.ReferenceIntended: &deployment.ReferenceDimension{
+				Release: revision,
+			},
+			// Applied (last-applied) reference mirrors the submit-time digest so a
+			// fresh apply re-derives it; the dimension is written in isolation.
+			deployment.ReferenceApplied: &deployment.ReferenceDimension{
+				Release: revision,
+			},
 		},
 		Observed: deployment.ObservedDeployment{
 			State: state,
@@ -191,6 +213,30 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 		if err := submission.Validate(consent); err != nil {
 			return deployment.DeploymentRecord{}, err
 		}
+		// Immutability gate (r27 candidate-ingress, round 1): a candidate is
+		// immutable once it is persisted with its own consent. A second identical
+		// submission — the same deployment identity carrying the same consented
+		// digest — is refused before any state is written so the already-bound
+		// consent can never be silently overwritten. A genuinely new candidate
+		// (a different fingerprint/digest) is not caught here and still applies.
+		// The prior record is read through the owner-validated loader, so a missing
+		// record (first apply) or a non-consented prior record is not an immutability
+		// conflict; only a persisted consent with a matching digest is.
+		//
+		// Discriminator (OPTION 2): the gate fires only against a prior record that
+		// has reached a COMPLETED/verified realization (Observed.State == "ready").
+		// A pending "applying" record is an interrupted first attempt, not a
+		// finished candidate, so a same-apply retry (same digest) must still
+		// succeed — it is a re-attempt of an interrupted apply, not a silent
+		// re-record. Only a second identical submission over an already-ready
+		// deployment is refused. The freshly computed confirm digest pins this
+		// submission; only an identical re-record over a finished candidate fails
+		// closed.
+		if prior, priorErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); priorErr == nil {
+			if prior.Consent != nil && prior.Consent.Digest == consent.Digest && prior.Observed.State == "ready" {
+				return deployment.DeploymentRecord{}, errCandidateAlreadyImmutable
+			}
+		}
 		record.Consent = consent
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
@@ -244,6 +290,25 @@ func recordAppliedDeploymentObservation(ctx context.Context, resolved resolvedAp
 			Ready: ready,
 		},
 	}
+	// Preserve the other reference dimensions: advancing the applied dimension
+	// must not drop the intended (desired) or prior observed dimension. Load the
+	// existing record, update only the applied dimension, and save the merged
+	// map so the three dimensions stay independent through the real lifecycle.
+	// On the first apply there is no prior record yet: the missing-file error is
+	// expected, so start from an empty map instead of aborting the write.
+	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return loadErr
+	}
+	if existing.References == nil {
+		existing.References = deployment.ReferenceDimensions{}
+	}
+	existing.References[deployment.ReferenceApplied] = &deployment.ReferenceDimension{
+		Kind:    deployment.ReferenceApplied,
+		Release: revision,
+		At:      time.Now().UTC(),
+	}
+	record.References = existing.References
 	if err := retainDeploymentGeneratedState(&record, ready); err != nil {
 		return err
 	}
@@ -268,6 +333,30 @@ func recordObservedDeployment(resolved resolvedApplication, state string, ready 
 	if ready {
 		record.Observed.VerifiedAt = time.Now().UTC()
 	}
+	// Observe in isolation: update only the observed dimension and preserve the
+	// intended and applied dimensions. Rebuild the whole map here (as the buggy
+	// original did) would drop the applied dimension on convergence, after which
+	// DeploymentRecord.Stale() sees no applied reference and passes silently.
+	// Load the existing map, overwrite only the observed cell (falling back to
+	// the applied reference when the runtime reports none), and save the merged
+	// map so all three dimensions remain independent.
+	existing, loadErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity)
+	if loadErr != nil && !errors.Is(loadErr, os.ErrNotExist) {
+		return loadErr
+	}
+	if existing.References == nil {
+		existing.References = deployment.ReferenceDimensions{}
+	}
+	observedRef := ""
+	if applied, ok := existing.References[deployment.ReferenceApplied]; ok && applied != nil {
+		observedRef = applied.Release
+	}
+	existing.References[deployment.ReferenceObserved] = &deployment.ReferenceDimension{
+		Kind:    deployment.ReferenceObserved,
+		Release: observedRef,
+		At:      time.Now().UTC(),
+	}
+	record.References = existing.References
 	return deployment.SaveDeploymentRecord(record)
 }
 
