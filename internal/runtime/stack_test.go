@@ -411,6 +411,31 @@ func TestEmbeddedComposeOrdersOpenBaoGatewayAfterHAMembers(t *testing.T) {
 	}
 }
 
+func TestRenderComposeForProfileDefaultsSingleAndHAAboveOptIn(t *testing.T) {
+	// The shipped DEFAULT renders single control-plane instances without any
+	// profile file: one OpenBao member, one PostgreSQL member, no HA members,
+	// no etcd, no mandatory cluster quorum.
+	single := renderComposeForProfile("baseharbor", false)
+	for _, forbidden := range []string{"openbao-member-2", "openbao-member-3", "postgres-member-2", "postgres-member-3", "postgres-etcd", "spilo", "member-2", "member-3"} {
+		if strings.Contains(single, forbidden) {
+			t.Fatalf("default (ha=false) compose must not contain HA element %q", forbidden)
+		}
+	}
+	for _, required := range []string{"openbao-member-1:", "postgres-member-1:", "docker.io/library/postgres:18-alpine", "docker.io/openbao/openbao:2.7.1"} {
+		if !strings.Contains(single, required) {
+			t.Fatalf("default (ha=false) compose must contain single element %q", required)
+		}
+	}
+
+	// HA renders the full ensemble only on explicit opt-in (ha=true).
+	ha := renderComposeForProfile("baseharbor", true)
+	for _, required := range []string{"openbao-member-1:", "openbao-member-2:", "openbao-member-3:", "postgres-member-1:", "postgres-member-2:", "postgres-member-3:", "postgres-etcd-1:"} {
+		if !strings.Contains(ha, required) {
+			t.Fatalf("opt-in HA (ha=true) compose must contain %q", required)
+		}
+	}
+}
+
 func TestEmbeddedComposeUsesOpenBaoPostgreSQLStorage(t *testing.T) {
 	text := string(composeYAML)
 	for _, wanted := range []string{
