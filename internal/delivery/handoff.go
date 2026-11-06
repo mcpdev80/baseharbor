@@ -195,11 +195,23 @@ func HandOff(req HandoffRequest) (Handoff, error) {
 	if (drift.DesiredDigest != "" || drift.ObservedDigest != "" || drift.Evidence != "") && drift.Evidence == "" {
 		return Handoff{}, fmt.Errorf("delegated handoff cannot assert drift without external evidence")
 	}
+	// Fail closed on the status flags: Synced and Healthy are external
+	// statuses and may only be rendered true when the observation is fully
+	// backed by external evidence (both digests plus a real evidence
+	// reference). A true flag on an unvalidated or drifted observation is a
+	// false-success claim, so it fails closed; a valid, in-sync observation
+	// still renders its evidence-backed flags.
+	if err := drift.validate(); err != nil {
+		if drift.Synced || drift.Healthy {
+			return Handoff{}, fmt.Errorf("drift status flags require external evidence for both digests and evidence reference: %w", err)
+		}
+		if drift.DesiredDigest != "" || drift.ObservedDigest != "" || drift.Evidence != "" {
+			return Handoff{}, fmt.Errorf("delegated handoff cannot assert drift without external evidence")
+		}
+	}
 	if drift.drifted() {
 		out.Action = handoffRefused
 		out.Drifted = true
-		out.Synced = drift.Synced
-		out.Healthy = drift.Healthy
 		out.Evidence = drift.Evidence
 		out.Reason = "external desired state drifted; no silent fallback to direct delivery"
 		return out, nil

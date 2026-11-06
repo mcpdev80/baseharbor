@@ -246,3 +246,97 @@ func TestHandoffRenderIsBounded(t *testing.T) {
 		}
 	}
 }
+
+// TestDelegatedStatusWithoutEvidenceNeverTrue is the round-2 NEGATIVE cell:
+// a fully present drift observation with a true Synced/Healthy flag but a
+// validate()-blocking gap (here a missing evidence reference) must fail
+// closed, never render a green status. This is the ERHALT-Zelle: removing the
+// validate() call from the HandOff path turns this test RED.
+func TestDelegatedStatusWithoutEvidenceNeverTrue(t *testing.T) {
+	drift := DriftObservation{
+		DesiredDigest:  "sha256:aaa0",
+		ObservedDigest: "sha256:aaa0",
+		Evidence:       "", // missing external evidence
+		Synced:         true,
+		Healthy:        true,
+	}
+	if _, err := HandOff(delegatedRequest(HandoffApply, foreignTracking(), drift)); err == nil {
+		t.Fatal("status flags asserted without external evidence must fail closed")
+	}
+}
+
+// TestDelegatedDigestMismatchTrueFlagNeverTrue is the round-2 NEGATIVE cell:
+// a drifted set (digest mismatch) that carried a true Synced/Healthy flag in
+// the buggy baseline must, after the fix, refuse and never render
+// synced/healthy true. Removing the validate() call from the HandOff path
+// turns this test RED.
+func TestDelegatedDigestMismatchTrueFlagNeverTrue(t *testing.T) {
+	drift := DriftObservation{
+		DesiredDigest:  "sha256:bbb1",
+		ObservedDigest: "sha256:aaa0", // mismatch => drifted
+		Evidence:       "argocd:sync-revision=42",
+		Synced:         true,
+		Healthy:        true,
+	}
+	got, err := HandOff(delegatedRequest(HandoffApply, foreignTracking(), drift))
+	if err != nil {
+		t.Fatalf("drifted set with valid digests/evidence must refuse, not error: %v", err)
+	}
+	if got.Action != "refused" {
+		t.Fatalf("drifted observation action = %q, want refused", got.Action)
+	}
+	if got.Synced || got.Healthy {
+		t.Fatalf("drifted observation must never render synced/healthy true, got synced=%v healthy=%v", got.Synced, got.Healthy)
+	}
+}
+
+// TestDelegatedDriftWithTrueStatusNeverTrue is the round-2 NEGATIVE cell that
+// the original fixture did not exercise: the original drifted() fixture left
+// both flags false, so a drifted set with Synced/Healthy true was never
+// tested. A drifted set must refuse and never render synced/healthy true.
+func TestDelegatedDriftWithTrueStatusNeverTrue(t *testing.T) {
+	drift := DriftObservation{
+		DesiredDigest:  "sha256:bbb1",
+		ObservedDigest: "sha256:aaa0",
+		Evidence:       "argocd:sync-revision=42",
+		Synced:         true,
+		Healthy:        true,
+	}
+	got, err := HandOff(delegatedRequest(HandoffApply, foreignTracking(), drift))
+	if err != nil {
+		t.Fatalf("drifted set with valid digests/evidence must refuse, not error: %v", err)
+	}
+	if got.Synced || got.Healthy {
+		t.Fatalf("drifted observation with true status flags must never render synced/healthy true, got synced=%v healthy=%v", got.Synced, got.Healthy)
+	}
+	if !got.Drifted {
+		t.Fatal("drifted observation must report drift")
+	}
+}
+
+// TestDelegatedStatusBackedByEvidenceStaysTrue is the round-2 POSITIVE cell:
+// a fully evidence-backed, in-sync observation with Synced/Healthy true must
+// render them true and stay on the observe path (regression read of the
+// in-sync happy path).
+func TestDelegatedStatusBackedByEvidenceStaysTrue(t *testing.T) {
+	drift := DriftObservation{
+		DesiredDigest:  "sha256:aaa0",
+		ObservedDigest: "sha256:aaa0",
+		Evidence:       "argocd:sync-revision=42",
+		Synced:         true,
+		Healthy:        true,
+	}
+	got, err := HandOff(delegatedRequest(HandoffApply, foreignTracking(), drift))
+	if err != nil {
+		t.Fatalf("evidence-backed in-sync observation must not error: %v", err)
+	}
+	if got.Action != "observe" {
+		t.Fatalf("in-sync observation action = %q, want %q", got.Action, "observe")
+	}
+	if !got.Synced || !got.Healthy {
+		t.Fatalf("evidence-backed in-sync observation must render synced=%v healthy=%v", got.Synced, got.Healthy)
+	}
+	if !strings.Contains(got.Evidence, "sync-revision=42") {
+		t.Fatalf("evidence must be carried: got %q", got.Evidence)
+	}
+}
