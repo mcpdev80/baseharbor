@@ -73,6 +73,17 @@ var errCandidateConsentDigestMismatch = errors.New(
 	"candidate confirm digest does not match the validated submission identity; refusing to record deployment state",
 )
 
+// errCandidateAlreadyImmutable is returned when a repository-owned apply with a
+// valid consent tries to record a candidate that is already persisted with its
+// own consent for the same deployment identity. A candidate is immutable once
+// bound: a second identical submission (same app/target/source identity and the
+// same consented digest) is refused with this explicit cause rather than
+// silently overwriting the already-bound consent. A genuinely new candidate
+// (a different fingerprint/digest) is not caught by this guard and still applies.
+var errCandidateAlreadyImmutable = errors.New(
+	"candidate is already persisted with consent and is immutable; a second identical submission is refused, apply a changed source to record a new candidate",
+)
+
 func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplication, state string, rawCandidateConsent string) (deployment.DeploymentRecord, error) {
 	if !resolved.SourceAvailable {
 		return deployment.DeploymentRecord{}, fmt.Errorf("cannot record pending deployment without available source")
@@ -190,6 +201,20 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 		}
 		if err := submission.Validate(consent); err != nil {
 			return deployment.DeploymentRecord{}, err
+		}
+		// Immutability gate (r27 candidate-ingress, round 1): a candidate is
+		// immutable once it is persisted with its own consent. A second identical
+		// submission — the same deployment identity carrying the same consented
+		// digest — is refused before any state is written so the already-bound
+		// consent can never be silently overwritten. A genuinely new candidate
+		// (a different fingerprint/digest) is not caught here and still applies.
+		// The prior record is read through the owner-validated loader, so a missing
+		// record (first apply) or a non-consented prior record is not an immutability
+		// conflict; only a persisted consent with a matching digest is.
+		if prior, priorErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); priorErr == nil {
+			if prior.Consent != nil && prior.Consent.Digest == consent.Digest {
+				return deployment.DeploymentRecord{}, errCandidateAlreadyImmutable
+			}
 		}
 		record.Consent = consent
 	}

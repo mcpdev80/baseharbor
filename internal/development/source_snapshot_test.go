@@ -190,6 +190,68 @@ func TestSourceSnapshotCleanTreeNotDirty(t *testing.T) {
 	}
 }
 
+// Case (3): immutable source selection. The snapshot pins the exact HEAD ref of
+// the checkout at capture time (ExactRef is recorded for a source-build checkout
+// whose working tree is dirty — the source-build path is a local checkout, so its
+// honest HEAD is the selected reference). A later trunk movement — a new commit
+// on the same branch — moves HEAD and therefore changes the snapshot's ExactRef.
+// The selected reference is content-addressed by the ref captured at the seam,
+// never rewritten by a later trunk movement: a consumer that pins the capture
+// keeps the same reference even though the branch has moved.
+func TestSourceSnapshotPinsExactRefAtCapture(t *testing.T) {
+	root := t.TempDir()
+	gitInitClean(t, root, "test@example.com")
+	mustWriteSnapshotFile(t, root, "app.go", 0o644, "package main\n")
+	gitAddCommit(t, root, "add app")
+
+	// A source-build checkout with an uncommitted local change is dirty, so the
+	// snapshot pins the exact HEAD ref as the selected reference.
+	if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("package main\n// working\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	first, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source: "https://git.example/app.git",
+		Scope:  SourceSnapshotScopeTransfer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ExactRef == "" {
+		t.Fatal("dirty source-build checkout snapshot did not pin the exact ref")
+	}
+	if first.GitState == "" {
+		t.Fatal("dirty source-build checkout snapshot did not record the git state")
+	}
+
+	// Later trunk movement: a new commit on the same branch moves HEAD, then a
+	// fresh uncommitted change keeps the source-build checkout dirty so the
+	// snapshot again pins the (moved) exact ref.
+	mustWriteSnapshotFile(t, root, "app.go", 0o644, "package main\n// v2\n")
+	gitAddCommit(t, root, "move trunk")
+	if err := os.WriteFile(filepath.Join(root, "app.go"), []byte("package main\n// working v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	second, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source: "https://git.example/app.git",
+		Scope:  SourceSnapshotScopeTransfer,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ExactRef == "" {
+		t.Fatal("trunk-moved source-build checkout snapshot did not pin the exact ref")
+	}
+	if second.ExactRef == first.ExactRef {
+		t.Fatalf("trunk movement did not change the pinned ref: identical ExactRef %q", first.ExactRef)
+	}
+
+	// The moved ref differs from the captured one: the selected reference is the
+	// ref pinned at the capture seam, content-addressed, not a moving branch label
+	// that rewrites itself through later trunk movement. A consumer that pins the
+	// capture keeps the captured reference even though the branch has advanced.
+}
+
 // Case 5a: change-during-read. A concurrent writer that mutates a file during
 // the capture walk must be detected and abort the capture. The writer and the
 // walk synchronize on a two-sided barrier (no timing/hope): the walk signals
