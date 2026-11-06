@@ -485,6 +485,28 @@ func TestResolveRenderedWorkloadArtifactsCheckoutMode(t *testing.T) {
 			t.Fatalf("an available existing image must win over the checkout build: %+v", decisions["api"])
 		}
 	})
+	t.Run("successfully resolved registry artifact wins over declared build", func(t *testing.T) {
+		// Round-2 blocker (act-1406a): when the registry artifact resolves
+		// successfully AND the service declares a build, the resolved
+		// immutable artifact must win; a build declaration alone must not
+		// turn the selection into native-build.
+		runner := &scriptedRunner{resolve: map[string]string{"resolve " + artifactRepo + ":stable": artifactRepo + "@" + artifactDigestB}}
+		withArtifactRegistry(t, runner)
+		decisions, err := resolveRenderedWorkloadArtifacts(context.Background(), runner.fn, dockerArtifactCLI(),
+			renderedArtifact(map[string]renderedArtifactService{"api": buildWithImage(".", artifactRepo+":stable")}),
+			[]string{"api"}, ArtifactResolutionCheckoutBuild)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decisions["api"].Action != ArtifactActionUseExisting || decisions["api"].Identity.Digest != artifactDigestB {
+			t.Fatalf("a successfully resolved registry artifact must win over the checkout build: %+v", decisions["api"])
+		}
+		for _, call := range runner.calls {
+			if strings.HasPrefix(call, "docker image ") {
+				t.Fatalf("a resolved registry artifact must not probe the local store or build: %s", call)
+			}
+		}
+	})
 	t.Run("unavailable image with build routes native", func(t *testing.T) {
 		runner := &scriptedRunner{store: map[string]string{}}
 		withArtifactRegistry(t, runner)

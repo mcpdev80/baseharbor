@@ -281,6 +281,10 @@ func resolveRenderedWorkloadArtifacts(ctx context.Context, exec ExecFunc, cli im
 					return nil, fmt.Errorf("%w: service %q: resolver returned %q without an immutable digest", ErrArtifactResolutionAmbiguous, service, endpoint)
 				}
 				resolved.Repository, resolved.Digest = repository, digest
+				// A successfully resolved registry artifact is the existing
+				// artifact the card puts first: a declared build must never
+				// override it into native-build (act-1406a blocker).
+				hasBuild = false
 				break
 			}
 			if mode != ArtifactResolutionCheckoutBuild && !resolveUnavailable(err) {
