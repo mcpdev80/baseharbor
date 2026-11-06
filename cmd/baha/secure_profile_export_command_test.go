@@ -26,9 +26,11 @@ func TestSecureProfileExportCommandPathAssemblesProductionWiring(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
 
-	// Production command tree with the production store seam: rootCommand()
-	// resolves application.DefaultStore() and registers secureProfileExportCommand
-	// there. Nothing in this cell builds a manifest, entries or envelope itself.
+	// Production command tree: rootCommand() resolves application.DefaultStore()
+	// and registers secureProfileExportCommand (commands.go). DefaultStore()
+	// resolves the .baseharbor/apps store under the manifest discovered from the
+	// process cwd at this point — already the isolated repository fixture.
+	// Nothing in this cell builds a manifest, entries or envelope itself.
 	root := rootCommand()
 	// Test application on an isolated target/data root (no host state).
 	configRoot := t.TempDir()
@@ -75,6 +77,8 @@ func TestSecureProfileExportCommandPathAssemblesProductionWiring(t *testing.T) {
 	// reads (.baseharbor/apps under the repository root); materialized here the
 	// same way a one-time `baha app init` creates it. The authored repository
 	// manifest stays id-free (system-owned identity); the store copy carries it.
+	// The id is the one the command writes into the export manifest below, so
+	// the assertion checks the resolver projected THIS identity through.
 	owner := application.Store{Root: filepath.Join(repo, ".baseharbor", "apps")}
 	storeManifest := manifest
 	storeManifest.ApplicationID = appID
