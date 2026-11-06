@@ -219,6 +219,7 @@ func ImageTransfer(ctx context.Context, source ImageTransferSource, target Image
 // reusing the host's Docker credential helper / Podman auth. It never clones a
 // token.
 type RuntimeImageTransferSource struct {
+	Runtime   bhruntime.ProviderKind
 	Location  string
 	Requested string
 	Exec      ExecFunc
@@ -230,6 +231,10 @@ type RuntimeImageTransferSource struct {
 // public-default source, empty reply, or a reply without an immutable sha256
 // digest.
 func (s RuntimeImageTransferSource) Resolve(ctx context.Context) (ImageTransferIdentity, error) {
+	cli, err := imageTransferCLIFor(s.Runtime)
+	if err != nil {
+		return ImageTransferIdentity{}, fmt.Errorf("%w: %v", ErrImageTransferUnavailable, err)
+	}
 	location := strings.TrimSpace(s.Location)
 	if location == "" {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: empty source location", ErrImageTransferUnavailable)
@@ -248,8 +253,8 @@ func (s RuntimeImageTransferSource) Resolve(ctx context.Context) (ImageTransferI
 		}
 	}
 	ref := repository + ":" + requested
-	line, err := runTransfer(ctx, s.Exec, "podman", "image", "inspect",
-		"--format", `{{.RepoDigests[0]}}`, ref)
+	line, err := runTransfer(ctx, s.Exec, cli.name, "image", "inspect",
+		"--format", cli.repoDigestFormat, ref)
 	if err != nil {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: %v", ErrImageTransferUnavailable, err)
 	}
@@ -257,7 +262,7 @@ func (s RuntimeImageTransferSource) Resolve(ctx context.Context) (ImageTransferI
 	if digest == "" || !validImageDigest(digest) {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: source %q did not resolve to an immutable sha256 digest", ErrImageTransferUnavailable, location)
 	}
-	architecture, os, err := inspectRuntimeImagePlatform(ctx, s.Exec, ref)
+	architecture, os, err := inspectRuntimeImagePlatform(ctx, s.Exec, cli, ref)
 	if err != nil {
 		return ImageTransferIdentity{}, err
 	}
@@ -321,8 +326,15 @@ func inspectRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider,
 	if digest == "" || !validImageDigest(digest) {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: reference %q does not carry an immutable sha256 digest", ErrImageTransferUnavailable, ref)
 	}
-	line, err := runTransfer(ctx, exec, "podman", "image", "inspect",
-		"--format", `{{.RepoDigests[0]}}`, ref)
+	if compose == nil {
+		return ImageTransferIdentity{}, fmt.Errorf("%w: target runtime is missing", ErrImageTransferUnavailable)
+	}
+	cli, err := imageTransferCLIFor(compose.Kind())
+	if err != nil {
+		return ImageTransferIdentity{}, fmt.Errorf("%w: %v", ErrImageTransferUnavailable, err)
+	}
+	line, err := runTransfer(ctx, exec, cli.name, "image", "inspect",
+		"--format", cli.repoDigestFormat, ref)
 	if err != nil {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: %v", ErrImageTransferUnavailable, err)
 	}
@@ -330,7 +342,7 @@ func inspectRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider,
 	if digest == "" || !validImageDigest(digest) {
 		return ImageTransferIdentity{}, fmt.Errorf("%w: transferred image %q did not report an immutable sha256 digest", ErrImageTransferUnavailable, ref)
 	}
-	architecture, os, err := inspectRuntimeImagePlatform(ctx, exec, ref)
+	architecture, os, err := inspectRuntimeImagePlatform(ctx, exec, cli, ref)
 	if err != nil {
 		return ImageTransferIdentity{}, err
 	}
@@ -359,9 +371,9 @@ func runTransfer(ctx context.Context, exec ExecFunc, name string, args ...string
 // closed on a command error or a malformed/empty report: platform identity is a
 // mandatory, parseable part of a verified transfer, so an unparseable report is
 // never treated as "not pinned" — it is a failed transfer.
-func inspectRuntimeImagePlatform(ctx context.Context, exec ExecFunc, ref string) (string, string, error) {
-	out, err := runTransfer(ctx, exec, "podman", "image", "inspect",
-		"--format", `{{.Config.Architecture}}|{{.Config.OS}}`, ref)
+func inspectRuntimeImagePlatform(ctx context.Context, exec ExecFunc, cli imageTransferCLI, ref string) (string, string, error) {
+	out, err := runTransfer(ctx, exec, cli.name, "image", "inspect",
+		"--format", cli.platformFormat, ref)
 	if err != nil {
 		return "", "", fmt.Errorf("%w: platform inspect failed for %q: %v",
 			ErrImageTransferUnavailable, ref, err)
@@ -378,6 +390,31 @@ func inspectRuntimeImagePlatform(ctx context.Context, exec ExecFunc, ref string)
 			ErrImageTransferUnavailable, out, ref)
 	}
 	return architecture, os, nil
+}
+
+type imageTransferCLI struct {
+	name             string
+	repoDigestFormat string
+	platformFormat   string
+}
+
+func imageTransferCLIFor(kind bhruntime.ProviderKind) (imageTransferCLI, error) {
+	switch kind {
+	case bhruntime.ProviderDocker:
+		return imageTransferCLI{
+			name:             "docker",
+			repoDigestFormat: `{{index .RepoDigests 0}}`,
+			platformFormat:   `{{.Architecture}}|{{.Os}}`,
+		}, nil
+	case bhruntime.ProviderPodman:
+		return imageTransferCLI{
+			name:             "podman",
+			repoDigestFormat: `{{(index .RepoDigests 0)}}`,
+			platformFormat:   `{{.Architecture}}|{{.Os}}`,
+		}, nil
+	default:
+		return imageTransferCLI{}, fmt.Errorf("unsupported image transfer runtime %q", kind)
+	}
 }
 
 // splitDigestReference separates a repository reference into its bare
