@@ -193,6 +193,41 @@ func EnsureManagedDevelopmentAccess(ctx context.Context, runtime KeycloakRuntime
 	return managed, nil
 }
 
+// EnsureManagedUserInvite invites an owned user through the least-privilege
+// native provider admin adapter. The IdP owns password/activation/MFA: this
+// path triggers the provider-native activation link and never stores a
+// password. Double-invite of an identical email is idempotent (the owned,
+// enabled, verified account is left untouched); a genuinely ambiguous email or
+// an unverified realm is refused. Profile assignment is a separate authorized
+// action and is deliberately out of scope here.
+func EnsureManagedUserInvite(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment, email string) error {
+	_, err := EnsureManagedOperatorOIDC(ctx, runtime, issuer, dataDir, namespace, target, environment)
+	if err != nil {
+		return err
+	}
+	app := application.Manifest{
+		Version:     application.CurrentVersion,
+		Name:        "operator-access",
+		Environment: strings.TrimSpace(environment),
+		Services:    application.Services{Identity: true},
+	}
+	files, err := ExistingKeycloakFilesAt(app, dataDir, namespace)
+	if err != nil {
+		return err
+	}
+	admin, err := operatorKeycloakAdmin(ctx, files)
+	if err != nil {
+		return err
+	}
+	realm := operatorRealm(environment)
+	ownership := map[string]string{
+		"baseharbor.owner":       "baseharbor",
+		"baseharbor.scope":       "operator",
+		"baseharbor.target":      strings.TrimSpace(target),
+		"baseharbor.environment": strings.TrimSpace(environment),
+	}
+	return admin.inviteManagedUser(ctx, realm, target, environment, email, ownership)
+}
 func FinalizeManagedOperatorOIDC(ctx context.Context, runtime KeycloakRuntime, issuer serviceaccess.Issuer, dataDir, namespace, target, environment string) error {
 	app := application.Manifest{
 		Version:     application.CurrentVersion,
