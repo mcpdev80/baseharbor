@@ -144,6 +144,7 @@ var cliPresentationCommands = map[string]string{
 	"baha open":              "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
 	"baha new":               "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
 	"baha tui":               "Human interactive presentation; its product actions require individual semantic coverage.",
+	"baha app secure-profile export": "Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password.",
 }
 
 // These modes are outside the semantic tool boundary by design. Business
