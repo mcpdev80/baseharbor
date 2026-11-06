@@ -27,6 +27,7 @@ type repositoryWorkloadExecution struct {
 	buildFingerprints  map[string]string
 	configFingerprints map[string]string
 	buildChanged       map[string]struct{}
+	artifactPlan       map[string]ArtifactResolution
 }
 
 func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (*repositoryWorkloadExecution, bool, error) {
@@ -92,6 +93,14 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 	if err != nil {
 		return nil, false, fmt.Errorf("resolve application workload configuration identity: %w", err)
 	}
+	// Resolve each service's concrete artifact before anything is built or
+	// started: an existing image/release is used first, only a current-checkout
+	// service that really declares a build may route to the native build
+	// machinery, and an ambiguous selection fails closed here.
+	artifactPlan, err := prepareRepositoryWorkloadArtifactResolution(ctx, compose, workload, environment, composeFiles, expectedServices)
+	if err != nil {
+		return nil, false, fmt.Errorf("resolve application workload artifacts: %w", err)
+	}
 
 	return &repositoryWorkloadExecution{
 		compose:            compose,
@@ -107,6 +116,7 @@ func prepareRepositoryWorkloadExecution(ctx context.Context, out io.Writer, comp
 		buildFingerprints:  buildFingerprints,
 		configFingerprints: configFingerprints,
 		buildChanged:       map[string]struct{}{},
+		artifactPlan:       artifactPlan,
 	}, true, nil
 }
 
@@ -116,6 +126,19 @@ func (e *repositoryWorkloadExecution) rebuildChangedServices(ctx context.Context
 		return fmt.Errorf("load application workload build identity: %w", err)
 	}
 	changed := changedRepositoryWorkloadBuildServices(e.buildFingerprints, buildState)
+	if len(e.artifactPlan) > 0 {
+		// Artifact resolution gates the native build: only a service whose
+		// concrete plan routes to the native build machinery may rebuild, and
+		// an existing-image service never triggers a checkout build.
+		var gated []string
+		for _, service := range changed {
+			if decision, ok := e.artifactPlan[service]; ok && decision.Action != ArtifactActionNativeBuild {
+				continue
+			}
+			gated = append(gated, service)
+		}
+		changed = gated
+	}
 	for _, service := range changed {
 		e.buildChanged[service] = struct{}{}
 	}
@@ -333,6 +356,11 @@ func (e *repositoryWorkloadExecution) recordRunningUnverified(out io.Writer, sta
 			return fmt.Errorf("record workload build identity: %w", err)
 		}
 	}
+	if len(e.artifactPlan) > 0 {
+		if err := persistRepositoryWorkloadArtifactState(e.files, e.artifactPlan); err != nil {
+			return fmt.Errorf("record workload artifact resolutions: %w", err)
+		}
+	}
 	if len(e.configFingerprints) > 0 {
 		if err := persistRepositoryWorkloadConfigState(e.files, e.configFingerprints); err != nil {
 			return fmt.Errorf("record workload configuration identity: %w", err)
@@ -351,6 +379,11 @@ func (e *repositoryWorkloadExecution) recordReady(out io.Writer, status reposito
 	if len(e.buildFingerprints) > 0 {
 		if err := persistRepositoryWorkloadBuildState(e.files, e.buildFingerprints); err != nil {
 			return fmt.Errorf("record verified workload build identity: %w", err)
+		}
+	}
+	if len(e.artifactPlan) > 0 {
+		if err := persistRepositoryWorkloadArtifactState(e.files, e.artifactPlan); err != nil {
+			return fmt.Errorf("record verified workload artifact resolutions: %w", err)
 		}
 	}
 	if len(e.configFingerprints) > 0 {
