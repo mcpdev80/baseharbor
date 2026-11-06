@@ -42,6 +42,8 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha app secret list` | List secret key names without values | `baha app secret list [NAME]` | [↗](applications.md) |
 | `baha app secret set` | Create or replace one secret value from stdin or a file | `baha app secret set [NAME] KEY [--stdin \| --file PATH]` | [↗](applications.md) |
 | `baha app secret tls-set` | Validate and store a TLS certificate chain and private key | `baha app secret tls-set [NAME] --cert-file PATH --key-file PATH [--chain-file PATH]` | [↗](applications.md) |
+| `baha app secure-profile` | Encrypt explicitly selected local credentials into a password-locked export | `baha app secure-profile export [NAME] --password-file FILE --output FILE` | [↗](applications.md) |
+| `baha app secure-profile export` | Encrypt selected local credentials into a password-locked export file | `baha app secure-profile export [NAME] --password-file FILE [--output FILE]` | [↗](applications.md) |
 | `baha app shell` | Open a shell in an application workload service | `baha app shell SERVICE [--app NAME]` | [↗](applications.md) |
 | `baha app show` | Show a coherent application overview | `baha app show [NAME]` | [↗](applications.md) |
 | `baha app sql` | Open the managed SQL console for the current application | `baha app sql [INSTANCE] [--app NAME]` | [↗](applications.md) |
