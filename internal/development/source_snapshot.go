@@ -402,7 +402,7 @@ func verifyFinalBaseline(source, root string, before map[string]int64, MutationA
 // waits (bounded) on a MutationPending channel the caller closes when its mutation
 // section opens, then re-stats once more. Returns the final mtime and whether the
 // path now diverges (true), is unchanged (false), or the bound elapsed without
-// observing a mutation (false). A nil MutationPending is a no-op.
+// observing a mutation (false); a nil MutationPending is a no-op.
 func afterMutationWait(filePath string, identity int64, MutationPending func(path string) <-chan struct{}) (int64, bool) {
 	if MutationPending == nil {
 		return identity, false
@@ -433,8 +433,8 @@ func afterMutationWait(filePath string, identity int64, MutationPending func(pat
 // MutationPending channel the caller closes when its mutation section opens, then
 // re-stats. This turns the scheduler race into a happened-before — the caller is
 // guaranteed to enter its mutation section, so the guard waits for the mutation
-// to become observable. Returns true if the re-stat diverges, false if the
-// bound was exhausted.
+// to become observable. Returns true if the re-stat diverges, false if the bound
+// was exhausted.
 func waitForMutation(root, baselineFile string, baselineTime int64, MutationPending func(path string) <-chan struct{}) bool {
 	if MutationPending == nil {
 		return false
