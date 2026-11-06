@@ -217,33 +217,32 @@ func (a *keycloakAdmin) createManagedUser(ctx context.Context, realm, email stri
 // sendManagedActivation performs the genuine provider-native activation call.
 //
 // It uses the documented Keycloak Admin REST operation
-// PUT /admin/realms/{realm}/users/{user-id}/execute-actions-email with a
-// required-actions list (Keycloak 26.8.0 release notes + Admin REST catalog).
-// The action-token email issues a one-time, single-use link that redirects the
-// owner to the IdP to verify their email and set their own password / complete
-// MFA. The required actions are VERIFY_EMAIL and UPDATE_PASSWORD: the owner
-// drives the activation and credential-set link, exactly the boundary this
-// adapter is built around.
+// PUT /admin/realms/{realm}/users/{user-id}/execute-actions-email. Per the
+// Keycloak 26.8.0 Admin REST catalog the request body is a required JSON
+// string array of required-action aliases (e.g. ["VERIFY_EMAIL",
+// "UPDATE_PASSWORD"]); the recipient is carried by the {user-id} path
+// parameter, never by the body. The action-token email issues a one-time,
+// single-use link that redirects the owner to the IdP to verify their email
+// and set their own password / complete MFA.
 //
 // INVARIANT: BaseHarbor never sends, carries or stores a password. The
-// execute-actions-email payload lists required-action identifiers only; it
+// execute-actions-email body lists required-action identifiers only; it
 // contains no password or credential value.
 func (a *keycloakAdmin) sendManagedActivation(ctx context.Context, realm, userID string) error {
 	requiredActions := []string{"VERIFY_EMAIL", "UPDATE_PASSWORD"}
-	// requiredActions is a required body field for the documented operation.
-	// An empty list would be rejected by the provider, so fail closed here
-	// rather than send an action-less request.
+	// requiredActions is the documented body of the execute-actions-email
+	// operation: a required JSON string array. An empty list would be rejected
+	// by the provider, so fail closed here rather than send an action-less
+	// request.
 	if len(requiredActions) == 0 {
 		return errors.New("managed activation: required-actions list must not be empty")
-	}
-	payload := map[string]any{
-		"to":              userID,
-		"requiredActions": requiredActions,
 	}
 	path := "/admin/realms/" + url.PathEscape(realm) +
 		"/users/" + url.PathEscape(userID) +
 		"/execute-actions-email"
-	status, resp, err := a.do(ctx, http.MethodPut, path, payload)
+	// Body is the exact string-array the documented operation expects; the
+	// recipient is the user-id path parameter, not a "to" field in the body.
+	status, resp, err := a.do(ctx, http.MethodPut, path, requiredActions)
 	if err != nil {
 		return err
 	}

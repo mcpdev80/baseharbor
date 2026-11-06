@@ -42,11 +42,16 @@ func TestInviteManagedUserRouteContractIsCausal(t *testing.T) {
 	}
 	// The strict contract does NOT accept /updateEmail; only the documented
 	// execute-actions-email route is pinned for the shipped Keycloak version.
-	if contractAcceptsShippedKeycloak("/admin/realms/bh-operators-dev/users/u1/updateEmail") {
+	if contractAcceptsPinnedKeycloak("/admin/realms/bh-operators-dev/users/u1/updateEmail", keycloakVersion()) {
 		t.Fatal("strict contract must reject the undocumented /updateEmail route")
 	}
-	if !contractAcceptsShippedKeycloak("/admin/realms/bh-operators-dev/users/u1/execute-actions-email") {
+	if !contractAcceptsPinnedKeycloak("/admin/realms/bh-operators-dev/users/u1/execute-actions-email", keycloakVersion()) {
 		t.Fatal("strict contract must accept the documented execute-actions-email route")
+	}
+	// Fail-closed on version drift: with a pinned version outside 26.8.x the
+	// documented route must no longer be accepted. A SKIP is not a pass.
+	if contractAcceptsPinnedKeycloak("/admin/realms/bh-operators-dev/users/u1/execute-actions-email", "26.7.0") {
+		t.Fatal("strict contract must reject the documented route for a divergent Keycloak version (fail-closed)")
 	}
 }
 

@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -32,7 +32,7 @@ func managedInviteOwnership() map[string]string {
 func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	var activationSeen, created, userGets int
 	var seenMethod, seenRoute string
-	var hasRequiredActions, sawPassword bool
+	sawPassword := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/users"):
@@ -54,18 +54,24 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 			activationSeen++
 			seenMethod = r.Method
 			seenRoute = r.URL.Path
-			var payload map[string]any
 			if body, _ := io.ReadAll(r.Body); len(bytes.TrimSpace(body)) > 0 {
-				if err := json.Unmarshal(body, &payload); err != nil {
-					t.Fatalf("execute-actions-email body=%q: %v", string(body), err)
+				// The documented body is a JSON string array. Assert it parses
+				// as []string and equals the exact ordered action list.
+				var exactActions []string
+				if json.Unmarshal(body, &exactActions) != nil {
+					t.Fatalf("execute-actions-email body %q is not the documented JSON string array", string(body))
 				}
-				// The documented operation requires a recipient "to" that is
-				// the created account, and a required-actions list.
-				_, hasRequiredActions = payload["requiredActions"]
-				if got := fmt.Sprintf("%v", payload["to"]); got != "u1" {
-					t.Errorf("execute-actions-email did not target the created account: to=%v", payload["to"])
+				if !reflect.DeepEqual(exactActions, []string{"VERIFY_EMAIL", "UPDATE_PASSWORD"}) {
+					t.Errorf("execute-actions-email body is not the exact required-actions array: got %v", exactActions)
 				}
-				if pw, ok := payload["password"]; ok && pw != "" {
+				// The recipient comes from the user-id path parameter, never the
+				// body: a "to" field is a contract-type violation.
+				if strings.Contains(string(body), `"to"`) {
+					t.Errorf("execute-actions-email body carried a \"to\" field; the recipient must come from the user-id path parameter")
+				}
+				// The password key must be entirely absent from the body, not
+				// merely empty.
+				if strings.Contains(string(body), "password") {
 					sawPassword = true
 				}
 			}
@@ -92,9 +98,6 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	if !strings.HasSuffix(seenRoute, "/users/u1/execute-actions-email") {
 		t.Errorf("activation route %q is not the documented execute-actions-email operation", seenRoute)
 	}
-	if !hasRequiredActions {
-		t.Error("execute-actions-email payload is missing the required requiredActions list")
-	}
 	if sawPassword {
 		t.Error("execute-actions-email payload carried a password; BaseHarbor never sends a password")
 	}
@@ -102,33 +105,43 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	// (keycloak_files.go:KeycloakImage). The documented Admin REST operation for
 	// an invitation/activation action email on that version is
 	// PUT /admin/realms/{realm}/users/{user-id}/execute-actions-email with a
-	// required-actions list; the undocumented /updateEmail route must not be
-	// used. This assertion ties the fixture's accepted route to that version.
-	if !contractAcceptsShippedKeycloak(seenRoute) {
+	// required-actions array; the undocumented /updateEmail route must not be
+	// used. This assertion ties the fixture's accepted route and pinned
+	// version to that contract.
+	if !contractAcceptsPinnedKeycloak(seenRoute, keycloakVersion()) {
 		t.Errorf("activation route %q is not the documented execute-actions-email operation for Keycloak %s", seenRoute, keycloakVersion())
 	}
 }
 
-// contractAcceptsShippedKeycloak reports whether the observed activation route
-// is the documented Keycloak 26.8.0 action-email operation. It encodes the
-// contract that the shipped provider version (keycloakVersion) exposes on its
-// Admin REST catalog: only the execute-actions-email path is accepted, so a
-// fixture that would also accept the undocumented /updateEmail route (an
-// inference from a complete endpoint catalog) is rejected here.
-func contractAcceptsShippedKeycloak(route string) bool {
-	return strings.HasSuffix(route, "/execute-actions-email")
+// contractAcceptsPinnedKeycloak reports whether the observed activation route is
+// the documented Keycloak 26.8.0 action-email operation for the pinned shipped
+// provider version. It encodes two facts of the catalog contract: the route
+// must be the execute-actions-email path AND the pinned version must fall in the
+// 26.8.x series that documents that operation. Any version mismatch fails the
+// assertion (fail-closed): a SKIP is not a pass, and a route check that ignores
+// the version must not be treated as green.
+func contractAcceptsPinnedKeycloak(route, version string) bool {
+	if !strings.HasSuffix(route, "/execute-actions-email") {
+		return false
+	}
+	if !strings.HasPrefix(version, "26.8.") {
+		return false
+	}
+	return true
 }
 
 // keycloakVersion returns the pinned shipped provider version, so a contract
-// assertion can name the version it was validated against.
+// assertion can name the version it was validated against. KeycloakImage is
+// "quay.io/keycloak/keycloak:26.8.0@sha256:..."; the tag is the segment between
+// the first ':' after the final path component and the '@' digest. The digest
+// itself contains ':' characters, so the split is anchored on '@' first.
 func keycloakVersion() string {
-	const sep = ":"
-	// KeycloakImage is "quay.io/keycloak/keycloak:26.8.0@sha256:..."; the tag
-	// sits between the last ':' of the image and the '@' digest.
-	if i := strings.LastIndex(KeycloakImage, "@"); i >= 0 {
-		tag := KeycloakImage[strings.LastIndex(KeycloakImage, ":")+1 : i]
-		if tag != "" {
-			return tag
+	if i := strings.Index(KeycloakImage, "@"); i >= 0 {
+		if j := strings.LastIndex(KeycloakImage[:i], ":"); j >= 0 {
+			tag := KeycloakImage[j+1 : i]
+			if tag != "" {
+				return tag
+			}
 		}
 	}
 	return KeycloakImage
