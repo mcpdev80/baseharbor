@@ -78,7 +78,8 @@ this change.
 
 ## Hosted CI (required two terminal-green runs at the new head)
 
-Run `42200820795`, head `6079ca200ccdf8564c4bfc5b2d3aa90e3a87fc56`: terminal
-success. Required gates: `PR · Validation · go-unit-tests` (ID
-127835483068) and `PR · Validation · go-build` (ID 127835483122) both succeeded;
-`go-vet` (ID 127835482948) succeeded.
+Run `42200820795` (attempts 1 and 2), head `6079ca200ccdf8564c4bfc5b2d3aa90e3a87fc56`:
+terminal success. Required gates: `PR · Validation · go-unit-tests` (IDs
+127835483068 / 127841013692) and `PR · Validation · go-build` (IDs
+127835483122 / 127841013827) both succeeded; `go-vet` (IDs
+127835482948 / 127841013763) succeeded.
