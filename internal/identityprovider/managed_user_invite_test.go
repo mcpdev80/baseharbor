@@ -211,3 +211,46 @@ func TestInviteManagedUserUnownedAccountIsRefused(t *testing.T) {
 		})
 	}
 }
+
+// The create fallback (POST 201 returns only an ID, then a GET lookup) must
+// fail closed when that single resolved record is foreign or unverified: the
+// invite must not send an activation link to an account this path did not
+// create. This is the defect reviewed in review-1397a.md finding 2.
+func TestInviteManagedUserFallbackForeignAccountIsRefused(t *testing.T) {
+	activationSeen := false
+	gets := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		switch {
+		case r.Method == http.MethodPost && strings.HasSuffix(p, "/users"):
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"id":"u1"}`)) // 201 with only an ID -> forces fallback
+			return
+		case r.Method == http.MethodGet && strings.HasSuffix(p, "/users"):
+			gets++
+			if gets == 1 {
+				// Initial lookup: no owned account yet -> create.
+				w.Write([]byte(`[]`))
+				return
+			}
+			// Fallback resolve-after-create: a foreign/unverified account that
+			// merely shares the email (wrong scope marker, no activation marker).
+			w.Write([]byte(`[{"id":"other","username":"invitee@baseharbor.local","email":"invitee@baseharbor.local","enabled":true,"attributes":{"baseharbor.scope":["developer-access"]}}]`))
+			return
+		case strings.Contains(p, "/updateEmail"):
+			activationSeen = true
+			w.WriteHeader(http.StatusNoContent)
+			return
+		default:
+			w.Write([]byte(managedInviteRealm))
+		}
+	}))
+	defer server.Close()
+	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client()}
+	if err := admin.inviteManagedUser(context.Background(), "bh-operators-dev", "isolated", "dev", "invitee@baseharbor.local", managedInviteOwnership()); err == nil {
+		t.Fatal("fallback resolved a foreign/unverified record without refusing")
+	}
+	if activationSeen {
+		t.Fatal("activation ran for a foreign/unverified fallback account")
+	}
+}

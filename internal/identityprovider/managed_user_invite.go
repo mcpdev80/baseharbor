@@ -105,6 +105,26 @@ func (a *keycloakAdmin) resolveManagedUser(ctx context.Context, realm, email str
 	return user.ID, managedUserAlreadyInvited, nil
 }
 
+// managedUserOwnedIdentity reports whether a looked-up account is the owned
+// account this invite created by the managed path: the same email, the
+// managed-invite ownership marker, enabled, and without foreign credentials.
+// Unlike managedUserOwnedBy it does NOT require activation-verification, because
+// the freshly created account carries emailVerified=false until the owner
+// completes the provider-native activation link. It exists so the create
+// fallback can refuse a foreign account that merely shares the email.
+func managedUserOwnedIdentity(user keycloakUser, email string) bool {
+	if user.ID == "" || user.Username != email || user.Email != email || !user.Enabled {
+		return false
+	}
+	if len(user.Attributes["baseharbor.scope"]) != 1 || user.Attributes["baseharbor.scope"][0] != "managed-invite" {
+		return false
+	}
+	if len(user.Credentials) > 0 {
+		return false
+	}
+	return true
+}
+
 // managedUserOwnedBy reports whether a looked-up account is the owned,
 // enabled, activation-verified account for this application's managed path.
 // The IdP owns activation: an account is only "already invited" once its
@@ -167,6 +187,18 @@ func (a *keycloakAdmin) createManagedUser(ctx context.Context, realm, email stri
 	}
 	if len(users) != 1 {
 		return "", errors.New("managed invite: created account could not be resolved to exactly one owned user")
+	}
+	// Fail closed: the create returned only an ID, so the resolved single record
+	// must be this invite's own creation, not a foreign account sharing the email.
+	// Match the record to the create result by ID (or username/email), enforce the
+	// managed-invite ownership marker and enabled state, and reject any credentials
+	// or conflicting identity before sending activation. Activation/credential-set
+	// ownership stays with the IdP: the freshly created account is expected to have
+	// emailVerified=false until the owner completes the provider-native activation,
+	// so verification state is NOT required here.
+	owned := managedUserOwnedIdentity(users[0], email)
+	if !owned {
+		return "", errors.New("managed invite: resolved account is not the owned account created by this invite; refuse to avoid adopting a foreign account")
 	}
 	return users[0].ID, nil
 }
