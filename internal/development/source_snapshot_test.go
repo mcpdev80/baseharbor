@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -272,9 +273,14 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 	started := make(chan struct{})
 	// ack fires from the guard's MutationAcked seam the instant Layer 1 observes
 	// the mutation of touch.go, before the walk may proceed past that event.
-	ack := make(chan struct{})
+	ack := make(chan struct{}, 1)
 	done := make(chan struct{})
-	go writer2(t, root, mutate, started, ack, done)
+	// pending is the round-7 happened-before signal: the writer closes it the
+	// instant its os.Chtimes has executed, so the guard's bounded wait observes
+	// the mutation as causal (the writer is guaranteed to have mutated) instead
+	// of racing the scheduler.
+	pending := make(chan struct{})
+	go writer2(t, root, mutate, started, ack, done, pending)
 
 	captureErr := func() error {
 		_, err := CaptureSource(context.Background(), root, CaptureOptions{
@@ -295,6 +301,16 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 				case ack <- struct{}{}:
 				default:
 				}
+			},
+			// Round 7 causal happened-before: the guard waits (bounded) for the
+			// writer to close pending (its mutation has landed) before it decides
+			// the path is unchanged, turning the scheduler race into a
+			// happened-before.
+			MutationPending: func(path string) <-chan struct{} {
+				if path == "touch.go" {
+					return pending
+				}
+				return nil
 			},
 		})
 		return err
@@ -325,7 +341,7 @@ func TestSourceSnapshotDetectsChangeDuringRead(t *testing.T) {
 // The wait is bounded by the test-local deadline: a seam-less mutant signals
 // failure via a named sentinel error (errSnapshotMutationUnobserved) inside the
 // bound — never the generic 10-minute test timeout.
-func writer2(t *testing.T, root string, mutate string, started, ack chan struct{}, done chan struct{}) {
+func writer2(t *testing.T, root string, mutate string, started, ack chan struct{}, done chan struct{}, pending chan struct{}) {
 	defer close(done)
 	<-started
 	// The walk has begun; mutate the path the baseline recorded. Layer 1 (the
@@ -335,6 +351,12 @@ func writer2(t *testing.T, root string, mutate string, started, ack chan struct{
 	if err := os.Chtimes(mutate, now(), now()); err != nil {
 		t.Errorf("chtimes: %v", err)
 		return
+	}
+	// Round 7 happened-before: close pending so the guard's bounded wait for
+	// its mutation section opens; the guard re-stats and observes the mutation
+	// causally instead of racing it.
+	if pending != nil {
+		close(pending)
 	}
 	select {
 	case <-ack:
@@ -387,14 +409,22 @@ func TestSourceSnapshotFinalBaselineVerificationCatchesLateMutation(t *testing.T
 
 	// ack fires from the guard's MutationAcked seam the instant Layer 2 observes
 	// the late mutation of aaa.bin (Layer 1 already passed it during the walk).
-	ack := make(chan struct{})
+	// Buffered (1) so a MutationAcked that fires while the writer is still
+	// executing its os.Chtimes is not dropped by the non-blocking send in the
+	// round-7 causal acknowledgement.
+	ack := make(chan struct{}, 1)
 	// aaaRead fires from the walk's consumed-path ChangeHook when the walk reads
 	// aaa.bin past its per-file barrier; the writer triggers its late mutation
 	// from this signal so the mutation lands on an already-visited path that
 	// Layer 1 can no longer see — only Layer 2 can catch it.
 	aaaRead := make(chan struct{}, 1)
 	done := make(chan struct{})
-	go finalBaselineWriter(t, mutate, aaaRead, ack, done)
+	// pending is the round-7 happened-before signal: the writer closes it the
+	// instant its os.Chtimes has executed, so Layer 2's bounded wait for its
+	// mutation section opens and observes the mutation causally instead of
+	// racing the scheduler.
+	pending := make(chan struct{})
+	go finalBaselineWriter(t, mutate, aaaRead, ack, done, pending)
 
 	_, err := CaptureSource(context.Background(), root, CaptureOptions{
 		Source: "https://git.example/app.git",
@@ -414,6 +444,15 @@ func TestSourceSnapshotFinalBaselineVerificationCatchesLateMutation(t *testing.T
 			case ack <- struct{}{}:
 			default:
 			}
+		},
+		// Round 7 causal happened-before: Layer 2 waits (bounded) for the writer
+		// to close pending (its mutation has landed) before it decides aaa.bin is
+		// unchanged, turning the scheduler race into a happened-before.
+		MutationPending: func(path string) <-chan struct{} {
+			if path == "aaa.bin" {
+				return pending
+			}
+			return nil
 		},
 	})
 	<-done
@@ -442,7 +481,7 @@ func TestSourceSnapshotFinalBaselineVerificationCatchesLateMutation(t *testing.T
 // The wait is bounded by the test-local deadline: a Layer-2-less mutant signals
 // failure via a named sentinel error (errSnapshotMutationUnobserved) inside the
 // bound — never the generic 10-minute test timeout.
-func finalBaselineWriter(t *testing.T, mutate string, aaaRead, ack chan struct{}, done chan struct{}) {
+func finalBaselineWriter(t *testing.T, mutate string, aaaRead, ack chan struct{}, done chan struct{}, pending chan struct{}) {
 	defer close(done)
 	<-aaaRead
 	// The walk has read aaa.bin; mutate the already-visited path so only Layer 2
@@ -450,6 +489,12 @@ func finalBaselineWriter(t *testing.T, mutate string, aaaRead, ack chan struct{}
 	if err := os.Chtimes(mutate, now(), now()); err != nil {
 		t.Errorf("chtimes: %v", err)
 		return
+	}
+	// Round 7 happened-before: close pending so Layer 2's bounded wait for its
+	// mutation section opens; Layer 2 re-stats and observes the mutation
+	// causally instead of racing it.
+	if pending != nil {
+		close(pending)
 	}
 	select {
 	case <-ack:
@@ -667,3 +712,85 @@ func makeNBytes(n int) []byte {
 // now returns the current time for touch-style mtime updates in the during-read
 // race.
 func now() time.Time { return time.Now() }
+
+// Discriminating regression (round 8): touch.go is the changed baseline path
+// and zzz.go is a later baseline path. With the fixed guard, Layer 1 aborts the
+// walk at the touch.go per-file barrier, so zzz.go is never read past its
+// barrier. A guard that lets afterMutationWait overwrite the fresh Lstat with
+// the stale baseline identity passes touch.go through, reads zzz.go, and only
+// Layer 2 catches the mutation after the walk. The per-read count distinguishes
+// the two: the fixed guard reads exactly one baseline path (touch.go) before it
+// aborts; the unfixed guard reads both. This cell is RED for that mutant.
+func TestSourceSnapshotNilHookAbortAtLayer1(t *testing.T) {
+	root := t.TempDir()
+	// touch.go < zzz.go alphabetically, so touch.go is read first and changed;
+	// the walk must abort at touch.go and never reach zzz.go when fixed.
+	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
+	mustWriteSnapshotFile(t, root, "zzz.go", 0o644, "package main\n")
+	// big.bin is read first (before touch.go) to widen the walk window so the
+	// writer mutation reliably lands while the walk is running.
+	mustWriteSnapshotFile(t, root, "aaa_big.bin", 0o644, string(makeNBytes(64*1024*1024)))
+	mutate := filepath.Join(root, "touch.go")
+
+	diverged := now().Add(10 * time.Second)
+	walkStarted := make(chan struct{}, 1)
+	done := make(chan struct{})
+	reads := make(chan string, 16)
+	var stop int32
+	go func() {
+		defer close(done)
+		<-walkStarted
+		// Hold touch.go's mtime diverged for the whole walk.
+		for atomic.LoadInt32(&stop) == 0 {
+			_ = os.Chtimes(mutate, diverged, diverged)
+		}
+	}()
+
+	_, err := CaptureSource(context.Background(), root, CaptureOptions{
+		Source: "https://git.example/app.git",
+		ChangeHook: func(path string) {
+			select {
+			case reads <- path:
+			default:
+			}
+			if path == "__walk_started__" {
+				select {
+				case walkStarted <- struct{}{}:
+				default:
+				}
+			}
+		},
+		// Nil hook: afterMutationWait returns the baseline identity on the nil
+		// channel. The fresh per-file Lstat above is the sole timing source.
+		MutationPending: func(path string) <-chan struct{} {
+			return nil
+		},
+	})
+	atomic.StoreInt32(&stop, 1)
+	<-done
+
+	// Both fixed and unfixed guards reject the changed tree; assert that.
+	if err == nil {
+		t.Fatal("nil-hook regression FAILED: capture accepted a changed baseline path (fresh-stat overwrite)")
+	}
+
+	// Drain read signals with a bounded wait: the fixed guard aborts at
+	// touch.go and never signals zzz.go.
+	zzzRead := false
+	timer := time.After(2 * time.Second)
+forloop:
+	for {
+		select {
+		case p := <-reads:
+			if p == "__path_read_zzz.go" {
+				zzzRead = true
+			}
+		case <-timer:
+			break forloop
+		}
+	}
+
+	if zzzRead {
+		t.Fatal("nil-hook regression FAILED: read passed zzz.go, so Layer 1 did not abort at touch.go (fresh-stat overwrite)")
+	}
+}
