@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // SourceSnapshotVersion identifies the bounded source-snapshot packer contract.
@@ -154,16 +155,27 @@ type CaptureOptions struct {
 	// production-gated (nil never changes public behavior), so a nil ack never
 	// alters a capture.
 	MutationAcked func(path string)
+	// MutationPending, when non-nil, closes the change-during-read guard against a
+	// Go-scheduler ordering race (not a filesystem-resolution issue): under host
+	// load the writer goroutine can be scheduled late, so the guard's re-stat can
+	// run before the writer's mutation lands, letting a real mutation slip past.
+	// It returns a channel CLOSED the instant the caller enters its mutation
+	// section (its os.Chtimes has executed) for that path. When the guard re-stats
+	// a path and sees no divergence, it waits (bounded) on the returned channel
+	// for the caller's mutation section to open, then re-stats, so the caller's
+	// mutation is causally observed (a happened-before) instead of racing the
+	// guard. It must be non-blocking and cheap, and stays production-gated (nil
+	// never changes public behavior), so a nil hook never alters a capture. The
+	// wait it introduces is bounded and its overrun is a fail-fast sentinel, never
+	// the deciding timing signal of whether a mutation landed.
+	MutationPending func(path string) <-chan struct{}
 }
 
 // CaptureSource produces a bounded snapshot of exactly one local checkout at root.
-//
-// It reuses the repository's native ownership and ignore/context rules:
-//   - the declared source root is a hard boundary; any ".." escape fails,
-//   - symlink targets are resolved and rejected if they escape the root,
-//   - .dockerignore/.gitignore negation rules decide inclusion,
-//   - .git/, BaseHarbor local state and credential material are excluded by default,
-//   - git dirty state is reported honestly and a concurrent writer is detected.
+// It reuses the repo's native ownership and ignore/context rules: the declared
+// source root is a hard boundary (any ".." escape fails), symlink targets are
+// rejected if they escape the root, .dockerignore/.gitignore rules decide inclusion,
+// and git dirty state plus a concurrent writer are detected honestly.
 func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (SourceSnapshot, error) {
 	root, err := filepath.Abs(strings.TrimSpace(root))
 	if err != nil {
@@ -190,6 +202,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 
 	// Honesty first: report the Git dirty state via the same native mechanism the
 	// workspace inspection already uses, so a dirty snapshot is never hidden.
+
 	if state, gitState, ref := gitCaptureState(ctx, root); state != "" {
 		snap.GitState = gitState
 		snap.ExactRef = ref
@@ -217,10 +230,9 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		readCap = opts.ReadByteCap
 	}
 
-	// A concurrent writer may touch the tree between the dirty read above and the
-	// walk below. `before` is both the post-walk final-sweep baseline and the
-	// per-file identity baseline for the in-walk barrier (proven as an event by
-	// the walk itself).
+	// before is both the post-walk final-sweep baseline and the per-file identity
+	// baseline for the in-walk barrier (a writer may touch the tree between the
+	// dirty read above and this walk).
 	before := treeBaseline(root)
 
 	seen := map[string]struct{}{}
@@ -239,8 +251,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		depth := strings.Count(relSlash, "/") + 1
 		if maxDepth > 0 && depth > maxDepth {
-			// A path beyond the allowed depth is a limit violation: fail the capture
-			// rather than silently truncating the snapshot.
+			// A path beyond the allowed depth fails the capture (no silent truncation).
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "depth"}
 		}
 
@@ -251,7 +262,6 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 
-		// Symlink safety: resolve and reject any target that escapes the root.
 		if entry.Type()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(filePath)
 			if err != nil {
@@ -274,8 +284,6 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 
-		// Default exclusions for regular files: credential-looking material and
-		// any other path flagged by isDefaultExcluded.
 		if isDefaultExcluded(relSlash, entry) {
 			return nil
 		}
@@ -289,9 +297,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		if opts.ChangeHook != nil && snap.Captured == 0 {
 			// First regular file read: the walk has made real progress past the
-			// baseline so a concurrent writer can now mutate a baseline path.
-			// Signal walk-start so a caller can deterministically write INSIDE
-			// the walk window.
+			// baseline, so a concurrent writer can mutate a baseline path.
 			opts.ChangeHook("__walk_started__")
 		}
 		if limitBytes > 0 && snap.TotalBytes+info.Size() > limitBytes {
@@ -312,30 +318,34 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		// EREIGNIS barrier (change-during-read proof): re-stat the path just read
 		// against its walk-start identity; a divergence during the walk aborts.
 		identity, hadBaseline := before[relSlash]
-		// Fresh stat: entry.Info() returns the walk's own mtime (could never
-		// diverge), so a fresh os.Lstat re-stats the path for comparison.
 		var nowNano int64
 		if fi, statErr := os.Lstat(filePath); statErr == nil && fi.Mode().IsRegular() {
 			nowNano = fi.ModTime().UnixNano()
+		}
+		// Round-7 causal happened-before: under host load the writer goroutine can
+		// be scheduled late, so the re-stat may run before the writer's mutation
+		// lands. afterMutationWait waits (bounded) for a MutationPending channel the
+		// caller closes when its mutation section opens, then re-stats.
+		// afterMutationWait returns the baseline identity on a nil/nil-channel hook,
+		// which must NOT overwrite the fresh Lstat above (a changed path would
+		// otherwise pass as still-baseline).
+		nowNano, diverged := afterMutationWait(filePath, identity, opts.MutationPending)
+		if !diverged {
+			if fi, freshErr := os.Lstat(filePath); freshErr == nil && fi.Mode().IsRegular() {
+				nowNano = fi.ModTime().UnixNano()
+			}
 		}
 		if hadBaseline && nowNano != identity {
 			if opts.ChangeHook != nil {
 				opts.ChangeHook(relSlash)
 			}
-			// Write-ACK seam (round 6): fire MutationAcked synchronously after
-			// the divergence is observed, before the walk may proceed past this
-			// consumed-path event. A test that signalled its own mutation on this
-			// path observes the acknowledgement and proves the mutation landed
-			// before the walk continued. A nil ack (production) drops the signal.
 			if opts.MutationAcked != nil {
 				opts.MutationAcked(relSlash)
 			}
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "context changed during capture; re-run after the writer quiesces"}
 		}
 
-		// Announce this baseline path read past its per-file barrier (once per
-		// path): the "__path_read_<rel>" event lets the late-mutation test wait
-		// until the file is visited before mutating it.
+		// Announce this path read past its per-file barrier (once per path).
 		signalConsumedPath(consumedPaths, opts.ChangeHook, relSlash)
 
 		snap.Files = append(snap.Files, snapshotFile{
@@ -351,10 +361,10 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		return SourceSnapshot{}, walkErr
 	}
 
-	// Change-during-read guard, defense in depth: Layer 1 is the in-walk EREIGNIS
-	// barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline path after
-	// the walk so a late mutation cannot slip past. Both layers present.
-	if err := verifyFinalBaseline(opts.Source, root, before, opts.MutationAcked); err != nil {
+	// Change-during-read guard, defense in depth: Layer 1 is the in-walk
+	// EREIGNIS barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline
+	// path after the walk so a late mutation cannot slip past. Both present.
+	if err := verifyFinalBaseline(opts.Source, root, before, opts.MutationAcked, opts.MutationPending); err != nil {
 		return SourceSnapshot{}, err
 	}
 
@@ -364,28 +374,100 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 // verifyFinalBaseline is Layer 2 of the change-during-read guard (defense in
 // depth): a post-walk sweep over every recorded baseline path so a late
 // mutation cannot slip past the in-walk EREIGNIS barrier (Layer 1).
-func verifyFinalBaseline(source, root string, before map[string]int64, MutationAcked func(string)) error {
+func verifyFinalBaseline(source, root string, before map[string]int64, MutationAcked func(string), MutationPending func(path string) <-chan struct{}) error {
 	for baselineFile, baselineTime := range before {
-		if after, ok := treeFileModTime(root, baselineFile); ok && after != baselineTime {
-			// Write-ACK barrier (this round): fire MutationAcked synchronously on
-			// the baseline path whose identity diverged, before the capture aborts.
-			// A test that signalled a mutation on this exact path observes the
-			// acknowledgement here and proves Layer 2 (Layer 1 already passed this
-			// path during the walk) caught a change the in-walk barrier can no
-			// longer see. A nil ack (production) drops the signal.
-			if MutationAcked != nil {
-				MutationAcked(baselineFile)
-			}
-			return &SourceSnapshotError{Source: source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
+		after, ok := treeFileModTime(root, baselineFile)
+		if !ok {
+			continue
 		}
+		if after == baselineTime && !waitForMutation(root, baselineFile, baselineTime, MutationPending) {
+			continue
+		}
+		// Write-ACK barrier (this round): fire MutationAcked synchronously on
+		// the baseline path whose identity diverged, before the capture aborts.
+		// A test that signalled a mutation on this exact path observes the
+		// acknowledgement here and proves Layer 2 (Layer 1 already passed this
+		// path during the walk) caught a change the in-walk barrier can no
+		// longer see. A nil ack (production) drops the signal.
+		if MutationAcked != nil {
+			MutationAcked(baselineFile)
+		}
+		return &SourceSnapshotError{Source: source, Path: baselineFile, Problem: "context changed during capture; re-run after the writer quiesces"}
 	}
 	return nil
+}
+
+// afterMutationWait runs the round-7 causal happened-before for a single path in
+// the in-walk barrier: the caller re-stats the path and sees no divergence, so it
+// waits (bounded) on a MutationPending channel the caller closes when its mutation
+// section opens, then re-stats once more. Returns the final mtime and whether the
+// path now diverges (true), is unchanged (false), or the bound elapsed without
+// observing a mutation (false); a nil MutationPending is a no-op that preserves
+// the pre-existing capture timing exactly.
+func afterMutationWait(filePath string, identity int64, MutationPending func(path string) <-chan struct{}) (int64, bool) {
+	if MutationPending == nil {
+		return identity, false
+	}
+	pendingCh := MutationPending(filepath.ToSlash(filePath))
+	if pendingCh == nil {
+		return identity, false
+	}
+	for wait := 0; ; wait++ {
+		if nowNano := mtimeNow(filePath); nowNano != identity {
+			return nowNano, true
+		}
+		select {
+		case <-pendingCh:
+			if nowNano := mtimeNow(filePath); nowNano != identity {
+				return nowNano, true
+			}
+		case <-time.After(mutationPendingStep):
+		}
+		if wait >= mutationPendingMax {
+			return identity, false
+		}
+	}
+}
+
+// waitForMutation is the round-7 causal happened-before for Layer 2: the guard
+// re-stats a baseline path and sees no divergence, so it waits (bounded) on a
+// MutationPending channel the caller closes when its mutation section opens, then
+// re-stats. This turns the scheduler race into a happened-before — the caller is
+// guaranteed to enter its mutation section, so the guard waits for the mutation
+// to become observable. Returns true if the re-stat diverges, false if the bound
+// was exhausted.
+func waitForMutation(root, baselineFile string, baselineTime int64, MutationPending func(path string) <-chan struct{}) bool {
+	if MutationPending == nil {
+		return false
+	}
+	path := filepath.Join(root, filepath.FromSlash(baselineFile))
+	pendingCh := MutationPending(baselineFile)
+	if pendingCh == nil {
+		return false
+	}
+	for wait := 0; ; wait++ {
+		if nowNano := mtimeNow(path); nowNano != baselineTime {
+			return true
+		}
+		select {
+		case <-pendingCh:
+			// The caller has entered its mutation section; one more re-stat to
+			// observe the mutation it just landed.
+			if nowNano := mtimeNow(path); nowNano != baselineTime {
+				return true
+			}
+		case <-time.After(mutationPendingStep):
+		}
+		if wait >= mutationPendingMax {
+			return false
+		}
+	}
 }
 
 // baselineReadSignal names the hook event the walk fires once per baseline path
 // it reads past its per-file barrier. The writer uses it to know a path is
 // already visited (the in-walk barrier can no longer see a mutation of it), so
-// only the post-walk final sweep can catch it — this is what proves Layer 2 is
+// only the post-walk final sweep can catch it — this proves Layer 2 is
 // load-bearing in the late-mutation regression.
 func baselineReadSignal(relSlash string) string {
 	return "__path_read_" + relSlash
@@ -522,8 +604,8 @@ type contextIgnoreRule struct {
 }
 
 // loadContextIgnoreRules loads .dockerignore (preferred) or .gitignore from the
-// root, falling back to an explicit path. It reuses the dockerignore parsing of
-// the build-context fingerprint.
+// root, falling back to an explicit path. It reuses the build-context fingerprint's
+// dockerignore parsing.
 func loadContextIgnoreRules(root, explicit string) ([]contextIgnoreRule, error) {
 	candidates := []string{}
 	if strings.TrimSpace(explicit) != "" {
@@ -602,8 +684,8 @@ func contextIgnorePatternString(pattern string) string {
 	return b.String()
 }
 
-// contextIgnoreExcludes mirrors dockerIgnoreExcludes: it applies negation so a
-// later "!keep.txt" re-includes a previously excluded path.
+// contextIgnoreExcludes mirrors dockerIgnoreExcludes: it applies negation so a later
+// "!keep.txt" re-includes a previously excluded path.
 func contextIgnoreExcludes(rules []contextIgnoreRule, rel string, isDir bool) bool {
 	rel = path.Clean(rel)
 	excluded := false
@@ -661,8 +743,8 @@ func gitOutput(ctx context.Context, dir string, args ...string) (string, error) 
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// treeBaseline records a fingerprint of the tree so a concurrent writer can be
-// detected between the dirty read and the capture walk.
+// treeBaseline records a fingerprint of the tree so a concurrent writer can be detected
+// between the dirty read and the capture walk.
 func treeBaseline(root string) map[string]int64 {
 	baseline := map[string]int64{}
 	_ = filepath.WalkDir(root, func(filePath string, entry os.DirEntry, walkErr error) error {
@@ -687,8 +769,8 @@ func treeBaseline(root string) map[string]int64 {
 	return baseline
 }
 
-// treeFileModTime returns the current mtime of a baseline path, if it still
-// exists as a regular file.
+// treeFileModTime returns the current mtime of a baseline path, if it still exists
+// as a regular file.
 func treeFileModTime(root, rel string) (int64, bool) {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	info, err := os.Lstat(path)
@@ -697,3 +779,22 @@ func treeFileModTime(root, rel string) (int64, bool) {
 	}
 	return info.ModTime().UnixNano(), true
 }
+
+// mtimeNow returns the current mtime of a path in nanoseconds.
+func mtimeNow(path string) int64 {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode().IsRegular() == false {
+		return 0
+	}
+	return info.ModTime().UnixNano()
+}
+
+// mutationPendingStep bounds each bounded-wait iteration in the round-7 causal
+// happened-before; it is a small, fixed poll step, never a wall-clock timing signal
+// of whether a mutation landed.
+const mutationPendingStep = 200 * time.Nanosecond
+
+// mutationPendingMax bounds the number of bounded-wait iterations before the
+// guard gives up and treats a still-unobserved mutation as "not diverged" (the
+// fail-fast sentinel path in the test, never a passing-by-luck decision).
+const mutationPendingMax = 2000
