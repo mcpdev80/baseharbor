@@ -50,6 +50,8 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app tls update` | semantisch | CLI -o json / typed MCP result | baseharbor.tls.update |  |
 | `baha app up` | semantisch | CLI -o json / typed MCP result | baseharbor.apply |  |
 | `baha app update` | semantisch | CLI -o json / typed MCP result | baseharbor.update |  |
+| `baha app version` | Darstellung |  |  | Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity. |
+| `baha app versions` | semantisch | CLI -o json / typed MCP result | baseharbor.app.versions |  |
 | `baha app workspace` | Darstellung |  |  | Interactive presentation combining workspace.init and workspace.map; clients invoke those typed operations explicitly. |
 | `baha app workspace init` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.init |  |
 | `baha app workspace map` | semantisch | CLI -o json / typed MCP result | baseharbor.workspace.map |  |

@@ -56,6 +56,17 @@ func registerMCPDiscoveryReadTools(server *mcp.Server) {
 		return nil, result, nil
 	})
 
+	mcp.AddTool(server, machineMCPTool("app.versions", "Render readable wanted/applied/observed versions for recorded deployments as three separated reference cells.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationVersionsInput) (*mcp.CallToolResult, any, error) {
+		if err := authorizeCurrentMCPContext(ctx, "app.versions", input.Target, "", ""); err != nil {
+			return machineMCPFailure(err)
+		}
+		result, err := collectMachineApplicationVersions(withTargetOverride(ctx, input.Target), input)
+		if err != nil {
+			return machineMCPFailure(err)
+		}
+		return nil, result, nil
+	})
+
 	mcp.AddTool(server, machineMCPTool("target", "Read-only inspection of the effective BaseHarbor target and repository-resolved deployment identity.", false), func(ctx context.Context, req *mcp.CallToolRequest, input machineTargetInput) (*mcp.CallToolResult, any, error) {
 		ctx = withTargetOverride(ctx, input.Target)
 		if err := authorizeCurrentMCPContext(ctx, "target", input.Target, "", ""); err != nil {
