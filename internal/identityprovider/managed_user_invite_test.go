@@ -54,26 +54,32 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 			activationSeen++
 			seenMethod = r.Method
 			seenRoute = r.URL.Path
-			if body, _ := io.ReadAll(r.Body); len(bytes.TrimSpace(body)) > 0 {
-				// The documented body is a JSON string array. Assert it parses
-				// as []string and equals the exact ordered action list.
-				var exactActions []string
-				if json.Unmarshal(body, &exactActions) != nil {
-					t.Fatalf("execute-actions-email body %q is not the documented JSON string array", string(body))
-				}
-				if !reflect.DeepEqual(exactActions, []string{"VERIFY_EMAIL", "UPDATE_PASSWORD"}) {
-					t.Errorf("execute-actions-email body is not the exact required-actions array: got %v", exactActions)
-				}
-				// The recipient comes from the user-id path parameter, never the
-				// body: a "to" field is a contract-type violation.
-				if strings.Contains(string(body), `"to"`) {
-					t.Errorf("execute-actions-email body carried a \"to\" field; the recipient must come from the user-id path parameter")
-				}
-				// The password key must be entirely absent from the body, not
-				// merely empty.
-				if strings.Contains(string(body), "password") {
-					sawPassword = true
-				}
+			body, _ := io.ReadAll(r.Body)
+			if len(bytes.TrimSpace(body)) == 0 {
+				// Fail-closed: the documented execute-actions-email body is a
+				// required JSON string array of required-action aliases. An
+				// empty body can never be the documented contract, so reject it
+				// immediately, before any decode, rather than slipping through.
+				t.Fatal("execute-actions-email body is empty; the documented required-actions string array must never be empty (fail-closed)")
+			}
+			// The documented body is a JSON string array. Assert it parses
+			// as []string and equals the exact ordered action list.
+			var exactActions []string
+			if json.Unmarshal(body, &exactActions) != nil {
+				t.Fatalf("execute-actions-email body %q is not the documented JSON string array", string(body))
+			}
+			if !reflect.DeepEqual(exactActions, []string{"VERIFY_EMAIL", "UPDATE_PASSWORD"}) {
+				t.Errorf("execute-actions-email body is not the exact required-actions array: got %v", exactActions)
+			}
+			// The recipient comes from the user-id path parameter, never the
+			// body: a "to" field is a contract-type violation.
+			if strings.Contains(string(body), `"to"`) {
+				t.Errorf("execute-actions-email body carried a \"to\" field; the recipient must come from the user-id path parameter")
+			}
+			// The password key must be entirely absent from the body, not
+			// merely empty.
+			if strings.Contains(string(body), "password") {
+				sawPassword = true
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -110,6 +116,38 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	// version to that contract.
 	if !contractAcceptsPinnedKeycloak(seenRoute, keycloakVersion()) {
 		t.Errorf("activation route %q is not the documented execute-actions-email operation for Keycloak %s", seenRoute, keycloakVersion())
+	}
+}
+
+// The activation fixture is hardened against the empty-body defect: a missing
+// or empty execute-actions-email body is rejected immediately, before any
+// decode, so an action-less (or absent) activation is refused rather than
+// accepted. This is the fail-closed regression for the round-7 bodyguard:
+// removing the empty-body guard makes this turn red; keeping it keeps it green.
+func TestInviteManagedUserActivationEmptyBodyIsRefused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/users"):
+			if r.Method == http.MethodGet {
+				w.Write([]byte(`[]`)) // no owned account yet
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"id":"u1"}`))
+			return
+		case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
+			// Deliberately send NO body (action-less request). The hardened
+			// fixture must reject this before decoding anything.
+			w.WriteHeader(http.StatusNoContent)
+			return
+		default:
+			w.Write([]byte(managedInviteRealm))
+		}
+	}))
+	defer server.Close()
+	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client()}
+	if err := admin.inviteManagedUser(context.Background(), "bh-operators-dev", "isolated", "dev", "invitee@baseharbor.local", managedInviteOwnership()); err == nil {
+		t.Fatal("empty-body activation was accepted; the fixture must fail closed on an empty execute-actions-email body")
 	}
 }
 
