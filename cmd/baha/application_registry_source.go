@@ -22,6 +22,28 @@ var ErrRegistrySourceUnavailable = fmt.Errorf("registry: no usable resolved arti
 // cannot be resolved and must fail closed rather than default to any host.
 var ErrRegistrySourceEmpty = fmt.Errorf("registry: artifact source location is required")
 
+// ErrRegistrySourcePublicDefault documents a configured endpoint that is a
+// public docker.io default rather than an enterprise registry. It is a hard
+// rejection: never the merely-unavailable class the development opt-in
+// fallback may apply to. It IS the distinct hard-rejection identity that the
+// classifier and the negative cells assert (via the errClassPublicDefault
+// alias), unwrapping to the unavailable identity only for one-call error
+// classification.
+var ErrRegistrySourcePublicDefault = errors.New("registry: configured endpoint is a public default")
+
+// errClassPublicDefault aliases the public-default hard-rejection identity so
+// rejection sites and the classifier name the class they check.
+var errClassPublicDefault = ErrRegistrySourcePublicDefault
+
+// errRegistrySourceDenied is the hard-rejection class identity for endpoint
+// refusals (authorization denied/forbidden/unauthorized replies). Like the
+// public-default sentinel it is distinct and never unwraps to the unavailable
+// identity; the classifier recognizes denials with it.
+var errRegistrySourceDenied = errors.New("registry: endpoint refused the resolve")
+
+// errClassDenied aliases the denial hard-rejection identity.
+var errClassDenied = errRegistrySourceDenied
+
 // DigestPattern matches an immutable sha256 OCI digest, the only identity this
 // adapter is willing to record as the resolved artifact version.
 var DigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
@@ -93,7 +115,7 @@ func (s RegistrySource) Resolve(ctx context.Context) (ArtifactIdentity, error) {
 	// enterprise endpoint to docker.io would mask a missing configuration or a
 	// denied endpoint. Fail closed instead.
 	if isDefaultDockerHost(location) {
-		return ArtifactIdentity{}, fmt.Errorf("%w: configured endpoint %q is a public default, not an enterprise registry", ErrRegistrySourceUnavailable, location)
+		return ArtifactIdentity{}, fmt.Errorf("%w: %w: configured endpoint %q is a public default, not an enterprise registry", ErrRegistrySourceUnavailable, ErrRegistrySourcePublicDefault, location)
 	}
 	if strings.ContainsAny(location, "\r\n") || strings.ContainsAny(requested, "\r\n") {
 		return ArtifactIdentity{}, fmt.Errorf("%w: source location/requested must not contain newlines", ErrRegistrySourceUnavailable)
@@ -112,9 +134,23 @@ func (s RegistrySource) Resolve(ctx context.Context) (ArtifactIdentity, error) {
 // resolve addresses the endpoint with the native tool, pins the digest, and
 // returns the canonical repository at that digest.
 func (s RegistrySource) resolve(ctx context.Context, location, requested string) (repository, digest string, err error) {
+	// The public-default classification never depends on the native tool: the
+	// host check runs first, so no tool reply can downgrade a docker.io
+	// endpoint into the unavailable class the development opt-in may cover.
+	if isDefaultDockerHost(location) {
+		return "", "", fmt.Errorf("%w: %w: configured endpoint %q is a public default, not an enterprise registry", ErrRegistrySourceUnavailable, ErrRegistrySourcePublicDefault, location)
+	}
 	ref := location + ":" + requested
 	out, runErr := s.run(ctx, "resolve", ref)
 	if runErr != nil {
+		if isEndpointDenial(runErr) {
+			// Classify an endpoint refusal with both sentinels so the error
+			// still unwraps to ErrRegistrySourceUnavailable for callers while
+			// the pull-side fallback — which excludes hard-rejection
+			// identities in the cause chain — can never apply to a denial.
+			return "", "", fmt.Errorf("%w: %w: resolve artifact endpoint %q: %v",
+				ErrRegistrySourceUnavailable, errRegistrySourceDenied, location, runErr)
+		}
 		return "", "", fmt.Errorf("%w: resolve artifact endpoint %q: %v", ErrRegistrySourceUnavailable, location, runErr)
 	}
 	// The tool reports the resolved reference; extract repository and digest.
@@ -175,10 +211,57 @@ func execArtifact(ctx context.Context, name string, args ...string) (string, err
 // invocation.
 var resolveRegistrySource = resolveRegistrySourceImpl
 
+// isEndpointDenial reports whether the native tool's error indicates the
+// endpoint refused the request (authorization denial) rather than being merely
+// unreachable. The classifier only inspects the message text of the tool
+// error; denials are a hard rejection class the opt-in fallback never covers.
+//
+// NOTE: exitStatusError redacts stderr to a fixed string, so on production
+// paths a refusal usually arrives as a plain non-zero exit and lands in the
+// unavailable class; the denial marker keeps the classification hook for the
+// replies that do carry their refusal text.
+func isEndpointDenial(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "denied") ||
+		strings.Contains(msg, "forbidden") ||
+		strings.Contains(msg, "unauthorized") ||
+		strings.Contains(msg, "permission denied") ||
+		strings.Contains(msg, "access denied")
+}
+
 // registrySourceExec is the native artifact tool runner used by
 // resolveRegistrySourceImpl. It defaults to the real os/exec runner; tests
 // install a fake runner that records the invocation and canned resolve output.
 var registrySourceExec ExecFunc = execArtifact
+
+// resolveUnavailable reports whether the resolve failure is of the merely-
+// unavailable class: tool failure, empty or unpinnable reply, malformed
+// reference, or unreachable host. A hard rejection (denial or public default)
+// is NEVER a merely-unavailable result, so its sentinel takes precedence even
+// though it unwraps to the unavailable identity. This is the ONLY class the
+// development opt-in fallback may ever pull the mutable reference for.
+func resolveUnavailable(err error) bool {
+	if isHardRejection(err) {
+		return false
+	}
+	return errors.Is(err, ErrRegistrySourceUnavailable)
+}
+
+// isHardRejection reports whether an error in the cause chain is one of the
+// distinct hard-rejection identities: the public-default sentinel or a
+// classified endpoint denial. Unlike the unavailable class these can never be
+// covered by the development opt-in fallback.
+// The identity tests below are deliberate: isHardRejection and
+// resolveUnavailable walk the cause chain node by node, so each node must be
+// compared by identity rather than by errors.Is — otherwise a hard sentinel
+// that aliases the unavailable identity would hide itself.
+// The identity comparison is deliberate: resolveUnavailable walks the cause
+// chain node by node, so each node must be compared by identity rather than
+// with errors.Is — otherwise an alias of the unavailable identity (mutant or
+// misplacement) would hide itself.
+func isHardRejection(err error) bool {
+	return errors.Is(err, errClassPublicDefault) || errors.Is(err, errClassDenied)
+}
 
 // resolveRegistrySourceImpl is the production resolveRegistrySource.
 func resolveRegistrySourceImpl(ctx context.Context, location, requested string) (string, error) {
@@ -188,6 +271,14 @@ func resolveRegistrySourceImpl(ctx context.Context, location, requested string) 
 	repository, tag := splitReference(location)
 	if location == "" {
 		return "", ErrRegistrySourceEmpty
+	}
+	// A public-default host must fail closed here, before the runner seam: a
+	// CI host that happens to have oras installed could otherwise "resolve"
+	// docker.io and pull from the public default. RegistrySource.Resolve
+	// applies the same rule; this pre-flight makes the rejection independent
+	// of tool availability.
+	if isDefaultDockerHost(repository) {
+		return "", fmt.Errorf("%w: %w: configured endpoint %q is a public default, not an enterprise registry", ErrRegistrySourceUnavailable, ErrRegistrySourcePublicDefault, location)
 	}
 	if requested == "" {
 		if tag != "" {
@@ -203,10 +294,13 @@ func resolveRegistrySourceImpl(ctx context.Context, location, requested string) 
 		Exec:      registrySourceExec,
 	}).Resolve(ctx)
 	if err != nil {
-		// Best-effort: surface no usable digest, fall back to the location as
-		// given so a mutable development image still pulls through the native
-		// tool with its original reference.
-		return location, nil
+		// Fail closed: a rejected endpoint (denied/unreachable, missing
+		// digest, public-default docker.io) propagates so the caller performs
+		// no pull of a mutable reference. The only mutable fallback lives in
+		// pullResolvedRuntimeImage behind an explicit operator opt-in, and the
+		// opt-in is class-gated: it never applies to a classified endpoint
+		// denial or to a public-default rejection.
+		return "", err
 	}
 	return identity.ImmutableIdentity(), nil
 }
@@ -228,14 +322,27 @@ func splitReference(reference string) (repository, tag string) {
 
 // pullResolvedRuntimeImage is the single pull site (cmd/baha/app_broker.go) that
 // connects the runtime lifecycle to RegistrySource. It resolves the configured
-// development image endpoint through resolveRegistrySource and pulls exactly the
-// returned reference: the immutable repository@digest identity when the endpoint
-// resolves, or the mutable tag when it does not. A caller that skips
-// resolveRegistrySource and pulls the raw tag is the RED mutant this path proves.
+// endpoint through resolveRegistrySource and pulls exactly the immutable
+// repository@digest identity it returns. Any resolution failure propagates
+// fail-closed with zero pulls. The only mutable fallback is the explicit
+// operator opt-in BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE, and it runs only
+// when the endpoint was classified UNAVAILABLE — a denied endpoint or a
+// public-default docker.io location is rejected before the fallback is
+// consulted, so the opt-in cannot bypass the endpoint or public-default
+// rejection rules. A caller that pulls a mutable reference on a rejected
+// resolve is the RED mutant this path proves.
 func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) error {
 	resolvedImage, err := resolveRegistrySource(ctx, location, requested)
 	if err != nil {
-		return fmt.Errorf("resolve development runtime image: %w", err)
+		if resolveUnavailable(err) && allowMutableDevelopmentRuntimeImage() {
+			// Explicit legacy development opt-in: pull the original tag
+			// reference. Class-gated: a public-default rejection and an
+			// endpoint denial both fail closed above, so this fallback
+			// bypasses no rejection rule.
+			resolvedImage = location
+		} else {
+			return fmt.Errorf("resolve development runtime image: %w", err)
+		}
 	}
 	if err := compose.PullImage(ctx, resolvedImage); err != nil {
 		return fmt.Errorf("pull resolved development runtime image: %w", err)
