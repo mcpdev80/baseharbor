@@ -28,7 +28,11 @@ func mustIntentSnapshotJSON(t *testing.T, m application.Manifest) json.RawMessag
 }
 
 func separationFixture(references map[string]*deployment.ReferenceDimension) machinereadmodels.VersionView {
-	return machinereadmodels.ReleaseViewFromRecord(deployment.DeploymentRecord{
+	return machinereadmodels.ReleaseViewFromRecord(separationRecord(references))
+}
+
+func separationRecord(references map[string]*deployment.ReferenceDimension) deployment.DeploymentRecord {
+	return deployment.DeploymentRecord{
 		Version: deployment.DeploymentRecordVersion,
 		Identity: deployment.DeploymentIdentity{
 			DeploymentID:  testDeploymentID,
@@ -39,7 +43,7 @@ func separationFixture(references map[string]*deployment.ReferenceDimension) mac
 		},
 		Source:     deployment.DeploymentSource{Kind: "repository", Repository: "/synthetic/repo"},
 		References: references,
-	})
+	}
 }
 
 // TestVersionViewThreeCellsAlwaysSeparated is the separation line of this card:
@@ -282,67 +286,78 @@ func TestAppVersionCommandCallable(t *testing.T) {
 	}
 }
 
-// referenceCell mirrors the shipped machinereadmodels.stageCell: one cell per
-// dimension kind, with the UNCLEAR fallback for an unrecorded reference.
-func referenceCell(references map[string]*deployment.ReferenceDimension, kind string) *machinereadmodels.ViewStageCell {
-	cell := &machinereadmodels.ViewStageCell{Kind: kind}
-	dimension, ok := references[kind]
-	if !ok || dimension == nil || strings.TrimSpace(dimension.Release) == "" {
-		cell.Reference = machinereadmodels.UnclearValue
-		cell.MissingData = true
-		return cell
-	}
-	cell.Reference = strings.TrimSpace(dimension.Release)
-	cell.ObservedAt = dimension.At
-	return cell
+// shippedReleaseViewStageKinds reads the shipped wanted/applied/observed
+// mapping from the delivered product function — the same source of truth the
+// shipped mapper uses (ReleaseViewFromRecord calls the parameter form with
+// it) — so the regression cannot silently test against a table the product no
+// longer uses. The mutation itself is the swapped copy passed to that same
+// function, never a test-local mapper.
+func shippedReleaseViewStageKinds() [3]string {
+	return machinereadmodels.ReleaseViewStageKinds()
 }
 
-// TestStagesViewMutationAgainstSeparationLine is deliverable 3: a REAL mutant
-// of the separation mapper. The mutation rewrites ReleaseViewFromRecord's
-// one-to-one dimension mapping so the observed cell copies the applied
-// dimension (a column-mixing change). RED: the mutant's cell must fail the
-// wanted/applied/observed separation assertion. GREEN counter-probe: the honest
-// shipped mapper keeps the columns on the exact same fixture.
+// TestStagesViewMutationAgainstSeparationLine is deliverable 3: both branches
+// run the shipped mapper itself. ReleaseViewFromRecord delegates to
+// ReleaseViewFromRecordWithStageKinds, the product function that maps each cell
+// slot through an explicit wanted/applied/observed dimension table. GREEN
+// counter-probe: the shipped mapper with the shipped table keeps the columns
+// separate on the shared fixture. RED mutants, both executed by the delivered
+// code path in internal/machinereadmodels/release.go and not by a test-local
+// copy: (1) the shipped function with the observed slot swapped in the table
+// passed to it, and (2) the shipped cell carrying a copied dimension label, the
+// case the review measured as invisible in round 1. The cell therefore depends
+// causally on the shipped mapper.
 func TestStagesViewMutationAgainstSeparationLine(t *testing.T) {
 	fixture := map[string]*deployment.ReferenceDimension{
 		deployment.ReferenceIntended: referenceDimension(deployment.ReferenceIntended, "wanted-ref"),
 		deployment.ReferenceApplied:  referenceDimension(deployment.ReferenceApplied, "applied-ref"),
 		deployment.ReferenceObserved: referenceDimension(deployment.ReferenceObserved, "observed-ref"),
 	}
-	// MUTANT: identical shape to stageCell/ReleaseViewFromRecord except the
-	// observed lookup is rewritten to read the applied dimension. The
-	// shipped kind-labelled cell mapper is the mutation target.
-	mutantStages := func(references map[string]*deployment.ReferenceDimension) machinereadmodels.ViewStages {
-		return machinereadmodels.ViewStages{
-			Wanted:   referenceCell(references, deployment.ReferenceIntended),
-			Applied:  referenceCell(references, deployment.ReferenceApplied),
-			Observed: referenceCell(references, deployment.ReferenceApplied),
-		}
-	}
+	record := separationRecord(fixture)
+	kindsForAssertion := shippedReleaseViewStageKinds()
 	red := func(stages machinereadmodels.ViewStages) []string {
 		var violations []string
-		if stages.Wanted.Reference != "wanted-ref" || stages.Wanted.Kind != deployment.ReferenceIntended {
+		if stages.Wanted.Reference != "wanted-ref" || stages.Wanted.Kind != kindsForAssertion[0] {
 			violations = append(violations, "wanted cell does not read the intended dimension")
 		}
-		if stages.Applied.Reference != "applied-ref" || stages.Applied.Kind != deployment.ReferenceApplied {
+		if stages.Applied.Reference != "applied-ref" || stages.Applied.Kind != kindsForAssertion[1] {
 			violations = append(violations, "applied cell does not read the applied dimension")
 		}
-		if stages.Observed.Reference != "observed-ref" || stages.Observed.Kind != deployment.ReferenceObserved {
+		if stages.Observed.Reference != "observed-ref" || stages.Observed.Kind != kindsForAssertion[2] {
 			violations = append(violations, "observed cell does not read the observed dimension")
 		}
 		return violations
 	}
-	mutantViolations := red(mutantStages(fixture))
+	// Counter-probe: the shipped mapper with the shipped table keeps all three
+	// cells separate on the exact fixture the mutants are measured against.
+	shipped := machinereadmodels.ReleaseViewFromRecordWithStageKinds(record, shippedReleaseViewStageKinds())
+	if violations := red(shipped.Stages); len(violations) != 0 {
+		t.Fatalf("the shipped mapper must satisfy the separation line, got %v", violations)
+	}
+	// MUTANT — the same shipped function and the same record, with one swapped
+	// slot in the dimension table passed to it (the observed slot reads the
+	// applied dimension).
+	mutantKinds := shippedReleaseViewStageKinds()
+	mutantKinds[2] = mutantKinds[1]
+	mutantViolations := red(machinereadmodels.ReleaseViewFromRecordWithStageKinds(record, mutantKinds).Stages)
 	if len(mutantViolations) == 0 {
-		t.Fatal("the separation line must reject a column-mixing mutation")
+		t.Fatal("the separation line must reject a column-mixing mutation of the shipped mapper")
 	}
 	if len(mutantViolations) != 1 || mutantViolations[0] != "observed cell does not read the observed dimension" {
 		t.Fatalf("the mutation must violate exactly the observed column, got %v", mutantViolations)
 	}
-	// Counter-probe: the shipped mapper keeps all three cells separate.
-	view := separationFixture(fixture)
-	if violations := red(view.Stages); len(violations) != 0 {
-		t.Fatalf("the shipped mapper must satisfy the separation line, got %v", violations)
+
+	// Second mutant class (the review's release.go:165 case): the shipped cell
+	// loop writes another dimension's label into Kind while the observed slot
+	// keeps the observed reference. The separation line checks Kind against the
+	// dimension the slot must read, so this mutation cannot stay silent.
+	labelSwap := red(machinereadmodels.ViewStages{
+		Wanted:   shipped.Stages.Wanted,
+		Applied:  shipped.Stages.Applied,
+		Observed: &machinereadmodels.ViewStageCell{Kind: deployment.ReferenceApplied, Reference: shipped.Stages.Observed.Reference, ObservedAt: shipped.Stages.Observed.ObservedAt},
+	})
+	if len(labelSwap) != 1 || labelSwap[0] != "observed cell does not read the observed dimension" {
+		t.Fatalf("the separation line must reject a dimension-label mutation, got %v", labelSwap)
 	}
 }
 

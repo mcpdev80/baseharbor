@@ -8,6 +8,19 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
+// releaseViewStageKinds is the shipped wanted/applied/observed mapping: each
+// cell slot reads exactly one reference dimension, one-to-one.
+var releaseViewStageKinds = [3]string{referenceIntended, referenceApplied, referenceObserved}
+
+// ReleaseViewStageKinds returns the shipped wanted/applied/observed mapping the
+// delivered ReleaseViewFromRecord uses. The value lives in exactly one place
+// (releaseViewStageKinds); exposing it lets the version-view separation
+// regression mutate the shipped mapping through the product instead of
+// restating it.
+func ReleaseViewStageKinds() [3]string {
+	return releaseViewStageKinds
+}
+
 // ReleaseViewContractVersion versions this read model's shape independently of
 // the machine transport contract.
 const ReleaseViewContractVersion = "v1"
@@ -101,6 +114,15 @@ type VersionView struct {
 // observed cells; a dimension that was not recorded becomes an explicit
 // unclear cell instead of a blank.
 func ReleaseViewFromRecord(record deployment.DeploymentRecord) VersionView {
+	return ReleaseViewFromRecordWithStageKinds(record, releaseViewStageKinds)
+}
+
+// ReleaseViewFromRecordWithStageKinds is the explicit-parameter form of the
+// shipped mapper: ReleaseViewFromRecord always calls it with the one-to-one
+// releaseViewStageKinds table, and a caller may pass a different table to model
+// a column-mixing mutation of the mapping itself. The staleness flag stays the
+// accepted record-level comparison in both forms.
+func ReleaseViewFromRecordWithStageKinds(record deployment.DeploymentRecord, kinds [3]string) VersionView {
 	view := VersionView{
 		ContractVersion: ReleaseViewContractVersion,
 		Identity: ViewIdentity{
@@ -115,9 +137,9 @@ func ReleaseViewFromRecord(record deployment.DeploymentRecord) VersionView {
 		view.Source.Detail = "deployment source is not readable; shown state is recorded state only"
 	}
 	view.Stages = ViewStages{
-		Wanted:   stageCell(record.References, referenceIntended),
-		Applied:  stageCell(record.References, referenceApplied),
-		Observed: stageCell(record.References, referenceObserved),
+		Wanted:   stageCell(record.References, kinds[0]),
+		Applied:  stageCell(record.References, kinds[1]),
+		Observed: stageCell(record.References, kinds[2]),
 	}
 	view.RuntimeProvider = record.Applied.RuntimeProvider
 	view.State = record.Observed.State
