@@ -40,6 +40,8 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app secret list` | semantic | CLI -o json / typed MCP result | baseharbor.secret.list |  |
 | `baha app secret set` | semantic | CLI -o json / typed MCP result | baseharbor.secret.set |  |
 | `baha app secret tls-set` | semantic | CLI -o json / typed MCP result | baseharbor.secret.tls-set |  |
+| `baha app secure-profile` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha app secure-profile export` | presentation |  |  | Operator-local, password-locked file export of opt-in local credentials; no runtime mutation or machine tool. Ciphertext opens only with the export password. |
 | `baha app shell` | excluded |  |  | Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead. |
 | `baha app show` | semantic | CLI -o json / typed MCP result | baseharbor.app.show |  |
 | `baha app sql` | excluded |  |  | Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client. |
