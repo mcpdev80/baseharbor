@@ -231,8 +231,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 	}
 
 	// before is both the post-walk final-sweep baseline and the per-file identity
-	// baseline for the in-walk barrier (a concurrent writer may touch the tree
-	// between the dirty read above and this walk).
+	// baseline for the in-walk barrier (a writer may touch the tree between the
+	// dirty read above and this walk).
 	before := treeBaseline(root)
 
 	seen := map[string]struct{}{}
@@ -251,8 +251,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		}
 		depth := strings.Count(relSlash, "/") + 1
 		if maxDepth > 0 && depth > maxDepth {
-			// A path beyond the allowed depth is a limit violation: fail the capture
-			// rather than silently truncating the snapshot.
+			// A path beyond the allowed depth fails the capture (no silent truncation).
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "depth"}
 		}
 
@@ -263,7 +262,6 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 
-		// Symlink safety: resolve and reject any target that escapes the root.
 		if entry.Type()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(filePath)
 			if err != nil {
@@ -286,7 +284,6 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 
-		// Default exclusions for regular files: credential-looking material.
 		if isDefaultExcluded(relSlash, entry) {
 			return nil
 		}
@@ -299,9 +296,8 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return nil
 		}
 		if opts.ChangeHook != nil && snap.Captured == 0 {
-			// First regular file read: the walk has made real progress past the baseline
-			// so a concurrent writer can now mutate a baseline path. Signal walk-start
-			// so a caller can deterministically write INSIDE the walk window.
+			// First regular file read: the walk has made real progress past the
+			// baseline, so a concurrent writer can mutate a baseline path.
 			opts.ChangeHook("__walk_started__")
 		}
 		if limitBytes > 0 && snap.TotalBytes+info.Size() > limitBytes {
@@ -322,19 +318,17 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		// EREIGNIS barrier (change-during-read proof): re-stat the path just read
 		// against its walk-start identity; a divergence during the walk aborts.
 		identity, hadBaseline := before[relSlash]
-		// Fresh stat: entry.Info() returns the walk's own mtime (could never diverge),
-		// so a fresh os.Lstat re-stats the path for comparison.
 		var nowNano int64
 		if fi, statErr := os.Lstat(filePath); statErr == nil && fi.Mode().IsRegular() {
 			nowNano = fi.ModTime().UnixNano()
 		}
 		// Round-7 causal happened-before: under host load the writer goroutine can
 		// be scheduled late, so the re-stat may run before the writer's mutation
-		// lands. afterMutationWait waits (bounded) on a MutationPending channel the
+		// lands. afterMutationWait waits (bounded) for a MutationPending channel the
 		// caller closes when its mutation section opens, then re-stats.
 		// afterMutationWait returns the baseline identity on a nil/nil-channel hook,
-		// which must NOT overwrite the fresh Lstat above (a changed-but-unobserved
-		// path would otherwise pass as still-baseline).
+		// which must NOT overwrite the fresh Lstat above (a changed path would
+		// otherwise pass as still-baseline).
 		nowNano, diverged := afterMutationWait(filePath, identity, opts.MutationPending)
 		if !diverged {
 			if fi, freshErr := os.Lstat(filePath); freshErr == nil && fi.Mode().IsRegular() {
@@ -351,9 +345,7 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 			return &SourceSnapshotError{Source: opts.Source, Path: relSlash, Problem: "context changed during capture; re-run after the writer quiesces"}
 		}
 
-		// Announce this path read past its per-file barrier (once per path): the
-		// "__path_read_<rel>" event lets the late-mutation test wait until the file
-		// is visited before mutating it.
+		// Announce this path read past its per-file barrier (once per path).
 		signalConsumedPath(consumedPaths, opts.ChangeHook, relSlash)
 
 		snap.Files = append(snap.Files, snapshotFile{
@@ -369,9 +361,9 @@ func CaptureSource(ctx context.Context, root string, opts CaptureOptions) (Sourc
 		return SourceSnapshot{}, walkErr
 	}
 
-	// Change-during-read guard, defense in depth: Layer 1 is the in-walk EREIGNIS
-	// barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline path after
-	// the walk so a late mutation cannot slip past. Both layers present.
+	// Change-during-read guard, defense in depth: Layer 1 is the in-walk
+	// EREIGNIS barrier; Layer 2 (verifyFinalBaseline) re-checks every baseline
+	// path after the walk so a late mutation cannot slip past. Both present.
 	if err := verifyFinalBaseline(opts.Source, root, before, opts.MutationAcked, opts.MutationPending); err != nil {
 		return SourceSnapshot{}, err
 	}
