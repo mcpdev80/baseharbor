@@ -58,7 +58,15 @@ func serveCommand(store application.Store) *cli.Command {
 			// root fails closed with no local fallback. The verified state root
 			// is pinned into the startup context that reaches the executor and
 			// server below.
-			if host, herr := managementHostForServe(ctx); herr == nil && host != nil {
+			host, herr := managementHostForServe(ctx)
+			if herr != nil {
+				// A real target/root resolution error must fail closed, not
+				// start the server unverified. Only the intentional (nil, nil)
+				// no-host case (a remote or non-management target) passes
+				// through, and that is a nil herr and a nil host.
+				return herr
+			}
+			if host != nil {
 				bootstrap, unlock, verr := host.Verify()
 				if verr != nil {
 					if unlock != nil {
@@ -67,15 +75,21 @@ func serveCommand(store application.Store) *cli.Command {
 					return verr
 				}
 				if bootstrap {
-					// The bootstrap lock is held here; the management-host test
-					// proves a second competing bootstrap is refused. The caller
-					// provisions the fresh durable installation on this root
-					// while the lock is held, then the server becomes the durable
-					// authority and holds the kernel lifecycle lock for its whole
-					// lifetime, so an independent writer stays excluded while
+					// Bootstrap: retain EXCLUSIVE ownership of the fresh durable
+					// state root across provisioning and the bind. The bootstrap
+					// lock (distinct kernel lock from the lifecycle lock) is held
+					// here; the management-host test proves a second competing
+					// fresh bootstrap is refused with ErrManagementHostOwnedFreshRoot.
+					// The caller provisions the fresh durable installation on this
+					// root while the lock is held, then the server becomes the
+					// durable authority and holds the kernel lifecycle lock for its
+					// whole lifetime, so an independent writer stays excluded while
 					// lifecycle operations routed through this host execute on the
-					// owned authority (see coreInstallUnderManagedHost).
-					unlock()
+					// owned authority (see coreInstallUnderManagedHost). The lock is
+					// released on server exit via the deferred unlock, so bootstrap
+					// ownership transitions to lifetime ownership with no unowned
+					// gap between provisioning and bind.
+					defer func() { unlock() }()
 				} else {
 					// Attach: pin the owned durable state root into the startup
 					// context so the executor and server never select a
