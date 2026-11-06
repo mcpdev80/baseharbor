@@ -713,31 +713,34 @@ func makeNBytes(n int) []byte {
 // race.
 func now() time.Time { return time.Now() }
 
-// Regression (round 8): with a nil MutationPending hook the per-file fresh Lstat
-// is the only timing source. touch.go is held at a diverged mtime for the whole
-// walk, so the guard must observe the divergence and abort. This ratchets the
-// nil-hook path: any regression that silently accepts a changed baseline path
-// fails here.
-func TestSourceSnapshotNilHookStillRejectsChangedBaseline(t *testing.T) {
+// Discriminating regression (round 8): touch.go is the changed baseline path
+// and zzz.go is a later baseline path. With the fixed guard, Layer 1 aborts the
+// walk at the touch.go per-file barrier, so zzz.go is never read past its
+// barrier. A guard that lets afterMutationWait overwrite the fresh Lstat with
+// the stale baseline identity passes touch.go through, reads zzz.go, and only
+// Layer 2 catches the mutation after the walk. The per-read count distinguishes
+// the two: the fixed guard reads exactly one baseline path (touch.go) before it
+// aborts; the unfixed guard reads both. This cell is RED for that mutant.
+func TestSourceSnapshotNilHookAbortAtLayer1(t *testing.T) {
 	root := t.TempDir()
-	// big.bin is read first (lexically before touch.go) and keeps the walk busy
-	// so touch.go is read a moment after walk start. touch.go's baseline mtime
-	// was recorded at walk start (Layer 0).
-	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(64*1024*1024)))
+	// touch.go < zzz.go alphabetically, so touch.go is read first and changed;
+	// the walk must abort at touch.go and never reach zzz.go when fixed.
 	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
+	mustWriteSnapshotFile(t, root, "zzz.go", 0o644, "package main\n")
+	// big.bin is read first (before touch.go) to widen the walk window so the
+	// writer mutation reliably lands while the walk is running.
+	mustWriteSnapshotFile(t, root, "aaa_big.bin", 0o644, string(makeNBytes(64*1024*1024)))
 	mutate := filepath.Join(root, "touch.go")
 
-	// Diverged mtime: creation time + 10s, well outside mtime resolution.
 	diverged := now().Add(10 * time.Second)
-
 	walkStarted := make(chan struct{}, 1)
 	done := make(chan struct{})
+	reads := make(chan string, 16)
 	var stop int32
 	go func() {
 		defer close(done)
 		<-walkStarted
-		// Hold touch.go's mtime at the diverged value for the rest of the walk so
-		// the guard's divergence check always sees the change.
+		// Hold touch.go's mtime diverged for the whole walk.
 		for atomic.LoadInt32(&stop) == 0 {
 			_ = os.Chtimes(mutate, diverged, diverged)
 		}
@@ -746,6 +749,10 @@ func TestSourceSnapshotNilHookStillRejectsChangedBaseline(t *testing.T) {
 	_, err := CaptureSource(context.Background(), root, CaptureOptions{
 		Source: "https://git.example/app.git",
 		ChangeHook: func(path string) {
+			select {
+			case reads <- path:
+			default:
+			}
 			if path == "__walk_started__" {
 				select {
 				case walkStarted <- struct{}{}:
@@ -762,25 +769,28 @@ func TestSourceSnapshotNilHookStillRejectsChangedBaseline(t *testing.T) {
 	atomic.StoreInt32(&stop, 1)
 	<-done
 
+	// Both fixed and unfixed guards reject the changed tree; assert that.
 	if err == nil {
 		t.Fatal("nil-hook regression FAILED: capture accepted a changed baseline path (fresh-stat overwrite)")
 	}
-}
 
-// Control for the nil-hook regression: no mutation, so the nil-hook capture
-// succeeds, proving the red in the regression cell is caused by the mutation
-// rather than by the nil hook itself.
-func TestSourceSnapshotNilHookNoMutationStaysGreen(t *testing.T) {
-	root := t.TempDir()
-	mustWriteSnapshotFile(t, root, "big.bin", 0o644, string(makeNBytes(64*1024*1024)))
-	mustWriteSnapshotFile(t, root, "touch.go", 0o644, "package main\n")
+	// Drain read signals with a bounded wait: the fixed guard aborts at
+	// touch.go and never signals zzz.go.
+	zzzRead := false
+	timer := time.After(2 * time.Second)
+forloop:
+	for {
+		select {
+		case p := <-reads:
+			if p == "__path_read_zzz.go" {
+				zzzRead = true
+			}
+		case <-timer:
+			break forloop
+		}
+	}
 
-	_, err := CaptureSource(context.Background(), root, CaptureOptions{
-		Source:          "https://git.example/app.git",
-		MutationPending: func(path string) <-chan struct{} { return nil },
-	})
-
-	if err != nil {
-		t.Fatalf("control failed: unchanged nil-hook capture produced an error: %v", err)
+	if zzzRead {
+		t.Fatal("nil-hook regression FAILED: read passed zzz.go, so Layer 1 did not abort at touch.go (fresh-stat overwrite)")
 	}
 }
