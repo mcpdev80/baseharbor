@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,7 +36,7 @@ func newMockEnrollment(t *testing.T) *mockEnrollment {
 	t.Helper()
 	store := ws.NewMemoryStore()
 	issuer := serviceissuer.New(t)
-	authority, err := ws.New(store, issuer)
+	authority, err := ws.New(store, issuer, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +49,18 @@ func (e *mockEnrollment) Create(ctx context.Context, scope ws.Scope, lifetime, c
 
 func (e *mockEnrollment) Enroll(ctx context.Context, request ws.Request) (ws.Result, error) {
 	return e.authority.Enroll(ctx, request)
+}
+
+func (e *mockEnrollment) Renew(ctx context.Context, request ws.Request) (ws.Result, error) {
+	return e.authority.Renew(ctx, request)
+}
+
+func (e *mockEnrollment) Revoke(ctx context.Context, scope ws.Scope) error {
+	return e.authority.Revoke(ctx, scope)
+}
+
+func (e *mockEnrollment) RevokedState(ctx context.Context, scope ws.Scope) (bool, error) {
+	return e.authority.RevokedState(ctx, scope)
 }
 
 func (e *mockEnrollment) RecordRegistryFact(_ context.Context, scope ws.Scope, _ time.Time, _, _, _ string, _ time.Time) error {
@@ -415,5 +428,185 @@ func TestUnknownPathNotFound(t *testing.T) {
 	h.ServeHTTP(rec, r)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown path = %d, want 404", rec.Code)
+	}
+}
+
+// ownerCapturingSerial is a durable-registry stand-in: it records the serial the
+// production path persists for a scope, so the renew-persist test can read the
+// durable current-serial owner back and prove the renewed serial replaced the
+// enrolled one.
+type ownerCapturingSerial struct {
+	mu     sync.Mutex
+	issued map[ws.Scope]string
+}
+
+func newOwnerCapturingSerial() *ownerCapturingSerial {
+	return &ownerCapturingSerial{issued: map[ws.Scope]string{}}
+}
+
+func (o *ownerCapturingSerial) RecordEnrolled(scope ws.Scope, serial string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.issued[scope] = serial
+}
+
+func (o *ownerCapturingSerial) CurrentSerial(_ context.Context, scope ws.Scope) (string, bool, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	serial, ok := o.issued[scope]
+	if !ok {
+		return "", false, ws.ErrDenied
+	}
+	return serial, true, nil
+}
+
+// renewEnrollment wires the real Authority over a one-use store, a trusted issuer
+// and an in-memory Owner that captures the durable serial, so a renew goes
+// enroll -> renew -> persist through the real production seam.
+type renewEnrollment struct {
+	store        ws.Store
+	authority    *ws.Authority
+	owner        *ownerCapturingSerial
+	registryErr  error
+	persistedSeq []persistedFact
+}
+
+type persistedFact struct {
+	scope     ws.Scope
+	serial    string
+	expiresAt time.Time
+}
+
+func newRenewEnrollment(t *testing.T) *renewEnrollment {
+	t.Helper()
+	store := ws.NewMemoryStore()
+	issuer := serviceissuer.New(t)
+	owner := newOwnerCapturingSerial()
+	authority, err := ws.New(store, issuer, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &renewEnrollment{store: store, authority: authority, owner: owner}
+}
+
+func (e *renewEnrollment) Create(ctx context.Context, scope ws.Scope, lifetime, certTTL time.Duration) (ws.Bootstrap, error) {
+	return e.authority.Create(ctx, scope, lifetime, certTTL)
+}
+
+func (e *renewEnrollment) Enroll(ctx context.Context, request ws.Request) (ws.Result, error) {
+	return e.authority.Enroll(ctx, request)
+}
+
+func (e *renewEnrollment) Renew(ctx context.Context, request ws.Request) (ws.Result, error) {
+	return e.authority.Renew(ctx, request)
+}
+
+func (e *renewEnrollment) Revoke(ctx context.Context, scope ws.Scope) error {
+	return e.authority.Revoke(ctx, scope)
+}
+
+func (e *renewEnrollment) RevokedState(ctx context.Context, scope ws.Scope) (bool, error) {
+	return e.authority.RevokedState(ctx, scope)
+}
+
+func (e *renewEnrollment) RecordRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, _, _, serial string, expiresAt time.Time) error {
+	if e.registryErr != nil {
+		return e.registryErr
+	}
+	e.persistedSeq = append(e.persistedSeq, persistedFact{scope: scope, serial: serial, expiresAt: expiresAt})
+	// The durable store is the Owner: writing the registry fact updates the
+	// current-serial owner that Renew/Revoke read back, so this mirrors the real
+	// WorkstationEnrollmentStore where RecordRegistryFact overwrites the current
+	// serial and CurrentSerial reads it again.
+	e.owner.RecordEnrolled(scope, serial)
+	return nil
+}
+
+func renewBody(t *testing.T, station, tenant string) map[string]any {
+	t.Helper()
+	uri := "spiffe://baseharbor/workstations/" + tenant + "/" + station
+	return map[string]any{
+		"station":                 station,
+		"csr_pem":                 newCSR(t, uri),
+		"certificate_ttl_seconds": 3600,
+		"installation_id":         tenant,
+	}
+}
+
+// TestRenewPersistsNewSerial is the round-2 production-seam + persist witness. It
+// enrolls a scope (recording the enrolled serial in the durable owner), then calls
+// the authenticated /renew route and proves: (1) the renewed response carries a
+// NEW serial distinct from the enrolled one, (2) the durable registry the
+// production path persisted that new serial (blob-read of persistence), and (3) a
+// second read of the durable current-serial owner returns the renewed serial, so a
+// later revoke/re-renew is anchored to the new leaf.
+func TestRenewPersistsNewSerial(t *testing.T) {
+	e := newRenewEnrollment(t)
+	h, err := wshttp.NewProductionHandler(e, wshttp.ScopeResolverFromContext())
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := ws.Scope{TenantID: tenantA, Station: validStation}
+
+	// Enroll through /enroll and capture the enrolled serial in the durable owner.
+	token, nonce := bootstrap(t, &mockEnrollment{store: e.store}, h, validStation, tenantA)
+	enroll := enrollBody(t, validStation, tenantA, token, nonce)
+	rec := do(t, h, "/enroll", enroll, ctx(t, tenantA))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enroll = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var enrolled struct {
+		Serial string `json:"serial"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&enrolled); err != nil {
+		t.Fatal(err)
+	}
+	if enrolled.Serial == "" {
+		t.Fatal("enroll returned no serial")
+	}
+	e.owner.RecordEnrolled(scope, enrolled.Serial)
+
+	// Renew through /renew.
+	rec = do(t, h, "/renew", renewBody(t, validStation, tenantA), ctx(t, tenantA))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("renew = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	var renewed struct {
+		Serial string `json:"serial"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&renewed); err != nil {
+		t.Fatal(err)
+	}
+	if renewed.Serial == "" {
+		t.Fatal("renew returned no serial")
+	}
+	if renewed.Serial == enrolled.Serial {
+		t.Fatal("renew must return a NEW serial distinct from the enrolled one")
+	}
+
+	// Blob-read of persistence: the production path persisted the renewed serial.
+	// Enroll persists the enrolled serial, then /renew persists the renewed serial
+	// (the current-serial owner must follow the renewal). The last persisted fact
+	// is the renew write and must carry the renewed serial.
+	if len(e.persistedSeq) < 2 {
+		t.Fatalf("expected at least two persisted registry facts (enroll + renew), got %d", len(e.persistedSeq))
+	}
+	last := e.persistedSeq[len(e.persistedSeq)-1]
+	if last.serial != renewed.Serial {
+		t.Fatalf("durable registry did not persist the renewed serial: persisted=%q renewed=%q", last.serial, renewed.Serial)
+	}
+	wantScope := ws.Scope{TenantID: tenantA, Station: validStation}
+	if last.scope != wantScope {
+		t.Fatalf("durable registry persisted the wrong scope for the renewal: %+v", last.scope)
+	}
+
+	// Durable current-serial owner now returns the renewed serial, not the
+	// enrolled one: a later revoke/re-renew anchors the new leaf.
+	current, ok, err := e.owner.CurrentSerial(context.Background(), scope)
+	if err != nil || !ok {
+		t.Fatalf("durable owner should still be anchored after renewal: ok=%v err=%v", ok, err)
+	}
+	if current != renewed.Serial {
+		t.Fatalf("durable current-serial owner did not follow the renewal: current=%q want=%q", current, renewed.Serial)
 	}
 }

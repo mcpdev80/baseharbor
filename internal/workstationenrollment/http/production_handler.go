@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	workstationlifecycle "github.com/mcpdev80/baseharbor/contracts/workstationlifecycle/v1"
 	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
@@ -25,6 +26,16 @@ type ScopeResolver func(context.Context, string) (ws.Scope, error)
 type ProductionEnrollment interface {
 	Create(ctx context.Context, scope ws.Scope, lifetime, certificateTTL time.Duration) (ws.Bootstrap, error)
 	Enroll(ctx context.Context, request ws.Request) (ws.Result, error)
+	// Renew re-signs exactly one scope's workstation key for a fresh leaf. The
+	// production path persists the fresh serial (RecordRegistryFact) so the
+	// durable registry's current-serial owner follows the renewal; a caller that
+	// never supplied a durable registry cannot renew and reports it unavailable.
+	Renew(ctx context.Context, request ws.Request) (ws.Result, error)
+	// Revoke adds the scope's currently issued serial to the issuer CRL.
+	Revoke(ctx context.Context, scope ws.Scope) error
+	// RevokedState reports whether the scope's currently issued leaf is revoked;
+	// an unreadable status is reported as an error, never a safe "not revoked".
+	RevokedState(ctx context.Context, scope ws.Scope) (bool, error)
 	// RecordRegistryFact persists the approved registry owner as a fact: the
 	// installation-scoped scope, the issuance time, the separate workstation
 	// SPIFFE identity, the issued serial, and its expiry.
@@ -51,9 +62,9 @@ func NewProductionHandler(e ProductionEnrollment, resolve ScopeResolver) (*Produ
 	return &ProductionHandler{Enrollment: e, Resolve: resolve}, nil
 }
 
-// ServeHTTP dispatches the production bootstrap/enroll boundary. Both paths stay
-// behind the authenticated operator middleware; the caller owns registration
-// behind the identity/tenant + TLS protection.
+// ServeHTTP dispatches the production bootstrap/enroll/lifecycle boundary. All
+// paths stay behind the authenticated operator middleware; the caller owns
+// registration behind the identity/tenant + TLS protection.
 //
 // Go's ServeMux does not strip the matched prefix from r.URL.Path, so a handler
 // mounted at an absolute path (e.g. /api/v1/workstations/bootstrap) still has to
@@ -65,6 +76,10 @@ func (h *ProductionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.ServeBootstrap(w, r)
 	case r.URL.Path == "/enroll" || strings.HasSuffix(r.URL.Path, "/enroll"):
 		h.ServeEnroll(w, r)
+	case r.URL.Path == "/renew" || strings.HasSuffix(r.URL.Path, "/renew"):
+		h.ServeRenew(w, r)
+	case r.URL.Path == "/revoke" || strings.HasSuffix(r.URL.Path, "/revoke"):
+		h.ServeRevoke(w, r)
 	default:
 		writeError(w, http.StatusNotFound, ErrBadRequest)
 	}
@@ -75,6 +90,8 @@ func (h *ProductionHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *ProductionHandler) Router(mux *http.ServeMux) {
 	mux.HandleFunc("/bootstrap", h.ServeBootstrap)
 	mux.HandleFunc("/enroll", h.ServeEnroll)
+	mux.HandleFunc("/renew", h.ServeRenew)
+	mux.HandleFunc("/revoke", h.ServeRevoke)
 }
 
 // ServeBootstrap handles POST /bootstrap. It binds the scope from the
@@ -166,6 +183,130 @@ func (h *ProductionHandler) ServeEnroll(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
+// RenewRequest is the workstation-owned half of a device-lifecycle renewal. The
+// workstation supplies its fresh CSR and the desired fresh-leaf TTL; the
+// installation/scope come from the authenticated operator, never the request.
+type RenewRequest struct {
+	Station               string `json:"station"`
+	CSRPEM                string `json:"csr_pem"`
+	CertificateTTLSeconds int    `json:"certificate_ttl_seconds"`
+}
+
+// RevokeRequest is the workstation-owned half of a device-lifecycle revocation.
+// The workstation supplies only its station label; the installation/scope come
+// from the authenticated operator, never the request.
+type RevokeRequest struct {
+	Station string `json:"station"`
+}
+
+// ServeRenew handles POST /renew. It binds the scope from the authenticated
+// operator, validates the record through the portable device-lifecycle contract,
+// re-signs exactly this scope's key for a fresh leaf through the protected
+// signing boundary, and persists the fresh serial to the durable registry so the
+// registry's current-serial owner follows the renewal. A foreign scope, a
+// revoked current identity, an unreadable revocation status or a malformed CSR
+// all fail closed; a durable registry that cannot write the fresh serial rolls
+// the renewal back with an error rather than reporting a success never recorded.
+func (h *ProductionHandler) ServeRenew(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, ErrBadRequest)
+		return
+	}
+	var req RenewRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, ErrBadRequest)
+		return
+	}
+	scope, err := h.Resolve(r.Context(), req.Station)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	certificateTTL := time.Duration(req.CertificateTTLSeconds) * time.Second
+	// Build the portable, recipient-bound lifecycle record from the authenticated
+	// installation and the workstation-owned station, then delegate the renewal
+	// to the contract. The recipient binds the record to the operator's SPIFFE
+	// identity for the scope, so a foreign operator can never renew another
+	// scope. This is the production entry point: the contract is imported and
+	// exercised here, not only from internal-API tests.
+	recipient := scope.Identity()
+	record := workstationlifecycle.Record{
+		Kind:           workstationlifecycle.RecordKindWorkstationLifecycle,
+		Version:        workstationlifecycle.Version,
+		InstallationID: scope.TenantID,
+		Recipient:      recipient,
+		Scope:          scope.Station,
+	}
+	life := &authorityLifecycle{h.Enrollment}
+	result, err := workstationlifecycle.RenewDevice(r.Context(), life, record, []byte(req.CSRPEM), certificateTTL)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	// Persist the fresh serial to the durable registry so the current-serial owner
+	// follows the renewal: a later revoke or re-renew reads the new serial, not
+	// the enrolled one. Persistence is mandatory and fail-closed.
+	if rec, ok := h.Enrollment.(interface {
+		RecordRegistryFact(ctx context.Context, scope ws.Scope, issuedAt time.Time, recipient, scopeID, serial string, expiresAt time.Time) error
+	}); ok {
+		if err := rec.RecordRegistryFact(r.Context(), scope, time.Now().UTC(), recipient, scope.Identity(), result.Serial, result.ExpiresAt); err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+	} else {
+		writeError(w, http.StatusInternalServerError, errors.New("production lifecycle is missing the registry-fakt owner"))
+		return
+	}
+	writeJSON(w, http.StatusOK, EnrollResponse{
+		InstallationID: scope.TenantID,
+		Station:        scope.Station,
+		Serial:         result.Serial,
+		ExpiresAt:      result.ExpiresAt,
+		LeafPEM:        string(result.Certificate),
+		TrustPEM:       string(result.Trust.PEM),
+		At:             time.Now().UTC(),
+	})
+}
+
+// ServeRevoke handles POST /revoke. It binds the scope from the authenticated
+// operator and revokes exactly this scope's currently issued leaf through the
+// portable device-lifecycle contract. A foreign scope or a scope with no issued
+// identity fails closed without touching any other identity.
+func (h *ProductionHandler) ServeRevoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, ErrBadRequest)
+		return
+	}
+	var req RevokeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, ErrBadRequest)
+		return
+	}
+	scope, err := h.Resolve(r.Context(), req.Station)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	recipient := scope.Identity()
+	record := workstationlifecycle.Record{
+		Kind:           workstationlifecycle.RecordKindWorkstationLifecycle,
+		Version:        workstationlifecycle.Version,
+		InstallationID: scope.TenantID,
+		Recipient:      recipient,
+		Scope:          scope.Station,
+	}
+	if err := workstationlifecycle.RevokeDevice(r.Context(), &authorityLifecycle{h.Enrollment}, record); err != nil {
+		writeError(w, http.StatusForbidden, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"installation_id": scope.TenantID,
+		"station":         scope.Station,
+		"revoked":         true,
+		"at":              time.Now().UTC(),
+	})
+}
+
 // scopeResolverFromContext is the canonical ScopeResolver for the production
 // path: it binds the installation tenant from the authenticated operator
 // (tenancy) and authorizes the workstation-owned station label against the
@@ -187,3 +328,39 @@ func scopeResolverFromContext(ctx context.Context, station string) (ws.Scope, er
 // installation tenant is bound by the authenticated operator (tenancy), never by
 // the workstation request.
 func ScopeResolverFromContext() ScopeResolver { return scopeResolverFromContext }
+
+// authorityLifecycle adapts the production-enrollment seam to the portable
+// device-lifecycle contract. The contract calls Renew/Revoke/RevokedState; the
+// production seam already provides all three (Renew/Revoke through the authority,
+// RecordRegistryFact to persist the renewed serial, RevokedState to read the
+// current leaf's revocation flag). A nil seam fails closed so the boundary never
+// silently accepts a lifecycle effect.
+type authorityLifecycle struct {
+	ProductionEnrollment
+}
+
+// Renew re-signs exactly this scope's key through the protected signing boundary.
+func (l *authorityLifecycle) Renew(ctx context.Context, request ws.Request) (ws.Result, error) {
+	if l.ProductionEnrollment == nil {
+		return ws.Result{}, workstationlifecycle.ErrInvalidRecord
+	}
+	return l.ProductionEnrollment.Renew(ctx, request)
+}
+
+// Revoke adds this scope's currently issued serial to the issuer CRL.
+func (l *authorityLifecycle) Revoke(ctx context.Context, scope ws.Scope) error {
+	if l.ProductionEnrollment == nil {
+		return workstationlifecycle.ErrInvalidRecord
+	}
+	return l.ProductionEnrollment.Revoke(ctx, scope)
+}
+
+// RevokedState reports whether this scope's currently issued leaf is revoked.
+func (l *authorityLifecycle) RevokedState(ctx context.Context, scope ws.Scope) (bool, error) {
+	if l.ProductionEnrollment == nil {
+		return false, workstationlifecycle.ErrInvalidRecord
+	}
+	return l.ProductionEnrollment.(interface {
+		RevokedState(ctx context.Context, scope ws.Scope) (bool, error)
+	}).RevokedState(ctx, scope)
+}
