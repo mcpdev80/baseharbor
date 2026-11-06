@@ -85,6 +85,72 @@ func TestManagementHostAttachWhenValidRoot(t *testing.T) {
 	}
 }
 
+// TestManagementHostAttachContendedByBootstrapServer proves the round-4
+// ownership gap is closed: a durable root that already carries a genuine
+// installation but is still guarded by the atomic bootstrap lock of a concurrent
+// bootstrap server (one that has not finished provisioning) refuses attach with
+// ErrManagementHostBootstrapContended. Before the fix, Verify() took only the
+// lifecycle lock on a valid root and never checked the bootstrap lock, so a
+// second writer could acquire lifecycle ownership while the bootstrap server
+// still held only the bootstrap lock. The lifecycle lock is the active-writer
+// lock; the bootstrap lock is the continuous ownership guard that now also
+// covers this path.
+func TestManagementHostAttachContendedByBootstrapServer(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "owned-root")
+	seedInstallation(t, root)
+
+	// A bootstrap server holds the atomic bootstrap lock on the valid root while
+	// it provisions. This simulates the round-3 serve path mid-bootstrap.
+	booUnlock, berr := AcquireBootstrapLock(root)
+	if berr != nil {
+		t.Fatalf("bootstrap lock: %v", berr)
+	}
+	t.Cleanup(func() { booUnlock() })
+
+	// A second writer attaches on the same valid root. It must be refused with
+	// the contended sentinel, not admitted by the lifecycle lock alone.
+	host, herr := NewManagementHost(root)
+	if herr != nil {
+		t.Fatalf("NewManagementHost: %v", herr)
+	}
+	bootstrap, unlock, verr := host.Verify()
+	if unlock != nil {
+		unlock()
+	}
+	if verr != ErrManagementHostBootstrapContended {
+		t.Fatalf("Verify on bootstrap-contended valid root = %v (bootstrap=%v), want ErrManagementHostBootstrapContended", verr, bootstrap)
+	}
+}
+
+// TestManagementHostAttachAfterBootstrapServerReleased proves that once the
+// bootstrap server releases its lock, the same valid root attaches normally:
+// the lifecycle lock is the sole owner and no contended refusal fires.
+func TestManagementHostAttachAfterBootstrapServerReleased(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "owned-root")
+	seedInstallation(t, root)
+
+	booUnlock, berr := AcquireBootstrapLock(root)
+	if berr != nil {
+		t.Fatalf("bootstrap lock: %v", berr)
+	}
+	booUnlock() // bootstrap server finished provisioning and released
+
+	host, herr := NewManagementHost(root)
+	if herr != nil {
+		t.Fatalf("NewManagementHost: %v", herr)
+	}
+	bootstrap, unlock, verr := host.Verify()
+	if unlock != nil {
+		unlock()
+	}
+	if verr != nil {
+		t.Fatalf("Verify after bootstrap release = %v, want nil (attach)", verr)
+	}
+	if bootstrap {
+		t.Fatalf("Verify after bootstrap release: bootstrap = true, want false")
+	}
+}
+
 // TestManagementHostForeignRootFailsClosed proves that a durable state root
 // holding an installation that does not belong to this host selection fails
 // closed with a named sentinel and selects no local fallback.

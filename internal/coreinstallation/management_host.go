@@ -40,6 +40,15 @@ var ErrManagementHostAlreadyOwned = errors.New("management host state root is al
 // bootstraps must never both proceed to write the same durable authority.
 var ErrManagementHostOwnedFreshRoot = errors.New("management host bootstrap root is already owned by a concurrent writer")
 
+// ErrManagementHostBootstrapContended is returned when a durable state root
+// that already carries a genuine installation is still guarded by the atomic
+// bootstrap lock of a concurrent bootstrap server that has not finished
+// provisioning. The bootstrap lock is the single continuous ownership primitive
+// that covers fresh-root bootstrap through server lifetime: a second writer may
+// not acquire the lifecycle lock on a root the bootstrap server still owns, so
+// attach fails closed instead of letting two writers coexist.
+var ErrManagementHostBootstrapContended = errors.New("management host bootstrap root is still owned by a concurrent bootstrap server")
+
 // Bootstrap describes a management host with no durable installation state yet.
 // Bootstrap versus attach is decided by the presence (attach) or absence
 // (bootstrap) of a valid installation state root; it is never guessed from an
@@ -161,17 +170,43 @@ func (m *ManagementHost) Verify() (Bootstrap, func(), error) {
 	if _, err := Load(m.stateRoot); err != nil {
 		return false, nil, ErrManagementHostRootForeign
 	}
+	// Single continuous ownership across the root's whole life: a durable root
+	// that already carries a genuine installation may still be guarded by the
+	// atomic bootstrap lock of a concurrent bootstrap server that has not yet
+	// finished provisioning (the round-3 gap: two INDEPENDENT kernel locks whose
+	// acquisition paths never checked one another, so a second process could take
+	// the lifecycle lock while the bootstrap server still held only the
+	// bootstrap lock). The bootstrap lock is therefore re-taken here first so the
+	// attach path checks it as well as the lifecycle lock; a bootstrap server
+	// still holding it makes attach fail closed with ErrManagementHostBootstrapContended
+	// instead of letting two writers coexist. It is released below once the
+	// lifecycle lock is held, so no lock is leaked and no interval is left
+	// unprotected.
+	bunlock, berr := AcquireBootstrapLock(m.stateRoot)
+	if berr != nil {
+		return false, nil, ErrManagementHostBootstrapContended
+	}
 	// Active-writer ownership: hold the kernel lifecycle lock for this root. A
 	// second concurrent writer fails closed; a dead writer has already released
 	// the lock on process exit, so no stale active lock survives.
 	unlock, lerr := AcquireLifecycleLock(m.stateRoot)
 	if lerr != nil {
+		if bunlock != nil {
+			bunlock()
+		}
 		if strings.Contains(lerr.Error(), "resource temporarily unavailable") ||
 			strings.Contains(lerr.Error(), "busy") ||
 			strings.Contains(lerr.Error(), "already") {
 			return false, nil, ErrManagementHostAlreadyOwned
 		}
 		return false, nil, lerr
+	}
+	// Lifecycle lock held; release the bootstrap lock that only bridged to it.
+	// The bootstrap lock and lifecycle lock never overlap as the sole owner:
+	// the lifecycle lock is the durable active-writer lock for the rest of the
+	// server lifetime.
+	if bunlock != nil {
+		bunlock()
 	}
 	return false, unlock, nil
 }
