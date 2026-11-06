@@ -37,6 +37,25 @@ func runtimeComponentDataRoot(files application.RuntimeFiles) (string, error) {
 
 var errRuntimeBrokerIncompatible = errors.New("runtime broker image is incompatible")
 
+// envAllowMutableDevelopmentRuntimeImage opts a development deployment into the
+// legacy mutable-tag fallback when the artifact endpoint merely could not be
+// resolved. Without it, an unpinned reference is never pulled. It cannot
+// bypass the endpoint-denial or public-default rejection rules.
+const envAllowMutableDevelopmentRuntimeImage = "BASEHARBOR_ALLOW_MUTABLE_DEVELOPMENT_IMAGE"
+
+// allowMutableDevelopmentRuntimeImage reports the explicit operator opt-in for
+// the legacy mutable development-image fallback inside
+// pullResolvedRuntimeImage. It gates only the unavailable-endpoint class; the
+// fail-closed rules for denied endpoints and public-default docker.io hosts are
+// unaffected by it.
+func allowMutableDevelopmentRuntimeImage() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(envAllowMutableDevelopmentRuntimeImage))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 func ensureAndStartRuntimeBroker(ctx context.Context, progress io.Writer, compose bhruntime.RuntimeProvider, platformFiles bhruntime.Files, m application.Manifest, files application.RuntimeFiles) error {
 	return ensureAndStartRuntimeBrokerWithCore(ctx, progress, compose, compose, platformFiles, m, files)
 }
@@ -52,10 +71,13 @@ func ensureAndStartRuntimeBrokerWithCore(ctx context.Context, progress io.Writer
 		return errors.New("application workload runtime is unavailable")
 	}
 	runtimeImage := strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_IMAGE"))
+	// The refresh pull runs only through pullResolvedRuntimeImage, which is
+	// fail-closed: the mutable tag is pulled only when the explicit
+	// development opt-in covers a merely-unavailable endpoint.
 	refreshMutableImage := runtimebroker.IsMutableDevelopmentImage(runtimeImage)
 	if refreshMutableImage {
 		cli.ReportActivityDetail(progress, "checking current development runtime image")
-		if err := compose.PullImage(ctx, runtimeImage); err != nil {
+		if err := pullResolvedRuntimeImage(ctx, compose, runtimeImage, "edge"); err != nil {
 			return fmt.Errorf("refresh development runtime image: %w", err)
 		}
 	}
