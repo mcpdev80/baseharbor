@@ -119,7 +119,7 @@ func parseSecureProfileExportArgs(args []string) (name, passwordPath, outputPath
 	if passwordPath == "" {
 		return "", "", "", usageError("--password-file is required", "Store the export password in an owner-only file; it is never accepted through argv.")
 	}
-	return name, outputPath, passwordPath, nil
+	return name, passwordPath, outputPath, nil
 }
 
 func readSecureProfileExportPassword(path string) ([]byte, error) {
