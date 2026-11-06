@@ -212,12 +212,18 @@ type AppliedDeployment struct {
 	RemoteProject   *targetsession.ProjectRecord `json:"remote_project,omitempty"`
 }
 
+// ObservedDeployment is the runtime-convergence observation for a deployment.
+// Reference is the third independent reference dimension: the release/component
+// reference the runtime currently reports. An empty value means no observation
+// has been recorded; staleness detection compares it against the last-applied
+// reference.
 type ObservedDeployment struct {
 	State      string                       `json:"state,omitempty"`
 	Ready      bool                         `json:"ready,omitempty"`
 	Conflict   bool                         `json:"conflict,omitempty"`
 	Owner      delivery.ReconciliationOwner `json:"owner,omitempty"`
 	VerifiedAt time.Time                    `json:"verified_at,omitempty"`
+	Reference  string                       `json:"observed_reference,omitempty"`
 }
 
 type DeploymentRecord struct {
@@ -233,7 +239,8 @@ type DeploymentRecord struct {
 	// retention/normalization path is unchanged. Only a brand-new repository
 	// apply mutation requires a non-nil consent; restored or observed-only
 	// records are never re-validated against it.
-	Consent *delivery.CandidateConsent `json:"consent,omitempty"`
+	Consent    *delivery.CandidateConsent     `json:"consent,omitempty"`
+	References map[string]*ReferenceDimension `json:"references,omitempty"`
 }
 
 // ErrConflictingOneWriter is returned when a deployment record being applied
@@ -326,6 +333,9 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	record.Applied.Delivery = record.Applied.Delivery.Normalize()
 	if err := record.Applied.Delivery.Validate(); err != nil {
 		return fmt.Errorf("invalid delivery selection: %w", err)
+	}
+	if err := validateReferences(record.References); err != nil {
+		return fmt.Errorf("invalid deployment references: %w", err)
 	}
 	if err := validateRemoteProject(record); err != nil {
 		return err
@@ -495,6 +505,9 @@ func loadDeploymentRecordFile(target, deploymentID, path string, expected *Deplo
 	}
 	if err := record.Identity.Validate(); err != nil {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}
+	}
+	if err := validateReferences(record.References); err != nil {
+		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: fmt.Errorf("invalid deployment references: %w", err)}
 	}
 	if err := validateRemoteProject(record); err != nil {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: record.Identity, Kind: "corrupt", Err: err}

@@ -108,6 +108,11 @@ func createTargetManagedApplication(ctx context.Context, m application.Manifest)
 				"state":      filepath.Join(root, "state"),
 			},
 		},
+		References: deployment.ReferenceDimensions{
+			// Managed records carry the intended (desired) reference; the applied
+			// reference is derived at the first real apply.
+			deployment.ReferenceIntended: &deployment.ReferenceDimension{},
+		},
 		Observed: deployment.ObservedDeployment{State: "created"},
 	}
 	if err := deployment.SaveDeploymentRecord(record); err != nil {
