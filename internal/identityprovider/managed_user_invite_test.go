@@ -122,22 +122,51 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 // The activation fixture is hardened against the empty-body defect: a missing
 // or empty execute-actions-email body is rejected immediately, before any
 // decode, so an action-less (or absent) activation is refused rather than
-// accepted. This is the fail-closed regression for the round-7 bodyguard:
-// removing the empty-body guard makes this turn red; keeping it keeps it green.
+// accepted. This is the fail-closed regression for the round-7 bodyguard.
+//
+// The round-7 defect: the server returned `[]` on BOTH lookups, so the routine
+// exited early on the resolve-after-create failure and never reached the
+// activation line (a premature, non-asserted error). This fixture is rebuilt
+// so the invite actually REACHES the genuine activation request: the
+// resolve-after-create lookup returns the newly created, property-owned account
+// (managed-invite marker, enabled, not yet activated). The activation handler
+// reads the incoming request body and fails closed on an empty body BEFORE
+// decoding it. The production client sends the documented non-empty string-array
+// body, so a valid body reaches and completes genuine activation; an action-less
+// (empty) body is refused by the fail-closed guard.
 func TestInviteManagedUserActivationEmptyBodyIsRefused(t *testing.T) {
+	gets := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/users"):
 			if r.Method == http.MethodGet {
-				w.Write([]byte(`[]`)) // no owned account yet
+				gets++
+				if gets == 1 {
+					w.Write([]byte(`[]`)) // no owned account yet -> create
+					return
+				}
+				// resolve-after-create: the owned account this invite just
+				// created (property-filled, managed-invite marker, enabled,
+				// not yet activated). This is what makes the routine reach
+				// the genuine activation request instead of exiting early on
+				// the `[]` lookup (the round-7 defect).
+				w.Write([]byte(`[{"id":"u1","username":"invitee@baseharbor.local","email":"invitee@baseharbor.local","enabled":true,"emailVerified":false,"attributes":{"baseharbor.scope":["managed-invite"]}}]`))
 				return
 			}
+			// 201 with only an ID -> forces the resolve-after-create fallback.
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"id":"u1"}`))
 			return
 		case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
-			// Deliberately send NO body (action-less request). The hardened
-			// fixture must reject this before decoding anything.
+			// The invite reached the genuine activation request. Read the
+			// incoming request body and fail closed on an empty body BEFORE
+			// decoding it: the documented execute-actions-email body is a
+			// required JSON string array of required-action aliases, and an
+			// action-less (empty) body can never satisfy that contract.
+			body, _ := io.ReadAll(r.Body)
+			if len(bytes.TrimSpace(body)) == 0 {
+				t.Fatal("execute-actions-email body is empty; the documented required-actions string array must never be empty (fail-closed before decode)")
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		default:
@@ -146,8 +175,13 @@ func TestInviteManagedUserActivationEmptyBodyIsRefused(t *testing.T) {
 	}))
 	defer server.Close()
 	admin := &keycloakAdmin{endpoint: server.URL, client: server.Client()}
-	if err := admin.inviteManagedUser(context.Background(), "bh-operators-dev", "isolated", "dev", "invitee@baseharbor.local", managedInviteOwnership()); err == nil {
-		t.Fatal("empty-body activation was accepted; the fixture must fail closed on an empty execute-actions-email body")
+	// The production client sends the documented non-empty string-array body, so
+	// the invite reaches and completes genuine activation. This cell is GREEN
+	// for the right reason: it reaches the genuine activation line (the round-7
+	// defect was an early exit on the `[]` lookup). The causal mutation
+	// (payload=>nil) trips the fail-closed guard and makes this cell RED.
+	if err := admin.inviteManagedUser(context.Background(), "bh-operators-dev", "isolated", "dev", "invitee@baseharbor.local", managedInviteOwnership()); err != nil {
+		t.Fatalf("invite with the documented non-empty body must reach and complete genuine activation, got error: %v", err)
 	}
 }
 
