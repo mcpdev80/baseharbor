@@ -215,18 +215,34 @@ func (a *keycloakAdmin) createManagedUser(ctx context.Context, realm, email stri
 }
 
 // sendManagedActivation performs the genuine provider-native activation call.
-// Keycloak drives the activation/credential-set link through the update-email
-// endpoint: a one-time, single-use link that redirects the owner to the IdP to
-// set their own password and complete MFA. No password is ever stored here.
+//
+// It uses the documented Keycloak Admin REST operation
+// PUT /admin/realms/{realm}/users/{user-id}/execute-actions-email with a
+// required-actions list (Keycloak 26.8.0 release notes + Admin REST catalog).
+// The action-token email issues a one-time, single-use link that redirects the
+// owner to the IdP to verify their email and set their own password / complete
+// MFA. The required actions are VERIFY_EMAIL and UPDATE_PASSWORD: the owner
+// drives the activation and credential-set link, exactly the boundary this
+// adapter is built around.
+//
+// INVARIANT: BaseHarbor never sends, carries or stores a password. The
+// execute-actions-email payload lists required-action identifiers only; it
+// contains no password or credential value.
 func (a *keycloakAdmin) sendManagedActivation(ctx context.Context, realm, userID string) error {
-	payload := map[string]string{
-		"to":         userID,
-		"subject":    "BaseHarbor managed invite",
-		"body":       "Activate your BaseHarbor managed account through your identity provider.",
-		"ttl":        "0",
-		"repeatable": "true",
+	requiredActions := []string{"VERIFY_EMAIL", "UPDATE_PASSWORD"}
+	// requiredActions is a required body field for the documented operation.
+	// An empty list would be rejected by the provider, so fail closed here
+	// rather than send an action-less request.
+	if len(requiredActions) == 0 {
+		return errors.New("managed activation: required-actions list must not be empty")
 	}
-	path := "/admin/realms/" + url.PathEscape(realm) + "/users/" + url.PathEscape(userID) + "/updateEmail"
+	payload := map[string]any{
+		"to":              userID,
+		"requiredActions": requiredActions,
+	}
+	path := "/admin/realms/" + url.PathEscape(realm) +
+		"/users/" + url.PathEscape(userID) +
+		"/execute-actions-email"
 	status, resp, err := a.do(ctx, http.MethodPut, path, payload)
 	if err != nil {
 		return err

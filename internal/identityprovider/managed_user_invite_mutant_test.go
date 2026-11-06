@@ -32,7 +32,7 @@ func TestInviteManagedUserAmbiguityGuardEnforced(t *testing.T) {
 				}
 				w.WriteHeader(http.StatusCreated)
 				return
-			case strings.Contains(r.URL.Path, "/updateEmail"):
+			case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 				activationSeen = true
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -66,7 +66,7 @@ func TestInviteManagedUserAmbiguityGuardEnforced(t *testing.T) {
 				w.WriteHeader(http.StatusCreated)
 				w.Write([]byte(`{"id":"a"}`))
 				return
-			case strings.Contains(r.URL.Path, "/updateEmail"):
+			case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 				activationSeen = true
 				w.WriteHeader(http.StatusNoContent)
 				return

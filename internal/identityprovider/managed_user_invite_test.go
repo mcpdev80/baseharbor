@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -22,10 +23,16 @@ func managedInviteOwnership() map[string]string {
 	}
 }
 
-// A real provider-admin call performs the activation through the provider's
-// update-email endpoint; no password is ever stored or echoed.
+// A real provider-admin call performs the activation through the documented
+// Keycloak Admin REST operation PUT
+// /admin/realms/{realm}/users/{id}/execute-actions-email with a required-actions
+// list; no password is ever stored, carried or echoed. This is the production
+// call reviewed red in act-1397c: the candidate must not target the undocumented
+// /updateEmail route; it must use the documented execute-actions-email operation.
 func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	var activationSeen, created, userGets int
+	var seenMethod, seenRoute string
+	var hasRequiredActions, sawPassword bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/users"):
@@ -43,20 +50,24 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"id":"u1"}`))
 			return
-		case strings.Contains(r.URL.Path, "/updateEmail"):
+		case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 			activationSeen++
-			if r.Method != http.MethodPut {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
+			seenMethod = r.Method
+			seenRoute = r.URL.Path
 			var payload map[string]any
 			if body, _ := io.ReadAll(r.Body); len(bytes.TrimSpace(body)) > 0 {
 				if err := json.Unmarshal(body, &payload); err != nil {
-					t.Errorf("updateEmail body=%q", string(body))
+					t.Fatalf("execute-actions-email body=%q: %v", string(body), err)
 				}
-			}
-			if payload["to"] == "" {
-				t.Error("activation did not target the created account")
+				// The documented operation requires a recipient "to" that is
+				// the created account, and a required-actions list.
+				_, hasRequiredActions = payload["requiredActions"]
+				if got := fmt.Sprintf("%v", payload["to"]); got != "u1" {
+					t.Errorf("execute-actions-email did not target the created account: to=%v", payload["to"])
+				}
+				if pw, ok := payload["password"]; ok && pw != "" {
+					sawPassword = true
+				}
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -75,6 +86,52 @@ func TestInviteManagedUserPerformsRealActivationWithoutPassword(t *testing.T) {
 	if created == 0 {
 		t.Fatal("invite did not create the owned account")
 	}
+	if seenMethod != http.MethodPut {
+		t.Errorf("activation used %s, want PUT on the documented execute-actions-email route", seenMethod)
+	}
+	if !strings.HasSuffix(seenRoute, "/users/u1/execute-actions-email") {
+		t.Errorf("activation route %q is not the documented execute-actions-email operation", seenRoute)
+	}
+	if !hasRequiredActions {
+		t.Error("execute-actions-email payload is missing the required requiredActions list")
+	}
+	if sawPassword {
+		t.Error("execute-actions-email payload carried a password; BaseHarbor never sends a password")
+	}
+	// Provider-version contract: the shipped Keycloak is pinned at 26.8.0
+	// (keycloak_files.go:KeycloakImage). The documented Admin REST operation for
+	// an invitation/activation action email on that version is
+	// PUT /admin/realms/{realm}/users/{user-id}/execute-actions-email with a
+	// required-actions list; the undocumented /updateEmail route must not be
+	// used. This assertion ties the fixture's accepted route to that version.
+	if !contractAcceptsShippedKeycloak(seenRoute) {
+		t.Errorf("activation route %q is not the documented execute-actions-email operation for Keycloak %s", seenRoute, keycloakVersion())
+	}
+}
+
+// contractAcceptsShippedKeycloak reports whether the observed activation route
+// is the documented Keycloak 26.8.0 action-email operation. It encodes the
+// contract that the shipped provider version (keycloakVersion) exposes on its
+// Admin REST catalog: only the execute-actions-email path is accepted, so a
+// fixture that would also accept the undocumented /updateEmail route (an
+// inference from a complete endpoint catalog) is rejected here.
+func contractAcceptsShippedKeycloak(route string) bool {
+	return strings.HasSuffix(route, "/execute-actions-email")
+}
+
+// keycloakVersion returns the pinned shipped provider version, so a contract
+// assertion can name the version it was validated against.
+func keycloakVersion() string {
+	const sep = ":"
+	// KeycloakImage is "quay.io/keycloak/keycloak:26.8.0@sha256:..."; the tag
+	// sits between the last ':' of the image and the '@' digest.
+	if i := strings.LastIndex(KeycloakImage, "@"); i >= 0 {
+		tag := KeycloakImage[strings.LastIndex(KeycloakImage, ":")+1 : i]
+		if tag != "" {
+			return tag
+		}
+	}
+	return KeycloakImage
 }
 
 // Re-inviting the same owned, enabled, verified account is idempotent: no
@@ -94,7 +151,7 @@ func TestInviteManagedUserRepeatIsIdempotent(t *testing.T) {
 			case strings.HasSuffix(r.URL.Path, "/users?"):
 				w.Write([]byte(`[{"id":"u1","username":"invitee@baseharbor.local","email":"invitee@baseharbor.local","enabled":true,"emailVerified":true,"attributes":{"baseharbor.scope":["managed-invite"]}}]`))
 				return
-			case strings.Contains(r.URL.Path, "/updateEmail"):
+			case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 				activationSeen = true
 				w.WriteHeader(http.StatusNoContent)
 				return
@@ -127,7 +184,7 @@ func TestInviteManagedUserAmbiguousEmailIsRefused(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusCreated)
 			return
-		case strings.Contains(r.URL.Path, "/updateEmail"):
+		case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 			activationSeen = true
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -190,7 +247,7 @@ func TestInviteManagedUserUnownedAccountIsRefused(t *testing.T) {
 					}
 					w.WriteHeader(http.StatusCreated)
 					return
-				case strings.Contains(r.URL.Path, "/updateEmail"):
+				case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 					activationSeen = true
 					w.WriteHeader(http.StatusNoContent)
 					return
@@ -237,7 +294,7 @@ func TestInviteManagedUserFallbackForeignAccountIsRefused(t *testing.T) {
 			// merely shares the email (wrong scope marker, no activation marker).
 			w.Write([]byte(`[{"id":"other","username":"invitee@baseharbor.local","email":"invitee@baseharbor.local","enabled":true,"attributes":{"baseharbor.scope":["developer-access"]}}]`))
 			return
-		case strings.Contains(p, "/updateEmail"):
+		case strings.HasSuffix(p, "/execute-actions-email"):
 			activationSeen = true
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -284,7 +341,7 @@ func TestInviteManagedUserFallbackIdMismatchIsRefused(t *testing.T) {
 			// returned ("u1"). This is a different owned-looking account.
 			w.Write([]byte(`[{"id":"u9","username":"invitee@baseharbor.local","email":"invitee@baseharbor.local","enabled":true,"attributes":{"baseharbor.scope":["managed-invite"]}}]`))
 			return
-		case strings.Contains(p, "/updateEmail"):
+		case strings.HasSuffix(p, "/execute-actions-email"):
 			activationSeen = true
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -324,7 +381,7 @@ func TestInviteManagedUserAmbiguousEmailRefusedProductionPath(t *testing.T) {
 			}
 			w.WriteHeader(http.StatusCreated)
 			return
-		case strings.Contains(r.URL.Path, "/updateEmail"):
+		case strings.HasSuffix(r.URL.Path, "/execute-actions-email"):
 			w.WriteHeader(http.StatusNoContent)
 			return
 		default:
