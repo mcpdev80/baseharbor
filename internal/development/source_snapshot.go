@@ -402,7 +402,8 @@ func verifyFinalBaseline(source, root string, before map[string]int64, MutationA
 // waits (bounded) on a MutationPending channel the caller closes when its mutation
 // section opens, then re-stats once more. Returns the final mtime and whether the
 // path now diverges (true), is unchanged (false), or the bound elapsed without
-// observing a mutation (false); a nil MutationPending is a no-op.
+// observing a mutation (false); a nil MutationPending is a no-op that preserves
+// the pre-existing capture timing exactly.
 func afterMutationWait(filePath string, identity int64, MutationPending func(path string) <-chan struct{}) (int64, bool) {
 	if MutationPending == nil {
 		return identity, false
