@@ -222,8 +222,18 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 		// The prior record is read through the owner-validated loader, so a missing
 		// record (first apply) or a non-consented prior record is not an immutability
 		// conflict; only a persisted consent with a matching digest is.
+		//
+		// Discriminator (OPTION 2): the gate fires only against a prior record that
+		// has reached a COMPLETED/verified realization (Observed.State == "ready").
+		// A pending "applying" record is an interrupted first attempt, not a
+		// finished candidate, so a same-apply retry (same digest) must still
+		// succeed — it is a re-attempt of an interrupted apply, not a silent
+		// re-record. Only a second identical submission over an already-ready
+		// deployment is refused. The freshly computed confirm digest pins this
+		// submission; only an identical re-record over a finished candidate fails
+		// closed.
 		if prior, priorErr := deployment.LoadDeploymentRecord(resolved.DeploymentIdentity); priorErr == nil {
-			if prior.Consent != nil && prior.Consent.Digest == consent.Digest {
+			if prior.Consent != nil && prior.Consent.Digest == consent.Digest && prior.Observed.State == "ready" {
 				return deployment.DeploymentRecord{}, errCandidateAlreadyImmutable
 			}
 		}

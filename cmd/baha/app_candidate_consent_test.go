@@ -183,6 +183,31 @@ func TestReapplyingIdenticalCandidateReturnsImmutableError(t *testing.T) {
 		t.Fatal("first apply did not bind the consented candidate digest")
 	}
 
+	// Promote the pending record to a COMPLETED/verified realization
+	// (Observed.State == "ready") while preserving the consent the first apply
+	// bound. The real apply path finalizes only through recordAppliedDeployment,
+	// which drops the candidate consent here, so promote the record in place: a
+	// finished candidate is exactly what the immutability guard protects.
+	pending, loadErr := deployment.LoadDeploymentRecord(r.DeploymentIdentity)
+	if loadErr != nil {
+		t.Fatalf("load pending record: %v", loadErr)
+	}
+	if pending.Consent == nil || pending.Consent.Digest != digest {
+		t.Fatal("pending record did not retain the consented digest")
+	}
+	pending.Observed.State = "ready"
+	pending.Observed.Ready = true
+	if err := deployment.SaveDeploymentRecord(pending); err != nil {
+		t.Fatalf("finalize candidate to verified state: %v", err)
+	}
+	record, loadErr := deployment.LoadDeploymentRecord(r.DeploymentIdentity)
+	if loadErr != nil {
+		t.Fatalf("load after finalize: %v", loadErr)
+	}
+	if record.Consent == nil || record.Consent.Digest != digest || record.Observed.State != "ready" {
+		t.Fatal("candidate was not finalized to a verified (ready) record")
+	}
+
 	// Second apply with the SAME identity and SAME digest: must be refused,
 	// not silently clobber the persisted consent.
 	ctx2 := withCandidateConsentDigest(context.Background(), digest)
@@ -196,12 +221,15 @@ func TestReapplyingIdenticalCandidateReturnsImmutableError(t *testing.T) {
 
 	// The persisted consent is still the first binding, untouched by the refused
 	// second apply.
-	record, loadErr := deployment.LoadDeploymentRecord(r.DeploymentIdentity)
+	record, loadErr = deployment.LoadDeploymentRecord(r.DeploymentIdentity)
 	if loadErr != nil {
 		t.Fatalf("load after refused re-apply: %v", loadErr)
 	}
 	if record.Consent == nil || record.Consent.Digest != digest {
 		t.Fatal("refused re-apply corrupted or dropped the persisted consent")
+	}
+	if record.Observed.State != "ready" {
+		t.Fatalf("refused re-apply corrupted the finalized state: %q", record.Observed.State)
 	}
 
 	// A genuinely NEW candidate (changed source, so a new fingerprint and digest)
