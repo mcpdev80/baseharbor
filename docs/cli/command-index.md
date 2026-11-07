@@ -9,6 +9,9 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | Command | CLI description (verified) | CLI syntax (verified) | Task guide |
 | --- | --- | --- | --- |
 | `baha` | BaseHarbor command-line interface | `baha <command> [options]` | [↗](index.md) |
+| `baha access` | Guide profile assignment and deliberate offboarding of a person on a target | `baha access assign\|--assign PERSON [--json] \| baha access offboard\|--offboard PERSON [--json]` | [↗](applications.md) |
+| `baha access assign` | Guided assignment of an access profile to a person on selected Targets | `baha access assign PERSON [--json]` | [↗](applications.md) |
+| `baha access offboard` | Guided deliberate offboarding of a person from a target | `baha access offboard PERSON [--json]` | [↗](applications.md) |
 | `baha agent` | Discover the stable BaseHarbor machine interface | `baha agent describe [-o json\|--output json]` | [↗](automation-agents.md) |
 | `baha agent describe` | Describe supported machine operations and contracts | `baha agent describe [-o json\|--output json]` | [↗](automation-agents.md) |
 | `baha app` | Manage declarative application backend runtimes | `baha app <command> [options]` | [↗](applications.md) |

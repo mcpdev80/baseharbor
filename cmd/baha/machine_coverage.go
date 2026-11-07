@@ -152,15 +152,17 @@ var cliPresentationCommands = map[string]string{
 // These modes are outside the semantic tool boundary by design. Business
 // metadata and lifecycle remain available through the named typed alternatives.
 var cliExcludedCommands = map[string]string{
-	"baha app exec":  "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
-	"baha app shell": "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
-	"baha app sql":   "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
-	"baha app cache": "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
-	"baha app logs":  "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
-	"baha login":     "Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens.",
-	"baha logout":    "Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary.",
-	"baha serve":     "Starts a long-lived TLS API/broker transport using host-held credentials; transport supervision belongs to the host, typed lifecycle tools operate managed resources.",
-	"baha update":    "Self-replacement of the executing host binary and recovery copy belongs to the host operator; release.check provides the same bounded release inspection.",
+	"baha app exec":        "Arbitrary process execution is intentionally excluded: #787 forbids generic exec passthrough; use typed lifecycle and observation tools.",
+	"baha app shell":       "Interactive container terminal is host/TTY dependent and would grant arbitrary exec; use typed lifecycle and app.environment instead.",
+	"baha app sql":         "Interactive database terminal and raw SQL passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
+	"baha app cache":       "Interactive database terminal and arbitrary command passthrough are excluded; app.connection supplies secret-safe connection metadata for an operator-owned client.",
+	"baha app logs":        "Raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation.",
+	"baha login":           "Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens.",
+	"baha logout":          "Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary.",
+	"baha serve":           "Starts a long-lived TLS API/broker transport using host-held credentials; transport supervision belongs to the host, typed lifecycle tools operate managed resources.",
+	"baha update":          "Self-replacement of the executing host binary and recovery copy belongs to the host operator; release.check provides the same bounded release inspection.",
+	"baha access assign":   "Guided, human interactive profile assignment folds every decision into the single production policy authority (policy.Aggregate/policy.ResolveFinding); no typed MCP operation, so excluded from the machine tool boundary by design.",
+	"baha access offboard": "Guided, human interactive offboarding re-checks the current configuration at submit time and folds every decision into the single production policy authority; no typed MCP operation, so excluded from the machine tool boundary by design.",
 }
 
 var cliSemanticModes = map[string]string{
