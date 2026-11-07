@@ -87,25 +87,54 @@ func appendMaintenanceHistory(stateRoot string, submitted MaintenanceAuthorityRe
 	records = append(records, submitted)
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
-		return fmt.Errorf("encode maintenance window history: %w", err)
+		return fmt.Errorf("%w: encode maintenance window history: %v", ErrMaintenanceHistoryAppendFailed, err)
 	}
 	if len(data) > MaintenanceHistoryLimit {
-		return errors.New("maintenance window history exceeds protected state limit")
+		return fmt.Errorf("%w: maintenance window history exceeds protected state limit", ErrMaintenanceHistoryAppendFailed)
 	}
 	data = append(data, '\n')
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write maintenance window history: %w", err)
+		return fmt.Errorf("%w: write maintenance window history: %v", ErrMaintenanceHistoryAppendFailed, err)
 	}
 	if err := os.Chmod(tmp, 0o600); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("protect maintenance window history: %w", err)
+		return fmt.Errorf("%w: protect maintenance window history: %v", ErrMaintenanceHistoryAppendFailed, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("commit maintenance window history: %w", err)
+		return fmt.Errorf("%w: commit maintenance window history: %v", ErrMaintenanceHistoryAppendFailed, err)
 	}
 	return nil
+}
+
+// ErrMaintenanceHistoryAppendFailed is the named, terminal error a failed history
+// append returns so a caller can treat it as fail-closed: no advanced current
+// window may survive a missing historical revision.
+var ErrMaintenanceHistoryAppendFailed = errors.New("maintenance window append failed")
+
+// --- test seams ---
+// These small exported helpers let round-2 tests exercise the production
+// transaction (history-append rollback, revision answerability, capacity
+// preflight) through their real code paths. They are thin wrappers, not
+// re-implementations.
+
+// LoadMaintenanceRevisionForTest is the production revision-lookup so a test can
+// prove an older revision stays answerable after recovery.
+func LoadMaintenanceRevisionForTest(stateRoot string, revision int) (MaintenanceAuthorityRecord, bool, error) {
+	return loadMaintenanceRevision(stateRoot, revision)
+}
+
+// MaintenanceStateFilePathForTest resolves the current-window path so a test can
+// advance the current window while deliberately failing the history append.
+func MaintenanceStateFilePathForTest(stateRoot string) (string, error) {
+	return maintenanceStateFile(stateRoot)
+}
+
+// TestMaintenanceHistoryHasCapacityForTest is the production capacity preflight so
+// a test can force the irreversible commit to fail before it advances.
+func TestMaintenanceHistoryHasCapacityForTest(stateRoot string, current MaintenanceAuthorityRecord) error {
+	return maintenanceHistoryHasCapacity(stateRoot, current)
 }
 
 // loadMaintenanceRevision finds the durable operation a deployment committed at
