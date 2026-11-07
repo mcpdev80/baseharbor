@@ -73,5 +73,12 @@ func TestRemoteFreshApplyPureClientNeverBootstrapsLocalCore(t *testing.T) {
 	if _, serr := coreinstallation.Load(root); serr == nil {
 		t.Fatal("fresh remote apply created local Core installation state")
 	}
-	t.Logf("app up (pure-client, NO local Core) => no local Core bootstrap, err=%v", err)
+	// Fail-closed at the connector seam: a pure-client with no live enrolled
+	// node must not succeed here, and must never succeed by falling back to a
+	// local Core. The fix routes the head through the bound target's connector
+	// route, so with no live node the apply fails closed rather than bootstrap.
+	if err == nil {
+		t.Fatal("pure-client app up succeeded without a live enrolled Connector or local Core; must fail closed")
+	}
+	t.Logf("app up (pure-client, NO local Core, no live node) => no local Core bootstrap, fails closed err=%v", err)
 }
