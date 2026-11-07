@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/capability"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/coreupdate"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -273,7 +274,20 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runBackupFixtureWithConsent(ctx, "apply", func(applyCtx context.Context) error {
+	// The fixture acts as the explicit automation operator for its isolated
+	// candidate. Bind consent to the exact current repository submission; the
+	// production candidate digest check still rejects stale or forged inputs.
+	resolvedBaseline, err := resolveApplication(ctx, application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve baseline candidate: %v", err)
+	}
+	submission, _ := candidateSubmissionForResolvedApp(ctx, resolvedBaseline)
+	candidateDigest := delivery.CandidateConsentDigest(submission)
+	if candidateDigest == "" {
+		t.Fatal("baseline candidate has no verifiable digest")
+	}
+	applyCtx := withCandidateConsentDigest(ctx, candidateDigest)
+	if err := runBackupFixtureWithConsent(applyCtx, "apply", func(applyCtx context.Context) error {
 		return runWithIO(applyCtx, []string{"app", "apply"}, &output, &output)
 	}); err != nil {
 		t.Fatalf("baseline application: %v", err)
