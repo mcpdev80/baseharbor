@@ -64,39 +64,24 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // directory itself need not pre-exist: first-run init creates it under the owner,
 // so absence of the directory is not itself a missing-owner condition.
 //
-// Durable identity binding of a deployment to the owner installation's
-// installation.ID is intentionally out of scope for this seam: the storage
-// owner is proven here at the Target's runtime root. The durable
-// installation.ID binding that closes copied/rewritten-identity attacks is
-// provided by the authority contract (follow-up), not invented by this layer.
+// Durable identity binding to the owner installation's installation.ID is out
+// of scope for this seam: the storage owner is proven here at the Target's
+// runtime root. The installation.ID binding that closes copied/rewritten-identity
+// attacks is provided by the authority contract (follow-up), not this layer.
 //
-// Tenant-managed targets are Coreless by design: they have no single Core
-// installation to own the deployment, so the one-installation-owner binding
-// does not apply. A tenant target is authorized only through the consumer-
-// provided tenantOwnerResolver, which routes access to its genuine authorized
-// installation owner (for example a validated remote project binding). The
-// resolver defaults to fail-closed, so no tenant target is admitted without an
-// explicit authorized path.
+// TenantOwnerResolver authorizes Coreless tenant targets (which have no single
+// Core installation to own the deployment) through the consumer-provided
+// authorized-owner path; it defaults to fail-closed, so no tenant target is
+// admitted without an explicit authorized route.
 var TenantOwnerResolver func(targetName string) (bool, error)
-
-// TargetLoanVerifier resolves a marker-proven isolated test Target against the
-// single installation its boot Target owns (TEST SCOPE ONLY; the consumer binds
-// it in cmd/baha/deployment_record.go and only after the tenant hook has
-// refused). Every refusal — an error or a nil state — keeps the seam's
-// original ErrDeploymentOwnerMissing sentinel; it can never authorize a
-// tenant-managed, connector-bound or production Target, and the default nil
-// keeps every production path byte-identical.
-var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
 
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	if TenantOwnerResolver != nil {
-		// Grant-only hook: only an affirmative (true, nil) authorizes the
-		// (Coreless) tenant target through this path. Any other result —
-		// (false, nil), (false, err), or (true, err) — means the hook did not
-		// authorize access, so resolution falls through to the standard
+		// Grant-only hook: only (true, nil) authorizes the (Coreless) tenant
+		// target; any other result falls through to the standard
 		// single-installation-owner verification below. A resolver that does not
-		// grant can never bypass that check: it is never an early return and
-		// never a foreign-installation shortcut in the !authorized branch.
+		// grant can never bypass the check: it is never an early return nor a
+		// foreign-installation shortcut in the !authorized branch.
 		authorized, resolveErr := TenantOwnerResolver(targetName)
 		if resolveErr != nil {
 			return resolveErr
