@@ -35,6 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       required: ${{ steps.diff.outputs.required }}
+      identity_required: ${{ steps.diff.outputs.identity_required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,11 +50,378 @@ jobs:
           set -euo pipefail
           if [[ ! "$BEFORE" =~ ^[a-f0-9]{40}$ ]] || [[ "$BEFORE" =~ ^0{40}$ ]] || ! git cat-file -e "$BEFORE^{commit}"; then
             required=true
+            identity_required=true
           else
-            required="$(git diff --name-only --diff-filter=ACDMRT "$BEFORE" "$GITHUB_SHA" | bash scripts/ci-single-default-impact.sh)"
+            changed="$(git diff --name-only --diff-filter=ACDMRT "$BEFORE" "$GITHUB_SHA")"
+            required="$(printf '%s\\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
+            identity_required="$(printf '%s\\n' "$changed" | bash scripts/ci-keycloak-single-impact.sh)"
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "identity_required=$identity_required" >> "$GITHUB_OUTPUT"
 
+
+  keycloak_single_native:
+    name: Native Keycloak+SQL single · Podman
+    needs: select_develop
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.identity_required == 'true' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 22
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_KEYCLOAK_SINGLE_NATIVE_ACCEPTANCE: "1"
+      DOCKER_CONTEXT: ""
+    steps:
+      - name: Checkout exact develop source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify native Keycloak and dedicated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          docker context use default
+          export DOCKER_CONTEXT=
+          export DOCKER_HOST=unix:///var/run/docker.sock
+          go test -p 1 ./internal/identityprovider -run '^TestKeycloakSingleNativeSQLInCI    name: Native single-default · Podman
+    needs: select_develop
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify selected SQL/Secrets default with native Quadlet
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          docker context use default
+          export DOCKER_CONTEXT=
+          export DOCKER_HOST=unix:///var/run/docker.sock
+          go test -p 1 ./cmd/baha -run '^TestControlPlaneSingleDefaultNativeRuntimeInCI$' -count=1 -timeout 20m -json | tee "$RUNNER_TEMP/single-default.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ['RUNNER_TEMP']) / 'single-default.jsonl').read_text().splitlines() if line.startswith('{')]
+          test = 'TestControlPlaneSingleDefaultNativeRuntimeInCI'
+          if any(event.get('Action') in ('skip', 'fail') for event in events):
+              raise SystemExit('Native single-default test skipped or failed')
+          if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('Native single-default test did not execute')
+          PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  podman-quadlet:
+    if: github.event_name != 'push' || github.ref_name != 'develop'
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
+      BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout requested ref
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Resolve tested commit
+        id: tested_ref
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Go
+        id: setup_go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+
+      # The rootless setup tool registers and activates a 'rootless' CLI
+      # context as a side effect. This job's runtime is Podman; the Docker CLI
+      # must not later resolve that context (its daemon is never started in
+      # the podman prepare path), which makes 'baha doctor' fail with
+      # 'cannot resolve active Docker context'. Pin the plain default context.
+      - name: Reset Docker CLI context for podman runtime
+        run: |
+          docker context use default
+          printf 'DOCKER_HOST=unix:///var/run/docker.sock\nDOCKER_CONTEXT=\n' >> "$GITHUB_ENV"
+
+      - name: Validate workflow syntax
+        id: workflow_syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$RUNNER_TEMP/bin/actionlint" -shellcheck=
+
+      - name: Reset persistent runner state
+        id: reset
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Verify Podman Quadlet runner
+        id: verify_runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          podman info >/tmp/podman-info.txt
+          generator=""
+          for candidate in             "$(command -v podman-system-generator 2>/dev/null || true)"             /usr/lib/systemd/system-generators/podman-system-generator             /usr/libexec/podman/quadlet
+          do
+            if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+              generator="$candidate"
+              break
+            fi
+          done
+          test -n "$generator"
+          verify_unit_dir="$RUNNER_TEMP/podman-core-quadlet-verify"
+          rm -rf "$verify_unit_dir"
+          mkdir -p "$verify_unit_dir"
+          QUADLET_UNIT_DIRS="$verify_unit_dir" "$generator" --user --dryrun >/tmp/podman-quadlet-generator.txt
+
+          mkdir -p "$RUNNER_TEMP/baseharbor-runtime-path"
+          cat >"$RUNNER_TEMP/baseharbor-runtime-path/docker" <<'EOF'
+          #!/bin/sh
+          exit 127
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-runtime-path/docker"
+          echo "$RUNNER_TEMP/baseharbor-runtime-path" >> "$GITHUB_PATH"
+
+          # Make any accidental fallback to the external Podman Compose provider
+          # fail immediately. The Podman acceptance must be Quadlet-only.
+          cat >"$RUNNER_TEMP/baseharbor-no-compose" <<'EOF'
+          #!/bin/sh
+          echo "podman compose is forbidden in Quadlet acceptance" >&2
+          exit 97
+          EOF
+          chmod +x "$RUNNER_TEMP/baseharbor-no-compose"
+          echo "PODMAN_COMPOSE_PROVIDER=$RUNNER_TEMP/baseharbor-no-compose" >> "$GITHUB_ENV"
+
+      - name: Build BaseHarbor
+        id: build
+        run: go build -trimpath -o $RUNNER_TEMP/baha ./cmd/baha
+
+      - name: Verify Podman runtime detection
+        id: runtime_detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          $RUNNER_TEMP/baha doctor | tee /tmp/podman-doctor.txt
+          # This probe runs before the Core bootstrap, so a fresh Target reports
+          # "NOT DEPLOYED" (not "READY") even with a working Podman runtime.
+          # Assert the runtime-detection facts that the control-plane Doctor
+          # actually emits (Docker engine, selected-runtime, core-deployment) and
+          # accept either pre-bootstrap "NOT DEPLOYED" or a fully "READY" probe.
+          grep -Eq '^  OK +Docker engine' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +selected-runtime' /tmp/podman-doctor.txt
+          grep -Eq '^  OK +core-deployment' /tmp/podman-doctor.txt
+          grep -Eq '^(NOT DEPLOYED|READY)$' /tmp/podman-doctor.txt
+
+      - name: Verify application lifecycle on Podman Quadlet
+        id: lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          diagnose_quadlet() {
+            echo "::group::Quadlet diagnostics"
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+            systemctl --user --failed --no-pager || true
+            systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            systemctl --user status bh-podman-ci-shared-postgres.service --no-pager -l || true
+            systemctl --user status bh-podman-ci-shared-openbao.service --no-pager -l || true
+            systemctl --user status baseharbor-podman-ci-dev-postgres.service --no-pager -l || true
+            systemctl --user status baseharbor-podman-ci-dev-valkey.service --no-pager -l || true
+            journalctl --user -u bh-podman-ci-shared-postgres.service -n 120 --no-pager || true
+            journalctl --user -u bh-podman-ci-shared-openbao.service -n 120 --no-pager || true
+            journalctl --user -u baseharbor-podman-ci-dev-postgres.service -n 80 --no-pager || true
+            journalctl --user -u baseharbor-podman-ci-dev-valkey.service -n 80 --no-pager || true
+            podman ps -a || true
+            podman logs bh-podman-ci-shared-postgres 2>&1 || true
+            podman logs bh-podman-ci-shared-openbao 2>&1 || true
+            unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/containers/systemd"
+            if [ -d "$unit_dir" ]; then
+              find "$unit_dir" -maxdepth 1 -type f -name 'baseharbor-*' -printf '%f\n' | sort || true
+            fi
+            echo "::endgroup::"
+          }
+          trap diagnose_quadlet ERR
+
+          workdir="$(mktemp -d)"
+          printf '%s\n' "$workdir" >/tmp/baseharbor-podman-workdir
+          cd "$workdir"
+
+          recovery="$workdir/openbao-recovery.json"
+          $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
+          $RUNNER_TEMP/baha up --control-plane-only --yes
+          $RUNNER_TEMP/baha openbao bootstrap --recovery-file "$recovery"
+          $RUNNER_TEMP/baha openbao status | grep -q "AppRole login succeeded"
+
+          $RUNNER_TEMP/baha app create podman-ci --sql --cache | tee /tmp/podman-create.txt
+          $RUNNER_TEMP/baha app plan podman-ci | tee /tmp/podman-plan.txt
+          grep -q "ensure database.sql:default" /tmp/podman-plan.txt
+          grep -q "ensure cache.key-value:default" /tmp/podman-plan.txt
+
+          $RUNNER_TEMP/baha app preflight podman-ci | tee /tmp/podman-preflight.txt
+          # Take the impact ID from a fresh, read-only plan immediately before
+          # apply; generic --yes cannot authorize provider consequences.
+          apply_plan_file="$(mktemp)"
+          chmod 600 "$apply_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$apply_plan_file"
+          apply_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$apply_plan_file")"
+          rm -f "$apply_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$apply_consent" timeout 180s \
+            $RUNNER_TEMP/baha app apply podman-ci | tee /tmp/podman-apply.txt
+          unset apply_consent
+
+          $RUNNER_TEMP/baha app status podman-ci --verbose | tee /tmp/podman-status.txt
+          grep -q "authenticated SELECT 1 succeeded" /tmp/podman-status.txt
+          grep -q "semantic Valkey verification passed" /tmp/podman-status.txt
+
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-app-doctor.txt
+          grep -q '^READY$' /tmp/podman-app-doctor.txt
+
+          down_plan_file="$(mktemp)"
+          chmod 600 "$down_plan_file"
+          if $RUNNER_TEMP/baha --no-input app down podman-ci > "$down_plan_file" 2>/tmp/podman-down-plan-error.txt; then
+            echo "app down unexpectedly succeeded without typed provider consent" >&2
+            exit 1
+          fi
+          down_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" scope-output "$down_plan_file")"
+          rm -f "$down_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$down_consent" \
+            $RUNNER_TEMP/baha app down podman-ci | tee /tmp/podman-down.txt
+          unset down_consent
+
+          up_plan_file="$(mktemp)"
+          chmod 600 "$up_plan_file"
+          $RUNNER_TEMP/baha app plan podman-ci -o json > "$up_plan_file"
+          up_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" provider-plan "$up_plan_file")"
+          rm -f "$up_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$up_consent" \
+            $RUNNER_TEMP/baha app up podman-ci | tee /tmp/podman-up.txt
+          unset up_consent
+
+          $RUNNER_TEMP/baha app doctor podman-ci | tee /tmp/podman-resume-doctor.txt
+          grep -q '^READY$' /tmp/podman-resume-doctor.txt
+
+          destroy_plan_file="$(mktemp)"
+          chmod 600 "$destroy_plan_file"
+          $RUNNER_TEMP/baha app destroy podman-ci -o json > "$destroy_plan_file"
+          destroy_consent="$(python3 "$GITHUB_WORKSPACE/scripts/ci-podman-typed-consent.py" impact "$destroy_plan_file")"
+          rm -f "$destroy_plan_file"
+          BASEHARBOR_PROVIDER_CHANGE_CONSENT="$destroy_consent" \
+            $RUNNER_TEMP/baha app destroy podman-ci --yes | tee /tmp/podman-destroy.txt
+          unset destroy_consent
+
+      - name: Reset runtime state before integration tests
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+
+      - name: Run runtime integration tests serially
+        id: runtime_integration
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          diagnose_quadlet_integration() {
+            export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+            export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+            echo "::group::Quadlet runtime integration diagnostics"
+            systemctl --user --failed --no-pager || true
+            systemctl --user list-units 'baseharbor*' --all --no-pager || true
+            for unit in $(systemctl --user list-units 'baseharbor*' --all --no-legend --plain 2>/dev/null | awk '{print $1}'); do
+              [ -n "$unit" ] || continue
+              systemctl --user status "$unit" --no-pager -l || true
+              journalctl --user -u "$unit" -n 80 --no-pager || true
+            done
+            podman ps -a || true
+            echo "::endgroup::"
+          }
+
+          run_integration_test() {
+            bash scripts/ci-runtime-reset.sh podman
+            $RUNNER_TEMP/baha target create podman-ci --provider podman --access podman-ci --reference local --default
+            if ! "$@"; then
+              diagnose_quadlet_integration
+              return 1
+            fi
+          }
+
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryWorkflowRealLifecycle -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadOnlyLifecycleInCI -count=1 -v
+          run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryBuildWorkloadRebuildsSourceChangesInCI -count=1 -v
+          run_integration_test go test -p 1 ./internal/application -run TestMultiInstanceComposeLifecycleInCI -count=1 -v
+
+      - name: Verify control-plane recovery
+        id: recovery
+        env:
+          BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE: "true"
+        run: go test ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -v
+
+      - name: Verify real workload log ingestion
+        id: log_ingestion
+        env:
+          BASEHARBOR_LOGS_INTEGRATION: "1"
+        run: go test ./internal/logs -run '^TestManagedLokiIngestsRealComposeWorkloadLogs$' -count=1 -v
+
+      - name: Verify real trace ingestion
+        id: trace_ingestion
+        env:
+          BASEHARBOR_TRACES_INTEGRATION: "1"
+        run: go test ./internal/traces -run '^TestManagedTempoReceivesVerificationTraceThroughCollector$' -count=1 -v
+
+      - name: Cleanup Podman runtime
+        id: cleanup
+        if: always()
+        shell: bash
+        timeout-minutes: 3
+        run: bash scripts/ci-runtime-reset.sh podman
+ -count=1 -timeout 16m -json | tee "$RUNNER_TEMP/keycloak-single.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ['RUNNER_TEMP']) / 'keycloak-single.jsonl').read_text().splitlines() if line.startswith('{')]
+          test = 'TestKeycloakSingleNativeSQLInCI'
+          if any(event.get('Action') in ('skip', 'fail') for event in events):
+              raise SystemExit('Required native Keycloak SQL acceptance skipped or failed')
+          if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('Required native Keycloak SQL acceptance did not execute')
+          PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
 
   single_default_native:
     name: Native single-default · Podman
