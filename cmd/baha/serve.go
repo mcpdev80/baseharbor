@@ -54,8 +54,8 @@ func serveCommand(store application.Store) *cli.Command {
 			executor := newBahaMachineExecutor(store)
 			startup := ctx
 			if cfg.RuntimeAppName == "" {
-				if cfg.ConnectorEnrollmentEnabled {
-					startup = withTargetOverride(startup, cfg.ConnectorAuthorityTarget)
+				if target := serveEnrollmentAuthorityTarget(cfg); target != "" {
+					startup = withTargetOverride(startup, target)
 				}
 				executor, err = newInstallationMachineExecutor(startup, store)
 				if err != nil {
