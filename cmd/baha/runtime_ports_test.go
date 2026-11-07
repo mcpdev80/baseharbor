@@ -35,6 +35,23 @@ func TestRuntimeUpYesDoesNotImplicitlyTrustHostCA(t *testing.T) {
 	}
 }
 
+func TestRuntimeUpHADefaultsOffAndEnablesOnlyWithFlag(t *testing.T) {
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.HA {
+		t.Fatal("default 'baha up' must be single control plane: --ha must default off")
+	}
+	haopts, err := parseRuntimeUpOptions([]string{"--yes", "--control-plane-only", "--ha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !haopts.HA {
+		t.Fatal("--ha must enable the HA opt-in profile")
+	}
+}
+
 func TestParseRuntimeUpOptionsAcceptsRecoveryFileEqualsForm(t *testing.T) {
 	opts, err := parseRuntimeUpOptions([]string{"--recovery-file=/secure/recovery.json"})
 	if err != nil {
