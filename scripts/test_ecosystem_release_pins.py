@@ -171,8 +171,9 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
         self.assertEqual(set(matrix['stack']), {'go', 'nextjs', 'python', 'quarkus'})
         self.assertEqual(len(matrix['runtime']) * len(matrix['stack']), 8)
         commands = '\n'.join(step.get('run', '') for step in workflow['jobs']['greenfield-native']['steps'])
-        for command in ('app new ', 'ci-greenfield-apply.py', ' app status', ' app doctor',
-                        'test -s baseharbor.yaml', 'grep -qi'):
+        for command in ('app new ', 'ci-greenfield-apply.py', ' app status -o json',
+                        ' app doctor', 'test -s baseharbor.yaml',
+                        "status.get('ready') is not True", "check.get('name') == 'workload'"):
             self.assertIn(command, commands)
         apply_script = (self.source / 'scripts/ci-greenfield-apply.py').read_text()
         for guard in ('"impact-confirmation-required"', '"destructive"', '"confirmations_required"',
