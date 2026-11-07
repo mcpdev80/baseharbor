@@ -75,7 +75,7 @@ var errClassUnverifiable = errRegistrySourceUnverifiable
 // semantics, and the identity itself is what the caller and the tests match
 // on. An oras that exists but fails for another reason (network, denial)
 // never carries this identity.
-var ErrRegistryNativeToolMissing = fmt.Errorf("%w: the native OCI artifact tool 'oras' is not installed; install ORAS or provide the runtime image through the container runtime", ErrRegistrySourceUnavailable)
+var ErrRegistryNativeToolMissing = fmt.Errorf("%w: %w: the native OCI artifact tool 'oras' is not installed; install ORAS or provide the runtime image through the container runtime", ErrRegistrySourceUnavailable, exec.ErrNotFound)
 
 // DigestPattern matches an immutable sha256 OCI digest, the only identity this
 // adapter is willing to record as the resolved artifact version.
@@ -436,7 +436,13 @@ func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProv
 		}
 	}
 	if err := compose.PullImage(ctx, resolvedImage); err != nil {
-		return fmt.Errorf("pull resolved development runtime image: %w", err)
+		// Apply the same native-tool classifier as OCI Resolve, but never
+		// expose untrusted runtime/registry stderr through error wrapping.
+		classified := orgconfig.ClassifyNativeToolFailure("oras", err)
+		if errors.Is(classified, orgconfig.ErrNativeToolNotFound) {
+			return fmt.Errorf("pull resolved development runtime image: %w", ErrRegistryNativeToolMissing)
+		}
+		return fmt.Errorf("pull resolved development runtime image: %w", ErrRegistrySourceUnavailable)
 	}
 	return nil
 }
