@@ -269,3 +269,97 @@ func TestPodmanOwnerLoanUnmarkedStaysFailClosed(t *testing.T) {
 		t.Fatalf("unmarked isolated target must stay fail-closed owner-missing: %v", err)
 	}
 }
+
+// -----------------------------------------------------------------------------
+// PRODUCTION (ungated) regression — the fix in this lane (card 0427-117 r5).
+//
+// Every test below runs with NO bahaTestProcessEnv seam and WITHOUT
+// testing.Testing() provenance, so they exercise the exact production path
+// recordDeploymentBeforeMutation runs from a normal `baha` binary. The helpers
+// above (isolatePodmanBootTarget, saveThroughApplySeam) are shared with the
+// test-scoped regression; they are here with an un-gated config. On the broken
+// commit (the test-gated loan) the pass cell fails with ErrDeploymentOwnerMissing
+// (RED); at the fix the guarded local-boot loan makes it pass.
+// -----------------------------------------------------------------------------
+
+// TestProductionOwnerLoanLocalIsolatedApplyPasses is the exact-defect cell: a
+// genuinely ownerless isolated podman Target with its own Local access must
+// pass the owner seam against the boot installation the CLI selects, from a
+// binary with NO test-process provenance. On the broken commit (the test-gated
+// loan) the save fails with ErrDeploymentOwnerMissing (RED); at the fix the
+// guarded local-boot loan makes it pass.
+func TestProductionOwnerLoanLocalIsolatedApplyPasses(t *testing.T) {
+	const boot, iso = "p427-podman-boot", "p427-podman-iso"
+	state := isolatePodmanBootTarget(t, boot, iso)
+
+	if _, err := coreinstallation.Load(mustBootRuntimeRoot(t, iso)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("isolated podman target must have no installation.json: err=%v", err)
+	}
+
+	// No test-process provenance is set up in this test: the loan must NOT be
+	// activated by any marker. The helpers above use an un-gated config.
+
+	if err := saveThroughApplySeam(t, iso, "podman-isolated"); err != nil {
+		t.Fatalf("genuinely ownerless local isolated podman target must pass the owner seam (card t-20261106-r27-remote-up-podman-owner-missing): %v", err)
+	}
+
+	// The loan must never materialize a second installation.json: the boot
+	// installation stays the single durable owner (ADR 0021).
+	isoRoot, err := deployment.TargetStateRoot(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(isoRoot, "runtime", "installation.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("loan must not write an installation.json at the test target: err=%v", err)
+	}
+	bootState, err := coreinstallation.Load(mustBootRuntimeRoot(t, boot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bootState.ID != state.ID {
+		t.Fatal("boot installation identity changed through the loan path")
+	}
+}
+
+// TestProductionOwnerLoanConnectorBoundStaysFailClosed pins the fail-closed
+// guard: a connector-bound isolated target never receives a loan, before AND
+// after the fix, with the SAME sentinel ErrDeploymentOwnerMissing, and without
+// any test-process provenance.
+func TestProductionOwnerLoanConnectorBoundStaysFailClosed(t *testing.T) {
+	const boot, node = "p427-podman-boot", "p427-podman-node"
+	access := map[string]deployment.AccessDefinition{
+		"local":                     {Provider: "local", Reference: "local"},
+		"baseharbor-node-connector": {Provider: "baseharbor-node-connector", Reference: "node-a"},
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: boot,
+		Access:        access,
+		Targets: map[string]deployment.TargetDefinition{
+			boot: {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "local"},
+			node: {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "baseharbor-node-connector"}},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("persist loan config: %v", err)
+	}
+	seedBootInstallation(t, boot, "podman")
+	if _, err := coreinstallation.Load(mustBootRuntimeRoot(t, node)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("connector node must have no installation.json: err=%v", err)
+	}
+	if err := saveThroughApplySeam(t, node, "podman-node"); !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
+		t.Fatalf("connector-bound isolated target must stay fail-closed owner-missing (no test provenance): %v", err)
+	}
+}
+
+// TestProductionOwnerLoanUnmarkedLocalStaysFailClosed pins the unmarked guard:
+// an ownerless Local target with no boot Core that owns it never receives a
+// loan and stays ErrDeploymentOwnerMissing, without any test-process
+// provenance — the same sentinel as the broken commit.
+func TestProductionOwnerLoanUnmarkedLocalStaysFailClosed(t *testing.T) {
+	const boot, prod = "p427-podman-boot", "p427-podman-prod"
+	isolatePodmanBootTarget(t, boot, prod)
+	if err := saveThroughApplySeam(t, prod, "podman-prod"); !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
+		t.Fatalf("unmarked local isolated target must stay fail-closed owner-missing without test provenance: %v", err)
+	}
+}

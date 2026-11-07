@@ -1,14 +1,11 @@
 package main
 
-import (
-	"testing"
-)
-
-// init binds the TEST-SCOPE provenance gate of the owner loan (card
+// init binds the effective-target-driven owner loan of
+// deployment.VerifyDeploymentOwner (card
 // t-20261106-r27-remote-up-podman-owner-missing, card number 0427-117). The
-// hook is a package-private var that stays nil in a production binary, so no
-// operator environment can activate the loan; testing.Testing is the
-// standard-library proof that this code runs inside a `go test` process.
+// production loan resolves a genuinely ownerless Local-access Target against
+// the boot installation the CLI selects — it does NOT depend on any
+// test-process provenance hook, so an isolated podman Target resolves from a
+// normal `baha` binary. No other package-var seam is required.
 func init() {
-	bahaTestProcessEnv = testing.Testing
 }

@@ -182,8 +182,9 @@ func isolateRuntimeForTest(t *testing.T, name string) {
 	// TEST-SCOPE owner loan marker (card t-20261106-r27-remote-up-podman-owner-missing,
 	// lane w286): this isolated test Target has no installation of its own by
 	// design — the boot Target's genuine Core installation is the single
-	// durable owner. The marker file is the ONLY trigger that lets the guarded
-	// loan verifier resolve this namespace against that boot installation.
+	// durable owner. The marker file documents the isolated test Target; the
+	// production owner loan resolves this namespace against the boot Core by
+	// its genuine, READY installation, not by the marker alone.
 	writeBahaTestIsolationMarker(t, isoTarget)
 	t.Logf("isolated runtime resolved from deployment config: target=%q runtime=%q endpoint=%q context=%q", resolved.Name, resolved.RuntimeProvider, resolved.DockerEndpoint, resolved.DockerContext)
 }

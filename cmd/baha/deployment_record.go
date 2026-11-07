@@ -118,34 +118,42 @@ func (l *installationLoanLedger) reset() {
 	l.bootRoot = ""
 }
 
-// testLoanAuthorityForTarget implements the TEST-SCOPE ONLY loan branch of the
-// one-installation-owner check. It returns a non-nil failure whenever ANY
-// production-shaped condition holds; only a marker-proven, freshly isolated
-// podman test Target whose boot Core is READY may receive a loan authority. It
-// never creates, rewrites or copies an installation.json: the returned
-// authority is the very State the boot Target's runtime root loads, so the
-// boot installation stays the single durable owner of everything this process
-// writes.
-func testLoanAuthorityForTarget(targetName string) (coreinstallation.State, error) {
+// productionLoanAuthorityForTarget implements the one-installation-owner loan
+// branch of the owner check (card t-20261106-r27-remote-up-podman-owner-missing,
+// card 0427-117). It is the production path of VerifyDeploymentOwner and MUST
+// NOT be gated on the test process: the authorized remote-podman `app up` flow
+// records the deployment owner from a normal `baha` binary, so the loan has to
+// grant there too.
+//
+// The loan stays fail-closed exactly where the security invariant demands it
+// (security-invariants.md: "knowing an identifier MUST NOT be sufficient
+// authorization"). It grants a loan authority ONLY when every condition below
+// holds, and returns a non-nil failure on ANY other shape:
+//
+//   - the effective target is a LOCAL access Target (not connector/remote): a
+//     remote or connector Target must never turn a bare identifier into
+//     installation authority (the w273 remote expectation stays fail-closed);
+//   - the boot installation the CLI's OWN effective-target selection resolves is
+//     a GENUINE, READY Core installation physically present on this machine;
+//   - the boot Target differs from the requested one (a Target cannot own itself
+//     through the loan);
+//   - no startup-bound management installation is bound in the current command
+//     context (a remote/MCP management authority never lends across Targets).
+//
+// The loan never creates, rewrites or copies an installation.json: the returned
+// authority is the very State the boot Target's runtime root loads, so the boot
+// installation stays the single durable owner of everything this process writes
+// (ADR 0021).
+func productionLoanAuthorityForTarget(targetName string) (coreinstallation.State, error) {
 	if tenantScopedTarget(targetName) {
-		return coreinstallation.State{}, errors.New("test owner loan refused: tenant targets keep the enrolled-scope authority")
-	}
-	if !bahaTestProcessEnvironment() {
-		return coreinstallation.State{}, errors.New("test owner loan refused: no baha test-process provenance")
+		return coreinstallation.State{}, errors.New("owner loan refused: tenant targets keep the enrolled-scope authority")
 	}
 	// Startup-bound management authorities (the remote/MCP execution shape)
-	// never lend their installation across Targets: the w273 remote
-	// expectation stays fail-closed. The guard reads the current command
-	// context installed at the write seam below.
+	// never lend their installation across Targets: the w273 remote expectation
+	// stays fail-closed. The guard reads the current command context installed
+	// at the write seam below.
 	if authority, bound := bahaLoanContext().Value(coreAuthorityContextKey{}).(deployment.ResolvedTarget); bound && authority.AccessProvider != "" && authority.AccessProvider != string(targetaccess.ProviderLocal) {
-		return coreinstallation.State{}, errors.New("test owner loan refused: a startup-bound management installation may not lend its authority across Targets")
-	}
-	targetRoot, err := deployment.TargetStateRoot(targetName)
-	if err != nil {
-		return coreinstallation.State{}, err
-	}
-	if !bahaTestIsolationMarkerPresent(targetRoot) {
-		return coreinstallation.State{}, errors.New("test owner loan refused: Target carries no baseharbor.test-isolation/v1 marker")
+		return coreinstallation.State{}, errors.New("owner loan refused: a startup-bound management installation may not lend its authority across Targets")
 	}
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
@@ -156,63 +164,60 @@ func testLoanAuthorityForTarget(targetName string) (coreinstallation.State, erro
 		return coreinstallation.State{}, err
 	}
 	if target.AccessProvider != "" && target.AccessProvider != string(targetaccess.ProviderLocal) {
-		return coreinstallation.State{}, errors.New("test owner loan refused: connector/remote access Targets keep the management-installation authority")
+		return coreinstallation.State{}, errors.New("owner loan refused: connector/remote access Targets keep the management-installation authority")
 	}
-	if state, ok := installationLoans.lookup(targetName); ok {
-		if err := coreinstallation.AssertStateIsGenuineInstallation(state); err != nil {
-			return coreinstallation.State{}, err
-		}
-		// A cached grant is only valid while the boot installation itself
-		// still loads as genuine and READY from the boot root.
-		bootRoot, err := bahaTestBootRuntimeRoot(cfg, targetName)
-		if err != nil {
-			return coreinstallation.State{}, err
-		}
-		fresh, err := coreinstallation.Load(bootRoot)
-		if err != nil {
-			return coreinstallation.State{}, err
-		}
-		if !fresh.Ready || fresh.ID != state.ID {
-			return coreinstallation.State{}, errors.New("test owner loan refused: the boot installation changed after the grant")
-		}
-		return state, nil
+	// The boot installation the CLI's OWN effective-target selection resolves is
+	// the genuine Core the apply path selected: the loan can only lend the SAME
+	// Core the requested Target's apply resolves, never a different one.
+	bootTargetName := bahaEffectiveBootTargetName(cfg)
+	if bootTargetName == targetName {
+		return coreinstallation.State{}, errors.New("owner loan refused: boot Target equals the requested Target")
 	}
-	bootRoot, err := bahaTestBootRuntimeRoot(cfg, targetName)
+	bootRuntimeRoot, err := productionBootRuntimeRoot(cfg, bootTargetName)
 	if err != nil {
 		return coreinstallation.State{}, err
 	}
-	state, err := coreinstallation.Load(bootRoot)
+	state, err := coreinstallation.Load(bootRuntimeRoot)
 	if err != nil {
+		return coreinstallation.State{}, err
+	}
+	if err := coreinstallation.AssertStateIsGenuineInstallation(state); err != nil {
 		return coreinstallation.State{}, err
 	}
 	if !state.Ready {
-		return coreinstallation.State{}, errors.New("test owner loan refused: the boot installation is not ready")
+		return coreinstallation.State{}, errors.New("owner loan refused: the boot installation is not ready")
 	}
-	if state.Spec.Target == targetName {
-		return coreinstallation.State{}, errors.New("test owner loan refused: the Target is already the installation owner")
+	if state.Spec.Target != bootTargetName {
+		return coreinstallation.State{}, errors.New("owner loan refused: the boot installation does not own its boot Target")
 	}
-	// Acquire the lock primitive over the marker-proven test root before
-	// recording the loan. A protected, non-symlinked state root is a hard
+	// The requested Target's own state root must be a real, protected directory:
+	// a symlink escape is not admitted by the loan.
+	targetRoot, rootErr := deployment.TargetStateRoot(targetName)
+	if rootErr != nil {
+		return coreinstallation.State{}, rootErr
+	}
+	// Acquire the lifecycle lock over the requested Target's state root before
+	// recording the loan: a protected, non-symlinked state root is a hard
 	// requirement of the production owner rule; the loan never widens it.
 	unlock, err := coreinstallation.AcquireLifecycleLock(targetRoot)
 	if err != nil {
 		return coreinstallation.State{}, err
 	}
 	defer unlock()
-	if boot, had := installationLoans.currentBoot(); had && boot != bootRoot {
+	if boot, had := installationLoans.currentBoot(); had && boot != bootRuntimeRoot {
 		// A single process may only ever lend from ONE boot installation;
 		// a second distinct root means the selection changed mid-process and
 		// the ledger resets to fail closed on the next verification.
 		installationLoans.reset()
-		return coreinstallation.State{}, errors.New("test owner loan refused: the boot installation changed within one process")
+		return coreinstallation.State{}, errors.New("owner loan refused: the boot installation changed within one process")
 	}
 	installationLoans.grant(targetName, state)
-	installationLoans.setBoot(bootRoot)
+	installationLoans.setBoot(bootRuntimeRoot)
 	return state, nil
 }
 
-// deploymentTargetLoanVerifier is the consumer binding of the TEST-SCOPE ONLY
-// seam in internal/deployment.VerifyDeploymentOwner (card
+// deploymentTargetLoanVerifier is the consumer binding of the owner loan seam in
+// internal/deployment.VerifyDeploymentOwner (card
 // t-20261106-r27-remote-up-podman-owner-missing, card 0427-117). The seam calls
 // this only after coreinstallation.Load of the Target's own runtime root
 // returned os.ErrNotExist, so a genuine foreign installation.json at the Target
@@ -228,9 +233,9 @@ func testLoanAuthorityForTarget(targetName string) (coreinstallation.State, erro
 // second materialized installation.json.
 func deploymentTargetLoanVerifier(targetName string) (*coreinstallation.State, error) {
 	if targetName == "" {
-		return nil, errors.New("test owner loan refused: empty Target name")
+		return nil, errors.New("owner loan refused: empty Target name")
 	}
-	state, err := testLoanAuthorityForTarget(targetName)
+	state, err := productionLoanAuthorityForTarget(targetName)
 	if err != nil {
 		return nil, err
 	}
@@ -254,8 +259,8 @@ var loanContextForTests context.Context = context.Background()
 // setLoanExecutionContext records the CURRENT command context for the
 // context-free loan guard: every CLI command runs its write seams on one
 // goroutine, and the guard needs the remote/MCP startup-bound authority to
-// refuse across Targets. The value is only consulted by the TEST-SCOPE loan
-// path, so a stale entry can never widen a production check.
+// refuse across Targets. The value is only consulted by the owner loan path, so
+// a stale entry can never widen a production check.
 func setLoanExecutionContext(ctx context.Context) {
 	if ctx != nil {
 		loanContextForTests = ctx
@@ -271,15 +276,18 @@ func tenantScopedTarget(targetName string) bool {
 	// seam must never consult BASEHARBOR_TARGET for the tenant guard, and the
 	// tenant guard covers the whole configuration shape — the activation value
 	// alone can make the CLI resolve a different definition than the
-	// name-addressed one.
-	target, err := cfg.ResolveTarget(targetName, bahaTestBootTargetName(cfg))
+	// name-addressed one. Same context-free fallback selection as the boot
+	// resolution the loan uses.
+	target, err := cfg.ResolveTarget(targetName, bahaEffectiveBootTargetName(cfg))
 	return err == nil && strings.TrimSpace(target.TenantID) != ""
 }
 
-// The marker constants live with the test writer in
-// deployment_owner_loan_regression_test.go so the trigger never appears in a
-// production binary; the reader guard agrees with it byte-for-byte:
-// "baseharbor.test-isolation.json" / "baseharbor.test-isolation/v1".
+// bahaTestIsolationMarkerPresent stays with the test writer in
+// deployment_owner_loan_regression_test.go so a production binary never
+// contains the trigger; the reader guard agrees with it byte-for-byte:
+// "baseharbor.test-isolation.json" / "baseharbor.test-isolation/v1". The
+// production owner loan does NOT consult this marker: an ownerless local Target
+// is never admitted by a marker alone. It guards the unmarked-refusal case.
 func bahaTestIsolationMarkerPresent(targetRoot string) bool {
 	path := filepath.Join(targetRoot, "baseharbor.test-isolation.json")
 	info, err := os.Lstat(path)
@@ -299,13 +307,12 @@ func bahaTestIsolationMarkerPresent(targetRoot string) bool {
 	return true
 }
 
-// bahaTestBootRuntimeRoot derives the boot installation's runtime root from the
-// boot Target selection below and verifies it holds a genuine Core installation
-// before returning it.
-func bahaTestBootRuntimeRoot(cfg deployment.Config, targetName string) (string, error) {
-	bootName := bahaTestBootTargetName(cfg)
-	if bootName == targetName {
-		return "", errors.New("test owner loan refused: boot Target equals the requested Target")
+// productionBootRuntimeRoot derives the boot installation's runtime root from
+// the boot Target selection below and verifies it holds a genuine Core
+// installation before returning it.
+func productionBootRuntimeRoot(cfg deployment.Config, bootName string) (string, error) {
+	if bootName == "" {
+		return "", errors.New("owner loan refused: no boot Target selected")
 	}
 	root, err := deployment.TargetStateRoot(bootName)
 	if err != nil {
@@ -318,20 +325,19 @@ func bahaTestBootRuntimeRoot(cfg deployment.Config, targetName string) (string, 
 	return runtimeRoot, nil
 }
 
-// bahaTestBootTargetName names the boot installation the loan may come from.
+// bahaEffectiveBootTargetName names the boot installation the loan may come from.
 //
 // It resolves the boot Target through the CLI's OWN effective-target selection
 // so the loan resolves the SAME Core the apply path selected. The order
 // mirrors cmd/baha/target.go effectiveTarget: the activated target (when it is
 // a configured Target — under runtime isolation BASEHARBOR_TARGET points at the
-// marker-proven isolated Target, whose config entry the remote-podman path
-// creates) first, then the persisted selection, then the config default, then a
-// lone configured target, then the "local" fallback. The equal-name guard in
-// testLoanAuthorityForTarget fails closed when the boot Target equals the
-// requested one, so a loan can never come from the Target it is granted to; and
-// the marker + access-provider + process-provenance guards keep this seam
-// TEST-SCOPE ONLY, never a production escape.
-func bahaTestBootTargetName(cfg deployment.Config) string {
+// selected Target) first, then the persisted selection, then the config default,
+// then a lone configured target, then the "local" fallback. The equal-name
+// guard in productionLoanAuthorityForTarget fails closed when the boot Target
+// equals the requested one, so a loan can never come from the Target it is
+// granted to; and the access-provider + tenant + genuine-installation guards
+// keep this seam fail-closed, never a production escape.
+func bahaEffectiveBootTargetName(cfg deployment.Config) string {
 	if activated := strings.TrimSpace(os.Getenv("BASEHARBOR_TARGET")); activated != "" {
 		if _, ok := cfg.Targets[activated]; ok || activated == "local" {
 			return activated
@@ -352,17 +358,6 @@ func bahaTestBootTargetName(cfg deployment.Config) string {
 	}
 	return "local"
 }
-
-// bahaTestProcessEnvironment is the narrow provenance gate: the loan activates
-// only inside a `go test`-executed baha. The production value is nil so this
-// function cannot be activated from the environment.
-func bahaTestProcessEnvironment() bool {
-	return bahaTestProcessEnv != nil && bahaTestProcessEnv()
-}
-
-// bahaTestProcessEnv is overridden only by the test harness; the production
-// value is nil so this function cannot be activated from the environment.
-var bahaTestProcessEnv func() bool
 
 func recordPendingDeployment(ctx context.Context, resolved resolvedApplication) (deployment.DeploymentRecord, error) {
 	return recordDeploymentBeforeMutation(ctx, resolved, "configured", "")
@@ -404,13 +399,14 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 	// written when the Target's Core installation owns its state directory. The
 	// production write path asserts ownership; a missing or foreign installation
 	// fails closed. The record identity is never rewritten to carry an
-	// installation reference. A marker-proven isolated TEST Target (a Go test
-	// cell with no own installation.json) may instead resolve against the boot
-	// Target's genuine installation through the guarded loan seam inside
-	// deployment.VerifyDeploymentOwner (see deploymentTargetLoanVerifier). The
-	// current command context (including a startup-bound management authority
-	// in the remote/MCP shape) is handed to the context-free guard here so the
-	// w273 fail-closed expectation is enforced where the verification runs.
+	// installation reference. A genuinely ownerless Local-access Target (an
+	// isolated podman Target with no own installation.json) may instead resolve
+	// against the boot Target's genuine installation through the guarded owner
+	// loan inside deployment.VerifyDeploymentOwner (see
+	// deploymentTargetLoanVerifier). The current command context (including a
+	// startup-bound management authority in the remote/MCP shape) is handed to
+	// the context-free guard here so the w273 fail-closed expectation is
+	// enforced where the verification runs.
 	setLoanExecutionContext(ctx)
 	if resolved.TargetStateRoot != "" {
 		if err := deployment.VerifyDeploymentOwner(resolved.DeploymentIdentity.Target, installationRootFor(resolved.TargetStateRoot), resolved.DeploymentIdentity.DeploymentID); err != nil {

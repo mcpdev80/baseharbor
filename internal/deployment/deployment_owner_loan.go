@@ -45,22 +45,22 @@ func VerifyDeploymentOwnerAgainstOwner(targetName, targetRoot, deploymentID stri
 	return nil
 }
 
-// This file holds the TEST-SCOPE ONLY owner-loan seam of
-// VerifyDeploymentOwner (internal/deployment/deployment_store.go). It is split
-// out to keep VerifyDeploymentOwner under the PR readability cap (800 lines).
+// This file holds the owner-loan seam of VerifyDeploymentOwner
+// (internal/deployment/deployment_store.go). It is split out to keep
+// VerifyDeploymentOwner under the PR readability cap (800 lines).
 //
-// The loan lets a marker-proven isolated test Target resolve against the one
-// installation its boot Target owns, while refusing every tenant-managed,
-// connector-bound, or production Target, and the default nil keeps every
-// production path byte-identical.
+// The loan lets a genuinely ownerless Local-access Target resolve against the
+// one genuine, READY Core installation its boot Target owns, while refusing
+// every tenant-managed, connector-bound, remote, foreign, unmarked or non-READY
+// case, and the default nil keeps every production path byte-identical.
 
-// verifyLoanOwnerGuarantees enforces the two order-independent guarantees of
-// the TEST-SCOPE owner loan: the marker-proven test Target's state root is a
-// real, protected directory (no symlink escape), and AT MOST ONE of the two
-// roots (test Target + boot installation) carries an installation.json. Either
-// the test Target is genuinely ownerless (already proven by the ErrNotExist
-// precondition that routed the seam here) or the boot installation
-// vanished/was replaced — never a second concurrent owner.
+// verifyLoanOwnerGuarantees enforces the two order-independent guarantees of the
+// owner loan: the requested Target's state root is a real, protected directory
+// (no symlink escape), and AT MOST ONE of the two roots (test Target + boot
+// installation) carries an installation.json. Either the requested Target is
+// genuinely ownerless (already proven by the ErrNotExist precondition that
+// routed the seam here) or the boot installation vanished/was replaced — never
+// a second concurrent owner.
 //
 // This deliberately does NOT re-resolve through VerifyDeploymentOwner: doing so
 // would re-enter the loan seam for the same ownerless test Target and recurse

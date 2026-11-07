@@ -79,11 +79,15 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // explicit authorized path.
 var TenantOwnerResolver func(targetName string) (bool, error)
 
-// TargetLoanVerifier implements the TEST-SCOPE ONLY owner loan (card
-// t-20261106-r27-remote-up-podman-owner-missing, card number 0427-117). The
-// default nil keeps every production path byte-identical; the consumer binding
-// (cmd/baha.deploymentTargetLoanVerifier) grants a marker-proven isolated test
-// Target against the boot installation's genuine Core installation.
+// TargetLoanVerifier implements the owner loan (card
+// t-20261106-r27-remote-up-podman-owner-missing, card number 0427-117). It lets
+// a genuinely ownerless Local-access Target resolve against the one genuine,
+// READY Core installation its boot Target owns, so the authorized remote-podman
+// `app up` path can record its deployment owner from a normal `baha` binary.
+// The consumer binding (cmd/baha.deploymentTargetLoanVerifier) grants the loan
+// only for a Local-access Target whose boot Core is genuine and READY; every
+// connector/remote/managed, tenant, foreign, unmarked or non-READY case keeps
+// the original fail-closed sentinel ErrDeploymentOwnerMissing.
 var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
 
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
@@ -111,13 +115,14 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	installation, err := coreinstallation.Load(targetRoot)
 	loaned := false
 	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
-		// TEST-SCOPE ONLY seam (card t-20261106-r27-remote-up-podman-owner-missing,
-		// card 0427-117): resolve a marker-proven isolated test Target against
-		// the one installation its boot Target owns. The loan verifier re-checks
-		// that the boot installation is genuine, READY, and that the boot Target
-		// differs from the requested one; here the loaned identity governs the
-		// requested Target's deployment namespace (the loan's purpose), so the
-		// namespace-installation binding below stays checked against targetName.
+		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
+		// card 0427-117): resolve a genuinely ownerless Local-access Target
+		// against the one installation its boot Target owns. The loan verifier
+		// re-checks that the boot installation is genuine, READY, and that the
+		// boot Target differs from the requested one; here the loaned identity
+		// governs the requested Target's deployment namespace (the loan's
+		// purpose), so the namespace-installation binding below stays checked
+		// against targetName.
 		// A refusal — any error or a nil state — keeps the ORIGINAL
 		// fail-closed sentinel ErrDeploymentOwnerMissing: loan guard details must
 		// never replace the contract error shape (the caller's errors.Is checks
