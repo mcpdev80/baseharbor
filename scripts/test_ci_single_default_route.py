@@ -28,6 +28,9 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
             "internal/runtime/stack_test.go",
             "internal/runtime/assets/compose.yaml",
             "internal/runtime/assets/compose-single.yaml",
+            "internal/runtime/openbao_runtime_prepare.go",
+            "internal/runtime/openbao_storage.go",
+            "internal/runtime/bootstrap_postgres_tls.go",
         ):
             with self.subTest(path=path):
                 self.assertEqual("true", selected(path))
