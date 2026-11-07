@@ -29,3 +29,14 @@ func TestCoreConnectorOIDCUsesConfiguredOperatorRealm(t *testing.T) {
 		t.Fatalf("matching explicit client was rejected: %v", err)
 	}
 }
+
+func TestWorkstationEnrollmentCannotSkipOwnedOIDCBoundary(t *testing.T) {
+	for _, cfg := range []controlplaneruntime.Config{
+		{WorkstationEnrollmentEnabled: true},
+		{WorkstationEnrollmentEnabled: true, OIDCIssuer: "https://foreign.example/realms/other"},
+	} {
+		if err := bindServeToOwnedOperatorOIDC(&cfg); err == nil {
+			t.Fatalf("workstation enrollment bypassed verified owner OIDC boundary: %#v", cfg)
+		}
+	}
+}
