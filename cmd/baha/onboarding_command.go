@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -18,13 +19,18 @@ func onboardCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "onboard",
 		Summary: "Guided onboarding: attach a workstation to a BaseHarbor installation",
-		Usage:   "baha onboard [--target NAME] [--json]",
+		Usage:   "baha onboard [--target NAME] [--json] | baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]",
 		Long:    "Guided path from a fresh workstation to a functioning installation with minimal questions. Bootstrap and attach are distinct intents; joining an existing installation never re-installs services and never repeats credential entry while a valid reusable connection exists. Cancel and EOF change nothing.",
 		Run:     runOnboardCommand,
 	}
 }
 
 func runOnboardCommand(ctx context.Context, args []string, out, errOut io.Writer) error {
+	// First-owner setup reuses the exact same owner-bound OIDC + PKCE + tenant
+	// transaction as baha login; the wizard never creates an independent admin.
+	if len(args) > 0 && args[0] == "--init-tenant" {
+		return runOnboardInitialTenant(ctx, args[1:], out, errOut)
+	}
 	filtered, format, err := parseReadOutputArgs(args, "onboard")
 	if err != nil {
 		return err
@@ -103,4 +109,58 @@ func finishOnboardOutput(out io.Writer, format cliOutputFormat, decision onboard
 		"app":              string(decision.App),
 		"persistence":      string(decision.Persistence),
 	})
+}
+
+func runOnboardInitialTenant(ctx context.Context, args []string, out, errOut io.Writer) error {
+	environment := "dev"
+	slug, name := "baseharbor", "BaseHarbor"
+	advanced := false
+	for i := 0; i < len(args); i++ {
+		if i+1 >= len(args) {
+			return usageError(args[i]+" requires a value", "Use --environment, --tenant-slug or --tenant-name with a value.")
+		}
+		flag, value := args[i], strings.TrimSpace(args[i+1])
+		i++
+		switch flag {
+		case "-e", "--environment":
+			environment = value
+		case "--tenant-slug":
+			slug, advanced = value, true
+		case "--tenant-name":
+			name, advanced = value, true
+		default:
+			return unknownOptionUsage("baha onboard --init-tenant", flag, "-e", "--environment", "--tenant-slug", "--tenant-name")
+		}
+	}
+	if strings.TrimSpace(environment) == "" {
+		return usageError("operator environment cannot be empty", "Select the existing authentication environment.")
+	}
+	// A normal interactive installation asks only one decision; advanced
+	// settings remain optional. The user must still complete a real OIDC login.
+	if !advanced && !noInput(ctx) && readerIsTerminal(onboardingInput) {
+		reader := bufio.NewReader(onboardingInput)
+		fmt.Fprintln(out, "Initial Core operator and tenant setup:")
+		fmt.Fprintln(out, "  1. Recommended: managed Keycloak, tenant baseharbor")
+		fmt.Fprintln(out, "  2. Customize: choose tenant name and slug (OIDC provider follows)")
+		selection, err := promptLine(reader, out, "Selection", "1")
+		if err != nil {
+			return err
+		}
+		switch selection {
+		case "1", "":
+		case "2":
+			slug, err = promptLine(reader, out, "Tenant slug", "baseharbor")
+			if err != nil {
+				return err
+			}
+			name, err = promptLine(reader, out, "Tenant name", "BaseHarbor")
+			if err != nil {
+				return err
+			}
+		default:
+			return usageError("unsupported initial tenant setup choice", "Choose 1 or 2.")
+		}
+	}
+	loginArgs := []string{"-e", environment, "--init-tenant", "--tenant-slug", slug, "--tenant-name", name}
+	return operatorLoginCommand().Run(ctx, loginArgs, out, errOut)
 }
