@@ -164,6 +164,21 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
                 env={**os.environ, 'JOB_RESULTS':json.dumps(candidate)}, capture_output=True, text=True)
             self.assertEqual(completed.returncode == 0, result == 'success', completed.stderr)
 
+    def test_v0427_native_greenfield_matrix_has_eight_real_cli_cells(self):
+        workflow = yaml.safe_load((self.source / '.github/workflows/nextjs-greenfield-e2e.yml').read_text())
+        matrix = workflow['jobs']['greenfield-native']['strategy']['matrix']
+        self.assertEqual(set(matrix['runtime']), {'docker', 'podman'})
+        self.assertEqual(set(matrix['stack']), {'go', 'nextjs', 'python', 'quarkus'})
+        self.assertEqual(len(matrix['runtime']) * len(matrix['stack']), 8)
+        commands = '\n'.join(step.get('run', '') for step in workflow['jobs']['greenfield-native']['steps'])
+        for command in ('app new ', ' up --yes', ' app status', ' app doctor',
+                        'test -s baseharbor.yaml', 'grep -qi'):
+            self.assertIn(command, commands)
+        pre_release = self.jobs['greenfield_native']
+        self.assertEqual(pre_release['uses'], './.github/workflows/nextjs-greenfield-e2e.yml')
+        self.assertIn('needs.source.outputs.candidate_sha', pre_release['with']['candidate_ref'])
+        self.assertIn('greenfield_native', self.jobs['checks']['needs'])
+
     def test_v0427_greenfield_is_required_and_never_skip_green(self):
         finalizer = self.jobs['checks']['steps'][0]['run']
         outputs = {key: '0' for key in ['adoption_count', 'static_count', 'light_docker_count',
