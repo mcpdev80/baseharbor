@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Native Identity+dedicated SQL only. Shared Core SQL/HA has separate acceptance.
 set -euo pipefail
 required=false
 while IFS= read -r path; do
