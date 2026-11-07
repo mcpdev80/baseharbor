@@ -37,10 +37,17 @@ func serveCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
+			// The serve-startup context must never be nil: controlplaneruntime.Run
+			// derives a cancellable lifetime context (context.WithCancel / ctx.Done())
+			// from it. For the supported per-application broker path
+			// (RuntimeAppName != "") the candidate left startup nil and handed that nil
+			// context to Run, which panics on server startup. Initialise startup from ctx
+			// here so BOTH paths (default and per-application broker) share one non-nil
+			// startup context that carries the connector target override and the
+			// management-host attachment through to Run.
 			executor := newBahaMachineExecutor(store)
-			var startup context.Context
+			startup := ctx
 			if cfg.RuntimeAppName == "" {
-				startup = ctx
 				if cfg.ConnectorEnrollmentEnabled {
 					startup = withTargetOverride(startup, cfg.ConnectorAuthorityTarget)
 				}
