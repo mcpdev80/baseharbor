@@ -34,5 +34,6 @@ require_pass ./cmd/baha TestControlPlaneSingleDefaultNativeRuntimeInCI 20m
 # They must run in both native jobs and may neither skip nor silently pass.
 require_pass ./cmd/baha TestConnectorEnrollmentScopeUsesCoreOwnershipAndTypedAccess 3m
 require_pass ./cmd/baha TestNodeListStateTableDrivesProductionRedemptionPath 3m
+require_pass ./cmd/baha TestNodeEnrollmentHTTPSOneUseAndForeignScope 3m
 require_pass ./cmd/baha TestRemoteUpRealCLIPathTakesConnectorRouteNeverLocalCore 3m
 require_pass ./cmd/baha TestRemoteUpRealCLIPathBrokerRequiredFailsClosedBeforeMutation 3m
