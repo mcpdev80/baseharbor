@@ -40,6 +40,9 @@ func serveCommand(store application.Store) *cli.Command {
 			if err := bindServeToOwnedOperatorOIDC(&cfg); err != nil {
 				return err
 			}
+			if err := publishNodeAuthorityProfile(ctx, cfg); err != nil {
+				return err
+			}
 			// The serve-startup context must never be nil: controlplaneruntime.Run
 			// derives a cancellable lifetime context (context.WithCancel / ctx.Done())
 			// from it. For the supported per-application broker path

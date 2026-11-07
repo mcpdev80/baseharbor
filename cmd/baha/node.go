@@ -160,9 +160,9 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if opts.NodeID == "" {
+	if opts.NodeID == "" || (opts.Runtime == "" && !noInput(ctx) && readerIsTerminal(nodeInput)) {
 		if noInput(ctx) || !readerIsTerminal(nodeInput) {
-			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE plus --runtime; Core authority and trust settings must be discoverable or provided.")
+			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE and --runtime; Core address, CA and verified tenant are taken from the owned Core authority.")
 		}
 		opts, err = promptNodeAdd(opts, out)
 		if err != nil {
@@ -172,15 +172,20 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if opts.TargetID == "" {
 		opts.TargetID = opts.NodeID
 	}
-	if opts.Environment == "" {
-		opts.Environment = "dev"
-	}
 	coreTarget, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
 	if coreTarget.AccessProvider != "local" {
 		return usageError("node add must run against a local Core authority Target", "Select the local Core with 'baha target activate NAME' and retry.")
+	}
+	profile, err := loadNodeAuthorityProfile(coreTarget.Name)
+	if err != nil {
+		return err
+	}
+	opts, err = applyNodeAuthorityDefaults(opts, profile)
+	if err != nil {
+		return err
 	}
 	verifiedTenant, err := requestNodeOwnerTenant(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile)
 	if err != nil {
@@ -304,26 +309,39 @@ func parseNodeAddArgs(args []string) (nodeAddOptions, error) {
 func promptNodeAdd(o nodeAddOptions, out io.Writer) (nodeAddOptions, error) {
 	reader := bufioNewReader(nodeInput)
 	var err error
-	if o.NodeID, err = promptLine(reader, out, "Node name", o.NodeID); err != nil {
+	if o.NodeID == "" {
+		if o.NodeID, err = promptLine(reader, out, "Node name", ""); err != nil {
+			return o, err
+		}
+	}
+	if o.Runtime == "" {
+		if o.Runtime, err = promptLine(reader, out, "Runtime (docker/podman)", "podman"); err != nil {
+			return o, err
+		}
+	}
+	custom, err := promptLine(reader, out, "Customize Core connection? (yes/no)", "no")
+	if err != nil {
 		return o, err
 	}
-	if o.TargetID, err = promptLine(reader, out, "Target name", o.NodeID); err != nil {
-		return o, err
+	if custom != "yes" && custom != "y" && custom != "no" && custom != "n" {
+		return o, usageError("invalid Core connection choice", "Choose yes or no.")
 	}
-	if o.Runtime, err = promptLine(reader, out, "Runtime (docker/podman)", "podman"); err != nil {
-		return o, err
-	}
-	if o.CoreURL, err = promptLine(reader, out, "Core HTTPS API URL", "https://127.0.0.1:8443"); err != nil {
-		return o, err
-	}
-	if o.CoreAddress, err = promptLine(reader, out, "Connector session address", "127.0.0.1:9443"); err != nil {
-		return o, err
-	}
-	if o.CAFile, err = promptLine(reader, out, "Core public CA file", ""); err != nil {
-		return o, err
-	}
-	if o.Environment, err = promptLine(reader, out, "Environment", "dev"); err != nil {
-		return o, err
+	if custom == "yes" || custom == "y" {
+		if o.TargetID, err = promptLine(reader, out, "Target name", o.NodeID); err != nil {
+			return o, err
+		}
+		if o.Environment, err = promptLine(reader, out, "Operator environment", "dev"); err != nil {
+			return o, err
+		}
+		if o.CoreURL, err = promptLine(reader, out, "Core HTTPS API URL", ""); err != nil {
+			return o, err
+		}
+		if o.CoreAddress, err = promptLine(reader, out, "Connector session address", ""); err != nil {
+			return o, err
+		}
+		if o.CAFile, err = promptLine(reader, out, "Pinned public Core CA file", ""); err != nil {
+			return o, err
+		}
 	}
 	return o, nil
 }
