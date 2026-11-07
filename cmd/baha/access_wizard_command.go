@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/accesswizard"
 	"github.com/mcpdev80/baseharbor/internal/cli"
@@ -51,6 +52,9 @@ func accessAssignCommand() *cli.Command {
 			controller.SetScope(scope)
 			controller.SetIO(appNewInput, out)
 			result := controller.Run(func(review accesswizard.Review) policy.Decision {
+				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
+					return policy.Deny
+				}
 				decision, err := accesswizard.ResolveAssignment(
 					authority,
 					review.Person.Name,
@@ -98,6 +102,9 @@ func accessOffboardCommand() *cli.Command {
 			controller.SetScope(scope)
 			controller.SetIO(appNewInput, out)
 			result := controller.Run(func(review accesswizard.Review) policy.Decision {
+				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
+					return policy.Deny
+				}
 				if err := accesswizard.RevokeAssignment(authority, review.Person.Name, review.Selected[0].TargetName); err != nil {
 					return policy.Deny
 				}
@@ -166,4 +173,16 @@ func presentHuman(errOut io.Writer, err error) {
 type accessWizardJSON struct {
 	Person   string `json:"person"`
 	Decision string `json:"decision"`
+}
+
+ 
+// validateAccessWizardPerson binds the human review to the exact explicit CLI
+// subject. A wizard prompt may not silently substitute a different person for
+// either a grant or a revocation; this check runs BEFORE calling the authority.
+func validateAccessWizardPerson(requested, reviewed string) error {
+	if strings.TrimSpace(requested) == "" || strings.TrimSpace(reviewed) == "" ||
+		requested != reviewed {
+		return fmt.Errorf("access wizard reviewed person differs from the requested CLI subject")
+	}
+	return nil
 }
