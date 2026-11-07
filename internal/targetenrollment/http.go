@@ -19,6 +19,7 @@ import (
 
 const (
 	AuthorizationPath        = "/api/v1/connectors/authorizations"
+	OwnerContextPath         = "/api/v1/connectors/owner-context"
 	RenewalAuthorizationPath = "/api/v1/connectors/renewal-authorizations"
 	EnrollmentPath           = "/api/v1/connectors/enroll"
 	StatusPath               = "/api/v1/connectors/status"
@@ -70,6 +71,15 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.URL.Path == OwnerContextPath {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			enrollmentHTTPError(w, http.StatusMethodNotAllowed, machine.ErrorUnsupported)
+			return
+		}
+		h.ownerContext(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		enrollmentHTTPError(w, http.StatusMethodNotAllowed, machine.ErrorUnsupported)
@@ -96,6 +106,26 @@ func (h *HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		enrollmentHTTPError(w, http.StatusNotFound, machine.ErrorNotFound)
 	}
+}
+
+// ownerContext exposes only the tenant selected by the Core's verified OIDC
+// middleware and membership resolver. A caller-supplied tenant is never used.
+func (h *HTTPHandler) ownerContext(w http.ResponseWriter, r *http.Request) {
+	principal, authenticated := identity.FromContext(r.Context())
+	tenant, scoped := tenancy.FromContext(r.Context())
+	if !authenticated || principal == nil || (principal.ExpiresAt != nil && !principal.ExpiresAt.After(time.Now())) {
+		enrollmentHTTPError(w, http.StatusUnauthorized, machine.ErrorAuthenticationFailed)
+		return
+	}
+	if !scoped || tenant == nil || tenant.TenantID == "" || tenant.ExternalIdentityID == "" ||
+		!authorization.NewService().Allowed(tenant.Roles, authorization.PermCreate) {
+		enrollmentHTTPError(w, http.StatusForbidden, machine.ErrorPolicyDenied)
+		return
+	}
+	enrollmentHTTPJSON(w, http.StatusOK, map[string]string{
+		"contract_version": machine.ContractVersion,
+		"tenant_id":        tenant.TenantID,
+	})
 }
 
 type authorizationInput struct {
