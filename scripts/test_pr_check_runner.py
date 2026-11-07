@@ -215,10 +215,9 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertNotIn('git show "$HEAD_SHA":scripts/pr-check-runner.py', workflow)
 
     def test_actual_workflow_route_receipt_execution_uses_trusted_base(self):
-        # R27-F2: receipt suites must be selected by the trusted base runner in
-        # both places they execute: the validation matrix case and the focused
-        # job. A candidate-owned pr-check-runner.py must never define its own
-        # receipt discovery.
+        # Receipt suites must execute once in their selected validation job,
+        # via the trusted base runner. The always-on focused job must not
+        # re-execute them. A candidate-owned runner cannot define discovery.
         workflow = (Path(__file__).resolve().parent.parent /
                     '.github' / 'workflows' / 'ci.yml').read_text()
         start = workflow.index('            receipt-execution-tests)\n')
@@ -226,8 +225,10 @@ class Core754MCPExecutionTests(unittest.TestCase):
         self.assertIn('git fetch --no-tags origin "$BASE_SHA"', fragment)
         self.assertIn('git show "$BASE_SHA":scripts/pr-check-runner.py', fragment)
         self.assertIn('--check "$VALIDATION"', fragment)
-        self.assertIn('git show "${{ needs.pr_plan.outputs.controller_sha }}:'
-                      'scripts/pr-check-runner.py"', workflow)
+        focused = workflow.split('  pr_focused:\n', 1)[1].split('  pr_validations:\n', 1)[0]
+        self.assertNotIn('receipt-execution-tests', focused)
+        planner = (Path(__file__).resolve().parent / 'pr-gate-plan.py').read_text()
+        self.assertIn("'id': 'receipt-execution-tests'", planner)
         self.assertNotIn(
             'python3 scripts/pr-check-runner.py execute --check '
             'receipt-execution-tests', workflow)

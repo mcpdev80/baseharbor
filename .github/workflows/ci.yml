@@ -728,20 +728,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Focused diff/planner/verifier/pins regressions
+      - name: Focused source regressions (owner checks run only when selected)
         run: |
           set -euo pipefail
           python3 scripts/test_pr_diff_base.py
-          python3 scripts/test_pr_gate_plan.py
           python3 scripts/test_pr_required_final.py
           python3 scripts/test_pr_stage_boundary.py
           python3 scripts/test_pr_consumer_followup.py
           python3 scripts/test_pr_check_runner.py
           python3 scripts/test_pr_wizard_workflow_route.py
-          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_runner_isolation.py
           python3 scripts/test_ci_check_routes.py
+          python3 scripts/test_ci_single_default_route.py
+          python3 scripts/test_ci_keycloak_single_route.py
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_unit_database_route.py
           python3 scripts/test_pr_runtime_source.py
@@ -755,10 +755,6 @@ jobs:
           python3 scripts/test_develop_targeted_workflow.py
           python3 scripts/test_develop_ecosystem_final.py
           python3 scripts/test_targeted_gate_ref.py
-          # The trusted runner executes the small commit-receipt test suite.
-          git fetch --no-tags origin "${{ needs.pr_plan.outputs.controller_sha }}"
-          git show "${{ needs.pr_plan.outputs.controller_sha }}:scripts/pr-check-runner.py" > "$RUNNER_TEMP/pr-check-runner.py"
-          python3 "$RUNNER_TEMP/pr-check-runner.py" execute --check receipt-execution-tests --repository "$GITHUB_WORKSPACE"
 
   pr_validations:
     name: PR · Validation · ${{ matrix.check }}
@@ -849,7 +845,7 @@ jobs:
               python3 -m unittest scripts/test_pr_gate_plan.py ;;
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
-            ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests)
+            ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests|identity-provider-package-tests)
               if [ "$VALIDATION" = ci-executor-tests ]; then
                 git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
               fi
