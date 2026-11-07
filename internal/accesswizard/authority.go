@@ -73,16 +73,26 @@ func ResolveAssignment(manager *orgconfig.Manager, person, target, operation str
 	return policy.ResolveFinding(nil, finding), nil
 }
 
-// RevokeAssignment removes one owned profile by name through the accepted
+// RevokeAssignment removes the requested person's profile on the reviewed Target\n// through the accepted
 // orgconfig Manager and reports the result through the single production policy
 // authority. A revoked or unknown profile fails closed through the accepted
 // policy Adapter. The removal mutates only the owned profile set; it never
 // touches a foreign grant.
-func RevokeAssignment(manager *orgconfig.Manager, person, profileName string) error {
-	if manager == nil {
+func RevokeAssignment(manager *orgconfig.Manager, person, target string) error {
+	if manager == nil || strings.TrimSpace(person) == "" || strings.TrimSpace(target) == "" {
 		return ErrDenied
 	}
-	if _, err := manager.Revoke(strings.TrimSpace(profileName)); err != nil {
+	// The CLI selects a Target; Manager.Revoke accepts a profile name.
+	// The current manager indexes profiles by person. Never use a selected
+	// Target as a profile key or remove a profile belonging to another Target.
+	profile, err := manager.Get(strings.TrimSpace(person))
+	if err != nil {
+		return &wizardError{message: err.Error()}
+	}
+	if profile.Name != person || profile.Target != target {
+		return ErrDenied
+	}
+	if _, err := manager.Revoke(profile.Name); err != nil {
 		return &wizardError{message: err.Error()}
 	}
 	return nil
