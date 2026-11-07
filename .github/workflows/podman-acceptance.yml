@@ -18,6 +18,7 @@ on:
         type: string
   push:
     branches:
+      - develop
       - 'runtime-validation/podman/**'
 
 concurrency:
@@ -28,7 +29,34 @@ permissions:
   contents: read
 
 jobs:
+  select_develop:
+    name: Select native single-default impact
+    if: github.event_name == 'push' && github.ref_name == 'develop'
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.diff.outputs.required }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Classify changed control-plane sources
+        id: diff
+        shell: bash
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BEFORE" =~ ^[a-f0-9]{40}$ ]] || [[ "$BEFORE" =~ ^0{40}$ ]] || ! git cat-file -e "$BEFORE^{commit}"; then
+            required=true
+          else
+            required="$(git diff --name-only --diff-filter=ACMRT "$BEFORE" "$GITHUB_SHA" | bash scripts/ci-single-default-impact.sh)"
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+
   podman-quadlet:
+    needs: select_develop
+    if: ${{ always() && (github.event_name != 'push' || github.ref_name != 'develop' || needs.select_develop.outputs.required == 'true') }}
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
