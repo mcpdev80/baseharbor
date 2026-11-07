@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -23,6 +24,7 @@ func TestRemoteFreshApplyPureClientNeverBootstrapsLocalCore(t *testing.T) {
 	// remoteApplicationCoreFixtureEmpty leaves NO local Core installed.
 	ctx, core, node := remoteApplicationCoreFixtureEmpty(t)
 	ctx = machineNoninteractiveContext(withCoreAuthority(ctx, core))
+	ctx = withApplicationInput(ctx, strings.NewReader("y\n"))
 	ctx = targetsession.WithPool(ctx, targetsession.NewPool())
 	t.Setenv(application.ProviderScopeEnv("postgresql"), "application")
 	t.Chdir(t.TempDir())
@@ -42,6 +44,13 @@ func TestRemoteFreshApplyPureClientNeverBootstrapsLocalCore(t *testing.T) {
 	}
 
 	bootstrapCalls := 0
+	prereqCalls := 0
+	prevPrereq := applicationCorePrerequisite
+	applicationCorePrerequisite = func(c context.Context, r io.Reader, w io.Writer) error {
+		prereqCalls++
+		return prevPrereq(c, r, w)
+	}
+	t.Cleanup(func() { applicationCorePrerequisite = prevPrereq })
 	previous := applicationCoreBootstrap
 	applicationCoreBootstrap = func(context.Context, io.Reader, io.Writer, runtimeUpOptions) (coreinstallation.State, error) {
 		bootstrapCalls++
@@ -50,9 +59,11 @@ func TestRemoteFreshApplyPureClientNeverBootstrapsLocalCore(t *testing.T) {
 	t.Cleanup(func() { applicationCoreBootstrap = previous })
 
 	err = executeApplicationUpLifecycle(withAssumeYes(ctx, true), application.Store{}, []string{}, io.Discard, io.Discard)
-	// A workload-only pure-client must not route through a local Core bootstrap.
-	if bootstrapCalls != 0 {
-		t.Fatalf("fresh remote apply bootstrapped a local Core (%d calls); the head must route through the bound target's connector route", bootstrapCalls)
+	// A workload-only pure-client must not route through the local Core
+	// prerequisite at the fresh-apply production line and never through a
+	// bootstrap: the head must route through the bound target's connector.
+	if prereqCalls != 0 || bootstrapCalls != 0 {
+		t.Fatalf("fresh remote apply routed through the local Core (prerequisite calls=%d, bootstrap calls=%d); the head must route through the bound target's connector route", prereqCalls, bootstrapCalls)
 	}
 	// The local Core installation state must remain absent.
 	root, rerr := deployment.TargetStateRoot(core.Name)
