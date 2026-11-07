@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 )
 
@@ -75,6 +76,35 @@ func classifyOrgRegistryError(err error, location string) error {
 			ErrSourceUnavailable, ErrOrgSourceRegistryDefault, location)
 	}
 	return err
+}
+
+// IsNativeToolNotFound reports whether a native artifact-tool failure carries
+// the executable-file-not-found identity (possibly wrapped by an exec-error
+// chain), the one tool failure that means the host simply lacks the oras
+// binary rather than being unreachable. It is deliberately narrower than a
+// substring match on a redacted message: only this identity may ever be
+// reported as a missing oras installation, so an alias that hid it inside the
+// unavailable class would still fail the classification tests.
+func IsNativeToolNotFound(err error) bool {
+	return errors.Is(err, exec.ErrNotFound)
+}
+
+// ErrNativeToolNotFound is the actionable absence identity for a host that
+// simply lacks the native OCI artifact tool (oras). It unwraps to the
+// merely-unavailable class so every existing gate keeps its semantics, and
+// the identity itself is what callers classify on — never a generic "oras:
+// command failed". An oras that exists but fails for another reason (network,
+// denial) never carries this identity.
+var ErrNativeToolNotFound = fmt.Errorf("%w: the native OCI artifact tool 'oras' is not installed; install ORAS or provide the artifact through the container runtime", ErrSourceUnavailable)
+
+// classifyNativeToolFailure maps a raw exec failure from a native artifact
+// tool either to the actionable missing-oras identity or to the redacted
+// generic class. The raw stderr is never surfaced.
+func classifyNativeToolFailure(name string, err error) error {
+	if IsNativeToolNotFound(err) {
+		return ErrNativeToolNotFound
+	}
+	return fmt.Errorf("%s: command failed", name)
 }
 
 // isDefaultDockerHostLocation reports whether a configured OCI location is a

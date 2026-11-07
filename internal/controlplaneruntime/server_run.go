@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -169,6 +170,7 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		}
 		if deps.boundRuntimeClient != nil {
 			if err := deps.boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
+				log.Printf("runtime broker readiness failed: dependency=openbao error=%v", err)
 				writeNotReady(w, "openbao", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
@@ -176,6 +178,40 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
 				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=%v", err)
+				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
+				return
+			}
+		} else if cfg.boundRuntimeEnabled() {
+			// The broker process is bound but has no executor client. Two
+			// honest cases:
+			//
+			// (a) No executor URL at all: the CLI renders the executor
+			//     environment from a manifest gate and the in-container
+			//     client from a different gate; the published 0.4.26 edge
+			//     shows this asymmetry as a permanent not_ready on a
+			//     dependency that was never wired. A deliberate, explicit
+			//     legacy escape hatch (OFF by default) waives it when the
+			//     operator declares that this broker genuinely has no
+			//     executor dependency: BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED=true.
+			//     The switch is re-read on every probe so recovery needs no
+			//     restart, and it fabricates no check.
+			//
+			// (b) URL configured but no client: the mTLS material is missing
+			//     at startup — prepareServerDependencies would have failed
+			//     before serving, so this state is unreachable in production.
+			//     If it ever appears, fail closed and name it; a broker that
+			//     declares an executor dependency it cannot address must
+			//     never be waived into green.
+			if strings.TrimSpace(cfg.RuntimeExecutorURL) == "" {
+				if strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED")), "true") {
+					log.Printf("runtime broker readiness: dependency=runtime-executor waived by BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED=true (the broker received no runtime executor configuration)")
+				} else {
+					log.Printf("runtime broker readiness failed: dependency=runtime-executor error=the broker received no runtime executor configuration")
+					writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
+					return
+				}
+			} else {
+				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=the broker was configured with a runtime executor URL but no client could be built")
 				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}

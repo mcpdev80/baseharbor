@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -43,6 +44,16 @@ var errRegistrySourceDenied = errors.New("registry: endpoint refused the resolve
 
 // errClassDenied aliases the denial hard-rejection identity.
 var errClassDenied = errRegistrySourceDenied
+
+// ErrRegistryNativeToolMissing documents that the host lacks the native OCI
+// artifact tool (oras) needed to resolve a configured endpoint. It is a
+// fail-closed, actionable absence — not the generic "command failed" class:
+// the message names the missing binary and the remediation. It unwraps to
+// ErrRegistrySourceUnavailable so every existing class gate keeps its exact
+// semantics, and the identity itself is what the caller and the tests match
+// on. An oras that exists but fails for another reason (network, denial)
+// never carries this identity.
+var ErrRegistryNativeToolMissing = fmt.Errorf("%w: the native OCI artifact tool 'oras' is not installed; install ORAS or provide the runtime image through the container runtime", ErrRegistrySourceUnavailable)
 
 // DigestPattern matches an immutable sha256 OCI digest, the only identity this
 // adapter is willing to record as the resolved artifact version.
@@ -143,6 +154,13 @@ func (s RegistrySource) resolve(ctx context.Context, location, requested string)
 	ref := location + ":" + requested
 	out, runErr := s.run(ctx, "resolve", ref)
 	if runErr != nil {
+		if orgconfig.IsNativeToolNotFound(runErr) {
+			// The host simply lacks the oras binary. Report the actionable
+			// missing-tool identity instead of the generic redacted
+			// "oras: command failed"; it unwraps to the unavailable identity
+			// so every class gate behaves exactly as before.
+			return "", "", ErrRegistryNativeToolMissing
+		}
 		if isEndpointDenial(runErr) {
 			// Classify an endpoint refusal with both sentinels so the error
 			// still unwraps to ErrRegistrySourceUnavailable for callers while
@@ -188,6 +206,14 @@ func execArtifact(ctx context.Context, name string, args ...string) (string, err
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		// Preserve the executable-not-found identity through the redaction:
+		// only a plain non-zero exit becomes the generic class. Wrapping with
+		// %w keeps the raw stderr private while letting callers classify a
+		// missing tool (oras) with ErrRegistryNativeToolMissing.
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return "", fmt.Errorf("%w: %s: executable file not found in $PATH", err, name)
+		}
 		return "", exitStatusError(name, err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
@@ -334,6 +360,14 @@ func splitReference(reference string) (repository, tag string) {
 func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) error {
 	resolvedImage, err := resolveRegistrySource(ctx, location, requested)
 	if err != nil {
+		if errors.Is(err, ErrRegistryNativeToolMissing) {
+			// Fail closed with the actionable cause FIRST: a host without the
+			// oras binary gets the install instruction, never an opaque
+			// "oras: command failed", even when the mutable development
+			// opt-in is on. The opt-in below still governs the pull reference;
+			// this branch only names the resolve cause.
+			return fmt.Errorf("resolve development runtime image: %w", err)
+		}
 		if resolveUnavailable(err) && allowMutableDevelopmentRuntimeImage() {
 			// Explicit legacy development opt-in: pull the original tag
 			// reference. Class-gated: a public-default rejection and an

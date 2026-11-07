@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -211,8 +210,8 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	}
 	out, err := run(ctx, "oras", "resolve", ref)
 	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			return Resolution{}, Config{}, fmt.Errorf("%w: oras is required to resolve OCI organization sources; install ORAS or use Git/local/system distribution", ErrSourceUnavailable)
+		if IsNativeToolNotFound(err) {
+			return Resolution{}, Config{}, ErrNativeToolNotFound
 		}
 		return Resolution{}, Config{}, classifyOrgRegistryError(
 			fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err), ref)
