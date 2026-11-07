@@ -54,9 +54,19 @@ func TestServeStartUpPathNeverReceivesNilStartupContext(t *testing.T) {
 	// Broker path: a per-application runtime app is bound, so RuntimeAppName != "".
 	t.Setenv("BASEHARBOR_RUNTIME_APP_NAME", "runtime-app")
 	t.Setenv("BASEHARBOR_RUNTIME_ENVIRONMENT", "dev")
-	// No local installation target selected, so managementHostForServe resolves
-	// nil,nil and the durable-authority gate is skipped.
-	os.Unsetenv("BASEHARBOR_TARGET")
+	// A real local Target exists and its bootstrap lock is already held by
+	// another authority. This per-application broker must never attempt to
+	// acquire that lock; the regular management server still must.
+	configureTestTargetEmpty(t)
+	host, err := managementHostForServe(context.Background())
+	if err != nil || host == nil {
+		t.Fatalf("local management host not resolved: %v", err)
+	}
+	bootstrap, unlock, err := host.Verify()
+	if err != nil || !bootstrap || unlock == nil {
+		t.Fatalf("bootstrap owner setup failed: bootstrap=%t err=%v", bootstrap, err)
+	}
+	defer unlock()
 	t.Setenv("BASEHARBOR_CONNECTIVITY_RELAY_MODE", "false")
 	t.Setenv("BASEHARBOR_RUNTIME_EXECUTOR_MODE", "false")
 
