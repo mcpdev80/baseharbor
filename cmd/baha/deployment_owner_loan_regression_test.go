@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -459,5 +460,49 @@ func TestProductionOwnerLoanUnmarkedLocalStaysFailClosed(t *testing.T) {
 	isolatePodmanBootTarget(t, boot, prod)
 	if err := saveThroughApplySeam(t, prod, "podman-prod"); !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
 		t.Fatalf("unmarked local isolated target must stay fail-closed owner-missing without test provenance: %v", err)
+	}
+}
+
+// TestProductionOwnerLoanRealApplyRunnerStaysFailClosed drives the REAL
+// production apply command runner (executeApplicationApplyLifecycle — the exact
+// entry point runApplicationApplyLifecycle exposes) for a repository-sourced
+// application selected on a genuinely ownerless isolated local podman Target,
+// and asserts that BOTH the broken commit and the fix commit refuse with the
+// verbatim sentinel ErrDeploymentOwnerMissing.
+//
+// This is the fail-closed integration path: the real apply runner resolves the
+// effective Target through the CLI's OWN effective-target selection, and that
+// selection is byte-identical to the owner loan's boot-Target selection
+// (BASEHARBOR_TARGET -> persisted -> DefaultTarget -> single target -> local).
+// Setting BASEHARBOR_TARGET=iso makes the runner apply to iso while the loan
+// resolves the same boot Target, so boot == iso and the loan refuses. The real
+// runner therefore CANNOT grant for an ownerless isolated Target — the grant
+// can only come from a boot Target different from the requested one, which the
+// shared selection order never produces. This test pins that fail-closed
+// invariant; the grant behaviour is covered separately by
+// TestProductionOwnerLoanLocalIsolatedApplyPasses, which resolves the isolated
+// Target for `resolved` by hand while the loan's boot falls to the config
+// default (DefaultTarget=boot, boot != iso).
+func TestProductionOwnerLoanRealApplyRunnerStaysFailClosed(t *testing.T) {
+	const boot, iso = "p427-podman-boot", "p427-podman-iso"
+	// isolatePodmanBootTarget persists DefaultTarget=boot with a genuine boot
+	// installation and a protected-but-empty iso state root.
+	isolatePodmanBootTarget(t, boot, iso)
+	repoSourceForIsolatedApply(t, "podman-isolated")
+	// Point the real apply runner at the ownerless isolated Target.
+	t.Setenv("BASEHARBOR_TARGET", iso)
+	var out, errOut bytes.Buffer
+	err := executeApplicationApplyLifecycle(context.Background(), application.DefaultStore(), []string{}, &out, &errOut)
+	if !errors.Is(err, deployment.ErrDeploymentOwnerMissing) {
+		t.Fatalf("real CLI app apply for the ownerless isolated podman target must stay fail-closed with ErrDeploymentOwnerMissing, got: %v", err)
+	}
+	// The loan must never materialize a second installation.json: the boot
+	// installation stays the single durable owner (ADR 0021).
+	isoRoot, err := deployment.TargetStateRoot(iso)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Join(isoRoot, "runtime", "installation.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("real apply runner must not write an installation.json at the test target: err=%v", err)
 	}
 }
