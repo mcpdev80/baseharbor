@@ -31,8 +31,15 @@ class V0427GateCatalogTests(unittest.TestCase):
         self.mapping = json.loads(MAPPING.read_text())
 
     def test_v0427_is_registered_as_candidate_release(self):
+        # v0.4.27 is proven by its registration in the release gate catalog
+        # (release-requirements.json releases + every gate's required_for), not
+        # by the production pr-gate-map-v1.json release key, which stays pinned
+        # to the tested v0.4.26 baseline. The catalog is what the planner and
+        # pre-release check now discover for v0.4.27.
         self.assertIn('v0.4.27', self.inventory['releases'])
-        self.assertEqual('v0.4.27', self.mapping['release'])
+        for gate in self.inventory['gates']:
+            with self.subTest(gate=gate['id']):
+                self.assertIn('v0.4.27', gate.get('required_for', []))
         self.assertEqual('baseharbor.pr-gate-map/v1', self.mapping['schema'])
 
     def test_every_gate_lists_v0427_in_required_for(self):

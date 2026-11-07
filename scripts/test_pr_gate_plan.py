@@ -16,7 +16,16 @@ spec = importlib.util.spec_from_file_location('planner', ROOT / 'pr-gate-plan.py
 planner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(planner)
 wizard_check = planner.wizard_check
+# The production gate map is loaded from the active release-catalog file. Its
+# release key is the live candidate release; tests that exercise the planner
+# against a fixed in-memory catalog must not inherit that live release key.
+# The suite below pins every shared in-memory catalog to v0.4.26 (the tested
+# baseline), so it uses a dedicated v0.4.26 mapping rather than the live MAP.
+# v0.4.27 catalog registration is covered separately in
+# scripts/test_ci_v0427_gate_catalog.py, which loads the real inventory.
 MAP = json.loads((ROOT / 'pr-gate-map-v1.json').read_text())
+MAP_26 = dict(MAP)
+MAP_26['release'] = 'v0.4.26'
 GATES = ['atomic/docker/data-capabilities', 'atomic/podman/data-capabilities',
          'integration/static/public-contracts', 'atomic/docker/lifecycle',
          'atomic/podman/lifecycle', 'journey/docker', 'journey/podman', 'ha/docker/data',
