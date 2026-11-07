@@ -14,7 +14,7 @@ import sys
 
 def impact_plan(output):
     decoder = json.JSONDecoder()
-    for match in re.finditer(r"\\{", output):
+    for match in re.finditer(r"\{", output):
         try:
             candidate, _ = decoder.raw_decode(output[match.start():])
         except ValueError:
@@ -54,7 +54,7 @@ def apply(cli, target):
             approved = True
             print("Greenfield CI: explicitly acknowledged the current non-destructive add-only provider plan")
             continue
-        digest = re.search(r"(?m)^\\s*confirm-hash\\s+(\\S+)\\s*$", transcript)
+        digest = re.search(r"(?m)^\s*confirm-hash\s+(\S+)\s*$", transcript)
         if digest and not candidate_confirmed:
             args += ["--confirm-candidate", digest.group(1)]
             candidate_confirmed = True
