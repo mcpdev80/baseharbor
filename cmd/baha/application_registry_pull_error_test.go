@@ -32,9 +32,9 @@ func TestApplicationRegistrySourcePullErrorClassification(t *testing.T) {
 
 	const secret = "very-sensitive-registry-token"
 	tests := []struct {
-		name       string
-		pullErr    error
-		missing    bool
+		name    string
+		pullErr error
+		missing bool
 	}{
 		{
 			name:    "native oras executable missing",
