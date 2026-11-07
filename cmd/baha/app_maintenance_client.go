@@ -49,6 +49,11 @@ type applicationMaintenanceOptions struct {
 	FullReset    bool
 	Confirmed    bool
 	Now          time.Time
+	// Revision selects the durable replay channel: a positive revision asks the
+	// production lookup which operation this deployment committed at that
+	// revision, instead of submitting a new mutation. It is how a lost response
+	// resolves to the same durable operation.
+	Revision int
 }
 
 func parseApplicationMaintenanceArgs(args []string) (applicationMaintenanceOptions, error) {
@@ -147,6 +152,14 @@ func submitApplicationMaintenance(ctx context.Context, resolved resolvedApplicat
 	// transport or writes any durable window.
 	if !maintenanceSubmissionAllowed(ctx) {
 		return maintenanceSubmissionCancelled()
+	}
+	// The lost-response channel: re-submitting the revision the durable window
+	// already records resolves to that same durable operation — a replay answer,
+	// never a second mutation, and it works identically local and remote. It is
+	// checked before any route decision because a destroyed deployment has no
+	// route left: only its durable record remains.
+	if options.Revision > 0 {
+		return replayApplicationMaintenance(ctx, resolved, options, out)
 	}
 	if !hasRemoteApplicationTarget(resolved) {
 		// The authority binding comes first on the local home: a deployment nobody
@@ -257,7 +270,14 @@ func executeRemoteApplicationMaintenanceDestroy(ctx context.Context, resolved re
 	// destroy deletes the deployment record the way a direct teardown does, so a
 	// commit after teardown would fail. Roll the window back if the owner did not
 	// converge, so a failed remote destroy reports no completed recovery point.
+	// Reconcile the tombstone and the durable revision exactly like the local
+	// route: a re-submitted destroy whose window already records the operation
+	// is a replay of the retained record, and re-stamping the destroy revision
+	// must never fail the submission or duplicate the tombstone.
 	committed, err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, "")
+	if errors.Is(err, errMaintenanceOperationAlreadyRecorded) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -350,6 +370,12 @@ func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedAp
 			args = append(args, "--full-reset")
 		}
 		committed, err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, "")
+		if errors.Is(err, errMaintenanceOperationAlreadyRecorded) {
+			// The retained window already records this destroy: the durable
+			// outcome is already answerable, so the submission resolves to the
+			// record without a second teardown or a re-stamp.
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -373,6 +399,80 @@ func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedAp
 	default:
 		return applicationMaintenanceUnknownOperation(options.Operation)
 	}
+}
+
+// replayApplicationMaintenance answers one committed maintenance revision of the
+// selected deployment through the production revision lookup, local and remote
+// alike. The lookup reads the durable window and its history beneath the
+// deployment root; after a destroy tore that root down it reads the committed
+// tombstone instead. The route mutates nothing and never resolves a deployment
+// from a client path, so the same revision always answers the same durable
+// record and a lost response resolves to the operation it was.
+func replayApplicationMaintenance(ctx context.Context, resolved resolvedApplication,
+	options applicationMaintenanceOptions, out io.Writer) error {
+	if !maintenanceSubmissionAllowed(ctx) {
+		return maintenanceSubmissionCancelled()
+	}
+	record, found, err := maintenanceRevisionReplay(resolved, options.Revision)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return machine.NewError(machine.ErrorValidationFailed,
+			fmt.Sprintf("The selected deployment has no durable maintenance record at revision %d.", options.Revision),
+			"Inspect the durable window with baha app maintenance <NAME> --operation <backup|restore|update|destroy>; nothing was replayed.", false)
+	}
+	if options.Operation != "" && options.Operation != record.Operation {
+		return machine.NewError(machine.ErrorValidationFailed,
+			fmt.Sprintf("Revision %d records %s, not %s.", record.Revision, record.Operation, options.Operation),
+			"Replay the revision with the operation it durably records.", false)
+	}
+	payload := maintenanceReplayView{
+		ContractVersion: record.ContractVersion,
+		ApplicationID:   record.ApplicationID,
+		DeploymentID:    record.DeploymentID,
+		Target:          record.Target,
+		Environment:     record.Environment,
+		Operation:       record.Operation,
+		Revision:        record.Revision,
+		Digest:          record.Digest,
+		ArchiveBinding:  record.ArchiveBinding,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode maintenance replay: %w", err)
+	}
+	_, err = fmt.Fprintf(out, "%s\n", encoded)
+	return err
+}
+
+// maintenanceRevisionReplay is the seam onto the production revision lookup: it
+// resolves the deployment's state root the same way every other durable
+// maintenance route does and asks the authority which operation it committed at
+// one revision. The commit path itself runs the same lookup, so a replay of a
+// committed revision never re-commits or re-stamps anything.
+//
+// It deliberately does NOT reload the deployment authority first: a successful
+// destroy removed the deployment record, and a replay must answer the destroyed
+// revision precisely because the record is gone. The durable binding itself is
+// validated fail-closed by the lookup it calls.
+var maintenanceRevisionReplay = func(resolved resolvedApplication, revision int) (application.MaintenanceAuthorityRecord, bool, error) {
+	return application.LoadMaintenanceRevision(resolved.stateRoot(), revision)
+}
+
+// maintenanceReplayView is the machine-safe answer of one replayed revision:
+// identity, operation, revision and bindings — never a server path and never
+// secret material.
+type maintenanceReplayView struct {
+	ContractVersion string `json:"contract_version"`
+	ApplicationID   string `json:"application_id"`
+	DeploymentID    string `json:"deployment_id"`
+	Target          string `json:"target"`
+	Environment     string `json:"environment"`
+	Operation       string `json:"operation"`
+	Revision        int    `json:"revision"`
+	Digest          string `json:"digest"`
+	ArchiveBinding  string `json:"archive_binding,omitempty"`
 }
 
 // applicationMaintenanceAuthority binds a submission to the installation record
@@ -504,8 +604,65 @@ func maintenanceTombstonePath(resolved resolvedApplication) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tombstoneDir := filepath.Join(root, "targets", resolved.Target.Name, "maintenance")
-	return filepath.Join(tombstoneDir, resolved.DeploymentIdentity.DeploymentID+".json"), nil
+	return maintenanceTombstonePathFor(root, resolved.Target.Name, resolved.DeploymentIdentity.DeploymentID), nil
+}
+
+// maintenanceTombstonePathFor is the same layout resolved from a data root and
+// an explicit identity: the production replay reader and the writer must agree
+// on exactly one path, so neither derives the layout a second time.
+func maintenanceTombstonePathFor(dataRoot, target, deploymentID string) string {
+	tombstoneDir := filepath.Join(dataRoot, "targets", target, "maintenance")
+	return filepath.Join(tombstoneDir, deploymentID+".json")
+}
+
+func init() {
+	// Wire the production replay reader: the destroy route stamps a durable
+	// tombstone that DeleteDeploymentRecord does not remove, and the revision
+	// lookup below the (now gone) deployment root reads it back. Registration
+	// in init means every production route — commit-time replay included —
+	// answers a destroyed deployment from its tombstone, not only a helper a
+	// test calls.
+	application.SetMaintenanceTombstoneReplay(maintenanceTombstonePathForTarget, maintenanceStateRootIsOwned)
+}
+
+// maintenanceTombstonePathForTarget is the registered resolver: it addresses
+// the tombstone namespace for one (target, deploymentID) identity under the
+// installation data root.
+func maintenanceTombstonePathForTarget(target, deploymentID string) string {
+	root, err := deployment.DataRoot()
+	if err != nil {
+		return ""
+	}
+	return maintenanceTombstonePathFor(root, target, deploymentID)
+}
+
+// maintenanceStateRootIsOwned reports whether a state root is the protected
+// state directory of a deployment this installation owns: it must live under
+// the installation data root, and either its deployment record (live or
+// incomplete root) or its durable maintenance tombstone must exist. An
+// arbitrary caller path is therefore never answered from a tombstone.
+//
+// It must not read a deployment-record *file*: DeleteDeploymentRecord removes
+// the whole deployment root, so the record file is exactly what a destroyed
+// deployment no longer has. Ownership lives in the installation record of the
+// Target (the one-installation-owner rule), which survives teardown.
+func maintenanceStateRootIsOwned(stateRoot, target, deploymentID string) bool {
+	dataRoot, err := deployment.DataRoot()
+	if err != nil || !filepath.IsAbs(stateRoot) || filepath.Clean(stateRoot) != stateRoot {
+		return false
+	}
+	prefix := filepath.Join(dataRoot, "targets") + string(filepath.Separator)
+	rest, ok := strings.CutPrefix(stateRoot, prefix)
+	if !ok || rest == "" || strings.Contains(rest, "..") {
+		return false
+	}
+	if deployment.ValidateTargetName(target) != nil || deployment.ValidateDeploymentID(deploymentID) != nil {
+		return false
+	}
+	if err := deployment.VerifyDeploymentOwner(target, filepath.Join(dataRoot, "targets", target, "runtime"), deploymentID); err != nil {
+		return false
+	}
+	return true
 }
 
 // stampMaintenanceTombstone writes a durable tombstone copy of the committed
