@@ -2682,3 +2682,81 @@ class CurrentProductSeamRoutingTests(unittest.TestCase):
         result = planner.plan(diff(paths('cmd/baha/app_backup_restore_integration_test.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/docker/backup-restore', 'atomic/podman/backup-restore'], result['selected_gates'])
+
+
+class CLISelectedCheckDeduplicationTests(unittest.TestCase):
+    def test_mixed_cli_unit_and_source_runs_guided_only_through_package(self):
+        changes = paths('cmd/baha/deployment_record.go',
+                        'cmd/baha/app_context_incomplete_test.go',
+                        'internal/deployment/deployment_store.go')
+        result = planner.plan(diff(changes), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual(1, ids.count('cli-package-tests'))
+        self.assertTrue({'cli-vet', 'cli-build', 'source-contracts'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_test_only_change_keeps_one_package_owner_without_native_suite(self):
+        result = planner.plan(diff(paths('cmd/baha/new_regression_test.go')), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual([], result['selected_gates'])
+
+    def test_guided_check_is_retained_when_no_full_package_selected(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertNotIn('cli-package-tests', ids)
+        self.assertIn('cli-guided-tests', ids)
+        self.assertTrue({'cli-vet', 'cli-build'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_deduplication_does_not_change_unresolved_coverage_or_gate_scope(self):
+        result = planner.plan(
+            diff(paths('cmd/baha/new_regression_test.go',
+                       'internal/unmapped/production.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+
+
+class IdentityProviderPackageRoutingTests(unittest.TestCase):
+    def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
+        for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
+                         'internal/identityprovider/keycloak_files_test.go'):
+            result = planner.plan(diff(paths(filename)), REQ, MAP,
+                                  conservative_fallback=True)
+            checks = {row['id'] for row in result['required_validation_checks']}
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertFalse(result.get('fallback_used', False))
+            self.assertEqual([], result['selected_gates'])
+            self.assertIn('identity-provider-package-tests', checks)
+            self.assertFalse({'go-unit-tests', 'go-build', 'go-vet'} & checks)
+
+    def test_identity_implementation_requires_native_lifecycle_both_runtimes(self):
+        result = planner.plan(
+            diff(paths('internal/identityprovider/keycloak_core_sql.go')),
+            REQ, MAP, conservative_fallback=True,
+        )
+        self.assertEqual('resolved', result['coverage_status'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'identity-provider-package-tests', 'source-contracts',
+                         'cli-vet', 'cli-build'} <= checks)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_unrelated_unknown_code_remains_conservative_fallback(self):
+        result = planner.plan(diff(paths('internal/newly_unknown/feature.go')), REQ, MAP,
+                              conservative_fallback=True)
+        self.assertTrue(result['fallback_used'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
+        self.assertNotIn('identity-provider-package-tests', checks)

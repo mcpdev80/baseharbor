@@ -79,6 +79,11 @@ BROKER_PACKAGE_CHECKS = [{'id': 'broker-package-tests', 'owner': 'runtime broker
 CLI_PACKAGE_CHECKS = [{'id': 'cli-package-tests', 'owner': 'cmd/baha package tests',
     'command': 'go test ./cmd/baha -count=1'}]
 
+IDENTITY_PROVIDER_CHECKS = [
+    {'id': 'identity-provider-package-tests', 'owner': 'Keycloak and Identity provider unit contract',
+     'command': 'python3 scripts/pr-check-runner.py execute --check identity-provider-package-tests --repository .'},
+]
+
 RUNTIME_PROVIDER_CHECKS = [
     {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
      'command': 'go test ./internal/runtime/... ./internal/health ./internal/providers/runtime/podman -count=1'},
@@ -1403,6 +1408,15 @@ def targeted_plan(diff, requirements, mapping, repository='.',
         elif path in RESOLVER_ROUTING_REVIEWED:
             area = 'resolver-routing-resolved'
             require(RESOLVER_CHECKS)
+        elif path.startswith('internal/identityprovider/') and path.endswith('.go'):
+            area = 'identity-provider-package'
+            require(IDENTITY_PROVIDER_CHECKS)
+            # Test-only additions execute the complete Identity package without
+            # triggering unrelated source contracts or the full Go fallback.
+            # Shared runtime/SQL dependencies retain native integration gates.
+            if not path.endswith('_test.go'):
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
             area = 'runtime-package'
             require(RUNTIME_PROVIDER_CHECKS)
@@ -1521,13 +1535,31 @@ CONSERVATIVE_CHECKS = [
 ]
 
 
+def deduplicate_cli_package_validations(result):
+    """One full CLI package run covers its Guided test subset at the same SHA.
+
+    Keep the small Guided check when the full package is not selected. Only
+    eliminate a test-subset execution, never independent format/vet/build,
+    runtime-native, or security validation owners.
+    """
+    ids = {check['id'] for check in result['required_validation_checks']}
+    if not {'cli-package-tests', 'cli-guided-tests'} <= ids:
+        return result
+    result = dict(result)
+    result['required_validation_checks'] = [
+        check for check in result['required_validation_checks']
+        if check['id'] != 'cli-guided-tests'
+    ]
+    return result
+
+
 def plan(diff, requirements, mapping, repository='.', context_repository=None,
          context_target_branch=None, *, conservative_fallback=False):
     """Try targeted selection; production CI tests valid unknown impact broadly."""
     result = targeted_plan(diff, requirements, mapping, repository,
                            context_repository, context_target_branch)
     if not conservative_fallback or result['coverage_status'] == 'resolved':
-        return result
+        return deduplicate_cli_package_validations(result)
     valid, _ = validated_diff(diff)
     reasons = result['unresolved_coverage']
     invalid = ('invalid diff-base', 'diff-base requires', 'invalid changed path',
@@ -1538,14 +1570,24 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
             or context_repository not in (None, 'mcpdev80/baseharbor')
             or context_target_branch not in (None, 'develop')
             or any(reason.startswith(invalid) for reason in reasons)):
-        return result
+        return deduplicate_cli_package_validations(result)
     paths = [change[key] for change in diff['changes']
              for key in ('path', 'old_path', 'new_path') if key in change]
     if not paths:
-        return result
+        return deduplicate_cli_package_validations(result)
     checks = {row['id']: row for row in result['required_validation_checks']}
     for row in CONSERVATIVE_CHECKS:
         checks[row['id']] = row
+    # The fallback's full Go test/vet/build owners subsume these exact narrow
+    # package commands on the same candidate. Keep checks with extra runtime
+    # fixtures or explicit test assertions (for example openbao-package-tests
+    # and runtime-provider-package-tests) independently selected.
+    subsumed = {
+        'cli-package-tests', 'cli-guided-tests', 'source-contracts',
+        'capability-package-tests', 'cli-vet', 'cli-build',
+    }
+    for identifier in subsumed:
+        checks.pop(identifier, None)
     if any(path.startswith('internal/openbao/') for path in paths):
         for row in OPENBAO_CHECKS:
             checks[row['id']] = row
@@ -1557,13 +1599,13 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
                  if result['release'] in gate['required_for']}
     if gates - available:
         result['unresolved_coverage'].append('fallback requires unavailable runtime checks')
-        return result
+        return deduplicate_cli_package_validations(result)
     result.update(coverage_status='resolved', unresolved_coverage=[], broad_required=False,
                   fallback_used=True, fallback_reasons=reasons,
                   selected_gates=sorted(gates),
                   required_validation_checks=[checks[key] for key in sorted(checks)])
     result['reasons'].append('Unknown narrow coverage selects normal broad unit/vet/build checks and applicable runtime lifecycles.')
-    return result
+    return deduplicate_cli_package_validations(result)
 
 
 def main():
