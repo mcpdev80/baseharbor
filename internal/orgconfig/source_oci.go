@@ -155,6 +155,12 @@ var ErrNativeToolNotFound = fmt.Errorf("%w: the native OCI artifact tool 'oras' 
 // classifyNativeToolFailure maps a raw exec failure from a native artifact
 // tool either to the actionable missing-oras identity or to the redacted
 // generic-unavailable class. The raw stderr is never surfaced.
+// ClassifyNativeToolFailure is shared by native OCI resolution and the runtime
+// image pull path. It returns only a sanitized error class, never raw stderr.
+func ClassifyNativeToolFailure(name string, err error) error {
+	return classifyNativeToolFailure(name, err)
+}
+
 func classifyNativeToolFailure(name string, err error) error {
 	if IsNativeToolNotFound(err) {
 		return ErrNativeToolNotFound
