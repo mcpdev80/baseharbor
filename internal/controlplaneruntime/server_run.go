@@ -24,10 +24,12 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
+	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeapidocs"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
+	"github.com/mcpdev80/baseharbor/internal/runtimeresourceapi"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
@@ -169,6 +171,7 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		}
 		if deps.boundRuntimeClient != nil {
 			if err := deps.boundRuntimeClient.Check(checkCtx, cfg.RuntimeCredentialsFile); err != nil {
+				log.Printf("runtime broker readiness failed: dependency=openbao error=%v", err)
 				writeNotReady(w, "openbao", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
@@ -176,6 +179,27 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		if deps.boundExecutorClient != nil {
 			if err := deps.boundExecutorClient.Check(checkCtx); err != nil {
 				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=%v", err)
+				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
+				return
+			}
+		} else if cfg.boundRuntimeEnabled() {
+			// The broker process is bound but no executor client was built.
+			// The missing client is optional ONLY when the valid broker mounts
+			// show that this broker genuinely has no runtime-executor
+			// dependency: the executor environment and the in-container
+			// client are rendered from the same valid broker mounts and agree
+			// (no executor URL configured). That is the documented default
+			// shape (e.g. a secrets-only broker), and /readyz must report
+			// READY from the dependencies that exist, never a blanket 503.
+			//
+			// Any disagreement IS a genuinely broken required dependency:
+			// a mounted permissions.json that grants a capability the broker
+			// cannot route without the executor (bound_runtime.go requires it
+			// for every served runtime call) while no executor URL was
+			// configured, or a configured URL whose client could not be
+			// built. Both stay fail-closed RED and name runtime-executor.
+			if executorDependencyRequired(cfg) {
+				log.Printf("runtime broker readiness failed: dependency=runtime-executor error=%s", executorDependencyReason(cfg))
 				writeNotReady(w, "runtime-executor", cfg.RuntimeBuildVersion, cfg.RuntimeBuildCommit)
 				return
 			}
@@ -193,6 +217,53 @@ func registerHealthHandlers(mux *http.ServeMux, cfg Config, deps serverDependenc
 		}
 		_ = json.NewEncoder(w).Encode(response)
 	})
+}
+
+// brokerRequiresExecutor reports whether the broker's valid mounted
+// configuration declares the shared runtime executor as a dependency: the
+// executor URL is configured, or the mounted permissions projection grants at
+// least one runtime capability whose operations the broker cannot serve
+// in-process (everything except the metrics provider, see bound_runtime.go).
+// This is the same authority the request router uses, so readiness and
+// serving agree on whether runtime-executor is a required dependency. The
+// check runs on every probe because the CLI renders the executor environment
+// from a manifest gate and the in-container client from a different one; the
+// published 0.4.26 edge image showed that asymmetry as a permanent
+// not_ready. An unreadable permissions projection needs no executor of its
+// own: Config.Validate has already refused to start the broker without the
+// mount, so readiness never invents a dependency from an invalid file.
+func brokerRequiresExecutor(cfg Config) bool {
+	if strings.TrimSpace(cfg.RuntimeExecutorURL) != "" {
+		return true
+	}
+	authorizer, err := runtimeresourceapi.NewStaticAuthorizer(cfg.RuntimeAppName, cfg.RuntimePermissionsFile)
+	if err != nil {
+		return false
+	}
+	for capabilityName := range authorizer.Capabilities() {
+		if capabilityName != metricsprovider.RuntimeCapabilityV1 {
+			return true
+		}
+	}
+	return false
+}
+
+// executorDependencyRequired reports whether the runtime-executor is a
+// required dependency of this bound broker even though no client was built.
+// It is true when the mounted configuration declares the dependency (a
+// configured executor URL) or the permissions grant capabilities that only
+// the executor can serve, while no client exists to address it.
+func executorDependencyRequired(cfg Config) bool {
+	return brokerRequiresExecutor(cfg)
+}
+
+// executorDependencyReason names, in the log, why the missing executor client
+// blocks readiness.
+func executorDependencyReason(cfg Config) string {
+	if strings.TrimSpace(cfg.RuntimeExecutorURL) != "" {
+		return "the broker was configured with a runtime executor URL but no client could be built"
+	}
+	return "the mounted runtime permissions grant capabilities that require the runtime executor, but no executor was configured"
 }
 
 type connectorEnrollmentProvider interface {

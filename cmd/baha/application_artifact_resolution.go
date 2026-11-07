@@ -362,6 +362,10 @@ func ResolveWorkloadArtifact(ctx context.Context, location, requested string) (A
 func ResolveAndPullWorkloadArtifact(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) (ArtifactIdentity, error) {
 	identity, err := ResolveWorkloadArtifact(ctx, location, requested)
 	if err != nil {
+		// resolveUnavailable excludes the unverifiable identity
+		// (errClassUnverifiable) as a hard rejection, so an OCI source image
+		// that resolved but could not be verified to an immutable digest
+		// never reaches the mutable fallback, not even with the opt-in on.
 		if resolveUnavailable(err) && allowMutableDevelopmentRuntimeImage() {
 			// Explicit operator development opt-in shared with the registry
 			// authority: class-gated, so a denial or public-default rejection
