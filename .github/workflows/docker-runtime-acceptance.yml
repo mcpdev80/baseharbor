@@ -98,7 +98,7 @@ jobs:
         run: bash scripts/ci-runtime-reset.sh docker
 
   docker-runtime:
-    if: ${{ github.ref_name != 'develop' && (github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))) }}
+    if: ${{ (github.event_name != 'push' || github.ref_name != 'develop') && (github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))) }}
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       GOTOOLCHAIN: local
