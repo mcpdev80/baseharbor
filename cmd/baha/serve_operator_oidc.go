@@ -18,12 +18,12 @@ func bindServeToOwnedOperatorOIDC(cfg *controlplaneruntime.Config) error {
 	if cfg == nil {
 		return errors.New("operator API configuration is unavailable")
 	}
-	if cfg.RuntimeAppName != "" || !cfg.ConnectorEnrollmentEnabled {
+	if cfg.RuntimeAppName != "" || (!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) {
 		return nil
 	}
 	target := strings.TrimSpace(cfg.ConnectorAuthorityTarget)
 	if target == "" {
-		return errors.New("connector enrollment requires an owned authority target")
+		return errors.New("enrollment requires an owned authority target")
 	}
 	environment := strings.TrimSpace(os.Getenv("BASEHARBOR_OPERATOR_ENVIRONMENT"))
 	if environment == "" {
@@ -34,7 +34,7 @@ func bindServeToOwnedOperatorOIDC(cfg *controlplaneruntime.Config) error {
 		return fmt.Errorf("resolve Core operator OIDC boundary: %w", err)
 	}
 	if !found {
-		return fmt.Errorf("operator OIDC is not configured for Core target %q and environment %q; run the first-owner onboarding before enabling node enrollment", target, environment)
+		return fmt.Errorf("operator OIDC is not configured for Core target %q and environment %q; run first-owner onboarding before enabling enrollment", target, environment)
 	}
 	return matchOwnedOperatorOIDC(cfg, owned)
 }
