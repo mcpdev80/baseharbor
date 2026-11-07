@@ -101,10 +101,9 @@ func TestKeycloakSingleNativeSQLInCI(t *testing.T) {
 			"keycloak-db-member-3", "keycloak-db-etcd-1",
 			"keycloak-db-etcd-2", "keycloak-db-etcd-3",
 		} {
-			matches := service == candidate || service == "" && (
-				name == candidate || strings.Contains(name, "-"+candidate+"-") ||
-					strings.HasSuffix(name, "-"+candidate) ||
-					strings.HasPrefix(name, candidate+"-"))
+			matches := service == candidate || service == "" && (name == candidate || strings.Contains(name, "-"+candidate+"-") ||
+				strings.HasSuffix(name, "-"+candidate) ||
+				strings.HasPrefix(name, candidate+"-"))
 			if !matches {
 				continue
 			}
