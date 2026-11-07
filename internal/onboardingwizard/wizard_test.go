@@ -173,3 +173,34 @@ func TestImportBundleAndProfileAreDistinctAndExclusive(t *testing.T) {
 		t.Fatalf("unexpected decision: %+v", dec)
 	}
 }
+
+func TestFirstOwnerWizardDefaultCustomAndCancel(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		slug string
+		name string
+		cancel bool
+	}{
+		{"owner\ndefault\nyes\n", "baseharbor", "BaseHarbor", false},
+		{"owner\ncustom\nacme\nAcme GmbH\nyes\n", "acme", "Acme GmbH", false},
+		{"owner\ndefault\nno\n", "", "", true},
+	} {
+		var output strings.Builder
+		decision, err := Run(context.Background(), Input{
+			In: strings.NewReader(test.input),
+			Out: &output,
+			Discover: func(context.Context) (InstallState, error) {
+				return InstallState{HasInstallation: true, Targets: []string{"local"}}, nil
+			},
+		})
+		if test.cancel {
+			if !errors.Is(err, ErrCancel) {
+				t.Fatalf("cancel must leave Core untouched: %v", err)
+			}
+			continue
+		}
+		if err != nil || decision.Mode != ModeOwner || decision.TenantSlug != test.slug || decision.TenantName != test.name {
+			t.Fatalf("owner wizard decision: %+v, %v\n%s", decision, err, output.String())
+		}
+	}
+}

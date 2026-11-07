@@ -381,6 +381,10 @@ func commitOnboardingDecision(ctx context.Context, decision onboardingwizard.Dec
 		return err
 	}
 	switch decision.Mode {
+	case onboardingwizard.ModeOwner:
+		// Review consent precedes the only effect: the existing owner-only
+		// Keycloak PKCE login and atomic initial tenant transaction.
+		return runOnboardInitialTenant(ctx, []string{"--tenant-slug", decision.TenantSlug, "--tenant-name", decision.TenantName}, out, out)
 	case onboardingwizard.ModeRemove:
 		// Local-only cleanup: removal of the local connection cache only. It
 		// cannot revoke or delete anything remote by construction.

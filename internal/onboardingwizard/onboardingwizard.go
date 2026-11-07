@@ -40,12 +40,14 @@ const (
 	// revocation is a distinct explicit action owned by device-lifecycle;
 	// local cleanup never deletes or revokes the installation.
 	ModeRemove Mode = "remove"
+	// ModeOwner configures the first Core operator and tenant through OIDC.
+	ModeOwner Mode = "owner"
 )
 
 // Valid reports whether the mode is one of the distinct intents.
 func (m Mode) Valid() bool {
 	switch m {
-	case ModeBootstrap, ModeAttach, ModeImport, ModeRemove:
+	case ModeBootstrap, ModeAttach, ModeImport, ModeRemove, ModeOwner:
 		return true
 	}
 	return false
@@ -123,6 +125,8 @@ type Decision struct {
 	Persistence  Persistence
 	ImportBundle string
 	ImportFile   string
+	TenantSlug   string
+	TenantName   string
 }
 
 // Validate enforces the decision invariants independently of the controller.
@@ -131,6 +135,10 @@ func (d Decision) Validate() error {
 		return fmt.Errorf("%w: unknown mode %q", ErrInvalidChoice, d.Mode)
 	}
 	switch d.Mode {
+	case ModeOwner:
+		if strings.TrimSpace(d.TenantSlug) == "" || strings.TrimSpace(d.TenantName) == "" {
+			return fmt.Errorf("%w: first-owner tenant name and slug are required", ErrIncompleteConfiguration)
+		}
 	case ModeBootstrap:
 		if d.App != AppExisting && d.App != AppNew {
 			return fmt.Errorf("%w: bootstrap needs an explicit existing-or-new application", ErrInvalidChoice)
@@ -244,6 +252,9 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 		entries["new"] = "create a new BaseHarbor installation here"
 		def = "new"
 	}
+	if state.HasInstallation {
+		entries["owner"] = "initialize or verify Core operator and tenant with OIDC"
+	}
 	entries["import"] = "join with a device bundle or team profile you received"
 	entries["remove"] = "remove only this workstation's local connection (nothing remote changes)"
 	fmt.Fprintln(out, "What do you want to do?")
@@ -252,6 +263,8 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 		return Decision{}, err
 	}
 	switch choice {
+	case "owner":
+		return askOwnerTenant(ctx, reader, out)
 	case "new":
 		return askBootstrap(ctx, reader, out, state)
 	case "import":
@@ -339,6 +352,30 @@ func askBootstrap(ctx context.Context, reader *bufio.Reader, out io.Writer, stat
 	return Decision{Mode: ModeBootstrap, App: AppIntent(app), Persistence: persist}, nil
 }
 
+// Owner setup is one default choice or two optional name fields; the actual
+// OIDC provider setup stays in the existing owner-only commit authority.
+func askOwnerTenant(ctx context.Context, reader *bufio.Reader, out io.Writer) (Decision, error) {
+	choice, err := askChoice(ctx, reader, out, map[string]string{
+		"default": "recommended baseharbor tenant; UUID generated automatically",
+		"custom":  "choose tenant slug and display name",
+	}, "default")
+	if err != nil {
+		return Decision{}, err
+	}
+	decision := Decision{Mode: ModeOwner, TenantSlug: "baseharbor", TenantName: "BaseHarbor"}
+	if choice == "custom" {
+		decision.TenantSlug, err = ask(ctx, reader, out, "Tenant slug", decision.TenantSlug)
+		if err != nil {
+			return Decision{}, err
+		}
+		decision.TenantName, err = ask(ctx, reader, out, "Tenant display name", decision.TenantName)
+		if err != nil {
+			return Decision{}, err
+		}
+	}
+	return decision, nil
+}
+
 func askImport(ctx context.Context, reader *bufio.Reader, out io.Writer) (Decision, error) {
 	kind, err := askChoice(ctx, reader, out, map[string]string{
 		"bundle":  "one trusted device enrollment bundle (sensitive input)",
@@ -413,6 +450,9 @@ func reviewLines(d Decision) []string {
 	lines := []string{"mode:    " + string(d.Mode)}
 	if d.Target != "" {
 		lines = append(lines, "target:  "+d.Target)
+	}
+	if d.Mode == ModeOwner {
+		lines = append(lines, "tenant:  "+d.TenantSlug+" ("+d.TenantName+")", "identity: verified operator OIDC / PKCE")
 	}
 	if d.App != "" {
 		lines = append(lines, "app:     "+string(d.App))
