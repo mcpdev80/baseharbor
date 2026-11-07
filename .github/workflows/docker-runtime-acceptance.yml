@@ -36,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       required: ${{ steps.diff.outputs.required }}
+      identity_required: ${{ steps.diff.outputs.identity_required }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -50,11 +51,56 @@ jobs:
           set -euo pipefail
           if [[ ! "$BEFORE" =~ ^[a-f0-9]{40}$ ]] || [[ "$BEFORE" =~ ^0{40}$ ]] || ! git cat-file -e "$BEFORE^{commit}"; then
             required=true
+            identity_required=true
           else
-            required="$(git diff --name-only --diff-filter=ACDMRT "$BEFORE" "$GITHUB_SHA" | bash scripts/ci-single-default-impact.sh)"
+            changed="$(git diff --name-only --diff-filter=ACDMRT "$BEFORE" "$GITHUB_SHA")"
+            required="$(printf '%s\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
+            identity_required="$(printf '%s\n' "$changed" | bash scripts/ci-keycloak-single-impact.sh)"
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "identity_required=$identity_required" >> "$GITHUB_OUTPUT"
 
+
+  keycloak_single_native:
+    name: Native Keycloak+SQL single · Docker
+    needs: select_develop
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.identity_required == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_KEYCLOAK_SINGLE_NATIVE_ACCEPTANCE: "1"
+      DOCKER_CONTEXT: ""
+    steps:
+      - name: Checkout exact develop source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify native Keycloak and dedicated PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          go test -p 1 ./internal/identityprovider -run '^TestKeycloakSingleNativeSQLInCI$' -count=1 -timeout 16m -json | tee "$RUNNER_TEMP/keycloak-single.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ['RUNNER_TEMP']) / 'keycloak-single.jsonl').read_text().splitlines() if line.startswith('{')]
+          test = 'TestKeycloakSingleNativeSQLInCI'
+          if any(event.get('Action') in ('skip', 'fail') for event in events):
+              raise SystemExit('Required native Keycloak SQL acceptance skipped or failed')
+          if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('Required native Keycloak SQL acceptance did not execute')
+          PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh docker
 
   single_default_native:
     name: Native single-default · Docker
