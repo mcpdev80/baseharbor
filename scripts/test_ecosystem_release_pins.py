@@ -164,6 +164,29 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
                 env={**os.environ, 'JOB_RESULTS':json.dumps(candidate)}, capture_output=True, text=True)
             self.assertEqual(completed.returncode == 0, result == 'success', completed.stderr)
 
+    def test_v0427_greenfield_is_required_and_never_skip_green(self):
+        finalizer = self.jobs['checks']['steps'][0]['run']
+        outputs = {key: '0' for key in ['adoption_count', 'static_count', 'light_docker_count',
+                   'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
+                   'ha_docker_count', 'ha_podman_count', 'journey_count']}
+        outputs['integration'] = '[]'
+        outputs['tag'] = 'v0.4.27'
+        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates',
+                    'v0421_ha_groups', 'greenfield_native'}
+        jobs = {key: {'result': 'success' if key in required else 'skipped'}
+                for key in self.jobs['checks']['needs']}
+        jobs['source']['outputs'] = outputs
+        for result in ['success', 'failure', 'cancelled', 'skipped', None]:
+            candidate = copy.deepcopy(jobs)
+            if result is None:
+                candidate.pop('greenfield_native')
+            else:
+                candidate['greenfield_native']['result'] = result
+            completed = subprocess.run(['bash', '-euo', 'pipefail', '-c', finalizer],
+                env={**os.environ, 'JOB_RESULTS': json.dumps(candidate), 'ONLY_GATES': ''},
+                capture_output=True, text=True)
+            self.assertEqual(completed.returncode == 0, result == 'success', completed.stderr)
+
     def test_release_executes_checks_on_the_exact_tag_instead_of_reusing_old_runs(self):
         release = yaml.safe_load((self.source / '.github/workflows/release.yml').read_text())
         jobs = release['jobs']
