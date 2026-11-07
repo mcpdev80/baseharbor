@@ -27,6 +27,15 @@ import (
 )
 
 func runRepositoryFixtureApply(ctx context.Context, args []string, out *bytes.Buffer) error {
+	// The CI gate already reports host memory evidence for the selected runtime;
+	// a shared runtime host whose free memory dips below the preflight's tight
+	// safety margin would otherwise fail the fixture apply with a typed
+	// host_memory_tight refusal before any runtime mutation. The fixture run is
+	// a bounded, isolated lifecycle, so it waives the memory preflight with the
+	// same production --skip-memory-preflight override the CLI accepts, keeping
+	// the gate on deterministic provider effects instead of a flaky host gauge.
+	// Only the fixture apply/app up paths are affected; no other caller is.
+	ctx = withMemoryPreflightOverride(ctx, true)
 	err := runRepositoryFixtureApplyCall(ctx, args, func(callCtx context.Context) error {
 		out.Reset()
 		return runWithIO(callCtx, args, out, out)
