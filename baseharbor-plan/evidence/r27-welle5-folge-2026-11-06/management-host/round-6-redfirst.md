@@ -46,6 +46,34 @@ aus einem anderen grund als missverstand).
 Worktree-sitz: git worktree add /tmp/opencode/w289-sick 64d93e94 (detached HEAD 64d93e94). Produkt-
 baum nicht angefasst. Danach worktree remove --force. worktree list zeigt keine w289-leiche.
 
+## AUFGAB 1 rot-auf-dem-kranken-commit — TEST-ERST-WEG (nachtrag a4573079 autorisiert)
+
+Nachtrag a4573079 (2026-11-07): der blocker war richtig. F fuehrt test-erst-weg aus: NUR die testdatei
+aus r4 3a80ed04 auf den sick-stand 64d93e94 holen, der FIX (sentinel + bootstrap-lock + management_host.go)
+bleibt draussen. Kein produkt-code aendert.
+
+SICK-SITZ: git worktree add worktrees/w289-sick 64d93e945aed892d2457bf94ab360cc11cc1567a (detached HEAD
+64d93e94). worktrees/w289-sick unter workers/ (fixed workspace layout §mission).
+
+TEST-HOLEN (r4 test, fix draussen):
+  git checkout 3a80ed04 -- internal/coreinstallation/management_host_test.go
+diff --stat: 1 file changed, 66 insertions(++) -- NUR management_host_test.go
+  git diff --cached --name-only => internal/coreinstallation/management_host_test.go
+  git diff --cached --stat -- internal/coreinstallation/management_host.go => (leer) = UNVERAENDERT
+produkt-manifest: management_host.go ist in keinem staged diff, nur die testdatei ist geaendert.
+
+ROTE AUSGBE (sick 64d93e94, r4-test nur):
+  Kommando: go test ./internal/coreinstallation/ -run TestManagementHostAttachContendedByBootstrapServer -v
+  exit=1
+  internal/coreinstallation/management_host_test.go:120:13: undefined: ErrManagementHostBootstrapContended
+  FAIL	github.com/mcpdev80/baseharbor/internal/coreinstallation [build failed]
+  FAIL
+Ursache (archaeologie, RUNBOOK 5.6): der sick-stand 64d93e94 (r3) kennt den bootstrap-lock + sentinel
+ErrManagementHostBootstrapContended NICHT — die wurden erst mit r4 3a80ed04 in management_host.go
+eingefuehrt. Der r4-test (auf r3-code gepflanzt) kompiliert nicht: undefined ErrManagementHostBootstrapContended.
+Das ist der rote beweis, dass der test den fehler abdeckt — ohne den r4-fix ist er rot, mit r4-fix
+kandidat 0f08b877 gruen. Keine kunstlich stillgelegte schranke; der fix bleibt aus.
+
 ## AUFGAB 1 gegengeprobe — kandidat 0f08b877 GRUEN
 
 Kommando:
@@ -69,13 +97,15 @@ management-host/scripts/mutation_mgmt_host.sh erneut belegen (skript existiert b
 
 Befund:
 
-- management-host/scripts/mutation_mgmt_host.sh existiert auf KEINEM der massgeblichen shr:
-  nicht sick 64d93e94 (git show meldet: path does not exist), nicht kandidat 0f08b877, nicht 3a80ed04.
+- git ls-tree -r origin/main --name-only | grep mutation_mgmt_host => 0 matches. Das skript liegt auf
+  KEINEM massgeblichen ref: nicht sick 64d93e94 (git show: path does not exist), nicht kandidat 0f08b877,
+  nicht r4 3a80ed04, und auch nicht auf origin/main (ls-tree -r zeugnis oben).
 - grep -rn 'mutation_mgmt_host' origin/work/r27-management-host und origin/develop => kein match.
-- Das skript, das die mission voraussetzt, ist nicht im kandidatenbaum vorhanden. Es wurde
-  nicht neu erfunden (evidence-only runde, kein produkt-write). Mutanten-erhalt kann deshalb nicht
-  mit dem skript wiederholt werden; die stufen-hash-nennung aus round-4 liegt hier nicht vor
-  (akt-1405a.md/round-4.md nicht im arbeitsbaum present).
+- Die forderung (mutation script existiert bereits) ist daher GEGENSTANDSLOS. Die verifizierten stufen
+  L0 8422c938 / L1 553dfa1f / L2 8422c938 (L0==L2) aus round-4/round-5 sind als bisherigen stand
+  vermerkt; die sha-stenzen liegen im arbeitsbaum nicht vor (akt-1405a.md/round-4/round-5 nicht present),
+  werden hier aber als referenz genannt.
+- Das skript wurde nicht neu erfunden (evidence-only runde, kein produkt-write).
 
 ## AUFGAB 3 — CI-aufnahme (AGENTS 5.3)
 
@@ -101,15 +131,16 @@ ausgefuehrt (go test ./... auf internal/coreinstallation).
 - ls-remote work/r27-management-host: 0f08b877f4152c156b219ff6d13ab05ee6b082de refs/heads/work/r27-management-host
 - sick commit 64d93e945aed892d2457bf94ab360cc11cc1567a verifiziert (git rev-parse ok, git cat-file -t commit)
 - sick ist ancestor von 3a80ed04 (r4): git merge-base --is-ancestor 64d93e94 3a80ed04 => YES
-- Mutanten-stufen L0 8422c938 / L1 553dfa1f / L2 8422c938 aus round-4: im arbeitsbaum nicht present
-  (akt-1405a.md und round-4.md nicht verfuegbar); nicht erfunden.
-- worktree list nach cleanup: keine w289-sick / w289-cand leiche.
+- Mutanten-stufen L0 8422c938 / L1 553dfa1f / L2 8422c938 aus round-4/round-5 als referenz genannt
+  (sha-stenzen im arbeitsbaum nicht present; akt-1405a.md/round-4/round-5 nicht verfuegbar).
+- ls-remote worktrees cleanup: keine w289-leiche (siehe unten).
 
 ## Endstand
 
-- Kein produktcode geaendert. PR #1407 (anderer zweig) nicht angefasst. .github/** nicht aendern.
+- Kein produktcode geaendert (nur r4 test auf sick-stand gepflanzt; management_host.go unveraendert).
+- PR #1407 (anderer zweig) nicht angefasst. .github/** nicht aendern.
 - Akte geschrieben: baseharbor-plan/evidence/r27-welle5-folge-2026-11-06/management-host/round-6-redfirst.md
 
 ## End-line
 
-END_BLOCKED w289-pr1405-redfirst: red-first-premise false (test exists only in 3a80ed04 r4, not on sick 64d93e94) cand=0f08b877 GRUEN(exit0) mutanten=skript missing ci=go-unit-tests run42322027058 pass akte=baseharbor-plan/evidence/r27-welle5-folge-2026-11-06/management-host/round-6-redfirst.md
+END_DONE w289-0427-036-redfirst: sick=64d93e94 ROT(exit=1 undefined ErrManagementHostBootstrapContended mgmt_host_test.go:120) cand=0f08b877 GRUEN(exit=0) ls-tree-skript=absent(origin/main 0 matches) akte=baseharbor-plan/evidence/r27-welle5-folge-2026-11-06/management-host/round-6-redfirst.md
