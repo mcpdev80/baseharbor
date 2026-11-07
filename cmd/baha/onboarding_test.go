@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -96,7 +97,7 @@ func TestOnboardingCommandContract(t *testing.T) {
 func TestOnboardingWizardBootstrapMinimalPath(t *testing.T) {
 	var out strings.Builder
 	dec, err := onboardingwizard.Run(context.Background(), onboardingwizard.Input{
-		In:  nonTerminalReader("new\nno\nyes\n"),
+		In:  nonTerminalReader("new\nno\ndefault\nyes\n"),
 		Out: &out,
 		Discover: func(context.Context) (onboardingwizard.InstallState, error) {
 			return onboardingwizard.InstallState{}, nil
@@ -810,4 +811,54 @@ func onboardingTestCSR(t *testing.T, identity string) []byte {
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: der})
+}
+
+func TestOnboardBootstrapExecutesRealOwnerPathAfterCore(t *testing.T) {
+	start, owner := onboardingStartCore, onboardingCreateOwner
+	t.Cleanup(func() {
+		onboardingStartCore, onboardingCreateOwner = start, owner
+	})
+	events := make([]string, 0, 2)
+	onboardingStartCore = func(context.Context, io.Writer) error {
+		events = append(events, "core")
+		return nil
+	}
+	onboardingCreateOwner = func(_ context.Context, slug, name string, _ io.Writer) error {
+		events = append(events, "operator:"+slug+":"+name)
+		return nil
+	}
+	decision := onboardingwizard.Decision{
+		Mode: onboardingwizard.ModeBootstrap, App: onboardingwizard.AppNew,
+		Persistence: onboardingwizard.PersistenceSecure,
+		TenantSlug: "acme", TenantName: "Acme GmbH",
+	}
+	var output bytes.Buffer
+	if err := commitOnboardingDecision(context.Background(), decision, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(events, []string{"core", "operator:acme:Acme GmbH"}) {
+		t.Fatalf("first install did not invoke Core before verified owner: %v", events)
+	}
+}
+
+func TestOnboardBootstrapStopsBeforeOwnerWhenCoreFails(t *testing.T) {
+	start, owner := onboardingStartCore, onboardingCreateOwner
+	t.Cleanup(func() {
+		onboardingStartCore, onboardingCreateOwner = start, owner
+	})
+	onboardingStartCore = func(context.Context, io.Writer) error {
+		return errors.New("Core unavailable")
+	}
+	onboardingCreateOwner = func(context.Context, string, string, io.Writer) error {
+		t.Fatal("owner mutation after failed Core installation")
+		return nil
+	}
+	decision := onboardingwizard.Decision{
+		Mode: onboardingwizard.ModeBootstrap, App: onboardingwizard.AppNew,
+		Persistence: onboardingwizard.PersistenceSecure,
+	}
+	var output bytes.Buffer
+	if err := commitOnboardingDecision(context.Background(), decision, &output); err == nil {
+		t.Fatal("failed Core installation returned success")
+	}
 }

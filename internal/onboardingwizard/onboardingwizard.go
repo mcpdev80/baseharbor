@@ -349,7 +349,15 @@ func askBootstrap(ctx context.Context, reader *bufio.Reader, out io.Writer, stat
 	if err != nil {
 		return Decision{}, err
 	}
-	return Decision{Mode: ModeBootstrap, App: AppIntent(app), Persistence: persist}, nil
+	decision := Decision{Mode: ModeBootstrap, App: AppIntent(app), Persistence: persist}
+	if !state.HasInstallation {
+		owner, err := askOwnerTenant(ctx, reader, out)
+		if err != nil {
+			return Decision{}, err
+		}
+		decision.TenantSlug, decision.TenantName = owner.TenantSlug, owner.TenantName
+	}
+	return decision, nil
 }
 
 // Owner setup is one default choice or two optional name fields; the actual
@@ -451,7 +459,7 @@ func reviewLines(d Decision) []string {
 	if d.Target != "" {
 		lines = append(lines, "target:  "+d.Target)
 	}
-	if d.Mode == ModeOwner {
+	if (d.Mode == ModeOwner || d.Mode == ModeBootstrap) && d.TenantSlug != "" {
 		lines = append(lines, "tenant:  "+d.TenantSlug+" ("+d.TenantName+")", "identity: verified operator OIDC / PKCE")
 	}
 	if d.App != "" {

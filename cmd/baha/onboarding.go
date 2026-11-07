@@ -376,6 +376,16 @@ func registerOnboardingConnection(ctx context.Context, target string) error {
 // commitOnboardingDecision executes the single effect point of a reviewed
 // decision. It runs at most once and fails closed; the caller persists
 // nothing before this function is reached.
+// The first-install wizard invokes existing production authorities, not a
+// separate provider, identity, or admin bootstrap. These seams are testable so
+// a rendered wizard cannot silently claim success with no Core installed.
+var onboardingStartCore = func(ctx context.Context, out io.Writer) error {
+	return runtimeUpCommandWithInputResolver(ctx, []string{"--control-plane-only"}, out, out)
+}
+var onboardingCreateOwner = func(ctx context.Context, slug, name string, out io.Writer) error {
+	return runOnboardInitialTenant(ctx, []string{"--tenant-slug", slug, "--tenant-name", name}, out, out)
+}
+
 func commitOnboardingDecision(ctx context.Context, decision onboardingwizard.Decision, out io.Writer) error {
 	if err := decision.Validate(); err != nil {
 		return err
@@ -439,6 +449,16 @@ func commitOnboardingDecision(ctx context.Context, decision onboardingwizard.Dec
 			}
 			fmt.Fprintln(out, "Attached the existing application; no duplicate services were installed.")
 			return nil
+		}
+		if err := onboardingStartCore(ctx, out); err != nil {
+			return fmt.Errorf("initial Core installation failed before operator tenant setup: %w", err)
+		}
+		slug, name := decision.TenantSlug, decision.TenantName
+		if slug == "" && name == "" {
+			slug, name = "baseharbor", "BaseHarbor"
+		}
+		if err := onboardingCreateOwner(ctx, slug, name, out); err != nil {
+			return fmt.Errorf("Core installed, but verified first-owner setup did not complete: %w", err)
 		}
 		if decision.Persistence == onboardingwizard.PersistenceSessionOnly {
 			if err := ensureSessionOnlyWorkstationIdentity(); err != nil {
