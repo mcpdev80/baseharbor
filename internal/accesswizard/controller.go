@@ -85,6 +85,43 @@ func (c *Controller) scopeOf(target string) string {
 	return c.scope[target]
 }
 
+// parseTargetList parses a comma-separated target selector ("1,2,3" or
+// "dev,prod") into a list of selections in the display order given. Every listed
+// entry must reference a displayed target; a single missing entry fails closed
+// so a partially-invalid list never silently drops targets. Finding #3: this is
+// how the operator selects more than one target in one pass.
+func (c *Controller) parseTargetList(names []string, choice string) ([]Selection, bool) {
+	parts := strings.Split(choice, ",")
+	var list []Selection
+	for _, raw := range parts {
+		ref := strings.TrimSpace(raw)
+		if ref == "" {
+			return nil, false
+		}
+		if at := indexString(names, ref); at >= 0 {
+			list = append(list, Selection{
+				TargetName:     names[at],
+				Operation:      c.scopeOf(names[at]),
+				EffectiveScope: names[at],
+			})
+			continue
+		}
+		if n, err := strconv.Atoi(ref); err == nil {
+			if n >= 1 && n <= len(names) {
+				target := names[n-1]
+				list = append(list, Selection{
+					TargetName:     target,
+					Operation:      c.scopeOf(target),
+					EffectiveScope: target,
+				})
+				continue
+			}
+		}
+		return nil, false
+	}
+	return list, true
+}
+
 // RunResult bundles the terminal decision and any error from a wizard run so
 // the CLI layer can render both. It is a single struct value (not a tuple)
 // because Go 1.26's type-checker misreads the positions of an (error, T) or
@@ -120,6 +157,21 @@ func (c *Controller) Run(decide func(Review) policy.Decision) RunResult {
 		if err != nil {
 			return RunResult{Decision: policy.Deny, Err: err}
 		}
+		// 'cancel' at any page returns a non-nil sentinel selection; Run reports
+		// cancellation WITHOUT ever invoking decide (finding #2: cancel fails
+		// closed — no write may follow).
+		if len(sel) == 1 && sel[0].isCancel {
+			fmt.Fprintln(c.Out, "Cancelled. No changes were made.")
+			return RunResult{Decision: policy.Allow}
+		}
+		if len(sel) > 0 {
+			// One or more selections (a single target, or a comma-separated list
+			// such as "1,2,3" via parseTargetList) complete the selection pass.
+			// Finding #3: every reviewed selection is later processed, never
+			// truncated to the first.
+			selections = append(selections, sel...)
+			break
+		}
 		if !cont {
 			if len(selections) == 0 {
 				fmt.Fprintln(c.Out, "Cancelled. No changes were made.")
@@ -127,12 +179,29 @@ func (c *Controller) Run(decide func(Review) policy.Decision) RunResult {
 			}
 			break
 		}
-		selections = append(selections, sel...)
 	}
 	review := Review{Person: person, Selected: selections}
 	fmt.Fprintln(c.Out, "--- review ---")
 	for _, line := range review.Render() {
 		fmt.Fprintln(c.Out, line)
+	}
+	// The review is shown; the operator must explicitly approve before any write.
+	// A plain cancel now fails closed here and never reaches decide, so no
+	// confirmation after selection can ever invoke the mutating callback.
+	fmt.Fprintln(c.Out, "Type 'yes' to confirm, or 'cancel' to abort:")
+	line, err := c.readLine()
+	if err != nil {
+		fmt.Fprintln(c.Out, "Cancelled. No changes were made.")
+		return RunResult{Decision: policy.Deny, Err: ErrDenied}
+	}
+	choice := strings.TrimSpace(line)
+	if strings.EqualFold(choice, "cancel") {
+		fmt.Fprintln(c.Out, "Cancelled. No changes were made.")
+		return RunResult{Decision: policy.Allow}
+	}
+	if !strings.EqualFold(choice, "yes") {
+		fmt.Fprintln(c.Out, "No changes were made. Approval is required.")
+		return RunResult{Decision: policy.Deny, Err: ErrDenied}
 	}
 	decision := decide(review)
 	if decision == policy.Deny {
@@ -197,7 +266,7 @@ func (c *Controller) pageSelect(names []string, acc []Selection) ([]Selection, b
 			}
 			fmt.Fprintf(c.Out, "  %d  %s [%s]\n", i+1, names[i], scope)
 		}
-		fmt.Fprintln(c.Out, "  Enter a number, 'back', 'next', or 'cancel'.")
+		fmt.Fprintln(c.Out, "  Enter a number, 'back', 'next', 'list', or 'cancel'.")
 		line, err := c.readLine()
 		if err != nil {
 			return nil, false, fmt.Errorf("read target selection: %w", err)
@@ -205,7 +274,10 @@ func (c *Controller) pageSelect(names []string, acc []Selection) ([]Selection, b
 		choice := strings.TrimSpace(line)
 		switch {
 		case strings.EqualFold(choice, "cancel"):
-			return acc, false, nil
+			// A cancel at any page is a distinct, non-nil sentinel selection so Run
+			// can distinguish "operator cancelled" (never call decide) from
+			// "no selection made and return to review".
+			return []Selection{{isCancel: true}}, false, nil
 		case strings.EqualFold(choice, "back"):
 			if c.page > 0 {
 				c.page--
@@ -216,6 +288,13 @@ func (c *Controller) pageSelect(names []string, acc []Selection) ([]Selection, b
 				c.page++
 			}
 			return acc, true, nil
+		}
+		// A comma-separated list ("1,2,3" or "dev,prod") selects every listed
+		// target in one pass so the operator can assign or offboard more than one
+		// target at once (finding #3): every reviewed selection is processed, never
+		// truncated to the first.
+		if list, ok := c.parseTargetList(names, choice); ok {
+			return append(acc, list...), false, nil
 		}
 		if idx, convErr := strconv.Atoi(choice); convErr == nil {
 			if idx >= 1 && idx <= total {
@@ -231,7 +310,7 @@ func (c *Controller) pageSelect(names []string, acc []Selection) ([]Selection, b
 				}
 				return append(acc, sel), true, nil
 			}
-			fmt.Fprintln(c.Out, "Selection out of range. Choose a displayed number, 'back', 'next', or 'cancel'.")
+			fmt.Fprintln(c.Out, "Selection out of range. Choose a displayed number, 'back', 'next', 'list', or 'cancel'.")
 			continue
 		}
 		// A named target selects directly.
@@ -248,6 +327,6 @@ func (c *Controller) pageSelect(names []string, acc []Selection) ([]Selection, b
 			}
 			return append(acc, sel), true, nil
 		}
-		fmt.Fprintln(c.Out, "Invalid selection. Choose a displayed number or name, 'back', 'next', or 'cancel'.")
+		fmt.Fprintln(c.Out, "Invalid selection. Choose a displayed number or name, 'back', 'next', 'list', or 'cancel'.")
 	}
 }

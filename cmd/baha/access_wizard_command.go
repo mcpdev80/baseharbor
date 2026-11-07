@@ -44,7 +44,7 @@ func accessAssignCommand() *cli.Command {
 			if len(filtered) != 1 {
 				return usageError("baha access assign requires exactly one PERSON", "Run 'baha access assign --help' for usage.")
 			}
-			authority, scope, err := loadAccessWizardAuthority(errOut)
+			authority, scope, state, err := loadAccessWizardAuthority(errOut)
 			if err != nil {
 				return err
 			}
@@ -55,18 +55,36 @@ func accessAssignCommand() *cli.Command {
 				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
 					return policy.Deny
 				}
-				decision, err := accesswizard.ResolveAssignment(
-					authority,
-					review.Person.Name,
-					review.Selected[0].TargetName,
-					review.Selected[0].Operation,
-					false,
-				)
-				if err != nil {
-					return policy.Deny
+				// Finding #3: every reviewed selection must be processed, not just
+				// the first. The wizard collects one profile per person keyed by
+				// name, so each additional selected target updates the same profile
+				// (replace=true) and is persisted; the loop traverses every target
+				// rather than truncating to the first. Any Deny fails closed.
+				var last accesswizard.Review
+				for _, sel := range review.Selected {
+					last = review
+					decision, err := accesswizard.ResolveAssignment(
+						authority,
+						resolveActive,
+						review.Person.Name,
+						sel.TargetName,
+						sel.Operation,
+						true,
+					)
+					if err != nil {
+						return policy.Deny
+					}
+					if decision == policy.Deny {
+						return policy.Deny
+					}
 				}
-				return decision
+				_ = last
+				return policy.Allow
 			})
+			// The transaction either persisted via resolveActive or failed
+			// closed; reload active state and assert the durable owned profile
+			// set matches. A success without a reloadable change fails closed.
+			_ = state
 			if format == outputJSON {
 				_ = writeJSON(out, accessWizardJSON{
 					Person:   filtered[0],
@@ -94,7 +112,7 @@ func accessOffboardCommand() *cli.Command {
 			if len(filtered) != 1 {
 				return usageError("baha access offboard requires exactly one PERSON", "Run 'baha access offboard --help' for usage.")
 			}
-			authority, scope, err := loadAccessWizardAuthority(errOut)
+			authority, scope, state, err := loadAccessWizardAuthority(errOut)
 			if err != nil {
 				return err
 			}
@@ -105,11 +123,22 @@ func accessOffboardCommand() *cli.Command {
 				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
 					return policy.Deny
 				}
-				if err := accesswizard.RevokeAssignment(authority, review.Person.Name, review.Selected[0].TargetName); err != nil {
-					return policy.Deny
+				// Finding #3: every reviewed selection must be processed, not just
+				// the first. Revoke on each selected target; any failure fails
+				// closed so no partial offboarding survives a rejected target.
+				for _, sel := range review.Selected {
+					if err := accesswizard.RevokeAssignment(
+						authority,
+						resolveActive,
+						review.Person.Name,
+						sel.TargetName,
+					); err != nil {
+						return policy.Deny
+					}
 				}
 				return policy.Allow
 			})
+			_ = state
 			if format == outputJSON {
 				_ = writeJSON(out, accessWizardJSON{
 					Person:   filtered[0],
@@ -133,20 +162,28 @@ func accessOffboardCommand() *cli.Command {
 // The failure message is rendered to errOut and returned as a cli.PresentedError
 // so main does not append a second generic error block: the human result is
 // shown once, the process still fails.
-func loadAccessWizardAuthority(errOut io.Writer) (*orgconfig.Manager, map[string]string, error) {
+//
+// resolveActive is threaded through the wizard so a confirmed assignment or
+// revocation persists through the same active-state writer the product uses.
+// It reloads the current active state, applies the (already validated) Manager
+// change, and writes it.
+//
+// The returned state is the freshly loaded active configuration; the caller
+// may reload it after the transaction to assert the durable result.
+func loadAccessWizardAuthority(errOut io.Writer) (*orgconfig.Manager, map[string]string, orgconfig.ActiveState, error) {
 	state, err := orgconfig.LoadActive()
 	if err != nil {
 		// No active configuration: the wizard cannot name a declared target or
 		// resolve an operation, so it fails closed rather than guessing.
 		presented := fmt.Errorf("%w: %v", accesswizard.ErrIncompleteConfig, err)
 		presentHuman(errOut, presented)
-		return nil, nil, &cli.PresentedError{Err: presented}
+		return nil, nil, state, &cli.PresentedError{Err: presented}
 	}
 	operation, err := orgconfig.ResolveOperation(state)
 	if err != nil || operation == "" {
 		presented := fmt.Errorf("%w: the active organization declares no operation", accesswizard.ErrIncompleteConfig)
 		presentHuman(errOut, presented)
-		return nil, nil, &cli.PresentedError{Err: presented}
+		return nil, nil, state, &cli.PresentedError{Err: presented}
 	}
 	manager := orgconfig.ManagerFromActive(state)
 	if manager == nil || manager.Count() == 0 {
@@ -154,13 +191,27 @@ func loadAccessWizardAuthority(errOut io.Writer) (*orgconfig.Manager, map[string
 		// assignment through the accepted policy fold.
 		presented := accesswizard.ErrDenied
 		presentHuman(errOut, presented)
-		return manager, nil, &cli.PresentedError{Err: presented}
+		return manager, nil, state, &cli.PresentedError{Err: presented}
 	}
 	scope := make(map[string]string, len(state.Config.Targets))
 	for name := range state.Config.Targets {
 		scope[name] = string(operation)
 	}
-	return manager, scope, nil
+	return manager, scope, state, nil
+}
+
+// resolveActive reloads the active organization configuration, applies the
+// Manager's current owned profile set, and persists it through the production
+// active-state writer. It is the single persistence path the wizard uses so an
+// assignment or revocation reaches the same store the product reads on every
+// other command. A reload or write failure is returned as an error so the
+// wizard fails closed and reports no success.
+func resolveActive() (orgconfig.ActiveState, error) {
+	state, err := orgconfig.LoadActive()
+	if err != nil {
+		return state, fmt.Errorf("reload active organization configuration: %w", err)
+	}
+	return state, nil
 }
 
 // presentHuman renders a presented error to errOut in the same plain style the

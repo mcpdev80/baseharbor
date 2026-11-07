@@ -46,6 +46,10 @@ type Selection struct {
 	TargetName     string
 	Operation      string
 	EffectiveScope string
+	// isCancel marks the non-nil sentinel Run uses when the operator cancels at
+	// a selection page, so Run can cancel without ever invoking the production
+	// callback. It must never be set by a real selection.
+	isCancel bool
 }
 
 // Person is the identity the wizard onboards or offboards on a target. Only the

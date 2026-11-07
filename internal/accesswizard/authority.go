@@ -47,7 +47,7 @@ func ResolveOperation(operation string) (orgconfig.Operation, error) {
 // a real, owned profile rather than a hardcoded name. A nil manager yields a
 // Deny (fail closed): a Manager that was never built from an active state is not
 // a valid assignment surface.
-func ResolveAssignment(manager *orgconfig.Manager, person, target, operation string, replace bool) (policy.Decision, error) {
+func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target, operation string, replace bool) (policy.Decision, error) {
 	if manager == nil {
 		return policy.Deny, ErrDenied
 	}
@@ -70,15 +70,39 @@ func ResolveAssignment(manager *orgconfig.Manager, person, target, operation str
 	if err != nil {
 		return policy.Deny, &wizardError{message: err.Error()}
 	}
-	return policy.ResolveFinding(nil, finding), nil
+	decision := policy.ResolveFinding(nil, finding)
+	// A successful production decision must persist the change through the same
+	// active-state writer the product uses. The manager was mutated in memory by
+	// Create above; fold its owned profile set back into the loaded active state
+	// and write it. A persistence failure returns failure and leaves the command
+	// without a success result: an assignment that cannot be persisted is not
+	// applied.
+	if decision == policy.Allow && resolveLoad != nil {
+		state, loadErr := resolveLoad()
+		if loadErr != nil {
+			return policy.Deny, &wizardError{message: loadErr.Error()}
+		}
+		if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
+			return policy.Deny, &wizardError{message: persistErr.Error()}
+		}
+	}
+	return decision, nil
 }
 
-// RevokeAssignment removes the requested person's profile on the reviewed Target\n// through the accepted
+// RevokeAssignment removes the requested person's profile on the reviewed Target
+// through the accepted
 // orgconfig Manager and reports the result through the single production policy
 // authority. A revoked or unknown profile fails closed through the accepted
 // policy Adapter. The removal mutates only the owned profile set; it never
 // touches a foreign grant.
-func RevokeAssignment(manager *orgconfig.Manager, person, target string) error {
+//
+// resolveLoad supplies the active configuration so the removal persists through
+// the same active-state writer the product uses. The manager was mutated in
+// memory by Revoke above; fold its owned profile set back into the loaded active
+// state and write it. A persistence failure returns failure and leaves the
+// command without a success result: a revocation that cannot be persisted is not
+// applied.
+func RevokeAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target string) error {
 	if manager == nil || strings.TrimSpace(person) == "" || strings.TrimSpace(target) == "" {
 		return ErrDenied
 	}
@@ -94,6 +118,19 @@ func RevokeAssignment(manager *orgconfig.Manager, person, target string) error {
 	}
 	if _, err := manager.Revoke(profile.Name); err != nil {
 		return &wizardError{message: err.Error()}
+	}
+	// Persist the removal through the same active-state writer the product uses.
+	// The manager holds the post-removal owned profile set; fold it back and
+	// write. A persistence failure returns failure so the command does not report
+	// success for a change that was not durably applied.
+	if resolveLoad != nil {
+		state, loadErr := resolveLoad()
+		if loadErr != nil {
+			return &wizardError{message: loadErr.Error()}
+		}
+		if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
+			return &wizardError{message: persistErr.Error()}
+		}
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ func newOffboardAuthority() *orgconfig.Manager {
 // The wizard's third argument is the selected Target, NOT a profile name.
 func TestOffboardRemovesOnlyRequestedPersonOnReviewedTarget(t *testing.T) {
 	manager := newOffboardAuthority()
-	if err := RevokeAssignment(manager, "alice", "dev"); err != nil {
+	if err := RevokeAssignment(manager, nil, "alice", "dev"); err != nil {
 		t.Fatalf("revoke alice/dev: %v", err)
 	}
 	if _, err := manager.Get("alice"); !errors.Is(err, orgconfig.ErrProfileNotFound) {
@@ -40,7 +40,7 @@ func TestOffboardWrongTargetCannotRevokeAnotherProfile(t *testing.T) {
 	} {
 		t.Run(tc.name+"/"+tc.target, func(t *testing.T) {
 			manager := newOffboardAuthority()
-			if err := RevokeAssignment(manager, tc.name, tc.target); err == nil {
+			if err := RevokeAssignment(manager, nil, tc.name, tc.target); err == nil {
 				t.Fatal("wrong subject/target must fail closed")
 			}
 			for _, profileName := range []string{"alice", "other"} {
@@ -53,7 +53,7 @@ func TestOffboardWrongTargetCannotRevokeAnotherProfile(t *testing.T) {
 }
 
 func TestOffboardNilAuthorityAlwaysDenies(t *testing.T) {
-	if err := RevokeAssignment(nil, "alice", "dev"); !errors.Is(err, ErrDenied) {
+	if err := RevokeAssignment(nil, nil, "alice", "dev"); !errors.Is(err, ErrDenied) {
 		t.Fatalf("missing authority should fail closed: %v", err)
 	}
 }

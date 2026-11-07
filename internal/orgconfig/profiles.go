@@ -42,6 +42,11 @@ var ErrProfileNameAmbiguous = fmt.Errorf("%w: team access profile name is ambigu
 // not exist in the owner's managed set.
 var ErrProfileNotFound = fmt.Errorf("%w: team access profile not found", ErrInvalidProfile)
 
+// ErrDenied fails closed when a Manager cannot persist the active state (for
+// example a nil Manager asked to persist). The wizard treats any persistence
+// failure as a Deny rather than applying a change that was not durably written.
+var ErrDenied = fmt.Errorf("%w: cannot persist active organization configuration", ErrInvalidProfile)
+
 // ErrDuplicateProfile fails closed when a create/update writes a name that
 // already exists under a different, non-identical definition and the caller did
 // not opt into an explicit replace.
@@ -534,6 +539,70 @@ func (m *Manager) List() []Profile {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// SnapshotProfiles returns a copy of the manager's owned profiles for the
+// manager's owner. The caller may persist the set back into an active state;
+// the returned slice is a copy, so editing it never mutates the manager. This
+// is the mirror of LoadProfiles on the write side: an in-memory Manager that
+// was mutated by Create/Update/Revoke can fold its owned set back into the
+// production active-state writer.
+func (m *Manager) SnapshotProfiles() []Profile {
+	out := make([]Profile, 0, len(m.profiles))
+	for _, p := range m.profiles {
+		out = append(out, p)
+	}
+	return out
+}
+
+// ProfileMap converts a slice of profiles into the keyed map the active
+// configuration stores, the inverse of toProfileList. It lets the wizard fold a
+// Manager's owned set back into an ActiveState without coupling the wizard to
+// the map representation.
+func ProfileMap(list []Profile) map[string]Profile {
+	m := make(map[string]Profile, len(list))
+	for _, p := range list {
+		m[p.Name] = p
+	}
+	return m
+}
+
+// toProfileList converts a map of profiles into a slice, the inverse of
+// ProfileMap.
+func toProfileList(m map[string]Profile) []Profile {
+	out := make([]Profile, 0, len(m))
+	for _, p := range m {
+		out = append(out, p)
+	}
+	return out
+}
+
+// PersistActive folds the manager's owned profile set into the loaded active
+// state and writes it through the product's active-state writer. It is a single
+// persistence entry point so the wizard persists assignment/revocation changes
+// through exactly one path. A persistence failure is returned so the caller can
+// fail closed and report no success.
+func PersistActive(manager *Manager, state ActiveState) error {
+	if manager == nil {
+		return ErrDenied
+	}
+	state.Config.Profiles = ProfileMap(manager.SnapshotProfiles())
+	return SaveActive(state)
+}
+
+// Store persists an active organization configuration. The wizard injects one
+// so a confirmed assignment or revocation reaches the production store; tests
+// inject a fake so they do not touch the filesystem.
+type Store interface {
+	Save(state ActiveState) error
+}
+
+// FSStore is the production Store backed by the active-state writer.
+type FSStore struct{}
+
+// Save writes the active configuration through the production writer.
+func (FSStore) Save(state ActiveState) error {
+	return SaveActive(state)
 }
 
 // Count returns the number of managed profiles.
