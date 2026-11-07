@@ -107,7 +107,6 @@ jobs:
           export BASEHARBOR_TARGET="$target"
           "$cli" target create "$target" --runtime-provider "$RUNTIME" --access local --access-provider local --reference local --default
           "$cli" up --control-plane-only --yes
-          "$cli" openbao bootstrap --recovery-file "$RUNNER_TEMP/greenfield-recovery.json"
           mkdir -p "$RUNNER_TEMP/greenfield-apps"
           "$cli" app new "$name" --directory "$RUNNER_TEMP/greenfield-apps" --stack "$STACK" --http
           cd "$RUNNER_TEMP/greenfield-apps/$name"
