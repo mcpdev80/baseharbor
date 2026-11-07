@@ -147,6 +147,7 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
                    'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
                    'ha_docker_count', 'ha_podman_count', 'journey_count']}
         outputs['light_docker_count'] = '1'
+        outputs['tag'] = 'v0.4.26'
         outputs['integration'] = '[]'
         required = {'source', 'runtime_candidate', 'runtime_light_gates', 'runtime_heavy_gates',
                     'v0421_ha_groups', 'runtime_light_gates_docker'}
