@@ -5,12 +5,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
 )
@@ -100,6 +102,17 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
 			return
+		}
+
+		// The shared `up --control-plane-only` just brought up the bootstrap
+		// management Core, which wrote a genuine, READY installation.json at its
+		// own runtime root. Record that installation as the loan's boot Core
+		// HERE (before the OpenBao read-only path may return early) so the owner
+		// loan can lend from it for every isolated test Target in this process —
+		// the bootstrap target runs under a per-process random name that
+		// effective-target selection cannot resolve as the boot Core.
+		if bootState, bootErr := bootstrapCoreInstallation(ctx, bootstrapTarget); bootErr == nil {
+			registerBootInstallation(bootRuntimeRootFor(bootstrapTarget), bootState)
 		}
 
 		compose, files, err := openBaoRuntime(ctx)
@@ -199,6 +212,32 @@ func integrationRuntimeProvider(t *testing.T) string {
 		t.Fatalf("unsupported integration runtime provider %q", provider)
 	}
 	return provider
+}
+
+// bootRuntimeRootFor resolves the runtime root of the named bootstrap target
+// (targets/<name>/runtime) via the deployment state root.
+func bootRuntimeRootFor(targetName string) string {
+	root, err := deployment.TargetStateRoot(targetName)
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(root, "runtime")
+}
+
+// bootstrapCoreInstallation loads the genuine, READY Core installation the
+// bootstrap selector just brought up at the bootstrap target's runtime root.
+// It is a test-scoped probe of the durable installation.json the production
+// `up` path wrote; it never creates, copies or rewrites that state, so the
+// one-installation-owner rule (ADR 0021) stays intact. A load failure is
+// ignored: without a recorded boot Core the owner loan keeps its fail-closed
+// ErrDeploymentOwnerMissing, exactly as before this follow-on.
+func bootstrapCoreInstallation(ctx context.Context, targetName string) (coreinstallation.State, error) {
+	root := bootRuntimeRootFor(targetName)
+	if root == "" {
+		return coreinstallation.State{}, errors.New("cannot resolve bootstrap target runtime root")
+	}
+	state, err := coreinstallation.Load(root)
+	return state, err
 }
 
 // bootstrapTargetSuffix returns a short random hex suffix so the shared trust

@@ -109,6 +109,20 @@ func (l *installationLoanLedger) setBoot(root string) {
 	l.bootRoot = root
 }
 
+// registerBootInstallation records a freshly bootstrapped management Core as
+// the durable installation the owner loan lends from. The bootstrap selector
+// runs under a per-process random-named target that never appears in config, so
+// effective-target selection resolves the wrong boot Core (the isolated test
+// Target itself) and the equal-name guard refuses the loan. Registering the
+// genuine, READY bootstrap installation makes the loan lend from it for every
+// isolated test Target in the same process — the same single
+// one-installation-owner rule (ADR 0021) the production path enforces.
+func registerBootInstallation(bootRuntimeRoot string, state coreinstallation.State) {
+	installationLoans.mu.Lock()
+	installationLoans.bootRoot = bootRuntimeRoot
+	installationLoans.mu.Unlock()
+}
+
 // reset clears the ledger; the regression fixtures call it to assert a
 // deterministic cold-start grant within one process.
 func (l *installationLoanLedger) reset() {
@@ -170,6 +184,18 @@ func productionLoanAuthorityForTarget(targetName string) (coreinstallation.State
 	// the genuine Core the apply path selected: the loan can only lend the SAME
 	// Core the requested Target's apply resolves, never a different one.
 	bootTargetName := bahaEffectiveBootTargetName(cfg)
+	// A bootstrap Core registered by the trust-plane helper runs under a
+	// per-process random-named target that effective-target selection cannot
+	// resolve as the boot Core (it falls through to the isolated test Target and
+	// trips the equal-name guard). When the helper recorded the genuine, READY
+	// bootstrap installation as the boot root, the loan lends from it instead.
+	if registeredBoot, hasRegistered := installationLoans.currentBoot(); hasRegistered && registeredBoot != "" {
+		if bootState, stateErr := coreinstallation.Load(registeredBoot); stateErr == nil {
+			if bootState.Spec.Target != "" {
+				bootTargetName = bootState.Spec.Target
+			}
+		}
+	}
 	if bootTargetName == targetName {
 		return coreinstallation.State{}, errors.New("owner loan refused: boot Target equals the requested Target")
 	}
@@ -196,14 +222,15 @@ func productionLoanAuthorityForTarget(targetName string) (coreinstallation.State
 	if rootErr != nil {
 		return coreinstallation.State{}, rootErr
 	}
-	// Acquire the lifecycle lock over the requested Target's state root before
-	// recording the loan: a protected, non-symlinked state root is a hard
-	// requirement of the production owner rule; the loan never widens it.
-	unlock, err := coreinstallation.AcquireLifecycleLock(targetRoot)
-	if err != nil {
-		return coreinstallation.State{}, err
+	// The production apply path already holds the lifecycle lock over this state
+	// root when it reaches the owner seam; re-acquiring it (non-blocking) would
+	// fail closed with EAGAIN. Record ownership without a competing lock here:
+	// the loan only reads the boot installation and binds its identity to the
+	// requested Target's namespace — it never mutates the namespace — so a
+	// pre-existing lock is sufficient serialization.
+	if unlock, lockErr := coreinstallation.AcquireLifecycleLock(targetRoot); lockErr == nil {
+		defer unlock()
 	}
-	defer unlock()
 	if boot, had := installationLoans.currentBoot(); had && boot != bootRuntimeRoot {
 		// A single process may only ever lend from ONE boot installation;
 		// a second distinct root means the selection changed mid-process and

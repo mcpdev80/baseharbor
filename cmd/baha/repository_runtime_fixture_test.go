@@ -253,6 +253,50 @@ func repositoryFixtureVolume(t *testing.T, ctx context.Context, provider bhrunti
 	return values[0]
 }
 
+// sharedSQLOwnedVolumeName attributes the durable PostgreSQL volume of the
+// shared Core backend to this deployment for the retirement assertion when the
+// fixture uses shared PostgreSQL (no app-scoped SQL instance). Shared backends
+// live in the Core shared resource project, never in the application project,
+// so NativeBackendResources projects no volume for them: the durable
+// core-postgres-data volume must instead be verified as an owned shared
+// resource. It returns an empty string when the fixture does not use shared
+// PostgreSQL, so application-owned volumes are unaffected.
+func sharedSQLOwnedVolumeName(resolved resolvedApplication) string {
+	if !application.UsesSharedPostgreSQL(resolved.Manifest) {
+		return ""
+	}
+	// The Core shared backend renders its durable volume as
+	// "<resourceProject>-core-postgres-data-1"; the physical volume identity the
+	// apply path materialized is verified by sharedSQLOwnedVolumeIdentity.
+	return bhruntime.SharedResourceProjectName(resolved.Target.Name) + "-core-postgres-data-1"
+}
+
+// sharedSQLOwnedVolumeIdentity inspects the durable Core SQL volume in its own
+// shared resource project (never in the application project) and verifies the
+// retained physical volume identity. The shared volume is not part of the
+// application-owned inventory, so it is inspected directly in the shared Core
+// project rather than through the app-project ownership check. An empty result
+// means the shared Core SQL volume is not materialized.
+func sharedSQLOwnedVolumeIdentity(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, resolved resolvedApplication, resource bhruntime.ProjectResource) repositoryFixtureVolumeIdentity {
+	t.Helper()
+	direct, ok := provider.(interface {
+		DirectOutput(context.Context, ...string) (string, error)
+	})
+	if !ok {
+		t.Fatal("selected runtime lacks bound native volume inspection")
+	}
+	raw, err := direct.DirectOutput(ctx, "volume", "inspect", resource.Name)
+	if err != nil {
+		return repositoryFixtureVolumeIdentity{}
+	}
+	var values []repositoryFixtureVolumeIdentity
+	if json.Unmarshal([]byte(raw), &values) != nil || len(values) != 1 ||
+		values[0].Name != resource.Name || values[0].CreatedAt == "" || values[0].Driver == "" {
+		return repositoryFixtureVolumeIdentity{}
+	}
+	return values[0]
+}
+
 // Default destroy retires runtime, retaining data and its canonical recovery
 // owner. Verify those physical effects and the unrelated installation separately.
 func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolved resolvedApplication) {
@@ -279,7 +323,24 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 			volumes[resource] = repositoryFixtureVolume(t, ctx, provider, resource)
 		}
 	}
-	if len(volumes) == 0 {
+	// A shared-SQL fixture keeps its durable SQL volume in the Core shared
+	// backend project, never in the application project: NativeBackendResources
+	// only projects application-owned (non-shared) runtime services, so an
+	// app-scoped inventory is empty for shared PostgreSQL/Valkey. The durable
+	// Core SQL volume must therefore be verified as an owned shared resource
+	// (inspected in its own shared project) alongside any application-owned
+	// volumes the retirement must retain. It is tracked separately from the
+	// app-project `volumes` map because it lives in the shared Core project, not
+	// the application project, so it is not part of the app-project inventory
+	// or its app-project retirement check.
+	var sharedSQLIdentity repositoryFixtureVolumeIdentity
+	var hasSharedSQL bool
+	if sharedSQLName := sharedSQLOwnedVolumeName(resolved); sharedSQLName != "" {
+		sharedSQLResource := bhruntime.ProjectResource{Kind: "volume", Name: sharedSQLName}
+		sharedSQLIdentity = sharedSQLOwnedVolumeIdentity(t, ctx, provider, resolved, sharedSQLResource)
+		hasSharedSQL = sharedSQLIdentity.Name != ""
+	}
+	if !hasSharedSQL && len(volumes) == 0 {
 		t.Fatal("SQL fixture must have an actual owned persistent volume before retirement")
 	}
 	material, err := runtimeMutationOwnerBytes(files.Env, false)
@@ -339,6 +400,16 @@ func verifyRepositoryFixtureRetirement(t *testing.T, ctx context.Context, resolv
 		if !application.ResourceNamedExists(remaining, volume) ||
 			!reflect.DeepEqual(repositoryFixtureVolume(t, ctx, provider, volume), identity) {
 			t.Fatal("ordinary retirement removed or replaced an owned persistent volume")
+		}
+	}
+	// The shared Core SQL volume lives in the shared project, not the
+	// application project, so it is not part of the app-project `remaining`
+	// inspection above. Verify the ordinary retirement retained the durable Core
+	// SQL volume unchanged in its own shared project.
+	if hasSharedSQL {
+		sharedSQLResource := bhruntime.ProjectResource{Kind: "volume", Name: sharedSQLOwnedVolumeName(resolved)}
+		if !reflect.DeepEqual(sharedSQLOwnedVolumeIdentity(t, ctx, provider, resolved, sharedSQLResource), sharedSQLIdentity) {
+			t.Fatal("ordinary retirement removed or replaced the durable shared Core SQL volume")
 		}
 	}
 	material, err = runtimeMutationOwnerBytes(files.Env, false)
