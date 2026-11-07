@@ -141,6 +141,7 @@ func controlPlaneConfigFromEnv() (controlplaneruntime.Config, error) {
 		ListenAddr:                 os.Getenv("BASEHARBOR_API_LISTEN_ADDR"),
 		DatabaseURL:                os.Getenv("BASEHARBOR_API_DATABASE_URL"),
 		ConnectorEnrollmentEnabled: strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTOR_ENROLLMENT_ENABLED")), "true"),
+		WorkstationEnrollmentEnabled: strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_WORKSTATION_ENROLLMENT_ENABLED")), "true"),
 		ConnectorAuthorityTarget:   os.Getenv("BASEHARBOR_CONNECTOR_AUTHORITY_TARGET"),
 		ConnectorListenAddr:        os.Getenv("BASEHARBOR_CONNECTOR_LISTEN_ADDR"),
 		ConnectorTLSCertFile:       os.Getenv("BASEHARBOR_CONNECTOR_TLS_CERT_FILE"),
