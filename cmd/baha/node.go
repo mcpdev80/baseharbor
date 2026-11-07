@@ -16,7 +16,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -27,8 +26,15 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
-const nodeConnectorProvider = "baseharbor-node-connector"
-const nodeBundleVersion = "baseharbor.node-enrollment-bundle/v1"
+// The node CLI asks Core for a one-use grant that lasts long enough to copy the
+// enrollment file and start the connector, and for the certificate lifetime the
+// connector's own renewal bound accepts (24 hours).
+const (
+	nodeGrantLifetime       = 600 * time.Second
+	nodeCertificateLifetime = 24 * time.Hour
+	nodeConnectorProvider   = "baseharbor-node-connector"
+	nodeBundleVersion       = "baseharbor.node-enrollment-bundle/v1"
+)
 
 var nodeInput io.Reader = os.Stdin
 
@@ -47,25 +53,52 @@ type nodeEnrollmentBundle struct {
 	Authorization   targetenrollment.Bootstrap `json:"authorization"`
 }
 
+// nodeRecord is local registration metadata only. It deliberately stores no
+// enrollment, expiry or revocation claim: the sole authority for those is the
+// Core connector_nodes row, read through the lifecycle status endpoint.
 type nodeRecord struct {
-	ContractVersion string `json:"contract_version"`
-	TenantID        string `json:"tenant_id"`
-	TargetID        string `json:"target_id"`
-	NodeID          string `json:"node_id"`
-	Runtime         string `json:"runtime"`
-	Environment     string `json:"environment"`
-	CoreTarget      string `json:"core_target"`
-	CoreURL         string `json:"core_url"`
-	CoreAddress     string `json:"core_address"`
-	ServerName      string `json:"server_name"`
-	CAFile          string `json:"ca_file"`
+	ContractVersion string    `json:"contract_version"`
+	TenantID        string    `json:"tenant_id"`
+	TargetID        string    `json:"target_id"`
+	NodeID          string    `json:"node_id"`
+	Runtime         string    `json:"runtime"`
+	Environment     string    `json:"environment"`
+	CoreTarget      string    `json:"core_target"`
+	CoreURL         string    `json:"core_url"`
+	CoreAddress     string    `json:"core_address"`
+	ServerName      string    `json:"server_name"`
+	CAFile          string    `json:"ca_file"`
+	GrantExpiresAt  time.Time `json:"grant_expires_at,omitempty"`
 }
 
 type nodeListItem struct {
-	TargetID string `json:"target_id"`
-	NodeID   string `json:"node_id"`
-	TenantID string `json:"tenant_id,omitempty"`
-	Runtime  string `json:"runtime"`
+	TargetID  string    `json:"target_id"`
+	NodeID    string    `json:"node_id"`
+	TenantID  string    `json:"tenant_id,omitempty"`
+	Runtime   string    `json:"runtime"`
+	State     string    `json:"state"`
+	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	// unconfirmed records why the lifecycle authority could not be read; it is
+	// local diagnostics for the human table only, never a wire field.
+	unconfirmed string
+}
+
+// classifyNodeTrust is the single production state rule shared by node list and
+// node status. Positive labels require the Core lifecycle authority: an issued,
+// unexpired certificate is ENROLLED, a past certificate expiry is EXPIRED, and
+// revocation outranks all of them. Grant or session expiry can never produce a
+// positive label, and an unconfirmed redemption stays PENDING.
+func classifyNodeTrust(revoked, enrolled bool, expiresAt, now time.Time) string {
+	switch {
+	case revoked:
+		return "REVOKED"
+	case enrolled && !expiresAt.After(now):
+		return "EXPIRED"
+	case enrolled:
+		return "ENROLLED"
+	default:
+		return "PENDING"
+	}
 }
 
 type nodeAddResult struct {
@@ -78,13 +111,21 @@ type nodeAddResult struct {
 }
 
 type nodeStatusResult struct {
-	ContractVersion string    `json:"contract_version"`
-	TargetID        string    `json:"target_id"`
-	NodeID          string    `json:"node_id"`
-	Runtime         string    `json:"runtime"`
-	Enrolled        bool      `json:"enrolled"`
-	Revoked         bool      `json:"revoked"`
-	ExpiresAt       time.Time `json:"expires_at,omitempty"`
+	ContractVersion string           `json:"contract_version"`
+	TargetID        string           `json:"target_id"`
+	NodeID          string           `json:"node_id"`
+	Runtime         string           `json:"runtime"`
+	Enrolled        bool             `json:"enrolled"`
+	Revoked         bool             `json:"revoked"`
+	ExpiresAt       time.Time        `json:"expires_at,omitempty"`
+	Serial          string           `json:"serial,omitempty"`
+	Capabilities    []nodeCapability `json:"capabilities,omitempty"`
+}
+
+type nodeCapability struct {
+	Name      string `json:"name"`
+	Available bool   `json:"available"`
+	Detail    string `json:"detail,omitempty"`
 }
 
 type nodeConnectResult struct {
@@ -101,7 +142,7 @@ func nodeCommand() *cli.Command {
 		Summary: "Enroll and manage remote Docker or Podman nodes",
 		Usage:   "baha node [add|connect|list|status|disconnect]",
 		Children: []*cli.Command{
-			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] [--target NAME] --runtime docker|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
+			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] --runtime docker|podman [--target NAME] [--core-url https://HOST:PORT] [--core-address HOST:PORT] [--ca-file FILE] [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
 			{Name: "connect", Summary: "Enroll this host and start the rootless connector service", Usage: "baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]", Run: nodeConnect},
 			{Name: "list", Summary: "List configured remote connector nodes", Usage: "baha node list [--json]", Run: nodeList},
 			{Name: "status", Summary: "Inspect Core enrollment state for a remote node", Usage: "baha node status TARGET [--json]", Run: nodeStatus},
@@ -119,9 +160,9 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if opts.NodeID == "" {
+	if opts.NodeID == "" || (opts.Runtime == "" && !noInput(ctx) && readerIsTerminal(nodeInput)) {
 		if noInput(ctx) || !readerIsTerminal(nodeInput) {
-			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE plus --runtime, --tenant-id, --core-url, --core-address and --ca-file.")
+			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE and --runtime; Core address, CA and verified tenant are taken from the owned Core authority.")
 		}
 		opts, err = promptNodeAdd(opts, out)
 		if err != nil {
@@ -131,18 +172,34 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if opts.TargetID == "" {
 		opts.TargetID = opts.NodeID
 	}
-	if opts.Environment == "" {
-		opts.Environment = "dev"
-	}
-	if err := validateNodeAddOptions(opts); err != nil {
-		return err
-	}
 	coreTarget, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
 	if coreTarget.AccessProvider != "local" {
 		return usageError("node add must run against a local Core authority Target", "Select the local Core with 'baha target activate NAME' and retry.")
+	}
+	profile, err := loadNodeAuthorityProfile(coreTarget.Name)
+	if err != nil {
+		return err
+	}
+	opts, err = applyNodeAuthorityDefaults(opts, profile)
+	if err != nil {
+		return err
+	}
+	if err := validateNodeAuthorityTrustOverride(profile, opts); err != nil {
+		return err
+	}
+	verifiedTenant, err := requestNodeOwnerTenant(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile)
+	if err != nil {
+		return err
+	}
+	if opts.TenantID != "" && opts.TenantID != verifiedTenant {
+		return machine.NewError(machine.ErrorPolicyDenied, "requested tenant does not match the verified Core operator membership", "Use the tenant assigned by the authenticated Core.", false)
+	}
+	opts.TenantID = verifiedTenant
+	if err := validateNodeAddOptions(opts); err != nil {
+		return err
 	}
 	caPEM, err := os.ReadFile(opts.CAFile)
 	if err != nil {
@@ -166,7 +223,8 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	}()
 
-	grant, err := requestNodeAuthorization(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile, opts.TargetID, opts.NodeID)
+	grant, err := requestNodeAuthorization(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile,
+		opts.TargetID, opts.NodeID, nodeGrantLifetime, nodeCertificateLifetime)
 	if err != nil {
 		return err
 	}
@@ -192,6 +250,9 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 		ContractVersion: machine.ContractVersion, TenantID: opts.TenantID, TargetID: opts.TargetID, NodeID: opts.NodeID,
 		Runtime: opts.Runtime, Environment: opts.Environment, CoreTarget: coreTarget.Name, CoreURL: strings.TrimRight(opts.CoreURL, "/"),
 		CoreAddress: opts.CoreAddress, ServerName: serverName, CAFile: opts.CAFile,
+		// The Core grant expiry is kept only as local readiness metadata for the
+		// bundle hint. node list/status never derive a trust state from it.
+		GrantExpiresAt: grant.ExpiresAt,
 	}
 	if err := saveNodeRecord(record); err != nil {
 		_ = os.Remove(opts.Output)
@@ -251,29 +312,39 @@ func parseNodeAddArgs(args []string) (nodeAddOptions, error) {
 func promptNodeAdd(o nodeAddOptions, out io.Writer) (nodeAddOptions, error) {
 	reader := bufioNewReader(nodeInput)
 	var err error
-	if o.NodeID, err = promptLine(reader, out, "Node name", o.NodeID); err != nil {
+	if o.NodeID == "" {
+		if o.NodeID, err = promptLine(reader, out, "Node name", ""); err != nil {
+			return o, err
+		}
+	}
+	if o.Runtime == "" {
+		if o.Runtime, err = promptLine(reader, out, "Runtime (docker/podman)", "podman"); err != nil {
+			return o, err
+		}
+	}
+	custom, err := promptLine(reader, out, "Customize Core connection? (yes/no)", "no")
+	if err != nil {
 		return o, err
 	}
-	if o.TargetID, err = promptLine(reader, out, "Target name", o.NodeID); err != nil {
-		return o, err
+	if custom != "yes" && custom != "y" && custom != "no" && custom != "n" {
+		return o, usageError("invalid Core connection choice", "Choose yes or no.")
 	}
-	if o.Runtime, err = promptLine(reader, out, "Runtime (docker/podman)", "podman"); err != nil {
-		return o, err
-	}
-	if o.TenantID, err = promptLine(reader, out, "Tenant UUID", ""); err != nil {
-		return o, err
-	}
-	if o.CoreURL, err = promptLine(reader, out, "Core HTTPS API URL", "https://127.0.0.1:8443"); err != nil {
-		return o, err
-	}
-	if o.CoreAddress, err = promptLine(reader, out, "Connector session address", "127.0.0.1:9443"); err != nil {
-		return o, err
-	}
-	if o.CAFile, err = promptLine(reader, out, "Core public CA file", ""); err != nil {
-		return o, err
-	}
-	if o.Environment, err = promptLine(reader, out, "Environment", "dev"); err != nil {
-		return o, err
+	if custom == "yes" || custom == "y" {
+		if o.TargetID, err = promptLine(reader, out, "Target name", o.NodeID); err != nil {
+			return o, err
+		}
+		if o.Environment, err = promptLine(reader, out, "Operator environment", "dev"); err != nil {
+			return o, err
+		}
+		if o.CoreURL, err = promptLine(reader, out, "Core HTTPS API URL", ""); err != nil {
+			return o, err
+		}
+		if o.CoreAddress, err = promptLine(reader, out, "Connector session address", ""); err != nil {
+			return o, err
+		}
+		if o.CAFile, err = promptLine(reader, out, "Pinned public Core CA file", ""); err != nil {
+			return o, err
+		}
 	}
 	return o, nil
 }
@@ -335,7 +406,7 @@ func validateCoreURL(raw string) error {
 	return nil
 }
 
-func requestNodeAuthorization(ctx context.Context, coreTarget, environment, coreURL, caFile, targetID, nodeID string) (targetenrollment.Bootstrap, error) {
+func requestNodeAuthorization(ctx context.Context, coreTarget, environment, coreURL, caFile, targetID, nodeID string, grantLifetime, certificateLifetime time.Duration) (targetenrollment.Bootstrap, error) {
 	session, err := operatorauth.LoadSession(coreTarget, environment)
 	if err != nil || !session.ValidAt(time.Now()) {
 		return targetenrollment.Bootstrap{}, machine.NewError(machine.ErrorAuthenticationFailed,
@@ -348,7 +419,8 @@ func requestNodeAuthorization(ctx context.Context, coreTarget, environment, core
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"target_id": targetID, "node_id": nodeID, "environment": environment,
-		"lifetime_seconds": 600, "certificate_ttl_seconds": 86400,
+		"lifetime_seconds":        int64(grantLifetime / time.Second),
+		"certificate_ttl_seconds": int64(certificateLifetime / time.Second),
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(coreURL, "/")+targetenrollment.AuthorizationPath, bytes.NewReader(payload))
 	if err != nil {
@@ -396,6 +468,43 @@ func nodeHTTPSClient(caFile string) (*http.Client, error) {
 func validCAPEM(data []byte) bool {
 	pool := x509.NewCertPool()
 	return pool.AppendCertsFromPEM(data)
+}
+
+// decodeCapabilitiesFromCoreResponse reads the optional capabilities array a
+// Core status response advertises (contract_version/node/capabilities) without
+// trusting any capability to be present or available locally. Only well-formed
+// capability descriptors are surfaced; malformed data yields no capabilities and
+// never a fabricated availability verdict.
+func decodeCapabilitiesFromCoreResponse(data []byte) ([]nodeCapability, bool) {
+	var envelope struct {
+		Capabilities json.RawMessage `json:"capabilities"`
+	}
+	if json.Unmarshal(data, &envelope) != nil || len(envelope.Capabilities) == 0 {
+		return nil, false
+	}
+	var raw []struct {
+		Name      string `json:"name"`
+		Available bool   `json:"available"`
+		Detail    string `json:"detail,omitempty"`
+	}
+	if json.Unmarshal(envelope.Capabilities, &raw) != nil {
+		return nil, false
+	}
+	capabilities := make([]nodeCapability, 0, len(raw))
+	for _, entry := range raw {
+		if strings.TrimSpace(entry.Name) == "" {
+			return nil, true
+		}
+		capabilities = append(capabilities, nodeCapability{
+			Name:      entry.Name,
+			Available: entry.Available,
+			Detail:    entry.Detail,
+		})
+	}
+	if len(capabilities) == 0 {
+		return nil, true
+	}
+	return capabilities, true
 }
 
 func nodeServerName(address string) (string, error) {
@@ -508,112 +617,6 @@ func rollbackNodeTarget(target string) error {
 		delete(cfg.Access, access)
 	}
 	return cfg.Save()
-}
-
-func nodeList(ctx context.Context, args []string, out, errOut io.Writer) error {
-	filtered, format, err := parseReadOutputArgs(args, "node list")
-	if err != nil {
-		return err
-	}
-	if len(filtered) != 0 {
-		return usageError("baha node list does not accept positional arguments", "Use --json for structured output.")
-	}
-	cfg, err := deployment.LoadConfig()
-	if err != nil {
-		return err
-	}
-	names := cfg.TargetNames()
-	items := make([]nodeListItem, 0)
-	for _, name := range names {
-		target := cfg.Targets[name]
-		access, ok := cfg.Access[target.Access.Reference]
-		if !ok || access.Provider != nodeConnectorProvider {
-			continue
-		}
-		items = append(items, nodeListItem{TargetID: name, NodeID: access.Reference, TenantID: target.TenantID, Runtime: target.Runtime.Provider})
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].TargetID < items[j].TargetID })
-	if format == outputJSON {
-		return writeJSON(out, map[string]any{"contract_version": machine.ContractVersion, "nodes": items})
-	}
-	if len(items) == 0 {
-		fmt.Fprintln(out, "No remote connector nodes configured.")
-		return nil
-	}
-	for _, item := range items {
-		fmt.Fprintf(out, "%-24s %-24s %-8s %s\n", item.TargetID, item.NodeID, item.Runtime, item.TenantID)
-	}
-	return nil
-}
-
-func nodeStatus(ctx context.Context, args []string, out, errOut io.Writer) error {
-	filtered, format, err := parseReadOutputArgs(args, "node status")
-	if err != nil {
-		return err
-	}
-	if len(filtered) != 1 {
-		return usageError("baha node status requires TARGET", "Run 'baha node list' to choose a configured remote Target.")
-	}
-	record, err := loadNodeRecord(filtered[0])
-	if err != nil {
-		return err
-	}
-	result, err := requestNodeLifecycle(ctx, record, targetenrollment.StatusPath)
-	if err != nil {
-		return err
-	}
-	if format == outputJSON {
-		return writeJSON(out, result)
-	}
-	state := "PENDING"
-	if result.Revoked {
-		state = "REVOKED"
-	} else if result.Enrolled && result.ExpiresAt.After(time.Now()) {
-		state = "ENROLLED"
-	}
-	fmt.Fprintf(out, "Target  %s\nNode    %s\nRuntime %s\nState   %s\n", result.TargetID, result.NodeID, result.Runtime, state)
-	if !result.ExpiresAt.IsZero() {
-		fmt.Fprintf(out, "Expires %s\n", result.ExpiresAt.UTC().Format(time.RFC3339))
-	}
-	return nil
-}
-
-func requestNodeLifecycle(ctx context.Context, record nodeRecord, path string) (nodeStatusResult, error) {
-	session, err := operatorauth.LoadSession(record.CoreTarget, record.Environment)
-	if err != nil || !session.ValidAt(time.Now()) {
-		return nodeStatusResult{}, machine.NewError(machine.ErrorAuthenticationFailed, "node lifecycle requires a valid Core operator session", "Run 'baha login' for the Core Target/environment and retry.", false)
-	}
-	client, err := nodeHTTPSClient(record.CAFile)
-	if err != nil {
-		return nodeStatusResult{}, err
-	}
-	payload, _ := json.Marshal(map[string]string{"target_id": record.TargetID, "node_id": record.NodeID, "environment": record.Environment})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(record.CoreURL, "/")+path, bytes.NewReader(payload))
-	if err != nil {
-		return nodeStatusResult{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+session.IDToken)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nodeStatusResult{}, machine.Wrap(machine.ErrorProviderUnavailable, err, "Verify Core HTTPS reachability and trust.", true)
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16385))
-	if err != nil || len(data) > 16384 {
-		return nodeStatusResult{}, errors.New("invalid Core node lifecycle response")
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nodeStatusResult{}, machine.NewError(machine.ErrorConflict, fmt.Sprintf("Core rejected node lifecycle request (HTTP %d)", resp.StatusCode), "Verify node ownership, operator permissions and current enrollment state.", false)
-	}
-	if path == targetenrollment.DisconnectPath {
-		return nodeStatusResult{ContractVersion: machine.ContractVersion, TargetID: record.TargetID, NodeID: record.NodeID, Runtime: record.Runtime, Revoked: true}, nil
-	}
-	var result nodeStatusResult
-	if json.Unmarshal(data, &result) != nil {
-		return nodeStatusResult{}, errors.New("invalid Core node status response")
-	}
-	return result, nil
 }
 
 func effectiveCoreSessionTarget() string {

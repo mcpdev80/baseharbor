@@ -80,10 +80,12 @@ baha target create docker-dev \
 Entfernte Docker-/Podman-Hosts werden nicht mehr durch manuelles Erstellen des Connector-Access-Eintrags aufgenommen. Auf dem Core-System wird der geführte Node-Workflow verwendet:
 
 ```bash
-baha node add node-a
+baha node add node-a --runtime podman
 baha node list
 baha node status node-a
 ```
+
+Der Standardweg verwendet ein geschütztes Core-Verbindungsprofil mit verifizierten öffentlichen API-/Connector-Endpunkten und gepinnter CA. Die Tenant-UUID kommt ausschließlich aus der authentifizierten Operator-Mitgliedschaft, nicht aus einer manuellen Eingabe. Im erweiterten Pfad dürfen Endpunkte und CA individuell gesetzt werden, aber keine fremde Tenant-Zugehörigkeit. Bei fehlender oder mehrdeutiger öffentlicher TLS-Identität wird sicher abgebrochen.
 
 `baha node add` erzeugt das Remote-Target und genau eine owner-only Enrollment-Datei mit kurzlebiger Einmal-Autorisierung. Diese Datei wird auf den Remote-Host kopiert und dort konsumiert:
 

@@ -312,6 +312,7 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		// Grant creation remains behind the existing identity/tenant middleware.
 		mux.Handle(targetenrollment.EnrollmentPath, handler)
 		operatorMux.Handle(targetenrollment.AuthorizationPath, handler)
+		operatorMux.Handle(targetenrollment.OwnerContextPath, handler)
 		operatorMux.Handle(targetenrollment.RenewalAuthorizationPath, handler)
 		operatorMux.Handle(targetenrollment.StatusPath, handler)
 		operatorMux.Handle(targetenrollment.DisconnectPath, handler)

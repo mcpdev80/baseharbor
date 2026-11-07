@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
-# Emit true only for changes that can alter the native control-plane footprint.
-# Used by the existing Docker/Podman acceptance workflows on develop pushes.
+# Emit true for any change affecting the native single-Core footprint or enrollment.
 set -euo pipefail
-
 required=false
 while IFS= read -r path; do
   case "$path" in
-    cmd/baha/runtime.go|cmd/baha/runtime_start.go|cmd/baha/runtime_ports_test.go|cmd/baha/control_plane_single_native_ci_test.go|internal/runtime/stack.go|internal/runtime/stack_test.go|internal/runtime/control_plane_profile.go|internal/runtime/control_plane_profile_test.go|internal/runtime/assets/compose*.yaml|internal/runtime/openbao_runtime_prepare.go|internal/runtime/openbao_storage.go|internal/runtime/bootstrap_postgres_tls.go)
+    cmd/baha/runtime*.go|cmd/baha/control_plane*.go|cmd/baha/serve*.go|cmd/baha/node*.go|cmd/baha/operator_*.go|cmd/baha/onboarding*.go|cmd/baha/app_remote*.go|internal/runtime/*.go|internal/runtime/assets/compose*.yaml|internal/controlplaneruntime/*.go|internal/coreinstallation/*.go|internal/onboardingwizard/*.go|internal/targetenrollment/*.go|internal/database/operator_bootstrap*.go|scripts/ci-owner-node-native.sh|scripts/ci-node-contract-acceptance.sh|.github/workflows/docker-runtime-acceptance.yml|.github/workflows/podman-acceptance.yml|scripts/ci-single-default-impact.sh|scripts/test-ci-impact-selectors.sh)
       required=true
       ;;
   esac

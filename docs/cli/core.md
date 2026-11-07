@@ -1,5 +1,9 @@
 # Core workflow commands
 
+First operator/Tenant initialization after `baha up --control-plane-only` is **explicit**: `baha login -e dev --init-tenant` on the locally owned Core. See [Security and trust commands](security-trust.md). Candidate PR #1437 is pending acceptance; ordinary `baha up` never assigns the first tenant owner automatically.
+
+# Core workflow commands
+
 These commands form the shortest normal BaseHarbor workflow.
 
 | Command | Purpose | Safety |

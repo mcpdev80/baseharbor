@@ -70,7 +70,7 @@ The same Target owns one development domain, default `baha.localhost`. With the 
 
 BaseHarbor operator identity is a third boundary and is not interchangeable with application-user identity.
 
-- `dev` uses trusted-local operator mode and requires no login.
+- Unconfigured `dev` can use trusted-local operator mode without login. After explicit first-owner initialization, its saved OIDC boundary is used for ordinary login.
 - `test` and `prod` require a valid OIDC operator session scoped to the effective Target and Environment.
 - The CLI uses Authorization Code + PKCE and stores only short-lived owner-only local session state.
 - Managed Keycloak and external OIDC can provide the operator boundary.
@@ -79,6 +79,10 @@ BaseHarbor operator identity is a third boundary and is not interchangeable with
 Use `baha login -e ENV`, `baha whoami -e ENV` and `baha logout -e ENV` for explicit session management.
 
 Advanced BaseHarbor RBAC/JIT/approval/break-glass governance is separate from this minimum authenticated operator boundary.
+
+## Installation-owned first-operator tenant
+
+The explicit first-owner command is `baha login -e dev --init-tenant` on a locally owned, ready Core. The [complete bootstrap and Connector flow](../cli/security-trust.md) documents its required PKCE login, first `default` tenant and `editor` membership, idempotent retry, denial of foreign takeovers, and operator API issuer/audience alignment. The initial bootstrap uses installation-authorized PostgreSQL over verified TLS and tenant RLS, not the runtime HTTP principal. Pending CI and native acceptance in Core PR #1437.
 
 ## Pre-tenant membership resolution
 
