@@ -26,6 +26,7 @@ if any(e.get('Action') in ('skip', 'fail') for e in events):
 PY
   rm -f "$report"
 }
+bash scripts/test-ci-impact-selectors.sh
 require_pass ./internal/identityprovider TestKeycloakSingleNativeSQLInCI 16m
 bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 require_pass ./cmd/baha TestControlPlaneSingleDefaultNativeRuntimeInCI 20m
