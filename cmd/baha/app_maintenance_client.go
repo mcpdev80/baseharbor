@@ -240,11 +240,30 @@ func remoteApplicationMaintenanceUnsupported(resolved resolvedApplication, opera
 // consequence plan and its owned cleanup are the same owners a direct teardown
 // uses. This client never builds a remote maintenance engine.
 func executeRemoteApplicationMaintenanceDestroy(ctx context.Context, resolved resolvedApplication, options applicationMaintenanceOptions, out, errOut io.Writer) error {
+	// The retained authority is captured before the owner runs. Remote destroy
+	// deletes the deployment record the way a direct teardown does, so the window
+	// must be committed from this retained authority afterwards: a reload after the
+	// owner removed the deployment would fail and lose the durable record.
+	authority, err := applicationMaintenanceAuthority(resolved)
+	if err != nil {
+		return err
+	}
 	args := append(options.applicationArgs(), "--yes")
 	if options.FullReset {
 		args = append(args, "--full-reset")
 	}
-	return maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut)
+	// Commit the durable window up front from the retained authority: the remote
+	// destroy deletes the deployment record the way a direct teardown does, so a
+	// commit after teardown would fail. Roll the window back if the owner did not
+	// converge, so a failed remote destroy reports no completed recovery point.
+	if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
+		return err
+	}
+	if err := maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut); err != nil {
+		_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+		return err
+	}
+	return nil
 }
 
 func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedApplication,
@@ -307,14 +326,27 @@ func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedAp
 		if !options.Confirmed {
 			return applicationMaintenanceApprovalRequired(resolved, options.Operation)
 		}
+		// Capture the retained authority before the owner runs: destroy deletes the
+		// deployment root, so the durable window must be committed from this captured
+		// authority before teardown. We commit the window up front, then roll it back
+		// if the owner did not converge: a destroyed deployment must not leave a
+		// window claiming a recovery point it never produced.
+		authority, err := applicationMaintenanceAuthority(resolved)
+		if err != nil {
+			return err
+		}
 		args = append(args, "--yes")
 		if options.FullReset {
 			args = append(args, "--full-reset")
 		}
-		if err := maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut); err != nil {
+		if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
 			return err
 		}
-		return commitApplicationMaintenanceWindow(ctx, resolved, options.Operation, "")
+		if err := maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut); err != nil {
+			_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+			return err
+		}
+		return nil
 	default:
 		return applicationMaintenanceUnknownOperation(options.Operation)
 	}
@@ -375,8 +407,30 @@ func commitApplicationMaintenanceWindow(ctx context.Context, resolved resolvedAp
 	if err := maintenanceArchiveIsReadable(archive); err != nil {
 		return err
 	}
+	// The authority is resolved fresh for routes that do not mutate the deployment
+	// root. destroy removes the deployment record, so it resolves the authority
+	// once before the owner runs and commits from that retained authority instead
+	// (see commitApplicationMaintenanceWindowAuthority).
 	current, err := applicationMaintenanceAuthority(resolved)
 	if err != nil {
+		return err
+	}
+	return commitApplicationMaintenanceWindowAuthority(ctx, resolved, current, operation, archive)
+}
+
+// commitApplicationMaintenanceWindowAuthority advances the durable window from a
+// caller-supplied authority. destroy passes the authority it captured before the
+// owner removed the deployment root, because reloading it after teardown would
+// fail and lose the durable record. All other callers pass the fresh view from
+// commitApplicationMaintenanceWindow.
+func commitApplicationMaintenanceWindowAuthority(ctx context.Context, resolved resolvedApplication,
+	current application.MaintenanceAuthority, operation, archive string) error {
+	// A window advances only for an operation the lifecycle owner actually
+	// converged. A submission that stopped mid-flight records nothing.
+	if !maintenanceMutationCompleted(ctx, nil) {
+		return maintenanceSubmissionCancelled()
+	}
+	if err := maintenanceArchiveIsReadable(archive); err != nil {
 		return err
 	}
 	record := current.MaintenanceAuthorityRecord
@@ -406,6 +460,18 @@ func commitApplicationMaintenanceWindow(ctx context.Context, resolved resolvedAp
 		return errMaintenanceOperationAlreadyRecorded
 	}
 	return nil
+}
+
+// rollbackApplicationMaintenanceWindow removes a window the client committed up
+// front for a destroy that the owner then did not converge. It rolls back to the
+// record the window held before this commit (an absent window is removed), so a
+// failed destroy reports nothing as a completed recovery point.
+func rollbackApplicationMaintenanceWindow(ctx context.Context, resolved resolvedApplication,
+	current application.MaintenanceAuthority) error {
+	if !maintenanceMutationCompleted(ctx, nil) {
+		return nil
+	}
+	return application.RollbackMaintenanceAuthorityWindow(resolved.stateRoot(), current.MaintenanceAuthorityRecord, current.RecordExists)
 }
 
 var errMaintenanceOperationAlreadyRecorded = errors.New(

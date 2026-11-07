@@ -234,7 +234,33 @@ func LoadMaintenanceAuthority(stateRoot string) (MaintenanceAuthorityRecord, boo
 // resolves to the same durable operation rather than a second mutation. A first
 // window always starts at sequence one while a new operation at the current
 // revision advances the count, so a caller cannot claim history it does not have.
-func CommitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthorityRecord) (MaintenanceAuthorityRecord, bool, error) {
+// CommitMaintenanceAuthority commits one durable window operation. It is a var
+// seam so a test can inject a failure into the history-append transaction while
+// exercising the real rollback path; production leaves it pointing at
+// commitMaintenanceAuthority.
+var CommitMaintenanceAuthority = commitMaintenanceAuthority
+
+// AppendMaintenanceHistoryHook is the seam the history-append transaction runs
+// through. Production points it at the real append; a test can make a single
+// append fail to prove the current window rolls back.
+var AppendMaintenanceHistoryHook = appendMaintenanceHistory
+
+// AppendMaintenanceHistoryHookRolledBack, when true, makes the history-append
+// rollback a no-op so a test can prove the fix is load-bearing: the current
+// window is then left advanced past a missing historical revision.
+var AppendMaintenanceHistoryHookRolledBack = false
+
+// RollbackMaintenanceWindowHook is the seam the rollback runs through. Production
+// points it at the real rollback; a test can set AppendMaintenanceHistoryHookRolledBack
+// to make it a no-op to prove the fix is load-bearing.
+var RollbackMaintenanceWindowHook = func(stateRoot string, current MaintenanceAuthorityRecord, existed bool) error {
+	if AppendMaintenanceHistoryHookRolledBack {
+		return nil
+	}
+	return rollbackMaintenanceWindow(stateRoot, current, existed)
+}
+
+func commitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthorityRecord) (MaintenanceAuthorityRecord, bool, error) {
 	if err := submitted.Validate(); err != nil {
 		return MaintenanceAuthorityRecord{}, false, err
 	}
@@ -246,6 +272,10 @@ func CommitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthority
 	if err != nil {
 		return MaintenanceAuthorityRecord{}, false, err
 	}
+	// Track whether the current window existed before this commit so a failed
+	// history append can roll the window back to exactly what it was (an absent
+	// window is removed again, a present window is restored).
+	windowExisted := exists
 	// A retained record's identity fields and binding are immutable: an invalid,
 	// foreign or otherwise unusable retained window is refused before anything is
 	// read, replaced or written.
@@ -301,18 +331,106 @@ func CommitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthority
 		_ = os.Remove(tmp)
 		return MaintenanceAuthorityRecord{}, false, fmt.Errorf("protect maintenance authority record: %w", err)
 	}
+	// The window file holds only the latest operation. Recording the committed
+	// operation in the window's history is what keeps an older revision answerable
+	// after the window has moved on; a replayed operation must never be reported
+	// as unknown merely because a newer one superseded it. The current-window commit
+	// is irreversible, so the two durable writes are recovered as one transaction:
+	// if the history append fails the current window is rolled back to what it was,
+	// no advanced current record is left with a missing historical revision, and the
+	// failure is surfaced explicitly (fail-closed) rather than silently reported as
+	// success. Preflight bounded-history capacity before the irreversible commit.
+	if capErr := maintenanceHistoryHasCapacity(stateRoot, current); capErr != nil {
+		return MaintenanceAuthorityRecord{}, false, capErr
+	}
 	if err := os.Rename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return MaintenanceAuthorityRecord{}, false, fmt.Errorf("commit maintenance authority record: %w", err)
 	}
-	// The window file holds only the latest operation. Recording the committed
-	// operation in the window's history is what keeps an older revision answerable
-	// after the window has moved on; a replayed operation must never be reported
-	// as unknown merely because a newer one superseded it.
-	if err := appendMaintenanceHistory(stateRoot, submitted); err != nil {
-		return MaintenanceAuthorityRecord{}, false, err
+	if err := AppendMaintenanceHistoryHook(stateRoot, submitted); err != nil {
+		// Roll the advanced current window back so no partial state is reported as
+		// success, then surface the failure. A test can disable the rollback to
+		// prove the fix is load-bearing.
+		if rollbackErr := RollbackMaintenanceWindowHook(stateRoot, current, windowExisted); rollbackErr != nil {
+			return MaintenanceAuthorityRecord{}, false, fmt.Errorf(
+				"history append failed and window rollback failed: append=%w rollback=%v", err, rollbackErr)
+		}
+		return MaintenanceAuthorityRecord{}, false, fmt.Errorf("append maintenance history: %w", err)
 	}
 	return submitted, true, nil
+}
+
+// maintenanceHistoryHasCapacity preflights the bounded history before the
+// irreversible current-window commit. An append that would exceed the limit is
+// refused up front so the current window is never advanced past a missing
+// historical entry.
+func maintenanceHistoryHasCapacity(stateRoot string, current MaintenanceAuthorityRecord) error {
+	records, err := readMaintenanceHistory(stateRoot)
+	if err != nil {
+		return err
+	}
+	records = append(records, current)
+	data, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode maintenance window history: %w", err)
+	}
+	if len(data) > MaintenanceHistoryLimit {
+		return fmt.Errorf("%w: maintenance window history exceeds protected state limit", ErrMaintenanceHistoryAppendFailed)
+	}
+	return nil
+}
+
+// rollbackMaintenanceWindow restores the current window to the record it held
+// before this commit, so a failed history append leaves no advanced current state.
+// current is the record the window held before the commit; when it was absent the
+// window file is removed.
+func rollbackMaintenanceWindow(stateRoot string, current MaintenanceAuthorityRecord, existed bool) error {
+	if !existed {
+		path, err := maintenanceStateFile(stateRoot)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("rollback maintenance window after history failure: %w", err)
+		}
+		return nil
+	}
+	data, err := json.MarshalIndent(current, "", "  ")
+	if err != nil {
+		return fmt.Errorf("rollback maintenance window (encode): %w", err)
+	}
+	data = append(data, '\n')
+	statePath, err := maintenanceStateFilePath(stateRoot)
+	if err != nil {
+		return fmt.Errorf("rollback maintenance window (resolve): %w", err)
+	}
+	tmp := statePath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("rollback maintenance window (write): %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rollback maintenance window (protect): %w", err)
+	}
+	if err := os.Rename(tmp, statePath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rollback maintenance window (commit): %w", err)
+	}
+	return nil
+}
+
+// maintenanceStateFilePath resolves the durable current-window path. It lives in
+// maintenance_authority.go so the rollback can reuse the exact commit path.
+func maintenanceStateFilePath(stateRoot string) (string, error) {
+	return maintenanceStateFile(stateRoot)
+}
+
+// RollbackMaintenanceAuthorityWindow restores the current window to the record it
+// held before a commit, so an owner that did not converge a destroy reports no
+// advanced current record. It is exported so the client can roll back a window it
+// committed up front for a destroy that the owner then failed.
+func RollbackMaintenanceAuthorityWindow(stateRoot string, current MaintenanceAuthorityRecord, existed bool) error {
+	return rollbackMaintenanceWindow(stateRoot, current, existed)
 }
 
 // MaintenanceDigest binds a maintenance submission to one exact authority
