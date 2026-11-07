@@ -11,6 +11,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -282,33 +283,130 @@ func TestPodmanOwnerLoanUnmarkedStaysFailClosed(t *testing.T) {
 // (RED); at the fix the guarded local-boot loan makes it pass.
 // -----------------------------------------------------------------------------
 
-// TestProductionOwnerLoanLocalIsolatedApplyPasses is the exact-defect cell: a
-// genuinely ownerless isolated podman Target with its own Local access must
-// pass the owner seam against the boot installation the CLI selects, from a
-// binary with NO test-process provenance. On the broken commit (the test-gated
-// loan) the save fails with ErrDeploymentOwnerMissing (RED); at the fix the
-// guarded local-boot loan makes it pass.
+// repoSourceForIsolatedApply writes a repository manifest with a backend SQL
+// service (so the apply lifecycle passes its Core/readiness prerequisite and
+// reaches the real recordDeploymentBeforeMutation owner loan) under a working
+// directory and registers the authored application, returning the working dir.
+func repoSourceForIsolatedApply(t *testing.T, name string) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Chdir(root)
+	m := application.New(name, "dev", true, false, false)
+	mustWriteInitializedAuthoredManifest(t, filepath.Join(root, application.RepositoryManifestName), m)
+	return root
+}
+
+// TestProductionOwnerLoanLocalIsolatedApplyPasses is the exact-defect cell: it
+// drives the REAL production apply command runner — recordDeploymentBeforeMutation,
+// the exact function runApplicationApplyLifecycle calls at the write seam —
+// against a genuinely ownerless isolated local podman Target whose boot Target
+// owns a READY Core, and asserts the write is authorized by the un-gated owner
+// loan. The isolated Target has no own installation.json, so only the loan
+// (resolved against the boot Core the effective-target selection names) can
+// authorize the write.
+//
+// recordDeploymentBeforeMutation installs the real apply command context via
+// setLoanExecutionContext and calls deployment.VerifyDeploymentOwner, the exact
+// seam the production apply uses. The loan resolves the boot Core through
+// bahaBootCoreTargetName (no BASEHARBOR_TARGET is set here, so it falls to the
+// config default, the boot Core) — a DIFFERENT Target than the isolated one, so
+// the equal-name guard does not refuse.
+//
+// On the broken commit (the test-gated loan) the write fails with the verbatim
+// ErrDeploymentOwnerMissing (RED); at the fix the un-gated loan grants and the
+// pending record is written (GREEN). No test-process provenance is set up: the
+// loan must activate from a normal `baha` command context.
 func TestProductionOwnerLoanLocalIsolatedApplyPasses(t *testing.T) {
 	const boot, iso = "p427-podman-boot", "p427-podman-iso"
-	state := isolatePodmanBootTarget(t, boot, iso)
+
+	// Set up a boot Target owning a genuine podman installation. Only the boot
+	// Target is configured as the config default (DefaultTarget == boot); the
+	// isolated Target is a configured-but-ownerless sibling that exists only as
+	// a filesystem state root.
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	state := seedBootInstallation(t, boot, "podman")
+
+	access := map[string]deployment.AccessDefinition{
+		"local": {Provider: "local", Reference: "local"},
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: boot,
+		Access:        access,
+		Targets: map[string]deployment.TargetDefinition{
+			boot: {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "local"},
+			iso:  {Runtime: deployment.RuntimeDefinition{Provider: "podman"}, Access: deployment.TargetAccess{Reference: "local"}, Scope: "local"},
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("persist isolated-podman loan config: %v", err)
+	}
 
 	if _, err := coreinstallation.Load(mustBootRuntimeRoot(t, iso)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("isolated podman target must have no installation.json: err=%v", err)
 	}
-
-	// No test-process provenance is set up in this test: the loan must NOT be
-	// activated by any marker. The helpers above use an un-gated config.
-
-	if err := saveThroughApplySeam(t, iso, "podman-isolated"); err != nil {
-		t.Fatalf("genuinely ownerless local isolated podman target must pass the owner seam (card t-20261106-r27-remote-up-podman-owner-missing): %v", err)
-	}
-
-	// The loan must never materialize a second installation.json: the boot
-	// installation stays the single durable owner (ADR 0021).
+	// The isolated Target's state root must be a real, protected directory.
 	isoRoot, err := deployment.TargetStateRoot(iso)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(isoRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build a repository-sourced resolved application for the isolated Target.
+	// The apply command runner initializes the repository identity the same way
+	// before it resolves the application; we mirror that here so the manifest
+	// carries its canonical ApplicationID.
+	root := repoSourceForIsolatedApply(t, "podman-isolated")
+	selection, err := application.ResolveRepositoryEnvironment(root, "dev")
+	if err != nil {
+		t.Fatalf("resolve repository environment for isolated Target: %v", err)
+	}
+	isoTarget, err := cfg.ResolveTarget(iso, "")
+	if err != nil {
+		t.Fatalf("resolve isolated Target: %v", err)
+	}
+	selection, err = resolveRepositoryLifecycleIntent(context.Background(), isoTarget, selection, "apply")
+	if err != nil {
+		t.Fatalf("initialize isolated Target repository identity: %v", err)
+	}
+	resolved, err := resolvedRepositoryApplication(isoTarget, isoRoot, selection, "apply")
+	if err != nil {
+		t.Fatalf("resolve isolated Target application for real apply runner: %v", err)
+	}
+
+	// Drive the REAL production apply command runner: recordDeploymentBeforeMutation
+	// installs the apply command context (setLoanExecutionContext) and calls
+	// VerifyDeploymentOwner, exactly as the production apply does. We provide the
+	// operator confirm digest the way the production apply does (via the apply
+	// context) so the repository candidate submission binds consent and the write
+	// proceeds to the pending state.
+	submission, _ := candidateSubmissionForResolvedApp(context.Background(), resolved)
+	confirmDigest := delivery.CandidateConsentDigest(submission)
+	applyCtx := withCandidateConsentDigest(context.Background(), confirmDigest)
+	if _, err := recordDeploymentBeforeMutation(applyCtx, resolved, "applying", confirmDigest); err != nil {
+		t.Fatalf("real CLI app apply must pass the un-gated production owner loan for the ownerless local isolated podman target; got %v", err)
+	}
+
+	// The owner loan must have produced a resolvable pending deployment record
+	// for the isolated Target (proving the un-gated loan authorized the write
+	// through the real production runner).
+	record, found, findErr := deployment.FindDeployment(iso, resolved.Manifest.ApplicationID, "dev")
+	if findErr != nil {
+		t.Fatalf("find deployment record after real apply: %v", findErr)
+	}
+	if !found {
+		t.Fatalf("real CLI apply must write a pending deployment record for the isolated target %q", iso)
+	}
+	if record.Observed.State != "applying" && record.Observed.State != "configured" && !record.Observed.Ready {
+		t.Fatalf("real CLI apply must record the deployment as applying/ready, got state=%q ready=%v", record.Observed.State, record.Observed.Ready)
+	}
+
+	// The loan must never materialize a second installation.json: the boot
+	// installation stays the single durable owner (ADR 0021).
 	if _, err := os.Lstat(filepath.Join(isoRoot, "runtime", "installation.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("loan must not write an installation.json at the test target: err=%v", err)
 	}
