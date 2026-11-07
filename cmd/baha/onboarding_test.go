@@ -611,6 +611,101 @@ func TestOnboardingDeviceBundleExchangeConsumesOnce(t *testing.T) {
 	}
 }
 
+// TestOnboardingDeviceBundleImportCompletesThroughEnrollment proves the import
+// intent now completes the device-bundle path through the ACCEPTED one-use
+// workstation-enrollment boundary in the production commit seam: a real
+// in-process enrollment authority redeems the bundle, the one-use grant cannot
+// be replayed, and the join fact binds the installation without ever carrying
+// a private key. It exercises the same decision the wizard returns and the same
+// commitOnboardingDecision path a human review would reach.
+func TestOnboardingDeviceBundleImportCompletesThroughEnrollment(t *testing.T) {
+	installationID := "11111111-1111-4111-8111-111111111111"
+	scope := ws.Scope{TenantID: installationID, Station: "dev-laptop-01"}
+	store := ws.NewMemoryStore()
+	issuer := serviceissuer.New(t)
+	authority, err := ws.New(store, issuer, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge := &onboardingEnrollmentBridge{Authority: authority, facts: map[string]string{}}
+	authority, err = ws.New(store, issuer, bridge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge.Authority = authority
+	handler, err := wshttp.NewProductionHandler(bridge, func(reqCtx context.Context, station string) (ws.Scope, error) {
+		tenant, ok := tenancy.FromContext(reqCtx)
+		if !ok || tenant.TenantID != installationID {
+			return ws.Scope{}, ws.ErrDenied
+		}
+		return ws.Scope{TenantID: installationID, Station: station}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(onboardingTenancyMiddleware(installationID, handler))
+	defer server.Close()
+
+	csrPEM := onboardingTestCSR(t, scope.Identity())
+	var bundleToken, bundleNonce string
+	seed := &onboardingDeviceBundle{
+		contract:       onboardingBundleContract,
+		baseURL:        server.URL,
+		client:         server.Client(),
+		scope:          scope,
+		certificateTTL: time.Hour,
+		capture:        func(token, nonce string) { bundleToken, bundleNonce = token, nonce },
+	}
+	if _, err := seed.redeem(context.Background(), csrPEM); err != nil {
+		t.Fatalf("pre-seeding the bundle grant failed: %v", err)
+	}
+
+	// The import decision carries the issued bundle handle: installation ID,
+	// station and grant token.
+	decision := onboardingwizard.Decision{
+		Mode:         onboardingwizard.ModeImport,
+		ImportBundle: installationID + "|" + scope.Station + "|" + bundleToken,
+	}
+	if err := decision.Validate(); err != nil {
+		t.Fatalf("import decision invalid: %v", err)
+	}
+
+	// Point the production ImportBundle seam at the test's in-process
+	// enrollment authority. The seam binds the same onboardingDeviceBundle that
+	// commitOnboardingDecision builds (contract + scope + baseURL) to the
+	// accepted one-use boundary and redeems it through the real default.
+	saved := onboardingAdapters
+	onboardingAdapters.ImportBundle = func(ctx context.Context, bundle *onboardingDeviceBundle) (string, error) {
+		bundle.baseURL = server.URL
+		bundle.client = server.Client()
+		return redeemOnboardingBundle(ctx, bundle)
+	}
+	t.Cleanup(func() { onboardingAdapters = saved })
+
+	var out strings.Builder
+	if err := commitOnboardingDecision(context.Background(), decision, &out); err != nil {
+		t.Fatalf("the bundle import path still fails closed: %v\n%s", err, out.String())
+	}
+	joined := out.String()
+	if !strings.Contains(joined, installationID) {
+		t.Fatalf("import did not complete the enrollment join: %q", joined)
+	}
+	if strings.Contains(joined, "PRIVATE KEY") {
+		t.Fatal("the import exposed private key material")
+	}
+
+	// The one-use grant is spent: replaying the same (token,nonce) against the
+	// production authority cannot enroll a second identity, exactly as the
+	// accepted one-use store guarantees.
+	replay, err := ws.NewRequest(scope, bundleToken, bundleNonce, csrPEM, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := authority.Enroll(context.Background(), replay); err == nil {
+		t.Fatal("a spent one-use bundle enrolled a second identity")
+	}
+}
+
 // onboardingTenancyMiddleware authenticates the test operator exactly like
 // the production middleware binds tenancy for the workstation endpoints.
 func onboardingTenancyMiddleware(tenantID string, next http.Handler) http.Handler {
