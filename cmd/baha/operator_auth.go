@@ -14,7 +14,7 @@ func operatorLoginCommand() *cli.Command {
 	return &cli.Command{
 		Name:    "login",
 		Summary: "Authenticate the BaseHarbor operator through OIDC",
-		Usage:   "baha login -e ENV|--environment ENV",
+		Usage:   "baha login -e ENV|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME]",
 		Long:    "Authenticates through Authorization Code + PKCE. --init-tenant is an explicit first-owner operation, restricted to the locally owned management Core after real OIDC login; it creates exactly one initial tenant and editor membership. Existing trusted local dev without an operator OIDC configuration remains login-free.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			loginArgs, initTenant, tenantSlug, tenantName, err := parseInitialTenantLoginArgs(args)

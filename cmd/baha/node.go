@@ -142,7 +142,7 @@ func nodeCommand() *cli.Command {
 		Summary: "Enroll and manage remote Docker or Podman nodes",
 		Usage:   "baha node [add|connect|list|status|disconnect]",
 		Children: []*cli.Command{
-			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] [--target NAME] --runtime docker|podman --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
+			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] --runtime docker|podman [--target NAME] [--core-url https://HOST:PORT] [--core-address HOST:PORT] [--ca-file FILE] [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
 			{Name: "connect", Summary: "Enroll this host and start the rootless connector service", Usage: "baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]", Run: nodeConnect},
 			{Name: "list", Summary: "List configured remote connector nodes", Usage: "baha node list [--json]", Run: nodeList},
 			{Name: "status", Summary: "Inspect Core enrollment state for a remote node", Usage: "baha node status TARGET [--json]", Run: nodeStatus},
