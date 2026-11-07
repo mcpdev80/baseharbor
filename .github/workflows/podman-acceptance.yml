@@ -54,9 +54,52 @@ jobs:
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
 
-  podman-quadlet:
+
+  single_default_native:
+    name: Native single-default · Podman
     needs: select_develop
-    if: ${{ always() && (github.event_name != 'push' || github.ref_name != 'develop' || needs.select_develop.outputs.required == 'true') }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      BASEHARBOR_TEST_RUNTIME: podman
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Podman
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify selected SQL/Secrets default with native Quadlet
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          docker context use default
+          export DOCKER_CONTEXT=
+          export DOCKER_HOST=unix:///var/run/docker.sock
+          go test -p 1 ./cmd/baha -run '^TestControlPlaneSingleDefaultNativeRuntimeInCI$' -count=1 -timeout 20m -json | tee "$RUNNER_TEMP/single-default.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ['RUNNER_TEMP']) / 'single-default.jsonl').read_text().splitlines() if line.startswith('{')]
+          test = 'TestControlPlaneSingleDefaultNativeRuntimeInCI'
+          if any(event.get('Action') in ('skip', 'fail') for event in events):
+              raise SystemExit('Native single-default test skipped or failed')
+          if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('Native single-default test did not execute')
+          PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh podman
+
+  podman-quadlet:
+    if: github.ref_name != 'develop'
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
@@ -274,7 +317,6 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-          BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
         shell: bash
         run: |
           set -euo pipefail
@@ -303,9 +345,6 @@ jobs:
             fi
           }
 
-          run_integration_test go test -p 1 ./cmd/baha -run 'TestControlPlaneSingleDefaultNativeRuntimeInCI' -count=1 -v 2>&1 | tee "$RUNNER_TEMP/single-default-native.txt"
-          grep -q '^--- PASS: TestControlPlaneSingleDefaultNativeRuntimeInCI ' "$RUNNER_TEMP/single-default-native.txt"
-          ! grep -q '^--- SKIP: TestControlPlaneSingleDefaultNativeRuntimeInCI ' "$RUNNER_TEMP/single-default-native.txt"
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryWorkflowRealLifecycle -count=1 -v
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI -count=1 -v
           run_integration_test go test -p 1 ./cmd/baha -run TestRepositoryComposeWorkloadOnlyLifecycleInCI -count=1 -v
