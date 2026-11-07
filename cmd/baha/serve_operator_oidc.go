@@ -10,6 +10,15 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
+// serveEnrollmentAuthorityTarget pins both enrollment modes to the same owned
+// installation. A per-application broker must never select a Core authority.
+func serveEnrollmentAuthorityTarget(cfg controlplaneruntime.Config) string {
+	if cfg.RuntimeAppName != "" || (!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) {
+		return ""
+	}
+	return strings.TrimSpace(cfg.ConnectorAuthorityTarget)
+}
+
 // The connector authority and the operator API must accept the same verified
 // Keycloak issuer/client identity established by the Core's owner onboarding.
 // This is derived from the protected target configuration, never from an
@@ -21,7 +30,7 @@ func bindServeToOwnedOperatorOIDC(cfg *controlplaneruntime.Config) error {
 	if cfg.RuntimeAppName != "" || (!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) {
 		return nil
 	}
-	target := strings.TrimSpace(cfg.ConnectorAuthorityTarget)
+	target := serveEnrollmentAuthorityTarget(*cfg)
 	if target == "" {
 		return errors.New("enrollment requires an owned authority target")
 	}
