@@ -106,6 +106,7 @@ CI_EXECUTION_SUITES = (
     'test_pr_runtime_request', 'test_pr_gate_dependencies',
     'test_pr_selected_runtime_matrix', 'test_ecosystem_release_pins',
     'test_targeted_gate_ref', 'test_artifact_gc', 'test_pre_release_check_plan',
+    'test_ci_v0427_gate_catalog',
     'test_pre_release_integration', 'test_consumer_source_pins',
     'test_frozen_candidate_promotion', 'test_ci_check_routes',
     'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',
@@ -181,7 +182,22 @@ def execute_validation(check, repository):
             ),
         )
     if check == 'cli-package-tests':
-        return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
+        # The client-commands card requires these five actual PASS events, not
+        # merely a successful package exit or skipped test cases. Only enforce
+        # this suite for candidates that include the dedicated regression file.
+        client_fixture = Path(repository) / 'cmd/baha/client_commands_behaviors_test.go'
+        required = (
+            'TestClientCommandsTwoHomesSameDeploymentPrecedence',
+            'TestClientCommandsDenialOverTwoHomes',
+            'TestClientCommandsServerLossOverTwoHomes',
+            'TestClientCommandsStaleConsentOverTwoHomes',
+            'TestClientCommandsErrorParityOverTwoHomes',
+        ) if client_fixture.is_file() else ()
+        result = go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True,
+                                  required_tests=required)
+        if required:
+            print(json.dumps({'check': check, 'required_pass': list(required)}))
+        return result
     if check == 'logs-package-tests':
         # Native opt-in scenarios run in their separately selected runtime jobs.
         return go_package_tests(repository, ['./internal/logs'], 'Logs', allow_skips=True)

@@ -55,6 +55,35 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
             selected("docs/index.md", "internal/runtime/assets/compose-single.yaml"),
         )
 
+    def test_openbao_ha_reuses_explicit_both_runtime_gate(self):
+        workflow = (ROOT / ".github/workflows/targeted-integration.yml").read_text()
+        self.assertIn("startsWith(github.ref_name, 'runtime-validation/ha/openbao-versions/')", workflow)
+        self.assertIn("  core_ha_openbao_versions:", workflow)
+        self.assertIn("TestCoreHAOpenBaoVersionsRuntimeAcceptance", workflow)
+        self.assertIn("required OpenBao HA/SQL recovery test failed or skipped", workflow)
+        self.assertIn("required OpenBao HA/SQL recovery test missing PASS", workflow)
+        self.assertIn('["docker","podman"]', workflow)
+        # Never select this expensive recovery test from ordinary develop pushes.
+        self.assertNotIn("github.ref_name == 'develop' && startsWith(github.ref_name, 'runtime-validation/ha/openbao-versions/')", workflow)
+
+    def test_compose_isolation_uses_exact_sha_and_four_non_skipped_tests(self):
+        workflow = (ROOT / ".github/workflows/targeted-integration.yml").read_text()
+        self.assertIn("'runtime-validation/compose-isolation/**'", workflow)
+        self.assertIn("  compose_isolation_exact:", workflow)
+        self.assertIn("BASEHARBOR_CI_RUNTIME_INTEGRATION: \"1\"", workflow)
+        self.assertIn("git checkout --detach \"$candidate\"", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$candidate"', workflow)
+        for name in (
+            "TestRepositoryWorkflowRealLifecycle",
+            "TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI",
+            "TestRepositoryComposeWorkloadOnlyLifecycleInCI",
+            "TestRepositoryBuildWorkloadRebuildsSourceChangesInCI",
+        ):
+            self.assertIn(name, workflow)
+        self.assertIn('required native compose test skipped or failed', workflow)
+        self.assertIn('missing required compose PASS:', workflow)
+        self.assertIn('runtime: [docker, podman]', workflow)
+
     def test_both_existing_runners_gate_develop_push_by_selector(self):
         for workflow in (
             ".github/workflows/docker-runtime-acceptance.yml",

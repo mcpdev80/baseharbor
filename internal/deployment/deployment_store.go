@@ -79,6 +79,17 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // explicit authorized path.
 var TenantOwnerResolver func(targetName string) (bool, error)
 
+// TargetLoanVerifier implements the owner loan (card
+// t-20261106-r27-remote-up-podman-owner-missing, card number 0427-117). It lets
+// a genuinely ownerless Local-access Target resolve against the one genuine,
+// READY Core installation its boot Target owns, so the authorized remote-podman
+// `app up` path can record its deployment owner from a normal `baha` binary.
+// The consumer binding (cmd/baha.deploymentTargetLoanVerifier) grants the loan
+// only for a Local-access Target whose boot Core is genuine and READY; every
+// connector/remote/managed, tenant, foreign, unmarked or non-READY case keeps
+// the original fail-closed sentinel ErrDeploymentOwnerMissing.
+var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
+
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	if TenantOwnerResolver != nil {
 		// Grant-only hook: only an affirmative (true, nil) authorizes the
@@ -102,7 +113,28 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// coreinstallation.Load owner check instead of returning early.
 	}
 	installation, err := coreinstallation.Load(targetRoot)
-	if err != nil {
+	loaned := false
+	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
+		// Owner loan seam (card t-20261106-r27-remote-up-podman-owner-missing,
+		// card 0427-117): resolve a genuinely ownerless Local-access Target
+		// against the one installation its boot Target owns. The loan verifier
+		// re-checks that the boot installation is genuine, READY, and that the
+		// boot Target differs from the requested one; here the loaned identity
+		// governs the requested Target's deployment namespace (the loan's
+		// purpose), so the namespace-installation binding below stays checked
+		// against targetName.
+		// A refusal — any error or a nil state — keeps the ORIGINAL
+		// fail-closed sentinel ErrDeploymentOwnerMissing: loan guard details must
+		// never replace the contract error shape (the caller's errors.Is checks
+		// and the never-delivered-destroy recognition in cmd/baha depend on it).
+		// The nil default keeps every production path byte-identical.
+		loanedState, loanErr := TargetLoanVerifier(targetName)
+		if loanErr != nil || loanedState == nil {
+			return ErrDeploymentOwnerMissing
+		}
+		installation = *loanedState
+		loaned = true
+	} else if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrDeploymentOwnerMissing
 		}
@@ -126,6 +158,16 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 			if info.IsDir() == false || info.Mode()&os.ModeSymlink != 0 {
 				return ErrDeploymentOwnerForeign
 			}
+		}
+	}
+	// Loan path only: resolve the two order-independent guarantees of the
+	// owner-loan seam via the extracted helper (see deployment_owner_loan.go).
+	// The `loaned` guard keeps this out of the normal production path, where
+	// VerifyDeploymentOwnerAgainstOwner already ran its own guarantee set and a
+	// stray TargetStateRoot failure must not change the contract result.
+	if loaned {
+		if err := verifyLoanOwnerGuarantees(targetName, targetRoot); err != nil {
+			return err
 		}
 	}
 	_ = deploymentID

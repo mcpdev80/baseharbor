@@ -63,6 +63,19 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}, nil
 }
 
+// ExecutorTransportOverrideForTest lets a test replace the transport of a
+// freshly constructed executor client. It is the runtime-executor counterpart
+// of openbao.NewApplicationRuntimeClientWithCA: the production constructor,
+// endpoint parsing, request routing and status contract stay exactly in play;
+// only the transport (trust and identity material the ephemeral test listener
+// requires) is supplied. It must never be used against a deployed broker.
+func ExecutorTransportOverrideForTest(client *Client, transport http.RoundTripper) {
+	if client == nil || transport == nil {
+		return
+	}
+	client.http = &http.Client{Transport: transport, Timeout: 30 * time.Second}
+}
+
 func (c *Client) Check(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint+"/readyz", nil)
 	if err != nil {

@@ -159,6 +159,20 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 	if err := ensureTargetDockerBinding(ctx, target); err != nil {
 		return coreinstallation.State{}, err
 	}
+	// Owned-authority passthrough: when this serve process is a management host
+	// that already owns the durable installation state root (the server holds the
+	// kernel lifecycle lock on it for its whole lifetime), execute the Core
+	// lifecycle on the owned authority instead of acquiring a second,
+	// non-reentrant lifecycle lock on the same root — which would dead-lock the
+	// owning server. The management-host test proves the same-host lifecycle op
+	// succeeds through this path.
+	if owned := ownedHostStateRoot(ctx); owned != "" && owned == root {
+		state, rerr := coreinstallation.Run(ctx, root, spec, steps)
+		if rerr == nil {
+			fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")
+		}
+		return state, rerr
+	}
 	state, err := coreinstallation.Run(ctx, root, spec, steps)
 	if err == nil {
 		fmt.Fprintln(out, "BaseHarbor Core READY: SQL + Secrets + Identity.")
