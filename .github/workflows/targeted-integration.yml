@@ -1050,7 +1050,17 @@ jobs:
               BASEHARBOR_RUNTIME_RESTART_ACCEPTANCE=true go test -p 1 ./cmd/baha -run '^TestExistingControlPlaneRestartRequiresAndUsesRecoveryFile$' -count=1 -timeout 20m -v
               ;;
             keycloak)
-              BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1 go test -p 1 ./internal/identityprovider -run '^TestKeycloakHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 18m -v
+              BASEHARBOR_KEYCLOAK_HA_ACCEPTANCE=1 go test -p 1 ./internal/identityprovider -run '^TestKeycloakHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 18m -json | tee "$RUNNER_TEMP/keycloak-ha-test.jsonl"
+              python3 - <<'PY'
+              import json, os, pathlib
+              path = pathlib.Path(os.environ["RUNNER_TEMP"]) / "keycloak-ha-test.jsonl"
+              events = [json.loads(line) for line in path.read_text().splitlines() if line.startswith("{")]
+              required = "TestKeycloakHARuntimeFailoverAcceptanceInCI"
+              if any(event.get("Action") in ("fail", "skip") for event in events):
+                  raise SystemExit("required native Keycloak HA test failed or skipped")
+              if not any(event.get("Test") == required and event.get("Action") == "pass" for event in events):
+                  raise SystemExit("required native Keycloak HA test did not run and pass")
+              PY
               ;;
             loki)
               BASEHARBOR_LOKI_HA_ACCEPTANCE=1 go test -p 1 ./internal/logs -run '^TestLokiHARuntimeFailoverAcceptanceInCI$' -count=1 -timeout 12m -v

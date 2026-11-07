@@ -42,6 +42,13 @@ class KeycloakSingleNativeRouteTests(unittest.TestCase):
             "true", selected("docs/index.md", "internal/identityprovider/keycloak_files.go"),
         )
 
+    def test_explicit_keycloak_ha_rejects_skipped_or_absent_native_pass(self):
+        workflow = (ROOT / ".github/workflows/targeted-integration.yml").read_text()
+        self.assertIn("TestKeycloakHARuntimeFailoverAcceptanceInCI", workflow)
+        self.assertIn("required native Keycloak HA test failed or skipped", workflow)
+        self.assertIn("required native Keycloak HA test did not run and pass", workflow)
+        self.assertIn("keycloak-ha-test.jsonl", workflow)
+
     def test_existing_runtime_workflows_reuse_narrow_develop_selector(self):
         for workflow in (
             ".github/workflows/docker-runtime-acceptance.yml",
