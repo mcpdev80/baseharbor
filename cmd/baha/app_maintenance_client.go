@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -259,8 +260,16 @@ func executeRemoteApplicationMaintenanceDestroy(ctx context.Context, resolved re
 	if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
 		return err
 	}
+	// A successful remote destroy leaves a durable tombstone at a path the owner
+	// does not remove, so the completed operation stays queryable after the
+	// deployment record is torn down. Roll the tombstone back on failure.
+	if err := stampMaintenanceTombstone(resolved, authority.MaintenanceAuthorityRecord); err != nil {
+		_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+		return err
+	}
 	if err := maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut); err != nil {
 		_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+		_ = rollbackMaintenanceTombstone(resolved)
 		return err
 	}
 	return nil
@@ -342,8 +351,18 @@ func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedAp
 		if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
 			return err
 		}
+		// Commit a durable tombstone of the committed destroy window to a path that
+		// the owner's DeleteDeploymentRecord does NOT remove, so the completed
+		// operation stays queryable after the deployment root is torn down. The
+		// rollback below removes it again when the owner does not converge, so a
+		// failed destroy leaves neither a window nor a tombstone.
+		if err := stampMaintenanceTombstone(resolved, authority.MaintenanceAuthorityRecord); err != nil {
+			_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+			return err
+		}
 		if err := maintenanceLifecycleOwner(ctx, options.Operation, resolved, args, out, errOut); err != nil {
 			_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
+			_ = rollbackMaintenanceTombstone(resolved)
 			return err
 		}
 		return nil
@@ -462,16 +481,98 @@ func commitApplicationMaintenanceWindowAuthority(ctx context.Context, resolved r
 	return nil
 }
 
+// maintenanceTombstonePath resolves the durable maintenance tombstone for a
+// deployment: a sibling of the deployment record that DeleteDeploymentRecord
+// does NOT remove. The deployment record lives at
+// <DataRoot>/targets/<target>/deployments/<deploymentID>; the tombstone lives at
+// <DataRoot>/targets/<target>/maintenance/<deploymentID>.json, one level up from
+// the deployments subtree, so os.RemoveAll of the deployment root cannot delete
+// the tombstone and the destroy outcome stays queryable after teardown.
+func maintenanceTombstonePath(resolved resolvedApplication) (string, error) {
+	root, err := deployment.DataRoot()
+	if err != nil {
+		return "", err
+	}
+	tombstoneDir := filepath.Join(root, "targets", resolved.Target.Name, "maintenance")
+	return filepath.Join(tombstoneDir, resolved.DeploymentIdentity.DeploymentID+".json"), nil
+}
+
+// stampMaintenanceTombstone writes a durable tombstone copy of the committed
+// destroy window so the completed operation stays queryable after the destroy
+// owner removes the deployment root. The current window record (already written
+// inside the deployment root) is mirrored here at a sibling path that
+// DeleteDeploymentRecord does not touch. A write failure is surfaced loudly: a
+// destroy must never claim a completed outcome with no durable trace of it.
+func stampMaintenanceTombstone(resolved resolvedApplication, record application.MaintenanceAuthorityRecord) error {
+	path, err := maintenanceTombstonePath(resolved)
+	if err != nil {
+		return err
+	}
+	if dir := filepath.Dir(path); dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return fmt.Errorf("create maintenance tombstone directory: %w", err)
+		}
+	}
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode maintenance tombstone: %w", err)
+	}
+	data = append(data, '\n')
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("write maintenance tombstone: %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("protect maintenance tombstone: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("commit maintenance tombstone: %w", err)
+	}
+	return nil
+}
+
+// rollbackMaintenanceTombstone removes the tombstone a destroy wrote when the
+// owner then failed to converge. A failed destroy must leave no tombstone
+// claiming a completed outcome, so the rollback deletes the tombstone file if
+// it exists.
+func rollbackMaintenanceTombstone(resolved resolvedApplication) error {
+	path, err := maintenanceTombstonePath(resolved)
+	if err != nil {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("rollback maintenance tombstone: %w", err)
+	}
+	return nil
+}
+
 // rollbackApplicationMaintenanceWindow removes a window the client committed up
 // front for a destroy that the owner then did not converge. It rolls back to the
 // record the window held before this commit (an absent window is removed), so a
 // failed destroy reports nothing as a completed recovery point.
-func rollbackApplicationMaintenanceWindow(ctx context.Context, resolved resolvedApplication,
+//
+// It is a var seam so a single-guard mutant can disable the rollback and prove
+// the production rollback is load-bearing: with it a no-op rollback, a failed
+// destroy leaves the up-front window claiming a completed recovery point (red);
+// with the fix it reports nothing (green). Production points it at the real
+// rollback.
+var rollbackApplicationMaintenanceWindow = rollbackApplicationMaintenanceWindowImpl
+
+func rollbackApplicationMaintenanceWindowImpl(ctx context.Context, resolved resolvedApplication,
 	current application.MaintenanceAuthority) error {
 	if !maintenanceMutationCompleted(ctx, nil) {
 		return nil
 	}
-	return application.RollbackMaintenanceAuthorityWindow(resolved.stateRoot(), current.MaintenanceAuthorityRecord, current.RecordExists)
+	// Roll back both the window and the history entry the commit appended. The
+	// commit advanced to exactly OperationRevision() (a new window opens at
+	// revision one; a continued window advances by one). The appended history
+	// entry carries that committed revision, so pass it directly to match and
+	// remove the appended entry instead of leaving residue.
+	committedRevision := current.OperationRevision()
+	return application.RollbackMaintenanceAuthorityWindow(resolved.stateRoot(), current.MaintenanceAuthorityRecord,
+		current.RecordExists, committedRevision)
 }
 
 var errMaintenanceOperationAlreadyRecorded = errors.New(

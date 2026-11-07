@@ -113,6 +113,63 @@ func appendMaintenanceHistory(stateRoot string, submitted MaintenanceAuthorityRe
 // window may survive a missing historical revision.
 var ErrMaintenanceHistoryAppendFailed = errors.New("maintenance window append failed")
 
+// rollbackMaintenanceHistory removes the last retained history entry only when it
+// is the entry the failed commit appended (identified by revision). A failed
+// append leaves that entry on disk even though the current window rolls back; a
+// destroy that fails therefore has to remove both writes as one transaction or a
+// retry answers the aborted revision as already recorded. Production points it at
+// the real removal; a test can make the removal a no-op to prove the fix is
+// load-bearing.
+var rollbackMaintenanceHistory = rollbackMaintenanceHistoryImpl
+
+var RollbackMaintenanceHistoryHook = rollbackMaintenanceHistory
+
+func rollbackMaintenanceHistoryImpl(stateRoot string, appendedRevision int) error {
+	records, err := readMaintenanceHistory(stateRoot)
+	if err != nil {
+		return err
+	}
+	// No history file at all: nothing appended to remove.
+	if len(records) == 0 {
+		return nil
+	}
+	last := records[len(records)-1]
+	// Only the entry the failed commit appended (its revision) is removed. An
+	// entry from an earlier, durable revision is never touched.
+	if last.Revision != appendedRevision {
+		return nil
+	}
+	trimmed := records[:len(records)-1]
+	path, err := maintenanceHistoryFile(stateRoot)
+	if err != nil {
+		return err
+	}
+	if len(trimmed) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove appended maintenance history: %w", err)
+		}
+		return nil
+	}
+	data, err := json.MarshalIndent(trimmed, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode maintenance window history (rollback): %w", err)
+	}
+	data = append(data, '\n')
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return fmt.Errorf("write maintenance window history (rollback): %w", err)
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("protect maintenance window history (rollback): %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("commit maintenance window history (rollback): %w", err)
+	}
+	return nil
+}
+
 // --- test seams ---
 // These small exported helpers let round-2 tests exercise the production
 // transaction (history-append rollback, revision answerability, capacity
