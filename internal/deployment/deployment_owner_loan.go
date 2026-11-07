@@ -1,6 +1,11 @@
 package deployment
 
-import "github.com/mcpdev80/baseharbor/internal/coreinstallation"
+import (
+	"errors"
+	"os"
+
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+)
 
 // This file holds the TEST-SCOPE ONLY owner-loan seam of
 // VerifyDeploymentOwner (internal/deployment/deployment_store.go). It is split
@@ -18,3 +23,40 @@ import "github.com/mcpdev80/baseharbor/internal/coreinstallation"
 // tenant-managed, connector-bound or production Target, and the default nil
 // keeps every production path byte-identical.
 var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
+
+// verifyLoanOwnerGuarantees enforces the two order-independent guarantees of the
+// TEST-SCOPE owner loan: the marker-proven test Target's state root is a real,
+// protected directory (no symlink escape), and AT MOST ONE of the two roots
+// (test Target + boot installation) carries an installation.json. Either the
+// test Target is genuinely ownerless (already proven by the ErrNotExist
+// precondition that routed the seam here) or the boot installation
+// vanished/was replaced — never a second concurrent owner. This deliberately
+// does not re-Load the test root: a re-Load would race with a concurrent
+// first-apply provisioning and refuse a legitimate in-flight grant with the
+// wrong sentinel (that race cost this lane a false-red podman cell). If a
+// genuine owner appeared at the test Target between the precondition Load and
+// this check, re-resolve WITHOUT the loan against that owner — the local owner
+// governs, never the loan; a corrupt/foreign file still fails closed with
+// ErrDeploymentOwnerForeign.
+func verifyLoanOwnerGuarantees(targetName, targetRoot string) error {
+	targetRootDir, rootErr := TargetStateRoot(targetName)
+	if rootErr != nil {
+		return rootErr
+	}
+	info, statErr := os.Lstat(targetRootDir)
+	if statErr != nil {
+		if errors.Is(statErr, os.ErrNotExist) {
+			return ErrDeploymentOwnerMissing
+		}
+		return statErr
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ErrDeploymentOwnerForeign
+	}
+	if _, ownErr := coreinstallation.Load(targetRoot); ownErr == nil {
+		return VerifyDeploymentOwner(targetName, targetRoot, "")
+	} else if !errors.Is(ownErr, os.ErrNotExist) {
+		return ErrDeploymentOwnerForeign
+	}
+	return nil
+}
