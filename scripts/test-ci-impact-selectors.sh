@@ -26,7 +26,10 @@ for path in \
   cmd/baha/serve.go \
   cmd/baha/app_remote_lifecycle.go \
   internal/controlplaneruntime/server_run.go \
-  scripts/ci-owner-node-native.sh; do
+  scripts/ci-owner-node-native.sh \
+  scripts/ci-node-contract-acceptance.sh \
+  .github/workflows/docker-runtime-acceptance.yml \
+  .github/workflows/podman-acceptance.yml; do
   check scripts/ci-single-default-impact.sh "$path" true
 done
 
