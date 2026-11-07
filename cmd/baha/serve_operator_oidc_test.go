@@ -40,3 +40,25 @@ func TestWorkstationEnrollmentCannotSkipOwnedOIDCBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestServeEnrollmentAuthorityTargetBindsBothEnrollmentModes(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  controlplaneruntime.Config
+		want string
+	}{
+		{name: "connector", cfg: controlplaneruntime.Config{ConnectorEnrollmentEnabled: true, ConnectorAuthorityTarget: " owner "}, want: "owner"},
+		{name: "workstation", cfg: controlplaneruntime.Config{WorkstationEnrollmentEnabled: true, ConnectorAuthorityTarget: " owner "}, want: "owner"},
+		{name: "both", cfg: controlplaneruntime.Config{ConnectorEnrollmentEnabled: true, WorkstationEnrollmentEnabled: true, ConnectorAuthorityTarget: "owner"}, want: "owner"},
+		{name: "neither", cfg: controlplaneruntime.Config{ConnectorAuthorityTarget: "owner"}, want: ""},
+		{name: "broker", cfg: controlplaneruntime.Config{RuntimeAppName: "app", WorkstationEnrollmentEnabled: true, ConnectorAuthorityTarget: "owner"}, want: ""},
+		{name: "missing authority", cfg: controlplaneruntime.Config{WorkstationEnrollmentEnabled: true}, want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := serveEnrollmentAuthorityTarget(tc.cfg); got != tc.want {
+				t.Fatalf("enrollment authority target = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
