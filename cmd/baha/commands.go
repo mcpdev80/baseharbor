@@ -162,6 +162,7 @@ func rootCommand() *cli.Command {
 		targetCommand(),
 		useTargetCommand(),
 		nodeCommand(),
+		onboardCommand(),
 		devCommand(),
 		configCommand(),
 		shellInitCommand(),
