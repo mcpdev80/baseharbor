@@ -63,6 +63,11 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
                 self.assertIn("ci-single-default-impact.sh", text)
                 self.assertIn("needs.select_develop.outputs.required == 'true'", text)
                 self.assertIn("TestControlPlaneSingleDefaultNativeRuntimeInCI", text)
+                self.assertIn("  single_default_native:", text)
+                self.assertIn("github.event_name != 'push' || github.ref_name != 'develop'", text)
+                self.assertIn("workflow_dispatch:", text)
+                self.assertIn("workflow_call:", text)
+                self.assertIn("      - 'runtime-validation/", text)
 
 
 if __name__ == "__main__":
