@@ -203,6 +203,10 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 		ContractVersion: machine.ContractVersion, TenantID: opts.TenantID, TargetID: opts.TargetID, NodeID: opts.NodeID,
 		Runtime: opts.Runtime, Environment: opts.Environment, CoreTarget: coreTarget.Name, CoreURL: strings.TrimRight(opts.CoreURL, "/"),
 		CoreAddress: opts.CoreAddress, ServerName: serverName, CAFile: opts.CAFile,
+		// Persist the authoritative add-time trust surface so node list can
+		// display ENROLLED/EXPIRED locally instead of a never-populated PENDING.
+		Enrolled:  true,
+		ExpiresAt: grant.ExpiresAt,
 	}
 	if err := saveNodeRecord(record); err != nil {
 		_ = os.Remove(opts.Output)
