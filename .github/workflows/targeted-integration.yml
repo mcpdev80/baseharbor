@@ -7,6 +7,7 @@ on:
     branches:
       - 'runtime-validation/ha/**'
       - 'runtime-validation/recovery-podman/**'
+      - 'runtime-validation/compose-isolation/**'
       - 'work/v0.4.24-core-ha-updates'
       - 'work/v0.4.25-contract-minimal-core'
   workflow_dispatch:
@@ -46,6 +47,66 @@ concurrency:
   cancel-in-progress: ${{ github.ref_name != 'work/v0.4.24-core-ha-updates' && github.ref_name != 'work/v0.4.25-contract-minimal-core' }}
 
 jobs:
+  compose_isolation_exact:
+    name: Compose isolation · ${{ matrix.runtime }}
+    if: ${{ github.event_name == 'push' && startsWith(github.ref_name, 'runtime-validation/compose-isolation/') }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [docker, podman]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+    steps:
+      - name: Checkout proof workflow
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Checkout exact PR commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          candidate="${GITHUB_REF_NAME##*/}"
+          [[ "$candidate" =~ ^[a-f0-9]{40}$ ]]
+          git fetch --no-tags origin "$candidate"
+          git checkout --detach "$candidate"
+          test "$(git rev-parse HEAD)" = "$candidate"
+          git diff --quiet
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare native rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Run mandatory repository lifecycles
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_REF_NAME##*/}"
+          if [ "$BASEHARBOR_TEST_RUNTIME" = podman ]; then
+            docker context use default
+            export DOCKER_CONTEXT=
+            export DOCKER_HOST=unix:///var/run/docker.sock
+          fi
+          go test -p 1 ./cmd/baha -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI)$' -count=1 -timeout 28m -json | tee "$RUNNER_TEMP/compose-isolation.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ["RUNNER_TEMP"]) / "compose-isolation.jsonl").read_text().splitlines() if line.startswith("{")]
+          required = {"TestRepositoryWorkflowRealLifecycle", "TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI", "TestRepositoryComposeWorkloadOnlyLifecycleInCI", "TestRepositoryBuildWorkloadRebuildsSourceChangesInCI"}
+          if any(e.get("Action") in ("fail", "skip") for e in events):
+              raise SystemExit("required native compose test skipped or failed")
+          passed = {e.get("Test") for e in events if e.get("Action") == "pass"}
+          if not required <= passed:
+              raise SystemExit("missing required compose PASS: " + ", ".join(sorted(required-passed)))
+          PY
+      - name: Clean up owned runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   registered_otlp_handoff:
     if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.25-contract-minimal-core' && (contains(github.event.head_commit.message, '[otlp-handoff-runtime]') || contains(github.event.head_commit.message, '[otlp-handoff-podman]')) }}
     name: Native OTLP handoff · ${{ matrix.runtime }}
