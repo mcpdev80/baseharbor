@@ -176,9 +176,9 @@ func TestImportBundleAndProfileAreDistinctAndExclusive(t *testing.T) {
 
 func TestFirstOwnerWizardDefaultCustomAndCancel(t *testing.T) {
 	for _, test := range []struct {
-		input string
-		slug string
-		name string
+		input  string
+		slug   string
+		name   string
 		cancel bool
 	}{
 		{"owner\ndefault\nyes\n", "baseharbor", "BaseHarbor", false},
@@ -187,7 +187,7 @@ func TestFirstOwnerWizardDefaultCustomAndCancel(t *testing.T) {
 	} {
 		var output strings.Builder
 		decision, err := Run(context.Background(), Input{
-			In: strings.NewReader(test.input),
+			In:  strings.NewReader(test.input),
 			Out: &output,
 			Discover: func(context.Context) (InstallState, error) {
 				return InstallState{HasInstallation: true, Targets: []string{"local"}}, nil
