@@ -26,8 +26,15 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
 )
 
-const nodeConnectorProvider = "baseharbor-node-connector"
-const nodeBundleVersion = "baseharbor.node-enrollment-bundle/v1"
+// The node CLI asks Core for a one-use grant that lasts long enough to copy the
+// enrollment file and start the connector, and for the certificate lifetime the
+// connector's own renewal bound accepts (24 hours).
+const (
+	nodeGrantLifetime       = 600 * time.Second
+	nodeCertificateLifetime = 24 * time.Hour
+	nodeConnectorProvider   = "baseharbor-node-connector"
+	nodeBundleVersion       = "baseharbor.node-enrollment-bundle/v1"
+)
 
 var nodeInput io.Reader = os.Stdin
 
@@ -46,6 +53,9 @@ type nodeEnrollmentBundle struct {
 	Authorization   targetenrollment.Bootstrap `json:"authorization"`
 }
 
+// nodeRecord is local registration metadata only. It deliberately stores no
+// enrollment, expiry or revocation claim: the sole authority for those is the
+// Core connector_nodes row, read through the lifecycle status endpoint.
 type nodeRecord struct {
 	ContractVersion string    `json:"contract_version"`
 	TenantID        string    `json:"tenant_id"`
@@ -58,8 +68,7 @@ type nodeRecord struct {
 	CoreAddress     string    `json:"core_address"`
 	ServerName      string    `json:"server_name"`
 	CAFile          string    `json:"ca_file"`
-	Enrolled        bool      `json:"enrolled"`
-	ExpiresAt       time.Time `json:"expires_at,omitempty"`
+	GrantExpiresAt  time.Time `json:"grant_expires_at,omitempty"`
 }
 
 type nodeListItem struct {
@@ -67,8 +76,29 @@ type nodeListItem struct {
 	NodeID    string    `json:"node_id"`
 	TenantID  string    `json:"tenant_id,omitempty"`
 	Runtime   string    `json:"runtime"`
-	Enrolled  bool      `json:"enrolled"`
+	State     string    `json:"state"`
 	ExpiresAt time.Time `json:"expires_at,omitempty"`
+	// unconfirmed records why the lifecycle authority could not be read; it is
+	// local diagnostics for the human table only, never a wire field.
+	unconfirmed string
+}
+
+// classifyNodeTrust is the single production state rule shared by node list and
+// node status. Positive labels require the Core lifecycle authority: an issued,
+// unexpired certificate is ENROLLED, a past certificate expiry is EXPIRED, and
+// revocation outranks all of them. Grant or session expiry can never produce a
+// positive label, and an unconfirmed redemption stays PENDING.
+func classifyNodeTrust(revoked, enrolled bool, expiresAt, now time.Time) string {
+	switch {
+	case revoked:
+		return "REVOKED"
+	case enrolled && !expiresAt.After(now):
+		return "EXPIRED"
+	case enrolled:
+		return "ENROLLED"
+	default:
+		return "PENDING"
+	}
 }
 
 type nodeAddResult struct {
@@ -177,7 +207,8 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 		}
 	}()
 
-	grant, err := requestNodeAuthorization(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile, opts.TargetID, opts.NodeID)
+	grant, err := requestNodeAuthorization(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile,
+		opts.TargetID, opts.NodeID, nodeGrantLifetime, nodeCertificateLifetime)
 	if err != nil {
 		return err
 	}
@@ -203,10 +234,9 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 		ContractVersion: machine.ContractVersion, TenantID: opts.TenantID, TargetID: opts.TargetID, NodeID: opts.NodeID,
 		Runtime: opts.Runtime, Environment: opts.Environment, CoreTarget: coreTarget.Name, CoreURL: strings.TrimRight(opts.CoreURL, "/"),
 		CoreAddress: opts.CoreAddress, ServerName: serverName, CAFile: opts.CAFile,
-		// Persist the authoritative add-time trust surface so node list can
-		// display ENROLLED/EXPIRED locally instead of a never-populated PENDING.
-		Enrolled:  true,
-		ExpiresAt: grant.ExpiresAt,
+		// The Core grant expiry is kept only as local readiness metadata for the
+		// bundle hint. node list/status never derive a trust state from it.
+		GrantExpiresAt: grant.ExpiresAt,
 	}
 	if err := saveNodeRecord(record); err != nil {
 		_ = os.Remove(opts.Output)
@@ -350,7 +380,7 @@ func validateCoreURL(raw string) error {
 	return nil
 }
 
-func requestNodeAuthorization(ctx context.Context, coreTarget, environment, coreURL, caFile, targetID, nodeID string) (targetenrollment.Bootstrap, error) {
+func requestNodeAuthorization(ctx context.Context, coreTarget, environment, coreURL, caFile, targetID, nodeID string, grantLifetime, certificateLifetime time.Duration) (targetenrollment.Bootstrap, error) {
 	session, err := operatorauth.LoadSession(coreTarget, environment)
 	if err != nil || !session.ValidAt(time.Now()) {
 		return targetenrollment.Bootstrap{}, machine.NewError(machine.ErrorAuthenticationFailed,
@@ -363,7 +393,8 @@ func requestNodeAuthorization(ctx context.Context, coreTarget, environment, core
 	}
 	payload, _ := json.Marshal(map[string]any{
 		"target_id": targetID, "node_id": nodeID, "environment": environment,
-		"lifetime_seconds": 600, "certificate_ttl_seconds": 86400,
+		"lifetime_seconds":        int64(grantLifetime / time.Second),
+		"certificate_ttl_seconds": int64(certificateLifetime / time.Second),
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(coreURL, "/")+targetenrollment.AuthorizationPath, bytes.NewReader(payload))
 	if err != nil {

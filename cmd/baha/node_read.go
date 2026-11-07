@@ -40,11 +40,21 @@ func nodeList(ctx context.Context, args []string, out, errOut io.Writer) error {
 		if !ok || access.Provider != nodeConnectorProvider {
 			continue
 		}
-		item := nodeListItem{TargetID: name, NodeID: access.Reference, TenantID: target.TenantID, Runtime: target.Runtime.Provider}
-		record, err := loadNodeRecord(name)
-		if err == nil {
-			item.ExpiresAt = record.ExpiresAt
-			item.Enrolled = record.Enrolled
+		item := nodeListItem{TargetID: name, NodeID: access.Reference, TenantID: target.TenantID, Runtime: target.Runtime.Provider, State: "PENDING"}
+		// Trust state comes only from the authoritative Core lifecycle status
+		// (certificate issuance, expiry and revocation). A node whose authority
+		// cannot be read stays PENDING with an explicit reason; it is never
+		// labelled from a local grant record or from session expiry.
+		if record, recordErr := loadNodeRecord(name); recordErr == nil {
+			status, statusErr := requestNodeLifecycle(ctx, record, targetenrollment.StatusPath)
+			if statusErr == nil {
+				item.State = classifyNodeTrust(status.Revoked, status.Enrolled, status.ExpiresAt, time.Now())
+				item.ExpiresAt = status.ExpiresAt
+			} else {
+				item.unconfirmed = statusErr.Error()
+			}
+		} else {
+			item.unconfirmed = recordErr.Error()
 		}
 		items = append(items, item)
 	}
@@ -57,15 +67,12 @@ func nodeList(ctx context.Context, args []string, out, errOut io.Writer) error {
 		return nil
 	}
 	for _, item := range items {
-		trust := "PENDING"
-		if item.Enrolled && item.ExpiresAt.After(time.Now()) {
-			trust = "ENROLLED"
-		} else if item.Enrolled {
-			trust = "EXPIRED"
-		}
-		fmt.Fprintf(out, "%-24s %-24s %-8s %-10s\n", item.TargetID, item.NodeID, item.Runtime, trust)
+		fmt.Fprintf(out, "%-24s %-24s %-8s %-10s\n", item.TargetID, item.NodeID, item.Runtime, item.State)
 		if !item.ExpiresAt.IsZero() {
 			fmt.Fprintf(out, "%-24s %-24s %-8s Expires %s\n", "", "", "", item.ExpiresAt.UTC().Format(time.RFC3339))
+		}
+		if item.State == "PENDING" && item.unconfirmed != "" {
+			fmt.Fprintf(out, "%-24s %-24s %-8s Authority %s\n", "", "", "", item.unconfirmed)
 		}
 	}
 	return nil
@@ -90,14 +97,7 @@ func nodeStatus(ctx context.Context, args []string, out, errOut io.Writer) error
 	if format == outputJSON {
 		return writeJSON(out, result)
 	}
-	state := "PENDING"
-	if result.Revoked {
-		state = "REVOKED"
-	} else if result.Enrolled && result.ExpiresAt.After(time.Now()) {
-		state = "ENROLLED"
-	} else if result.Enrolled {
-		state = "EXPIRED"
-	}
+	state := classifyNodeTrust(result.Revoked, result.Enrolled, result.ExpiresAt, time.Now())
 	fmt.Fprintf(out, "Target  %s\nNode    %s\nRuntime %s\nState   %s\n", result.TargetID, result.NodeID, result.Runtime, state)
 	if !result.ExpiresAt.IsZero() {
 		fmt.Fprintf(out, "Expires %s\n", result.ExpiresAt.UTC().Format(time.RFC3339))
@@ -154,8 +154,13 @@ func requestNodeLifecycle(ctx context.Context, record nodeRecord, path string) (
 	if json.Unmarshal(data, &result) != nil {
 		return nodeStatusResult{}, errors.New("invalid Core node status response")
 	}
-	if result.ContractVersion != machine.ContractVersion || result.TargetID != record.TargetID || result.NodeID != record.NodeID {
+	if result.ContractVersion != machine.ContractVersion || result.TargetID != record.TargetID || result.NodeID != record.NodeID || result.Runtime != record.Runtime {
 		return nodeStatusResult{}, errors.New("Core node status response did not confirm the requested target/node identity")
+	}
+	// A positively enrolled status without a certificate expiry is not a usable
+	// lifecycle authority; fail closed instead of guessing ENROLLED.
+	if result.Enrolled && result.ExpiresAt.IsZero() {
+		return nodeStatusResult{}, errors.New("Core node status response reported enrollment without a certificate expiry")
 	}
 	// Surface live trust details the Core authority reports: certificate serial
 	// and per-capability availability. Unsupported capability and unavailable
