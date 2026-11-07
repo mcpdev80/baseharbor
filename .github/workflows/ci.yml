@@ -844,7 +844,7 @@ jobs:
               python3 -m unittest scripts/test_pr_gate_plan.py ;;
             ci-policy) bash scripts/ci-workflow-policy.sh ;;
             ci-actionlint) go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= ;;
-            ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests)
+            ci-executor-tests|authority-package-tests|delivery-package-tests|deployment-package-tests|broker-package-tests|cli-package-tests|identity-provider-package-tests)
               if [ "$VALIDATION" = ci-executor-tests ]; then
                 git fetch --no-tags origin 45500525aa65957a22e6076ac28fe5cb6c6f9610
               fi

@@ -79,6 +79,11 @@ BROKER_PACKAGE_CHECKS = [{'id': 'broker-package-tests', 'owner': 'runtime broker
 CLI_PACKAGE_CHECKS = [{'id': 'cli-package-tests', 'owner': 'cmd/baha package tests',
     'command': 'go test ./cmd/baha -count=1'}]
 
+IDENTITY_PROVIDER_CHECKS = [
+    {'id': 'identity-provider-package-tests', 'owner': 'Keycloak and Identity provider unit contract',
+     'command': 'python3 scripts/pr-check-runner.py execute --check identity-provider-package-tests --repository .'},
+]
+
 RUNTIME_PROVIDER_CHECKS = [
     {'id': 'runtime-provider-package-tests', 'owner': 'runtime and provider packages',
      'command': 'go test ./internal/runtime/... ./internal/health ./internal/providers/runtime/podman -count=1'},
@@ -1403,6 +1408,15 @@ def targeted_plan(diff, requirements, mapping, repository='.',
         elif path in RESOLVER_ROUTING_REVIEWED:
             area = 'resolver-routing-resolved'
             require(RESOLVER_CHECKS)
+        elif path.startswith('internal/identityprovider/') and path.endswith('.go'):
+            area = 'identity-provider-package'
+            require(IDENTITY_PROVIDER_CHECKS)
+            # Test-only additions execute the complete Identity package without
+            # triggering unrelated source contracts or the full Go fallback.
+            # Shared runtime/SQL dependencies retain native integration gates.
+            if not path.endswith('_test.go'):
+                require(CODE_CHECKS + CLI_CHECKS)
+                selected.update(('atomic/docker/lifecycle', 'atomic/podman/lifecycle'))
         elif path.startswith('internal/runtime/') and path.endswith('.go') and not path.startswith('internal/runtime/resolver/'):
             area = 'runtime-package'
             require(RUNTIME_PROVIDER_CHECKS)

@@ -2726,3 +2726,37 @@ class CLISelectedCheckDeduplicationTests(unittest.TestCase):
         ids = [check['id'] for check in result['required_validation_checks']]
         self.assertIn('cli-package-tests', ids)
         self.assertNotIn('cli-guided-tests', ids)
+
+
+class IdentityProviderPackageRoutingTests(unittest.TestCase):
+    def test_keycloak_test_only_selects_one_package_not_broad_fallback(self):
+        for filename in ('internal/identityprovider/keycloak_single_native_ci_test.go',
+                         'internal/identityprovider/keycloak_files_test.go'):
+            result = planner.plan(diff(paths(filename)), REQ, MAP,
+                                  conservative_fallback=True)
+            checks = {row['id'] for row in result['required_validation_checks']}
+            self.assertEqual('resolved', result['coverage_status'])
+            self.assertFalse(result.get('fallback_used', False))
+            self.assertEqual([], result['selected_gates'])
+            self.assertIn('identity-provider-package-tests', checks)
+            self.assertFalse({'go-unit-tests', 'go-build', 'go-vet'} & checks)
+
+    def test_identity_implementation_requires_native_lifecycle_both_runtimes(self):
+        result = planner.plan(
+            diff(paths('internal/identityprovider/keycloak_core_sql.go')),
+            REQ, MAP, conservative_fallback=True,
+        )
+        self.assertEqual('resolved', result['coverage_status'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'identity-provider-package-tests', 'source-contracts',
+                         'cli-vet', 'cli-build'} <= checks)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_unrelated_unknown_code_remains_conservative_fallback(self):
+        result = planner.plan(diff(paths('internal/newly_unknown/feature.go')), REQ, MAP,
+                              conservative_fallback=True)
+        self.assertTrue(result['fallback_used'])
+        checks = {row['id'] for row in result['required_validation_checks']}
+        self.assertTrue({'go-unit-tests', 'go-build', 'go-vet'} <= checks)
+        self.assertNotIn('identity-provider-package-tests', checks)
