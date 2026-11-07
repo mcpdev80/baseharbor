@@ -111,7 +111,7 @@ Explicit reveal is a separate action:
 baha app creds postgres --reveal
 ```
 
-`dev` remains trusted-local and does not require `baha login`. The same application operations against `test` or `prod` require the configured Target/Environment OIDC operator boundary. Use `baha login -e test`, `baha whoami -e test` and `baha logout -e test` explicitly when needed. Advanced RBAC/JIT/break-glass governance remains a later platform-access layer.
+Unconfigured `dev` remains trusted-local without `baha login`. After the optional first-owner initialization via `baha login -e dev --init-tenant`, regular login uses the stored OIDC boundary; see [operator bootstrap](../cli/security-trust.md). The same application operations against `test` or `prod` require the configured Target/Environment OIDC operator boundary. Use `baha login -e test`, `baha whoami -e test` and `baha logout -e test` explicitly when needed. Advanced RBAC/JIT/break-glass governance remains a later platform-access layer.
 
 ## Workload logs
 

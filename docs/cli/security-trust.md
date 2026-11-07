@@ -33,6 +33,25 @@ baha whoami
 
 Development can remain trusted-local where configured; test/prod operator access follows the configured authentication boundary.
 
+## Initial operator and tenant bootstrap (v0.4.27 candidate)
+
+On the **locally owned, ready management Core**, explicitly initialize the first operator tenant:
+
+```bash
+baha target show
+baha up --control-plane-only
+baha login -e dev --init-tenant
+baha whoami -e dev
+```
+
+This first-owner operation is **not** performed implicitly by `baha up`. It uses interactive OIDC Authorization Code + PKCE. If no operator OIDC boundary exists for the selected Target/environment, interactive setup can configure managed/shared Keycloak or an external OIDC provider. Managed Keycloak uses a dedicated environment-specific operator realm/client, distinct from the Core Identity `baseharbor` realm.
+
+Only after a verified, unexpired login does BaseHarbor create tenant `default`, the exact (issuer, subject) external identity and its `editor` membership in one transaction with RLS. Repeating with the same owner is idempotent; different owners, existing foreign tenants, remote Targets, invalid credentials or an unready local Core fail closed. No anonymous first-admin endpoint exists. Unconfigured dev keeps the trusted-local behavior; after explicit setup, ordinary `baha login -e dev` uses the stored operator OIDC boundary.
+
+**Connector prerequisite:** Configure `BASEHARBOR_API_OIDC_ISSUER` and `BASEHARBOR_API_OIDC_AUDIENCES` on the protected operator API to match the actual operator realm/client. An API still using `.../realms/baseharbor` does **not** accept tokens issued by `.../realms/bh-operators-dev`; verify discovery and audience rather than bypassing OIDC or tenant checks.
+
+After first-owner setup, enroll with `baha node add`, establish the connection with `baha node connect`, deploy with `baha app up`, and verify `baha doctor`. Docker and Podman require separate real end-to-end evidence. This functionality is being developed in [Core PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437), **not yet merged, released or natively accepted**.
+
 ## Connections
 
 Connection-oriented commands include:

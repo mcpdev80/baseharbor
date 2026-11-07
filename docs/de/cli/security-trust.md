@@ -32,6 +32,25 @@ Rotation ersetzt Manager-AppRole, Control-Plane-Datenbankzugangsdaten und manage
 Weiter: [Sicherheit](../explanation/security.md), [Authentifizierung](../explanation/authentication.md), [exakte Befehle (EN)](https://mcpdev80.github.io/baseharbor/cli/security-trust/).
 
 
+## Initialen Operator und Tenant einrichten (v0.4.27, Kandidat)
+
+Auf dem **lokal gehörenden, bereiten Management-Core** initialisiert der erste Owner ausdrücklich:
+
+```bash
+baha target show
+baha up --control-plane-only
+baha login -e dev --init-tenant
+baha whoami -e dev
+```
+
+Diese Erst-Owner-Aktion ist **kein automatischer Bestandteil von `baha up`**. Die Anmeldung verwendet interaktives OIDC Authorization Code + PKCE. Ohne gespeicherte Operator-OIDC-Grenze lässt sich im Einrichtungsdialog Managed/Shared Keycloak oder ein externer OIDC-Provider wählen. Managed Keycloak nutzt ein eigenes umgebungsgebundenes Operator-Realm samt Client, getrennt vom Core-Identity-Realm `baseharbor`.
+
+Erst nach verifizierter, nicht abgelaufener Anmeldung werden Tenant `default`, die externe Identität (Issuer + Subject) und deren `editor`-Membership atomar mit RLS gespeichert. Derselbe Owner kann wiederholen; andere Owner, fremde bestehende Tenants, Remote-Targets, ungültige Identitäten oder ein nicht bereiter Core scheitern sicher. Es gibt keinen anonymen Erst-Admin-Endpunkt. Unkonfiguriertes `dev` bleibt trusted-local; nach dem expliziten Bootstrap nutzt normales `baha login -e dev` die gespeicherte OIDC-Grenze.
+
+**Vor der Connector-Einschreibung:** `BASEHARBOR_API_OIDC_ISSUER` und `BASEHARBOR_API_OIDC_AUDIENCES` der geschützten Operator-API müssen zum tatsächlichen Operator-Realm/Client passen. Eine API mit `.../realms/baseharbor` akzeptiert keine Token aus `.../realms/bh-operators-dev`. Issuer und Audience über Discovery abgleichen, keine OIDC-/Tenant-Prüfung umgehen.
+
+Anschließend mit `baha node add` einschreiben, mit `baha node connect` verbinden, über `baha app up` bereitstellen und mit `baha doctor` prüfen. Docker und Podman brauchen jeweils echte End-to-End-Nachweise. Die Funktion entsteht in [Core-PR #1437](https://github.com/mcpdev80/baseharbor/pull/1437) und ist **noch weder gemergt noch released oder nativ abgenommen**.
+
 ## Weitere Befehlsbeispiele
 
 ```text

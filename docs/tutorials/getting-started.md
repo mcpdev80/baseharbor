@@ -30,6 +30,18 @@ footprint distinguish measured, estimated and unknown values without invented
 savings. See the [application commands](../cli/applications.md) for supported
 Core-less behavior and limits.
 
+## Optional: first operator on a remote-management Core
+
+For Connector enrollment, initialize the first operator **on the local management Core**, not on the remote node:
+
+```bash
+baha up --control-plane-only
+baha login -e dev --init-tenant
+baha whoami -e dev
+```
+
+This is separate from normal trusted-local application setup. Before enrollment, match the protected operator API's issuer/audience to the operator realm/client. See [first-owner setup and Connector flow](../cli/security-trust.md). PR #1437 is still under CI/native acceptance; not released.
+
 ## Try it: a Go order API with SQL
 
 Prerequisites: install the `baha` release binary, make a local Docker or Podman runtime available, and use a parent directory without an `orders-api` folder. Check the CLI and the effective Target first:
