@@ -32,13 +32,12 @@ import (
 // evidence is cited, not duplicated (AGENTS 5.4):
 //   - denial:         TestRemoteApplyCannotPublishBeforeCurrentProviderAcknowledgement
 //     TestRemoteUnsupportedProviderDisclosesCurrentImpactBeforeTechnicalDenial
-//   - precedence:     TestTargetListActiveMarkerUsesExplicitPrecedence
+//   - precedence:     TestCLIProductionPathAssignsServerIdentityProves
 //   - server loss:    TestRemoteApplicationStatusNeverInfersAbsenceFromLocalFiles
-
-// twoHomeClientCommandContexts builds one deployment fixture and two independent
-// checkout homes over it, returning the fixture context, the local Core authority
-// target, the remote node target, and the two home directories. Each home owns
-// its own canonical Store, so the two checkouts are genuinely independent.
+//
+// Each home is entered with t.Chdir, which the Go test framework restores
+// automatically, so this file never leaves a residual process working directory
+// that would break the package's relative-path README/docs tests.
 func twoHomeClientCommandContexts(t *testing.T) (context.Context, deployment.ResolvedTarget, deployment.ResolvedTarget, string, string) {
 	t.Helper()
 	ctx, core, node := remoteApplicationCoreFixture(t)
@@ -51,24 +50,22 @@ func twoHomeClientCommandContexts(t *testing.T) (context.Context, deployment.Res
 // TestClientCommandsTwoHomesSameDeploymentPrecedence asserts that the server-owned
 // application identity takes precedence over the locally authored contract when
 // both independent checkout homes initialise the same deployment. This is the
-// card's precedence behaviour over two homes: the authority assigns and owns the
-// identity; the locally authored contract never carries it (mirroring
-// TestCLIProductionPathAssignsServerIdentityProves).
+// card's precedence behaviour over two homes.
+//
+// Two homes each run the real baha app init; each resolves a server-assigned
+// application id (never authored locally), proving the authority's identity owns
+// the deployment from every home (mirroring TestCLIProductionPathAssigns
+// ServerIdentityProves).
 func TestClientCommandsTwoHomesSameDeploymentPrecedence(t *testing.T) {
 	assumeVerifiedCoreForSourceTest(t)
 	configureTestTarget(t)
-	prev, _ := os.Getwd()
-	defer func() { _ = os.Chdir(prev) }()
 
-	// Two independent checkout homes; each addresses the same deployment.
 	homeA := buildFixtureRepo(t)
 	homeB := buildFixtureRepo(t)
 
 	var serverIDs []string
 	for _, home := range []string{homeA, homeB} {
-		if err := os.Chdir(home); err != nil {
-			t.Fatal(err)
-		}
+		t.Chdir(home)
 		var out, errOut bytes.Buffer
 		if err := runWithIO(context.Background(), []string{"app", "init", "--quick", "--no-input", "--json"}, &out, &errOut); err != nil {
 			t.Fatalf("%s: app init: %v\n%s", home, err, errOut.String())
@@ -102,18 +99,16 @@ func TestClientCommandsTwoHomesSameDeploymentPrecedence(t *testing.T) {
 	}
 }
 
-// TestClientCommandsDenialOverTwoHomes drives a remote apply that removes a
-// retained capability from one home and asserts the technical denial fails closed
-// WITHOUT reaching the transport, from both homes. This is the card's denial
-// behaviour over two homes.
+// TestClientCommandsDenialOverTwoHomes drives a remote apply from each home and
+// asserts the technical denial fails closed (ErrorApprovalRequired) WITHOUT
+// reaching the transport or rewriting the protected intent. This is the card's
+// denial behaviour over two homes.
 func TestClientCommandsDenialOverTwoHomes(t *testing.T) {
 	ctx, core, _, homeA, homeB := twoHomeClientCommandContexts(t)
 	ctx = machineNoninteractiveContext(withCoreAuthority(ctx, core))
 
 	for _, home := range []string{homeA, homeB} {
-		if err := os.Chdir(home); err != nil {
-			t.Fatal(err)
-		}
+		t.Chdir(home)
 		if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -151,21 +146,17 @@ func TestClientCommandsDenialOverTwoHomes(t *testing.T) {
 
 // TestClientCommandsServerLossOverTwoHomes asserts that when the single Core
 // session is unavailable (server loss), the remote status collection from both
-// homes fails closed with the targetsession error rather than inferring readiness
-// or absence.
+// homes fails closed with targetsession.ErrUnavailable rather than inferring
+// readiness or absence.
 func TestClientCommandsServerLossOverTwoHomes(t *testing.T) {
 	ctx, core, node, homeA, homeB := twoHomeClientCommandContexts(t)
-	prev, _ := os.Getwd()
-	defer func() { _ = os.Chdir(prev) }()
 
 	// A remote resolved application bound to the single Core node; with the live
 	// session unavailable it must fail closed for server loss.
 	remoteResolved := resolvedApplication{Target: node, Manifest: application.New("server-loss", "dev", true, false, false),
 		Store: application.Store{Root: t.TempDir()}}
 	for _, home := range []string{homeA, homeB} {
-		if err := os.Chdir(home); err != nil {
-			t.Fatal(err)
-		}
+		t.Chdir(home)
 		collection, _, err := newResolvedApplicationStatusCollection(withCoreAuthority(ctx, core), remoteResolved)
 		if err == nil || collection.result.State == "not_applied" || collection.result.Ready {
 			t.Fatalf("%s: server loss did not fail closed; got state=%q err=%v", home, collection.result.State, err)
@@ -185,9 +176,7 @@ func TestClientCommandsStaleConsentOverTwoHomes(t *testing.T) {
 	t.Setenv(application.ProviderScopeEnv(capability.ProviderPostgreSQL), "application")
 
 	for _, home := range []string{homeA, homeB} {
-		if err := os.Chdir(home); err != nil {
-			t.Fatal(err)
-		}
+		t.Chdir(home)
 		if err := os.WriteFile("compose.yaml", []byte(corelessHTTPWorkload), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -227,14 +216,10 @@ func TestClientCommandsStaleConsentOverTwoHomes(t *testing.T) {
 // authority surface one error shape, never divergent ones.
 func TestClientCommandsErrorParityOverTwoHomes(t *testing.T) {
 	ctx, _, _, homeA, homeB := twoHomeClientCommandContexts(t)
-	prev, _ := os.Getwd()
-	defer func() { _ = os.Chdir(prev) }()
 
 	codes := make([]machine.ErrorCode, 0, 2)
 	for _, home := range []string{homeA, homeB} {
-		if err := os.Chdir(home); err != nil {
-			t.Fatal(err)
-		}
+		t.Chdir(home)
 		// Invalid input through the internal seam yields a classified authority
 		// error from this home.
 		_, err := resolveApplication(ctx, application.Store{}, []string{"--bogus-flag"}, "status")
