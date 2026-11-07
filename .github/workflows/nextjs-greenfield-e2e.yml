@@ -1,6 +1,12 @@
 name: "Greenfield · Native Stack E2E"
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_ref:
+        description: Exact candidate commit SHA from pre-release source selection
+        required: true
+        type: string
   push:
     branches:
       - "runtime-validation/greenfield/**"
@@ -11,6 +17,7 @@ permissions:
   contents: read
 jobs:
   nextjs-docker:
+    if: inputs.candidate_ref == ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -67,6 +74,7 @@ jobs:
       - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.candidate_ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -76,8 +84,14 @@ jobs:
         run: bash scripts/ci-core-rootless-runtime.sh
       - name: Build exact candidate CLI
         shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_ref }}
         run: |
           set -euo pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          fi
           go build -o "$RUNNER_TEMP/baha" ./cmd/baha
           git rev-parse HEAD | tee "$RUNNER_TEMP/greenfield-source-sha.txt"
       - name: Greenfield source to actual app READY
