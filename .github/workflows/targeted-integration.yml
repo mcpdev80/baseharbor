@@ -945,7 +945,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/provider-versions"
           go test -race -json ./cmd/baha -run '^TestCoreProviderVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/provider-versions/tests.jsonl"
   core_ha_openbao_versions:
-    if: ${{ github.event_name == 'push' && github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]')) }}
+    if: ${{ github.event_name == 'push' && ((github.ref_name == 'work/v0.4.24-core-ha-updates' && (contains(github.event.head_commit.message, '[bao-ha-runtime]') || contains(github.event.head_commit.message, '[bao-ha-docker-runtime]'))) || startsWith(github.ref_name, 'runtime-validation/ha/openbao-versions/')) }}
     name: HA OpenBao versions and SQL recovery · ${{ matrix.runtime }}
     runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
     timeout-minutes: 45
@@ -975,6 +975,15 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/ha-openbao-versions"
           go test -race -json ./cmd/baha -run '^TestCoreHAOpenBaoVersionsRuntimeAcceptance$' -count=1 -timeout 35m 2>&1 | tee "$RUNNER_TEMP/ha-openbao-versions/tests.jsonl"
+          python3 - <<'PY'
+          import json, pathlib, os
+          events = [json.loads(line) for line in (pathlib.Path(os.environ["RUNNER_TEMP"]) / "ha-openbao-versions/tests.jsonl").read_text().splitlines() if line.startswith("{")]
+          name = "TestCoreHAOpenBaoVersionsRuntimeAcceptance"
+          if any(event.get("Action") in ("fail", "skip") for event in events):
+              raise SystemExit("required OpenBao HA/SQL recovery test failed or skipped")
+          if not any(event.get("Test") == name and event.get("Action") == "pass" for event in events):
+              raise SystemExit("required OpenBao HA/SQL recovery test missing PASS")
+          PY
   v0421_ha:
     if: ${{ github.event_name == 'push' && ((startsWith(github.ref_name, 'runtime-validation/ha/control-plane/') || startsWith(github.ref_name, 'runtime-validation/ha/control-plane-single/')) || startsWith(github.ref_name, 'runtime-validation/ha/tempo/') || startsWith(github.ref_name, 'runtime-validation/ha/loki/') || startsWith(github.ref_name, 'runtime-validation/ha/keycloak/') || startsWith(github.ref_name, 'runtime-validation/ha/otel/') || startsWith(github.ref_name, 'runtime-validation/ha/gateway/') || startsWith(github.ref_name, 'runtime-validation/ha/shared-postgres/') || startsWith(github.ref_name, 'runtime-validation/ha/owned-volumes/')) }}
     name: Targeted runtime · ${{ matrix.runtime }}
