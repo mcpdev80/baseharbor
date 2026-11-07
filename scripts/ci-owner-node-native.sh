@@ -32,6 +32,7 @@ bash scripts/ci-runtime-reset.sh "$BASEHARBOR_TEST_RUNTIME"
 require_pass ./cmd/baha TestControlPlaneSingleDefaultNativeRuntimeInCI 20m
 # These are production-CLI/HTTP contract regressions, not live remote E2E.
 # They must run in both native jobs and may neither skip nor silently pass.
+require_pass ./cmd/baha TestServeEnrollmentAuthorityTargetBindsBothEnrollmentModes 3m
 require_pass ./cmd/baha TestConnectorEnrollmentScopeUsesCoreOwnershipAndTypedAccess 3m
 require_pass ./cmd/baha TestNodeListStateTableDrivesProductionRedemptionPath 3m
 require_pass ./cmd/baha TestNodeEnrollmentHTTPSOneUseAndForeignScope 3m
