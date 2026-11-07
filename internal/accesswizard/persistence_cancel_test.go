@@ -170,7 +170,7 @@ func TestRevokePersistsThroughResolveLoad(t *testing.T) {
 	resolve := func() (orgconfig.ActiveState, error) {
 		return validActiveState(), nil
 	}
-	if err := RevokeAssignment(m, resolve, "alice", "dev"); err != nil {
+	if err := RevokeAssignment(m, resolve, "alice", "dev", RemoveManagedUser); err != nil {
 		t.Fatalf("revoke alice/dev: %v", err)
 	}
 	if len(m.List()) == 1 {
@@ -209,7 +209,7 @@ func TestRevokePersistenceFailureFailsClosed(t *testing.T) {
 	resolve := func() (orgconfig.ActiveState, error) {
 		return orgconfig.ActiveState{}, errors.New("disk full")
 	}
-	if err := RevokeAssignment(m, resolve, "alice", "dev"); err == nil {
+	if err := RevokeAssignment(m, resolve, "alice", "dev", RemoveManagedUser); err == nil {
 		t.Fatal("persistence failure must fail closed")
 	}
 }

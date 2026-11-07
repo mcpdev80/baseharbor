@@ -1,6 +1,7 @@
 package accesswizard
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/orgconfig"
@@ -13,13 +14,20 @@ import (
 // on it.
 var ErrDenied = errDenied
 
-var errDenied = &wizardError{"access denied by the production policy authority"}
+var errDenied = &wizardError{message: "access denied by the production policy authority"}
 
 // wizardError is a minimal presentation marker so the CLI can render the reason
-// once and exit without a second generic error block.
-type wizardError struct{ message string }
+// once and exit without a second generic error block. The optional wrap keeps
+// the sentinel ErrDenied on the error chain so callers can errors.Is it even
+// when a human-readable reason is attached.
+type wizardError struct {
+	message string
+	wrap    error
+}
 
 func (e *wizardError) Error() string { return e.message }
+
+func (e *wizardError) Unwrap() error { return e.wrap }
 
 // ResolveOperation maps the wizard's selected operation verb to the concrete
 // machine operation the production policy path resolves against. It returns the
@@ -102,35 +110,52 @@ func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig
 // state and write it. A persistence failure returns failure and leaves the
 // command without a success result: a revocation that cannot be persisted is not
 // applied.
-func RevokeAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target string) error {
-	if manager == nil || strings.TrimSpace(person) == "" || strings.TrimSpace(target) == "" {
-		return ErrDenied
-	}
-	// The CLI selects a Target; Manager.Revoke accepts a profile name.
-	// The current manager indexes profiles by person. Never use a selected
-	// Target as a profile key or remove a profile belonging to another Target.
-	profile, err := manager.Get(strings.TrimSpace(person))
-	if err != nil {
-		return &wizardError{message: err.Error()}
-	}
-	if profile.Name != person || profile.Target != target {
-		return ErrDenied
-	}
-	if _, err := manager.Revoke(profile.Name); err != nil {
-		return &wizardError{message: err.Error()}
-	}
-	// Persist the removal through the same active-state writer the product uses.
-	// The manager holds the post-removal owned profile set; fold it back and
-	// write. A persistence failure returns failure so the command does not report
-	// success for a change that was not durably applied.
-	if resolveLoad != nil {
-		state, loadErr := resolveLoad()
-		if loadErr != nil {
-			return &wizardError{message: loadErr.Error()}
+//
+// kind selects which removal the caller intends. Only the managed-user revoke is
+// implemented on this card: RevokeAssignment fails closed for every other
+// RemoveKind (connection, device, owned-grant) so an unimplemented removal never
+// mutates a managed-user profile by accident — an unimplemented kind must never
+// be silently served by the first implemented kind. The full production routes
+// for those kinds belong on their own cards (managed-users, device-lifecycle);
+// this wizard only ever serves RemoveManagedUser and fails closed otherwise.
+func RevokeAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target string, kind RemoveKind) error {
+	if kind == RemoveManagedUser {
+		if manager == nil || strings.TrimSpace(person) == "" || strings.TrimSpace(target) == "" {
+			return ErrDenied
 		}
-		if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
-			return &wizardError{message: persistErr.Error()}
+		// The CLI selects a Target; Manager.Revoke accepts a profile name.
+		// The current manager indexes profiles by person. Never use a selected
+		// Target as a profile key or remove a profile belonging to another Target.
+		profile, err := manager.Get(strings.TrimSpace(person))
+		if err != nil {
+			return &wizardError{message: err.Error()}
 		}
+		if profile.Name != person || profile.Target != target {
+			return ErrDenied
+		}
+		if _, err := manager.Revoke(profile.Name); err != nil {
+			return &wizardError{message: err.Error()}
+		}
+		// Persist the removal through the same active-state writer the product uses.
+		// The manager holds the post-removal owned profile set; fold it back and
+		// write. A persistence failure returns failure so the command does not report
+		// success for a change that was not durably applied.
+		if resolveLoad != nil {
+			state, loadErr := resolveLoad()
+			if loadErr != nil {
+				return &wizardError{message: loadErr.Error()}
+			}
+			if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
+				return &wizardError{message: persistErr.Error()}
+			}
+		}
+		return nil
 	}
-	return nil
+	// Any non-managed-user removal kind has no production route on this card yet:
+	// fail closed with a clear rejection rather than serving it silently as the
+	// managed-user revoke (finding #4: no silent first-kind change).
+	return &wizardError{
+		message: fmt.Errorf("%w: %q removal is not implemented by this wizard; it is served on its own card", ErrDenied, kind).Error(),
+		wrap:    ErrDenied,
+	}
 }

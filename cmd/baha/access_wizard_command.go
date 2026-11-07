@@ -127,11 +127,15 @@ func accessOffboardCommand() *cli.Command {
 				// the first. Revoke on each selected target; any failure fails
 				// closed so no partial offboarding survives a rejected target.
 				for _, sel := range review.Selected {
+					// Only the managed-user revoke is implemented on this card
+					// (finding #4: the connection/device/grant kinds have no
+					// production route here and fail closed in the authority).
 					if err := accesswizard.RevokeAssignment(
 						authority,
 						resolveActive,
 						review.Person.Name,
 						sel.TargetName,
+						accesswizard.RemoveManagedUser,
 					); err != nil {
 						return policy.Deny
 					}
