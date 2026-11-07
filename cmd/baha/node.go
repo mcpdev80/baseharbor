@@ -187,6 +187,9 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := validateNodeAuthorityTrustOverride(profile, opts); err != nil {
+		return err
+	}
 	verifiedTenant, err := requestNodeOwnerTenant(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile)
 	if err != nil {
 		return err

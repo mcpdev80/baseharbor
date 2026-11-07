@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/x509"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -37,5 +39,24 @@ func TestNodePublicEndpointFailClosed(t *testing.T) {
 	host, err = discoverNodePublicHost("0.0.0.0", &x509.Certificate{IPAddresses: []net.IP{ip}})
 	if err != nil || host != ip.String() {
 		t.Fatalf("single owned IP SAN not selected: %q, %v", host, err)
+	}
+}
+
+func TestNodeAuthorityRejectsIndependentCustomCA(t *testing.T) {
+	root := t.TempDir()
+	owned := filepath.Join(root, "owned.pem")
+	foreign := filepath.Join(root, "foreign.pem")
+	if err := os.WriteFile(owned, []byte("owned-trust"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(foreign, []byte("foreign-trust"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	profile := nodeAuthorityProfile{CAFile: owned}
+	if err := validateNodeAuthorityTrustOverride(profile, nodeAddOptions{CAFile: owned}); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateNodeAuthorityTrustOverride(profile, nodeAddOptions{CAFile: foreign}); err == nil {
+		t.Fatal("foreign CA would allow bearer token exfiltration")
 	}
 }

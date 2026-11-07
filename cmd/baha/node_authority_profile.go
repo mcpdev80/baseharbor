@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -75,6 +76,23 @@ func applyNodeAuthorityDefaults(opts nodeAddOptions, profile nodeAuthorityProfil
 		opts.CAFile = profile.CAFile
 	}
 	return opts, nil
+}
+
+// A custom endpoint may be used only with the installed Core trust anchor.
+// Never send an operator ID token to a caller-supplied independent CA.
+func validateNodeAuthorityTrustOverride(profile nodeAuthorityProfile, opts nodeAddOptions) error {
+	owned, err := os.ReadFile(profile.CAFile)
+	if err != nil || len(owned) == 0 {
+		return errors.New("verified Core trust anchor is missing")
+	}
+	selected, err := os.ReadFile(opts.CAFile)
+	if err != nil || len(selected) == 0 {
+		return errors.New("selected Core CA file is unavailable")
+	}
+	if !bytes.Equal(bytes.TrimSpace(owned), bytes.TrimSpace(selected)) {
+		return errors.New("custom Core CA differs from the owned authority; refusing to disclose operator credentials to an untrusted endpoint")
+	}
+	return nil
 }
 
 func publicNodeEndpoint(listen, override string, cert *x509.Certificate, scheme bool) (string, string, error) {
