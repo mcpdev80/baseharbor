@@ -55,9 +55,50 @@ jobs:
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
 
-  docker-runtime:
+
+  single_default_native:
+    name: Native single-default · Docker
     needs: select_develop
-    if: ${{ always() && (github.event_name != 'push' || github.ref_name != 'develop' || needs.select_develop.outputs.required == 'true') && (github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))) }}
+    if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      BASEHARBOR_TEST_RUNTIME: docker
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+      DOCKER_CONTEXT: ""
+    steps:
+      - name: Checkout exact develop commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless Docker
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify selected SQL/Secrets default with native runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          go test -p 1 ./cmd/baha -run '^TestControlPlaneSingleDefaultNativeRuntimeInCI$' -count=1 -timeout 18m -json | tee "$RUNNER_TEMP/single-default.jsonl"
+          python3 - <<'PY'
+          import json, os, pathlib
+          events = [json.loads(line) for line in (pathlib.Path(os.environ['RUNNER_TEMP']) / 'single-default.jsonl').read_text().splitlines() if line.startswith('{')]
+          test = 'TestControlPlaneSingleDefaultNativeRuntimeInCI'
+          if any(event.get('Action') in ('skip', 'fail') for event in events):
+              raise SystemExit('Native single-default test skipped or failed')
+          if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('Native single-default test did not execute')
+          PY
+      - name: Clean up isolated runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh docker
+
+  docker-runtime:
+    if: ${{ github.ref_name != 'develop' && (github.event_name != 'push' || (!startsWith(github.ref_name, 'runtime-validation/docker/provider-ha/') && !startsWith(github.ref_name, 'runtime-validation/docker/mcp-edit-native/'))) }}
     env:
       BASEHARBOR_TEST_RUNTIME: docker
       GOTOOLCHAIN: local
@@ -208,10 +249,9 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
-          BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
         run: |
           set -euo pipefail
-          go test -p 1 ./cmd/baha ./internal/application -run '^(TestControlPlaneSingleDefaultNativeRuntimeInCI|TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/main.jsonl"
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/main.jsonl"
 
       - name: Capture Docker control-plane diagnostics
         if: failure() && steps.runtime_integration.outcome == 'failure'
@@ -259,7 +299,7 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
-      - name: Verify all nine executed runtime tests
+      - name: Verify all eight executed runtime tests
         id: executed_tests
         if: always()
         shell: bash
@@ -272,7 +312,6 @@ jobs:
           prefix = 'github.com/mcpdev80/baseharbor/'
           required = {
               'main': {
-                  ('cmd/baha', 'TestControlPlaneSingleDefaultNativeRuntimeInCI'),
                   ('cmd/baha', 'TestRepositoryWorkflowRealLifecycle'),
                   ('cmd/baha', 'TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI'),
                   ('cmd/baha', 'TestRepositoryComposeWorkloadOnlyLifecycleInCI'),
@@ -294,7 +333,7 @@ jobs:
                           or not any(event.get('Package') == package and 'Test' not in event
                                      and event.get('Action') == 'pass' for event in events)):
                       raise SystemExit(name + ': missing actual test/package PASS for ' + test)
-          print('All nine required Docker runtime tests executed and passed.')
+          print('All eight required Docker runtime tests executed and passed.')
           PYTHON
 
   provider-ha:
