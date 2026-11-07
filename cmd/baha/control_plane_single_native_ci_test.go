@@ -31,12 +31,19 @@ func TestControlPlaneSingleDefaultNativeRuntimeInCI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve required %s runtime: %v", kind, err)
 	}
+	files, err := existingTargetRuntimeFiles(ctx)
+	if err != nil {
+		t.Fatalf("resolve selected control-plane files: %v", err)
+	}
 	containers, err := provider.ListRuntimeContainers(ctx)
 	if err != nil {
 		t.Fatalf("list actual %s containers: %v", kind, err)
 	}
 	count := map[string]int{}
 	for _, container := range containers {
+		if container.Project != files.Project && container.Project != files.ResourceProject {
+			continue
+		}
 		if !container.Running {
 			continue
 		}
