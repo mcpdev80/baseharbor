@@ -829,9 +829,11 @@ func TestOnboardBootstrapExecutesRealOwnerPathAfterCore(t *testing.T) {
 		return nil
 	}
 	decision := onboardingwizard.Decision{
-		Mode: onboardingwizard.ModeBootstrap, App: onboardingwizard.AppNew,
+		Mode:        onboardingwizard.ModeBootstrap,
+		App:         onboardingwizard.AppNew,
 		Persistence: onboardingwizard.PersistenceSecure,
-		TenantSlug: "acme", TenantName: "Acme GmbH",
+		TenantSlug:  "acme",
+		TenantName:  "Acme GmbH",
 	}
 	var output bytes.Buffer
 	if err := commitOnboardingDecision(context.Background(), decision, &output); err != nil {
@@ -855,7 +857,8 @@ func TestOnboardBootstrapStopsBeforeOwnerWhenCoreFails(t *testing.T) {
 		return nil
 	}
 	decision := onboardingwizard.Decision{
-		Mode: onboardingwizard.ModeBootstrap, App: onboardingwizard.AppNew,
+		Mode:        onboardingwizard.ModeBootstrap,
+		App:         onboardingwizard.AppNew,
 		Persistence: onboardingwizard.PersistenceSecure,
 	}
 	var output bytes.Buffer
