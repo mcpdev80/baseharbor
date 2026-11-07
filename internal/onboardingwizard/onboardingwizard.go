@@ -350,7 +350,7 @@ func askBootstrap(ctx context.Context, reader *bufio.Reader, out io.Writer, stat
 		return Decision{}, err
 	}
 	decision := Decision{Mode: ModeBootstrap, App: AppIntent(app), Persistence: persist}
-	if !state.HasInstallation {
+	if !state.HasInstallation && decision.App == AppNew {
 		owner, err := askOwnerTenant(ctx, reader, out)
 		if err != nil {
 			return Decision{}, err
