@@ -273,7 +273,9 @@ func runCoreProviderVersionsRuntimeAcceptance(t *testing.T, ha bool) {
 	if err := writeInitializedAuthoredManifest(t, application.RepositoryManifestName, manifest, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := runWithIO(ctx, []string{"app", "apply"}, &output, &output); err != nil {
+	if err := runBackupFixtureWithConsent(ctx, "apply", func(applyCtx context.Context) error {
+		return runWithIO(applyCtx, []string{"app", "apply"}, &output, &output)
+	}); err != nil {
 		t.Fatalf("baseline application: %v", err)
 	}
 	if err := ops.verifyOwnedApplicationSecretScopes(ctx); err != nil {
