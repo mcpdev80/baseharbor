@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
+	"github.com/mcpdev80/baseharbor/internal/onboardingwizard"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
@@ -106,4 +107,3 @@ func onboardingBundleScope(handle string) (tenantID, station string, ok bool) {
 // endpoint the import seam redeems against. Production resolves the real Core
 // authority here; an empty/unreachable value makes the exchange fail closed.
 func onboardingEnrollmentBaseURL() string { return "" }
-

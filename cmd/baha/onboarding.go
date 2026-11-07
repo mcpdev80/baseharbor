@@ -647,4 +647,3 @@ func (e enrollmentExchange) exchange(ctx context.Context, csrPEM []byte) (enroll
 	}
 	return result, bootstrap.Token, bootstrap.Nonce, nil
 }
-
