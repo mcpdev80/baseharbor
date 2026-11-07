@@ -78,6 +78,29 @@ func repository(ref, digest string) string {
 	return strings.TrimSuffix(ref, "@"+digest)
 }
 
+// imageArtifactRepository is the artifact record's repository field: the bare
+// repository with any digest pin stripped. Only the owner/provenance repository
+// is retained; the mutable tag remains solely in the requested channel.
+func imageArtifactRepository(image string) string {
+	if at := strings.IndexByte(image, '@'); at >= 0 {
+		return image[:at]
+	}
+	repository, _ := splitReference(image)
+	return repository
+}
+
+// sourceImageIdentity reconstructs the provenance identity of a rendered image
+// reference so the artifact record keeps the repository plus the exact digest
+// pin when the selection already names one. A non-sha256 tail is not an
+// identity and is dropped.
+func sourceImageIdentity(image string) ArtifactIdentity {
+	repository, digest := splitDigestReference(strings.TrimSpace(image))
+	if digest != "" && !validImageDigest(digest) {
+		digest = ""
+	}
+	return ArtifactIdentity{Repository: repository, Digest: digest, Requested: image}
+}
+
 // ImageTransferIdentity is the immutable identity that survives a transfer. It
 // records the repository@digest pin plus the platform-manifest digest and
 // architecture verified on the source, so the receiver can prove the

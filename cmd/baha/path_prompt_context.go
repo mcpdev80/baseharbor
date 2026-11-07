@@ -19,7 +19,7 @@ func writePathPromptContextFrom(out io.Writer, base string) error {
 			return fmt.Errorf("resolve current directory for path prompt: %w", err)
 		}
 	}
-	if _, err := fmt.Fprintf(out, "Path base\n  %s\n  relative paths are resolved from this directory\n\n", shellDisplayPath(cwd)); err != nil {
+	if _, err := fmt.Fprintf(out, "Path base\n  %s\n  relative paths are resolved from this directory\n\n", cwd); err != nil {
 		return err
 	}
 	return nil
