@@ -139,6 +139,9 @@ jobs:
           if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
               raise SystemExit('Native single-default test did not execute')
           PY
+      - name: Validate Node HTTPS enrollment and remote CLI contract
+        shell: bash
+        run: bash scripts/ci-node-contract-acceptance.sh
       - name: Clean up isolated runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh docker
