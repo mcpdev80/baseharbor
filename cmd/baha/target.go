@@ -54,6 +54,28 @@ func withTargetOverride(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, targetOverrideContextKey{}, strings.TrimSpace(name))
 }
 
+// ownedHostStateContextKey pins the durable installation state root this
+// management-host serve process owns. Lifecycle operations routed through the
+// owning executor read it so they execute on the owned authority without
+// acquiring a second, non-reentrant lifecycle lock on the same root.
+type ownedHostStateContextKey struct{}
+
+// withOwnedHostState pins the owned durable installation state root into the
+// selection context. It is only set on the executor path of a management host
+// that owns an existing installation.
+func withOwnedHostState(ctx context.Context, root string) context.Context {
+	return context.WithValue(ctx, ownedHostStateContextKey{}, strings.TrimSpace(root))
+}
+
+// ownedHostStateRoot returns the durable installation state root this serve
+// process owns, if any. An empty result means no owning management host is in
+// force (a per-application runtime broker, or the local no-login path), so the
+// executor selects the authority the normal way.
+func ownedHostStateRoot(ctx context.Context) string {
+	root, _ := ctx.Value(ownedHostStateContextKey{}).(string)
+	return root
+}
+
 func targetOverrideFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
