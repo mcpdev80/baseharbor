@@ -11,8 +11,9 @@ import (
 )
 
 // TestControlPlaneSingleDefaultNativeRuntimeInCI checks the ACTUAL running
-// control plane, not just the generated Compose template. It must run on both
-// existing Docker and rootless Podman acceptance runners.
+// selected SQL/Secrets foundation, not just its generated Compose template. It
+// does not assert an unconditional Keycloak/Identity installation: managed
+// Identity is a separate capability realization. Run on Docker and Podman.
 func TestControlPlaneSingleDefaultNativeRuntimeInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE") != "1" {
 		t.Skip("native control-plane topology belongs to Docker/Podman acceptance")
