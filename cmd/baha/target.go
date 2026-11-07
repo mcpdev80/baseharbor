@@ -604,6 +604,25 @@ func targetRuntimeProjectName(target deployment.ResolvedTarget) string {
 	return bhruntime.SharedProjectName(target.Name)
 }
 
+// targetRuntimeProjectNameFromRoot derives the boot Core's real shared project
+// from its runtime root. The boot Core is the bootstrap Target: its shared
+// project is SharedProjectName(bootTargetName), and bootRuntimeRoot is
+// DataRoot()/targets/<bootTargetName>/runtime, so the boot Target name is the
+// runtime parent's sibling. This matches the boot Core's container project
+// exactly, so coreFiles.Project selects the loaned Core's containers.
+func targetRuntimeProjectNameFromRoot(bootRuntimeRoot string) string {
+	// bootRuntimeRoot = .../targets/<bootTarget>/runtime
+	runtime := filepath.Base(filepath.Clean(bootRuntimeRoot))
+	if runtime == "runtime" {
+		parent := filepath.Dir(bootRuntimeRoot)
+		target := filepath.Base(filepath.Clean(parent))
+		if target != "" {
+			return bhruntime.SharedProjectName(target)
+		}
+	}
+	return ""
+}
+
 func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhruntime.Files, error) {
 	target, err := effectiveTarget(ctx)
 	if err != nil {
@@ -615,9 +634,42 @@ func targetRuntimeFiles(ctx context.Context) (deployment.ResolvedTarget, bhrunti
 	}
 	files, err := bhruntime.ExistingFilesForProject(root, targetRuntimeProjectName(target))
 	if err != nil {
+		// TEST-SCOPE ONLY (card 0427-117): an isolated Test Target has no Core of
+		// its own — the trust-plane helper loans the genuine, READY bootstrap
+		// Core. The bootstrap writes its control-plane compose to the bootstrap
+		// Target's runtime root, but effective-target selection resolves the
+		// isolated Test Target (whose runtime root never has a compose). When the
+		// isolated Target has no runtime of its own and a boot Core is registered,
+		// fall back to the boot Core's runtime root so the read-only existing-
+		// runtime resolver observes the loaned Core, exactly as the production
+		// owner loan does. This never mutates state and is gated on the CI
+		// integration marker, so it can never affect a production read path.
+		if ciIntegrationActive() {
+			if bootRoot, hasBoot := installationLoans.currentBoot(); hasBoot && bootRoot != "" {
+				// The boot Core owns its OWN shared project (derived from the boot
+				// Target's namespace), not the isolated Target's: the loaned Core's
+				// containers stay in the boot project. Read the boot Core's real
+				// project from its own runtime env so coreFiles.Project matches the
+				// boot Core's containers exactly.
+				bootProject := targetRuntimeProjectNameFromRoot(bootRoot)
+				if bootProject == "" {
+					bootProject = targetRuntimeProjectName(target)
+				}
+				if bootFiles, bootErr := bhruntime.ExistingFilesForProject(bootRoot, bootProject); bootErr == nil {
+					return target, bootFiles, nil
+				}
+			}
+		}
 		return target, bhruntime.Files{}, err
 	}
 	return target, files, nil
+}
+
+// ciIntegrationActive reports whether the native runtime integration gate is
+// running. It backs the test-scoped boot-Core runtime fallback in
+// targetRuntimeFiles so that fallback can never affect a production read path.
+func ciIntegrationActive() bool {
+	return strings.TrimSpace(os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION")) == "1"
 }
 
 func existingTargetRuntimeFiles(ctx context.Context) (bhruntime.Files, error) {
