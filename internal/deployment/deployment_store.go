@@ -79,6 +79,15 @@ func verifyDeploymentOwnerAtSeam(targetName, deploymentID string) error {
 // explicit authorized path.
 var TenantOwnerResolver func(targetName string) (bool, error)
 
+// TargetLoanVerifier resolves a marker-proven isolated test Target against the
+// single installation its boot Target owns (TEST SCOPE ONLY; the consumer binds
+// it in cmd/baha/deployment_record.go and only after the tenant hook has
+// refused). Every refusal — an error or a nil state — keeps the seam's
+// original ErrDeploymentOwnerMissing sentinel; it can never authorize a
+// tenant-managed, connector-bound or production Target, and the default nil
+// keeps every production path byte-identical.
+var TargetLoanVerifier func(targetName string) (*coreinstallation.State, error)
+
 func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 	if TenantOwnerResolver != nil {
 		// Grant-only hook: only an affirmative (true, nil) authorizes the
@@ -102,19 +111,37 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// coreinstallation.Load owner check instead of returning early.
 	}
 	installation, err := coreinstallation.Load(targetRoot)
-	if err != nil {
+	ownerTarget := targetName
+	if err != nil && errors.Is(err, os.ErrNotExist) && TargetLoanVerifier != nil {
+		// TEST-SCOPE ONLY seam (card t-20261106-r27-remote-up-podman-owner-missing,
+		// lane w286): the consumer may resolve a marker-proven isolated test
+		// Target against the one installation its boot Target owns. The loaned
+		// identity legitimately owns its OWN boot namespace, so the
+		// namespace-installation binding below is checked against that owned
+		// namespace (ownerTarget), never the test Target's directory segment. A
+		// refusal — any error or a nil state — keeps the ORIGINAL fail-closed
+		// sentinel ErrDeploymentOwnerMissing: loan guard details must never
+		// replace the contract error shape (the caller's errors.Is checks and
+		// the never-delivered-destroy recognition in cmd/baha depend on it).
+		// The nil default keeps every production path byte-identical.
+		loaned, loanErr := TargetLoanVerifier(targetName)
+		if loanErr != nil || loaned == nil {
+			return ErrDeploymentOwnerMissing
+		}
+		installation = *loaned
+		ownerTarget = installation.Spec.Target
+	} else if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrDeploymentOwnerMissing
 		}
 		// An invalid/foreign installation.json is not an owner either.
 		return ErrDeploymentOwnerForeign
 	}
-	_ = installation
 	// The deployment namespace is targets/<target>/deployments. The deployment
 	// directory's Target (the segment under targets/) must match the
 	// installation's own Target; a distinct Target is a foreign owner and is
 	// rejected before any deployment under it is read or written.
-	deploymentDir, dirErr := deploymentDirForTarget(targetName)
+	deploymentDir, dirErr := deploymentDirForTarget(ownerTarget)
 	if dirErr == nil {
 		if deploymentTarget, found := deploymentTargetFromDir(deploymentDir); found && deploymentTarget != "" && strings.TrimSpace(deploymentTarget) != strings.TrimSpace(installation.Spec.Target) {
 			return ErrDeploymentOwnerForeign
@@ -123,9 +150,48 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// a symlinked escape. Missing is acceptable (first-run); a broken or
 		// symlinked path is foreign.
 		if info, statErr := os.Lstat(deploymentDir); statErr == nil {
-			if info.IsDir() == false || info.Mode()&os.ModeSymlink != 0 {
+			if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return ErrDeploymentOwnerForeign
 			}
+		}
+	}
+	if ownerTarget != targetName {
+		// Loan path only: the loan exists exclusively for ownerless test
+		// namespaces. Two order-independent guarantees:
+		//   (a) the marker-proven test Target's state root is a real,
+		//       protected directory (no symlink escape); and
+		//   (b) AT MOST ONE of the two roots carries an installation.json:
+		//       either the test Target is genuinely ownerless (the loan case,
+		//       already proven by the ErrNotExist precondition of this call)
+		//       or the boot installation vanished/was replaced — never a
+		//       second concurrent owner. This deliberately does not re-Load
+		//       the test root: a re-Load would race with a concurrent
+		//       first-apply provisioning and refuse a legitimate in-flight
+		//       grant with the wrong sentinel (that race cost this lane a
+		//       false-red podman cell).
+		targetRootDir, rootErr := TargetStateRoot(targetName)
+		if rootErr != nil {
+			return rootErr
+		}
+		info, statErr := os.Lstat(targetRootDir)
+		if statErr != nil {
+			if errors.Is(statErr, os.ErrNotExist) {
+				return ErrDeploymentOwnerMissing
+			}
+			return statErr
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return ErrDeploymentOwnerForeign
+		}
+		// Single-owner invariant (order-independent): at most ONE of the two
+		// roots may carry an installation.json. If a genuine owner appeared
+		// at the test Target between the precondition Load and this check,
+		// re-resolve WITHOUT the loan against that owner — the local owner
+		// governs, never the loan. A corrupt/foreign file still fails closed.
+		if _, ownErr := coreinstallation.Load(targetRoot); ownErr == nil {
+			return VerifyDeploymentOwner(targetName, targetRoot, deploymentID)
+		} else if !errors.Is(ownErr, os.ErrNotExist) {
+			return ErrDeploymentOwnerForeign
 		}
 	}
 	_ = deploymentID
