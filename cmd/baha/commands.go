@@ -167,6 +167,7 @@ func rootCommand() *cli.Command {
 		shellInitCommand(),
 		promptCommand(),
 		policyCommand(store),
+		accessWizardCommand(),
 		agentCommand(),
 		mcpCommand(store),
 		serveCommand(store),
