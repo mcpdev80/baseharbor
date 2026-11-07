@@ -257,13 +257,14 @@ func executeRemoteApplicationMaintenanceDestroy(ctx context.Context, resolved re
 	// destroy deletes the deployment record the way a direct teardown does, so a
 	// commit after teardown would fail. Roll the window back if the owner did not
 	// converge, so a failed remote destroy reports no completed recovery point.
-	if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
+	committed, err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, "")
+	if err != nil {
 		return err
 	}
 	// A successful remote destroy leaves a durable tombstone at a path the owner
 	// does not remove, so the completed operation stays queryable after the
 	// deployment record is torn down. Roll the tombstone back on failure.
-	if err := stampMaintenanceTombstone(resolved, authority.MaintenanceAuthorityRecord); err != nil {
+	if err := stampMaintenanceTombstone(resolved, committed); err != nil {
 		_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
 		return err
 	}
@@ -348,15 +349,18 @@ func runApplicationMaintenanceOperation(ctx context.Context, resolved resolvedAp
 		if options.FullReset {
 			args = append(args, "--full-reset")
 		}
-		if err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, ""); err != nil {
+		committed, err := commitApplicationMaintenanceWindowAuthority(ctx, resolved, authority, options.Operation, "")
+		if err != nil {
 			return err
 		}
 		// Commit a durable tombstone of the committed destroy window to a path that
 		// the owner's DeleteDeploymentRecord does NOT remove, so the completed
 		// operation stays queryable after the deployment root is torn down. The
 		// rollback below removes it again when the owner does not converge, so a
-		// failed destroy leaves neither a window nor a tombstone.
-		if err := stampMaintenanceTombstone(resolved, authority.MaintenanceAuthorityRecord); err != nil {
+		// failed destroy leaves neither a window nor a tombstone. Stamp the committed
+		// record (the revision the window actually advanced to), never the stale
+		// pre-commit authority.
+		if err := stampMaintenanceTombstone(resolved, committed); err != nil {
 			_ = rollbackApplicationMaintenanceWindow(ctx, resolved, authority)
 			return err
 		}
@@ -434,7 +438,8 @@ func commitApplicationMaintenanceWindow(ctx context.Context, resolved resolvedAp
 	if err != nil {
 		return err
 	}
-	return commitApplicationMaintenanceWindowAuthority(ctx, resolved, current, operation, archive)
+	_, err = commitApplicationMaintenanceWindowAuthority(ctx, resolved, current, operation, archive)
+	return err
 }
 
 // commitApplicationMaintenanceWindowAuthority advances the durable window from a
@@ -442,15 +447,21 @@ func commitApplicationMaintenanceWindow(ctx context.Context, resolved resolvedAp
 // owner removed the deployment root, because reloading it after teardown would
 // fail and lose the durable record. All other callers pass the fresh view from
 // commitApplicationMaintenanceWindow.
+//
+// It returns the record it committed so a caller can mirror the *committed*
+// revision to a durable tombstone. A caller that ignores the returned record
+// stamps the pre-commit authority, which is a stale view the owner will have
+// already superseded: the tombstone must record the revision the window actually
+// advanced to, never the revision the authority held before the commit.
 func commitApplicationMaintenanceWindowAuthority(ctx context.Context, resolved resolvedApplication,
-	current application.MaintenanceAuthority, operation, archive string) error {
+	current application.MaintenanceAuthority, operation, archive string) (application.MaintenanceAuthorityRecord, error) {
 	// A window advances only for an operation the lifecycle owner actually
 	// converged. A submission that stopped mid-flight records nothing.
 	if !maintenanceMutationCompleted(ctx, nil) {
-		return maintenanceSubmissionCancelled()
+		return application.MaintenanceAuthorityRecord{}, maintenanceSubmissionCancelled()
 	}
 	if err := maintenanceArchiveIsReadable(archive); err != nil {
-		return err
+		return application.MaintenanceAuthorityRecord{}, err
 	}
 	record := current.MaintenanceAuthorityRecord
 	if current.RecordExists && current.Operation == operation && current.ArchiveBinding == archive {
@@ -459,12 +470,12 @@ func commitApplicationMaintenanceWindowAuthority(ctx context.Context, resolved r
 		// it, so a replay cannot accidentally claim a new revision.
 		_, isNew, err := maintenanceWindowOwner(resolved.stateRoot(), current.MaintenanceAuthorityRecord)
 		if err != nil {
-			return err
+			return application.MaintenanceAuthorityRecord{}, err
 		}
 		if !isNew {
-			return errMaintenanceOperationAlreadyRecorded
+			return application.MaintenanceAuthorityRecord{}, errMaintenanceOperationAlreadyRecorded
 		}
-		return nil
+		return current.MaintenanceAuthorityRecord, nil
 	}
 	record.Operation = operation
 	record.ArchiveBinding = archive
@@ -473,12 +484,12 @@ func commitApplicationMaintenanceWindowAuthority(ctx context.Context, resolved r
 		record.Revision, current.Candidate, archive)
 	_, isNew, err := maintenanceWindowOwner(resolved.stateRoot(), record)
 	if err != nil {
-		return err
+		return application.MaintenanceAuthorityRecord{}, err
 	}
 	if !isNew {
-		return errMaintenanceOperationAlreadyRecorded
+		return application.MaintenanceAuthorityRecord{}, errMaintenanceOperationAlreadyRecorded
 	}
-	return nil
+	return record, nil
 }
 
 // maintenanceTombstonePath resolves the durable maintenance tombstone for a

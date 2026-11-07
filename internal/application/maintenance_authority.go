@@ -340,7 +340,13 @@ func commitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthority
 	// no advanced current record is left with a missing historical revision, and the
 	// failure is surfaced explicitly (fail-closed) rather than silently reported as
 	// success. Preflight bounded-history capacity before the irreversible commit.
-	if capErr := maintenanceHistoryHasCapacity(stateRoot, current); capErr != nil {
+	//
+	// Preflight must estimate the history with the record this commit actually
+	// appends (submitted), not the previous current record: the appended entry is
+	// submitted, so an oversized submission must be refused before the current
+	// window is renamed past the previous revision. Preflighting with current would
+	// miss a submission that is itself the one that overflows the bounded history.
+	if capErr := maintenanceHistoryHasCapacity(stateRoot, submitted); capErr != nil {
 		return MaintenanceAuthorityRecord{}, false, capErr
 	}
 	if err := os.Rename(tmp, path); err != nil {
@@ -372,12 +378,12 @@ func commitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthority
 // irreversible current-window commit. An append that would exceed the limit is
 // refused up front so the current window is never advanced past a missing
 // historical entry.
-func maintenanceHistoryHasCapacity(stateRoot string, current MaintenanceAuthorityRecord) error {
+func maintenanceHistoryHasCapacity(stateRoot string, submitted MaintenanceAuthorityRecord) error {
 	records, err := readMaintenanceHistory(stateRoot)
 	if err != nil {
 		return err
 	}
-	records = append(records, current)
+	records = append(records, submitted)
 	data, err := json.MarshalIndent(records, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode maintenance window history: %w", err)
