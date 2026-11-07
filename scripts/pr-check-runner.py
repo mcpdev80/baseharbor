@@ -96,7 +96,7 @@ VALIDATIONS = {'go-unit-tests', 'go-vet', 'go-build',
                 'ci-executor-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
-               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'identity-provider-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
                'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
@@ -156,7 +156,7 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'identity-provider-package-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'authority-package-tests':
         # Some slices precede stableid; test every present authority package.
@@ -172,6 +172,14 @@ def execute_validation(check, repository):
         if not (Path(repository) / package).is_dir():
             raise RuntimeError(name + ' package missing')
         return go_package_tests(repository, ['./' + package], name.capitalize())
+    if check == 'identity-provider-package-tests':
+        return go_package_tests(
+            repository, ['./internal/identityprovider'], 'Identity', allow_skips=True,
+            required_tests=(
+                'TestKeycloakSingleComposeHasNoHAResources',
+                'TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint',
+            ),
+        )
     if check == 'cli-package-tests':
         return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
     if check == 'logs-package-tests':
