@@ -350,9 +350,13 @@ func TestDestroyCommitRollbackIsLoadbearing(t *testing.T) {
 		t.Fatalf("a failed destroy left a durable window with working rollback: found=%v", found)
 	}
 
-	// Mutant: the rollback is a no-op. A failed destroy now leaves the up-front
-	// window claiming a completed recovery point.
-	application.AppendMaintenanceHistoryHookRolledBack = true
+	// Mutant: the client rollback is a no-op. A failed destroy now leaves the
+	// up-front window claiming a completed recovery point.
+	previousRollback := rollbackApplicationMaintenanceWindow
+	t.Cleanup(func() { rollbackApplicationMaintenanceWindow = previousRollback })
+	rollbackApplicationMaintenanceWindow = func(ctx context.Context, resolved resolvedApplication, current application.MaintenanceAuthority) error {
+		return nil
+	}
 	if err := submitApplicationMaintenance(context.Background(), resolved, applicationMaintenanceOptions{
 		Name: resolved.Manifest.Name, Operation: "destroy", Confirmed: true, FullReset: true,
 	}, io.Discard, io.Discard); err == nil {
@@ -361,5 +365,4 @@ func TestDestroyCommitRollbackIsLoadbearing(t *testing.T) {
 	if _, found, lerr := application.LoadMaintenanceAuthority(resolved.stateRoot()); lerr != nil || !found {
 		t.Fatalf("a failed destroy left no durable window with no rollback: found=%v err=%v", found, lerr)
 	}
-	application.AppendMaintenanceHistoryHookRolledBack = false
 }

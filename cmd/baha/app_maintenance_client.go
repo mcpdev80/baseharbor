@@ -565,7 +565,14 @@ func rollbackApplicationMaintenanceWindowImpl(ctx context.Context, resolved reso
 	if !maintenanceMutationCompleted(ctx, nil) {
 		return nil
 	}
-	return application.RollbackMaintenanceAuthorityWindow(resolved.stateRoot(), current.MaintenanceAuthorityRecord, current.RecordExists)
+	// Roll back both the window and the history entry the commit appended. The
+	// commit advanced to exactly OperationRevision() (a new window opens at
+	// revision one; a continued window advances by one). The appended history
+	// entry carries that committed revision, so pass it directly to match and
+	// remove the appended entry instead of leaving residue.
+	committedRevision := current.OperationRevision()
+	return application.RollbackMaintenanceAuthorityWindow(resolved.stateRoot(), current.MaintenanceAuthorityRecord,
+		current.RecordExists, committedRevision)
 }
 
 var errMaintenanceOperationAlreadyRecorded = errors.New(

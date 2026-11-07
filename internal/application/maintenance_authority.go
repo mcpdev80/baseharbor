@@ -348,12 +348,20 @@ func commitMaintenanceAuthority(stateRoot string, submitted MaintenanceAuthority
 		return MaintenanceAuthorityRecord{}, false, fmt.Errorf("commit maintenance authority record: %w", err)
 	}
 	if err := AppendMaintenanceHistoryHook(stateRoot, submitted); err != nil {
-		// Roll the advanced current window back so no partial state is reported as
-		// success, then surface the failure. A test can disable the rollback to
-		// prove the fix is load-bearing.
+		// The window advance and the history append are one transaction, so the
+		// rollback must undo BOTH: the advanced current window AND the destroy entry
+		// the failed append appended to history. Leaving the history entry behind
+		// would let a retry answer the aborted revision as already recorded
+		// ("maintenance window history cannot be rewritten"), so a failed commit
+		// leaves neither an advanced window nor history residue. A test can disable
+		// either rollback seam to prove the fix is load-bearing.
 		if rollbackErr := RollbackMaintenanceWindowHook(stateRoot, current, windowExisted); rollbackErr != nil {
 			return MaintenanceAuthorityRecord{}, false, fmt.Errorf(
 				"history append failed and window rollback failed: append=%w rollback=%v", err, rollbackErr)
+		}
+		if historyRollbackErr := RollbackMaintenanceHistoryHook(stateRoot, submitted.Revision); historyRollbackErr != nil {
+			return MaintenanceAuthorityRecord{}, false, fmt.Errorf(
+				"history append failed and history rollback failed: append=%w history_rollback=%v", err, historyRollbackErr)
 		}
 		return MaintenanceAuthorityRecord{}, false, fmt.Errorf("append maintenance history: %w", err)
 	}
@@ -426,11 +434,23 @@ func maintenanceStateFilePath(stateRoot string) (string, error) {
 }
 
 // RollbackMaintenanceAuthorityWindow restores the current window to the record it
-// held before a commit, so an owner that did not converge a destroy reports no
-// advanced current record. It is exported so the client can roll back a window it
-// committed up front for a destroy that the owner then failed.
-func RollbackMaintenanceAuthorityWindow(stateRoot string, current MaintenanceAuthorityRecord, existed bool) error {
-	return rollbackMaintenanceWindow(stateRoot, current, existed)
+// held before a commit and removes the history entry the commit appended, so an
+// owner that did not converge a destroy reports no advanced current record and no
+// history residue. It is exported so the client can roll back a window it
+// committed up front for a destroy that the owner then failed. Without the
+// history-removal half a failed destroy leaves its revision recorded and a retry
+// answers it as already recorded ("maintenance window history cannot be
+// rewritten").
+//
+// committedRevision is the revision the commit actually advanced to; the history
+// rollback removes the entry at that revision (an absent history is fine). The
+// caller passes the real committed revision, never the pre-commit record's
+// revision, so the appended entry is matched and removed.
+func RollbackMaintenanceAuthorityWindow(stateRoot string, current MaintenanceAuthorityRecord, existed bool, committedRevision int) error {
+	if err := rollbackMaintenanceWindow(stateRoot, current, existed); err != nil {
+		return err
+	}
+	return RollbackMaintenanceHistoryHook(stateRoot, committedRevision)
 }
 
 // MaintenanceDigest binds a maintenance submission to one exact authority
