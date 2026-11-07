@@ -49,10 +49,16 @@ func TestControlPlaneSingleDefaultNativeRuntimeInCI(t *testing.T) {
 		} {
 			// Compose and Quadlet expose project-specific container names.
 			// Match whole service boundaries rather than substring "member-1".
-			if service == candidate || service == "" && (
-				name == candidate || strings.Contains(name, "-"+candidate+"-") ||
+			if service == candidate {
+				count[candidate]++
+				continue
+			}
+			if service != "" {
+				continue
+			}
+			if name == candidate || strings.Contains(name, "-"+candidate+"-") ||
 				strings.HasSuffix(name, "-"+candidate) ||
-				strings.HasPrefix(name, candidate+"-")) {
+				strings.HasPrefix(name, candidate+"-") {
 				count[candidate]++
 			}
 		}
