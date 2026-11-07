@@ -742,6 +742,7 @@ jobs:
           python3 scripts/test_pr_runtime_request.py
           python3 scripts/test_pr_runner_isolation.py
           python3 scripts/test_ci_check_routes.py
+          python3 scripts/test_ci_single_default_route.py
           python3 scripts/test_pr_ci_fallback.py
           python3 scripts/test_pr_unit_database_route.py
           python3 scripts/test_pr_runtime_source.py
