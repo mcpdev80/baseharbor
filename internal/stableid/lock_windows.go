@@ -15,16 +15,28 @@ import (
 // lock primitive is a leaf dependency: coreinstallation and serviceaccess both
 // depend on it without importing each other, which keeps the dependency graph
 // acyclic.
+const (
+	lifecycleLockFile = ".installation.lock"
+	bootstrapLockFile = ".bootstrap.lock"
+)
 
 func lock(root string) (func(), error) {
+	return lockNamed(root, lifecycleLockFile)
+}
+
+func bootstrapLock(root string) (func(), error) {
+	return lockNamed(root, bootstrapLockFile)
+}
+
+func lockNamed(root string, name string) (func(), error) {
 	info, err := os.Lstat(root)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("Core lifecycle lock requires a private state directory")
+		return nil, errors.New(name + " requires a private state directory")
 	}
-	file, err := os.OpenFile(filepath.Join(root, ".installation.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	file, err := os.OpenFile(filepath.Join(root, name), os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}
