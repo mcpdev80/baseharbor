@@ -458,7 +458,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          git fetch --no-tags origin "$HEAD_SHA"
           git diff --name-only --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA" > "$RUNNER_TEMP/owner-node-paths"
           if grep -Eq '^(cmd/baha/(onboarding|operator_|node|serve_operator_oidc)|internal/(onboardingwizard/|targetenrollment/|database/operator_bootstrap|identityprovider/operator))' "$RUNNER_TEMP/owner-node-paths"; then
             echo 'required=true' >> "$GITHUB_OUTPUT"
