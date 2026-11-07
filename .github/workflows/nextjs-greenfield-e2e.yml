@@ -111,7 +111,7 @@ jobs:
           "$cli" app new "$name" --directory "$RUNNER_TEMP/greenfield-apps" --stack "$STACK" --http
           cd "$RUNNER_TEMP/greenfield-apps/$name"
           test -s baseharbor.yaml
-          "$cli" up --yes
+          python3 "$GITHUB_WORKSPACE/scripts/ci-greenfield-apply.py" "$cli"
           "$cli" app status | tee "$RUNNER_TEMP/greenfield-status.txt"
           "$cli" app doctor | tee "$RUNNER_TEMP/greenfield-doctor.txt"
           grep -qi 'READY' "$RUNNER_TEMP/greenfield-status.txt" || {
