@@ -50,7 +50,7 @@ jobs:
           if [[ ! "$BEFORE" =~ ^[a-f0-9]{40}$ ]] || [[ "$BEFORE" =~ ^0{40}$ ]] || ! git cat-file -e "$BEFORE^{commit}"; then
             required=true
           else
-            required="$(git diff --name-only --diff-filter=ACMRT "$BEFORE" "$GITHUB_SHA" | bash scripts/ci-single-default-impact.sh)"
+            required="$(git diff --name-only --diff-filter=ACDMRT "$BEFORE" "$GITHUB_SHA" | bash scripts/ci-single-default-impact.sh)"
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
 
