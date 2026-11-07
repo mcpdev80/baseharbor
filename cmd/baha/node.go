@@ -142,7 +142,7 @@ func nodeCommand() *cli.Command {
 		Summary: "Enroll and manage remote Docker or Podman nodes",
 		Usage:   "baha node [add|connect|list|status|disconnect]",
 		Children: []*cli.Command{
-			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] [--target NAME] --runtime docker|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
+			{Name: "add", Summary: "Create a remote Target and one-use enrollment bundle", Usage: "baha node add [NODE] [--target NAME] --runtime docker|podman --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]", Run: nodeAdd},
 			{Name: "connect", Summary: "Enroll this host and start the rootless connector service", Usage: "baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]", Run: nodeConnect},
 			{Name: "list", Summary: "List configured remote connector nodes", Usage: "baha node list [--json]", Run: nodeList},
 			{Name: "status", Summary: "Inspect Core enrollment state for a remote node", Usage: "baha node status TARGET [--json]", Run: nodeStatus},
@@ -162,7 +162,7 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	}
 	if opts.NodeID == "" {
 		if noInput(ctx) || !readerIsTerminal(nodeInput) {
-			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE plus --runtime, --tenant-id, --core-url, --core-address and --ca-file.")
+			return usageError("baha node add requires NODE in non-interactive mode", "Provide NODE plus --runtime; Core authority and trust settings must be discoverable or provided.")
 		}
 		opts, err = promptNodeAdd(opts, out)
 		if err != nil {
@@ -175,15 +175,23 @@ func nodeAdd(ctx context.Context, args []string, out, errOut io.Writer) error {
 	if opts.Environment == "" {
 		opts.Environment = "dev"
 	}
-	if err := validateNodeAddOptions(opts); err != nil {
-		return err
-	}
 	coreTarget, err := effectiveTarget(ctx)
 	if err != nil {
 		return err
 	}
 	if coreTarget.AccessProvider != "local" {
 		return usageError("node add must run against a local Core authority Target", "Select the local Core with 'baha target activate NAME' and retry.")
+	}
+	verifiedTenant, err := requestNodeOwnerTenant(ctx, coreTarget.Name, opts.Environment, opts.CoreURL, opts.CAFile)
+	if err != nil {
+		return err
+	}
+	if opts.TenantID != "" && opts.TenantID != verifiedTenant {
+		return machine.NewError(machine.ErrorPolicyDenied, "requested tenant does not match the verified Core operator membership", "Use the tenant assigned by the authenticated Core.", false)
+	}
+	opts.TenantID = verifiedTenant
+	if err := validateNodeAddOptions(opts); err != nil {
+		return err
 	}
 	caPEM, err := os.ReadFile(opts.CAFile)
 	if err != nil {
@@ -303,9 +311,6 @@ func promptNodeAdd(o nodeAddOptions, out io.Writer) (nodeAddOptions, error) {
 		return o, err
 	}
 	if o.Runtime, err = promptLine(reader, out, "Runtime (docker/podman)", "podman"); err != nil {
-		return o, err
-	}
-	if o.TenantID, err = promptLine(reader, out, "Tenant UUID", ""); err != nil {
 		return o, err
 	}
 	if o.CoreURL, err = promptLine(reader, out, "Core HTTPS API URL", "https://127.0.0.1:8443"); err != nil {
