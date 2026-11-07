@@ -17,7 +17,7 @@ func operatorLoginCommand() *cli.Command {
 		Usage:   "baha login -e ENV|--environment ENV",
 		Long:    "Authenticates through Authorization Code + PKCE. --init-tenant is an explicit first-owner operation, restricted to the locally owned management Core after real OIDC login; it creates exactly one initial tenant and editor membership. Existing trusted local dev without an operator OIDC configuration remains login-free.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			loginArgs, initTenant, err := parseOperatorLoginArgs(args)
+			loginArgs, initTenant, tenantSlug, tenantName, err := parseInitialTenantLoginArgs(args)
 			if err != nil {
 				return err
 			}
@@ -59,7 +59,7 @@ func operatorLoginCommand() *cli.Command {
 				return err
 			}
 			if initTenant {
-				result, err := initializeLocalOperatorTenant(ctx, target, principal)
+				result, err := initializeLocalOperatorTenant(ctx, target, principal, tenantSlug, tenantName)
 				if err != nil {
 					_ = operatorauth.ClearSession(target.Name, environment)
 					return fmt.Errorf("initialize local operator tenant: %w", err)
@@ -159,4 +159,41 @@ func parseOperatorLoginArgs(args []string) ([]string, bool, error) {
 		initialize = true
 	}
 	return filtered, initialize, nil
+}
+
+func parseInitialTenantLoginArgs(args []string) ([]string, bool, string, string, error) {
+	slug, name := "baseharbor", "BaseHarbor"
+	filtered := make([]string, 0, len(args))
+	seenSlug, seenName := false, false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg != "--tenant-name" && arg != "--tenant-slug" {
+			filtered = append(filtered, arg)
+			continue
+		}
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+			return nil, false, "", "", usageError(arg+" requires a value", "Provide a valid tenant name.")
+		}
+		i++
+		switch arg {
+		case "--tenant-name":
+			if seenName {
+				return nil, false, "", "", usageError("duplicate --tenant-name", "Specify the tenant name once.")
+			}
+			name, seenName = args[i], true
+		case "--tenant-slug":
+			if seenSlug {
+				return nil, false, "", "", usageError("duplicate --tenant-slug", "Specify the tenant slug once.")
+			}
+			slug, seenSlug = args[i], true
+		}
+	}
+	remaining, initialize, err := parseOperatorLoginArgs(filtered)
+	if err != nil {
+		return nil, false, "", "", err
+	}
+	if (seenSlug || seenName) && !initialize {
+		return nil, false, "", "", usageError("tenant options require --init-tenant", "Add --init-tenant when customizing the first tenant.")
+	}
+	return remaining, initialize, slug, name, nil
 }

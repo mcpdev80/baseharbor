@@ -44,9 +44,11 @@ baha login -e dev --init-tenant
 baha whoami -e dev
 ```
 
+Optional advanced setup: use `baha login -e dev --init-tenant --tenant-slug acme --tenant-name "Acme GmbH"`. The recommended default is tenant `baseharbor` and the Core generates its UUID.
+
 This first-owner operation is **not** performed implicitly by `baha up`. It uses interactive OIDC Authorization Code + PKCE. If no operator OIDC boundary exists for the selected Target/environment, interactive setup can configure managed/shared Keycloak or an external OIDC provider. Managed Keycloak uses a dedicated environment-specific operator realm/client, distinct from the Core Identity `baseharbor` realm.
 
-Only after a verified, unexpired login does BaseHarbor create tenant `default`, the exact (issuer, subject) external identity and its `editor` membership in one transaction with RLS. Repeating with the same owner is idempotent; different owners, existing foreign tenants, remote Targets, invalid credentials or an unready local Core fail closed. No anonymous first-admin endpoint exists. Unconfigured dev keeps the trusted-local behavior; after explicit setup, ordinary `baha login -e dev` uses the stored operator OIDC boundary.
+Only after a verified, unexpired login does BaseHarbor create tenant `baseharbor`, the exact (issuer, subject) external identity and its `editor` membership in one transaction with RLS. Repeating with the same owner is idempotent; different owners, existing foreign tenants, remote Targets, invalid credentials or an unready local Core fail closed. No anonymous first-admin endpoint exists. Unconfigured dev keeps the trusted-local behavior; after explicit setup, ordinary `baha login -e dev` uses the stored operator OIDC boundary.
 
 **Connector prerequisite:** Configure `BASEHARBOR_API_OIDC_ISSUER` and `BASEHARBOR_API_OIDC_AUDIENCES` on the protected operator API to match the actual operator realm/client. An API still using `.../realms/baseharbor` does **not** accept tokens issued by `.../realms/bh-operators-dev`; verify discovery and audience rather than bypassing OIDC or tenant checks.
 

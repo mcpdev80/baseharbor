@@ -50,12 +50,12 @@ func initialOperatorLocalCoreFiles(ctx context.Context, target deployment.Resolv
 // initializeLocalOperatorTenant runs only after an OIDC code+PKCE login has
 // returned a cryptographically verified principal. The caller explicitly opts
 // in using --init-tenant, and must own the protected local Core installation.
-func initializeLocalOperatorTenant(ctx context.Context, target deployment.ResolvedTarget, principal *identity.Principal) (database.InitialOperatorTenant, error) {
+func initializeLocalOperatorTenant(ctx context.Context, target deployment.ResolvedTarget, principal *identity.Principal, tenantSlug, tenantName string) (database.InitialOperatorTenant, error) {
 	files, err := initialOperatorLocalCoreFiles(ctx, target)
 	if err != nil {
 		return database.InitialOperatorTenant{}, err
 	}
-	if err := database.ValidateInitialOperatorBootstrap(principal, "default", "Default", time.Now()); err != nil {
+	if err := database.ValidateInitialOperatorBootstrap(principal, tenantSlug, tenantName, time.Now()); err != nil {
 		return database.InitialOperatorTenant{}, err
 	}
 	cfg, err := bhruntime.LoadConfig(files.Env)
@@ -88,7 +88,7 @@ func initializeLocalOperatorTenant(ctx context.Context, target deployment.Resolv
 	if err := database.Migrate(ctx, pool); err != nil {
 		return database.InitialOperatorTenant{}, fmt.Errorf("prepare initial operator schema: %w", err)
 	}
-	result, err := database.BootstrapInitialOperatorTenant(ctx, pool, principal, "default", "Default")
+	result, err := database.BootstrapInitialOperatorTenant(ctx, pool, principal, tenantSlug, tenantName)
 	if err != nil {
 		return database.InitialOperatorTenant{}, err
 	}

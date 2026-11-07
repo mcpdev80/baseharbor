@@ -29,3 +29,19 @@ func TestInitialOperatorBootstrapRejectsRemoteTarget(t *testing.T) {
 		t.Fatalf("remote target must not bootstrap initial tenant: %v", err)
 	}
 }
+
+func TestInitialTenantDefaultAndCustomOptions(t *testing.T) {
+	args, init, slug, name, err := parseInitialTenantLoginArgs([]string{"--init-tenant", "-e", "dev"})
+	if err != nil || !init || slug != "baseharbor" || name != "BaseHarbor" || !reflect.DeepEqual(args, []string{"-e", "dev"}) {
+		t.Fatalf("default login options: %v %t %s %s %v", args, init, slug, name, err)
+	}
+	args, init, slug, name, err = parseInitialTenantLoginArgs([]string{"-e", "prod", "--init-tenant", "--tenant-slug", "acme", "--tenant-name", "Acme GmbH"})
+	if err != nil || !init || slug != "acme" || name != "Acme GmbH" || !reflect.DeepEqual(args, []string{"-e", "prod"}) {
+		t.Fatalf("custom login options: %v %t %s %s %v", args, init, slug, name, err)
+	}
+	for _, invalid := range [][]string{{"--tenant-slug", "acme"}, {"--init-tenant", "--tenant-name"}, {"--init-tenant", "--tenant-slug", "a", "--tenant-slug", "b"}} {
+		if _, _, _, _, err := parseInitialTenantLoginArgs(invalid); err == nil {
+			t.Fatalf("invalid first-tenant options accepted: %v", invalid)
+		}
+	}
+}
