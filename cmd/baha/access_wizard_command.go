@@ -175,7 +175,6 @@ type accessWizardJSON struct {
 	Decision string `json:"decision"`
 }
 
- 
 // validateAccessWizardPerson binds the human review to the exact explicit CLI
 // subject. A wizard prompt may not silently substitute a different person for
 // either a grant or a revocation; this check runs BEFORE calling the authority.
