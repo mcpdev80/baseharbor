@@ -181,7 +181,22 @@ def execute_validation(check, repository):
             ),
         )
     if check == 'cli-package-tests':
-        return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
+        # The client-commands card requires these five actual PASS events, not
+        # merely a successful package exit or skipped test cases. Only enforce
+        # this suite for candidates that include the dedicated regression file.
+        client_fixture = Path(repository) / 'cmd/baha/client_commands_behaviors_test.go'
+        required = (
+            'TestClientCommandsTwoHomesSameDeploymentPrecedence',
+            'TestClientCommandsDenialOverTwoHomes',
+            'TestClientCommandsServerLossOverTwoHomes',
+            'TestClientCommandsStaleConsentOverTwoHomes',
+            'TestClientCommandsErrorParityOverTwoHomes',
+        ) if client_fixture.is_file() else ()
+        result = go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True,
+                                  required_tests=required)
+        if required:
+            print(json.dumps({'check': check, 'required_pass': list(required)}))
+        return result
     if check == 'logs-package-tests':
         # Native opt-in scenarios run in their separately selected runtime jobs.
         return go_package_tests(repository, ['./internal/logs'], 'Logs', allow_skips=True)
