@@ -88,6 +88,18 @@ func TestApplicationMaintenanceDestroyCommitsWindowFromRetainedAuthority(t *test
 	// The destroy returns success, which means the durable window was committed from
 	// the retained authority before the owner tore down the deployment root: a
 	// post-teardown reload would have failed, so the window was committed up front.
+	//
+	// The round-3 fix mirrors the committed destroy window to a tombstone that
+	// survives the root deletion, so the completed operation stays queryable after
+	// teardown. A destroy that skipped the tombstone stamp would leave no tombstone
+	// and this assertion would go red.
+	tombPath, terr := maintenanceTombstonePath(resolved)
+	if terr != nil {
+		t.Fatalf("resolve tombstone path: %v", terr)
+	}
+	if _, statErr := os.Stat(tombPath); statErr != nil {
+		t.Fatalf("the destroy tombstone is missing after a successful destroy: %v", statErr)
+	}
 }
 
 // TestApplicationMaintenanceRemoteDestroyCommitsWindow proves the round-2 defect 2
@@ -134,6 +146,18 @@ func TestApplicationMaintenanceRemoteDestroyCommitsWindow(t *testing.T) {
 	// committed from the retained authority before the owner tore down the
 	// deployment record: the round-2 defect 2 path now commits the window instead
 	// of returning without one.
+	//
+	// The round-3 fix mirrors the committed destroy window to a tombstone that
+	// survives the root deletion, so the completed remote destroy stays queryable
+	// after teardown. A remote destroy that skipped the tombstone stamp would leave
+	// no tombstone and this assertion would go red.
+	tombPath, terr := maintenanceTombstonePath(resolved)
+	if terr != nil {
+		t.Fatalf("resolve tombstone path: %v", terr)
+	}
+	if _, statErr := os.Stat(tombPath); statErr != nil {
+		t.Fatalf("the remote destroy tombstone is missing after success: %v", statErr)
+	}
 }
 
 // TestMaintenanceHistoryAppendFailureLeavesNoAdvancedCurrentRecord proves the
