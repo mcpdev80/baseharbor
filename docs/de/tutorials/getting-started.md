@@ -32,6 +32,18 @@ und App-Footprint unterscheiden Messung, Schätzung und unbekannte Werte.
 Die [Application-Befehle](../cli/applications.md) beschreiben unterstützten
 Core-losen Betrieb und seine Grenzen.
 
+## Optional: Ersten Operator für Remote-Management einrichten
+
+Für die Connector-Einschreibung den ersten Operator **lokal auf dem Management-Core** initialisieren, nicht auf dem Remote-Node:
+
+```bash
+baha up --control-plane-only
+baha login -e dev --init-tenant
+baha whoami -e dev
+```
+
+Das ist nicht der gewöhnliche Trusted-Local-Application-Start. Vor dem Enrollment müssen Issuer und Audience der geschützten Operator-API zum Operator-Realm/-Client passen. Siehe [Erst-Owner-Einrichtung und Connector-Ablauf](../cli/security-trust.md). PR #1437 ist noch nicht released oder nativ abgenommen.
+
 ## Konkretes Beispiel: Go-API mit SQL
 
 Voraussetzungen: `baha` ist installiert, Docker oder Podman ist lokal verfügbar und der aktuelle Ordner enthält noch keinen Unterordner `orders-api`. Prüfe zuerst CLI und Target:

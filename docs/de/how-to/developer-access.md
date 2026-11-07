@@ -1,6 +1,6 @@
 # Lokaler Developer-Zugriff
 
-Verwende logische Application-/Ressourcennamen statt generierter Container-Namen und Ports. Lokales `dev` braucht im trusted-local-Modus keinen Operator-Login; test/prod verwenden ihre OIDC-/Policy-Grenze.
+Verwende logische Application-/Ressourcennamen statt generierter Container-Namen und Ports. Unkonfiguriertes lokales `dev` braucht im trusted-local-Modus keinen Operator-Login; nach `baha login -e dev --init-tenant` verwendet dieser Core die gespeicherte OIDC-Grenze (siehe [Operator-Bootstrap](../cli/security-trust.md)). test/prod verwenden ihre OIDC-/Policy-Grenze.
 
 ## Kanonische URLs
 

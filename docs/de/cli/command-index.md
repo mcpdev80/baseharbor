@@ -82,17 +82,18 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
 | `baha list` | List managed applications on the selected Target | `baha list [options]` | [↗](applications.md) |
-| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV` | [↗](security-trust.md) |
+| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME]` | [↗](security-trust.md) |
 | `baha logout` | Remove a local BaseHarbor operator session | `baha logout -e ENV\|--environment ENV` | [↗](security-trust.md) |
 | `baha mcp` | Expose BaseHarbor semantic operations over MCP | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha mcp serve` | Run the local stdio MCP server | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha new` | Create an application, stack, target, provider, or workspace | `baha new [application\|stack\|target\|provider\|workspace] [options]` | [↗](applications.md) |
 | `baha node` | Enroll and manage remote Docker or Podman nodes | `baha node [add\|connect\|list\|status\|disconnect]` | [↗](applications.md) |
-| `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] [--target NAME] --runtime docker\|podman --tenant-id UUID --core-url https://HOST:PORT --core-address HOST:PORT --ca-file FILE [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
+| `baha node add` | Create a remote Target and one-use enrollment bundle | `baha node add [NODE] --runtime docker\|podman [--target NAME] [--core-url https://HOST:PORT] [--core-address HOST:PORT] [--ca-file FILE] [--tenant-id UUID] [--environment ENV] [--output FILE] [--json]` | [↗](applications.md) |
 | `baha node connect` | Enroll this host and start the rootless connector service | `baha node connect [ENROLLMENT-FILE] [--connector-bin FILE] [--json]` | [↗](applications.md) |
 | `baha node disconnect` | Revoke node access after impact acknowledgement and retain recovery owners | `baha node disconnect TARGET --yes [--json]` | [↗](applications.md) |
 | `baha node list` | List configured remote connector nodes | `baha node list [--json]` | [↗](applications.md) |
 | `baha node status` | Inspect Core enrollment state for a remote node | `baha node status TARGET [--json]` | [↗](applications.md) |
+| `baha onboard` | Guided onboarding: attach a workstation to a BaseHarbor installation | `baha onboard [--target NAME] [--json] \| baha onboard --init-tenant [-e ENV] [--tenant-slug SLUG --tenant-name NAME]` | [↗](applications.md) |
 | `baha open` | Open a verified HTTPS application endpoint | `baha open [--print] [--json]` | [↗](applications.md) |
 | `baha openbao` | Bootstrap and operate the BaseHarbor OpenBao trust plane | `baha openbao <command> [options]` | [↗](security-trust.md) |
 | `baha openbao bootstrap` | Initialize OpenBao and establish the BaseHarbor manager identity | `baha openbao bootstrap --recovery-file PATH` | [↗](security-trust.md) |

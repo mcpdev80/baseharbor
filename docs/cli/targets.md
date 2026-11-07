@@ -87,10 +87,12 @@ baha target create docker-dev \
 Remote Docker/Podman hosts use the Node Connector enrollment workflow rather than hand-authoring access records:
 
 ```bash
-baha node add node-a
+baha node add node-a --runtime podman
 baha node list
 baha node status node-a
 ```
+
+The default path uses an owner-local Core connection profile containing the verified public API and Connector endpoints and pinned CA. The tenant UUID is obtained from the authenticated Core operator membership and is never guessed or requested from the developer. Advanced flags may override endpoint/CA values, but a supplied tenant UUID cannot override the Core membership. Missing or ambiguous public TLS identity fails closed instead of using loopback.
 
 `baha node add` is guided on a terminal. It creates the remote Target and writes one owner-only enrollment bundle containing the short-lived one-use authorization. Copy that file to the remote host and run:
 

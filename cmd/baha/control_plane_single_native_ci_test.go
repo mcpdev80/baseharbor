@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"strings"
@@ -28,6 +29,14 @@ func TestControlPlaneSingleDefaultNativeRuntimeInCI(t *testing.T) {
 	// The existing fixture starts a genuine control plane using the shipped
 	// default (no --ha), and fails if startup/bootstrap is unsuccessful.
 	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	// The shared trust-plane fixture intentionally selects an unconfigured
+	// sentinel. Explicitly create a fresh owned Target before exercising the
+	// genuine Core startup; never inspect another test's bootstrap Core.
+	isolateRuntimeForTest(t, "single-default-native")
+	var startup bytes.Buffer
+	if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &startup, &startup); err != nil {
+		t.Fatalf("start isolated Core with default topology: %v\n%s", err, startup.String())
+	}
 	provider, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("resolve required %s runtime: %v", kind, err)

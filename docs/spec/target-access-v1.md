@@ -273,6 +273,7 @@ access with Docker or Podman. A request cannot choose another signing authority.
 
 | HTTPS endpoint | Authorization and result |
 | --- | --- |
+| `GET /api/v1/connectors/owner-context` | Returns the tenant UUID only after verified operator OIDC and authorized membership, never from request-supplied tenant identity. |
 | `POST /api/v1/connectors/authorizations` | Operator OIDC and resolved tenant `create` permission; returns only the protected `token`, `nonce`, `expires_at` projection. |
 | `POST /api/v1/connectors/enroll` | One scoped `Authorization: Bearer` credential plus canonical enrollment request; returns the signed client certificate and public trust bundle. |
 | `POST /api/v1/connectors/renewal-authorizations` | Protected operator identity, tenant membership and update permission; creates a one-use authorization pinned to the node's current active certificate. |
