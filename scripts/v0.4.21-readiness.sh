@@ -29,8 +29,15 @@ grep -Fq 'ResolveAvailability' internal/application/availability_resolution.go
 grep -Fq 'application secret confirmation does not match; no changes were made' cmd/baha/app_secret.go
 
 grep -Fq 'v0421_ha_groups:' .github/workflows/pre-release.yml
-grep -Fq 'Reference Journey · Docker · Full E2E' .github/workflows/pre-release.yml
-grep -Fq 'gate_count 54' .github/workflows/pre-release.yml
+# The reference journey is a real Docker/Podman matrix; a literal Docker
+# job title was retired when the workflow stopped duplicating runtime jobs.
+grep -Fq 'name: Reference Journey · ${{ matrix.runtime }} · Full E2E' .github/workflows/pre-release.yml
+grep -Fq 'runtime: ${{ fromJSON(needs.source.outputs.journey) }}' .github/workflows/pre-release.yml
+# Gate counts are derived from the selected candidate, not fixed at the
+# historical v0.4.21 count of 54. Preserve dynamic selection and fail-closed
+# source outputs instead of resurrecting a stale static gate inventory.
+grep -Fq 'journey_count: ${{ steps.selection.outputs.journey_count }}' .github/workflows/pre-release.yml
+grep -Fq 'integration_count: ${{ steps.selection.outputs.integration_count }}' .github/workflows/pre-release.yml
 
 for group in data identity observability routing; do
   grep -Fq "$group)" scripts/v0.4.21-ha-acceptance.sh
