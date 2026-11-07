@@ -106,6 +106,7 @@ CI_EXECUTION_SUITES = (
     'test_pr_runtime_request', 'test_pr_gate_dependencies',
     'test_pr_selected_runtime_matrix', 'test_ecosystem_release_pins',
     'test_targeted_gate_ref', 'test_artifact_gc', 'test_pre_release_check_plan',
+    'test_ci_v0427_gate_catalog',
     'test_pre_release_integration', 'test_consumer_source_pins',
     'test_frozen_candidate_promotion', 'test_ci_check_routes',
     'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',

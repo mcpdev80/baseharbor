@@ -1,6 +1,6 @@
 {
   "schema": "baseharbor.pr-gate-map/v1",
-  "release": "v0.4.26",
+  "release": "v0.4.27",
   "policy": "explicit-path-and-package",
   "notes": "Executable mappings live in pr-gate-plan.py. Valid unknown paths select conservative Go unit/vet/build checks and applicable runtime lifecycles. Invalid source or catalog data still fails; PRs never launch the full release catalog automatically."
 }
