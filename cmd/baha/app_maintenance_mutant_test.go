@@ -14,10 +14,11 @@ import (
 )
 
 // TestApplicationMaintenanceCausalMutantsKeepEveryGuardRequired fixes each
-// safety guard of the maintenance client to its weakest plausible alternative and
-// requires a red signal. A guard no mutant can break is not load-bearing, so the
-// assertion itself would be the thing to remove; a mutant that survives proves
-// the corresponding path is not actually enforced.
+// safety guard of the maintenance client to its weakest plausible alternative
+// and requires a red signal, by driving the guard's own production input through
+// a test seam. A guard no mutant can break is not load-bearing, so the assertion
+// itself would be the thing to remove; a mutant that survives proves the
+// corresponding path is not actually enforced.
 func TestApplicationMaintenanceCausalMutantsKeepEveryGuardRequired(t *testing.T) {
 	t.Run("authority lookup is required before routing", func(t *testing.T) {
 		// Mutant: route the operation before checking that an installation owns the
