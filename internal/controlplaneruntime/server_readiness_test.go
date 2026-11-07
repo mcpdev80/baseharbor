@@ -552,3 +552,48 @@ func TestBoundBrokerReadyzRedWhenOpenBaoLoginFails(t *testing.T) {
 		t.Fatalf("body = %v, want dependency openbao", body)
 	}
 }
+
+// TestBrokerRequiresExecutorMatrix pins the dependency decision directly: the
+// executor URL declares it; a permissions projection that grants only the
+// metrics capability does not (the broker serves that in-process); any other
+// capability does. An empty or absent-but-valid configuration never declares
+// it. These are the exact inputs /readyz consults when no client was built.
+func TestBrokerRequiresExecutorMatrix(t *testing.T) {
+	t.Run("url-configured-declares-dependency", func(t *testing.T) {
+		f := newBrokerReadinessFiles(t)
+		cfg := brokerReadinessConfig(f)
+		cfg.RuntimeExecutorURL = "https://baseharbor-runtime-executor:9443"
+		if !brokerRequiresExecutor(cfg) {
+			t.Fatal("a configured executor URL declares the dependency")
+		}
+	})
+	t.Run("metrics-only-permissions-no-dependency", func(t *testing.T) {
+		f := newBrokerReadinessFiles(t)
+		if err := os.WriteFile(f.permissionsFile,
+			[]byte(`[{"capability":"metrics/v1","services":["app"],"operations":["runtime.create"]}]`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := brokerReadinessConfig(f)
+		if brokerRequiresExecutor(cfg) {
+			t.Fatal("metrics-only capabilities are served in-process; no executor dependency")
+		}
+	})
+	t.Run("other-capability-requires-executor", func(t *testing.T) {
+		f := newBrokerReadinessFiles(t)
+		if err := os.WriteFile(f.permissionsFile,
+			[]byte(`[{"capability":"object-storage.s3/v1","services":["app"],"operations":["runtime.create"]}]`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		cfg := brokerReadinessConfig(f)
+		if !brokerRequiresExecutor(cfg) {
+			t.Fatal("capabilities beyond metrics require the executor")
+		}
+	})
+	t.Run("default-empty-mounts-no-dependency", func(t *testing.T) {
+		f := newBrokerReadinessFiles(t)
+		cfg := brokerReadinessConfig(f)
+		if brokerRequiresExecutor(cfg) {
+			t.Fatal("the default mounts describe no executor dependency")
+		}
+	})
+}
