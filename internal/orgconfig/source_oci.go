@@ -35,6 +35,44 @@ var ErrOrgSourceRegistryDefault = errors.New("organization OCI source is a publi
 // classifier checks.
 var errOrgSourceRegistryDefaultAlias = ErrOrgSourceRegistryDefault
 
+// ErrOrgSourceUnverifiable is the distinct hard-rejection identity for an OCI
+// organization source the native tool resolved without an immutable sha256
+// digest — an UNPRUEFBAR resolution. Like the opt-in and public-default
+// identities it is never the merely-unavailable class, so no mutable fallback
+// (development opt-in or otherwise) may ever qualify on it: pulling the raw
+// tag would fetch content that was never proven. It unwraps to
+// ErrSourceUnavailable so existing classification gates keep their semantics
+// while isHardRegistryRejection lists the identity itself.
+var ErrOrgSourceUnverifiable = fmt.Errorf("%w: %w", ErrSourceUnavailable, errOrgSourceUnverifiableClass)
+
+// errOrgSourceUnverifiableClass carries the bare, distinct unverifiable
+// identity node: it aliases NOTHING, so a node-identity walk can single it
+// out of a chain that also contains the shared unavailable alias.
+var errOrgSourceUnverifiableClass = errors.New("organization OCI source is unverifiable without an immutable digest")
+
+// IsUnverifiableOCIResolution reports whether a cause chain carries the
+// unverifiable OCI resolution identity — the one resolution outcome that must
+// never qualify a variable (mutable) fallback even with the endpoint opt-in
+// on. The walk is node-by-node identity for the same reason the registry
+// adapter's gate is: the wrapper deliberately aliases the unavailable class,
+// so errors.Is could not distinguish carrying this identity from being merely
+// unavailable.
+func IsUnverifiableOCIResolution(err error) bool {
+	for node := err; node != nil; node = errors.Unwrap(node) {
+		if node == error(errOrgSourceUnverifiableClass) {
+			return true
+		}
+		if joined, ok := node.(interface{ Unwrap() []error }); ok {
+			for _, child := range joined.Unwrap() {
+				if child == error(errOrgSourceUnverifiableClass) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // orgRegistryOptInEnabled reports whether the explicit opt-in switch is on.
 // It reads the real environment; tests may override it via
 // setOrgRegistryOptInForTest. An empty or non-"true" value keeps the
@@ -50,7 +88,11 @@ func orgRegistryOptInEnabled() bool {
 // covered by a mutable fallback. The identity check is deliberate: an alias of
 // the unavailable identity (mutant or misplacement) must not hide itself.
 func isHardRegistryRejection(err error) bool {
-	return errors.Is(err, errOrgSourceRegistryDefaultAlias) ||
+	// The unverifiable identity is checked by its own class first: it unwraps
+	// through the unavailable alias, and a check order that consulted an
+	// alias of unavailable before it could hide the identity.
+	return IsUnverifiableOCIResolution(err) ||
+		errors.Is(err, errOrgSourceRegistryDefaultAlias) ||
 		errors.Is(err, ErrOrgSourceRegistryDisabled)
 }
 
@@ -86,7 +128,20 @@ func classifyOrgRegistryError(err error, location string) error {
 // reported as a missing oras installation, so an alias that hid it inside the
 // unavailable class would still fail the classification tests.
 func IsNativeToolNotFound(err error) bool {
-	return errors.Is(err, exec.ErrNotFound)
+	for node := err; node != nil; node = errors.Unwrap(node) {
+		var execErr *exec.Error
+		if errors.As(node, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return true
+		}
+		if joined, ok := node.(interface{ Unwrap() []error }); ok {
+			for _, child := range joined.Unwrap() {
+				if errors.Is(child, exec.ErrNotFound) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // ErrNativeToolNotFound is the actionable absence identity for a host that
@@ -99,12 +154,12 @@ var ErrNativeToolNotFound = fmt.Errorf("%w: the native OCI artifact tool 'oras' 
 
 // classifyNativeToolFailure maps a raw exec failure from a native artifact
 // tool either to the actionable missing-oras identity or to the redacted
-// generic class. The raw stderr is never surfaced.
+// generic-unavailable class. The raw stderr is never surfaced.
 func classifyNativeToolFailure(name string, err error) error {
 	if IsNativeToolNotFound(err) {
 		return ErrNativeToolNotFound
 	}
-	return fmt.Errorf("%s: command failed", name)
+	return fmt.Errorf("%w: resolve with %s failed with a redacted non-zero exit", ErrSourceUnavailable, name)
 }
 
 // isDefaultDockerHostLocation reports whether a configured OCI location is a

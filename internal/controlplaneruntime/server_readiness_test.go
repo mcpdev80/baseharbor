@@ -1,6 +1,7 @@
 package controlplaneruntime
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -21,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/runtimeexecutor"
 )
@@ -276,20 +278,19 @@ func (f *executorFixture) client(t *testing.T) *runtimeexecutor.Client {
 	return client
 }
 
-// TestBoundBrokerReadyzFailsClosedWithoutExecutorConfig proves the real
+// TestBoundBrokerReadyzFailsClosedWithConfiguredExecutor proves the real
 // readiness path fails closed with the runtime-executor dependency named when
-// the broker received no executor configuration at all (no URL, no client):
-// this is the permanent, cause-less not_ready the published 0.4.26 edge image
-// showed on the VMs. The probe must name its dependency and must never be
-// waived implicitly. A configured-but-unbuildable client (URL set, client
-// nil — a projection that disappeared after startup) must land in the same
-// fail-closed branch, never the waiver.
-func TestBoundBrokerReadyzFailsClosedWithoutExecutorConfig(t *testing.T) {
+// the mounted configuration declares the executor dependency (a URL) but no
+// client could be built (a projection that disappeared after startup). The
+// probe must name its dependency and must never be waived implicitly. The
+// no-executor-configuration default case is NOT part of this cell: with
+// default mounts the executor is not a dependency, and readiness must be
+// GREEN there — see TestBoundBrokerReadyzDefaultWithoutExecutorIsReady.
+func TestBoundBrokerReadyzFailsClosedWithConfiguredExecutor(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		url  string
 	}{
-		{name: "no-executor-configuration", url: ""},
 		{name: "configured-client-unbuildable", url: "https://baseharbor-runtime-executor:9443"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -354,8 +355,7 @@ func TestBoundBrokerReadyzGreenWithAllPresentDependencies(t *testing.T) {
 
 // TestBoundBrokerReadyzRedWhenExecutorReadyzFails proves the RED half: when
 // the executor dependency is actually down, readiness must stay fail-closed
-// and name it; the fix never fabricates green — not even with the explicit
-// waiver on, because the waiver is inert once a client exists.
+// and name it; the fix never fabricates green.
 func TestBoundBrokerReadyzRedWhenExecutorReadyzFails(t *testing.T) {
 	f := newBrokerReadinessFiles(t)
 	cfg := brokerReadinessConfig(f)
@@ -364,7 +364,6 @@ func TestBoundBrokerReadyzRedWhenExecutorReadyzFails(t *testing.T) {
 	executor := newExecutorFixture(t, func() bool { return ready.Load() })
 	executorClient := executor.client(t)
 	cfg.RuntimeExecutorURL = executor.server.URL
-	t.Setenv("BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED", "true")
 
 	deps := serverDependencies{boundExecutorClient: executorClient}
 	mux := http.NewServeMux()
@@ -384,31 +383,26 @@ func TestBoundBrokerReadyzRedWhenExecutorReadyzFails(t *testing.T) {
 	}
 }
 
-// TestBoundBrokerReadyzWaivesAbsentExecutorOnlyByExplicitOptIn proves the
-// legacy-image escape hatch is explicit and off by default: a broker that
-// received no executor URL and no client blocks readiness fail-closed until
-// the operator sets BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED=true. The
-// switch is re-read on every probe, so recovery needs no broker restart.
-func TestBoundBrokerReadyzWaivesAbsentExecutorOnlyByExplicitOptIn(t *testing.T) {
+// TestBoundBrokerReadyzDefaultWithoutExecutorIsReady proves the /readyz
+// DEFAULT case CODEX requested: a broker whose valid mounts describe the
+// default shape — no executor URL and a permissions projection that grants no
+// capability requiring the executor — must report READY, never a blanket 503.
+// The missing executor is optional exactly and only when the mounted broker
+// configuration shows the dependency genuinely does not exist; no environment
+// waiver is consulted anywhere in this path.
+func TestBoundBrokerReadyzDefaultWithoutExecutorIsReady(t *testing.T) {
 	f := newBrokerReadinessFiles(t)
 	cfg := brokerReadinessConfig(f)
+	cfg.RuntimeExecutorURL = ""
 	baoClient := newBaoLoginClient(t, appRoleLoginHandler())
 
 	mux := http.NewServeMux()
 	registerHealthHandlers(mux, cfg, serverDependencies{boundRuntimeClient: baoClient})
 
-	t.Setenv("BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED", "")
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
-	if rec.Code != http.StatusServiceUnavailable {
-		t.Fatalf("without the opt-in the broker must stay fail-closed, got %d", rec.Code)
-	}
-
-	t.Setenv("BASEHARBOR_RUNTIME_EXECUTOR_NOT_REQUIRED", "true")
-	rec = httptest.NewRecorder()
-	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("with the explicit waiver readiness must report the remaining dependencies, got %d", rec.Code)
+		t.Fatalf("the default broker without an executor dependency must be READY, got %d body %s", rec.Code, rec.Body.String())
 	}
 	var body map[string]string
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
@@ -416,6 +410,39 @@ func TestBoundBrokerReadyzWaivesAbsentExecutorOnlyByExplicitOptIn(t *testing.T) 
 	}
 	if body["status"] != "ready" {
 		t.Fatalf("status = %q, want ready", body["status"])
+	}
+}
+
+// TestBoundBrokerReadyzPermissionsRequiringExecutorStayRed proves a genuinely
+// required dependency stays RED without any environment switch: the mounted
+// permissions grant a capability the broker can only serve through the
+// executor, but no executor was configured. The permission mount and the
+// executor environment are rendered from the same manifest, so this asymmetry
+// is a broken required dependency and must name it, not be waived.
+func TestBoundBrokerReadyzPermissionsRequiringExecutorStayRed(t *testing.T) {
+	f := newBrokerReadinessFiles(t)
+	if err := os.WriteFile(f.permissionsFile,
+		[]byte(`[{"capability":"object-storage.s3/v1","services":["app"],"operations":["runtime.create"]}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := brokerReadinessConfig(f)
+	cfg.RuntimeExecutorURL = ""
+	baoClient := newBaoLoginClient(t, appRoleLoginHandler())
+
+	mux := http.NewServeMux()
+	registerHealthHandlers(mux, cfg, serverDependencies{boundRuntimeClient: baoClient})
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("permissions that require the executor without an executor URL must stay RED, got %d", rec.Code)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["dependency"] != "runtime-executor" {
+		t.Fatalf("body = %v, want dependency runtime-executor", body)
 	}
 }
 
@@ -446,6 +473,55 @@ func TestBoundBrokerReadyzExecutorRecoveryTurnsGreenWithoutRestart(t *testing.T)
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("after executor recovery the broker must turn green without a restart, got %d", rec.Code)
+	}
+}
+
+// TestBoundBrokerReadyzDefaultMountsWithEmptyPermissionsFileIsReady proves the
+// real 0.4.26 edge witness end to end through the production dependency
+// constructor: a bound broker whose mounts are all valid (token, protected
+// permissions projection) and which received no executor configuration at all
+// builds its dependencies successfully and answers READY — the executor is
+// simply not a dependency of this broker. This is the shape the published
+// edge image showed as a permanent not_ready on the VMs.
+func TestBoundBrokerReadyzDefaultMountsWithEmptyPermissionsFileIsReady(t *testing.T) {
+	f := newBrokerReadinessFiles(t)
+	cfg := brokerReadinessConfig(f)
+	cfg.RuntimeExecutorURL = ""
+
+	baoClient := newBaoLoginClient(t, appRoleLoginHandler())
+	deps, err := prepareServerDependencies(context.Background(), cfg, application.Store{})
+	if err != nil {
+		t.Fatalf("prepareServerDependencies: %v", err)
+	}
+	t.Cleanup(deps.close)
+	deps.boundRuntimeClient = baoClient
+
+	mux := http.NewServeMux()
+	registerHealthHandlers(mux, cfg, deps)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the default broker with valid mounts must be READY, got %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestBoundBrokerReadyzEmptyPermissionsMountOnlyIsReady covers the
+// secrets-less broker shape: an empty permissions projection and no executor
+// configuration is a complete default configuration, so readiness reports the
+// dependencies that exist instead of 503.
+func TestBoundBrokerReadyzEmptyPermissionsMountOnlyIsReady(t *testing.T) {
+	f := newBrokerReadinessFiles(t)
+	cfg := brokerReadinessConfig(f)
+	cfg.RuntimeExecutorURL = ""
+
+	mux := http.NewServeMux()
+	registerHealthHandlers(mux, cfg, serverDependencies{})
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a bound broker whose mounts describe no executor dependency must be READY, got %d body %s", rec.Code, rec.Body.String())
 	}
 }
 

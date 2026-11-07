@@ -210,15 +210,22 @@ func resolveOCI(ctx context.Context, source Source) (Resolution, Config, error) 
 	}
 	out, err := run(ctx, "oras", "resolve", ref)
 	if err != nil {
-		if IsNativeToolNotFound(err) {
-			return Resolution{}, Config{}, ErrNativeToolNotFound
-		}
+		// The actionable missing-tool identity is returned FIRST, before any
+		// class wrapper: a host without the oras binary gets it intact, and
+		// no caller can mistake it for a merely-unavailable host that a
+		// mutable fallback could cover. classifyNativeToolFailure keeps the
+		// exec.ErrNotFound identity alive through redacting %v wrappers so
+		// the classifier still recognises the fail-closed path downstream;
+		// classifyOrgRegistryError then hard-rejects a public-default
+		// endpoint over whatever class the tool produced.
 		return Resolution{}, Config{}, classifyOrgRegistryError(
-			fmt.Errorf("%w: resolve organization OCI source %q: %v", ErrSourceUnavailable, ref, err), ref)
+			classifyNativeToolFailure("oras", err), ref)
 	}
 	digest := firstDigest(out)
 	if digest == "" {
-		return Resolution{}, Config{}, fmt.Errorf("organization OCI source %q did not resolve to an immutable sha256 digest", ref)
+		// An unpruefbar (unverifiable) resolution: the tool answered without
+		// an immutable digest, so no mutable fallback may qualify on it.
+		return Resolution{}, Config{}, fmt.Errorf("%w: organization OCI source %q did not resolve to an immutable sha256 digest", ErrOrgSourceUnverifiable, ref)
 	}
 	tmp, err := os.MkdirTemp("", "baseharbor-org-oci-*")
 	if err != nil {
