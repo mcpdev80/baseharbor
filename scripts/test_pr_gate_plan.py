@@ -2682,3 +2682,47 @@ class CurrentProductSeamRoutingTests(unittest.TestCase):
         result = planner.plan(diff(paths('cmd/baha/app_backup_restore_integration_test.go')), REQ, MAP)
         self.assertEqual('resolved', result['coverage_status'])
         self.assertEqual(['atomic/docker/backup-restore', 'atomic/podman/backup-restore'], result['selected_gates'])
+
+
+class CLISelectedCheckDeduplicationTests(unittest.TestCase):
+    def test_mixed_cli_unit_and_source_runs_guided_only_through_package(self):
+        changes = paths('cmd/baha/deployment_record.go',
+                        'cmd/baha/app_context_incomplete_test.go',
+                        'internal/deployment/deployment_store.go')
+        result = planner.plan(diff(changes), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual(1, ids.count('cli-package-tests'))
+        self.assertTrue({'cli-vet', 'cli-build', 'source-contracts'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_test_only_change_keeps_one_package_owner_without_native_suite(self):
+        result = planner.plan(diff(paths('cmd/baha/new_regression_test.go')), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)
+        self.assertEqual([], result['selected_gates'])
+
+    def test_guided_check_is_retained_when_no_full_package_selected(self):
+        result = planner.plan(diff(paths('cmd/baha/docker_engine.go')), REQ, MAP)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertNotIn('cli-package-tests', ids)
+        self.assertIn('cli-guided-tests', ids)
+        self.assertTrue({'cli-vet', 'cli-build'} <= set(ids))
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_deduplication_does_not_change_unresolved_coverage_or_gate_scope(self):
+        result = planner.plan(
+            diff(paths('cmd/baha/new_regression_test.go',
+                       'internal/unmapped/production.go')), REQ, MAP)
+        self.assertEqual('unresolved', result['coverage_status'])
+        self.assertTrue(result['unresolved_coverage'])
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertIn('cli-package-tests', ids)
+        self.assertNotIn('cli-guided-tests', ids)

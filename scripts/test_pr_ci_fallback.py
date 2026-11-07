@@ -34,6 +34,39 @@ class ConservativeFallbackTests(unittest.TestCase):
                         {row['id'] for row in result['required_validation_checks']})
         self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'], result['selected_gates'])
 
+    def test_broad_fallback_subsumes_only_identical_small_go_checks(self):
+        # A new CLI test plus an unresolved product implementation requires
+        # broad Go checks, but must not rerun the same CLI tests and build.
+        mixed = {**changes('internal/unmapped/production.go'),
+                 'changes': [
+                     {'status': 'added', 'path': 'cmd/baha/new_regression_test.go'},
+                     {'status': 'modified', 'path': 'internal/unmapped/production.go'},
+                 ]}
+        result = planner.plan(mixed, CATALOG, MAPPING, conservative_fallback=True)
+        ids = [check['id'] for check in result['required_validation_checks']]
+        self.assertEqual('resolved', result['coverage_status'])
+        self.assertTrue(result['fallback_used'])
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <= set(ids))
+        self.assertFalse({'cli-package-tests', 'cli-guided-tests',
+                          'cli-vet', 'cli-build', 'source-contracts',
+                          'capability-package-tests'} & set(ids))
+        # Formatting isn't provided by Go test/vet/build.
+        self.assertIn('cli-gofmt', ids)
+        self.assertEqual(['atomic/docker/lifecycle', 'atomic/podman/lifecycle'],
+                         result['selected_gates'])
+
+    def test_broad_fallback_keeps_specialized_runtime_provider_assertions(self):
+        mixed = {**changes('internal/unmapped/production.go'),
+                 'changes': [
+                     {'status': 'modified', 'path': 'internal/runtime/stack_test.go'},
+                     {'status': 'modified', 'path': 'internal/unmapped/production.go'},
+                 ]}
+        result = planner.plan(mixed, CATALOG, MAPPING, conservative_fallback=True)
+        ids = {check['id'] for check in result['required_validation_checks']}
+        self.assertTrue({'go-unit-tests', 'go-vet', 'go-build'} <= ids)
+        # Specific checks may require explicit PASS lines, isolation or env.
+        self.assertIn('runtime-provider-package-tests', ids)
+
     def test_known_docs_remain_targeted_and_unknown_metadata_does_not_boot_runtimes(self):
         known = planner.plan(changes('docs/guide.md'), CATALOG, MAPPING, conservative_fallback=True)
         self.assertNotIn('fallback_used', known)
