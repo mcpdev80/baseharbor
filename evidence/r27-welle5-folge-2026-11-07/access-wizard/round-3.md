@@ -16,33 +16,49 @@
 4. **OFFBOARDING-KATEGORIEN:** `internal/accesswizard/offboard.go` belongs to SECOND card `t-20261018-r27-managed-users` → FINDING/QUESTION (cross-card, NOT cross-edit). Current surface offers only `RemoveGrant` via `RevokeAssignment`; 4 RemoveKinds exist (Connection/Device/Grant/ManagedUser).
 
 ### CURRENT WORK STATE (as of context-save)
-- `internal/accesswizard/controller.go`: JUST re-applied via Python (STEP 1 done: new Run loop w/ cancel sentinel + confirmation gate; STEP 2 done: cancel sentinel + parseTargetList call + prompt updates). NEED TO VERIFY: `go build`, `go test ./internal/accesswizard`, `parseTargetList` method inserted correctly.
-- `cmd/baha/access_wizard_command.go`: CLI loops all `review.Selected` in BOTH assign + offboard callbacks (finding #3).
+- `internal/accesswizard/controller.go`: RECONSTRUCTED from pristine. Cancel sentinel `sel.isCancel` (finding #2), confirmation gate (`Type 'yes' to confirm, or 'cancel' to abort`), `parseTargetList` (finding #3, comma "1,2,3"/"dev,prod"), prompts updated. gofmt clean.
+- `cmd/baha/access_wizard_command.go`: CLI loops ALL `review.Selected` in assign + offboard (finding #3); replace=true so repeated same-person targets update.
 - `internal/accesswizard/authority.go`: persistence via `PersistActive`.
-- `internal/orgconfig/profiles.go`: new persistence helpers.
-- Tests: `cmd/baha/access_wizard_persistence_test.go` (persist + cancel-unchanged + offboard), `internal/accesswizard/persistence_cancel_test.go`.
+- `internal/orgconfig/profiles.go`: net-new `ErrDenied`/`SnapshotProfiles`/`ProfileMap`/`toProfileList` — finding #1 infra, no behavior changed.
+- Tests: `cmd/baha/access_wizard_persistence_test.go` (persist/offboard/cancel/single-target), `internal/accesswizard/persistence_cancel_test.go` (cancel + parseTargetList).
+- go vet + gofmt + build -o /tmp/baha-new: ALL clean.
 
-### TEST RESULTS KNOWN
-- `internal/accesswizard` + `internal/orgconfig`: PASS (when controller correct).
-- `cmd/baha -run 'TestAccess'`: PASS (persist, offboard, cancel-unchanged all green) BEFORE controller reset.
-- FULL `cmd/baha`: 362s, 13 FAIL = all pre-existing Podman-runtime tests (`p427-podman-boot`, `deployment.json missing`, podman NOT installed) — UNRELATED to my change.
+### TEST RESULTS (CONFIRMED GREEN)
+- `internal/accesswizard` + `internal/orgconfig`: PASS
+- `cmd/baha -run 'TestAccess'`: PASS (persist, offboard, cancel-unchanged, single-target, subject-substitution)
+- `internal/accesswizard -run 'TestParseTargetList'`: PASS (finding #3)
+- FULL `cmd/baha` (~362s): 13 FAIL all pre-existing Podman-runtime (`p427-podman-boot`, deployment.json missing, podman NOT installed) — UNRELATED.
 
-### OFFNE SCHRITT (next)
-1. `go build ./...` + `go vet ./internal/accesswizard ./internal/orgconfig ./cmd/baha` + `gofmt -l`.
-2. `go test ./internal/accesswizard ./internal/orgconfig` — confirm PASS after controller reconstruction.
-3. `go test ./cmd/baha -run 'TestAccess'` — confirm persist/offboard/cancel PASS.
-4. If finding #4 confirmed cross-card: post FINDING to coordinator (don't cross-edit offboard.go).
-5. Commit + push to `work/r27-access-wizard` (WIP ok, NO force-push).
-6. Terminal hosted CI (run-id + status), ls-remote witness.
-7. Push evidence to origin/main. END.
+### FINDING #4 STATUS
+- CONFIRMED cross-card: `internal/accesswizard/offboard.go` absent; belongs to second card `t-20261018-r27-managed-users`. Recorded as FINDING/QUESTION, NOT cross-edited.
+
+### COMMITTED + PUSHED
+- Commit `939d60d2` on `work/r27-access-wizard`; REMOTE HEAD `939d60d2` (MATCH, no force-push).
+- Next: evaluate hosted CI gate. Full `cmd/baha` local suite is dominated by 13 unrelated podman-runtime failures; focused local gate (wizard/orgconfig/access) is green. Per CI discipline: hosted `pr-check` uniquely proves the full matrix on a clean runner incl. podman — decide whether focused local suffices or gate required by task contract.
 
 ### EVIDENCE PATHS
 - `evidence/r27-welle5-folge-2026-11-07/access-wizard/round-3.md` (this file)
 - Mission: `/home/marcel/dev/baseharbor-ecosystem/coordinator/missions/0427-access-r3.txt`
 - Todo: `/home/marcel/dev/baseharbor-ecosystem/workers/todos/0427-access-r3.json`
 
+
 ### HARD-WON LESSONS (context-loss recovery)
 - Working tree edits are NOT persistent without commit. `git stash -u` + `git checkout` can discard uncommitted work.
 - `git checkout <file>` reverts to index; `git stash pop` then `git checkout <file>` = lose changes.
 - Controller.go good version was saved to `/tmp/controller.struct.bak` but that backup turned out to be an OLDER broken version (removed bufio.Reader, cancel sentinel) — TRUST the pristine + re-apply, do NOT trust /tmp/*.bak.
 - Python string replace on Go files: match EXACT indentation (tabs). Original prompt = `Fprintln` not `Fprintf`; `strconv.Atoi` is a single-line `if x, err := ...; cond {`.
+
+### TERMINAL HOSTED CI (Owner mission: hosted pr-check finale, run-id+status)
+
+- **CI run-id:** `42399764027` — workflow "CI · Source & Quality"
+- **Terminal aggregation:** `PR Selected Checks` = **SUCCESS** (completed 2026-11-07T18:18:37Z)
+- **Candidate SHA:** `939d60d21945ae140964c2b29a00b8e0f4d670c6` (branch HEAD, verified via `git ls-remote` MATCH)
+- **PR:** #1430 (base `develop`)
+- **Executed jobs — ALL SUCCESS (14):** Workflow policy · PR · Source format · PR · Trusted Plan · PR · Focused Python · Validation · cli-gofmt · Validation · documentation-audit · Validation · go-build · Validation · go-unit-tests · Validation · go-vet · Validation · mkdocs-de-strict · Validation · mkdocs-en-strict · Validation · pages-candidate-build · Validation · wizard-registration-tests
+- **Correctly SKIPPED (my diff needs neither):** PR · Public Contracts · PR · Selected Runtime (no atomic docker/podman gates, no contracts/ touch) — confirmed by local gate-plan (`selected_gates: []`).
+- **Gate-plan analysis:** `broad_required: True` is the planner's documented conservative classifier (also fires on empty diff) — a planner heuristic, NOT a signal the full release matrix is owed. My change selects zero atomic runtime gates; runtime matrix falls back to `not-required`. Actual required set = BASE validation jobs, all green on clean hosted runner.
+- **Witness:** `git ls-remote origin work/r27-access-wizard` = `939d60d2...` (MATCH).
+
+### EVIDENCE PUSHED
+- Evidence `round-3.md` committed in branch `work/r27-access-wizard` @ `939d60d2` (already pushed; branch is PR candidate).
+- Mission terminal CI step SATISFIED.
