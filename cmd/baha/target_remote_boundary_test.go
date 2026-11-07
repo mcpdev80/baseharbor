@@ -30,9 +30,9 @@ func TestRemoteDevelopmentTargetNeverUsesLocalDockerOrPodmanHost(t *testing.T) {
 		for _, access := range []string{"baseharbor-node-connector", "native-api"} {
 			t.Run(runtime+"/"+access, func(t *testing.T) {
 				target := deployment.ResolvedTarget{
-					Name: "remote-dev",
+					Name:            "remote-dev",
 					RuntimeProvider: runtime,
-					AccessProvider: access,
+					AccessProvider:  access,
 					AccessReference: "remote-node",
 				}
 				provider, err := detectRuntimeForTarget(context.Background(), target)
