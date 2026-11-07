@@ -23,7 +23,6 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
         for path in (
             "cmd/baha/runtime_ports_test.go",
             "cmd/baha/runtime_start.go",
-            "cmd/baha/path_prompt_context.go",
             "cmd/baha/control_plane_single_native_ci_test.go",
             "internal/runtime/stack.go",
             "internal/runtime/stack_test.go",
@@ -41,6 +40,8 @@ class SingleDefaultCIRouteTests(unittest.TestCase):
                 "README.md",
                 "internal/development/source_snapshot_test.go",
                 "cmd/baha/app_version_view_test.go",
+                "cmd/baha/path_prompt_context.go",
+                "internal/identityprovider/keycloak_files.go",
             ),
         )
         self.assertEqual("false", selected())
