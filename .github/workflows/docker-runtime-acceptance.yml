@@ -181,9 +181,10 @@ jobs:
         id: runtime_integration
         env:
           BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+          BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
         run: |
           set -euo pipefail
-          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/main.jsonl"
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestControlPlaneSingleDefaultNativeRuntimeInCI|TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json 2>&1 | tee "$RUNNER_TEMP/docker-runtime-checks/tests/main.jsonl"
 
       - name: Capture Docker control-plane diagnostics
         if: failure() && steps.runtime_integration.outcome == 'failure'
@@ -231,7 +232,7 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
-      - name: Verify all eight executed runtime tests
+      - name: Verify all nine executed runtime tests
         id: executed_tests
         if: always()
         shell: bash
@@ -244,6 +245,7 @@ jobs:
           prefix = 'github.com/mcpdev80/baseharbor/'
           required = {
               'main': {
+                  ('cmd/baha', 'TestControlPlaneSingleDefaultNativeRuntimeInCI'),
                   ('cmd/baha', 'TestRepositoryWorkflowRealLifecycle'),
                   ('cmd/baha', 'TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI'),
                   ('cmd/baha', 'TestRepositoryComposeWorkloadOnlyLifecycleInCI'),
@@ -265,7 +267,7 @@ jobs:
                           or not any(event.get('Package') == package and 'Test' not in event
                                      and event.get('Action') == 'pass' for event in events)):
                       raise SystemExit(name + ': missing actual test/package PASS for ' + test)
-          print('All eight required Docker runtime tests executed and passed.')
+          print('All nine required Docker runtime tests executed and passed.')
           PYTHON
 
   provider-ha:
