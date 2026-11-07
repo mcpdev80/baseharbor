@@ -1564,6 +1564,16 @@ def plan(diff, requirements, mapping, repository='.', context_repository=None,
     checks = {row['id']: row for row in result['required_validation_checks']}
     for row in CONSERVATIVE_CHECKS:
         checks[row['id']] = row
+    # The fallback's full Go test/vet/build owners subsume these exact narrow
+    # package commands on the same candidate. Keep checks with extra runtime
+    # fixtures or explicit test assertions (for example openbao-package-tests
+    # and runtime-provider-package-tests) independently selected.
+    subsumed = {
+        'cli-package-tests', 'cli-guided-tests', 'source-contracts',
+        'capability-package-tests', 'cli-vet', 'cli-build',
+    }
+    for identifier in subsumed:
+        checks.pop(identifier, None)
     if any(path.startswith('internal/openbao/') for path in paths):
         for row in OPENBAO_CHECKS:
             checks[row['id']] = row
