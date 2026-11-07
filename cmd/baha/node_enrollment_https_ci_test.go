@@ -43,12 +43,12 @@ func TestNodeEnrollmentHTTPSOneUseAndForeignScope(t *testing.T) {
 	}
 	payload := map[string]string{
 		"contract_version": "baseharbor.target-access-enrollment/v1",
-		"tenant_id":         nodeTestTenantID,
-		"node_id":           nodeTestNode,
-		"target_id":         nodeTestTarget,
-		"runtime":           "podman",
-		"csr_pem":           string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr})),
-		"nonce":             grant.Nonce,
+		"tenant_id":        nodeTestTenantID,
+		"node_id":          nodeTestNode,
+		"target_id":        nodeTestTarget,
+		"runtime":          "podman",
+		"csr_pem":          string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE REQUEST", Bytes: csr})),
+		"nonce":            grant.Nonce,
 	}
 	post := func(body map[string]string, token string) (int, []byte) {
 		t.Helper()
