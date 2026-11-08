@@ -84,6 +84,12 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		t.Fatalf("valid pinned remote Core rejected: %v", err)
 	}
 
+	for _, foreignTenant := range []string{"", "22222222-2222-4222-8222-222222222222"} {
+		if err := verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider, foreignTenant); err == nil {
+			t.Fatalf("remote Core accepted mismatched or empty configured Target tenant %q", foreignTenant)
+		}
+	}
+
 	tests := []struct {
 		name   string
 		mutate func()
