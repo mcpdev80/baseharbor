@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"sort"
+	"path/filepath"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -67,7 +68,7 @@ func observeControlPlaneStopWithProvider(ctx context.Context, provider bhruntime
 		// "no rendered model" so the canonical-only fallback stays fail-closed.
 		func() {
 			defer func() { recover() }()
-			if rendered, rerr := configurer.ConfigJSONProjectFilesEnv(ctx, p.Project, "", nil); rerr == nil && rendered != "" {
+			if rendered, rerr := configurer.ConfigJSONProjectFilesEnv(ctx, p.Project, filepath.Dir(p.inventory.Files.Compose), nil, p.inventory.Files.Compose); rerr == nil && rendered != "" {
 				for service := range selected {
 					if planned, perr := bhruntime.ParsedExpectedContainerNames(rendered, p.Project, service); perr == nil {
 						plannedByService[service] = planned
