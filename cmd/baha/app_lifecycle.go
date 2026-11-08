@@ -25,6 +25,13 @@ func appDownCommand(store application.Store) *cli.Command {
 		Usage:   "baha app down [NAME]",
 		Long:    "Stops a repository application workload and its per-application Application Runtime Broker first, then removes BaseHarbor-managed backend containers and transient network while preserving persistent data volumes, runtime credentials, application-owned Compose volumes and managed OpenBao scope. Without NAME it resolves the nearest repository baseharbor.yaml.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "app.stop", args, out)
+			}
 			filtered, format, err := parseReadOutputArgs(args, "app down")
 			if err != nil {
 				return err
