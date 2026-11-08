@@ -53,7 +53,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				Context     machine.OperationContext `json:"context"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
-				request.OperationID != "status" || request.Context.Target != node.Name ||
+				(request.OperationID != "status" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy") || request.Context.Target != node.Name ||
 				request.Context.Environment != "dev" || request.Context.Application != "demo" ||
 				r.Header.Get("Idempotency-Key") == "" {
 				http.Error(w, "invalid status request", http.StatusBadRequest)
@@ -66,6 +66,12 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				Context:         request.Context,
 				State:           machine.ExecutionSucceeded,
 				Result:          json.RawMessage(`{"contract_version":"v1","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}`),
+			}
+			if request.OperationID != "status" {
+				execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"` + request.OperationID + `","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","verified":true,"status":{"contract_version":"v1","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}}`)
+				if request.OperationID == "destroy" {
+					execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"destroy","target":"` + node.Name + `","application":"demo","environment":"dev","state":"destroyed","verified":true}`)
+				}
 			}
 			w.Header().Set("Location", "/api/v1/machine/executions/remote-status-one")
 			w.WriteHeader(http.StatusAccepted)
@@ -154,6 +160,30 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		t.Fatalf("foreign application status leaked into CLI output: %q", statusOutput.String())
 	}
 	foreignResult = false
+
+	for _, scenario := range []struct {
+		operation string
+		args []string
+	}{
+		{"apply", []string{"demo"}},
+		{"update", []string{"demo", "--no-backup"}},
+		{"destroy", []string{"demo", "--yes"}},
+	} {
+		t.Run("verified-remote-"+scenario.operation, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := remoteApplicationMutation(context.Background(), node, scenario.operation, scenario.args, &output); err != nil {
+				t.Fatalf("remote %s rejected verified machine execution: %v", scenario.operation, err)
+			}
+			var result struct {
+				Operation string `json:"operation"`
+				Target string `json:"target"`
+			}
+			if err := json.Unmarshal(output.Bytes(), &result); err != nil ||
+				result.Operation != scenario.operation || result.Target != node.Name {
+				t.Fatalf("remote %s returned incorrect completion: %q (%v)", scenario.operation, output.String(), err)
+			}
+		})
+	}
 
 	for _, foreignTenant := range []string{"", "22222222-2222-4222-8222-222222222222"} {
 		if err := verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider, foreignTenant); err == nil {
