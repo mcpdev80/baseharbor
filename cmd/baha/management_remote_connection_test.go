@@ -24,11 +24,11 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	const coreIssuer = "https://identity.example/realms/baseharbor"
 
 	identity := struct {
-		Version string `json:"version"`
+		Version        string `json:"version"`
 		InstallationID string `json:"installation_id"`
 		IdentityIssuer string `json:"identity_issuer"`
 		OperatorIssuer string `json:"operator_issuer"`
-		TenantID string `json:"tenant_id"`
+		TenantID       string `json:"tenant_id"`
 	}{managementInstallationVersion, installation, coreIssuer, operatorIssuer, node.TenantID}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/management/installation" || r.Header.Get("Authorization") != "Bearer test-id-token" {
@@ -47,15 +47,15 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	profile.Trust.CAPEM = string(cert)
 	profile.Trust.SHA256 = hex.EncodeToString(digest[:])
 	profile.Targets = append(profile.Targets, struct {
-		Name string `json:"name"`
-		TenantID string `json:"tenant_id"`
+		Name            string `json:"name"`
+		TenantID        string `json:"tenant_id"`
 		RuntimeProvider string `json:"runtime_provider"`
-		Scope string `json:"scope,omitempty"`
+		Scope           string `json:"scope,omitempty"`
 	}{Name: node.Name, TenantID: node.TenantID, RuntimeProvider: node.RuntimeProvider})
 	profile.Access = &struct {
-		Issuer string `json:"issuer"`
-		ClientID string `json:"client_id"`
-		Scopes []string `json:"scopes"`
+		Issuer   string   `json:"issuer"`
+		ClientID string   `json:"client_id"`
+		Scopes   []string `json:"scopes"`
 	}{Issuer: operatorIssuer, ClientID: "baha-cli"}
 	if err := operatorauth.SaveSession(operatorauth.Session{
 		Target: node.Name, Environment: "dev", Issuer: operatorIssuer,
@@ -85,7 +85,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	}
 
 	tests := []struct {
-		name string
+		name   string
 		mutate func()
 	}{
 		{"foreign-installation", func() { profile.Core.InstallationID = "22222222-2222-4222-8222-222222222222" }},
