@@ -75,9 +75,38 @@ func TestOffboardUnimplementedKindFailsClosedNoSilentMutation(t *testing.T) {
 				t.Fatalf("%q must fail closed on ErrDenied, got %v", kind, err)
 			}
 			after := manager.SnapshotProfiles()
-			if len(before) != len(after) || before[0].Name != after[0].Name {
+			// The owned profile set must be byte-identical after a failed
+			// revocation. SnapshotProfiles returns map iteration order, which is
+			// not stable across calls, so compare the sets as an unordered bag of
+			// identities rather than by position.
+			if !profilesEqual(before, after) {
 				t.Fatalf("%q must not mutate the managed-user profile set: before=%v after=%v", kind, before, after)
 			}
 		})
 	}
+}
+
+// profilesEqual reports whether two profile slices hold the same managed
+// definitions regardless of order. SnapshotProfiles iterates a map, so its
+// ordering is not stable; a fail-closed revocation must leave the set identical
+// as a bag, not in a fixed order.
+func profilesEqual(a, b []orgconfig.Profile) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make([]bool, len(b))
+	for _, pa := range a {
+		matched := false
+		for i, pb := range b {
+			if !seen[i] && pa.Name == pb.Name && pa.Target == pb.Target {
+				seen[i] = true
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
 }
