@@ -43,7 +43,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		RecoveryFile: filepath.Join(t.TempDir(), "recovery.json"),
 	})
 	if err != nil || !core.Ready {
-		t.Fatalf("real Core bootstrap before installation destroy: ready=%t err=%v\\n%s", core.Ready, err, out.String())
+		t.Fatalf("real Core bootstrap before installation destroy: ready=%t err=%v\n%s", core.Ready, err, out.String())
 	}
 	t.Chdir(t.TempDir())
 	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
