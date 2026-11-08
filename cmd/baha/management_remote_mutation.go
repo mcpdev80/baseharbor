@@ -33,6 +33,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			"Use --environment dev; other environments require their own verified operator login.")
 	}
 	name, candidate, consentPath := "", "", ""
+	candidateSeen := false
 	approval, noBackup, fullReset, skipMemory := false, false, false, false
 	for i := 0; i < len(filtered); i++ {
 		arg := filtered[i]
@@ -58,12 +59,17 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			consentPath = strings.TrimPrefix(arg, "--provider-consent-file=")
 		case arg == "--confirm-candidate":
 			i++
-			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") {
+			if candidateSeen || i >= len(filtered) || strings.HasPrefix(filtered[i], "-") {
 				return "", "", nil, usageError("missing candidate confirmation digest", "Pass --confirm-candidate DIGEST.")
 			}
 			candidate = filtered[i]
+			candidateSeen = true
 		case strings.HasPrefix(arg, "--confirm-candidate="):
+			if candidateSeen {
+				return "", "", nil, usageError("duplicate candidate confirmation", "Supply --confirm-candidate DIGEST exactly once.")
+			}
 			candidate = strings.TrimPrefix(arg, "--confirm-candidate=")
+			candidateSeen = true
 		default:
 			if strings.HasPrefix(arg, "-") || name != "" {
 				return "", "", nil, usageError("unsupported remote application option",
