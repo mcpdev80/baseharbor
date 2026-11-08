@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"strings"
 	"testing"
 
@@ -73,7 +74,7 @@ func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
 	store := application.DefaultStore()
 	for _, tc := range []struct {
 		name string
-		run  func(context.Context, []string, *bytes.Buffer, *bytes.Buffer) error
+		run  func(context.Context, []string, io.Writer, io.Writer) error
 		args []string
 	}{
 		{"app-apply", appApplyCommand(store).Run, []string{"demo", "--environment", "dev"}},
