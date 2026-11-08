@@ -68,15 +68,21 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	saveProfile := func() {
 		t.Helper()
 		data, err := json.Marshal(profile)
-		if err != nil { t.Fatal(err) }
-		if err := os.WriteFile(path, data, 0600); err != nil { t.Fatal(err) }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	saveProfile()
 	t.Setenv("BASEHARBOR_CONNECTION_PROFILE", path)
 	verify := func() error {
 		return verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider)
 	}
-	if err := verify(); err != nil { t.Fatalf("valid pinned remote Core rejected: %v", err) }
+	if err := verify(); err != nil {
+		t.Fatalf("valid pinned remote Core rejected: %v", err)
+	}
 
 	tests := []struct {
 		name string
