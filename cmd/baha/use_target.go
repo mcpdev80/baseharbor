@@ -83,9 +83,11 @@ func bindExplicitSelectionToConnection(
 		return err
 	}
 	if resolved.AccessProvider != "" && resolved.AccessProvider != "local" {
-		return machine.NewError(machine.ErrorCapabilityMissing,
-			fmt.Sprintf("target %q requires a verified remote Core management connection", target),
-			"Configure and verify the external Core management connection and its operator identity; no local Core will be installed or substituted.", false)
+		if err := verifyRemoteManagementConnection(ctx, resolved.Name, resolved.RuntimeProvider); err != nil {
+            return machine.Wrap(machine.ErrorAuthenticationFailed, err,
+                "Configure a trusted external Core connection profile and authenticate with baha login; no local fallback is permitted.", false)
+        }
+        return nil
 	}
 	root, err := targetRuntimeStateRootByName(target)
 	if err != nil {
