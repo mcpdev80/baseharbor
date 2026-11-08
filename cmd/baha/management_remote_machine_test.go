@@ -116,3 +116,52 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 		t.Fatal("foreign execution Location was trusted")
 	}
 }
+
+func TestRemoteMachineExecutionCompletionNeverTreatsAdmissionAsSuccess(t *testing.T) {
+	admitted := machine.Execution{
+		ContractVersion: machine.ExecutionContractVersion,
+		ExecutionID:     "execution-one",
+		OperationID:     "apply",
+		Context:         machine.OperationContext{Application: "demo", Environment: "dev", Target: "remote"},
+		State:           machine.ExecutionPending,
+	}
+	actual := admitted
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet ||
+			r.URL.Path != "/api/v1/machine/executions/execution-one" ||
+			r.Header.Get("Authorization") != "Bearer operator-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(actual)
+	}))
+	defer server.Close()
+	connection := &verifiedRemoteCore{
+		client: server.Client(), origin: server.URL, token: "operator-token",
+		target: "remote", tenant: "tenant-a",
+	}
+	if _, err := connection.confirmRemoteExecutionSuccess(context.Background(), admitted); err == nil {
+		t.Fatal("pending remote execution was reported as successful")
+	}
+	actual.State = machine.ExecutionSucceeded
+	actual.Result = json.RawMessage(`{"ready":true}`)
+	result, err := connection.confirmRemoteExecutionSuccess(context.Background(), admitted)
+	if err != nil || string(result) != `{"ready":true}` {
+		t.Fatalf("remote terminal success not observed: %q, %v", result, err)
+	}
+	actual.Context.Target = "foreign"
+	if _, err := connection.confirmRemoteExecutionSuccess(context.Background(), admitted); err == nil {
+		t.Fatal("foreign Target's machine execution was accepted")
+	}
+	actual = admitted
+	actual.State = machine.ExecutionFailed
+	actual.Error = machine.NewError(machine.ErrorVerificationFailed, "application is not READY", "", false)
+	if _, err := connection.confirmRemoteExecutionSuccess(context.Background(), admitted); err == nil {
+		t.Fatal("remote failed execution was reported as successful")
+	}
+	admitted.ExecutionID = "../forged"
+	if _, err := connection.readMachineExecution(context.Background(), admitted); err == nil {
+		t.Fatal("unsafe execution ID was accepted as a URL path")
+	}
+}
