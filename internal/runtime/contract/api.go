@@ -120,6 +120,22 @@ type ServiceState struct {
 	Publishers []PublishedPort
 }
 
+// RuntimeNetworkState is the discriminated result of inspecting a single
+// runtime network for the damaged-deployment check (bug-hunt BF-03). Present
+// means the network exists and is BaseHarbor connectivity-owned; Absent means
+// the named network no longer exists (the BF-03 damage); NotManaged means the
+// network exists but is owned by another project or is not BaseHarbor
+// connectivity-owned — never reported as THIS app's damage; InspectError means
+// the runtime could not be queried and the caller must not infer absence.
+type RuntimeNetworkState string
+
+const (
+	RuntimeNetworkStatePresent      RuntimeNetworkState = "present"
+	RuntimeNetworkStateAbsent       RuntimeNetworkState = "absent"
+	RuntimeNetworkStateNotManaged   RuntimeNetworkState = "not-managed"
+	RuntimeNetworkStateInspectError RuntimeNetworkState = "inspect-error"
+)
+
 func (s ServiceState) TerminalFailure() bool {
 	state := strings.ToLower(strings.TrimSpace(s.State))
 	if strings.TrimSpace(s.Error) != "" {
@@ -187,6 +203,7 @@ type RuntimeProvider interface {
 	ContainerHealthStatus(context.Context, string) (string, error)
 	ContainerNetworks(context.Context, string) ([]string, error)
 	NetworkProjectOwner(context.Context, string) (string, error)
+	InspectNetwork(context.Context, string) (RuntimeNetworkState, error)
 	ContainerExposedTCPPorts(context.Context, string) ([]int, error)
 	EnsureManagedNetwork(context.Context, string) error
 	ConnectManagedNetwork(context.Context, string, string, string) error

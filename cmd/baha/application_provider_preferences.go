@@ -106,7 +106,7 @@ func persistAppNewPreferences(ctx context.Context, root string, manifest applica
 	// Authored source deliberately excludes the system-owned ID. Retain the
 	// identity already allocated by the existing New authority in its record.
 	selection.Manifest.ApplicationID = manifest.ApplicationID
-	resolved, err = resolvedRepositoryApplication(resolved.Target, resolved.TargetStateRoot, selection)
+	resolved, err = resolvedRepositoryApplication(context.Background(), resolved.Target, resolved.TargetStateRoot, selection)
 	if err != nil {
 		return err
 	}

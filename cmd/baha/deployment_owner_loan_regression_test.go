@@ -374,7 +374,7 @@ func TestProductionOwnerLoanLocalIsolatedApplyPasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize isolated Target repository identity: %v", err)
 	}
-	resolved, err := resolvedRepositoryApplication(isoTarget, isoRoot, selection, "apply")
+	resolved, err := resolvedRepositoryApplication(context.Background(), isoTarget, isoRoot, selection, "apply")
 	if err != nil {
 		t.Fatalf("resolve isolated Target application for real apply runner: %v", err)
 	}

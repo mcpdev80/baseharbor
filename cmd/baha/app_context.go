@@ -16,6 +16,19 @@ import (
 
 var applicationEnvironmentOverride string
 
+// damagedScanRuntimeForTarget is the seam the damaged-state network check uses
+// to obtain a runtime inspector for a resolved target. It defaults to a closure
+// over detectRuntimeForTarget (whose result satisfies the minimal inspector
+// surface) and is overridden by tests with a fake inspector so the
+// record-plus-network damage can be exercised without a live runtime.
+var damagedScanRuntimeForTarget = func(ctx context.Context, t deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+	provider, err := detectRuntimeForTarget(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return provider, nil
+}
+
 func pushApplicationEnvironmentOverride(environment string) func() {
 	previous := applicationEnvironmentOverride
 	applicationEnvironmentOverride = strings.TrimSpace(environment)
@@ -126,7 +139,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			if err != nil {
 				return resolvedApplication{}, err
 			}
-			resolved, resolveErr := resolvedRepositoryApplication(target, targetRoot, selection, command)
+			resolved, resolveErr := resolvedRepositoryApplication(ctx, target, targetRoot, selection, command)
 			if resolveErr != nil {
 				return resolvedApplication{}, resolveErr
 			}
@@ -208,7 +221,7 @@ func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, target
 	}) == nil
 }
 
-func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
+func resolvedRepositoryApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
 	m := selection.Manifest
 	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
 	// A locally initialized application may be destroyed before its first
@@ -240,6 +253,44 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	deploymentRoot, err := deployment.DeploymentRoot(id)
 	if err != nil {
 		return resolvedApplication{}, err
+	}
+	// Damaged deployment state precedes the generic repository-inspection budget
+	// check (bug-hunt BF-03): a retained deploy directory without its
+	// deployment.json must surface the precise, recoverable damaged-state error
+	// instead of the misleading "repository inspection file limit exceeded"
+	// message. FindDeployment already returned no authoritative record, so the
+	// damage is discovered by scanning the deployment namespace for a retained,
+	// orphaned deploy directory that only carries the never-delivered proof.
+	//
+	// The app-scoped scan additionally verifies THIS app's workload runtime
+	// network (source of truth: the retained manifest identity, never the UUID
+	// deploy directory) so the observed record-plus-network damage is reported
+	// together. An unrelated app's orphaned directory is still flagged, but its
+	// network is not attributed to this resolved app.
+	runtimeForDamagedScan, runtimeErr := damagedScanRuntimeForTarget(ctx, target)
+	if runtimeErr != nil {
+		// A runtime that cannot be resolved must not suppress the record damage:
+		// fall back to the namespace-only scan with a nil inspector.
+		runtimeForDamagedScan = nil
+	}
+	damaged, damagedDir, networkName, networkDamage, netErr := deployment.DamagedDeploymentNamespaceScoped(
+		target.Name, m.ApplicationID, m.Environment, m.Name, runtimeForDamagedScan,
+	)
+	if netErr != nil {
+		return resolvedApplication{}, netErr
+	} else if damaged {
+		id := deployment.DeploymentIdentity{
+			Target:        target.Name,
+			Application:   m.Name,
+			Environment:   m.Environment,
+			ApplicationID: m.ApplicationID,
+		}
+		return resolvedApplication{}, &deployment.DamagedDeploymentError{
+			Identity:    id,
+			Root:        damagedDir,
+			Network:     networkDamage,
+			NetworkName: networkName,
+		}
 	}
 	return resolvedApplication{
 		Target:              target,

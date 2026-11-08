@@ -210,7 +210,7 @@ func TestDestroyWithoutCoreRemovesRecordAndIsIdempotent(t *testing.T) {
 	target := configureTestTarget(t)
 	m, repo := bugApplicationRepository(t)
 	record := registerTestDeployment(t, target, m, repo, filepath.Join(repo, application.RepositoryManifestName))
-	resolved, err := resolvedRepositoryApplication(target, mustTargetRoot(t, target), application.RepositoryEnvironmentSelection{Manifest: m, ManifestPath: filepath.Join(repo, application.RepositoryManifestName), RepositoryRoot: repo})
+	resolved, err := resolvedRepositoryApplication(context.Background(), target, mustTargetRoot(t, target), application.RepositoryEnvironmentSelection{Manifest: m, ManifestPath: filepath.Join(repo, application.RepositoryManifestName), RepositoryRoot: repo})
 	if err != nil {
 		t.Fatal(err)
 	}
