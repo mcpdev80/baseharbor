@@ -708,6 +708,161 @@ func SourceAvailable(source DeploymentSource) bool {
 	return err == nil && info.IsDir()
 }
 
+// DamagedDeploymentError is returned when the protected deploy directory exists
+// but its authoritative deployment.json is missing. This is the "damaged
+// deployment state" from bug-hunt BF-03: the runtime directory tree is retained
+// (networks, volumes, state files) while the record that proves ownership and
+// recovery intent has been truncated or deleted. Recovery is explicit and never
+// invented by a generic repository inspection.
+type DamagedDeploymentError struct {
+	Identity DeploymentIdentity
+	Root     string
+}
+
+func (e *DamagedDeploymentError) Error() string {
+	if e == nil {
+		return "damaged deployment state error"
+	}
+	return fmt.Sprintf(
+		"damaged deployment state: protected deploy directory %s exists but deployment.json is missing; "+
+			"the record that proves ownership for %s/%s/%s cannot be verified. Recover it explicitly — "+
+			"re-up from the source repository so BaseHarbor re-establishes the record, "+
+			"or destroy-and-recreate with 'baha destroy --yes' then 'baha app up' — "+
+			"do not delete the deploy directory to force a generic repository inspection.",
+		e.Root, e.Identity.Target, e.Identity.Application, e.Identity.Environment,
+	)
+}
+
+// NextAction is consumed by the CLI error classifier so the damaged-state
+// error surfaces as a concrete internal_error machine error with the concrete
+// recovery, before any generic repository-inspection budget check runs.
+func (e *DamagedDeploymentError) NextAction() string {
+	if e == nil {
+		return ""
+	}
+	return "Recover it explicitly: re-up from the source repository so BaseHarbor re-establishes the record, or destroy-and-recreate with 'baha destroy --yes' then 'baha app up'. Do not delete the deploy directory to force a generic repository inspection."
+}
+
+// (DamagedDeploymentError).Unwrap keeps damaged-state detection compatible with
+// errors.Is / errors.As helpers used by the CLI error layer.
+func (e *DamagedDeploymentError) Unwrap() error { return nil }
+
+// DamagedDeploymentState reports whether err is a damaged deployment record,
+// unwrapping the signal returned by the deployment listing.
+func DamagedDeploymentState(err error) (*DamagedDeploymentError, bool) {
+	if err == nil {
+		return nil, false
+	}
+	var damaged *DamagedDeploymentError
+	if errors.As(err, &damaged) {
+		return damaged, true
+	}
+	return nil, false
+}
+
+// DamagedDirectoryState is the directory-level primitive behind
+// DamagedDeploymentState: it returns true when the deploy directory holds
+// retained protected runtime state while deployment.json is missing.
+//
+// The presence of protected runtime artifacts (application.env, bindings,
+// runtime.env, applied-*.sha256, etc.) alongside a deleted deployment.json is
+// the bug-hunt BF-03 "damaged state": the runtime directory tree was
+// materialized and ownership was recorded, then the record that proves recovery
+// intent was truncated or deleted. A purely empty deploy directory is instead
+// the pre-existing "incomplete" case (a partially initialized deployment that
+// never recorded intent), so it is deliberately NOT flagged damaged and keeps
+// the existing INCOMPLETE_DEPLOYMENT_STATE recovery path intact.
+func DamagedDirectoryState(root string) (bool, error) {
+	info, statErr := os.Stat(root)
+	if statErr != nil {
+		if errors.Is(statErr, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, fmt.Errorf("inspect deploy directory for damaged state: %w", statErr)
+	}
+	if !info.IsDir() {
+		return false, nil
+	}
+	if _, err := os.Stat(filepath.Join(root, "deployment.json")); !errors.Is(err, os.ErrNotExist) {
+		// Record present (or unreadable) — not the truncated-state signature.
+		return false, nil
+	}
+	// Damaged only when protected runtime state was already materialized and is
+	// now orphaned without its record. An empty directory stays "incomplete".
+	for _, name := range []string{"application.env", "bindings", "runtime.env", "applied-desired-state.sha256", "applied-control-state.sha256", "baseharbor.yaml"} {
+		if _, err := os.Stat(filepath.Join(root, name)); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return false, fmt.Errorf("inspect deploy directory for damaged state: %w", err)
+		} else {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// DamagedDeploymentNamespace reports whether the deployments namespace of a
+// Target holds any directory whose deployment.json is missing while protected
+// runtime state was already materialized - the bug-hunt BF-03 "damaged
+// deployment state". It scans the namespace rather than a single deployment
+// UUID because the up/edit repository path (resolvedRepositoryApplication)
+// re-derives a fresh per-deploy UUID when the authoritative record is gone, so
+// the per-deploy DamagedDirectoryState can no longer locate the retained
+// directory. applicationID and environment identify the repository app being
+// resolved so a matching never-delivered one-shot proof (the legitimate absence
+// of a record on a fresh init) can be excluded. It returns true when at least
+// one damaged directory exists, along with that directory's path.
+func DamagedDeploymentNamespace(targetName, applicationID, environment string) (bool, string, error) {
+	deployDir, err := deploymentDirForTarget(targetName)
+	if err != nil {
+		return false, "", err
+	}
+	entries, readErr := os.ReadDir(deployDir)
+	if errors.Is(readErr, os.ErrNotExist) {
+		return false, "", nil
+	}
+	if readErr != nil {
+		return false, "", fmt.Errorf("inspect deployment namespace for damaged state: %w", readErr)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		damaged, damageErr := DamagedDirectoryState(filepath.Join(deployDir, entry.Name()))
+		if damageErr != nil {
+			return false, "", damageErr
+		}
+		if !damaged {
+			continue
+		}
+		// The never-delivered one-shot proof is stored at
+		// never-delivered/<applicationID>/<environment>.json, keyed by the
+		// application identity rather than the per-deploy directory name. When a
+		// proof for this repository app exists, the missing record is a
+		// legitimate fresh-init, not damage, so it is not flagged.
+		proofPath, proofErr := neverDeliveredProofPath(targetName, applicationID, environment)
+		if proofErr == nil {
+			if _, statErr := os.Stat(proofPath); !errors.Is(statErr, os.ErrNotExist) {
+				continue
+			}
+		}
+		return true, filepath.Join(deployDir, entry.Name()), nil
+	}
+	return false, "", nil
+}
+
+// DetectDamagedDeploymentState reports whether the protected deploy directory
+// for id exists on disk with retained state while deployment.json is missing.
+// A freshly unregistered deployment removes the whole directory (not damaged);
+// a healthy deployment always carries deployment.json (not damaged).
+func DetectDamagedDeploymentState(id DeploymentIdentity) (bool, error) {
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		return false, err
+	}
+	return DamagedDirectoryState(root)
+}
+
 // refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
 // active reconciliation owner per managed resource set. It runs after the
 // applied selection's single-record validation and before any state is written.

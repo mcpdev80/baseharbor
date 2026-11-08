@@ -216,6 +216,29 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	if err != nil {
 		return resolvedApplication{}, err
 	}
+	// Damaged deployment state precedes the generic repository-inspection budget
+	// check (bug-hunt BF-03): a retained deploy directory without its
+	// deployment.json must surface the precise, recoverable damaged-state error
+	// instead of the misleading "repository inspection file limit exceeded"
+	// message. FindDeployment already returned no authoritative record, so the
+	// damage is discovered by scanning the deployment namespace for a retained,
+	// orphaned deploy directory that only carries the never-delivered proof.
+	if _, damagedDir, damageErr := deployment.DamagedDeploymentNamespace(
+		target.Name, m.ApplicationID, m.Environment,
+	); damageErr != nil {
+		return resolvedApplication{}, damageErr
+	} else if damagedDir != "" {
+		id := deployment.DeploymentIdentity{
+			Target:        target.Name,
+			Application:   m.Name,
+			Environment:   m.Environment,
+			ApplicationID: m.ApplicationID,
+		}
+		return resolvedApplication{}, &deployment.DamagedDeploymentError{
+			Identity: id,
+			Root:     damagedDir,
+		}
+	}
 	return resolvedApplication{
 		Target:              target,
 		DeploymentIdentity:  id,
