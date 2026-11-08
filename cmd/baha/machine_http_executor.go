@@ -9,6 +9,8 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"errors"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
@@ -37,6 +39,28 @@ type bahaMachineExecutor struct {
 // would dead-lock against the server itself, because the kernel lock is held
 // for the server's whole lifetime. The owning process already authorises the
 // authority for the whole request, so no second lock is required.
+
+// ManagementInstallation exposes only the startup-pinned local Core identity.
+// It must never resolve installation identity from a request's Target.
+func (e *bahaMachineExecutor) ManagementInstallation(context.Context) (string, string, error) {
+    if e.coreAuthority == nil || (e.coreAuthority.AccessProvider != "" && e.coreAuthority.AccessProvider != "local") {
+        return "", "", errors.New("management API has no pinned local Core authority")
+    }
+    root := e.ownedStateRoot
+    if root == "" {
+        var err error
+        root, err = targetRuntimeStateRoot(*e.coreAuthority)
+        if err != nil { return "", "", err }
+    }
+    state, err := coreinstallation.Load(root)
+    if err != nil { return "", "", err }
+    if !state.Ready || state.Spec.Target != e.coreAuthority.Name || state.Spec.Runtime != e.coreAuthority.RuntimeProvider ||
+       state.IdentityIssuer == "" {
+        return "", "", errors.New("startup Core installation identity is not ready")
+    }
+    return state.ID, state.IdentityIssuer, nil
+}
+
 func (e *bahaMachineExecutor) BindConnectorSessions(pool *targetsession.Pool) {
 	e.connectorSessions = pool
 }
