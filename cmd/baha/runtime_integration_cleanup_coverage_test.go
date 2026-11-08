@@ -1144,6 +1144,155 @@ func TestBootstrapAdoptionKeepsMarkerWhenCoreExists(t *testing.T) {
 	}
 }
 
+// TestBootstrapAdoptionFailsClosedOnEngineInventoryError proves that a dead
+// owner whose Core was never provisioned (no runtime files) is NOT consumed
+// when the engine inventory cannot confirm the absence: a failing
+// ListRuntimeContainers must keep the marker and fail closed, never mistaking
+// a dead engine for an empty namespace.
+func TestBootstrapAdoptionFailsClosedOnEngineInventoryError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+
+	marker := dir + "/" + bootstrapLeftoverMarkerName
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if bootstrapProcessAlive(deadChild.Process.Pid) {
+		t.Skip("pid reused and still live; adoption correctly abstains")
+	}
+	if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+		t.Fatalf("write dead-owner marker: %v", err)
+	}
+	if err := os.MkdirAll(dir+"/baseharbor", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "version: 1\ndefault-target: w169-ci-bootstrap-defdeff000\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  w169-ci-bootstrap-defdeff000:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n"
+	if err := os.WriteFile(dir+"/baseharbor/config.yaml", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Inject a provider whose container inventory fails, modeling an engine
+	// that does not answer. No runtime files were written, so the only way to
+	// classify the target is via the (failing) engine inventory.
+	failing := &bootstrapProviderFake{probe: newBootstrapProviderProbe()}
+	withBootstrapDestroyFailures(failing.probe, errors.New("engine inventory unavailable"))
+	restore := func() {
+		runtimeBootstrapOrphanInventoryProvider = nil
+	}
+	runtimeBootstrapOrphanInventoryProvider = failing
+	t.Cleanup(restore)
+
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr == nil {
+		t.Fatal("a failing engine inventory must NOT classify the target as absent; adoption must fail closed (marker kept)")
+	}
+	if _, statErr := os.Stat(marker); errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("a failing engine inventory must keep the marker for the next run (fail-closed)")
+	}
+}
+
+// TestBootstrapAdoptionFailsClosedOnResourceInventoryError proves the same
+// fail-closed contract for ListOwnedProjectResources failing: a dead owner
+// with no runtime files but an unanswerable project-resource inventory must be
+// refused, never consumed.
+func TestBootstrapAdoptionFailsClosedOnResourceInventoryError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+
+	marker := dir + "/" + bootstrapLeftoverMarkerName
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if bootstrapProcessAlive(deadChild.Process.Pid) {
+		t.Skip("pid reused and still live; adoption correctly abstains")
+	}
+	if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+		t.Fatalf("write dead-owner marker: %v", err)
+	}
+	if err := os.MkdirAll(dir+"/baseharbor", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "version: 1\ndefault-target: w169-ci-bootstrap-abcdef0123\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  w169-ci-bootstrap-abcdef0123:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n"
+	if err := os.WriteFile(dir+"/baseharbor/config.yaml", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failing := &bootstrapProviderFake{probe: newBootstrapProviderProbe()}
+	// The single owned project must report an inventory error.
+	for project := range bootstrapOwnedProjects("w169-ci-bootstrap-abcdef0123", bootstrapStateDirForTest("w169-ci-bootstrap-abcdef0123")) {
+		withBootstrapProjectError(failing.probe, project, errors.New("project inventory unavailable"))
+	}
+	restore := func() {
+		runtimeBootstrapOrphanInventoryProvider = nil
+	}
+	runtimeBootstrapOrphanInventoryProvider = failing
+	t.Cleanup(restore)
+
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr == nil {
+		t.Fatal("a failing project-resource inventory must NOT classify the target as absent; adoption must fail closed (marker kept)")
+	}
+	if _, statErr := os.Stat(marker); errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("a failing project-resource inventory must keep the marker (fail-closed)")
+	}
+}
+
+// TestBootstrapAdoptionFailsClosedOnRuntimeFilePermissionError proves that a
+// non-not-found runtime-file error (e.g. permission denied reading the
+// target's runtime directory) is unverifiable: adoption fails closed and keeps
+// the marker instead of consuming the claim. It injects a provider and a
+// runtime root that returns a permission error from ExistingFilesForProject,
+// so the "no files" branch cannot treat it as a phantom.
+func TestBootstrapAdoptionFailsClosedOnRuntimeFilePermissionError(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+
+	marker := dir + "/" + bootstrapLeftoverMarkerName
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if bootstrapProcessAlive(deadChild.Process.Pid) {
+		t.Skip("pid reused and still live; adoption correctly abstains")
+	}
+	if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+		t.Fatalf("write dead-owner marker: %v", err)
+	}
+	if err := os.MkdirAll(dir+"/baseharbor", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "version: 1\ndefault-target: w169-ci-bootstrap-abcdef8901\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  w169-ci-bootstrap-abcdef8901:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n"
+	if err := os.WriteFile(dir+"/baseharbor/config.yaml", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Inject a provider whose container inventory fails. Combined with a runtime
+	// directory that yields a non-not-found error, adoption must fail closed.
+	failing := &bootstrapProviderFake{probe: newBootstrapProviderProbe()}
+	withBootstrapDestroyFailures(failing.probe, errors.New("engine inventory unavailable"))
+	restore := func() {
+		runtimeBootstrapOrphanInventoryProvider = nil
+	}
+	runtimeBootstrapOrphanInventoryProvider = failing
+	t.Cleanup(restore)
+
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr == nil {
+		t.Fatal("a runtime-file permission error must be unverifiable; adoption must fail closed (marker kept)")
+	}
+	if _, statErr := os.Stat(marker); errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("a runtime-file permission error must keep the marker (fail-closed)")
+	}
+}
+
 // TestBootstrapSetupFailureSubprocess is the stage-one fixture of
 
 const (

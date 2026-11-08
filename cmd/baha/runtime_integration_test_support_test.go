@@ -215,6 +215,14 @@ var runtimeBootstrapTeardownFailure error
 // every real run; when set, adoption keeps the marker and fails closed.
 var runtimeBootstrapOrphanDestroyFailure error
 
+// runtimeBootstrapOrphanInventoryProvider lets the injected-failure regression
+// supply a RuntimeProvider for the dead-owner footprint inventory. It is nil in
+// every real run; when set, adoptBootstrapLeftoverMarkerFromDeadProcess derives
+// the provider from it (over the real detected one) so a failing engine
+// inventory can be exercised for real. When the override returns a nil
+// provider, adoption must fail closed rather than classify the target as absent.
+var runtimeBootstrapOrphanInventoryProvider bhruntime.RuntimeProvider
+
 // adoptBootstrapLeftoverMarkerFromDeadProcess is the fail-closed recovery for
 // the one path no Go defer can observe: Go aborts the whole test binary on a
 // test panic (tRunner escalates to os.Exit), so a previous run of this same
@@ -341,8 +349,10 @@ func destroyOrphanedBootstrapMarkers(marker string) error {
 		// genuine residual (owned containers/files still exist after
 		// destroy) or a provider error while something WAS provisioned —
 		// never for a target that was never brought up.
+		inventoryCtx, inventoryCancel := backgroundInventoryCtx()
 		orphansProvisioned, provErr := orphanBootstrapTargetHadFootprint(
-			backgroundInventoryCtx(), provider, resolved)
+			inventoryCtx, provider, resolved)
+		inventoryCancel()
 		if provErr != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption target %q footprint: %v\n", name, provErr)
 			errs = append(errs, fmt.Errorf("bootstrap trust-plane adoption target %q footprint: %w", name, provErr))
@@ -369,13 +379,16 @@ func destroyOrphanedBootstrapMarkers(marker string) error {
 	return errors.Join(errs...)
 }
 
-// backgroundInventoryCtx returns a bounded background context for the
-// dead-owner footprint inventory. Ambient test cancellation must never abort a
-// teardown-class check, so it never derives from the test context.
-func backgroundInventoryCtx() context.Context {
+// backgroundInventoryCtx returns a bounded background context and its cancel
+// function for the dead-owner footprint inventory. Ambient test cancellation
+// must never abort a teardown-class check, so it never derives from the test
+// context. The cancel function must be called by the caller AFTER the caller's
+// inventory has finished: returning a context that is already canceled (e.g. by
+// deferring cancel in this helper) would abort the inventory it exists to run,
+// which is exactly the phantom-footprint defect this fix closes.
+func backgroundInventoryCtx() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	return ctx
+	return ctx, cancel
 }
 
 // orphanBootstrapTargetHadFootprint reports whether a dead owner's matched
@@ -392,7 +405,9 @@ func backgroundInventoryCtx() context.Context {
 // this path, so footprint alone never re-opens live-owner protection.
 func orphanBootstrapTargetHadFootprint(ctx context.Context, provider bhruntime.RuntimeProvider, target deployment.ResolvedTarget) (bool, error) {
 	if provider == nil {
-		return false, nil
+		// A provider we cannot derive is unverifiable: fail closed rather
+		// than silently consuming a claim we could not actually inspect.
+		return false, fmt.Errorf("orphan footprint provider is nil for target %q", target.Name)
 	}
 	dataDir, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -404,6 +419,13 @@ func orphanBootstrapTargetHadFootprint(ctx context.Context, provider bhruntime.R
 	// Runtime project files are the authoritative proof a Core was provisioned:
 	// compose.yaml + env exist only after a successful `up`.
 	if _, filesErr := bhruntime.ExistingFilesForProject(runtimeRoot, bhruntime.SharedProjectName(target.Name)); filesErr != nil {
+		// Only a genuine not-found (files the engine never wrote) proves no
+		// provisioned Core. A permission or I/O error here is unverifiable:
+		// fail closed and keep the marker instead of consuming a claim we
+		// could not actually inspect.
+		if !errors.Is(filesErr, os.ErrNotExist) {
+			return false, fmt.Errorf("read runtime files for orphan target %q: %w", target.Name, filesErr)
+		}
 		// No project files means no provisioned Core. Confirm there is also
 		// nothing owned on the engine before treating it as a phantom.
 		owned, invErr := ownedFootprintOnEngine(ctx, provider, target, dataDir)
@@ -421,11 +443,15 @@ func orphanBootstrapTargetHadFootprint(ctx context.Context, provider bhruntime.R
 // (containers/resources present) still fails closed downstream.
 func ownedFootprintOnEngine(ctx context.Context, provider bhruntime.RuntimeProvider, target deployment.ResolvedTarget, dataDir string) (bool, error) {
 	if owned := bootstrapOwnedProjects(target.Name, dataDir); len(owned) != 0 {
-		if containers, err := provider.ListRuntimeContainers(ctx); err == nil {
-			for _, c := range containers {
-				if bootstrapContainerOwned(c.Project, c.Name, owned, target.Name) {
-					return true, nil
-				}
+		containers, err := provider.ListRuntimeContainers(ctx)
+		if err != nil {
+			// Engine inventory is unavailable: fail closed rather than
+			// mistaking a dead owner's real Core for a phantom claim.
+			return false, fmt.Errorf("list runtime containers for orphan target %q: %w", target.Name, err)
+		}
+		for _, c := range containers {
+			if bootstrapContainerOwned(c.Project, c.Name, owned, target.Name) {
+				return true, nil
 			}
 		}
 	}
@@ -434,7 +460,13 @@ func ownedFootprintOnEngine(ctx context.Context, provider bhruntime.RuntimeProvi
 		projects = append(projects, project)
 	}
 	for _, project := range projects {
-		if left, err := provider.ListOwnedProjectResources(ctx, project); err == nil && len(left) != 0 {
+		left, err := provider.ListOwnedProjectResources(ctx, project)
+		if err != nil {
+			// Engine inventory is unavailable: fail closed rather than
+			// mistaking a dead owner's real Core for a phantom claim.
+			return false, fmt.Errorf("list owned project resources for orphan target %q project %q: %w", target.Name, project, err)
+		}
+		if len(left) != 0 {
 			return true, nil
 		}
 	}
@@ -777,6 +809,11 @@ func bootstrapTeardownProvider() (bhruntime.RuntimeProvider, deployment.Resolved
 	resolved, err := cfg.ResolveTarget(name, "")
 	if err != nil {
 		return nil, deployment.ResolvedTarget{}, fmt.Errorf("bootstrap trust-plane teardown target resolution: %w", err)
+	}
+	if runtimeBootstrapOrphanInventoryProvider != nil {
+		// Injected-failure regression: supply a provider the inventory can
+		// fail through so fail-closed adoption is exercised for real.
+		return runtimeBootstrapOrphanInventoryProvider, resolved, nil
 	}
 	provider, err := detectRuntimeForTarget(context.Background(), resolved)
 	if err != nil {
