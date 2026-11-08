@@ -54,7 +54,7 @@ func TestR27WizardEarlyPromptEOFMatrixNoMutation(t *testing.T) {
 func TestR27CreateOnlyNextStepsAcrossAppAndTopLevelAlias(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		run func(context.Context, []string, *bytes.Buffer) error
+		run  func(context.Context, []string, *bytes.Buffer) error
 	}{
 		{"app-new", func(ctx context.Context, args []string, out *bytes.Buffer) error {
 			return appNewCommand().Run(ctx, args, out, out)
