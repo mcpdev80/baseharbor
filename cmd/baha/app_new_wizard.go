@@ -237,7 +237,7 @@ func normalizeAppNewWizardName(raw string, out io.Writer) (string, error) {
 		return "", usageError("reserved application name "+name, "Choose a project name other than a wizard navigation command.")
 	}
 	if original != name {
-		fmt.Fprintf(out, "Application name normalized: %q -> %q\\n", original, name)
+		fmt.Fprintf(out, "Application name normalized: %q -> %q\n", original, name)
 	}
 	return name, nil
 }
