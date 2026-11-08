@@ -30,18 +30,27 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		return "", "", nil, usageError("remote application mutations currently require the dev operator session",
 			"Use --environment dev; other environments require their own verified operator login.")
 	}
-	name := ""
+	name, candidate := "", ""
 	approval, noBackup, fullReset, skipMemory := false, false, false, false
-	for _, arg := range filtered {
-		switch arg {
-		case "--yes":
+	for i := 0; i < len(filtered); i++ {
+		arg := filtered[i]
+		switch {
+		case arg == "--yes":
 			approval = true
-		case "--no-backup":
+		case arg == "--no-backup":
 			noBackup = true
-		case "--full-reset":
+		case arg == "--full-reset":
 			fullReset = true
-		case "--skip-memory-preflight":
+		case arg == "--skip-memory-preflight":
 			skipMemory = true
+		case arg == "--confirm-candidate":
+			i++
+			if i >= len(filtered) || strings.HasPrefix(filtered[i], "-") {
+				return "", "", nil, usageError("missing candidate confirmation digest", "Pass --confirm-candidate DIGEST.")
+			}
+			candidate = filtered[i]
+		case strings.HasPrefix(arg, "--confirm-candidate="):
+			candidate = strings.TrimPrefix(arg, "--confirm-candidate=")
 		default:
 			if strings.HasPrefix(arg, "-") || name != "" {
 				return "", "", nil, usageError("unsupported remote application option",
@@ -64,10 +73,11 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			Name                string `json:"name"`
 			Environment         string `json:"environment"`
 			SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty"`
-		}{name, environment, skipMemory})
+			ConfirmCandidate string `json:"confirm_candidate,omitempty"`
+		}{name, environment, skipMemory, candidate})
 		return name, environment, payload, err
 	case "update":
-		if !noBackup || approval || fullReset || skipMemory {
+		if !noBackup || approval || fullReset || skipMemory || candidate != "" {
 			return "", "", nil, usageError("remote update requires explicit --no-backup and no unsupported flags",
 				"Remote update with a backup requires a password file on the Core host; use baha app update NAME --environment dev --no-backup only if you accept that risk.")
 		}
@@ -77,7 +87,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 		}{environment, true})
 		return name, environment, payload, err
 	case "destroy":
-		if !approval || noBackup || skipMemory {
+		if !approval || noBackup || skipMemory || candidate != "" {
 			return "", "", nil, usageError("remote destroy requires explicit --yes approval",
 				"Use baha app destroy NAME --environment dev --yes [--full-reset]; --yes never replaces provider impact or data-deletion consent.")
 		}
