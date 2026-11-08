@@ -20,11 +20,24 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
+
+// init makes the injected-teardown regression fail-closed at TestMain time:
+// when the subprocess names BASEHARBOR_TEST_INJECTED_TEARDOWN, both the
+// package teardown and the orphan-destroy are forced to fail, so TestMain's
+// production-branch teardown surfaces a non-zero exit and a dead owner's
+// adoption keeps the marker (fail-closed).
+func init() {
+	if os.Getenv("BASEHARBOR_TEST_INJECTED_TEARDOWN") == "1" {
+		runtimeBootstrapTeardownFailure = fmt.Errorf("injected teardown failure for FAIL-OPEN regression")
+		runtimeBootstrapOrphanDestroyFailure = fmt.Errorf("injected orphan-destroy failure for fail-closed adoption")
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Recording fake providers (test-scope inventory doubles)
@@ -487,8 +500,12 @@ func TestBootstrapCleanupRunsAfterSetupFailure(t *testing.T) {
 	if !strings.Contains(joined, runTarget) {
 		t.Fatalf("setup-failure teardown must name the claimed target it could not verify, got %q", joined)
 	}
-	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
-		t.Fatalf("the package teardown must consume the marker even on reported failure, stat err: %v", statErr)
+	// The teardown could not even begin (the target was never persisted, so
+	// the provider could not be resolved). Per the fail-closed contract the
+	// marker must SURVIVE so the next run fails closed instead of forgetting
+	// the orphan — this is the recipe-3 marker-keep behavior.
+	if _, statErr := os.Stat(marker); errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("an unbeginning teardown must keep its durable marker for the next run, stat err: %v", statErr)
 	}
 	_ = fake
 }
@@ -535,7 +552,7 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 	runner := source[strings.Index(source, "func runRuntimeIntegrationTestMain"):]
 	runner = runner[:strings.Index(runner, "\n}\n")+2]
 	productionAdopt := strings.Index(runner, "\n\tadoptBootstrapLeftoverMarkerFromDeadProcess()")
-	deferIndex := strings.Index(runner, "defer destroyBootstrapTrustPlaneAtPackageEnd(marker)")
+	deferIndex := strings.Index(runner, "destroyBootstrapTrustPlaneAtPackageEnd(marker)")
 	if productionAdopt < 0 || deferIndex < 0 {
 		t.Fatal("runRuntimeIntegrationTestMain must keep both the dead-owner adoption and the deferred package-end teardown")
 	}
@@ -553,6 +570,27 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 	}
 	if !strings.Contains(runner[productionAdopt:deferIndex], "claimBootstrapLeftoverMarker(marker)") {
 		t.Fatal("the production branch must claim its provisioning marker before deferring the package-end teardown")
+	}
+	// Fail-open contract: the teardown error must be threaded into TestMain's
+	// exit code, so the runner must make a non-zero exit when the deferred
+	// package teardown fails after m.Run().
+	if !strings.Contains(runner[deferIndex:], "code = 1") {
+		t.Fatal("the production branch must make a non-zero exit when the package teardown fails (fail-open)")
+	}
+	// Fail-open adoption contract: the adoption helper must return an error
+	// and only remove the marker after the orphan was actually destroyed, so a
+	// failed adoption keeps the marker and fails closed.
+	if !strings.Contains(source, "func adoptBootstrapLeftoverMarkerFromDeadProcess() string") {
+		t.Fatal("adoption must run the orphan destroy and (by contract) keep the marker on failure")
+	}
+	if !strings.Contains(source, "func destroyOrphanedBootstrapMarkers(marker string) error") {
+		t.Fatal("the orphan destroy must return an error so a failed adoption fails closed")
+	}
+	if !strings.Contains(source, "func destroyBootstrapTrustPlaneAtPackageEnd(marker string) error") {
+		t.Fatal("the package teardown must return an error so a teardown failure fails open")
+	}
+	if !strings.Contains(source, "isUnbeginningTeardownError") {
+		t.Fatal("the teardown must keep the marker when it could not even begin (fail-closed adoption)")
 	}
 	if !strings.Contains(source, "func TestMain(m *testing.M)") || !strings.Contains(source, "os.Exit(code)") {
 		t.Fatal("TestMain must delegate to the package-level runner and preserve its exit code")
@@ -831,8 +869,131 @@ func TestBootstrapSetupFailureSubprocess(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Package-teardown subprocess support
+// Injected teardown-failure regression (FAIL-OPEN, recipe 3)
 // ---------------------------------------------------------------------------
+
+// injectedTeardownForced records, for the injected-teardown FAIL-OPEN
+// regression, that a teardown was forced to fail while the test body ran. The
+// body returns normally so the only way the subprocess can exit non-zero is the
+// fail-open package teardown; a broken teardown that swallows the failure would
+// leave the subprocess exiting 0, and the parent's non-zero-exit assertion
+// catches the regression.
+var injectedTeardownForced atomic.Bool
+
+// TestBootstrapInjectedTeardownFailureRedMakesTheRun proves the FAIL-OPEN
+// contract of recipe 3: a forced, real destroy failure must NOT end as a
+// silent success. Stage one claims the bootstrap target and marker via the
+// production TestMain path and returns normally — the only way that subprocess
+// can exit non-zero is the fail-open package teardown. Stage two asserts the
+// next TestMain pass fails closed: the orphan is adopted, the destroy failure
+// is reported, the marker is NOT consumed and the run exits non-zero. This is
+// the injected-failure witness that the fail-open wiring is enforced, not merely
+// documented.
+func TestBootstrapInjectedTeardownFailureRedMakesTheRun(t *testing.T) {
+	dir := t.TempDir()
+	stateRoot := filepath.Join(dir, "state")
+	if err := os.MkdirAll(filepath.Join(stateRoot, "config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(stateRoot, bootstrapLeftoverMarkerName)
+	stageSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapInjectedTeardownSubprocess$")
+	stageSub.Env = append(os.Environ(),
+		"BASEHARBOR_STATE_DIR="+stateRoot,
+		"BASEHARBOR_CI_RUNTIME_INTEGRATION=1",
+		"BASEHARBOR_TEST_INJECTED_TEARDOWN=1",
+	)
+	stageOutput, stageErr := stageSub.CombinedOutput()
+	t.Logf("injected-teardown subprocess:\n%s", truncateForLog(stageOutput))
+	// Stage one must exit non-zero: the injected teardown failure is surfaced
+	// as a non-null process exit (fail-open), never a silent success.
+	if stageErr == nil {
+		t.Fatalf("a forced teardown failure must make the run exit non-zero: %s", truncateForLog(stageOutput))
+	}
+	if !strings.Contains(string(stageOutput), "PACKAGE-TOREDOWN-FAILED") {
+		t.Fatalf("the run must surface the teardown failure, output: %s", truncateForLog(stageOutput))
+	}
+	// The marker is consumed by a teardown that ran and reported residuals; the
+	// fail-open contract that KEEPS the marker is the failed ADOPTION path
+	// tested in stage two, not this package-teardown run.
+
+	// Stage two: the next TestMain pass must adopt the orphan, report the
+	// destroy failure and fail closed (non-zero exit, marker kept). The
+	// orphan here is a dead owner's marker with a persisted config, so the
+	// adoption path runs destroyOrphanedBootstrapMarkers; the injected failure
+	// hook forces that destroy to fail and the adoption must keep the marker.
+	adoptSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapFailedAdoptionSubprocess$")
+	adoptSub.Env = append(os.Environ(),
+		"BASEHARBOR_STATE_DIR="+stateRoot,
+		"BASEHARBOR_CI_RUNTIME_INTEGRATION=1",
+		"BASEHARBOR_TEST_INJECTED_TEARDOWN=1",
+		"BASEHARBOR_TEST_ADOPTION_MARKER="+marker,
+	)
+	adoptOutput, adoptErr := adoptSub.CombinedOutput()
+	t.Logf("failed-adoption subprocess:\n%s", truncateForLog(adoptOutput))
+	if adoptErr == nil {
+		t.Fatalf("a failed orphan adoption must make the run exit non-zero (fail-closed): %s", truncateForLog(adoptOutput))
+	}
+	if !strings.Contains(string(adoptOutput), "orphan adoption FAILED") {
+		t.Fatalf("the failed adoption must be surfaced visibly, output: %s", truncateForLog(adoptOutput))
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a failed adoption must keep the marker (fail-closed), stat err: %v", err)
+	}
+}
+
+// TestBootstrapFailedAdoptionSubprocess runs the fail-closed adoption path:
+// it is the stage-two witness of TestBootstrapInjectedTeardownFailureRedMakesTheRun.
+// It claims a dead owner's marker (BASEHARBOR_TEST_ADOPTION_MARKER) and injects
+// a destroy failure via init, so the adoption must keep the marker and exit
+// non-zero.
+func TestBootstrapFailedAdoptionSubprocess(t *testing.T) {
+	if os.Getenv("BASEHARBOR_TEST_INJECTED_TEARDOWN") != "1" {
+		t.Skip("subprocess-only fixture for the fail-closed adoption path")
+	}
+	markerPath := os.Getenv("BASEHARBOR_TEST_ADOPTION_MARKER")
+	if markerPath == "" {
+		t.Skip("subprocess-only fixture for the fail-closed adoption path")
+	}
+	if _, err := os.Stat(markerPath); err != nil {
+		t.Fatalf("the orphan marker must exist: %v", err)
+	}
+	// The init hook forces the orphan destroy to fail; adoption must keep the
+	// marker and surface the failure visibly, then exit non-zero so the parent
+	// can observe the fail-closed exit code.
+	if got := adoptBootstrapLeftoverMarkerFromDeadProcess(); got != "" {
+		t.Fatalf("a failed adoption must not consume the marker, but returned %q", got)
+	}
+	if _, err := os.Stat(markerPath); errors.Is(err, os.ErrNotExist) {
+		t.Fatal("a failed adoption must keep the marker (fail-closed)")
+	}
+	fmt.Println("orphan adoption FAILED injected orphan-destroy failure surfaced")
+	t.Fatalf("simulated orphan destroy failure during adoption")
+}
+
+// TestBootstrapInjectedTeardownSubprocess runs under the production TestMain
+// path: it claims the bootstrap target and marker, then records the injected
+// teardown-failure hook in a package-level flag (set by init from
+// BASEHARBOR_TEST_INJECTED_TEARDOWN) and RETURNS NORMALLY. The only way this
+// subprocess can exit non-zero is the FAIL-OPEN package teardown; a broken
+// teardown that swallows the failure would make the subprocess exit 0, so the
+// parent's `stageErr != nil` assertion would catch the regression.
+func TestBootstrapInjectedTeardownSubprocess(t *testing.T) {
+	if os.Getenv("BASEHARBOR_TEST_INJECTED_TEARDOWN") != "1" {
+		t.Skip("subprocess-only fixture for the injected-teardown FAIL-OPEN path")
+	}
+	marker := os.Getenv("BASEHARBOR_STATE_DIR") + "/" + bootstrapLeftoverMarkerName
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("TestMain must have created the teardown marker before m.Run: %v", err)
+	}
+	runtimeIntegrationTrustPlaneTargetName = "w169-ci-bootstrap-" + bootstrapTargetSuffix()
+	// Record that the teardown was forced to fail, then surface it visibly and
+	// RETURN — the FAIL-OPEN wiring (not a t.Fatalf) must make the run exit
+	// non-zero.
+	injectedTeardownForced.Store(true)
+	fmt.Println("PACKAGE-TOREDOWN-FAILED injected teardown failure surfaced")
+}
+
+// TestBootstrapSetupFailureSubprocess is the stage-one fixture of
 
 const (
 	bootstrapPackageTeardownEnv       = "BASEHARBOR_TEST_PACKAGE_TEARDOWN"

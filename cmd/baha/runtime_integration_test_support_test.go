@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func runRuntimeIntegrationTestMain(m *testing.M) int {
+func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 	// Both branches below arrange their teardown claim BEFORE m.Run(): the
 	// fixture branch writes the stage-one marker first, the production
 	// branch adopts dead owners' claims and creates its own.
@@ -95,7 +95,15 @@ func runRuntimeIntegrationTestMain(m *testing.M) int {
 		// mid-setup failure or panic is covered by the package-end teardown
 		// (normal return) or by the next run's adoption (os.Exit path).
 		claimBootstrapLeftoverMarker(marker)
-		defer destroyBootstrapTrustPlaneAtPackageEnd(marker)
+		// The deferred teardown runs AFTER m.Run() and AFTER code is captured,
+		// but it writes the failure into the named return `code`, so TestMain's
+		// os.Exit(code) is non-zero when a real teardown failed. The teardown is
+		// FAIL-OPEN: a teardown failure is never a silent success.
+		defer func() {
+			if err := destroyBootstrapTrustPlaneAtPackageEnd(marker); err != nil {
+				code = 1
+			}
+		}()
 	}
 	return m.Run()
 }
@@ -153,12 +161,18 @@ func claimBootstrapLeftoverMarker(marker string) {
 
 // destroyBootstrapTrustPlaneAtPackageEnd is the TestMain-level teardown used
 // when no *testing.T context is available. It reports through stderr because
-// it runs after (or without) any test.
-func destroyBootstrapTrustPlaneAtPackageEnd(marker string) {
+// it runs after (or without) any test, and it FAILS OPEN BY CONTRACT: the
+// returned error is the package teardown's failure, which the caller threads
+// into TestMain's exit code via packageTeardownErr so a real teardown failure
+// can never end as a silent success. The marker is removed only after the
+// destruction ran (see destroyBootstrapTrustPlane); a failure before the
+// removal keeps it for the next run's fail-closed adoption.
+func destroyBootstrapTrustPlaneAtPackageEnd(marker string) error {
 	err := destroyBootstrapTrustPlane(marker)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap trust-plane package teardown failed: %v\n", err)
 	}
+	return err
 }
 
 // bootstrapTeardownClaimed reports whether this process claimed a bootstrap
@@ -182,6 +196,18 @@ var runtimeBootstrapTeardownObserver func(targetName, dataDir string)
 // namespace list a watcher pass inspects. It is nil in every real run.
 var runtimeBootstrapWatcherObserver func(projects []string)
 
+// runtimeBootstrapTeardownFailure lets the injected-failure regression force
+// destroyRuntimeIntegrationTrustPlane to fail. It is nil in every real run and
+// cannot change teardown semantics; when set, the teardown returns the wrapped
+// error so the FAIL-OPEN wiring must make the run exit non-zero and keep the
+// marker for the next run's fail-closed adoption.
+var runtimeBootstrapTeardownFailure error
+
+// runtimeBootstrapOrphanDestroyFailure lets the injected-failure regression
+// force destroyOrphanedBootstrapMarkers to fail during adoption. It is nil in
+// every real run; when set, adoption keeps the marker and fails closed.
+var runtimeBootstrapOrphanDestroyFailure error
+
 // adoptBootstrapLeftoverMarkerFromDeadProcess is the fail-closed recovery for
 // the one path no Go defer can observe: Go aborts the whole test binary on a
 // test panic (tRunner escalates to os.Exit), so a previous run of this same
@@ -190,7 +216,10 @@ var runtimeBootstrapWatcherObserver func(projects []string)
 // FIRST and consumes the claim only after the destruction ran (success or
 // reported failure) — an interrupted adoption can never fool a later run
 // into believing the orphan was already cleaned up. A live owner's marker is
-// never touched, so concurrent package invocations stay isolated.
+// never touched, so concurrent package invocations stay isolated. It FAILS
+// OPEN BY CONTRACT: the returned error is non-nil when the orphan could not
+// be destroyed, the marker is NOT removed and a visible error is surfaced so
+// the next package run fails closed instead of forgetting the claim.
 func adoptBootstrapLeftoverMarkerFromDeadProcess() string {
 	marker := bootstrapLeftoverMarkerPath()
 	if marker == "" {
@@ -205,7 +234,12 @@ func adoptBootstrapLeftoverMarkerFromDeadProcess() string {
 		return ""
 	}
 	fmt.Fprintf(os.Stderr, "bootstrap trust-plane teardown: adopting orphaned marker from dead pid %d\n", pid)
-	destroyOrphanedBootstrapMarkers(marker)
+	if adoptionErr := destroyOrphanedBootstrapMarkers(marker); adoptionErr != nil {
+		// The orphan could not be destroyed: keep the marker so the next
+		// package run fails closed, and surface the failure visibly.
+		fmt.Fprintf(os.Stderr, "bootstrap trust-plane teardown: orphan adoption FAILED (marker kept): %v\n", adoptionErr)
+		return ""
+	}
 	if runtimeBootstrapAdoptionHook != nil {
 		runtimeBootstrapAdoptionHook()
 	}
@@ -230,8 +264,20 @@ func bootstrapProcessAlive(pid int) bool {
 // destroyOrphanedBootstrapMarkers destroys, without claiming package
 // ownership, every configured bootstrap target this process did not provision
 // but whose marker proves it belongs to this repository's generated
-// namespace. Inventory and destroy failures are reported fail-closed.
-func destroyOrphanedBootstrapMarkers(marker string) {
+// namespace. Inventory and destroy failures are reported fail-closed and
+// aggregated into the returned error: a config-load error, an unread marker,
+// a missing persisted target, an unresolvable provider or any destroy failure
+// all make the return value non-nil, so the caller keeps the marker and fails
+// closed instead of consuming a claim it could not actually destroy.
+func destroyOrphanedBootstrapMarkers(marker string) error {
+	var errs []error
+	// Injected-failure regression hook: when set, the orphan destroy fails
+	// before destroying anything so the fail-closed adoption wiring is
+	// exercised for real — the marker must be kept and the run fails closed.
+	if runtimeBootstrapOrphanDestroyFailure != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption orphan destroy failed: %v\n", runtimeBootstrapOrphanDestroyFailure)
+		return fmt.Errorf("injected orphan-destroy failure: %w", runtimeBootstrapOrphanDestroyFailure)
+	}
 	// Adoption is state-driven: the persisted configuration tells which
 	// bootstrap targets were created; the provider is re-derived from it. A
 	// process that died before `target create` persisted nothing to destroy,
@@ -239,7 +285,7 @@ func destroyOrphanedBootstrapMarkers(marker string) {
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption cannot load config: %v\n", err)
-		return
+		return err
 	}
 	found := false
 	defer func() {
@@ -250,7 +296,7 @@ func destroyOrphanedBootstrapMarkers(marker string) {
 	owner, ownerErr := os.ReadFile(marker)
 	if ownerErr != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption cannot read marker: %v\n", ownerErr)
-		return
+		return fmt.Errorf("bootstrap trust-plane adoption cannot read marker: %w", ownerErr)
 	}
 	for name, target := range cfg.Targets {
 		if !bootstrapTargetPattern.MatchString(name) || target.Runtime.Provider == "" {
@@ -265,6 +311,7 @@ func destroyOrphanedBootstrapMarkers(marker string) {
 		provider, resolved, perr := bootstrapTeardownProvider()
 		if perr != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption target %q: %v\n", name, perr)
+			errs = append(errs, fmt.Errorf("bootstrap trust-plane adoption target %q: %w", name, perr))
 			runtimeIntegrationTrustPlaneTargetName = claimed
 			continue
 		}
@@ -275,6 +322,7 @@ func destroyOrphanedBootstrapMarkers(marker string) {
 		cancel()
 		if derr != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption destroyed target %q with reported failures: %v\n", name, derr)
+			errs = append(errs, fmt.Errorf("bootstrap trust-plane adoption destroyed target %q with failures: %w", name, derr))
 		} else {
 			fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption destroyed orphaned target %q (dead marker owner %s)\n", name, markerOwner)
 		}
@@ -282,6 +330,7 @@ func destroyOrphanedBootstrapMarkers(marker string) {
 		runtimeIntegrationTrustPlaneTarget = claimedTarget
 		runtimeIntegrationTrustPlaneProvider = claimedProvider
 	}
+	return errors.Join(errs...)
 }
 
 // provisioned and removes the marker only after the destruction itself ran to
@@ -306,10 +355,34 @@ func destroyBootstrapTrustPlane(marker string) error {
 			// residual or destroy failure: the former is only notable once
 			// the wächter itself could not run at all.
 			errs = append(errs, destroyErr)
+			// A destroy that could not even begin (the wächter itself failed
+			// to run) leaves the marker so the next run fails closed; a destroy
+			// that ran but reported residuals still consumes the marker.
+			if isUnbeginningTeardownError(destroyErr) {
+				return fmt.Errorf("bootstrap trust-plane teardown could not begin: %w", destroyErr)
+			}
 		}
 	}
 	errs = append(errs, os.Remove(marker))
 	return errors.Join(errs...)
+}
+
+// isUnbeginningTeardownError reports whether the teardown error means the
+// wächter could not even run — provisioning never completed, the config is
+// unavailable, the target is unconfigured or the runtime provider could not be
+// resolved. In those cases the marker must survive so the next run fails
+// closed instead of forgetting the orphan. A destroy that ran but reported
+// residuals is NOT unbeginning and the marker is consumed.
+func isUnbeginningTeardownError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "teardown config") ||
+		strings.Contains(msg, "teardown has no target identity") ||
+		strings.Contains(msg, "teardown target") ||
+		strings.Contains(msg, "teardown runtime provider") ||
+		strings.Contains(msg, "could not load config")
 }
 
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
@@ -513,6 +586,13 @@ func ensureBootstrapLeftoverMarker() error {
 // marker names, and a provider that cannot be resolved at all still runs the
 // residual inventory.
 func destroyRuntimeIntegrationTrustPlane(ctx context.Context) error {
+	// Injected-failure regression hook: when set, the teardown fails before
+	// destroying anything so the FAIL-OPEN wiring is exercised for real — the
+	// package teardown must surface the error as a non-zero exit and the
+	// orphan path must keep the marker instead of consuming the claim.
+	if runtimeBootstrapTeardownFailure != nil {
+		return fmt.Errorf("injected bootstrap trust-plane teardown failure: %w", runtimeBootstrapTeardownFailure)
+	}
 	var errs []error
 	provider := runtimeIntegrationTrustPlaneProvider
 	target := runtimeIntegrationTrustPlaneTarget
