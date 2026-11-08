@@ -62,7 +62,9 @@ func SharedCoreOwnerConflictForEngine(ctx context.Context, runtimeOwner runtimeL
 		if !isSharedCoreProject(project) {
 			continue
 		}
-		if ownProject != "" && project == ownProject {
+		// Managed Identity uses a sibling <target>-core-shared project.
+		// It belongs to this same Target, not to a foreign Core.
+		if ownProject != "" && (project == ownProject || project == strings.TrimSuffix(ownProject, "-shared")+"-core-shared") {
 			continue
 		}
 		seenProject[project] = true
