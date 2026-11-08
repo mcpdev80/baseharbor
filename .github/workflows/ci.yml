@@ -25,6 +25,7 @@ permissions:
 jobs:
   workflow_policy:
     name: Workflow policy
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -435,9 +436,9 @@ jobs:
           set -euo pipefail
           git fetch --no-tags origin "$HEAD_SHA"
           changed="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")"
-          required="$(printf '%s\\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
+          required="$(printf '%s\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
           # Conservative fallback: unknown CLI source edits must run rather than silently skip.
-          if [ "$required" != true ] && printf '%s\\n' "$changed" | grep -Eq '^cmd/baha/.*\\.go$'; then
+          if [ "$required" != true ] && printf '%s\n' "$changed" | grep -Eq '^cmd/baha/.*\.go$'; then
             required=true
           fi
           echo "required=$required" >> "$GITHUB_OUTPUT"
@@ -485,7 +486,7 @@ jobs:
 
   source_format:
     name: PR · Source format
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
