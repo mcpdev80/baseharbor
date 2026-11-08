@@ -33,6 +33,17 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err := runWithIO(ctx, []string{"target", "create", "installation-retry-native", "--provider", kind, "--access", "installation-retry-native", "--reference", "local", "--default"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
+	// The documented bootstrap path runs before the first application write:
+	// `up --control-plane-only` installs a genuine Core (SQL + Secrets +
+	// Identity) for the freshly-referenced local Target, so the one-installation
+	// owner seam (VerifyDeploymentOwner) finds a real owner instead of failing
+	// closed on the missing installation.json. This is the same
+	// control-plane bootstrap the getting-started journey runs before
+	// `baha app init`; the owner enforcement (card 0427-056 / #1347) stays
+	// untouched, only its precondition now holds.
+	if err := runWithIO(ctx, []string{"up", "--control-plane-only", "--yes"}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
 	t.Chdir(t.TempDir())
 	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
 		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
