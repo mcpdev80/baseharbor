@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"github.com/mcpdev80/baseharbor/internal/application"
-	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"io"
 	"os"
 	"os/exec"
@@ -12,6 +10,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 )
 
 func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.T) {
@@ -31,7 +34,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		t.Fatal(err)
 	}
 	t.Chdir(t.TempDir())
-	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n"} {
+	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
 		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
 			t.Fatal(err)
 		}
@@ -47,6 +50,30 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	provider, err := detectRuntimeForTarget(ctx, r.Target)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The real full-installation acceptance must prove the Keycloak side
+	// of the Core as well as SQL, otherwise stale Identity containers may
+	// survive an apparently successful destroy.
+	identityFiles, identityExpected, err := identityprovider.ExistingKeycloakRuntimeInventoryAt(
+		r.Manifest,
+		capability.ProviderPlacement{Scope: capability.ScopeShared, Ownership: capability.OwnershipBaseHarbor},
+		r.TargetStateRoot, r.Target.Name,
+	)
+	if err != nil {
+		t.Fatalf("managed Keycloak realization absent before destroy: %v", err)
+	}
+	identityBefore, err := provider.InspectProjectResources(ctx, identityFiles.Project, identityExpected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keycloakRunning := false
+	for _, resource := range identityBefore {
+		if resource.Kind == "container" {
+			keycloakRunning = true
+		}
+	}
+	if !keycloakRunning {
+		t.Fatal("native destroy acceptance did not start an actual managed Keycloak container")
 	}
 	shared, err := application.ExistingSharedBackendInventoryAt(r.TargetStateRoot, r.Target.Name, "core")
 	if err != nil {
@@ -136,6 +163,13 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	}
 	if _, err := native("volume", "inspect", volume); err == nil {
 		t.Fatal("selected owned data volume survived successful deletion")
+	}
+	identityAfter, err := provider.ListOwnedProjectResources(ctx, identityFiles.Project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(identityAfter) != 0 {
+		t.Fatalf("full installation destroy left owned Keycloak resources: %+v", identityAfter)
 	}
 	config, err := deployment.ConfigPath()
 	if err != nil {
