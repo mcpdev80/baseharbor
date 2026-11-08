@@ -109,7 +109,7 @@ jobs:
     needs: select_develop
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
@@ -143,6 +143,12 @@ jobs:
           if not any(event.get('Test') == test and event.get('Action') == 'pass' for event in events):
               raise SystemExit('Native single-default test did not execute')
           PY
+      - name: Validate Node HTTPS enrollment and remote CLI contract
+        shell: bash
+        run: bash scripts/ci-node-contract-acceptance.sh
+      - name: Validate real installation destroy and interrupted retry
+        shell: bash
+        run: bash scripts/ci-native-installation-destroy.sh
       - name: Clean up isolated runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh podman

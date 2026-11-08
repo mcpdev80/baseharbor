@@ -276,6 +276,7 @@ Zugang mit Docker oder Podman. Eine Anfrage kann keine andere Signierautorität 
 
 HTTPS-Endpunkt Autorisierung und Ergebnis
 | --- | --- |
+| `GET /api/v1/connectors/owner-context` | Liefert die Tenant-UUID nur nach verifizierter Operator-OIDC-Anmeldung und autorisierter Mitgliedschaft, niemals aus Benutzereingaben. |
 | `POST /api/v1/connectors/authorizations ` Betreiber OIDC und aufgelöster Mieter`create ` Erlaubnis; gibt nur die geschützte`token `, ` nonce `, ` expires_at`Projektion. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 | `POST /api/v1/connectors/enroll ` Ein Scoped`Authorization: Bearer` credential plus kanonische Einschreibungsanfrage; gibt das signierte Client-Zertifikat und öffentliches Trust-Bundle zurück.
 | `POST /api/v1/connectors/renewal-authorizations` Geschützte Operator-Identität, Mieter-Mitgliedschaft und Update-Zulassung; erstellt eine One-Use-Zulassung, die an das aktuelle aktive Zertifikat des Knotens gebunden ist.

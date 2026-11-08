@@ -347,6 +347,9 @@ func TestAppNewWizardRunReportsCreatedProjectWhenLifecyclePartiallyFails(t *test
 	if !strings.Contains(out.String(), "Provider change result:") {
 		t.Fatalf("shared result presenter was not used:\n%s", out.String())
 	}
+	if strings.Contains(out.String(), "Created partial-run") || strings.Contains(out.String(), "Validation: SATISFIED") {
+		t.Fatalf("failed lifecycle advertised successful creation:\n%s", out.String())
+	}
 	if strings.Contains(out.String(), "status: applied") || strings.Contains(out.String(), "Lifecycle: VERIFIED") {
 		t.Fatalf("aggregate failure fabricated verified provider results:\n%s", out.String())
 	}

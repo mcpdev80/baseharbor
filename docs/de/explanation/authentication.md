@@ -4,7 +4,7 @@ BaseHarbor trennt Operator-Identität, Application-Benutzer und interne Provider
 
 ## Operator-Zugriff
 
-Lokales `dev` kann im trusted-local-Modus ohne Login arbeiten. Geschützter Zugriff in `test` und `prod` benötigt eine gültige OIDC-Operator-Sitzung für Target und Umgebung. Die CLI verwendet Authorization Code mit PKCE und kurzlebigen, lokal geschützten Sitzungszustand.
+Unkonfiguriertes `dev` kann im trusted-local-Modus ohne Login arbeiten. Nach expliziter Erst-Owner-Initialisierung verwendet es die gespeicherte Operator-OIDC-Grenze. Geschützter Zugriff in `test` und `prod` benötigt eine gültige OIDC-Operator-Sitzung für Target und Umgebung. Die CLI verwendet Authorization Code mit PKCE und kurzlebigen, lokal geschützten Sitzungszustand.
 
 ```text
 Authorization: Bearer <ID token>
@@ -21,6 +21,10 @@ RBAC + application ownership + protected handler
 ```
 
 Managed Keycloak oder externes OIDC können diese Grenze bereitstellen. Application- und Operator-Clients, Scopes und logische Identitätsbereiche bleiben getrennt. Login erweitert keine Policy-Berechtigungen.
+
+## Erster Operator und Tenant
+
+Der explizite Befehl `baha login -e dev --init-tenant` initialisiert nach verifiziertem PKCE-Login den Tenant `default` und die `editor`-Membership des ersten Operators. Er setzt lokalen Core-Besitz, Core-Readiness, gültige OIDC-Identität und eine geschützte PostgreSQL-TLS-Verbindung voraus; Wiederholung durch denselben Owner bleibt idempotent. Fremde Übernahmen und Remote-Targets werden abgewiesen. Die [vollständige Einrichtung einschließlich Connector und Issuer/Audience-Abgleich](../cli/security-trust.md) ist gesondert dokumentiert. Umsetzung in Core-PR #1437, native Abnahme offen.
 
 ## Verifikation und Tenant
 

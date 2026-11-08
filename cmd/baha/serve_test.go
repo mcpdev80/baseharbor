@@ -235,3 +235,22 @@ func TestControlPlaneConfigFromEnv(t *testing.T) {
 		t.Fatalf("unexpected audiences: %#v", cfg.OIDCAudiences)
 	}
 }
+
+func TestControlPlaneConfigFromEnvWorkstationEnrollment(t *testing.T) {
+	t.Setenv("BASEHARBOR_WORKSTATION_ENROLLMENT_ENABLED", "true")
+	cfg, err := controlPlaneConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.WorkstationEnrollmentEnabled {
+		t.Fatal("explicitly enabled workstation enrollment was discarded")
+	}
+	t.Setenv("BASEHARBOR_WORKSTATION_ENROLLMENT_ENABLED", "false")
+	cfg, err = controlPlaneConfigFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.WorkstationEnrollmentEnabled {
+		t.Fatal("disabled workstation enrollment must remain disabled")
+	}
+}

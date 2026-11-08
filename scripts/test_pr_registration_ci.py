@@ -17,7 +17,14 @@ def load(name, path):
 
 planner = load("registration_planner", "pr-gate-plan.py")
 runner = load("registration_runner", "pr-check-runner.py")
+# The production gate map is loaded from the active release-catalog file; its
+# release key is the live candidate release. The shared-registration fixture
+# below pins every in-memory catalog to v0.4.26 (the tested baseline), so it
+# uses a dedicated v0.4.26 mapping rather than the live production map, whose
+# release key must track the current candidate (v0.4.27).
 mapping = json.loads((ROOT / "pr-gate-map-v1.json").read_text())
+mapping_26 = dict(mapping)
+mapping_26["release"] = "v0.4.26"
 requirements = {
     "releases": ["v0.4.26"],
     "gates": [{"id": "integration/static/public-contracts", "required_for": ["v0.4.26"]}],
@@ -34,7 +41,7 @@ def plan(changes, broad=False):
         "reasons": [{"code": "untrusted", "message": "untrusted integration"}] if broad else [],
         "changes": changes,
     }
-    return planner.plan(diff, requirements, mapping)
+    return planner.plan(diff, requirements, mapping_26)
 
 
 def modified(path):
