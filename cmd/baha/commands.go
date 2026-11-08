@@ -114,6 +114,15 @@ func rootCommand() *cli.Command {
 			},
 		},
 		{
+			Name:    "logs",
+			Summary: "Show application logs for the current workload",
+			Usage:   "baha logs [SERVICE] [--follow] [--app NAME]",
+			Long:    "Repository-aware shorthand for 'baha app logs'. It resolves the nearest application and streams the same workload logs the explicit app command provides.",
+			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+				return appLogsCommand(store).Run(ctx, args, out, errOut)
+			},
+		},
+		{
 			Name:    "status",
 			Summary: "Show application status in a repository, otherwise control-plane status",
 			Usage:   "baha status [-o json|--output json]",
