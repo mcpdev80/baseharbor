@@ -467,7 +467,7 @@ func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up")
+	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up", "")
 	if err != nil {
 		t.Fatalf("up NAME must resume the registered deployment %q: %v", name, err)
 	}
@@ -498,7 +498,7 @@ func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
 	if err := deployment.SaveDeploymentRecord(foreign); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up"); err == nil {
+	if _, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up", ""); err == nil {
 		t.Fatal("up NAME accepted an unregistered deployment; fail-closed is broken")
 	}
 }

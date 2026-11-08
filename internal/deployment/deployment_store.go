@@ -382,6 +382,18 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := validateRemoteProject(record); err != nil {
 		return err
 	}
+	// Name-identity uniqueness (0427-149): a brand-new deployment whose
+	// (target, application name, environment) triple is already claimed by a
+	// DIFFERENT deployment directory (different uuid) must fail closed with a
+	// clear, actionable message. This closes the silent duplicate-registration
+	// gap (BF-02) that otherwise poisons the registry and makes the duplicate
+	// unreachable via name-based edit/show/plan/destroy (BF-01/BF-05). An update
+	// to an already-persisted record of THIS identity is not a collision: the
+	// target directory already exists, so the guard below only scans for a
+	// foreign record when this identity is being written for the first time.
+	if err := refuseDuplicateApplicationName(record); err != nil {
+		return err
+	}
 	// Authoritative ownership is enforced on the production write seam before any
 	// directory is created or any record is written: a missing or foreign
 	// installation fails closed and nothing is mutated. A tenant target is
@@ -608,29 +620,42 @@ func DeleteDeploymentRecord(id DeploymentIdentity) error {
 }
 
 func FindDeployment(target, applicationID, environment string) (DeploymentRecord, bool, error) {
-	records, err := ListDeployments(target)
+	matches, err := findDeploymentMatches(target, applicationID, environment)
 	if err != nil {
 		return DeploymentRecord{}, false, err
 	}
-	var match *DeploymentRecord
+	if len(matches) == 0 {
+		return DeploymentRecord{}, false, nil
+	}
+	return matches[0], true, nil
+}
+
+// findDeploymentMatches lists the deployment registry for target and returns a
+// copy of every record whose (application_id, environment) equals the request.
+// A registry that already holds more than one such record is a pre-existing
+// conflict; the caller reports it instead of silently picking one. The loop is
+// extracted here so the name-identity uniqueness guard can reuse the exact same
+// identity scan without duplicating the filter or the ambiguity report.
+func findDeploymentMatches(target, applicationID, environment string) ([]DeploymentRecord, error) {
+	records, err := ListDeployments(target)
+	if err != nil {
+		return nil, err
+	}
+	var matches []DeploymentRecord
 	for i := range records {
 		record := records[i]
 		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
 			continue
 		}
-		if match != nil {
-			return DeploymentRecord{}, false, fmt.Errorf(
-				"multiple deployments claim application_id %s environment %s on target %s",
-				applicationID, environment, target,
-			)
-		}
-		copy := record
-		match = &copy
+		matches = append(matches, record)
 	}
-	if match == nil {
-		return DeploymentRecord{}, false, nil
+	if len(matches) > 1 {
+		return nil, fmt.Errorf(
+			"multiple deployments claim application_id %s environment %s on target %s",
+			applicationID, environment, target,
+		)
 	}
-	return *match, true, nil
+	return matches, nil
 }
 
 func ListDeployments(target string) ([]DeploymentRecord, error) {
@@ -657,82 +682,6 @@ func ListAllDeploymentsForDisplay() ([]DeploymentRecord, []error, error) {
 func ListAllDeployments() ([]DeploymentRecord, error) {
 	records, _, err := listAllDeployments(false)
 	return records, err
-}
-
-func listAllDeployments(bestEffort bool) ([]DeploymentRecord, []error, error) {
-	root, err := DataRoot()
-	if err != nil {
-		return nil, nil, err
-	}
-	targetsRoot := filepath.Join(root, "targets")
-	entries, err := os.ReadDir(targetsRoot)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	var records []DeploymentRecord
-	var warnings []error
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		items, itemWarnings, err := listDeploymentRecords(filepath.Join(targetsRoot, entry.Name(), "deployments"), entry.Name(), bestEffort)
-		if err != nil {
-			if bestEffort {
-				warnings = append(warnings, fmt.Errorf("target %s: %w", entry.Name(), err))
-				continue
-			}
-			return nil, nil, err
-		}
-		records = append(records, items...)
-		warnings = append(warnings, itemWarnings...)
-	}
-	sortDeploymentRecords(records)
-	return records, warnings, nil
-}
-
-func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRecord, []error, error) {
-	entries, err := os.ReadDir(root)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, nil
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	var records []DeploymentRecord
-	var warnings []error
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		deploymentID := entry.Name()
-		path := filepath.Join(root, deploymentID, "deployment.json")
-		// Authoritative ownership is enforced on the listing seam as well: each
-		// deployment directory is verified against the Target's Core installation
-		// before its record is read. Fail-closed on unavailable owner, unless a
-		// best-effort listing is requested, in which case the mismatch surfaces
-		// as a per-target warning rather than aborting the whole list.
-		if err := verifyDeploymentOwnerAtSeam(target, deploymentID); err != nil {
-			if bestEffort {
-				warnings = append(warnings, &DeploymentRecordStateError{Identity: DeploymentIdentity{Target: target, DeploymentID: deploymentID}, Kind: "missing", Err: err})
-				continue
-			}
-			return nil, nil, err
-		}
-		record, err := loadDeploymentRecordFile(target, deploymentID, path, nil)
-		if err != nil {
-			if bestEffort {
-				warnings = append(warnings, err)
-				continue
-			}
-			return nil, nil, err
-		}
-		records = append(records, record)
-	}
-	sortDeploymentRecords(records)
-	return records, warnings, nil
 }
 
 func sortDeploymentRecords(records []DeploymentRecord) {

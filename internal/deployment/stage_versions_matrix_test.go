@@ -16,7 +16,7 @@ import (
 func newTestDeployment(t *testing.T) (target string, id DeploymentIdentity) {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("BASEHARBOR_DATA_ROOT", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", dir)
 	appID, err := stableid.NewUUIDv4("application")
 	if err != nil {
 		t.Fatalf("NewUUIDv4: %v", err)

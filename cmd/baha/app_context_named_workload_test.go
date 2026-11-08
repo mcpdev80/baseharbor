@@ -57,7 +57,7 @@ func TestNamedApplicationProjectsMinimalRepositoryWorkloadWithoutWrites(t *testi
 		}
 	}
 	for _, operation := range []string{"plan", "apply", "status", "doctor"} {
-		resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, m.Name, m.Environment, operation)
+		resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, m.Name, m.Environment, operation, "")
 		if err != nil {
 			t.Fatal(operation, err)
 		}

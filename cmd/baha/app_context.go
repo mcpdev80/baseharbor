@@ -133,7 +133,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		)
 	}
 
-	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command)
+	// A --uuid selector routes directly at the registry seam, bypassing the
+	// name filter entirely. It is the unambiguous identity for name-colliding
+	// deployments (0427-149) that no -e value can disambiguate.
+	deploymentUUID, uuidErr := extractApplicationUUID(args)
+	if uuidErr != nil {
+		return resolvedApplication{}, uuidErr
+	}
+	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command, deploymentUUID)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -224,10 +231,27 @@ func resolvedRepositoryApplication(target deployment.ResolvedTarget, targetRoot 
 	}, nil
 }
 
-func resolveRegisteredApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot, name, environment, command string) (resolvedApplication, error) {
+func resolveRegisteredApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot, name, environment, command string, deploymentUUID string) (resolvedApplication, error) {
 	records, warnings, err := deployment.ListDeploymentsForDisplay(target.Name)
 	if err != nil {
 		return resolvedApplication{}, err
+	}
+	// A --uuid selector resolves the exact deployment directory, bypassing the
+	// name/environment filter. It is the only unambiguous identity for a
+	// name-colliding deployment that no -e value can disambiguate (0427-149).
+	if strings.TrimSpace(deploymentUUID) != "" {
+		for _, record := range records {
+			if record.Identity.DeploymentID == deploymentUUID {
+				return resolveRecordByIdentity(ctx, target, targetRoot, record, command)
+			}
+		}
+		return resolvedApplication{}, &machine.Error{
+			Code:      machine.ErrorNotFound,
+			CauseCode: "deployment_uuid_not_found",
+			Message:   fmt.Sprintf("deployment %q has no registered deployment on target %q", deploymentUUID, target.Name),
+			Resource:  target.Name + "/" + deploymentUUID,
+			Next:      "Run 'baha app list --all-targets' to inspect registered deployments and their deployment ids.",
+		}
 	}
 	var matches []deployment.DeploymentRecord
 	for _, record := range records {
@@ -285,12 +309,42 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 		}
 	}
 	if len(matches) > 1 {
-		return resolvedApplication{}, usageError(
-			"environment selection required for application "+name,
-			"Select one registered environment with -e/--environment.",
-		)
+		// Multiple registrations share this application NAME. When they span
+		// distinct environments a plain -e/--environment disambiguates them.
+		// When they share the SAME environment (a pre-existing name duplicate
+		// that the registry now refuses to create anew, 0427-149) no -e value
+		// can resolve the collision, so surface the concrete deployment uuids
+		// and route the operator onto the uuid path — the only unambiguous
+		// identity for edit/show/plan/destroy. This is the actionable
+		// alternative to the former opaque "environment selection required".
+		environments := make([]string, 0, len(matches))
+		byEnv := make(map[string][]string)
+		for _, record := range matches {
+			environments = append(environments, record.Identity.Environment)
+			byEnv[record.Identity.Environment] = append(byEnv[record.Identity.Environment], record.Identity.DeploymentID)
+		}
+		perEnvironment := make([]string, 0, len(byEnv))
+		for env, ids := range byEnv {
+			perEnvironment = append(perEnvironment, env+": "+strings.Join(ids, ", "))
+		}
+		return resolvedApplication{}, &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "application_name_ambiguous",
+			Message:     fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", name, target.Name, strings.Join(perEnvironment, "; ")),
+			Resource:    target.Name + "/" + name,
+			Next:        "Select one deployment by uuid: baha app " + command + " --uuid <deployment-id>, or by a distinct environment with -e/--environment.",
+			Remediation: "operator_review",
+		}
 	}
 	record := matches[0]
+	return resolveRecordByIdentity(ctx, target, targetRoot, record, command)
+}
+
+// resolveRecordByIdentity reconstructs a resolved application from a single
+// authoritative deployment record. It is shared by the name filter (exact
+// match) and the --uuid selector so both paths hydrate identical state and
+// behave identically for a name-colliding deployment.
+func resolveRecordByIdentity(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, record deployment.DeploymentRecord, command string) (resolvedApplication, error) {
 	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -492,11 +546,54 @@ func extractApplicationEnvironment(args []string, command string) ([]string, str
 				return nil, "", usageError("conflicting environment selections", "Specify -e/--environment only once.")
 			}
 			environment = value
+		case arg == "--uuid" || strings.HasPrefix(arg, "--uuid="):
+			// The --uuid selector is consumed here: it is removed from the
+			// positional args so it never counts toward the one-NAME limit and
+			// never reaches the name filter. The value is captured separately by
+			// extractApplicationUUID for the registered-application path.
+			if arg == "--uuid" && i+1 >= len(args) {
+				return nil, "", usageError("--uuid requires a deployment id", "Example: baha app "+command+" --uuid <deployment-id>")
+			}
+			if arg == "--uuid" {
+				i++
+			}
 		default:
 			filtered = append(filtered, arg)
 		}
 	}
 	return filtered, environment, nil
+}
+
+// extractApplicationUUID pulls an optional --uuid <deployment-id> selector out
+// of the raw args for the registered-application resolution path. It is the
+// unambiguous identity for a name-colliding deployment that no -e value can
+// disambiguate (0427-149). Only valid against the registered-application path;
+// a repository/cwd command rejects it. A malformed uuid is rejected so the
+// operator cannot accidentally resolve the wrong deployment.
+func extractApplicationUUID(args []string) (string, error) {
+	uuid := ""
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--uuid":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				return "", fmt.Errorf("--uuid requires a deployment id")
+			}
+			i++
+			value := strings.TrimSpace(args[i])
+			if uuid != "" && uuid != value {
+				return "", usageError("conflicting deployment id selections", "Specify --uuid only once.")
+			}
+			uuid = value
+		case strings.HasPrefix(arg, "--uuid="):
+			value := strings.TrimSpace(strings.TrimPrefix(arg, "--uuid="))
+			if uuid != "" && uuid != value {
+				return "", usageError("conflicting deployment id selections", "Specify --uuid only once.")
+			}
+			uuid = value
+		}
+	}
+	return uuid, nil
 }
 
 func configureRepositoryComposeEnvironment(repoRoot, stateRoot string) error {

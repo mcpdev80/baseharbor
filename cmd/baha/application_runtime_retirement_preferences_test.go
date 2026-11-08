@@ -75,7 +75,7 @@ func TestGuidedWithdrawalPreferencesPreserveCanonicalOwners(t *testing.T) {
 		}
 		paths = append(paths, filepath.Join(deploymentRoot, "deployment.json"), registryPath, recovery)
 		if index == 0 {
-			selected, err = resolveRegisteredApplication(context.Background(), current, root, manifest.Name, manifest.Environment, "destroy")
+			selected, err = resolveRegisteredApplication(context.Background(), current, root, manifest.Name, manifest.Environment, "destroy", "")
 			if err != nil {
 				t.Fatal(err)
 			}
