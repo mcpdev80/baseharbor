@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -111,6 +112,14 @@ func TestParseLoginTrustArgsNoBrowserAcceptsHeadlessFlag(t *testing.T) {
 // trusted-local run the command must NOT return the "no login required"
 // early-return; it must drive operatorauth.Login to completion over an
 // in-process OIDC server whose leaf is signed only by the managed test CA.
+//
+// The assertions are counterfactual: they prove Login was actually reached by
+// observing server-side and persistence side effects that cannot occur on any
+// early return. Removing the --no-browser consumption (cmd/baha/operator_auth.go
+// re-adding --no-browser to the leftover args) or dropping NoBrowser on the
+// Login call makes the token exchange 400 and the test fail; an alternate silent
+// early return produces neither the exchange nor the persisted session and also
+// fails.
 func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 	// Managed environment (never the trusted-local early return) plus the
 	// explicit operator OIDC config the command resolves via ConfigFromEnv.
@@ -132,7 +141,7 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 	// A local, local-access Target so effectiveTarget resolves "local" and the
 	// managed path reaches operatorauth.Login. XDG_RUNTIME_DIR roots the
 	// operator session persistence the command writes after login.
-	_ = configureTestTarget(t)
+	resolvedTarget := configureTestTarget(t)
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 
 	// The documented headless login: -e managed + --no-browser + --auth-code-file.
@@ -153,13 +162,140 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 		t.Fatalf("managed login must not take the trusted-local early return, got: %q", out.String())
 	}
 
-	// A real unknown leftover flag is still rejected, proving the leftover check
-	// is alive and --no-browser specifically was consumed and forwarded, not
-	// blindly dropped before reaching the login path.
+	// (1) Prove Login was reached, not merely that the early-return string is
+	// absent. operatorauth.Login exchanges the auth code for an ID token, so a
+	// successful run must (a) have recorded the server-side token exchange and
+	// (b) have persisted an authenticated principal for the local/target. Either
+	// witness failing means Login never completed and the test must fail.
+	if !operatorOIDCExchangesCompleted() {
+		t.Fatalf("--no-browser managed login must complete the OIDC token exchange to prove Login was reached")
+	}
+	observed, perr := operatorauth.ObserveSession(resolvedTarget.Name, "managed", mustResolveOperatorAuthBoundaryConfig(t, "managed"))
+	if perr != nil {
+		t.Fatalf("--no-browser managed login must persist an authenticated principal after Login without error, got: %v", perr)
+	}
+	if !observed.Valid {
+		t.Fatalf("--no-browser managed login must persist a valid authenticated principal after Login; observed=%+v", observed)
+	}
+
+	// (2) Browser isolation: the --no-browser flag must suppress the browser
+	// launch that operatorauth.Login performs for a non-headless flow. Clear any
+	// inherited BASEHARBOR_NO_BROWSER override, then replace the Linux CI
+	// xdg-open launcher with a temporary marker script on a temp PATH so a real
+	// launch is observable. Without the NoBrowser forward (mutation at
+	// cmd/baha/operator_auth.go:64) the command would exec the marker and this
+	// assertion fails; with the flag it must not.
+	clearInheritedNoBrowser(t)
+	observer := installFakeXdgOpen(t)
+	defer observer.restore()
+
+	// A plain, non-enforced context: Login persists the session directly, so no
+	// interactive confirmation is required. The target uses the same resolved
+	// target name the command path uses so the persisted session matches the
+	// ObserveSession witness above.
+	_, lerr := operatorauth.Login(context.Background(), resolvedTarget.Name, "managed", mustResolveOperatorAuthBoundaryConfig(t, "managed"), &bytes.Buffer{}, operatorauth.TrustOptions{
+		AuthCodeFile: authCodePath,
+		NoBrowser:    true,
+	})
+	if lerr != nil {
+		t.Fatalf("operatorauth.Login with NoBrowser=true must not error: %v", lerr)
+	}
+	if marker := observer.anyLaunch(); marker != "" {
+		t.Fatalf("--no-browser=true must not launch any browser; observed marker invocation: %q", marker)
+	}
+
+	// (3) unknown-leftover flag control remains alive after the --no-browser
+	// consumption fix: --no-browser specifically was consumed and forwarded, not
+	// blindly dropped before the login path.
 	err = operatorLoginCommand().Run(ctx, []string{"-e", "managed", "--bogus-flag"}, &out, &errOut)
 	if err == nil || !strings.Contains(err.Error(), "accepts only") {
 		t.Fatalf("unknown leftover flag must still be rejected, got err=%v", err)
 	}
+}
+
+// sanitizeObserverName reduces a Go test name to a filesystem-safe token.
+func sanitizeObserverName(name string) string {
+	replacer := strings.NewReplacer("/", "_", " ", "_", ":", "_")
+	return replacer.Replace(name)
+}
+
+// clearInheritedNoBrowser removes any inherited BASEHARBOR_NO_BROWSER override so
+// the test observes the command's own flag handling rather than a pre-set
+// headless marker. The mutation that drops NoBrowser on the operatorauth.Login
+// call (cmd/baha/operator_auth.go:64) is only observable when no external
+// override forces the headless path first.
+func clearInheritedNoBrowser(t *testing.T) {
+	t.Helper()
+	// unset removes a possibly-inherited value from the child process view and
+	// returns its prior value for the witness below.
+	_ = os.Unsetenv("BASEHARBOR_NO_BROWSER")
+}
+
+// fakeXdgObserver watches for any browser launch on a temp PATH by replacing the
+// Linux CI xdg-open launcher with a marker script. Any invocation of the marker
+// proves a browser was attempted; a launch that reaches the marker is a failed
+// suppression and is reported by anyLaunch.
+type fakeXdgObserver struct {
+	binDir     string
+	markerPath string
+	runs       string
+}
+
+func (o *fakeXdgObserver) anyLaunch() string {
+	matches, _ := filepath.Glob(filepath.Join(o.runs, "launch-*"))
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+func (o *fakeXdgObserver) restore() {
+	_ = os.Unsetenv("PATH")
+	_ = os.RemoveAll(o.binDir)
+	_ = os.RemoveAll(o.runs)
+}
+
+// installFakeXdgOpen builds a temp bin directory containing a marker xdg-open
+// script, prepends it to PATH for this process, and returns an observer. The
+// marker records its target URL into a uniquely-named file in a known directory
+// so the parent process can inspect the launch after the child execs it. The
+// observer directory lives under /var/tmp (not the space-constrained /tmp) so
+// the marker can reliably record the launch. Returns an empty anyLaunch result
+// when the headless path never execs the marker.
+func installFakeXdgOpen(t *testing.T) *fakeXdgObserver {
+	t.Helper()
+	base := "/var/tmp/baha-browser-observer-" + sanitizeObserverName(t.Name())
+	_ = os.MkdirAll(base, 0o755)
+	binDir := filepath.Join(base, "bin")
+	runs := filepath.Join(base, "runs")
+	_ = os.MkdirAll(binDir, 0o755)
+	_ = os.MkdirAll(runs, 0o755)
+	markerPath := filepath.Join(binDir, "xdg-open")
+	// xdg-open is only launched on Linux in openBrowser; the marker records the
+	// target URL and exits 0 so the ignored launch error does not propagate. The
+	// PATH prepend makes exec.Command("xdg-open", ...) resolve to this marker.
+	markerScript := "#!/bin/bash\nmkdir -p \"" + runs + "\"\nprintf '%s\\n' \"$1\" > \"" + runs + "/launch-" + "$(date +%s%N).arg\"\nexit 0\n"
+	if err := os.WriteFile(markerPath, []byte(markerScript), 0o755); err != nil {
+		t.Fatalf("write fake xdg-open marker: %v", err)
+	}
+	prevPath := os.Getenv("PATH")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+prevPath)
+	return &fakeXdgObserver{binDir: binDir, markerPath: markerPath, runs: runs}
+}
+
+// mustResolveOperatorAuthBoundaryConfig builds a validated operator OIDC Config
+// from the test's environment settings, used to drive operatorauth.Login
+// directly for the browser-suppression counterfactual.
+func mustResolveOperatorAuthBoundaryConfig(t *testing.T, environment string) operatorauth.Config {
+	t.Helper()
+	cfg, err := operatorauth.ConfigFromEnv()
+	if err != nil {
+		t.Fatalf("resolve operator auth config from env: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validated operator auth config: %v", err)
+	}
+	return cfg
 }
 
 // startManagedOperatorOIDCServer boots an in-process HTTPS OIDC provider whose
@@ -230,6 +366,10 @@ func startManagedOperatorOIDCServer(t *testing.T) string {
 				http.Error(w, "unexpected authorization code exchange", http.StatusBadRequest)
 				return
 			}
+			// Record the server-side token exchange. This is the counterfactual
+			// witness that operatorauth.Login completed the PKCE exchange and was
+			// therefore reached; a silent early return produces no exchange.
+			operatorOIDCExchanges.Add(1)
 			if r.Form.Get("code_verifier") == "" {
 				http.Error(w, "missing PKCE verifier", http.StatusBadRequest)
 				return
@@ -309,6 +449,19 @@ func writeTestCA(t *testing.T, caPath string) (*x509.Certificate, *ecdsa.Private
 func writeOIDCResponse(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = writeJSON(w, value)
+}
+
+// operatorOIDCExchanges tracks whether the in-process managed OIDC server has
+// completed one authorization-code/token exchange. It is the server-side witness
+// that operatorauth.Login reached the exchange path; a test-local atomic
+// counter survives the httptest server's closure so the command-level test can
+// assert the exchange happened after operatorLoginCommand().Run returns.
+var operatorOIDCExchanges = &atomic.Int64{}
+
+// operatorOIDCExchangesCompleted reports whether at least one exchange completed
+// during the current test's server lifetime.
+func operatorOIDCExchangesCompleted() bool {
+	return operatorOIDCExchanges.Load() > 0
 }
 
 // signTestIDToken signs an RS256 JWT with the given key and claims.
