@@ -113,3 +113,41 @@ func TestInstallationUnknownTargetRuntimeIsDisclosureNotDestructionAuthority(t *
 		t.Fatal("planning mutated retained unknown state")
 	}
 }
+
+func TestMissingLocalTargetRegistrationNeverInventsComposeDestroyAuthority(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	root, err := deployment.TargetStateRoot("local")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "runtime"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	targets, discovery := discoverFullDestroyTargets()
+	var found bool
+	for _, target := range targets {
+		if target.Name != "local" {
+			continue
+		}
+		found = true
+		if target.RuntimeProvider != "" {
+			t.Fatalf("unregistered local target guessed runtime provider %q", target.RuntimeProvider)
+		}
+	}
+	if !found {
+		t.Fatal("retained local target state was not discovered")
+	}
+	var ambiguous bool
+	for _, item := range discovery {
+		if item.Target == "local" && item.Resource == "runtime-provider" {
+			ambiguous = item.Status == "SKIPPED" && item.Diagnostic == "unregistered-target-runtime"
+		}
+	}
+	if !ambiguous || countFullDestroyBlockers(discovery) == 0 {
+		t.Fatalf("unverified runtime was not a blocking retained owner: %+v", discovery)
+	}
+	if _, err := os.Stat(filepath.Join(root, "runtime")); err != nil {
+		t.Fatalf("unknown runtime owner state was not preserved: %v", err)
+	}
+}
