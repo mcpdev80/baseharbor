@@ -450,3 +450,23 @@ func TestApplicationIDRejectsNonV4Identity(t *testing.T) {
 		t.Fatal("expected invalid application ID to fail")
 	}
 }
+
+func TestSQLInstancePhantomPathCannotEnterCanonicalIntent(t *testing.T) {
+	m := New("app-b", "dev", false, false, false)
+	m.Services.SQLInstances = map[string]ServiceInstance{"/": {}}
+	if err := m.ValidateIntent(); err == nil {
+		t.Fatal("a filesystem-root SQL instance key entered portable intent")
+	}
+	m.Services.SQLInstances = map[string]ServiceInstance{"primary": {}}
+	if err := m.ValidateIntent(); err != nil {
+		t.Fatalf("valid named SQL instance rejected: %v", err)
+	}
+	roundtrip, err := ParseCanonicalYAML(m.YAML())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := SQLInstanceNames(roundtrip)
+	if len(names) != 1 || names[0] != "primary" {
+		t.Fatalf("canonical intent changed SQL instance keys: %v", names)
+	}
+}

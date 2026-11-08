@@ -52,13 +52,19 @@ func TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
-	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	isolateRuntimeForTest(t, "compose-workload-backends")
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -177,13 +183,19 @@ func TestRepositoryComposeWorkloadOnlyLifecycleInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository workload-only lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect compose: %v", err)
 	}
-	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	isolateRuntimeForTest(t, "compose-workload-only")
 
 	root := t.TempDir()
 	old, err := os.Getwd()
@@ -322,13 +334,19 @@ func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository build convergence requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
 	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect runtime: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	compose, err := testruntime.Resolve(ctx)
 	if err != nil {
 		t.Fatalf("detect runtime: %v", err)
 	}
-	ensureRuntimeIntegrationTrustPlane(t, ctx)
+	isolateRuntimeForTest(t, "build-workload")
 
 	root := t.TempDir()
 	old, err := os.Getwd()

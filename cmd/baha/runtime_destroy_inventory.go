@@ -42,7 +42,10 @@ func collectTargetDestroyInventory(ctx context.Context, target deployment.Resolv
 
 func collectTargetDestroyInventoryWithRuntime(ctx context.Context, target deployment.ResolvedTarget, provider bhruntime.RuntimeProvider, sharedOnly bool) (targetDestroyInventory, error) {
 	plan := targetDestroyInventory{Target: target, Runtime: provider, Projects: map[string][]bhruntime.ProjectResource{}, Volumes: map[string][]bhruntime.ContainerVolume{}}
-	projects := map[string]bool{bhruntime.SharedProjectName(target.Name): true}
+	projects := map[string]bool{
+		bhruntime.SharedProjectName(target.Name):           true,
+		bhruntime.SharedProjectName(target.Name + "-core"): true,
+	}
 	if !sharedOnly {
 		containers, err := provider.ListRuntimeContainers(ctx)
 		if err != nil {

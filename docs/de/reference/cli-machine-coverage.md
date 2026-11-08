@@ -7,6 +7,9 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | Befehl | Einordnung | CLI JSON / strukturiertes Ergebnis | Operation / Tool | Begründung |
 | --- | --- | --- | --- | --- |
 | `baha` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha access` | Darstellung |  |  | Command group; invoke its supported subcommands. |
+| `baha access assign` | ausgeschlossen |  |  | Guided, human interactive profile assignment folds every decision into the single production policy authority (policy.Aggregate/policy.ResolveFinding); no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha access offboard` | ausgeschlossen |  |  | Guided, human interactive offboarding re-checks the current configuration at submit time and folds every decision into the single production policy authority; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha agent` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha agent describe` | Darstellung |  |  | Machine registry/discovery itself, rather than a product mutation. |
 | `baha app` | Darstellung |  |  | Command group; invoke its supported subcommands. |
@@ -92,6 +95,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha node disconnect` | semantisch | CLI -o json / typed MCP result | baseharbor.node.disconnect |  |
 | `baha node list` | semantisch | CLI -o json / typed MCP result | baseharbor.node.list |  |
 | `baha node status` | semantisch | CLI -o json / typed MCP result | baseharbor.node.status |  |
+| `baha onboard` | Darstellung |  |  | Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts. |
 | `baha open` | Darstellung |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantisch | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |

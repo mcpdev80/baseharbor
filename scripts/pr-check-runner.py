@@ -96,7 +96,7 @@ VALIDATIONS = {'go-unit-tests', 'go-vet', 'go-build',
                 'ci-executor-tests', 'receipt-execution-tests',
                 'inspect-gofmt', 'inspect-package-tests', 'inspect-vet',
                'inspect-consumer-tests', 'inspect-consumer-build',
-               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
+               'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'identity-provider-package-tests', 'resolver-gofmt', 'resolver-package-tests', 'resolver-vet',
                'resolver-consumer-build',
                 'pins-data-validation'} | set(WIZARD_TEST_FAMILIES)
 
@@ -106,6 +106,7 @@ CI_EXECUTION_SUITES = (
     'test_pr_runtime_request', 'test_pr_gate_dependencies',
     'test_pr_selected_runtime_matrix', 'test_ecosystem_release_pins',
     'test_targeted_gate_ref', 'test_artifact_gc', 'test_pre_release_check_plan',
+    'test_ci_v0427_gate_catalog',
     'test_pre_release_integration', 'test_consumer_source_pins',
     'test_frozen_candidate_promotion', 'test_ci_check_routes',
     'test_pr_runtime_source', 'test_pr_runner_isolation', 'test_pr_ci_fallback',
@@ -156,7 +157,7 @@ def execute_validation(check, repository):
     Go's -run exits zero when no tests match. Discover first and require at
     least one matching test before executing the family.
     """
-    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests'):
+    if check not in WIZARD_TEST_FAMILIES and check not in ('openbao-package-tests', 'logs-package-tests', 'receipt-execution-tests', 'ci-executor-tests', 'authority-package-tests', 'delivery-package-tests', 'deployment-package-tests', 'broker-package-tests', 'cli-package-tests', 'identity-provider-package-tests'):
         raise ValueError('unsupported executable validation')
     if check == 'authority-package-tests':
         # Some slices precede stableid; test every present authority package.
@@ -172,8 +173,31 @@ def execute_validation(check, repository):
         if not (Path(repository) / package).is_dir():
             raise RuntimeError(name + ' package missing')
         return go_package_tests(repository, ['./' + package], name.capitalize())
+    if check == 'identity-provider-package-tests':
+        return go_package_tests(
+            repository, ['./internal/identityprovider'], 'Identity', allow_skips=True,
+            required_tests=(
+                'TestKeycloakSingleComposeHasNoHAResources',
+                'TestKeycloakSinglePostgresStartsWithoutPrivilegedEntrypoint',
+            ),
+        )
     if check == 'cli-package-tests':
-        return go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True)
+        # The client-commands card requires these five actual PASS events, not
+        # merely a successful package exit or skipped test cases. Only enforce
+        # this suite for candidates that include the dedicated regression file.
+        client_fixture = Path(repository) / 'cmd/baha/client_commands_behaviors_test.go'
+        required = (
+            'TestClientCommandsTwoHomesSameDeploymentPrecedence',
+            'TestClientCommandsDenialOverTwoHomes',
+            'TestClientCommandsServerLossOverTwoHomes',
+            'TestClientCommandsStaleConsentOverTwoHomes',
+            'TestClientCommandsErrorParityOverTwoHomes',
+        ) if client_fixture.is_file() else ()
+        result = go_package_tests(repository, ['./cmd/baha'], 'CLI', allow_skips=True,
+                                  required_tests=required)
+        if required:
+            print(json.dumps({'check': check, 'required_pass': list(required)}))
+        return result
     if check == 'logs-package-tests':
         # Native opt-in scenarios run in their separately selected runtime jobs.
         return go_package_tests(repository, ['./internal/logs'], 'Logs', allow_skips=True)

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/orgconfig"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -43,6 +44,38 @@ var errRegistrySourceDenied = errors.New("registry: endpoint refused the resolve
 
 // errClassDenied aliases the denial hard-rejection identity.
 var errClassDenied = errRegistrySourceDenied
+
+// ErrRegistryUnverifiable is the distinct hard-rejection identity for an OCI
+// source image that could not be verified: the native tool ran but the reply
+// was empty, carried no immutable sha256 digest, or did not actually pin it.
+// An UNVERIFIABLE resolve must never qualify the mutable fallback behind the
+// development opt-in: falling back would pull a tag whose content was never
+// proven, exactly the mutable-reference risk this adapter exists to close.
+// Like the denial identity it also unwraps to the unavailable class so the
+// machine-error classification in main.go keeps its semantics; what excludes
+// it from the fallback is the identity check in isHardRejection, which is
+// listed FIRST so errors.Is can never short-circuit through the alias.
+var ErrRegistryUnverifiable = fmt.Errorf("%w: %w: the OCI source image could not be verified to an immutable digest", ErrRegistrySourceUnavailable, errRegistrySourceUnverifiable)
+
+// errRegistrySourceUnverifiable carries the bare, distinct unverifiable
+// identity node: it aliases NOTHING, so the node-identity walk in
+// isHardRejection can single it out of a chain that also contains the shared
+// unavailable alias. The sentinel above unwraps to it (and through it to the
+// unavailable class, exactly like the denial identity does).
+var errRegistrySourceUnverifiable = errors.New("registry: unverifiable OCI source image")
+
+// errClassUnverifiable aliases the unverifiable hard-rejection identity.
+var errClassUnverifiable = errRegistrySourceUnverifiable
+
+// ErrRegistryNativeToolMissing documents that the host lacks the native OCI
+// artifact tool (oras) needed to resolve a configured endpoint. It is a
+// fail-closed, actionable absence — not the generic "command failed" class:
+// the message names the missing binary and the remediation. It unwraps to
+// ErrRegistrySourceUnavailable so every existing class gate keeps its exact
+// semantics, and the identity itself is what the caller and the tests match
+// on. An oras that exists but fails for another reason (network, denial)
+// never carries this identity.
+var ErrRegistryNativeToolMissing = fmt.Errorf("%w: %w: the native OCI artifact tool 'oras' is not installed; install ORAS or provide the runtime image through the container runtime", ErrRegistrySourceUnavailable, exec.ErrNotFound)
 
 // DigestPattern matches an immutable sha256 OCI digest, the only identity this
 // adapter is willing to record as the resolved artifact version.
@@ -143,6 +176,13 @@ func (s RegistrySource) resolve(ctx context.Context, location, requested string)
 	ref := location + ":" + requested
 	out, runErr := s.run(ctx, "resolve", ref)
 	if runErr != nil {
+		if orgconfig.IsNativeToolNotFound(runErr) {
+			// The host simply lacks the oras binary. Report the actionable
+			// missing-tool identity instead of the generic redacted
+			// "oras: command failed"; it unwraps to the unavailable identity
+			// so every class gate behaves exactly as before.
+			return "", "", ErrRegistryNativeToolMissing
+		}
 		if isEndpointDenial(runErr) {
 			// Classify an endpoint refusal with both sentinels so the error
 			// still unwraps to ErrRegistrySourceUnavailable for callers while
@@ -154,18 +194,21 @@ func (s RegistrySource) resolve(ctx context.Context, location, requested string)
 		return "", "", fmt.Errorf("%w: resolve artifact endpoint %q: %v", ErrRegistrySourceUnavailable, location, runErr)
 	}
 	// The tool reports the resolved reference; extract repository and digest.
+	// Every failure below is an UNVERIFIABLE resolution: the image could not
+	// be proven to an immutable digest, so it carries the distinct hard-
+	// rejection identity and can never qualify the mutable fallback.
 	resolvedRef := extractReference(strings.TrimSpace(out))
 	if resolvedRef == "" {
-		return "", "", fmt.Errorf("%w: resolve returned empty output", ErrRegistrySourceUnavailable)
+		return "", "", fmt.Errorf("%w: resolve returned empty output", ErrRegistryUnverifiable)
 	}
 	digest = firstDigestToken(resolvedRef)
 	if digest == "" || !DigestPattern.MatchString(digest) {
-		return "", "", fmt.Errorf("%w: endpoint %q did not resolve to an immutable sha256 digest", ErrRegistrySourceUnavailable, location)
+		return "", "", fmt.Errorf("%w: endpoint %q did not resolve to an immutable sha256 digest", ErrRegistryUnverifiable, location)
 	}
 	repository = canonicalArtifactRepository(repositoryOf(resolvedRef))
 	// Defensive: the resolved reference must actually carry the pinned digest.
 	if !strings.HasSuffix(resolvedRef, "@"+digest) {
-		return "", "", fmt.Errorf("%w: resolved reference %q does not carry the pinned digest %q", ErrRegistrySourceUnavailable, resolvedRef, digest)
+		return "", "", fmt.Errorf("%w: resolved reference %q does not carry the pinned digest %q", ErrRegistryUnverifiable, resolvedRef, digest)
 	}
 	return repository, digest, nil
 }
@@ -188,6 +231,14 @@ func execArtifact(ctx context.Context, name string, args ...string) (string, err
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		// Preserve the executable-not-found identity through the redaction:
+		// only a plain non-zero exit becomes the generic class. Wrapping with
+		// %w keeps the raw stderr private while letting callers classify a
+		// missing tool (oras) with ErrRegistryNativeToolMissing.
+		var execErr *exec.Error
+		if errors.As(err, &execErr) && errors.Is(execErr.Err, exec.ErrNotFound) {
+			return "", fmt.Errorf("%w: %s: executable file not found in $PATH", err, name)
+		}
 		return "", exitStatusError(name, err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
@@ -235,11 +286,14 @@ func isEndpointDenial(err error) bool {
 var registrySourceExec ExecFunc = execArtifact
 
 // resolveUnavailable reports whether the resolve failure is of the merely-
-// unavailable class: tool failure, empty or unpinnable reply, malformed
-// reference, or unreachable host. A hard rejection (denial or public default)
-// is NEVER a merely-unavailable result, so its sentinel takes precedence even
+// unavailable class: the endpoint was unreachable or the tool failed to
+// reach/answer it. A hard rejection (denial, public default, or an
+// UNVERIFIABLE resolve — empty, unpinnable or digest-mismatched reply) is
+// NEVER a merely-unavailable result, so its sentinel takes precedence even
 // though it unwraps to the unavailable identity. This is the ONLY class the
-// development opt-in fallback may ever pull the mutable reference for.
+// development opt-in fallback may ever pull the mutable reference for; in
+// particular, an image that resolved but could not be verified to an
+// immutable digest never qualifies: fallback would pull unproven content.
 func resolveUnavailable(err error) bool {
 	if isHardRejection(err) {
 		return false
@@ -260,7 +314,36 @@ func resolveUnavailable(err error) bool {
 // with errors.Is — otherwise an alias of the unavailable identity (mutant or
 // misplacement) would hide itself.
 func isHardRejection(err error) bool {
-	return errors.Is(err, errClassPublicDefault) || errors.Is(err, errClassDenied)
+	// Node-identity walk: the chain is inspected node by node because the
+	// multi-sentinel wrappers put the plain unavailable identity FIRST
+	// (errors.Join layout), so errors.Is can never distinguish "carries a
+	// hard identity" from "is merely unavailable" — an unavailable-only
+	// chain answers true to errors.Is on any class alias it contains.
+	// Only the bare identity nodes carry the decision.
+	for node := err; node != nil; node = errors.Unwrap(node) {
+		switch node {
+		case error(errClassUnverifiable), error(errClassPublicDefault), error(errClassDenied):
+			return true
+		}
+		if joined, ok := node.(interface{ Unwrap() []error }); ok {
+			if joinHardRejection(joined) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// joinHardRejection walks one level of a multi-error (errors.Join layout, as
+// produced by the "%w: %w" wrappers) with the same node-identity rule.
+func joinHardRejection(join interface{ Unwrap() []error }) bool {
+	for _, child := range join.Unwrap() {
+		switch child {
+		case error(errClassUnverifiable), error(errClassPublicDefault), error(errClassDenied):
+			return true
+		}
+	}
+	return false
 }
 
 // resolveRegistrySourceImpl is the production resolveRegistrySource.
@@ -334,6 +417,14 @@ func splitReference(reference string) (repository, tag string) {
 func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProvider, location, requested string) error {
 	resolvedImage, err := resolveRegistrySource(ctx, location, requested)
 	if err != nil {
+		if errors.Is(err, ErrRegistryNativeToolMissing) {
+			// Fail closed with the actionable cause FIRST: a host without the
+			// oras binary gets the install instruction, never an opaque
+			// "oras: command failed", even when the mutable development
+			// opt-in is on. The opt-in below still governs the pull reference;
+			// this branch only names the resolve cause.
+			return fmt.Errorf("resolve development runtime image: %w", err)
+		}
 		if resolveUnavailable(err) && allowMutableDevelopmentRuntimeImage() {
 			// Explicit legacy development opt-in: pull the original tag
 			// reference. Class-gated: a public-default rejection and an
@@ -345,7 +436,13 @@ func pullResolvedRuntimeImage(ctx context.Context, compose bhruntime.RuntimeProv
 		}
 	}
 	if err := compose.PullImage(ctx, resolvedImage); err != nil {
-		return fmt.Errorf("pull resolved development runtime image: %w", err)
+		// Apply the same native-tool classifier as OCI Resolve, but never
+		// expose untrusted runtime/registry stderr through error wrapping.
+		classified := orgconfig.ClassifyNativeToolFailure("oras", err)
+		if errors.Is(classified, orgconfig.ErrNativeToolNotFound) {
+			return fmt.Errorf("pull resolved development runtime image: %w", ErrRegistryNativeToolMissing)
+		}
+		return fmt.Errorf("pull resolved development runtime image: %w", ErrRegistrySourceUnavailable)
 	}
 	return nil
 }
