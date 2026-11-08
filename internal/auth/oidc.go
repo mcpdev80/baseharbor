@@ -2,8 +2,12 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"net/http"
+	"os"
 	"sort"
 	"strings"
 
@@ -21,12 +25,28 @@ type OIDCVerifier struct {
 
 // NewOIDCVerifier discovers the OIDC provider and prepares verifiers for every
 // configured audience. Discovery must succeed before the verifier is usable.
+//
+// When cfg.TrustFile is set, discovery verifies the issuer against that CA on
+// top of the system trust pool (additive only); the system pool is never
+// replaced. This is what lets the CLI trust the managed CA a managed Core
+// bootstrapped without OS system-trust surgery.
 func NewOIDCVerifier(ctx context.Context, cfg Config) (*OIDCVerifier, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 
-	provider, err := oidc.NewProvider(ctx, strings.TrimSpace(cfg.Issuer))
+	providerCtx := ctx
+	if cfg.TrustFile != "" {
+		pool, err := trustPool(cfg.TrustFile)
+		if err != nil {
+			return nil, err
+		}
+		providerCtx = oidc.ClientContext(ctx, &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12},
+		}})
+	}
+
+	provider, err := oidc.NewProvider(providerCtx, strings.TrimSpace(cfg.Issuer))
 	if err != nil {
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
 	}
@@ -72,6 +92,25 @@ func extractClaimStringSet(values ...any) []string {
 	}
 	sort.Strings(roles)
 	return roles
+}
+
+// trustPool builds an additive RootCAs pool that always includes the system
+// trust anchors and optionally adds one managed CA certificate. Returning an
+// error (instead of falling back to a bare pool) keeps discovery fail-closed
+// when the supplied CA is malformed.
+func trustPool(trustFile string) (*x509.CertPool, error) {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	data, err := os.ReadFile(trustFile)
+	if err != nil {
+		return nil, fmt.Errorf("read operator OIDC trust file %s: %w", trustFile, err)
+	}
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, fmt.Errorf("operator OIDC trust file %s contains no valid PEM certificate", trustFile)
+	}
+	return pool, nil
 }
 
 func newOIDCVerifier(issuer string, audiences []string, makeVerifier func(string) *oidc.IDTokenVerifier) (*OIDCVerifier, error) {
