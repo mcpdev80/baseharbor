@@ -70,6 +70,11 @@ func TestMain(m *testing.M) {
 	// survives process death, and the NEXT package invocation adopts and
 	// destroys whatever the dead process left behind before provisioning
 	// anything new (adoptBootstrapLeftoverMarkerFromDeadProcess).
+	code := runRuntimeIntegrationTestMain(m)
+	os.Exit(code)
+}
+
+func runRuntimeIntegrationTestMain(m *testing.M) int {
 	if os.Getenv(bootstrapPackageTeardownEnv) == "1" && os.Getenv(bootstrapPackageTeardownMarkerEnv) != "" {
 		// Stage-one subprocess of the package-lifecycle regression: create
 		// the fixture's durable claim before m.Run, exactly like the cell
@@ -77,45 +82,10 @@ func TestMain(m *testing.M) {
 		if err := os.WriteFile(os.Getenv(bootstrapPackageTeardownMarkerEnv),
 			[]byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap fixture marker: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
-		os.Exit(runRuntimeIntegrationTestMainForFixture(m))
+		return m.Run()
 	}
-	code := runRuntimeIntegrationTestMain(m)
-	os.Exit(code)
-}
-
-// runRuntimeIntegrationTestMainForFixture is the stage-one variant: the
-// fixture owns its marker file, so neither adoption nor cell-marker creation
-// runs here; only the package-claim reset between the fixture's in-process
-// passes applies.
-func runRuntimeIntegrationTestMainForFixture(m *testing.M) int {
-	runtimeIntegrationTrustPlaneOnce = sync.Once{}
-	runtimeIntegrationTrustPlaneErr = nil
-	runtimeIntegrationTrustPlaneTargetName = ""
-	runtimeIntegrationTrustPlaneTarget = deployment.ResolvedTarget{}
-	runtimeIntegrationTrustPlaneProvider = nil
-	return m.Run()
-}
-
-var mRunPasses int
-
-// resetBootstrapPackageClaimForRerun clears the package-level provisioning
-// claim after the first m.Run() pass in one process, so a fixture's second
-// stage starts unclaimed. Production TestMain calls m.Run() exactly once;
-// there the reset is a no-op.
-func resetBootstrapPackageClaimForRerun() {
-	if mRunPasses++; mRunPasses > 1 {
-		runtimeIntegrationTrustPlaneOnce = sync.Once{}
-		runtimeIntegrationTrustPlaneErr = nil
-		runtimeIntegrationTrustPlaneTargetName = ""
-		runtimeIntegrationTrustPlaneTarget = deployment.ResolvedTarget{}
-		runtimeIntegrationTrustPlaneProvider = nil
-	}
-}
-
-func runRuntimeIntegrationTestMain(m *testing.M) int {
-	resetBootstrapPackageClaimForRerun()
 	adoptBootstrapLeftoverMarkerFromDeadProcess()
 	marker := setupBootstrapLeftoverMarker()
 	if marker != "" {
