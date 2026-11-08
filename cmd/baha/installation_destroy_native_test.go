@@ -160,6 +160,34 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		}
 		p, err := buildRuntimeDestroyImpact(ctx, inventories, preserved, true)
 		if err != nil {
+			// Diagnose the fail-closed Podman owner check without logging
+			// protected bytes, tokens, certificates or container environment.
+			if kind == "podman" {
+				root, rootErr := targetRuntimeStateRoot(r.Target)
+				if rootErr != nil {
+					t.Log("podman owner diagnostic: target runtime root unavailable")
+				} else {
+					coreOwner, ownerErr := bhruntime.ExistingControlPlaneRuntimeInventory(root, targetRuntimeProjectName(r.Target))
+					t.Logf("podman owner diagnostic: canonical_core=%t", ownerErr == nil)
+					if ownerErr == nil {
+						_, inspectErr := provider.InspectProjectResources(ctx, coreOwner.Files.Project, coreOwner.Resources)
+						probe := controlPlaneStopPlan{
+							Project: coreOwner.Files.Project, Resources: coreOwner.Resources,
+							Services: append(append([]string{}, coreOwner.SQLServices...), coreOwner.SecretsServices...),
+							inventory: coreOwner,
+						}
+						observeErr := observeControlPlaneStopWithProvider(ctx, provider, &probe)
+						_, complete, materialErr := observeOwnedProviderFiles("target/"+r.Target.Name, r.Target.Name, "core-runtime", root)
+						t.Logf("podman owner diagnostic: native_resources_ok=%t native_identity_ok=%t owner_material_ok=%t material_complete=%t observed_processes=%d",
+							inspectErr == nil, observeErr == nil, materialErr == nil, complete, len(probe.ObservedProcesses))
+						if observeErr != nil {
+							for _, process := range probe.ObservedProcesses {
+								t.Logf("podman identity diagnostic: service=%s name=%s", process.Service, process.Name)
+							}
+						}
+					}
+				}
+			}
 			t.Fatal(err)
 		}
 		return p
