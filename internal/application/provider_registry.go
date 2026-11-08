@@ -354,7 +354,7 @@ func registerReferenceProvidersAt(dataDir string, registry *capability.Registry,
 			}
 		}
 
-		if handled, err := preferredProviderResource(registry, m, resource); handled || err != nil {
+		if handled, err := preferredProviderResourceAt(dataDir, registry, m, resource); handled || err != nil {
 			if err != nil {
 				return err
 			}
@@ -432,6 +432,12 @@ func ReferenceProviderInstanceForRegistration(resource capability.Resource) (cap
 		return capability.ProviderInstance{}, fmt.Errorf("unsupported provider scope %q", placement.Scope)
 	}
 	return instance, nil
+}
+
+// ReferenceProviderInstance exposes the canonical native realization of one
+// capability resource for read-only choice surfaces. It publishes nothing.
+func ReferenceProviderInstance(m Manifest, resource capability.Resource) (capability.ProviderInstance, error) {
+	return referenceProviderInstance(m, resource)
 }
 
 func referenceProviderInstance(m Manifest, resource capability.Resource) (capability.ProviderInstance, error) {

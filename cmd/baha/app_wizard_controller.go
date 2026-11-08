@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -99,6 +100,44 @@ func appWizardKey(target string, req capability.Requirement) string {
 	return fmt.Sprintf("%d:%s|%d:%s|%d:%s", len(target), target, len(req.Kind), req.Kind, len(req.Name), req.Name)
 }
 
+// parseAppWizardPreferenceKey inverts the length-prefixed key format so the
+// controller can recover the exact requirement of an explicit selection.
+func parseAppWizardPreferenceKey(key string) (capability.Requirement, bool) {
+	var targetLen, kindLen, nameLen int
+	var target, kind, name string
+	n, err := fmt.Sscanf(key, "%d:", &targetLen)
+	if err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	prefix := fmt.Sprintf("%d:", targetLen)
+	rest := strings.TrimPrefix(key, prefix)
+	if rest == key {
+		return capability.Requirement{}, false
+	}
+	separator := "|"
+	target, rest, found := strings.Cut(rest, separator)
+	if !found || len(target) != targetLen {
+		return capability.Requirement{}, false
+	}
+	if n, err = fmt.Sscanf(rest, "%d:", &kindLen); err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	prefix = fmt.Sprintf("%d:", kindLen)
+	rest = strings.TrimPrefix(rest, prefix)
+	kind, rest, found = strings.Cut(rest, separator)
+	if !found || len(kind) != kindLen {
+		return capability.Requirement{}, false
+	}
+	if n, err = fmt.Sscanf(rest, "%d:", &nameLen); err != nil || n != 1 {
+		return capability.Requirement{}, false
+	}
+	name = rest[len(fmt.Sprintf("%d:", nameLen)):]
+	if len(name) != nameLen {
+		return capability.Requirement{}, false
+	}
+	return capability.Requirement{Kind: capability.Kind(kind), Name: name}, true
+}
+
 func (w appWizardController) copy() appWizardController {
 	next := w
 	next.selection.selected = make(map[capability.Kind]bool, len(w.selection.selected))
@@ -141,7 +180,18 @@ func (w appWizardController) intent() appWizardDecision {
 }
 
 func (w appWizardController) choicesForSelection() ([]appProviderChoice, error) {
-	choices, err := appProviderChoices(w.manifest, w.snapshot, w.selection)
+	explicit := make([]application.ProviderPreference, 0, len(w.preferences))
+	for key, id := range w.preferences {
+		if id == "" {
+			continue
+		}
+		requirement, ok := parseAppWizardPreferenceKey(key)
+		if !ok {
+			continue
+		}
+		explicit = append(explicit, application.ProviderPreference{Requirement: requirement, InstanceID: id})
+	}
+	choices, err := appProviderChoicesWithPreferences(w.manifest, w.snapshot, w.selection, explicit)
 	if err != nil {
 		return nil, err
 	}

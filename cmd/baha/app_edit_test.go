@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
 
@@ -46,7 +47,7 @@ func TestAppEditCommandHydratesExactSourceAndNoCancelWrites(t *testing.T) {
 			return nil, nil
 		},
 	}
-	session, err := appEditStart(context.Background(), "dev", source, application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()}, authorities)
+	session, err := appEditStart(context.Background(), "dev", source, application.ResolutionSnapshot{Target: "dev", Registry: capability.NewRegistry()}, authorities, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}

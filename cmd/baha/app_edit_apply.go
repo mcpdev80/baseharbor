@@ -162,6 +162,14 @@ func appEditDesiredFromDecision(loaded appEditLoaded, decision appWizardDecision
 		}
 		preferences = append(preferences, preference.ProviderPreference)
 	}
+	// Requirements that stay declared but leave the wizard decision (the
+	// compact checklist cannot express every kind) keep their stored explicit
+	// instance choice instead of silently reverting to automatic.
+	for _, carried := range appEditSelectedPreferences(manifest, decision.Requirements, loaded.Preferences) {
+		if !seen[carried.Requirement] {
+			preferences = append(preferences, carried)
+		}
+	}
 	if err := manifest.Validate(); err != nil {
 		return appEditDesired{}, err
 	}
@@ -197,8 +205,44 @@ func appEditEquivalent(loaded appEditLoaded, desired appEditDesired) bool {
 	if loaded.Target != desired.Target || loaded.ApplicationID != desired.ApplicationID {
 		return false
 	}
-	return reflect.DeepEqual(appEditSortedRequirements(loaded.Capabilities), appEditSortedRequirements(desired.Requirements)) &&
-		reflect.DeepEqual(appEditSortedPreferences(loaded.Preferences), appEditSortedPreferences(desired.Preferences))
+	if !reflect.DeepEqual(appEditSortedRequirements(loaded.Capabilities), appEditSortedRequirements(desired.Requirements)) {
+		return false
+	}
+	return appEditPreferencesEquivalent(loaded.Preferences, desired.Preferences)
+}
+
+// appEditPreferencesEquivalent compares stored and desired provider intent
+// per requirement. An explicit choice whose identity (instance and provider
+// kind) matches remains equivalent even when only one side carries the
+// provider-kind annotation: wizard-sourced intent names the instance, and the
+// canonical preference owner fills the kind from the live Target registry.
+// An automatic choice and a requirement the intent no longer selects are
+// never equivalent.
+func appEditPreferencesEquivalent(loaded, desired []application.ProviderPreference) bool {
+	byRequirement := make(map[capability.Requirement]application.ProviderPreference, len(loaded))
+	for _, preference := range loaded {
+		byRequirement[preference.Requirement] = preference
+	}
+	selected := make(map[capability.Requirement]bool, len(desired))
+	for _, preference := range desired {
+		if preference.InstanceID == "" {
+			return false
+		}
+		stored, found := byRequirement[preference.Requirement]
+		if !found || stored.InstanceID != preference.InstanceID {
+			return false
+		}
+		if stored.ProviderKind != "" && preference.ProviderKind != "" && stored.ProviderKind != preference.ProviderKind {
+			return false
+		}
+		selected[preference.Requirement] = true
+	}
+	for _, preference := range loaded {
+		if preference.InstanceID != "" && !selected[preference.Requirement] {
+			return false
+		}
+	}
+	return true
 }
 
 func appEditSortedRequirements(in []capability.Requirement) []capability.Requirement {
@@ -224,6 +268,38 @@ func appEditSortedPreferences(in []application.ProviderPreference) []application
 		return out[i].Requirement.Kind < out[j].Requirement.Kind
 	})
 	return out
+}
+
+// appEditSelectedPreferences carries the stored explicit instance choices of
+// requirements that are no longer part of the wizard-carried selection. The
+// compact checklist cannot express every requirement kind, so an edit that
+// changes unrelated needs must never silently rebind a still-desired
+// requirement (for example an HTTP exposure) from its stored explicit
+// instance to automatic.
+func appEditSelectedPreferences(original application.Manifest, decisionRequirements []capability.Requirement, stored []application.ProviderPreference) []application.ProviderPreference {
+	declared, err := application.PortableContractFromManifest(original)
+	if err != nil {
+		return nil
+	}
+	selected := map[capability.Requirement]bool{}
+	for _, requirement := range declared.Capabilities {
+		selected[requirement] = true
+	}
+	if declared.Secrets.Managed {
+		selected[capability.Requirement{Kind: capability.Secrets, Name: "default"}] = true
+	}
+	changed := map[capability.Requirement]bool{}
+	for _, requirement := range decisionRequirements {
+		changed[requirement] = true
+	}
+	var carried []application.ProviderPreference
+	for _, preference := range stored {
+		if preference.InstanceID == "" || !selected[preference.Requirement] || changed[preference.Requirement] {
+			continue
+		}
+		carried = append(carried, preference)
+	}
+	return carried
 }
 
 // appEditApplyConfirmed is the only Edit path that can reach mutation. The

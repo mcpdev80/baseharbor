@@ -147,7 +147,7 @@ func appEditRuntimeExecuteAuthority(store application.Store, args []string, reso
 			if err != nil {
 				return fmt.Errorf("read current Target preferences: %w", err)
 			}
-			changedPreferences := !reflect.DeepEqual(appEditSortedPreferences(previous), appEditSortedPreferences(desired.Preferences))
+			changedPreferences := !appEditPreferencesEquivalent(previous, desired.Preferences)
 			if changedPreferences {
 				if err := application.ValidateProviderPreferencesAt(locked.TargetStateRoot, desired.Manifest, desired.Preferences); err != nil {
 					return fmt.Errorf("validate confirmed Target preferences: %w", err)
@@ -265,11 +265,16 @@ func defaultAppEditAuthorities(store application.Store, args []string) appEditAu
 		if err != nil {
 			return nil, err
 		}
-		snapshot, _, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
+		snapshot, snapshotPreferences, err := applicationLifecycleSnapshot(resolved, observeApplicationProviderFactsFunc(ctx, resolved))
 		if err != nil {
 			return nil, err
 		}
-		return appProviderChoices(resolved.Manifest, snapshot, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}))
+		stored, err := application.DesiredProviderPreferencesAt(resolved.TargetStateRoot, resolved.Manifest)
+		if err != nil {
+			return nil, err
+		}
+		explicit := append(append([]application.ProviderPreference(nil), snapshotPreferences...), stored...)
+		return appProviderChoicesWithPreferences(resolved.Manifest, snapshot, newAppCapabilitySelection(appCapabilitySelectionInput{Current: requirements}), explicit)
 	}
 	planner := func(ctx context.Context, target string, requirements []capability.Requirement, preferences []application.ProviderPreference) (application.ProviderImpactPlan, error) {
 		resolved, err := reresolve(ctx, target)
