@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
@@ -100,7 +101,13 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotencyKey)
-	resp, err := c.client.Do(req)
+	// Machine HTTP may synchronously commit a long-running lifecycle before
+	// finishing its HTTP 202 response. The identity/discovery client uses a
+	// short timeout; only the authorized execute request uses the Core's
+	// 30-minute lifecycle budget plus a small transport margin.
+	executionClient := *c.client
+	executionClient.Timeout = 31 * time.Minute
+	resp, err := executionClient.Do(req)
 	if err != nil {
 		return machine.Execution{}, fmt.Errorf("remote machine execution result unknown; query the pinned Core before retrying with the same idempotency key: %w", err)
 	}
