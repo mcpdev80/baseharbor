@@ -148,7 +148,17 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := buildRuntimeDestroyImpact(ctx, inventories, nil, true)
+		preserved := []fullDestroyResult{}
+		for _, target := range targets {
+			item, recoveryErr := preservedTargetRecovery(ctx, target)
+			if recoveryErr != nil {
+				t.Fatal(recoveryErr)
+			}
+			if item.Status != "" {
+				preserved = append(preserved, item)
+			}
+		}
+		p, err := buildRuntimeDestroyImpact(ctx, inventories, preserved, true)
 		if err != nil {
 			t.Fatal(err)
 		}
