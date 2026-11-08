@@ -13,6 +13,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 )
@@ -32,6 +33,17 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	var out bytes.Buffer
 	if err := runWithIO(ctx, []string{"target", "create", "installation-retry-native", "--provider", kind, "--access", "installation-retry-native", "--reference", "local", "--default"}, &out, &out); err != nil {
 		t.Fatal(err)
+	}
+	// A native installation destroy acceptance must first create the real
+	// installation owner. A target registration and app init alone no longer
+	// establish this authority; relying on them caused the gate to fail before
+	// reaching the full destroy/retry scenario.
+	core, err := installCore(ctx, strings.NewReader(""), &out, runtimeUpOptions{
+		Yes: true, ControlPlaneOnly: true, MachineRole: coreinstallation.Development,
+		RecoveryFile: filepath.Join(t.TempDir(), "recovery.json"),
+	})
+	if err != nil || !core.Ready {
+		t.Fatalf("real Core bootstrap before installation destroy: ready=%t err=%v\\n%s", core.Ready, err, out.String())
 	}
 	t.Chdir(t.TempDir())
 	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
