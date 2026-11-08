@@ -84,10 +84,10 @@ func bindExplicitSelectionToConnection(
 	}
 	if resolved.AccessProvider != "" && resolved.AccessProvider != "local" {
 		if err := verifyRemoteManagementConnection(ctx, resolved.Name, resolved.RuntimeProvider); err != nil {
-            return machine.Wrap(machine.ErrorAuthenticationFailed, err,
-                "Configure a trusted external Core connection profile and authenticate with baha login; no local fallback is permitted.", false)
-        }
-        return nil
+			return machine.Wrap(machine.ErrorAuthenticationFailed, err,
+				"Configure a trusted external Core connection profile and authenticate with baha login; no local fallback is permitted.", false)
+		}
+		return nil
 	}
 	root, err := targetRuntimeStateRootByName(target)
 	if err != nil {
