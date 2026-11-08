@@ -126,7 +126,11 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 }
 
 func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTarget, operation string, args []string, out io.Writer) error {
-	name, environment, payload, err := remoteMutationArgs(operation, args)
+	filteredArgs, explicitKey, err := extractRemoteIdempotencyKey(args)
+	if err != nil {
+		return err
+	}
+	name, environment, payload, err := remoteMutationArgs(operation, filteredArgs)
 	if err != nil {
 		return err
 	}
@@ -135,16 +139,21 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
-	key := make([]byte, 16)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("generate remote mutation request identity: %w", err)
+	key := explicitKey
+	if key == "" {
+		randomKey := make([]byte, 16)
+		if _, err := rand.Read(randomKey); err != nil {
+			return fmt.Errorf("generate remote mutation request identity: %w", err)
+		}
+		key = hex.EncodeToString(randomKey)
 	}
 	selectors := machine.OperationContext{
 		Application: name, Environment: environment, Target: target.Name,
 	}
-	admitted, err := core.requestMachineExecution(ctx, operation, selectors, payload, hex.EncodeToString(key))
+	admitted, err := core.requestMachineExecution(ctx, operation, selectors, payload, key)
 	if err != nil {
-		return err
+		return fmt.Errorf("remote operation %s/%s request key %s (retain this key and use --idempotency-key for an exact retry): %w",
+			target.Name, name, key, err)
 	}
 	// The Core may still be converging when the admission is received.
 	// Poll only the read endpoint. NEVER issue another mutation on timeout.
@@ -221,4 +230,31 @@ func loadRemoteProviderConsent(path string) (*application.ProviderChangeConsent,
 		return nil, errors.New("provider consent must explicitly acknowledge both stages of one current plan")
 	}
 	return &consent, nil
+}
+
+func extractRemoteIdempotencyKey(args []string) ([]string, string, error) {
+	filtered := make([]string, 0, len(args))
+	var key string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--idempotency-key":
+			i++
+			if i >= len(args) || key != "" {
+				return nil, "", usageError("missing or duplicate idempotency key", "Pass --idempotency-key KEY exactly once.")
+			}
+			key = args[i]
+		case strings.HasPrefix(arg, "--idempotency-key="):
+			if key != "" {
+				return nil, "", usageError("duplicate idempotency key", "Pass one idempotency key only.")
+			}
+			key = strings.TrimPrefix(arg, "--idempotency-key=")
+		default:
+			filtered = append(filtered, arg)
+		}
+	}
+	if key != "" && !remoteExecutionIDPattern.MatchString(key) {
+		return nil, "", usageError("invalid idempotency key", "Use 1-128 ASCII letters, numbers, '_' or '-', starting with a letter or number.")
+	}
+	return filtered, key, nil
 }
