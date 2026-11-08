@@ -122,6 +122,7 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime strin
         Version string `json:"version"`
         InstallationID string `json:"installation_id"`
         IdentityIssuer string `json:"identity_issuer"`
+        OperatorIssuer string `json:"operator_issuer"`
         TenantID string `json:"tenant_id"`
     }
     decoded := json.NewDecoder(io.LimitReader(response.Body, 16*1024))
@@ -129,7 +130,7 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime strin
     if decoded.Decode(&identity) != nil || decoded.Decode(new(any)) != io.EOF ||
         identity.Version != managementInstallationVersion ||
         identity.InstallationID != profile.Core.InstallationID ||
-        identity.IdentityIssuer == "" || identity.IdentityIssuer != session.Issuer ||
+        identity.IdentityIssuer == "" || identity.OperatorIssuer != session.Issuer ||
         identity.TenantID != tenant {
         return errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
     }
