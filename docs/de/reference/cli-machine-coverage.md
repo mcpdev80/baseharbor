@@ -82,6 +82,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha list` | semantisch | CLI -o json / typed MCP result | baseharbor.app.list |  |
 | `baha login` | ausgeschlossen |  |  | Authorization Code/PKCE browser handoff establishes the operator's local protected session before semantic requests; operator.identity verifies that boundary without returning tokens. |
 | `baha logout` | ausgeschlossen |  |  | Removes a client-local protected login session; performed by the authentication client, outside server product actions. operator.identity reports the resulting boundary. |
+| `baha logs` | ausgeschlossen |  |  | Top-level shorthand for the excluded baha app logs: raw/follow runtime streams can include application secrets and require a streaming transport; status, doctor and evidence provide bounded secret-safe observation. |
 | `baha mcp` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha mcp serve` | Darstellung |  |  | Starts the local MCP transport; clients launch it before discovery. |
 | `baha new` | Darstellung |  |  | Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations. |
