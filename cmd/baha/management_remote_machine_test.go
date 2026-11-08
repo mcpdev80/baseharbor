@@ -82,10 +82,10 @@ func TestPinnedRemoteMachineExecutionKeepsAuthorityAndIdempotency(t *testing.T) 
 			w.WriteHeader(http.StatusAccepted)
 			_ = json.NewEncoder(w).Encode(machine.Execution{
 				ContractVersion: machine.ExecutionContractVersion,
-				ExecutionID: "execution-one",
-				OperationID: "status",
-				Context: request.Context,
-				State: machine.ExecutionPending,
+				ExecutionID:     "execution-one",
+				OperationID:     "status",
+				Context:         request.Context,
+				State:           machine.ExecutionPending,
 			})
 		default:
 			http.NotFound(w, r)
