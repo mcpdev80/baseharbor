@@ -21,6 +21,15 @@ func wrapWizardDisplay(message string, width int) string {
 		indent := "  "
 		current := ""
 		for _, word := range strings.Fields(line) {
+			for utf8.RuneCountInString(word) > width-len(indent) {
+				if current != "" {
+					output = append(output, current)
+					current = ""
+				}
+				runes := []rune(word)
+				output = append(output, indent+string(runes[:width-len(indent)]))
+				word = string(runes[width-len(indent):])
+			}
 			if current == "" {
 				current = word
 				continue
