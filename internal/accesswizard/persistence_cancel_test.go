@@ -126,10 +126,10 @@ func (s *fakeStore) Save(state orgconfig.ActiveState) error {
 	return nil
 }
 
-// TestResolveAssignmentPersistsThroughResolveLoad proves ResolveAssignment folds
-// the created profile back into the loaded active state, persists it through the
-// store, and reports it; a reload sees the change.
-func TestResolveAssignmentPersistsThroughResolveLoad(t *testing.T) {
+// TestResolveAssignmentPersistsThroughCommit proves ResolveAssignment folds the
+// created profile into the in-memory Manager and the batch caller commits it
+// through CommitActive; a reload observes the change.
+func TestResolveAssignmentPersistsThroughCommit(t *testing.T) {
 	m := orgconfig.NewManager("install-acme",
 		orgconfig.Profile{Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)},
 	)
@@ -138,15 +138,19 @@ func TestResolveAssignmentPersistsThroughResolveLoad(t *testing.T) {
 		loadCalls++
 		return validActiveState(), nil
 	}
-	decision, err := ResolveAssignment(m, resolve, "reader", "dev", "read", false)
+	decision, err := ResolveAssignment(m, "reader", "dev", "read", false)
 	if err != nil {
 		t.Fatalf("assignment should not error: %v", err)
 	}
 	if decision != policy.Allow {
 		t.Fatalf("assigned operation must allow, got %v", decision)
 	}
+	// The batch caller persists the in-memory change through the writer.
+	if err := CommitActive(m, resolve); err != nil {
+		t.Fatalf("commit must succeed: %v", err)
+	}
 	if loadCalls == 0 {
-		t.Fatalf("resolveLoad must run on a successful assignment: loads=%d", loadCalls)
+		t.Fatalf("commit must load the active state once: loads=%d", loadCalls)
 	}
 	// The manager now holds the created profile; a reload through the manager
 	// observes it.
@@ -161,55 +165,61 @@ func TestResolveAssignmentPersistsThroughResolveLoad(t *testing.T) {
 	}
 }
 
-// TestRevokePersistsThroughResolveLoad proves Revoke persists the removal through
-// the store.
-func TestRevokePersistsThroughResolveLoad(t *testing.T) {
+// TestRevokePersistsThroughCommit proves Revoke mutates the Manager and the
+// batch caller commits the removal through CommitActive.
+func TestRevokePersistsThroughCommit(t *testing.T) {
 	m := orgconfig.NewManager("install-acme",
 		orgconfig.Profile{Name: "alice", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)},
 	)
 	resolve := func() (orgconfig.ActiveState, error) {
 		return validActiveState(), nil
 	}
-	if err := RevokeAssignment(m, resolve, "alice", "dev", RemoveManagedUser); err != nil {
+	if err := RevokeAssignment(m, "alice", "dev", RemoveManagedUser); err != nil {
 		t.Fatalf("revoke alice/dev: %v", err)
 	}
 	if len(m.List()) == 1 {
 		t.Fatal("revocation must remove alice from the manager")
+	}
+	// Commit persists the post-removal owned set.
+	if err := CommitActive(m, resolve); err != nil {
+		t.Fatalf("commit must succeed: %v", err)
 	}
 	if _, err := m.Get("alice"); !errors.Is(err, orgconfig.ErrProfileNotFound) {
 		t.Fatal("alice must have been removed from the manager")
 	}
 }
 
-// TestResolveAssignmentPersistenceFailureFailsClosed proves that when the
-// active-state writer fails, the assignment fails closed rather than reporting
+// TestResolveAssignmentCommitPersistenceFailureFailsClosed proves that when the
+// active-state writer fails, the batch fails closed rather than reporting
 // success for a change that was not persisted.
-func TestResolveAssignmentPersistenceFailureFailsClosed(t *testing.T) {
+func TestResolveAssignmentCommitPersistenceFailureFailsClosed(t *testing.T) {
 	m := orgconfig.NewManager("install-acme",
 		orgconfig.Profile{Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)},
 	)
+	if _, err := ResolveAssignment(m, "reader", "dev", "read", false); err != nil {
+		t.Fatalf("assignment should validate: %v", err)
+	}
 	resolve := func() (orgconfig.ActiveState, error) {
 		return orgconfig.ActiveState{}, errors.New("disk full")
 	}
-	decision, err := ResolveAssignment(m, resolve, "reader", "dev", "read", false)
-	if err == nil {
+	if err := CommitActive(m, resolve); err == nil {
 		t.Fatal("persistence failure must fail closed")
-	}
-	if decision != policy.Deny {
-		t.Fatalf("persistence failure must deny, got %v", decision)
 	}
 }
 
-// TestRevokePersistenceFailureFailsClosed proves that when the active-state
+// TestRevokeCommitPersistenceFailureFailsClosed proves that when the active-state
 // writer fails, the revocation fails closed rather than reporting success.
-func TestRevokePersistenceFailureFailsClosed(t *testing.T) {
+func TestRevokeCommitPersistenceFailureFailsClosed(t *testing.T) {
 	m := orgconfig.NewManager("install-acme",
 		orgconfig.Profile{Name: "alice", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)},
 	)
+	if err := RevokeAssignment(m, "alice", "dev", RemoveManagedUser); err != nil {
+		t.Fatalf("revoke should validate: %v", err)
+	}
 	resolve := func() (orgconfig.ActiveState, error) {
 		return orgconfig.ActiveState{}, errors.New("disk full")
 	}
-	if err := RevokeAssignment(m, resolve, "alice", "dev", RemoveManagedUser); err == nil {
+	if err := CommitActive(m, resolve); err == nil {
 		t.Fatal("persistence failure must fail closed")
 	}
 }

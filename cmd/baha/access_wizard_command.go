@@ -55,17 +55,16 @@ func accessAssignCommand() *cli.Command {
 				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
 					return policy.Deny
 				}
-				// Finding #3: every reviewed selection must be processed, not just
-				// the first. The wizard collects one profile per person keyed by
-				// name, so each additional selected target updates the same profile
-				// (replace=true) and is persisted; the loop traverses every target
-				// rather than truncating to the first. Any Deny fails closed.
-				var last accesswizard.Review
+				// Batch semantics (finding #5): every reviewed selection for this
+				// route applies to the SAME (person, name) on its own Target under
+				// one durable, all-or-nothing transaction. Validate every selected
+				// Target against the production authority first — any Deny or error
+				// fails the whole batch — then persist the complete set once. One
+				// failed Target therefore leaves the store unchanged (nothing
+				// partial is written).
 				for _, sel := range review.Selected {
-					last = review
 					decision, err := accesswizard.ResolveAssignment(
 						authority,
-						resolveActive,
 						review.Person.Name,
 						sel.TargetName,
 						sel.Operation,
@@ -78,7 +77,11 @@ func accessAssignCommand() *cli.Command {
 						return policy.Deny
 					}
 				}
-				_ = last
+				// Every selection validated in memory; commit the whole set
+				// atomically. A write failure fails closed and persists nothing.
+				if err := accesswizard.CommitActive(authority, resolveActive); err != nil {
+					return policy.Deny
+				}
 				return policy.Allow
 			})
 			// The transaction either persisted via resolveActive or failed
@@ -123,22 +126,26 @@ func accessOffboardCommand() *cli.Command {
 				if err := validateAccessWizardPerson(filtered[0], review.Person.Name); err != nil {
 					return policy.Deny
 				}
-				// Finding #3: every reviewed selection must be processed, not just
-				// the first. Revoke on each selected target; any failure fails
-				// closed so no partial offboarding survives a rejected target.
+				// Batch semantics (finding #5): every reviewed selection for this
+				// route revokes the SAME (person, name) on its own Target. Validate
+				// every Target against the production authority first — any failure
+				// fails the whole batch — then remove the whole set once. A failed
+				// Target therefore leaves the store byte-identical (no partial
+				// offboarding survives a rejected Target).
 				for _, sel := range review.Selected {
-					// Only the managed-user revoke is implemented on this card
-					// (finding #4: the connection/device/grant kinds have no
-					// production route here and fail closed in the authority).
 					if err := accesswizard.RevokeAssignment(
 						authority,
-						resolveActive,
 						review.Person.Name,
 						sel.TargetName,
 						accesswizard.RemoveManagedUser,
 					); err != nil {
 						return policy.Deny
 					}
+				}
+				// Every selection validated in memory; commit the whole removal
+				// set atomically. A write failure fails closed and persists nothing.
+				if err := accesswizard.CommitActive(authority, resolveActive); err != nil {
+					return policy.Deny
 				}
 				return policy.Allow
 			})
@@ -169,11 +176,13 @@ func accessOffboardCommand() *cli.Command {
 //
 // resolveActive is threaded through the wizard so a confirmed assignment or
 // revocation persists through the same active-state writer the product uses.
-// It reloads the current active state, applies the (already validated) Manager
-// change, and writes it.
+// The batch caller applies every reviewed selection to the in-memory Manager,
+// then calls CommitActive once so the whole set persists atomically — a failed
+// selection writes nothing, leaving the store byte-identical.
 //
 // The returned state is the freshly loaded active configuration; the caller
-// may reload it after the transaction to assert the durable result.
+// uses it to build the Manager and to scope the wizard. The caller reloads active
+// state itself once through CommitActive after the batch validates.
 func loadAccessWizardAuthority(errOut io.Writer) (*orgconfig.Manager, map[string]string, orgconfig.ActiveState, error) {
 	state, err := orgconfig.LoadActive()
 	if err != nil {

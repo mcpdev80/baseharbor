@@ -51,11 +51,12 @@ func ResolveOperation(operation string) (orgconfig.Operation, error) {
 // own: an unassigned operation, an unknown/revoked profile, or a foreign tenant
 // all fold to a Deny, exactly as the accepted predecessor does.
 //
-// resolveLoad supplies the active configuration so the production path runs with
-// a real, owned profile rather than a hardcoded name. A nil manager yields a
-// Deny (fail closed): a Manager that was never built from an active state is not
-// a valid assignment surface.
-func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target, operation string, replace bool) (policy.Decision, error) {
+// ResolveAssignment mutates the in-memory Manager and validates the decision but
+// does NOT persist: the batch caller validates every selection first, then
+// commits the whole set atomically through CommitActive (so one failure leaves
+// nothing written). A nil manager yields a Deny (fail closed): a Manager that
+// was never built from an active state is not a valid assignment surface.
+func ResolveAssignment(manager *orgconfig.Manager, person, target, operation string, replace bool) (policy.Decision, error) {
 	if manager == nil {
 		return policy.Deny, ErrDenied
 	}
@@ -74,27 +75,11 @@ func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig
 		return policy.Deny, &wizardError{message: err.Error()}
 	}
 	adapter := policy.NewAdapter(manager)
-	finding, err := adapter.Resolve(profile.Name, manager.Owner, op)
+	finding, err := adapter.Resolve(profile.Name, profile.Target, manager.Owner, op)
 	if err != nil {
 		return policy.Deny, &wizardError{message: err.Error()}
 	}
-	decision := policy.ResolveFinding(nil, finding)
-	// A successful production decision must persist the change through the same
-	// active-state writer the product uses. The manager was mutated in memory by
-	// Create above; fold its owned profile set back into the loaded active state
-	// and write it. A persistence failure returns failure and leaves the command
-	// without a success result: an assignment that cannot be persisted is not
-	// applied.
-	if decision == policy.Allow && resolveLoad != nil {
-		state, loadErr := resolveLoad()
-		if loadErr != nil {
-			return policy.Deny, &wizardError{message: loadErr.Error()}
-		}
-		if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
-			return policy.Deny, &wizardError{message: persistErr.Error()}
-		}
-	}
-	return decision, nil
+	return policy.ResolveFinding(nil, finding), nil
 }
 
 // RevokeAssignment removes the requested person's profile on the reviewed Target
@@ -104,12 +89,12 @@ func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig
 // policy Adapter. The removal mutates only the owned profile set; it never
 // touches a foreign grant.
 //
-// resolveLoad supplies the active configuration so the removal persists through
-// the same active-state writer the product uses. The manager was mutated in
-// memory by Revoke above; fold its owned profile set back into the loaded active
-// state and write it. A persistence failure returns failure and leaves the
-// command without a success result: a revocation that cannot be persisted is not
-// applied.
+// RevokeAssignment mutates the in-memory Manager and validates the removal but
+// does NOT persist: the batch caller validates every selection first, then
+// commits the whole set atomically through CommitActive (so one failure leaves
+// nothing written). The manager indexes profiles by (name, target); the profile
+// on a different Target for the same Name is a distinct profile and is never
+// touched by this revoke.
 //
 // kind selects which removal the caller intends. Only the managed-user revoke is
 // implemented on this card: RevokeAssignment fails closed for every other
@@ -118,36 +103,20 @@ func ResolveAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig
 // be silently served by the first implemented kind. The full production routes
 // for those kinds belong on their own cards (managed-users, device-lifecycle);
 // this wizard only ever serves RemoveManagedUser and fails closed otherwise.
-func RevokeAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error), person, target string, kind RemoveKind) error {
+func RevokeAssignment(manager *orgconfig.Manager, person, target string, kind RemoveKind) error {
 	if kind == RemoveManagedUser {
 		if manager == nil || strings.TrimSpace(person) == "" || strings.TrimSpace(target) == "" {
 			return ErrDenied
 		}
-		// The CLI selects a Target; Manager.Revoke accepts a profile name.
-		// The current manager indexes profiles by person. Never use a selected
-		// Target as a profile key or remove a profile belonging to another Target.
-		profile, err := manager.Get(strings.TrimSpace(person))
-		if err != nil {
+		// The wizard resolves the profile on the exact reviewed (person, target):
+		// a profile the same Name holds on another Target is a distinct profile
+		// and must not be revoked. GetByKey fails closed when no owned profile
+		// exists on this Target.
+		if _, err := manager.GetByKey(strings.TrimSpace(person), strings.TrimSpace(target)); err != nil {
 			return &wizardError{message: err.Error()}
 		}
-		if profile.Name != person || profile.Target != target {
-			return ErrDenied
-		}
-		if _, err := manager.Revoke(profile.Name); err != nil {
+		if _, err := manager.Revoke(person, target); err != nil {
 			return &wizardError{message: err.Error()}
-		}
-		// Persist the removal through the same active-state writer the product uses.
-		// The manager holds the post-removal owned profile set; fold it back and
-		// write. A persistence failure returns failure so the command does not report
-		// success for a change that was not durably applied.
-		if resolveLoad != nil {
-			state, loadErr := resolveLoad()
-			if loadErr != nil {
-				return &wizardError{message: loadErr.Error()}
-			}
-			if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
-				return &wizardError{message: persistErr.Error()}
-			}
 		}
 		return nil
 	}
@@ -158,4 +127,23 @@ func RevokeAssignment(manager *orgconfig.Manager, resolveLoad func() (orgconfig.
 		message: fmt.Errorf("%w: %q removal is not implemented by this wizard; it is served on its own card", ErrDenied, kind).Error(),
 		wrap:    ErrDenied,
 	}
+}
+
+// CommitActive folds the Manager's owned profile set back into the loaded active
+// state and writes it through the production active-state writer. The batch CLI
+// caller calls it once after every selection has validated in memory, so the
+// whole set persists atomically: a write failure fails closed and nothing is
+// written, leaving the store byte-identical.
+func CommitActive(manager *orgconfig.Manager, resolveLoad func() (orgconfig.ActiveState, error)) error {
+	if resolveLoad == nil {
+		return fmt.Errorf("%w: no active-state writer bound", ErrDenied)
+	}
+	state, loadErr := resolveLoad()
+	if loadErr != nil {
+		return &wizardError{message: loadErr.Error()}
+	}
+	if persistErr := orgconfig.PersistActive(manager, state); persistErr != nil {
+		return &wizardError{message: persistErr.Error()}
+	}
+	return nil
 }

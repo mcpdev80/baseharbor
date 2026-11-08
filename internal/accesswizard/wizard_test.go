@@ -139,7 +139,7 @@ func TestResolveAssignmentAllowProvesProductionConnection(t *testing.T) {
 	if _, err := m.Create(orgconfig.Profile{Name: "readers", Target: "dev", Operations: orgconfig.CanonicalOperations(orgconfig.OpRead)}, false); err != nil {
 		t.Fatalf("create profile failed: %v", err)
 	}
-	decision, err := ResolveAssignment(m, nil, "reader", "dev", "read", false)
+	decision, err := ResolveAssignment(m, "reader", "dev", "read", false)
 	if err != nil {
 		t.Fatalf("assignment should not error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestResolveAssignmentAllowProvesProductionConnection(t *testing.T) {
 // is written through the single production authority.
 func TestResolveAssignmentUnknownOperationDeniesProvesNoSilentWiden(t *testing.T) {
 	m := orgconfig.NewManager("install-acme")
-	decision, err := ResolveAssignment(m, nil, "reader", "dev", "supersede", false)
+	decision, err := ResolveAssignment(m, "reader", "dev", "supersede", false)
 	if err == nil {
 		t.Fatal("unknown operation verb must fail closed")
 	}
@@ -166,7 +166,7 @@ func TestResolveAssignmentUnknownOperationDeniesProvesNoSilentWiden(t *testing.T
 // person name folds to Deny without writing a profile through the authority.
 func TestResolveAssignmentEmptyProfileNameDeniesProvesFailClosed(t *testing.T) {
 	m := orgconfig.NewManager("install-acme")
-	decision, err := ResolveAssignment(m, nil, "   ", "dev", "read", false)
+	decision, err := ResolveAssignment(m, "   ", "dev", "read", false)
 	if err == nil {
 		t.Fatal("empty profile name must fail closed")
 	}
@@ -178,7 +178,7 @@ func TestResolveAssignmentEmptyProfileNameDeniesProvesFailClosed(t *testing.T) {
 // TestResolveAssignmentNilManagerFailsClosed proves a nil manager (no active
 // organization) fails closed rather than granting.
 func TestResolveAssignmentNilManagerFailsClosed(t *testing.T) {
-	_, err := ResolveAssignment(nil, nil, "reader", "dev", "read", false)
+	_, err := ResolveAssignment(nil, "reader", "dev", "read", false)
 	if !errors.Is(err, ErrDenied) {
 		t.Fatalf("nil manager must fail closed on ErrDenied, got %v", err)
 	}

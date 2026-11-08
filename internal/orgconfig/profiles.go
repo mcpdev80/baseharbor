@@ -102,11 +102,16 @@ func validateOperation(op string) error {
 // for a selected set of Targets, operations, scopes and environments. It is
 // immutable once built; mutate through the Manager.
 type Profile struct {
-	// Name is the unique, managed identity of the profile. It must be a single
-	// non-empty name token and is the key the Manager indexes on.
+	// Name is the managed identity of the profile. It must be a single
+	// non-empty name token. A person may hold more than one profile, one per
+	// Target, so Name alone is not a unique key: the managed identity is the
+	// (Name, Target) pair (see ProfileKey).
 	Name string `json:"name" yaml:"name"`
 	// Target selects the managed Target this profile grants access to. It must
-	// be declared by the configuration (see Manager scope resolution).
+	// be declared by the configuration (see Manager scope resolution). It is
+	// part of the profile's managed identity; two profiles that share a Name on
+	// different Targets are distinct profiles, not a single profile overwritten
+	// on each Target.
 	Target string `json:"target" yaml:"target"`
 	// Environment selects the managed environment. It must be declared by the
 	// configuration or empty (defaults apply).
@@ -246,6 +251,15 @@ func canonicalProfileIdentity(p Profile) string {
 	return joinIdentity(parts)
 }
 
+// ProfileKey returns the managed identity of a profile: the (name,target) pair.
+// A person may hold one owned profile per declared Target, so the key is the
+// pair, not the name alone. Two profiles that share a Name on different Targets
+// have distinct keys and both survive in the manager; replacing one Target never
+// drops the other.
+func ProfileKey(name, target string) string {
+	return joinIdentity([]string{"name=" + strings.TrimSpace(name), "target=" + strings.TrimSpace(target)})
+}
+
 func joinIdentity(parts []string) string {
 	out := ""
 	for i, p := range parts {
@@ -275,8 +289,10 @@ func isSubsetOf(need, have []Operation) bool {
 
 // Manager owns the scoped team access profiles for one installation identity.
 // A profile is a named recommendation/assignment; the Manager creates, updates
-// and revokes them without ever conferring a right. The set is keyed by name;
-// a name must be unique within the owner's managed set.
+// and revokes them without ever conferring a right. The set is keyed by the
+// (name, target) pair: a person may hold one owned profile per declared Target,
+// so two profiles that share a Name on different Targets are distinct entries.
+// A create or update on one Target never drops a profile owned on another.
 type Manager struct {
 	// Owner is the installation identity this Manager assigns under. It is the
 	// authority a profile is bound to; a foreign installation's profiles are
@@ -308,7 +324,7 @@ func NewManager(owner string, profiles ...Profile) *Manager {
 		profiles: map[string]Profile{},
 	}
 	for _, p := range profiles {
-		m.profiles[strings.TrimSpace(p.Name)] = p
+		m.profiles[ProfileKey(p.Name, p.Target)] = p
 	}
 	return m
 }
@@ -319,6 +335,10 @@ func NewManager(owner string, profiles ...Profile) *Manager {
 // of Create/Update/Revoke on the load side: a Manager is only as good as the
 // profiles it was built from, so the adapter's production finding is empty
 // unless the caller feeds it the real owned set here.
+//
+// The stored map is keyed by (name, target); this returns the profiles as a
+// slice, so a person's distinct per-Target profiles all load rather than being
+// collapsed to one.
 //
 // An empty owner loads no profiles (an anonymous/unauthenticated caller has no
 // managed set); an active state with no persisted profiles loads an empty set,
@@ -423,7 +443,7 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 	p.Immutable = p.ImmutableIdentity()
 	p.Revision = 1 // freshly created definition starts at revision 1
 
-	existing, ok := m.profiles[p.Name]
+	existing, ok := m.profiles[ProfileKey(p.Name, p.Target)]
 	if ok {
 		if existing.Equal(p) {
 			return existing, nil
@@ -433,7 +453,7 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 		}
 	}
 	created := p
-	m.profiles[p.Name] = created
+	m.profiles[ProfileKey(p.Name, p.Target)] = created
 	return created, nil
 }
 
@@ -466,7 +486,7 @@ func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	if strings.TrimSpace(p.Name) == "" {
 		return Profile{}, ErrProfileNameEmpty
 	}
-	existing, ok := m.profiles[p.Name]
+	existing, ok := m.profiles[ProfileKey(p.Name, p.Target)]
 	if !ok {
 		return Profile{}, ErrProfileNotFound
 	}
@@ -498,18 +518,17 @@ func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	p.Revision = existing.Revision + 1
 	p.Immutable = p.ImmutableIdentity()
 	updated := p
-	m.profiles[p.Name] = updated
+	m.profiles[ProfileKey(p.Name, p.Target)] = updated
 	return updated, nil
 }
 
-// Revoke removes an owned profile by name. It fails closed if the name is
-// unknown. Revoking a name that resolves ambiguously (more than one managed
-// profile with that name) fails closed so the caller disambiguates: the set is
-// keyed by name so this can only happen across a corrupt in-memory state, which
-// must never be silently resolved.
-func (m *Manager) Revoke(name string) (Profile, error) {
-	key := strings.TrimSpace(name)
-	if key == "" {
+// Revoke removes an owned profile by its (name, target) identity. It fails
+// closed if the name is unknown, or no owned profile exists on the given Target
+// for that name. Revoking one (name, target) leaves a profile the same Name
+// holds on another Target untouched.
+func (m *Manager) Revoke(name, target string) (Profile, error) {
+	key := ProfileKey(name, target)
+	if strings.TrimSpace(key) == "" {
 		return Profile{}, ErrProfileNameEmpty
 	}
 	existing, ok := m.profiles[key]
@@ -520,15 +539,29 @@ func (m *Manager) Revoke(name string) (Profile, error) {
 	return existing, nil
 }
 
-// Get returns a profile by exact name. Unknown names fail closed on
-// ErrProfileNotFound.
-func (m *Manager) Get(name string) (Profile, error) {
-	key := strings.TrimSpace(name)
-	p, ok := m.profiles[key]
+// Get returns the profile on the given (name, target). Unknown names or a name
+// with no owned profile on the given Target fail closed on ErrProfileNotFound.
+// GetByKey is the authoritative single-profile lookup on the per-target model:
+// the same Name on a different Target is a distinct profile.
+func (m *Manager) GetByKey(name, target string) (Profile, error) {
+	p, ok := m.profiles[ProfileKey(name, target)]
 	if !ok {
 		return Profile{}, ErrProfileNotFound
 	}
 	return p, nil
+}
+
+// Get returns the profile with the given Name, on whichever declared Target
+// first owns it. Unknown Name, or a Name with no owned profile, fails closed on
+// ErrProfileNotFound. On the per-target model a Name may be held on more than
+// one Target, so callers that must address one Target use GetByKey.
+func (m *Manager) Get(name string) (Profile, error) {
+	for _, p := range m.profiles {
+		if strings.TrimSpace(p.Name) == strings.TrimSpace(name) {
+			return p, nil
+		}
+	}
+	return Profile{}, ErrProfileNotFound
 }
 
 // List returns the managed profiles in canonical order (by name).
@@ -558,11 +591,13 @@ func (m *Manager) SnapshotProfiles() []Profile {
 // ProfileMap converts a slice of profiles into the keyed map the active
 // configuration stores, the inverse of toProfileList. It lets the wizard fold a
 // Manager's owned set back into an ActiveState without coupling the wizard to
-// the map representation.
+// the map representation. The map is keyed by the (name, target) identity so a
+// person's distinct per-Target profiles survive persistence: keying by name
+// alone would collapse one person's profiles into the last written.
 func ProfileMap(list []Profile) map[string]Profile {
 	m := make(map[string]Profile, len(list))
 	for _, p := range list {
-		m[p.Name] = p
+		m[ProfileKey(p.Name, p.Target)] = p
 	}
 	return m
 }
