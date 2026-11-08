@@ -51,7 +51,7 @@ type remoteConnectionProfile struct {
 
 // Explicit opt-in only; no remote connection is inferred from a name, a
 // missing local installation or a cached last-known connection status.
-func verifyRemoteManagementConnection(ctx context.Context, target, runtime string) error {
+func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expectedTenant string) error {
 	path := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTION_PROFILE"))
 	if path == "" {
 		return errors.New("remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE)")
@@ -98,6 +98,9 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime strin
 			return errors.New("remote target is ambiguous or mismatched in connection profile")
 		}
 		tenant = item.TenantID
+	}
+	if expectedTenant == "" || tenant != expectedTenant {
+		return errors.New("remote target tenant does not match the configured target authority")
 	}
 	if tenant == "" {
 		return errors.New("remote target is not declared by the connection profile")
