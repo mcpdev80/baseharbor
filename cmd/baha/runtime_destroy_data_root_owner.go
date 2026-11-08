@@ -17,8 +17,10 @@ func populateFullDestroyTargetFromDataRoot(dataRoot, name string, targets map[st
 	} else if !errors.Is(err, os.ErrNotExist) {
 		targets[name] = deployment.ResolvedTarget{Name: name}
 		*results = append(*results, fullDestroyResult{
-			Status: "FAILED", Target: name, Resource: "installation-owner",
-			Detail: err.Error() + "; foreign or unverifiable owner preserved",
+			Status:     "FAILED",
+			Target:     name,
+			Resource:   "installation-owner",
+			Detail:     err.Error() + "; foreign or unverifiable owner preserved",
 			Diagnostic: "unverified-data-root-core",
 		})
 		return
