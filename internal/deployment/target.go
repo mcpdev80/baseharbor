@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
@@ -350,6 +351,38 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		AccessProvider:  access.Provider,
 		AccessReference: target.Access.Reference,
 		Scope:           target.Scope,
+	}, nil
+}
+
+// ResolveDataRootTarget discovers a Core-only Target using its immutable,
+// protected installation owner. It is never authority to adopt foreign state.
+func ResolveDataRootTarget(name string) (ResolvedTarget, error) {
+	root, err := TargetStateRoot(name)
+	if err != nil {
+		return ResolvedTarget{}, err
+	}
+	for _, dir := range []string{root, filepath.Join(root, "runtime")} {
+		info, err := os.Lstat(dir)
+		if err != nil {
+			return ResolvedTarget{}, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+			return ResolvedTarget{}, fmt.Errorf("untrusted Core runtime directory %s; refusing to discover ownership", dir)
+		}
+	}
+	state, err := coreinstallation.Load(filepath.Join(root, "runtime"))
+	if err != nil {
+		return ResolvedTarget{}, err
+	}
+	if state.Spec.Target != name || (state.Spec.Runtime != "docker" && state.Spec.Runtime != "podman") {
+		return ResolvedTarget{}, fmt.Errorf("Core installation owner does not match Target %q or supported native runtime", name)
+	}
+	return ResolvedTarget{
+		Name:            name,
+		RuntimeProvider: state.Spec.Runtime,
+		AccessProvider:  "local",
+		AccessReference: "local",
+		Scope:           "discovered",
 	}, nil
 }
 
