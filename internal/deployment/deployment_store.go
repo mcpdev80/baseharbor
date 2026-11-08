@@ -382,6 +382,18 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := validateRemoteProject(record); err != nil {
 		return err
 	}
+	// Name-identity uniqueness (0427-149): a brand-new deployment whose
+	// (target, application name, environment) triple is already claimed by a
+	// DIFFERENT deployment directory (different uuid) must fail closed with a
+	// clear, actionable message. This closes the silent duplicate-registration
+	// gap (BF-02) that otherwise poisons the registry and makes the duplicate
+	// unreachable via name-based edit/show/plan/destroy (BF-01/BF-05). An update
+	// to an already-persisted record of THIS identity is not a collision: the
+	// target directory already exists, so the guard below only scans for a
+	// foreign record when this identity is being written for the first time.
+	if err := refuseDuplicateApplicationName(record); err != nil {
+		return err
+	}
 	// Authoritative ownership is enforced on the production write seam before any
 	// directory is created or any record is written: a missing or foreign
 	// installation fails closed and nothing is mutated. A tenant target is
@@ -510,6 +522,58 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		return fmt.Errorf("replace deployment record: %w", err)
+	}
+	return nil
+}
+
+// ErrDuplicateApplicationName is returned when a brand-new deployment tries to
+// register the same (target, application name, environment) triple as a
+// DIFFERENT deployment directory. A record update of the SAME identity
+// (its target directory already exists) is not a duplicate and never trips this.
+var ErrDuplicateApplicationName = errors.New("duplicate application name")
+
+// refuseDuplicateApplicationName closes the silent duplicate-registration gap
+// (0427-149): before writing a deployment record for the first time, it scans
+// the target's deployment registry for any OTHER directory (different uuid)
+// that already claims the identical (target, application name, environment)
+// triple. A match fails closed with a message that names the existing
+// deployment so the operator has an actionable uuid/-e disambiguation instead
+// of a later opaque "application machine: denied" on edit. Updates to an
+// already-persisted record of the SAME identity are not collisions: the
+// deployment directory already exists, so a scan is unnecessary and an
+// idempotent retry of a failed apply must not re-refuse.
+func refuseDuplicateApplicationName(record DeploymentRecord) error {
+	existingDir, dirErr := DeploymentRoot(record.Identity)
+	if dirErr == nil {
+		if _, statErr := os.Stat(existingDir); statErr == nil {
+			// The deployment directory already exists: this is an update/re-save
+			// of the SAME identity, not a first registration. Never a collision.
+			return nil
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return fmt.Errorf("inspect deployment directory for duplicate name check: %w", statErr)
+		}
+	}
+	matches, err := ListDeployments(record.Identity.Target)
+	if err != nil {
+		return fmt.Errorf("check duplicate application name: %w", err)
+	}
+	for _, existing := range matches {
+		if existing.Identity.Application != record.Identity.Application ||
+			existing.Identity.Environment != record.Identity.Environment {
+			continue
+		}
+		// Same target/name/environment but a different deployment uuid: a true
+		// name duplicate that must never coexist in the registry.
+		if existing.Identity.DeploymentID != record.Identity.DeploymentID {
+			return &DeploymentRecordStateError{
+				Identity: record.Identity,
+				Kind:     "duplicate",
+				Err: fmt.Errorf("%w: %s/%s/%s already registered as deployment %s; reconcile the two identities (edit by uuid or -e/--environment) before registering another",
+					ErrDuplicateApplicationName,
+					existing.Identity.Target, existing.Identity.Application, existing.Identity.Environment,
+					existing.Identity.DeploymentID),
+			}
+		}
 	}
 	return nil
 }

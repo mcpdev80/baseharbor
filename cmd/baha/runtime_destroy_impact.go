@@ -95,7 +95,7 @@ func buildRuntimeDestroyImpact(ctx context.Context, plans []targetDestroyInvento
 				if err != nil {
 					return p, err
 				}
-				resolved, err := resolveRegisteredApplication(withTargetOverride(ctx, plan.Target.Name), plan.Target, root, record.Identity.Application, record.Identity.Environment, "destroy")
+				resolved, err := resolveRegisteredApplication(withTargetOverride(ctx, plan.Target.Name), plan.Target, root, record.Identity.Application, record.Identity.Environment, "destroy", "")
 				if err != nil {
 					return p, err
 				}
