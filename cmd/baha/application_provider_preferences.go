@@ -212,11 +212,6 @@ func appNewEditSelection(ctx context.Context, reader *bufio.Reader, out io.Write
 }
 
 func finishAppNewWizard(ctx context.Context, root string, result development.CreationResult, profile development.StackProfile, controller appWizardController, mode string, out, errOut io.Writer, release func()) error {
-	fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
-	fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
-	fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
-	fmt.Fprintln(out, "Validation: SATISFIED")
-
 	decision, ok := controller.Decision()
 	if !ok {
 		return errors.New("confirmed New decision missing")
@@ -224,7 +219,14 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	if err := persistAppNewPreferences(ctx, root, result.Manifest, decision.Preferences); err != nil {
 		return fmt.Errorf("project created but Target preference registration incomplete: %w", err)
 	}
+	printCreated := func() {
+		fmt.Fprintf(out, "Created %s\n", result.Manifest.Name)
+		fmt.Fprintf(out, "Location: %s\n", displayUserPath(root))
+		fmt.Fprintf(out, "Stack: %s\n", profile.Metadata.Name)
+		fmt.Fprintln(out, "Validation: SATISFIED")
+	}
 	if mode == "create-only" {
+		printCreated()
 		fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
 		return nil
 	}
@@ -257,6 +259,7 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 		}
 		return fmt.Errorf("New lifecycle incomplete after project creation: %w", errors.Join(err, presentErr))
 	}
+	printCreated()
 	fmt.Fprintln(out, "Lifecycle: VERIFIED")
 	return nil
 }
