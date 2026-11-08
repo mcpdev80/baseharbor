@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -93,5 +96,56 @@ func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
 				t.Fatalf("unverified remote operation produced output: %q", out.String())
 			}
 		})
+	}
+}
+
+func TestRemoteProviderConsentIsExplicitAndPlanBound(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "consent.json")
+	if err := os.WriteFile(path, []byte(`{"plan_id":"plan-current","first":true,"second":true,"delete_data":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, payload, err := remoteMutationArgs("destroy",
+		[]string{"demo", "--yes", "--provider-consent-file", path})
+	if err != nil {
+		t.Fatalf("approved remote plan rejected: %v", err)
+	}
+	var result struct {
+		ProviderChangeConsent struct {
+			PlanID string `json:"plan_id"`
+			First  bool   `json:"first"`
+			Second bool   `json:"second"`
+		} `json:"provider_change_consent"`
+	}
+	if err := json.Unmarshal(payload, &result); err != nil || result.ProviderChangeConsent.PlanID != "plan-current" ||
+		!result.ProviderChangeConsent.First || !result.ProviderChangeConsent.Second {
+		t.Fatalf("approved current plan was not delivered to Core: %s (%v)", payload, err)
+	}
+	if _, _, _, err := remoteMutationArgs("update",
+		[]string{"demo", "--no-backup", "--provider-consent-file", path}); err == nil {
+		t.Fatal("update accepted unsupported provider approval")
+	}
+	if err := os.WriteFile(path, []byte(`{"plan_id":"plan-current","first":true,"second":false}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := remoteMutationArgs("destroy",
+		[]string{"demo", "--yes", "--provider-consent-file", path}); err == nil {
+		t.Fatal("unconfirmed second approval was accepted")
+	}
+}
+
+func TestRemoteApplyCarriesExactCandidateDigest(t *testing.T) {
+	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--confirm-candidate", "digest-approved"})
+	if err != nil {
+		t.Fatalf("explicit remote candidate rejected: %v", err)
+	}
+	var input struct {
+		ConfirmCandidate string `json:"confirm_candidate"`
+	}
+	if err := json.Unmarshal(payload, &input); err != nil || input.ConfirmCandidate != "digest-approved" {
+		t.Fatalf("remote Core lost candidate confirmation: %s (%v)", payload, err)
+	}
+	if _, _, _, err := remoteMutationArgs("destroy",
+		[]string{"demo", "--yes", "--confirm-candidate", "digest-approved"}); err == nil {
+		t.Fatal("destroy accepted apply-only candidate confirmation")
 	}
 }
