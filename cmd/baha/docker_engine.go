@@ -142,7 +142,7 @@ func ensureTargetDockerBinding(ctx context.Context, target deployment.ResolvedTa
 }
 
 func inspectTargetDockerEngine(ctx context.Context, target deployment.ResolvedTarget) (*bhruntime.DockerEngineObservation, error) {
-	if target.AccessProvider != "" && target.AccessProvider != "local" {
+	if target.RuntimeProvider != "docker" || (target.AccessProvider != "" && target.AccessProvider != "local") {
 		return nil, nil
 	}
 	engine, err := bhruntime.ResolveDockerEngine(targetDockerEngineContext(ctx, target), engineBinaryName(target.RuntimeProvider))
