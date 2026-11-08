@@ -1,0 +1,169 @@
+package main
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/machine"
+)
+
+// remoteMutationArgs accepts only options carried by the existing Machine HTTP
+// contract. Unsupported local-only flags fail closed, rather than silently
+// changing their meaning when a user selects a remote Target.
+func remoteMutationArgs(operation string, args []string) (string, string, json.RawMessage, error) {
+	filtered, environment, err := extractApplicationEnvironment(args, "app "+operation)
+	if err != nil {
+		return "", "", nil, err
+	}
+	if environment == "" {
+		environment = "dev"
+	}
+	if environment != "dev" {
+		return "", "", nil, usageError("remote application mutations currently require the dev operator session",
+			"Use --environment dev; other environments require their own verified operator login.")
+	}
+	name := ""
+	approval, noBackup, fullReset, skipMemory := false, false, false, false
+	for _, arg := range filtered {
+		switch arg {
+		case "--yes":
+			approval = true
+		case "--no-backup":
+			noBackup = true
+		case "--full-reset":
+			fullReset = true
+		case "--skip-memory-preflight":
+			skipMemory = true
+		default:
+			if strings.HasPrefix(arg, "-") || name != "" {
+				return "", "", nil, usageError("unsupported remote application option",
+					"Use an explicit application NAME and only supported remote lifecycle flags.")
+			}
+			name = arg
+		}
+	}
+	if strings.TrimSpace(name) == "" {
+		return "", "", nil, usageError("remote application mutation needs an explicit NAME",
+			"Use the application name already registered on the remote Core; the workstation source is not uploaded implicitly.")
+	}
+	switch operation {
+	case "apply":
+		if approval || noBackup || fullReset {
+			return "", "", nil, usageError("remote apply received unsupported lifecycle flags",
+				"Use baha app apply NAME --environment dev [--skip-memory-preflight].")
+		}
+		payload, err := json.Marshal(struct {
+			Name                string `json:"name"`
+			Environment         string `json:"environment"`
+			SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty"`
+		}{name, environment, skipMemory})
+		return name, environment, payload, err
+	case "update":
+		if !noBackup || approval || fullReset || skipMemory {
+			return "", "", nil, usageError("remote update requires explicit --no-backup and no unsupported flags",
+				"Remote update with a backup requires a password file on the Core host; use baha app update NAME --environment dev --no-backup only if you accept that risk.")
+		}
+		payload, err := json.Marshal(struct {
+			Environment string `json:"environment"`
+			NoBackup    bool   `json:"no_backup"`
+		}{environment, true})
+		return name, environment, payload, err
+	case "destroy":
+		if !approval || noBackup || skipMemory {
+			return "", "", nil, usageError("remote destroy requires explicit --yes approval",
+				"Use baha app destroy NAME --environment dev --yes [--full-reset]; --yes never replaces provider impact or data-deletion consent.")
+		}
+		payload, err := json.Marshal(struct {
+			Name        string `json:"name"`
+			Environment string `json:"environment"`
+			Approval    bool   `json:"approval"`
+			FullReset   bool   `json:"full_reset,omitempty"`
+		}{name, environment, true, fullReset})
+		return name, environment, payload, err
+	default:
+		return "", "", nil, errors.New("unsupported remote lifecycle operation")
+	}
+}
+
+func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTarget, operation string, args []string, out io.Writer) error {
+	name, environment, payload, err := remoteMutationArgs(operation, args)
+	if err != nil {
+		return err
+	}
+	core, err := dialVerifiedRemoteCore(ctx, target.Name, target.RuntimeProvider, target.TenantID)
+	if err != nil {
+		return machine.Wrap(machine.ErrorAuthenticationFailed, err,
+			"Configure and authenticate the pinned remote Core connection for this Target.", false)
+	}
+	key := make([]byte, 16)
+	if _, err := rand.Read(key); err != nil {
+		return fmt.Errorf("generate remote mutation request identity: %w", err)
+	}
+	selectors := machine.OperationContext{
+		Application: name, Environment: environment, Target: target.Name,
+	}
+	admitted, err := core.requestMachineExecution(ctx, operation, selectors, payload, hex.EncodeToString(key))
+	if err != nil {
+		return err
+	}
+	// The Core may still be converging when the admission is received.
+	// Poll only the read endpoint. NEVER issue another mutation on timeout.
+	observationCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var result json.RawMessage
+	for {
+		result, err = core.confirmRemoteExecutionSuccess(observationCtx, admitted)
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "not terminal") {
+			return err
+		}
+		select {
+		case <-observationCtx.Done():
+			return fmt.Errorf("remote Core execution %s not completed; inspect the existing execution before retrying, do not submit another mutation: %w",
+				admitted.ExecutionID, observationCtx.Err())
+		case <-ticker.C:
+		}
+	}
+	if !json.Valid(result) {
+		return errors.New("remote Core lifecycle result is not valid JSON")
+	}
+	// Mutating execution results must remain scoped to the requested app.
+	// Apply/update return a status object, destroy returns a scoped retirement.
+	var observed struct {
+		Target      string `json:"target"`
+		Application string `json:"application"`
+		Environment string `json:"environment"`
+		Status      *struct {
+			Target      string `json:"target"`
+			Application string `json:"application"`
+			Environment string `json:"environment"`
+			Ready       bool   `json:"ready"`
+		} `json:"status,omitempty"`
+	}
+	if err := json.Unmarshal(result, &observed); err != nil {
+		return errors.New("remote Core lifecycle result cannot be decoded")
+	}
+	if observed.Target != target.Name || observed.Application != name || observed.Environment != environment {
+		return errors.New("remote Core lifecycle result does not match the requested application authority")
+	}
+	if operation == "apply" && (observed.Status == nil || !observed.Status.Ready) {
+		return errors.New("remote Core apply did not prove application readiness")
+	}
+	if observed.Status != nil && (observed.Status.Target != target.Name ||
+		observed.Status.Application != name || observed.Status.Environment != environment) {
+		return errors.New("remote Core lifecycle status belongs to another application authority")
+	}
+	return writeJSON(out, result)
+}
