@@ -207,6 +207,13 @@ func appDestroyCommand(store application.Store) *cli.Command {
 		Usage:   "baha app destroy [NAME] [--yes] [--full-reset]",
 		Long:    "Shows the current provider consequence plan before retiring owned workload/provider runtime and application routes. Default destruction retains persistent data, credentials, recovery material and the canonical deployment owner for reactivation with apply. Provider changes require two explicit acknowledgements of the current impact plan; --yes alone does not supply those acknowledgements. --full-reset selects the separate destructive cleanup path, including owned application state, while preserving authored source and repository Compose data.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "destroy", args, out)
+			}
 			filtered, format, err := parseReadOutputArgs(args, "app destroy")
 			if err != nil {
 				return err
