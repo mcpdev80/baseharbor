@@ -778,7 +778,7 @@ func TestAppNewWizardActualTerminalNoPreservesChecklistAndCancels(t *testing.T) 
 		for {
 			n, err := master.Read(buf)
 			rendered.Write(buf[:n])
-			marker := "P: optional provider preference"
+			marker := "p: provider preference"
 			if stage == 1 {
 				marker = question + " [Y/n]"
 			}

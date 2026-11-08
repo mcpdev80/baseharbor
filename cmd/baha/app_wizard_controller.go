@@ -331,10 +331,11 @@ func (w appWizardController) View() string {
 	case appWizardNeeds:
 		out := w.selection.View()
 		choices, err := w.choicesForSelection()
-		if err == nil {
-			for _, choice := range choices {
-				out += "\n" + choice.View()
-			}
+		if err != nil {
+			return out + "\nProvider choices unavailable: " + err.Error() + "\nNext: review the selected needs or cancel; no choice was confirmed."
+		}
+		for _, choice := range choices {
+			out += "\n" + wrapWizardDisplay(choice.View(), 100)
 		}
 		return out
 	case appWizardProvider:

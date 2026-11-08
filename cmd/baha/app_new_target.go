@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,16 @@ func resolveNewApplicationRoot(name, parent string) (string, error) {
 				return "", err
 			}
 			parent = abs
+		}
+		info, err := os.Stat(parent)
+		if errors.Is(err, os.ErrNotExist) {
+			return "", usageError("application parent directory does not exist: "+parent, "Create the parent directory explicitly and re-run 'baha app new --directory PATH'.")
+		}
+		if err != nil {
+			return "", fmt.Errorf("inspect application parent directory %s: %w", parent, err)
+		}
+		if !info.IsDir() {
+			return "", usageError("application parent is not a directory: "+parent, "Select an existing directory with --directory PATH.")
 		}
 		return filepath.Join(parent, name), nil
 	}

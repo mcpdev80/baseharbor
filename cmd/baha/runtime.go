@@ -21,6 +21,7 @@ import (
 var runtimeInput io.Reader = os.Stdin
 
 type runtimeUpOptions struct {
+	Name                string
 	MachineRole         coreinstallation.MachineRole
 	HA                  bool
 	Yes                 bool
@@ -64,27 +65,28 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 }
 
 func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
-	opts := runtimeUpOptions{}
+	var opts runtimeUpOptions
 	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--yes", "-y":
+		arg := args[i]
+		switch {
+		case arg == "--yes" || arg == "-y":
 			opts.Yes = true
-		case "--ha":
+		case arg == "--ha":
 			opts.HA = true
-		case "--control-plane-only":
+		case arg == "--control-plane-only":
 			opts.ControlPlaneOnly = true
-		case "--trust-host-ca":
+		case arg == "--trust-host-ca":
 			opts.TrustHostCA = true
-		case "--skip-memory-preflight":
+		case arg == "--skip-memory-preflight":
 			opts.SkipMemoryPreflight = true
-		case "--environment", "-e":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+		case arg == "--environment", arg == "-e":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--environment requires ENV", "Example: baha up -e dev")
 			}
 			i++
 			opts.Environment = strings.TrimSpace(args[i])
-		case "--postgres-port":
-			if i+1 >= len(args) {
+		case arg == "--postgres-port":
+			if len(args) <= i+1 {
 				return opts, usageError("--postgres-port requires PORT", "Example: baha up --postgres-port 15432")
 			}
 			i++
@@ -93,8 +95,8 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				return opts, err
 			}
 			opts.PostgresPort = port
-		case "--openbao-port":
-			if i+1 >= len(args) {
+		case arg == "--openbao-port":
+			if len(args) <= i+1 {
 				return opts, usageError("--openbao-port requires PORT", "Example: baha up --openbao-port 18200")
 			}
 			i++
@@ -103,41 +105,50 @@ func parseRuntimeUpOptions(args []string) (runtimeUpOptions, error) {
 				return opts, err
 			}
 			opts.OpenBaoPort = port
-		case "--recovery-file":
-			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+		case arg == "--recovery-file":
+			if len(args) <= i+1 || strings.HasPrefix(args[i+1], "-") {
 				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
 			}
 			i++
 			opts.RecoveryFile = args[i]
-		case "--confirm-candidate":
-			if i+1 >= len(args) {
+		case arg == "--confirm-candidate":
+			if len(args) <= i+1 {
 				return opts, usageError("--confirm-candidate requires DIGEST", "Re-run with --confirm-candidate <the printed confirm-hash>.")
 			}
 			i++
 			opts.CandidateConsent = args[i]
+		case strings.HasPrefix(arg, "--environment="):
+			opts.Environment = strings.TrimSpace(strings.TrimPrefix(arg, "--environment="))
+			if opts.Environment == "" {
+				return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
+			}
+		case strings.HasPrefix(arg, "--recovery-file="):
+			opts.RecoveryFile = strings.TrimPrefix(arg, "--recovery-file=")
+			if strings.TrimSpace(opts.RecoveryFile) == "" {
+				return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
+			}
+		case strings.HasPrefix(arg, "--confirm-candidate="):
+			opts.CandidateConsent = strings.TrimPrefix(arg, "--confirm-candidate=")
+		case strings.HasPrefix(arg, "-"):
+			return opts, unknownOptionUsage("baha up", arg, "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
 		default:
-			if strings.HasPrefix(args[i], "--environment=") {
-				opts.Environment = strings.TrimSpace(strings.TrimPrefix(args[i], "--environment="))
-				if opts.Environment == "" {
-					return opts, usageError("--environment requires ENV", "Example: baha up --environment dev")
-				}
-				continue
+			if opts.Name != "" {
+				return opts, usageError("baha up accepts at most one NAME", "Run 'baha up --help' for usage.")
 			}
-			if strings.HasPrefix(args[i], "--recovery-file=") {
-				opts.RecoveryFile = strings.TrimPrefix(args[i], "--recovery-file=")
-				if strings.TrimSpace(opts.RecoveryFile) == "" {
-					return opts, usageError("--recovery-file requires PATH", "Example: baha up --recovery-file /secure/openbao-recovery.json")
-				}
-				continue
-			}
-			if strings.HasPrefix(args[i], "--confirm-candidate=") {
-				opts.CandidateConsent = strings.TrimPrefix(args[i], "--confirm-candidate=")
-				continue
-			}
-			return opts, unknownOptionUsage("baha up", args[i], "--yes", "-y", "--control-plane-only", "--trust-host-ca", "--skip-memory-preflight", "--environment", "-e", "--postgres-port", "--openbao-port", "--recovery-file", "--confirm-candidate")
+			opts.Name = arg
 		}
 	}
 	return opts, nil
+}
+
+// upNameArgs converts an optional resolved NAME into the single-element args
+// slice that resolveApplication expects, or nil when no NAME was supplied so the
+// repository baseharbor.yaml is resolved by directory, exactly as 'app up'.
+func upNameArgs(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return []string{name}
 }
 
 func parsePort(value string) (int, error) {

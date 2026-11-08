@@ -84,7 +84,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha down` | Stop the current application, or the local control plane outside a repository | `baha down [options]` | [↗](core.md) |
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
-| `baha list` | List managed applications on the selected Target | `baha list [options]` | [↗](applications.md) |
+| `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |
 | `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME]` | [↗](security-trust.md) |
 | `baha logout` | Remove a local BaseHarbor operator session | `baha logout -e ENV\|--environment ENV` | [↗](security-trust.md) |
 | `baha logs` | Show application logs for the current workload | `baha logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
@@ -137,7 +137,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha trust status` | Show whether the managed-local CA is trusted by this host | `baha trust status` | [↗](security-trust.md) |
 | `baha trust uninstall` | Remove only BaseHarbor-owned host trust anchors | `baha trust uninstall [--yes] [--json]` | [↗](security-trust.md) |
 | `baha tui` | Open the interactive BaseHarbor status dashboard | `baha tui [--json]` | [↗](shell-ux.md) |
-| `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
+| `baha up` | Converge selected application intent, or explicitly start the management Core | `baha up [NAME] [-e ENV\|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]` | [↗](core.md) |
 | `baha update` | Safely inspect or update BaseHarbor itself | `baha update [--check] [--yes] [--channel stable\|rc \| --version VERSION] [--recover]` | [↗](core.md) |
 | `baha use` | Select and persist the active Core or deployment target | `baha use [TARGET]` | [↗](applications.md) |
 | `baha version` | Print build version | `baha version [-o json\|--output json\|--json]` | [↗](core.md) |
