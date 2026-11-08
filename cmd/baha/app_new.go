@@ -137,7 +137,7 @@ func appNewCommand() *cli.Command {
 // printAppNewNextSteps documents the explicit create-only contract for both
 // wizard and headless modes. Creation is not an init/apply receipt.
 func printAppNewNextSteps(out io.Writer, root string) {
-	fmt.Fprintf(out, "Next: cd %s\\n", displayUserPath(root))
+	fmt.Fprintf(out, "Next: cd %s\n", displayUserPath(root))
 	fmt.Fprintln(out, "Next: baha app init --quick")
 	fmt.Fprintln(out, "Next: baha up")
 }
