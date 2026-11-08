@@ -23,7 +23,7 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 		{"apply", []string{"demo", "--environment", "dev", "--skip-memory-preflight"}, true},
 		{"apply", []string{"demo", "--confirm-candidate", "bogus"}, false},
 		{"apply", []string{"demo", "--confirm-candidate", strings.Repeat("a", 64), "--confirm-candidate", strings.Repeat("b", 64)}, false},
-		{"apply", []string{"demo", "--confirm-candidate="+strings.Repeat("a", 64), "--confirm-candidate="+strings.Repeat("b", 64)}, false},
+		{"apply", []string{"demo", "--confirm-candidate=" + strings.Repeat("a", 64), "--confirm-candidate=" + strings.Repeat("b", 64)}, false},
 		{"apply", []string{}, false},
 		{"apply", []string{"demo", "--environment", "prod"}, false},
 		{"update", []string{"demo"}, false},
