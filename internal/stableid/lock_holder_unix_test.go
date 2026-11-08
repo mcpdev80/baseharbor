@@ -35,7 +35,7 @@ func TestLifecycleLockContentionExplainsPIDStateAndSafeRelease(t *testing.T) {
 		other()
 		t.Fatal("concurrent lock unexpectedly admitted")
 	}
-	for _, word := range []string{"pid="+strconv.Itoa(os.Getpid()), "state=alive", "ps -p", "never delete the lock file"} {
+	for _, word := range []string{"pid=" + strconv.Itoa(os.Getpid()), "state=alive", "ps -p", "never delete the lock file"} {
 		if !strings.Contains(err.Error(), word) {
 			t.Fatalf("missing safe holder diagnostic %q: %v", word, err)
 		}
