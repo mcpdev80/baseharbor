@@ -30,6 +30,7 @@ for path in \
   scripts/ci-node-contract-acceptance.sh \
   scripts/ci-native-installation-destroy.sh \
   cmd/baha/installation_destroy_native_test.go \
+  cmd/baha/runtime_destroy_all.go \
   cmd/baha/app_workload_integration_test.go \
   .github/workflows/docker-runtime-acceptance.yml \
   .github/workflows/podman-acceptance.yml; do
