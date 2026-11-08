@@ -53,6 +53,7 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 	ctx = withTargetOverride(ctx, input.Target)
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+	ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 	ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 	args := machineApplicationArgs(input.Name, input.Environment)
 
