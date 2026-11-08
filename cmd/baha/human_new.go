@@ -79,7 +79,11 @@ func runGuidedNewLocalTarget(ctx context.Context, out, errOut io.Writer) error {
 	if noInput(ctx) || !readerIsTerminal(appNewInput) {
 		return usageError("target creation requires choices in non-interactive mode", "Use 'baha new target NAME --runtime-provider docker --access local --reference local' or run interactively.")
 	}
-	reader := bufio.NewReader(appNewInput)
+	return guidedNewLocalTargetWithInput(ctx, appNewInput, out, errOut)
+}
+
+func guidedNewLocalTargetWithInput(ctx context.Context, in io.Reader, out, errOut io.Writer) error {
+	reader := bufio.NewReader(in)
 	steps := []struct{ label, defaultValue string }{
 		{"Target name", ""},
 		{"Runtime (docker/podman)", "docker"},
@@ -99,6 +103,10 @@ func runGuidedNewLocalTarget(ctx context.Context, out, errOut io.Writer) error {
 			fmt.Fprintf(out, "%s [%s] (back/cancel): ", current.label, fallback)
 		}
 		value, err := reader.ReadString('\n')
+		if errors.Is(err, io.EOF) {
+			fmt.Fprintln(out, "Cancelled. No changes were made.")
+			return nil
+		}
 		if err != nil {
 			return fmt.Errorf("read target configuration: %w", err)
 		}
@@ -147,6 +155,10 @@ func runGuidedNewLocalTarget(ctx context.Context, out, errOut io.Writer) error {
 	}
 	fmt.Fprintf(out, "Create target %s with %s runtime, local access and scope %s? [y/N]: ", answers[0], answers[1], answers[2])
 	confirm, err := reader.ReadString('\n')
+	if errors.Is(err, io.EOF) {
+		fmt.Fprintln(out, "Cancelled. No changes were made.")
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("read target creation confirmation: %w", err)
 	}
@@ -161,10 +173,18 @@ func guidedCreateProvider(ctx context.Context, out, errOut io.Writer) error {
 	if noInput(ctx) || !readerIsTerminal(appNewInput) {
 		return usageError("provider ID is required for non-interactive creation", "Run 'baha new provider namespace/name --path DIR' or launch 'baha new' in an interactive terminal.")
 	}
-	reader := bufio.NewReader(appNewInput)
+	return guidedCreateProviderWithInput(ctx, appNewInput, out, errOut)
+}
+
+func guidedCreateProviderWithInput(ctx context.Context, in io.Reader, out, errOut io.Writer) error {
+	reader := bufio.NewReader(in)
 	fmt.Fprintln(out, "Create a Capability Provider extension.")
 	fmt.Fprint(out, "Provider ID (namespace/name, or cancel): ")
 	id, err := reader.ReadString('\n')
+	if errors.Is(err, io.EOF) {
+		fmt.Fprintln(out, "Cancelled. No files created.")
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("read provider ID: %w", err)
 	}
@@ -178,6 +198,10 @@ func guidedCreateProvider(ctx context.Context, out, errOut io.Writer) error {
 	}
 	fmt.Fprintf(out, "Create the provider skeleton for %s in the default directory? [y/N]: ", id)
 	confirmation, err := reader.ReadString('\n')
+	if errors.Is(err, io.EOF) {
+		fmt.Fprintln(out, "Cancelled. No files created.")
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("read provider creation confirmation: %w", err)
 	}
