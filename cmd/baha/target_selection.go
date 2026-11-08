@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -81,7 +82,11 @@ func selectedTargetName(explicit, environment string, cfg deployment.Config) (st
 		}
 	}
 	if len(cfg.Targets) > 1 {
-		return "", machine.NewError(machine.ErrorConflict, "multiple deployment targets configured", "Run baha target list, then baha target activate NAME or provide --target NAME.", false)
+		choices := cfg.TargetNames()
+		sort.Strings(choices)
+		return "", machine.NewError(machine.ErrorConflict,
+			fmt.Sprintf("multiple deployment targets configured; choose one of: %s", strings.Join(choices, ", ")),
+			"Run baha target activate NAME, or set BASEHARBOR_TARGET=NAME for this command. Use baha target list to inspect available targets.", false)
 	}
 	return "", nil
 }
