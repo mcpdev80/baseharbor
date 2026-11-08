@@ -70,6 +70,23 @@ func bindExplicitSelectionToConnection(
 	// validates it as a genuine baseharbor Core installation (Owner ==
 	// "baseharbor"); an absent or foreign root fails closed before any
 	// verification work.
+	// A remote execution Target is not itself a local Core installation.
+	// Until a verified remote management-connection binder is configured,
+	// refuse selection rather than inventing a local Core or advising a
+	// developer-only workstation to install one.
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		return err
+	}
+	resolved, err := cfg.ResolveTarget(target, "")
+	if err != nil {
+		return err
+	}
+	if resolved.AccessProvider != "" && resolved.AccessProvider != "local" {
+		return machine.NewError(machine.ErrorCapabilityMissing,
+			fmt.Sprintf("target %q requires a verified remote Core management connection", target),
+			"Configure and verify the external Core management connection and its operator identity; no local Core will be installed or substituted.", false)
+	}
 	root, err := targetRuntimeStateRootByName(target)
 	if err != nil {
 		return err
