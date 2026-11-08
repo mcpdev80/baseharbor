@@ -23,6 +23,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -330,6 +331,33 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 		// identity/tenant middleware on the protected operator API.
 		operatorMux.Handle("/api/v1/workstations/bootstrap", handler)
 		operatorMux.Handle("/api/v1/workstations/enroll", handler)
+	}
+	// Installation identity is disclosed only after the standard OIDC and
+	// tenant middleware has authenticated the calling operator. The executor
+	// pins the Core at startup; request Targets cannot alter this value.
+	if identity, ok := machineExecutor.(interface {
+		ManagementInstallation(context.Context) (string, string, error)
+	}); ok {
+		operatorMux.HandleFunc("GET /api/v1/management/installation", func(w http.ResponseWriter, r *http.Request) {
+			tenant, valid := tenancy.FromContext(r.Context())
+			if !valid || tenant.TenantID == "" || tenant.ExternalIdentityID == "" {
+				http.Error(w, "operator tenant is unavailable", http.StatusForbidden)
+				return
+			}
+			installationID, issuer, err := identity.ManagementInstallation(r.Context())
+			if err != nil || installationID == "" || issuer == "" {
+				http.Error(w, "Core installation identity is unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Cache-Control", "no-store")
+			_ = json.NewEncoder(w).Encode(struct {
+				Version string `json:"version"`
+				InstallationID string `json:"installation_id"`
+				IdentityIssuer string `json:"identity_issuer"`
+				TenantID string `json:"tenant_id"`
+			}{Version: "baseharbor.management-installation/v1", InstallationID: installationID, IdentityIssuer: issuer, TenantID: tenant.TenantID})
+		})
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
 	if machineExecutor != nil {
