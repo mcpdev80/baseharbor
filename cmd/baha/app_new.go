@@ -128,10 +128,18 @@ func appNewCommand() *cli.Command {
 				fmt.Fprintf(out, "  %s\n", path)
 			}
 			fmt.Fprintln(out, "validation: SATISFIED (repository capability evidence; build not run)")
-			fmt.Fprintln(out, "next: review the generated source, then run 'baha up'")
+			printAppNewNextSteps(out, root)
 			return nil
 		},
 	}
+}
+
+// printAppNewNextSteps documents the explicit create-only contract for both
+// wizard and headless modes. Creation is not an init/apply receipt.
+func printAppNewNextSteps(out io.Writer, root string) {
+	fmt.Fprintf(out, "Next: cd %s\\n", displayUserPath(root))
+	fmt.Fprintln(out, "Next: baha app init --quick")
+	fmt.Fprintln(out, "Next: baha up")
 }
 
 func parseAppNewOptions(args []string) (appNewOptions, error) {
