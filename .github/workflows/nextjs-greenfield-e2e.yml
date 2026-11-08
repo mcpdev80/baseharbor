@@ -1,13 +1,23 @@
-name: "P0 Next.js generated runtime E2E"
+name: "Greenfield · Native Stack E2E"
 on:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate_ref:
+        description: Exact candidate commit SHA from pre-release source selection
+        required: true
+        type: string
+  push:
+    branches:
+      - "runtime-validation/greenfield/**"
 concurrency:
-  group: nextjs-greenfield-${{ github.event.pull_request.number || github.ref }}
+  group: greenfield-native-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
 jobs:
   nextjs-docker:
+    if: inputs.candidate_ref == ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -46,3 +56,79 @@ jobs:
           docker compose down --remove-orphans --volumes
           test -z "$(docker compose ps --all --quiet)"
           trap - EXIT
+
+  greenfield-native:
+    name: Greenfield · ${{ matrix.stack }} · ${{ matrix.runtime }}
+    runs-on: ${{ matrix.runtime == 'podman' && 'ubuntu-26.04' || 'ubuntu-latest' }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        runtime: [docker, podman]
+        stack: [go, nextjs, python, quarkus]
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      GOTOOLCHAIN: local
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_ref || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare verified rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Build exact candidate CLI
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ inputs.candidate_ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EXPECTED_SHA" ]; then
+            [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          fi
+          go build -o "$RUNNER_TEMP/baha" ./cmd/baha
+          git rev-parse HEAD | tee "$RUNNER_TEMP/greenfield-source-sha.txt"
+      - name: Greenfield source to actual app READY
+        shell: bash
+        env:
+          STACK: ${{ matrix.stack }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          set -euo pipefail
+          cli="$RUNNER_TEMP/baha"
+          target="gf-${RUNTIME}-${STACK}"
+          name="gf-${RUNTIME}-${STACK}"
+          export BASEHARBOR_TARGET="$target"
+          "$cli" target create "$target" --runtime-provider "$RUNTIME" --access local --access-provider local --reference local --default
+          "$cli" up --control-plane-only --yes
+          mkdir -p "$RUNNER_TEMP/greenfield-apps"
+          "$cli" app new "$name" --directory "$RUNNER_TEMP/greenfield-apps" --stack "$STACK" --http
+          cd "$RUNNER_TEMP/greenfield-apps/$name"
+          test -s baseharbor.yaml
+          python3 "$GITHUB_WORKSPACE/scripts/ci-greenfield-apply.py" "$cli"
+          "$cli" app status -o json | tee "$RUNNER_TEMP/greenfield-status.json"
+          "$cli" app doctor | tee "$RUNNER_TEMP/greenfield-doctor.txt"
+          python3 - "$RUNNER_TEMP/greenfield-status.json" "$target" "$name" <<'PY'
+          import json, sys
+          status = json.load(open(sys.argv[1], encoding='utf-8'))
+          target, application = sys.argv[2:4]
+          checks = status.get('checks', [])
+          workload = [check for check in checks if check.get('name') == 'workload']
+          workload_services = [check for check in checks if check.get('name', '').startswith('workload/')]
+          if (status.get('target') != target or status.get('application') != application or
+              status.get('state') != 'running' or status.get('ready') is not True or
+              len(workload) != 1 or workload[0].get('ok') is not True or
+              not workload_services or any(check.get('ok') is not True or check.get('state') == 'unverified'
+                                           for check in workload_services)):
+              raise SystemExit('Greenfield native app is not independently workload READY')
+          print('Native Greenfield workload READY: ' + application + ' / ' + target)
+          PY
+      - name: Cleanup only isolated CI runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"

@@ -85,7 +85,7 @@ Find exact options with `baha COMMAND --help`. [Global options](global-options.m
 | `baha init` | Initialize or adopt the application in the current repository | `baha init --agents [--json] \| baha init [--quick] [--json] [--input NAME=VALUE]... [--yes]` | [↗](applications.md) |
 | `baha inspect` | Inspect the current repository and its application requirements | `baha inspect [options]` | [↗](applications.md) |
 | `baha list` | List managed applications on the selected Target | `baha list [--all-targets]` | [↗](applications.md) |
-| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME]` | [↗](security-trust.md) |
+| `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME] [--ca FILE] [--auth-code-file FILE] [--no-browser]` | [↗](security-trust.md) |
 | `baha logout` | Remove a local BaseHarbor operator session | `baha logout -e ENV\|--environment ENV` | [↗](security-trust.md) |
 | `baha logs` | Show application logs for the current workload | `baha logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
 | `baha mcp` | Expose BaseHarbor semantic operations over MCP | `baha mcp serve` | [↗](automation-agents.md) |

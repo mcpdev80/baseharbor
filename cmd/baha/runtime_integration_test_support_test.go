@@ -88,6 +88,28 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 		}
 		return m.Run()
 	}
+	// Native SINGLE-default acceptance is a real runtime integration cell too.
+	// Establish the package-owned data root before claiming its cleanup marker;
+	// the shared bootstrap helper must not move that root after TestMain starts.
+	if os.Getenv("BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE") == "1" {
+		if err := os.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1"); err != nil {
+			fmt.Fprintf(os.Stderr, "native integration environment: %v\n", err)
+			return 1
+		}
+	}
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") == "1" &&
+		strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")) == "" &&
+		strings.TrimSpace(os.Getenv("XDG_DATA_HOME")) == "" {
+		root, err := os.MkdirTemp("", "baseharbor-ci-data-")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "native integration data root: %v\n", err)
+			return 1
+		}
+		if err := os.Setenv("XDG_DATA_HOME", root); err != nil {
+			fmt.Fprintf(os.Stderr, "native integration data root: %v\n", err)
+			return 1
+		}
+	}
 	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr != nil {
 		// A failed orphan adoption is a real failure: the orphan could not
 		// be destroyed, so the durable claim survives and the next run must
@@ -411,10 +433,16 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
-		dataHome, err := os.MkdirTemp("", "baseharbor-ci-data-")
-		if err != nil {
-			runtimeIntegrationTrustPlaneErr = err
-			return
+		// Reuse the package-owned root whose durable cleanup marker was claimed
+		// by TestMain. Changing it here would orphan that marker and fail closed.
+		dataHome := strings.TrimSpace(os.Getenv("XDG_DATA_HOME"))
+		if dataHome == "" {
+			var err error
+			dataHome, err = os.MkdirTemp("", "baseharbor-ci-data-")
+			if err != nil {
+				runtimeIntegrationTrustPlaneErr = err
+				return
+			}
 		}
 		if err := os.Setenv("XDG_CONFIG_HOME", configHome); err != nil {
 			runtimeIntegrationTrustPlaneErr = err

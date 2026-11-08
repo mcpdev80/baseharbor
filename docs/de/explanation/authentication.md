@@ -22,6 +22,44 @@ RBAC + application ownership + protected handler
 
 Managed Keycloak oder externes OIDC können diese Grenze bereitstellen. Application- und Operator-Clients, Scopes und logische Identitätsbereiche bleiben getrennt. Login erweitert keine Policy-Berechtigungen.
 
+## Vertrauenswürdigkeit der Managed-CA ohne OS-Eingriffe
+
+Der Managed-Operator-Issuer wird von Keycloak hinter der installationseigenen Managed-CA
+(„BaseHarbor Managed Service CA") bedient, die im Trust-Pool des Betriebssystems nicht
+installiert ist. Die CLI verlässt sich daher nicht allein auf den OS-Trust-Pool: Sie vertraut
+die Managed-CA, die sie beim Core-Bootstrap erstellt hat, zusätzlich zum System-Pool an (additiv;
+der System-Pool wird niemals ersetzt).
+
+Die Vertrauenswürdigkeit wird in dieser Reihenfolge aufgelöst:
+
+1. `--ca FILE` auf dem Login-Befehl.
+2. `BASEHARBOR_OPERATOR_OIDC_CA_FILE` (zustandsübergreifender Alias).
+3. Die Standarddatei im Zustandsverzeichnis `trust/managed-operator-ca.pem`, die beim Core-Bootstrap geschrieben wird.
+
+Löst keine dieser Optionen ein Zertifikat auf, schläf der Discovery fehl und nennt den Korrekturpfad
+(Installiere die Managed-CA oderweise mit `--ca` bzw. `BASEHARBOR_OPERATOR_OIDC_CA_FILE` darauf).
+
+## Headless PKCE auf Hosts ohne Browser
+
+Auf SSH-/PTY-less-Hosts erfordert der Operator-Login keinen echten Browser. Der Loopback-Callback
+bindet weiter (fester Port bei `BASEHARBOR_OPERATOR_OIDC_CALLBACK_PORT`), und die CLI gibt die
+Autorisierungs-URL aus; der Autorisierungscode wird headless abgeschlossen:
+
+```sh
+# 1. Start the login; it prints the authorization URL and waits for the code.
+baha login -e dev --init-tenant --auth-code-file /tmp/baha-auth-code --no-browser
+
+# 2. In another shell, open the printed URL in a real browser, authenticate, and copy the
+#    returned authorization code into the file.
+printf 'MjM0UTflfn...authorization-code...' > /tmp/baha-auth-code
+```
+
+`BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE` ist der zustandsübergreifende Alias von `--auth-code-file`,
+und `BASEHARBOR_NO_BROWSER=1` ist der Alias von `--no-browser`. Der Callback-Port wird mit
+`BASEHARBOR_OPERATOR_OIDC_CALLBACK_PORT` Ende-Ende eingehalten, sodass die ausgegebene Loopback-URL
+dirett ansteuerbar ist. Dieselbe headless-Grenze gilt für `baha node add`, das die Operator-Sitzung
+dieselbe abgeschlossen hat, bevor es einen Remote-Node enrollt.
+
 ## Erster Operator und Tenant
 
 Der explizite Befehl `baha login -e dev --init-tenant` initialisiert nach verifiziertem PKCE-Login den Tenant `default` und die `editor`-Membership des ersten Operators. Er setzt lokalen Core-Besitz, Core-Readiness, gültige OIDC-Identität und eine geschützte PostgreSQL-TLS-Verbindung voraus; Wiederholung durch denselben Owner bleibt idempotent. Fremde Übernahmen und Remote-Targets werden abgewiesen. Die [vollständige Einrichtung einschließlich Connector und Issuer/Audience-Abgleich](../cli/security-trust.md) ist gesondert dokumentiert. Umsetzung in Core-PR #1437, native Abnahme offen.
