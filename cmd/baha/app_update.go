@@ -48,6 +48,13 @@ func appUpdateCommand(store application.Store) *cli.Command {
 		Usage:   "baha app update [--check] [--backup-password-file FILE | --no-backup]",
 		Long:    "Fetches only the configured upstream remote and verifies repository, branch, revision and working-tree state before any mutation. --check reports the update plan without changing source. For applications with durable managed PostgreSQL or secrets, mutation requires either an encrypted pre-update recovery point through --backup-password-file FILE or an explicit --no-backup acknowledgement. The source update is strict fast-forward-only to the exact fetched target revision, followed by the normal application apply/readiness lifecycle. BaseHarbor never resets, stashes, discards local changes, switches branches, merges divergent history or rebases implicitly.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "update", args, out)
+			}
 			return executeApplicationUpdateLifecycle(ctx, store, args, out, errOut)
 		},
 	}
