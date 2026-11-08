@@ -89,7 +89,7 @@ func observeControlPlaneStopWithProvider(ctx context.Context, provider bhruntime
 				// so the pre-existing canonical-owner contract is preserved.
 				plannedNames = []string{p.Project + "-" + container.Service + "-1"}
 			}
-			if !bhruntime.ContainerNameInPlannedSet(provider.Kind(), container, p.Project, plannedNames) {
+			if !coreStopContainerNameIsPlanned(provider.Kind(), container, p.Project, plannedNames) {
 				return runtimeMutationOwnerError()
 			}
 			image, imageErr := provider.ProjectServiceImageIdentity(ctx, p.Project, container.Service)
@@ -107,4 +107,18 @@ func observeControlPlaneStopWithProvider(ctx context.Context, provider bhruntime
 	// native error/inspect output through a consequence result.
 	p.nativeRevision = runtimeMutationRevision(images)
 	return nil
+}
+
+
+// coreStopContainerNameIsPlanned accepts the exact rendered Compose name, or
+// the already-established first-party Podman Quadlet name for a single default
+// service. Both alternatives require exact project/service identity. A pinned
+// container_name or a scaled Compose service cannot use the Quadlet fallback.
+func coreStopContainerNameIsPlanned(kind bhruntime.ProviderKind, container bhruntime.RuntimeContainer, project string, planned []string) bool {
+	if bhruntime.ContainerNameInPlannedSet(kind, container, project, planned) {
+		return true
+	}
+	defaultOrdinal := project + "-" + container.Service + "-1"
+	return kind == bhruntime.ProviderPodman && len(planned) == 1 && planned[0] == defaultOrdinal &&
+		bhruntime.ContainerMatchesProjectResource(kind, container, project, bhruntime.ProjectResource{Kind: "container", Name: defaultOrdinal})
 }
