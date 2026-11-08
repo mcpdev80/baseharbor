@@ -1,6 +1,9 @@
 package orgconfig
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // testScope is a scope authority that declares two Targets and one environment,
 // used to prove scope validation against an owned authority.
@@ -49,7 +52,7 @@ func TestCreateThenRevoke(t *testing.T) {
 	if m.Count() != 1 {
 		t.Fatalf("expected 1 profile, got %d", m.Count())
 	}
-	if _, err := m.Revoke("platform-admins"); err != nil {
+	if _, err := m.Revoke("platform-admins", "dev"); err != nil {
 		t.Fatalf("revoke failed: %v", err)
 	}
 	if m.Count() != 0 {
@@ -130,7 +133,7 @@ func TestUpdateUnknownFailsClosed(t *testing.T) {
 // TestRevokeUnknownFailsClosed proves revoking an unknown name fails closed.
 func TestRevokeUnknownFailsClosed(t *testing.T) {
 	m := NewManager("install-acme")
-	if _, err := m.Revoke("ghost"); err != ErrProfileNotFound {
+	if _, err := m.Revoke("ghost", "dev"); err != ErrProfileNotFound {
 		t.Fatalf("expected ErrProfileNotFound on revoke of unknown, got %v", err)
 	}
 }
@@ -200,7 +203,7 @@ func TestForeignInstallationProfilesArePreserved(t *testing.T) {
 	if _, err := ownerM.Get("theirs"); err != ErrProfileNotFound {
 		t.Fatalf("owner enumerated a foreign profile name: %v", err)
 	}
-	if _, err := ownerM.Revoke("theirs"); err != ErrProfileNotFound {
+	if _, err := ownerM.Revoke("theirs", "dev"); err != ErrProfileNotFound {
 		t.Fatalf("owner tried to revoke a foreign profile: %v", err)
 	}
 	if foreignM.Count() != 1 || ownerM.Count() != 1 {
@@ -213,18 +216,38 @@ func TestForeignInstallationProfilesArePreserved(t *testing.T) {
 	}
 }
 
-// TestAmbiguousNameFailsClosed proves that an ambiguous name (two managed
-// profiles collapsing to the same key) is never silently resolved: the set is
-// keyed by name so this cannot happen, and the test pins that invariant.
-func TestAmbiguousNameFailsClosed(t *testing.T) {
+// TestDistinctTargetsAreDistinctProfiles proves a name held on two declared
+// Targets is one profile per Target, not a single profile: the per-target model
+// keys by (name, target), so both survive and neither overwrites the other.
+func TestDistinctTargetsAreDistinctProfiles(t *testing.T) {
 	m := NewManager("install-acme")
 	if _, err := m.Create(Profile{Name: "dup", Target: "dev", Operations: CanonicalOperations(OpRead)}, false); err != nil {
 		t.Fatalf("first create failed: %v", err)
 	}
-	// A second create with the same name but different def is a conflict, never
-	// an ambiguous overwrite.
-	if _, err := m.Create(Profile{Name: "dup", Target: "prod", Operations: CanonicalOperations(OpRead)}, false); err != ErrDuplicateProfile {
-		t.Fatalf("expected ErrDuplicateProfile for conflicting same-name, got %v", err)
+	// A second create with the same Name on a different Target is a distinct
+	// profile, so it succeeds — the earlier per-Name duplicate was the defect.
+	if _, err := m.Create(Profile{Name: "dup", Target: "prod", Operations: CanonicalOperations(OpRead)}, false); err != nil {
+		t.Fatalf("second create on a different target must not collide: %v", err)
+	}
+	if m.Count() != 2 {
+		t.Fatalf("expected 2 distinct (name,target) profiles, got %d", m.Count())
+	}
+	// GetByKey resolves each Target to its own profile.
+	if dev, err := m.GetByKey("dup", "dev"); err != nil || dev.Target != "dev" {
+		t.Fatalf("dev profile must resolve: %+v err=%v", dev, err)
+	}
+	if prod, err := m.GetByKey("dup", "prod"); err != nil || prod.Target != "prod" {
+		t.Fatalf("prod profile must resolve: %+v err=%v", prod, err)
+	}
+	// Revoking one Target leaves the other.
+	if _, err := m.Revoke("dup", "dev"); err != nil {
+		t.Fatalf("revoke dev: %v", err)
+	}
+	if _, err := m.GetByKey("dup", "prod"); err != nil {
+		t.Fatalf("revoking dev must leave prod: %v", err)
+	}
+	if _, err := m.GetByKey("dup", "dev"); !errors.Is(err, ErrProfileNotFound) {
+		t.Fatal("dev profile must be gone")
 	}
 }
 
