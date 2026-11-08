@@ -176,3 +176,35 @@ func TestDiscoveryClientRejectsNonCertificate(t *testing.T) {
 
 // _ guards the oidc import used by headless completion in login_test.go.
 var _ = oidc.ClientContext
+
+// TestResolveTrustFileEnvOverDefaultPrecedence covers the env>default half of
+// the stated flag > env > default precedence. The flag>env half is covered by
+// TestResolveTrustFilePrecedence; together they prove the full ordering.
+func TestResolveTrustFileEnvOverDefaultPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, "env-ca.pem")
+	_, _, caKeyEnv := writeTestCA(t, envPath)
+	if caKeyEnv == nil {
+		t.Fatal("env CA key is nil")
+	}
+
+	// No explicit flag and no env: the state-dir default file does not exist,
+	// so the resolver fails closed with ErrNoOperatorTrust.
+	if _, _, err := ResolveTrustFile(TrustOptions{ExplicitCaFile: filepath.Join(dir, "missing.pem")}); !errors.Is(err, ErrNoOperatorTrust) {
+		t.Fatalf("expected ErrNoOperatorTrust for empty flag+env+default, got %v", err)
+	}
+
+	// With the env file set and no explicit flag, the env file wins over the
+	// (absent) default.
+	t.Setenv(EnvTrustFile, envPath)
+	data, path, err := ResolveTrustFile(TrustOptions{})
+	if err != nil {
+		t.Fatalf("env CA should resolve: %v", err)
+	}
+	if path != envPath {
+		t.Fatalf("env CA should win over default file, got path %q", path)
+	}
+	if len(data) == 0 {
+		t.Fatal("resolved env CA is empty")
+	}
+}

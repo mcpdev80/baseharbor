@@ -148,7 +148,7 @@ func Login(ctx context.Context, target, environment string, cfg Config, out io.W
 			fmt.Fprintf(out, "Loopback callback bound to: %s\n", redirectURI)
 		}
 	}
-	if !suppressBrowser() {
+	if !suppressBrowser(opts.NoBrowser) {
 		_ = openBrowser(authURL)
 	}
 
@@ -222,6 +222,7 @@ func Ensure(ctx context.Context, target, environment string, cfg Config) (contex
 	principal, err = Login(ctx, target, environment, cfg, interactive.Out, TrustOptions{
 		ExplicitCaFile: strings.TrimSpace(os.Getenv(EnvTrustFile)),
 		AuthCodeFile:   strings.TrimSpace(os.Getenv(envAuthCodeFile)),
+		NoBrowser:      noBrowserFromEnv(),
 	})
 	if err != nil {
 		return ctx, err
@@ -230,15 +231,29 @@ func Ensure(ctx context.Context, target, environment string, cfg Config) (contex
 	return identity.WithPrincipal(ctx, principal), nil
 }
 
-// EnvTrustFile, envAuthCodeFile and the --no-browser probe are the three
+// EnvTrustFile, envAuthCodeFile and the NoBrowser flag/env are the three
 // environment gates that make the operator login headless on SSH/PTY hosts.
 const envAuthCodeFile = "BASEHARBOR_OPERATOR_OIDC_AUTH_CODE_FILE"
 
-func suppressBrowser() bool {
-	if os.Getenv("BASEHARBOR_NO_BROWSER") == "1" || strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) == "true" {
+func suppressBrowser(noBrowser bool) bool {
+	if noBrowser {
+		return true
+	}
+	if strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) == "1" || strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) == "true" {
 		return true
 	}
 	return false
+}
+
+// noBrowserFromEnv resolves BASEHARBOR_NO_BROWSER into a bool so the Ensure
+// bootstrap path can forward the environment alias into TrustOptions.NoBrowser.
+func noBrowserFromEnv() bool {
+	switch strings.TrimSpace(os.Getenv("BASEHARBOR_NO_BROWSER")) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func readAuthCodeFile(path string) (string, error) {

@@ -21,15 +21,11 @@ func operatorLoginCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
-			caFiltered, caFile, authCodeFile, err := parseLoginTrustArgs(loginArgs)
+			caFiltered, caFile, authCodeFile, noBrowser, err := parseLoginTrustArgs(loginArgs)
 			if err != nil {
 				return err
 			}
-			loginArgs = caFiltered
-			if err != nil {
-				return err
-			}
-			filtered, environment, err := extractApplicationEnvironment(loginArgs, "login")
+			filtered, environment, err := extractApplicationEnvironment(caFiltered, "login")
 			if err != nil {
 				return err
 			}
@@ -65,6 +61,7 @@ func operatorLoginCommand() *cli.Command {
 			principal, err := operatorauth.Login(ctx, target.Name, environment, cfg, out, operatorauth.TrustOptions{
 				ExplicitCaFile: caFile,
 				AuthCodeFile:   authCodeFile,
+				NoBrowser:      noBrowser,
 			})
 			if err != nil {
 				return err
@@ -213,23 +210,25 @@ func parseInitialTenantLoginArgs(args []string) ([]string, bool, string, string,
 // baha login supports on non-browser hosts: --ca/--auth-code-file (each with a
 // required value, or =VALUE) and the --no-browser companion. It returns the
 // environment-cleaned args plus the optional values so the caller can strip
-// them before generic argument parsing. --no-browser is echoed back so the CLI
-// parses without error even when it appears alongside other flags.
-func parseLoginTrustArgs(args []string) (remaining []string, caFile, authCodeFile string, err error) {
+// them before generic argument parsing. --no-browser is captured into noBrowser
+// (in addition to being echoed back so the CLI parses without error even when
+// it appears alongside other flags).
+func parseLoginTrustArgs(args []string) (remaining []string, caFile, authCodeFile string, noBrowser bool, err error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--no-browser":
+			noBrowser = true
 			remaining = append(remaining, arg)
 		case arg == "--ca":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
-				return nil, "", "", usageError("--ca requires a CA certificate file", "Provide a PEM file, e.g. --ca ~/.local/share/baseharbor/trust/managed-operator-ca.pem.")
+				return nil, "", "", false, usageError("--ca requires a CA certificate file", "Provide a PEM file, e.g. --ca ~/.local/share/baseharbor/trust/managed-operator-ca.pem.")
 			}
 			i++
 			caFile = strings.TrimSpace(args[i])
 		case arg == "--auth-code-file":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
-				return nil, "", "", usageError("--auth-code-file requires a file containing the authorization code", "Complete the headless login by writing the returned code to this file.")
+				return nil, "", "", false, usageError("--auth-code-file requires a file containing the authorization code", "Complete the headless login by writing the returned code to this file.")
 			}
 			i++
 			authCodeFile = strings.TrimSpace(args[i])
@@ -241,5 +240,5 @@ func parseLoginTrustArgs(args []string) (remaining []string, caFile, authCodeFil
 			remaining = append(remaining, arg)
 		}
 	}
-	return remaining, caFile, authCodeFile, nil
+	return remaining, caFile, authCodeFile, noBrowser, nil
 }

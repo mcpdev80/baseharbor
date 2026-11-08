@@ -32,6 +32,10 @@ type TrustOptions struct {
 	// present the login exchange reads the authorization code from it instead
 	// of listening for a loopback callback.
 	AuthCodeFile string
+	// NoBrowser suppresses the local browser launcher for the PKCE
+	// authorization URL. It is the --no-browser companion flag; BASEHARBOR_NO_BROWSER
+	// remains its documented environment alias.
+	NoBrowser bool
 }
 
 const (
