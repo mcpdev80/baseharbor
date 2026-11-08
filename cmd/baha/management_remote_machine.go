@@ -57,7 +57,6 @@ func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (mac
 	return discovery, nil
 }
 
-
 // requestMachineExecution dispatches only a discovered operation to the
 // startup-pinned Core. Its idempotency key belongs to the caller, so a
 // transport timeout never silently generates a new mutation on retry.
