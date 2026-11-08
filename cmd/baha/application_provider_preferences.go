@@ -227,7 +227,7 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	}
 	if mode == "create-only" {
 		printCreated()
-		fmt.Fprintln(out, "Next: cd "+displayUserPath(root)+" && baha up")
+		printAppNewNextSteps(out, root)
 		return nil
 	}
 	release()
