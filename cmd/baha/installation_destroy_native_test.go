@@ -17,6 +17,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.T) {
@@ -107,6 +108,21 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	shared, err := application.ExistingSharedBackendInventoryAt(r.TargetStateRoot, r.Target.Name, "core")
 	if err != nil {
 		t.Fatal(err)
+	}
+	// A real Core installation owns PostgreSQL directly. The application's
+	// shared inventory then references CoreSQL without duplicating its service.
+	// Probe the canonical Core owner rather than assuming a standalone SQL
+	// container is present in the application's shared Compose project.
+	if shared.CoreSQL != nil {
+		coreSQL, inventoryErr := bhruntime.ExistingControlPlaneRuntimeInventory(filepath.Dir(shared.CoreSQL.Compose), shared.CoreSQL.Project)
+		if inventoryErr != nil || len(coreSQL.SQLServices) == 0 {
+			t.Fatalf("canonical Core-owned SQL service unavailable: %v", inventoryErr)
+		}
+		shared.Files.Project = coreSQL.Files.Project
+		shared.Files.Compose = coreSQL.Files.Compose
+		shared.Files.Env = coreSQL.Files.Env
+		shared.Services[capability.ProviderPostgreSQL] = coreSQL.SQLServices
+		shared.Resources = coreSQL.Resources
 	}
 	var credentials [32]byte
 	qualifySelectedBackendData(t, ctx, provider, r, shared, "sql", 0, &credentials)
