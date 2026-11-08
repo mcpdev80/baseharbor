@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
@@ -113,5 +114,40 @@ func TestApplicationStopHTTPUsesCurrentScopeAndCannotEscapeAuthorizedContext(t *
 		if !errors.As(err, &httpFailure) || httpFailure.Code != machine.ErrorValidationFailed {
 			t.Fatalf("generic or ambiguous acknowledgement reached stop authority: %v", err)
 		}
+	}
+}
+
+func TestApplicationStopInteractiveTwoStageConsentIsBoundToCurrentPlan(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		answers  string
+		approved bool
+	}{
+		{name: "both stages approved", answers: "yes\nyes\n", approved: true},
+		{name: "second stage denied", answers: "yes\nno\n"},
+		{name: "first stage denied", answers: "no\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolved := retainedNativeBackendFixture(t)
+			ctx := context.WithValue(t.Context(), applicationInputKey{}, strings.NewReader(tc.answers))
+			var output bytes.Buffer
+			plan, err := authorizeApplicationStop(ctx, resolved, &output)
+			if tc.approved {
+				if err != nil {
+					t.Fatalf("interactive current-plan consent rejected: %v\n%s", err, output.String())
+				}
+				if plan.Scope.PlanID == "" {
+					t.Fatal("interactive consent did not bind to a concrete plan")
+				}
+				if !strings.Contains(output.String(), "(1/2") || !strings.Contains(output.String(), "(2/2") {
+					t.Fatalf("both explicit prompts required: %s", output.String())
+				}
+				return
+			}
+			var failure *machine.Error
+			if !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired {
+				t.Fatalf("rejected interactive consent did not fail closed: %v\n%s", err, output.String())
+			}
+		})
 	}
 }
