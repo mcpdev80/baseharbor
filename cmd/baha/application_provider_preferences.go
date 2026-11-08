@@ -294,7 +294,7 @@ type appNewSelectionTerminal struct {
 
 func (m appNewSelectionTerminal) Init() tea.Cmd { return nil }
 func (m appNewSelectionTerminal) View() tea.View {
-	return tea.NewView(m.controller.View() + "\nP: optional provider preference · Esc/Ctrl+C: cancel\n")
+	return tea.NewView(m.controller.View() + "\np: provider preference · b/←: previous row · Esc/Ctrl+C: cancel\n")
 }
 func (m appNewSelectionTerminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	key, ok := msg.(tea.KeyPressMsg)
@@ -309,8 +309,13 @@ func (m appNewSelectionTerminal) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.provider = true
 		return m, tea.Quit
+	case "b", "left":
+		action = "up"
 	case "enter":
 		if m.controller.selection.cursor != len(m.controller.selection.visibleNeeds()) {
+			if _, err := m.controller.choicesForSelection(); err != nil {
+				m.err = fmt.Errorf("provider choice cannot be confirmed: %w", err)
+			}
 			return m, tea.Quit
 		}
 	case " ":
