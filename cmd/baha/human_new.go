@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -34,7 +35,11 @@ func humanNewCommand() *cli.Command {
 			fmt.Fprintln(out, "  5  Workspace")
 			fmt.Fprint(out, "Choice [1-5] (or cancel): ")
 			line, err := bufio.NewReader(appNewInput).ReadString('\n')
-			if err != nil && len(strings.TrimSpace(line)) == 0 {
+			if errors.Is(err, io.EOF) {
+				fmt.Fprintln(out, "Cancelled. No changes were made.")
+				return nil
+			}
+			if err != nil {
 				return fmt.Errorf("read creation choice: %w; next: use 'baha new --help' for explicit forms", err)
 			}
 			selection := strings.ToLower(strings.TrimSpace(line))
