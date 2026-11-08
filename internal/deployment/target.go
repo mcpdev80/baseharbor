@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/targetaccess"
 	"go.yaml.in/yaml/v3"
 )
@@ -337,6 +339,14 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 				Scope:           "default",
 			}, nil
 		}
+		// An unregistered Core target discovered from the data root has no config
+		// entry but is still an owned, BaseHarbor-managed installation. Resolve it
+		// from its own installation.json (runtime) plus the host access block
+		// (local default) so owned-full-destroy and lifecycle paths can reach and
+		// remove it instead of failing on a missing config entry.
+		if synthesized, synErr := ResolveDataRootTarget(name); synErr == nil {
+			return synthesized, nil
+		}
 		return ResolvedTarget{}, fmt.Errorf("target %q is not configured", name)
 	}
 	access := c.Access[target.Access.Reference]
@@ -350,6 +360,42 @@ func (c Config) ResolveTarget(explicit, activated string) (ResolvedTarget, error
 		AccessProvider:  access.Provider,
 		AccessReference: target.Access.Reference,
 		Scope:           target.Scope,
+	}, nil
+}
+
+// resolveDataRootTarget resolves an unregistered Core target from its own
+// installation state. Such a target has a valid, BaseHarbor-owned installation
+// (installation.json) and runtime resources on the host but no config entry,
+// which happens for Core-only targets created before or outside the current
+// config. It supplies the declared runtime provider and a local access
+// reference (the host's own BaseHarbor state is always local-owned). A target
+// without a usable installation is left unresolved so the caller falls back to
+// the fail-closed "not configured" path.
+func ResolveDataRootTarget(name string) (ResolvedTarget, error) {
+	root, err := DataRoot()
+	if err != nil {
+		return ResolvedTarget{}, err
+	}
+	data, err := os.ReadFile(filepath.Join(root, "targets", name, "runtime", "installation.json"))
+	if err != nil {
+		return ResolvedTarget{}, err
+	}
+	var state coreinstallation.State
+	if json.Unmarshal(data, &state) != nil {
+		return ResolvedTarget{}, err
+	}
+	if strings.TrimSpace(state.Spec.Target) != name {
+		return ResolvedTarget{}, fmt.Errorf("installation %q does not belong to target %q", state.Spec.Target, name)
+	}
+	if strings.TrimSpace(state.Spec.Runtime) == "" {
+		return ResolvedTarget{}, fmt.Errorf("installation declares no runtime provider")
+	}
+	return ResolvedTarget{
+		Name:            name,
+		RuntimeProvider: state.Spec.Runtime,
+		AccessProvider:  "local",
+		AccessReference: "local",
+		Scope:           "discovered",
 	}, nil
 }
 

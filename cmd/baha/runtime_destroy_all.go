@@ -336,11 +336,18 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 					}
 				}
 			}
-			// A missing target registration cannot establish a native runtime
+	// A missing target registration cannot establish a native runtime
 			// owner. In particular, "compose" is not a registered provider kind;
 			// never invent it (or guess Docker) while orphaned resources may exist.
-			byName[name] = deployment.ResolvedTarget{Name: name, RuntimeProvider: provider}
-			if provider == "" {
+			// A Core-only target discovered here has no deployment records and no
+			// config entry; resolve it from its owned installation.json so the
+			// full-destroy flow can still reach and remove this owned Core.
+			synthesized := deployment.ResolvedTarget{Name: name}
+			if resolved, synErr := deployment.ResolveDataRootTarget(name); synErr == nil {
+				synthesized = resolved
+			}
+			byName[name] = synthesized
+			if synthesized.RuntimeProvider == "" {
 				detail := "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"
 				if name == "local" {
 					// The legacy local fallback used the unregistered provider
