@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -333,5 +336,85 @@ func TestParseUpParsesIdenticalToAppUpEnforcesParity(t *testing.T) {
 	}
 	if upOpts.Yes != appOpts.Yes || upOpts.SkipMemoryPreflight != appOpts.SkipMemoryPreflight {
 		t.Fatalf("flag mismatch: up.Name=%q app-up.Name=%q", upOpts.Name, appOpts.Name)
+	}
+}
+
+// TestUpNameResumesRegisteredDeploymentAcceptsParity proves the card's
+// acceptance semantics on the production-command path, not just the parser:
+// the top-level `baha up NAME` alias resolves the registered deployment NAME
+// identically to `baha app up NAME`, resumes the registered deployment, and
+// fails closed for an unregistered NAME.
+func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := initialized.Manifest
+	name := m.Name
+	repoRoot := selection.RepositoryRoot
+	manifestPath := selection.ManifestPath
+	if m.ApplicationID == "" {
+		t.Fatal("minimal manifest must carry a concrete application ID")
+	}
+
+	registered := registerTestDeployment(t, target, m, repoRoot, manifestPath)
+
+	// Parser parity: both the alias and the explicit command accept the same
+	// single optional NAME and agree on the value.
+	upOpts, upErr := parseRuntimeUpOptions([]string{name, "--yes", "--skip-memory-preflight"})
+	if upErr != nil {
+		t.Fatalf("up NAME must parse the optional positional NAME: %v", upErr)
+	}
+	appOpts, appErr := parseAppUpOptions([]string{name, "--yes", "--skip-memory-preflight"})
+	if appErr != nil {
+		t.Fatalf("app up NAME must parse: %v", appErr)
+	}
+	if upOpts.Name != appOpts.Name {
+		t.Fatalf("up/app-up NAME parity lost: up=%q app-up=%q", upOpts.Name, appOpts.Name)
+	}
+	if upOpts.Name != name {
+		t.Fatalf("up.Name = %q, want %q", upOpts.Name, name)
+	}
+
+	// Resume of the registered deployment: NAME is identical to app up NAME.
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up")
+	if err != nil {
+		t.Fatalf("up NAME must resume the registered deployment %q: %v", name, err)
+	}
+	if resolved.DeploymentIdentity.Application != name {
+		t.Fatalf("resolved application = %q, want %q", resolved.DeploymentIdentity.Application, name)
+	}
+	if resolved.DeploymentIdentity.DeploymentID != registered.Identity.DeploymentID {
+		t.Fatalf("resolved deployment identity = %+v, want %+v", resolved.DeploymentIdentity, registered.Identity)
+	}
+
+	// Fail closed for an unregistered NAME: a registered deployment with a
+	// different identity claims this name, so the alias must reject it.
+	foreignID, err := deployment.NewDeploymentIdentity(target.Name, application.MustNewApplicationID(), name, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: foreignID,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: repoRoot, Manifest: manifestPath},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: target.RuntimeProvider},
+	}
+	intent, jerr := json.Marshal(m)
+	if jerr != nil {
+		t.Fatal(jerr)
+	}
+	foreign.Applied.Intent = intent
+	if err := deployment.SaveDeploymentRecord(foreign); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up"); err == nil {
+		t.Fatal("up NAME accepted an unregistered deployment; fail-closed is broken")
 	}
 }
