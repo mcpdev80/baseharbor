@@ -5,19 +5,41 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	identityprovider "github.com/mcpdev80/baseharbor/internal/identityprovider"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 var (
 	runtimeIntegrationTrustPlaneOnce sync.Once
 	runtimeIntegrationTrustPlaneErr  error
+)
+
+// Single deterministic teardown of the shared bootstrap trust-plane. Registered
+// once per package by ensureRuntimeIntegrationTrustPlane; runs on BOTH the
+// success and failure paths so the bootstrap Core never becomes a residual
+// bh-w169-ci-bootstrap-* container/volume/network after the package. The owning
+// target + runtime provider are captured while the target selection env is
+// still valid; teardown reuses them and never depends on the ambient
+// selection. This helper owns no product destroy path — it only removes the
+// resources the test suite itself materialized.
+var (
+	runtimeIntegrationTrustPlaneCleanupOnce sync.Once
+	runtimeIntegrationTrustPlaneBootstrap   string
+	runtimeIntegrationTrustPlaneTarget      deployment.ResolvedTarget
+	runtimeIntegrationTrustPlaneProvider    bhruntime.RuntimeProvider
+	runtimeIntegrationTrustPlaneRegistered  bool
 )
 
 func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
@@ -101,6 +123,17 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 			runtimeIntegrationTrustPlaneErr = err
 			return
 		}
+		// Capture the bootstrap Core runtime provider + owning target NOW, while
+		// the bootstrap target selection and its config are still valid. The
+		// deferred unset below clears BASEHARBOR_TARGET, so teardown cannot
+		// re-resolve them later. This stored pair is what the single package
+		// teardown uses to destroy the bootstrap Core.
+		if tgt, terr := effectiveTarget(ctx); terr == nil {
+			if provider, perr := detectRuntimeForTarget(ctx, tgt); perr == nil {
+				runtimeIntegrationTrustPlaneTarget = tgt
+				runtimeIntegrationTrustPlaneProvider = provider
+			}
+		}
 
 		compose, files, err := openBaoRuntime(ctx)
 		if err != nil {
@@ -147,6 +180,109 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		t.Fatalf("isolation guard target %q unexpectedly exists", sentinel)
 	}
 	t.Setenv("BASEHARBOR_TARGET", sentinel)
+
+	// Register the deterministic bootstrap trust-plane teardown exactly once,
+	// after the trust plane is proven ready. It must run on BOTH the success
+	// and the failure paths, so it survives a test that t.Fatalfs mid-run. The
+	// bootstrap target name + owning target + runtime were captured inside the
+	// sync.Once closure above (before the selection env was cleared).
+	runtimeIntegrationTrustPlaneBootstrap = "w169-ci-bootstrap-" + bootstrapTargetSuffix()
+	registerRuntimeIntegrationTrustPlaneCleanup(t, ctx)
+}
+
+func registerRuntimeIntegrationTrustPlaneCleanup(t *testing.T, ctx context.Context) {
+	runtimeIntegrationTrustPlaneCleanupOnce.Do(func() {
+		runtimeIntegrationTrustPlaneRegistered = true
+		// The teardown uses its OWN fresh context: the test ctx may already be
+		// canceled by the time t.Cleanup runs (e.g. the test hit its own
+		// timeout). A canceled parent would make the fail-closed teardown report
+		// false "context canceled" residuals instead of actually destroying the
+		// bootstrap Core.
+		t.Cleanup(func() {
+			if !runtimeIntegrationTrustPlaneRegistered {
+				return
+			}
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			defer cancel()
+			destroyRuntimeIntegrationTrustPlane(t, cleanupCtx)
+		})
+	})
+}
+
+// destroyRuntimeIntegrationTrustPlane tears down exactly the bootstrap Core the
+// suite materialized: the consolidated control-plane project plus its shared
+// keycloak Core and shared application backends. It is fail-closed — any
+// residual bh-w169-ci-bootstrap-* container/volume/network after teardown fails
+// the run, which is the CI-visible wächter signal the runtime_integration job
+// asserts. No product destroy path is altered; only resources the test suite
+// materialized are removed. The owning target + runtime are captured at
+// registration time (see registerRuntimeIntegrationTrustPlaneCleanup) because
+// the selection env is cleared before cleanup runs.
+func destroyRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
+	t.Helper()
+	if !runtimeIntegrationTrustPlaneRegistered || runtimeIntegrationTrustPlaneProvider == nil {
+		return
+	}
+	target := runtimeIntegrationTrustPlaneTarget
+	dataDir, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Errorf("bootstrap trust-plane teardown target root: %v", err)
+		return
+	}
+	runCleanup := func(resource string, fn func() error) {
+		if err := fn(); err != nil {
+			t.Errorf("bootstrap trust-plane teardown %s: %v", resource, err)
+		}
+	}
+	runCleanup("identity-keycloak", func() error {
+		return identityprovider.DestroyAllSharedKeycloakAt(ctx, runtimeIntegrationTrustPlaneProvider, dataDir, target.Name)
+	})
+	runCleanup("data-providers", func() error {
+		return application.DestroyAllSharedBackendsAt(ctx, runtimeIntegrationTrustPlaneProvider, dataDir, target.Name)
+	})
+	runtimeRoot := filepath.Join(dataDir, "runtime")
+	if files, filesErr := bhruntime.ExistingFilesForProject(runtimeRoot, bhruntime.SharedProjectName(target.Name)); filesErr == nil {
+		runCleanup("control-plane", func() error {
+			return runtimeIntegrationTrustPlaneProvider.DestroyProject(ctx, files.Project, files.Compose, files.Env)
+		})
+	}
+	if err := assertBootstrapTrustPlaneLeavesNoLeftover(t, ctx, runtimeIntegrationTrustPlaneProvider, target); err != nil {
+		t.Errorf("bootstrap trust-plane teardown left residual resources: %v", err)
+	}
+}
+
+// assertBootstrapTrustPlaneLeavesNoLeftover fails t when any BaseHarbor-owned
+// container, volume or network for the bootstrap control-plane namespace
+// survives teardown. An intentional leak here makes the CI run red.
+func assertBootstrapTrustPlaneLeavesNoLeftover(t *testing.T, ctx context.Context, provider bhruntime.RuntimeProvider, target deployment.ResolvedTarget) error {
+	containers, err := provider.ListRuntimeContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect containers after bootstrap teardown: %w", err)
+	}
+	owned := []string{}
+	for _, c := range containers {
+		if strings.HasPrefix(c.Project, "bh-w169-ci-bootstrap") || strings.HasPrefix(c.Project, "bh-"+target.Name) {
+			owned = append(owned, c.Project+"/"+c.Name)
+		}
+	}
+	if len(owned) != 0 {
+		sort.Strings(owned)
+		return fmt.Errorf("bootstrap containers remain after teardown: %s", strings.Join(owned, ", "))
+	}
+	project := bhruntime.SharedProjectName(target.Name)
+	leftover, err := provider.ListOwnedProjectResources(ctx, project)
+	if err != nil {
+		return fmt.Errorf("inspect bootstrap control-plane resources after teardown: %w", err)
+	}
+	if len(leftover) != 0 {
+		names := []string{}
+		for _, r := range leftover {
+			names = append(names, r.Kind+" "+r.Name)
+		}
+		sort.Strings(names)
+		return fmt.Errorf("bootstrap control-plane resources remain after teardown: %s", strings.Join(names, ", "))
+	}
+	return nil
 }
 
 // isolateRuntimeForTest configures a fresh target for the requested runtime.
@@ -162,7 +298,7 @@ func isolateRuntimeForTest(t *testing.T, name string) {
 	var buf bytes.Buffer
 	args := []string{"target", "create", isoTarget, "--runtime-provider", provider, "--access", "local", "--access-provider", "local", "--reference", "local"}
 	if err := runWithIO(t.Context(), args, &buf, &buf); err != nil {
-		t.Fatalf("configure isolated %s target %q: %v\\n%s", provider, isoTarget, err, buf.String())
+		t.Fatalf("configure isolated %s target %q: %v\n%s", provider, isoTarget, err, buf.String())
 	}
 	cfg, err := deployment.LoadConfig()
 	if err != nil {
