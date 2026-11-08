@@ -499,6 +499,18 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	// Core bootstrap must never select the developer workstation when a
+	// remote execution Target is active. A remote management installer is
+	// not available yet; refuse this path before any local resources mutate.
+	if opts.ControlPlaneOnly {
+		selected, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+			return usageError("remote control-plane bootstrap is not supported by baha up", "Run the Core bootstrap on its owning Docker/Podman host and configure a verified remote management connection; the selected remote Target will not fall back to the local Docker daemon.")
+		}
+	}
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		if err != nil {
 			return err
