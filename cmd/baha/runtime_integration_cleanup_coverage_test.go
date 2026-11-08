@@ -761,6 +761,73 @@ func TestBootstrapLeftoverMarkerLifecycle(t *testing.T) {
 	}
 }
 
+// TestBootstrapPackageTeardownReportsAfterSetupFailure proves the setup-
+// failure coverage the recipe demands: when provisioning starts but fails
+// before the trust plane is proven ready, the package teardown must NOT
+// silently return — the run either destroyed the half-provisioned resources
+// or failed closed at the next package invocation. Stage one provisions for
+// real (a fresh bootstrap target) and then fails setup deterministically;
+// stage two asserts the next TestMain pass adopts and reports the orphan,
+// never a silent skip.
+func TestBootstrapPackageTeardownReportsAfterSetupFailure(t *testing.T) {
+	dir := t.TempDir()
+	stateRoot := filepath.Join(dir, "state")
+	if err := os.MkdirAll(filepath.Join(stateRoot, "config"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(stateRoot, bootstrapLeftoverMarkerName)
+	setupSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapSetupFailureSubprocess$")
+	setupSub.Env = append(os.Environ(),
+		bootstrapPackageTeardownEnv+"=1",
+		bootstrapPackageTeardownMarkerEnv+"="+marker,
+		"BASEHARBOR_STATE_DIR="+stateRoot,
+	)
+	setupOutput, setupErr := setupSub.CombinedOutput()
+	t.Logf("setup-failure subprocess:\n%s", truncateForLog(setupOutput))
+	if setupErr == nil || !strings.Contains(string(setupOutput), "SETUP-FAILED") {
+		t.Fatalf("stage one must fail setup after provisioning, output: %s", truncateForLog(setupOutput))
+	}
+	if strings.Contains(string(setupOutput), "PACKAGE-TOREDOWN-SILENT") {
+		t.Fatal("the dying run reported a silent package teardown")
+	}
+	// Stage two: the next package invocation must adopt the dead owner's
+	// claim (destroy-first or explicit fail-closed report), never silently.
+	adoptSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapAdoptionConsumesMarker$")
+	adoptSub.Env = append(os.Environ(),
+		"BASEHARBOR_TEST_ADOPTION_MARKER="+marker,
+		"BASEHARBOR_STATE_DIR="+stateRoot,
+	)
+	adoptOutput, adoptErr := adoptSub.CombinedOutput()
+	t.Logf("adoption subprocess:\n%s", truncateForLog(adoptOutput))
+	if adoptErr != nil {
+		t.Fatalf("the adopting run must pass: %v\n%s", adoptErr, truncateForLog(adoptOutput))
+	}
+	if !strings.Contains(string(adoptOutput), "adopting orphaned marker from dead pid") {
+		t.Fatalf("a setup failure must leave an adoptable claim: %s", truncateForLog(adoptOutput))
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("adoption must consume the marker after destroying, stat err: %v", err)
+	}
+}
+
+// TestBootstrapSetupFailureSubprocess is the stage-one fixture of
+// TestBootstrapPackageTeardownReportsAfterSetupFailure: it simulates the
+// helper claiming the target and marker, then failing setup mid-way.
+func TestBootstrapSetupFailureSubprocess(t *testing.T) {
+	if os.Getenv(bootstrapPackageTeardownEnv) != "1" {
+		t.Skip("subprocess-only fixture for the setup-failure path")
+	}
+	marker := os.Getenv(bootstrapPackageTeardownMarkerEnv)
+	// Claim the package target the way ensureRuntimeIntegrationTrustPlane
+	// does, but stop before the trust plane is proven (setup failure).
+	runtimeIntegrationTrustPlaneTargetName = "w169-ci-bootstrap-" + bootstrapTargetSuffix()
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("TestMain must have created the teardown marker before m.Run: %v", err)
+	}
+	fmt.Println("SETUP-FAILED")
+	t.Fatalf("simulated setup failure after claiming the bootstrap target")
+}
+
 // ---------------------------------------------------------------------------
 // Package-teardown subprocess support
 // ---------------------------------------------------------------------------
