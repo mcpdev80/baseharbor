@@ -64,7 +64,7 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
 		t.Fatalf("expected pre-mutation candidate-consent challenge: %v\\n%s", firstErr, out.String())
 	}
-	match := regexp.MustCompile(`confirm-hash\\s+([0-9a-f]{64})`).FindStringSubmatch(out.String())
+	match := regexp.MustCompile(`confirm-hash\s+([0-9a-f]{64})`).FindStringSubmatch(out.String())
 	if len(match) != 2 {
 		t.Fatalf("candidate challenge did not publish an exact confirmation digest: %s", out.String())
 	}
