@@ -551,8 +551,8 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 		deferIndex+run < productionAdopt {
 		t.Fatal("the production branch must defer the package-end teardown before its m.Run()")
 	}
-	if !strings.Contains(runner[productionAdopt:deferIndex], "setupBootstrapLeftoverMarker()") {
-		t.Fatal("the production branch must create its provisioning marker before deferring the package-end teardown")
+	if !strings.Contains(runner[productionAdopt:deferIndex], "claimBootstrapLeftoverMarker(marker)") {
+		t.Fatal("the production branch must claim its provisioning marker before deferring the package-end teardown")
 	}
 	if !strings.Contains(source, "func TestMain(m *testing.M)") || !strings.Contains(source, "os.Exit(code)") {
 		t.Fatal("TestMain must delegate to the package-level runner and preserve its exit code")
@@ -717,6 +717,7 @@ func TestBootstrapLeftoverMarkerLifecycle(t *testing.T) {
 	if marker != filepath.Join(dir, bootstrapLeftoverMarkerName) {
 		t.Fatalf("unexpected marker path %q", marker)
 	}
+	claimBootstrapLeftoverMarker(marker)
 	if err := ensureBootstrapLeftoverMarker(); err != nil {
 		t.Fatalf("freshly created marker must satisfy the guard: %v", err)
 	}
@@ -726,8 +727,9 @@ func TestBootstrapLeftoverMarkerLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := setupBootstrapLeftoverMarker(); got != marker {
-		t.Fatalf("setup must replace and return the same marker path, got %q", got)
+		t.Fatalf("setup must return the same marker path, got %q", got)
 	}
+	claimBootstrapLeftoverMarker(marker)
 	if err := ensureBootstrapLeftoverMarker(); err != nil {
 		t.Fatalf("after setup the marker must be owned by this process: %v", err)
 	}

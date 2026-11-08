@@ -91,6 +91,10 @@ func runRuntimeIntegrationTestMain(m *testing.M) int {
 	adoptBootstrapLeftoverMarkerFromDeadProcess()
 	marker := setupBootstrapLeftoverMarker()
 	if marker != "" {
+		// Claim the durable marker BEFORE any test can provision, so a
+		// mid-setup failure or panic is covered by the package-end teardown
+		// (normal return) or by the next run's adoption (os.Exit path).
+		claimBootstrapLeftoverMarker(marker)
 		defer destroyBootstrapTrustPlaneAtPackageEnd(marker)
 	}
 	return m.Run()
@@ -135,10 +139,16 @@ func setupBootstrapLeftoverMarker() string {
 	if marker == "" {
 		return ""
 	}
+	return marker
+}
+
+// claimBootstrapLeftoverMarker writes this process's durable provisioning
+// claim; TestMain calls it before the package test run starts (the cell
+// marker path or the fixture marker named by the regression subprocess).
+func claimBootstrapLeftoverMarker(marker string) {
 	if err := os.WriteFile(marker, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap leftover marker setup failed: %v\n", err)
 	}
-	return marker
 }
 
 // destroyBootstrapTrustPlaneAtPackageEnd is the TestMain-level teardown used
@@ -343,9 +353,10 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		// Record ownership of this generated namespace BEFORE any operation
 		// that can materialize resources. The package teardown destroys what
 		// this process owns even when the failure happens before the provider
-		// could be resolved; a missing or unrelated marker is rejected below
-		// instead of silently skipping teardown (fail-safe: provisioning is
-		// noted only while teardown is guaranteed).
+		// could be resolved; TestMain claimed the durable marker before the
+		// package run started, and ensureBootstrapLeftoverMarker verifies that
+		// claim instead of silently skipping teardown (fail-safe: provisioning
+		// is noted only while teardown is guaranteed).
 		runtimeIntegrationTrustPlaneTargetName = bootstrapTarget
 		if err := ensureBootstrapLeftoverMarker(); err != nil {
 			runtimeIntegrationTrustPlaneErr = err
