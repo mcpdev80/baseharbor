@@ -59,7 +59,7 @@ func (e *bahaMachineExecutor) ManagementInstallation(context.Context) (string, s
 		return "", "", err
 	}
 	if !state.Ready || state.Spec.Target != e.coreAuthority.Name || state.Spec.Runtime != e.coreAuthority.RuntimeProvider ||
-	   state.IdentityIssuer == "" {
+		state.IdentityIssuer == "" {
 		return "", "", errors.New("startup Core installation identity is not ready")
 	}
 	return state.ID, state.IdentityIssuer, nil
