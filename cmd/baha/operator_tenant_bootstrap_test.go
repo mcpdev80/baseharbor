@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 func TestParseOperatorLoginArgs(t *testing.T) {
@@ -59,10 +62,11 @@ func TestParseLoginTrustArgsNoBrowserAcceptsHeadlessFlag(t *testing.T) {
 	if noBrowser != true {
 		t.Fatalf("--no-browser must be captured as NoBrowser=true, got %t", noBrowser)
 	}
-	// The remaining args keep the environment flag for extractApplicationEnvironment.
-	// --no-browser is echoed back so generic parsing accepts it without error.
-	if !reflect.DeepEqual(remaining, []string{"-e", "test", "--no-browser"}) {
-		t.Fatalf("--no-browser must be echoed for generic parsing, got %v", remaining)
+	// The remaining args keep only the environment flag for
+	// extractApplicationEnvironment. --no-browser is consumed here (not echoed
+	// back) so it never reaches the generic leftover check.
+	if !reflect.DeepEqual(remaining, []string{"-e", "test"}) {
+		t.Fatalf("--no-browser must be consumed and absent from remaining, got %v", remaining)
 	}
 
 	// A --ca file alongside --no-browser still parses and captures both values.
@@ -71,6 +75,45 @@ func TestParseLoginTrustArgsNoBrowserAcceptsHeadlessFlag(t *testing.T) {
 		t.Fatalf("--ca/--auth-code-file/--no-browser must parse: %v", err)
 	}
 	if !noBrowser || ca != "/tmp/ca.pem" || authCode != "/tmp/code.txt" {
-		t.Fatalf("combined trust flags not captured: remaining=%v ca=%q authCode=%q noBrowser=%t", remaining, ca, authCode, noBrowser)
+		t.Fatalf("combined trust flags not captured: ca=%q authCode=%q noBrowser=%t", ca, authCode, noBrowser)
+	}
+	// Even alongside --ca/--auth-code-file, --no-browser is consumed, not echoed.
+	if !reflect.DeepEqual(remaining, []string{"-e", "test"}) {
+		t.Fatalf("--no-browser must be consumed in the combined case, got %v", remaining)
+	}
+}
+
+// TestOperatorLoginCommandNoBrowserReachesHeadlessPath is the command-level
+// regression proving the documented `baha login -e dev --no-browser` invocation
+// no longer fails the generic leftover-argument check: --no-browser is consumed
+// by parseLoginTrustArgs and never reaches extractApplicationEnvironment. In the
+// dev trusted-local mode the command returns the "no login required" message
+// instead of the "accepts only ..." usage error.
+func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
+	t.Setenv(operatorauth.EnvIssuer, "")
+	t.Setenv(operatorauth.EnvClientID, "")
+	t.Setenv(operatorauth.EnvScopes, "")
+	t.Setenv(operatorauth.EnvCallbackPort, "")
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	ctx := operatorauth.WithEnforcement(context.Background())
+
+	// The documented headless login: -e dev + --no-browser. With the fix, the
+	// command must NOT reject --no-browser as an unknown leftover argument.
+	var out, errOut bytes.Buffer
+	err := operatorLoginCommand().Run(ctx, []string{"-e", "dev", "--no-browser"}, &out, &errOut)
+	if err != nil {
+		t.Fatalf("--no-browser login must not be rejected by the leftover check: %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "trusted local operator mode") {
+		t.Fatalf("expected trusted-local no-login output, got: %q", got)
+	}
+
+	// A real unknown leftover flag is still rejected, proving the leftover check
+	// is alive and --no-browser specifically was consumed, not blindly dropped.
+	err = operatorLoginCommand().Run(ctx, []string{"-e", "dev", "--bogus-flag"}, &out, &errOut)
+	if err == nil || !strings.Contains(err.Error(), "accepts only") {
+		t.Fatalf("unknown leftover flag must still be rejected, got err=%v", err)
 	}
 }

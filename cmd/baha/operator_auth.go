@@ -211,15 +211,13 @@ func parseInitialTenantLoginArgs(args []string) ([]string, bool, string, string,
 // required value, or =VALUE) and the --no-browser companion. It returns the
 // environment-cleaned args plus the optional values so the caller can strip
 // them before generic argument parsing. --no-browser is captured into noBrowser
-// (in addition to being echoed back so the CLI parses without error even when
-// it appears alongside other flags).
+// and consumed here so it never reaches the generic leftover check.
 func parseLoginTrustArgs(args []string) (remaining []string, caFile, authCodeFile string, noBrowser bool, err error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--no-browser":
 			noBrowser = true
-			remaining = append(remaining, arg)
 		case arg == "--ca":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
 				return nil, "", "", false, usageError("--ca requires a CA certificate file", "Provide a PEM file, e.g. --ca ~/.local/share/baseharbor/trust/managed-operator-ca.pem.")
