@@ -235,25 +235,28 @@ func loadRemoteProviderConsent(path string) (*application.ProviderChangeConsent,
 func extractRemoteIdempotencyKey(args []string) ([]string, string, error) {
 	filtered := make([]string, 0, len(args))
 	var key string
+	seen := false
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
 		case arg == "--idempotency-key":
 			i++
-			if i >= len(args) || key != "" {
+			if i >= len(args) || seen {
 				return nil, "", usageError("missing or duplicate idempotency key", "Pass --idempotency-key KEY exactly once.")
 			}
 			key = args[i]
+			seen = true
 		case strings.HasPrefix(arg, "--idempotency-key="):
-			if key != "" {
+			if seen {
 				return nil, "", usageError("duplicate idempotency key", "Pass one idempotency key only.")
 			}
 			key = strings.TrimPrefix(arg, "--idempotency-key=")
+			seen = true
 		default:
 			filtered = append(filtered, arg)
 		}
 	}
-	if key != "" && !remoteExecutionIDPattern.MatchString(key) {
+	if seen && !remoteExecutionIDPattern.MatchString(key) {
 		return nil, "", usageError("invalid idempotency key", "Use 1-128 ASCII letters, numbers, '_' or '-', starting with a letter or number.")
 	}
 	return filtered, key, nil
