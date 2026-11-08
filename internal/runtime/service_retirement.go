@@ -59,6 +59,10 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 	if native, ok := provider.(interface{ Kind() ProviderKind }); ok {
 		kind = native.Kind()
 	}
+	// Pinned container_name lives outside <project>-<service>-1, so the retired
+	// set also carries the rendered planned native names. The canonical name
+	// still owns the service; a matching native name alone never infers
+	// ownership (0427-128: retirement accepts both identity classes).
 	for _, container := range containers {
 		if container.Project == project && services[container.Service] && !ContainerMatchesProjectResource(kind, container, project, ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}) {
 			return result, fmt.Errorf("unplanned replica of selected service %s; preserve ownership state", container.Service)

@@ -22,7 +22,7 @@ func ContainerMatchesProjectResource(kind ProviderKind, container RuntimeContain
 // <project>-<service>-1 scheme. Compose implements it; a provider that cannot
 // render the model keeps the single canonical ordinal fallback.
 type RuntimeConfigProvider interface {
-	ConfigJSONProjectFilesEnv(context.Context, string, string, ...string) (string, error)
+	ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error)
 }
 
 // expectedContainerNameSet returns the exact set of native container names the
@@ -33,8 +33,8 @@ type RuntimeConfigProvider interface {
 // service is a single container). The rendered Compose model is the source of
 // truth, never the default scheme alone, because a pinned container_name lives
 // outside <project>-<service>-1 and every quiesce identity check must accept it.
-func expectedContainerNameSet(ctx context.Context, provider RuntimeConfigProvider, project, service string, composeFiles []string) ([]string, error) {
-	rendered, err := provider.ConfigJSONProjectFilesEnv(ctx, project, "", composeFiles...)
+func expectedContainerNameSet(ctx context.Context, provider RuntimeConfigProvider, workdir, project, service string, composeFiles []string) ([]string, error) {
+	rendered, err := provider.ConfigJSONProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +53,15 @@ func expectedContainerNameSet(ctx context.Context, provider RuntimeConfigProvide
 // container_name the service scales with deploy.replicas into
 // <project>-<service>-1..-N; with a pinned name it is a single container
 // (compose forbids container_name + replicas).
+// ParsedExpectedContainerNames reads the rendered Compose config for one service
+// and derives its planned native container names. Without a pinned
+// container_name the service scales with deploy.replicas into
+// <project>-<service>-1..-N; with a pinned name it is a single container
+// (compose forbids container_name + replicas). Exposed so the retirement and
+// control-plane stop paths share this exact planned-set contract.
+func ParsedExpectedContainerNames(rendered, project, service string) ([]string, error) {
+	return parsedExpectedContainerNames(rendered, project, service)
+}
 func parsedExpectedContainerNames(rendered, project, service string) ([]string, error) {
 	var config struct {
 		Services map[string]struct {
@@ -90,6 +99,14 @@ func parsedExpectedContainerNames(rendered, project, service string) ([]string, 
 // the compose field is unset/blank.
 func containerNameLiteral(raw string) string {
 	return raw
+}
+
+// ContainerNameInPlannedSet reports whether container.name is one of the names
+// the deployment plans for its service, staying inside the project scope that
+// the caller already validated. Exposed so the retirement and control-plane
+// stop paths share this exact planned-set matcher.
+func ContainerNameInPlannedSet(kind ProviderKind, container RuntimeContainer, project string, planned []string) bool {
+	return containerNameInPlannedSet(kind, container, project, planned)
 }
 
 // containerNameInPlannedSet reports whether container.name is one of the names

@@ -7,12 +7,17 @@ import (
 	"testing"
 )
 
+func (r *selectedStopRuntime) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
+	return r.rendered, nil
+}
+
 type selectedStopRuntime struct {
 	before, after                      []ProjectResource
 	containers, stopped                []RuntimeContainer
 	selected                           []string
 	inspectCalls, listCalls, mutations int
 	inspectErr, stopErr                error
+	rendered                           string
 }
 
 func (r *selectedStopRuntime) Kind() ProviderKind { return ProviderDocker }

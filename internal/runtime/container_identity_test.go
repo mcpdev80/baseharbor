@@ -88,7 +88,7 @@ func serviceOf(name string) string {
 // staticConfigProvider is a RuntimeConfigProvider that returns a fixed render.
 type staticConfigProvider struct{ rendered string }
 
-func (p staticConfigProvider) ConfigJSONProjectFilesEnv(context.Context, string, string, ...string) (string, error) {
+func (p staticConfigProvider) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
 	return p.rendered, nil
 }
 
@@ -96,7 +96,7 @@ func (p staticConfigProvider) ConfigJSONProjectFilesEnv(context.Context, string,
 // service in the render resolves to the single canonical ordinal, keeping the
 // default-scheme path intact for callers without a rendered model.
 func TestExpectedContainerNameSetFallsBackToCanonicalOrdinal(t *testing.T) {
-	got, err := expectedContainerNameSet(t.Context(), staticConfigProvider{rendered: `{"services":{}}`}, "owned", "missing", nil)
+	got, err := expectedContainerNameSet(t.Context(), staticConfigProvider{rendered: `{"services":{}}`}, "", "owned", "missing", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

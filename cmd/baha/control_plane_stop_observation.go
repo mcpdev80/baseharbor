@@ -59,6 +59,37 @@ func observeControlPlaneStopRuntime(parent context.Context, target deployment.Re
 	}
 	sort.Slice(p.ObservedProcesses, func(i, j int) bool { return p.ObservedProcesses[i].Name < p.ObservedProcesses[j].Name })
 	p.ObservedResources = resources
+	// Pinned container_name lives outside <project>-<service>-1, so the control
+	// plane also carries the rendered planned native names for each selected
+	// service. The canonical name still owns the service; a matching native name
+	// alone never infers ownership (0427-128: control-plane stop accepts both
+	// identity classes).
+	if configurer, ok := provider.(interface {
+		ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error)
+	}); ok {
+		if rendered, rerr := configurer.ConfigJSONProjectFilesEnv(ctx, p.Project, "", nil); rerr == nil && rendered != "" {
+			plannedByService := map[string][]string{}
+			for service := range selected {
+				if planned, perr := bhruntime.ParsedExpectedContainerNames(rendered, p.Project, service); perr == nil {
+					plannedByService[service] = planned
+				}
+			}
+			for _, container := range containers {
+				if container.Project != p.Project || !selected[container.Service] || len(plannedByService[container.Service]) == 0 {
+					continue
+				}
+				if bhruntime.ContainerNameInPlannedSet(provider.Kind(), container, p.Project, plannedByService[container.Service]) {
+					image, imageErr := provider.ProjectServiceImageIdentity(ctx, p.Project, container.Service)
+					if imageErr == nil {
+						images[container.Service] = image
+					} else {
+						images[container.Service] = "unverified"
+					}
+				}
+				continue
+			}
+		}
+	}
 	p.RuntimeObserved = true
 	// Aggregate identity revision only; never expose individual image data or
 	// native error/inspect output through a consequence result.
