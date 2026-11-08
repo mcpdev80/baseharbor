@@ -519,7 +519,13 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			return deployment.DeploymentRecord{}, consErr
 		}
 		if consent == nil {
-			return deployment.DeploymentRecord{}, errConsentRequiredForCandidateSubmission
+			// Fail closed at the product submission point WITHOUT a panic
+			// trace. The digest was already shown by
+			// promptConfirmCandidateSubmission, but the fail-closed error must
+			// re-surface the EXACT --confirm-candidate value so automation can
+			// parse and re-run it. A missing confirm is a usage error (exit 2),
+			// not a runtime failure.
+			return deployment.DeploymentRecord{}, missingCandidateConsentError(submission)
 		}
 		if err := submission.Validate(consent); err != nil {
 			return deployment.DeploymentRecord{}, err
