@@ -528,24 +528,22 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 	// still destroy the claimed bootstrap resources. A source mutation that
 	// drops the defer, moves it after m.Run, or drops os.Exit(code) fails here.
 	source := readMainTestSupportSource(t)
-	deferIndex := strings.Index(source, "defer destroyBootstrapTrustPlaneAtPackageEnd(marker)")
-	mRunIndex := strings.LastIndex(source, "return m.Run()")
-	if deferIndex < 0 {
-		t.Fatal("runRuntimeIntegrationTestMain must defer the package-end teardown")
+	runner := source[strings.Index(source, "func runRuntimeIntegrationTestMain"):]
+	runner = runner[:strings.Index(runner, "\n}\n")+2]
+	firstRun := strings.Index(runner, "return m.Run()")
+	deferIndex := strings.Index(runner, "defer destroyBootstrapTrustPlaneAtPackageEnd(marker)")
+	adoptIndex := strings.Index(runner, "adoptBootstrapLeftoverMarkerFromDeadProcess()")
+	if deferIndex < 0 || firstRun < 0 {
+		t.Fatal("runRuntimeIntegrationTestMain must arrange the package-end teardown and invoke m.Run()")
 	}
-	if mRunIndex < 0 {
-		t.Fatal("runRuntimeIntegrationTestMain must invoke m.Run()")
+	if adoptIndex < 0 || adoptIndex > firstRun {
+		t.Fatal("runRuntimeIntegrationTestMain must adopt a dead process's durable claim before m.Run() — the panic path has no defer")
 	}
-	if deferIndex > mRunIndex {
-		t.Fatal("the package-end teardown must be arranged BEFORE the package test run so a panic or a completed run still triggers it — directly or via the durable claim")
+	if deferIndex > firstRun {
+		t.Fatal("the package-end teardown must be arranged BEFORE the package test run")
 	}
 	if !strings.Contains(source, "func TestMain(m *testing.M)") || !strings.Contains(source, "os.Exit(code)") {
 		t.Fatal("TestMain must delegate to the package-level runner and preserve its exit code")
-	}
-	// The os.Exit boundary that no defer can survive must itself be a
-	// tested claim: adoption of a dead owner's marker happens in TestMain.
-	if !strings.Contains(source, "adoptBootstrapLeftoverMarkerFromDeadProcess()") {
-		t.Fatal("runRuntimeIntegrationTestMain must adopt a dead process's durable claim before m.Run()")
 	}
 }
 

@@ -75,12 +75,14 @@ func TestMain(m *testing.M) {
 }
 
 func runRuntimeIntegrationTestMain(m *testing.M) int {
+	// Both branches below arrange their teardown claim BEFORE m.Run(): the
+	// fixture branch writes the stage-one marker first, the production
+	// branch adopts dead owners' claims and creates its own.
 	if os.Getenv(bootstrapPackageTeardownEnv) == "1" && os.Getenv(bootstrapPackageTeardownMarkerEnv) != "" {
 		// Stage-one subprocess of the package-lifecycle regression: create
 		// the fixture's durable claim before m.Run, exactly like the cell
 		// path does; the panicking test body proves it survives.
-		if err := os.WriteFile(os.Getenv(bootstrapPackageTeardownMarkerEnv),
-			[]byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
+		if err := writeBootstrapFixtureMarker(); err != nil {
 			fmt.Fprintf(os.Stderr, "bootstrap fixture marker: %v\n", err)
 			return 1
 		}
@@ -98,6 +100,13 @@ func runRuntimeIntegrationTestMain(m *testing.M) int {
 // the configured BaseHarbor data root (BASEHARBOR_STATE_DIR overrides
 // XDG_DATA_HOME, mirroring the deployment DataRoot contract), or the empty
 // string when no data home is configured (pure unit runs).
+// writeBootstrapFixtureMarker claims the fixture's durable marker file for
+// this process (stage-one subprocess of the package-teardown regression).
+func writeBootstrapFixtureMarker() error {
+	return os.WriteFile(os.Getenv(bootstrapPackageTeardownMarkerEnv),
+		[]byte(strconv.Itoa(os.Getpid())+"\n"), 0o600)
+}
+
 func bootstrapLeftoverMarkerPath() string {
 	if root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR")); root != "" {
 		return filepath.Join(root, bootstrapLeftoverMarkerName)
