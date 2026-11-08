@@ -51,43 +51,56 @@ type remoteConnectionProfile struct {
 
 // Explicit opt-in only; no remote connection is inferred from a name, a
 // missing local installation or a cached last-known connection status.
+type verifiedRemoteCore struct {
+	client *http.Client
+	origin string
+	token  string
+	target string
+	tenant string
+}
+
 func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expectedTenant string) error {
+	_, err := dialVerifiedRemoteCore(ctx, target, runtime, expectedTenant)
+	return nil, err
+}
+
+func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant string) (*verifiedRemoteCore, error) {
 	path := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTION_PROFILE"))
 	if path == "" {
-		return errors.New("remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE)")
+		return nil, errors.New("remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE)")
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("open remote connection profile: %w", err)
+		return nil, fmt.Errorf("open remote connection profile: %w", err)
 	}
 	defer file.Close()
 	var profile remoteConnectionProfile
 	decoder := json.NewDecoder(io.LimitReader(file, 128*1024))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&profile); err != nil {
-		return fmt.Errorf("decode remote connection profile: %w", err)
+		return nil, fmt.Errorf("decode remote connection profile: %w", err)
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		return errors.New("remote connection profile contains trailing data")
+		return nil, errors.New("remote connection profile contains trailing data")
 	}
 	if profile.Version != remoteConnectionProfileVersion || profile.Name == "" || profile.ExpiresAt != nil && !profile.ExpiresAt.After(time.Now()) {
-		return errors.New("unsupported or expired remote connection profile")
+		return nil, errors.New("unsupported or expired remote connection profile")
 	}
 	origin, err := url.Parse(profile.Core.URL)
 	if err != nil || origin.Scheme != "https" || origin.Host == "" || origin.User != nil ||
 		origin.RawQuery != "" || origin.Fragment != "" || origin.Path != "" && origin.Path != "/" || origin.Opaque != "" {
-		return errors.New("remote Core URL must be an HTTPS origin")
+		return nil, errors.New("remote Core URL must be an HTTPS origin")
 	}
 	if profile.Core.InstallationID == "" || profile.Trust.CAPEM == "" {
-		return errors.New("remote Core identity and pinned CA are required")
+		return nil, errors.New("remote Core identity and pinned CA are required")
 	}
 	digest := sha256.Sum256([]byte(profile.Trust.CAPEM))
 	if hex.EncodeToString(digest[:]) != profile.Trust.SHA256 {
-		return errors.New("remote Core CA pin mismatch")
+		return nil, errors.New("remote Core CA pin mismatch")
 	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM([]byte(profile.Trust.CAPEM)) {
-		return errors.New("remote Core CA cannot be verified")
+		return nil, errors.New("remote Core CA cannot be verified")
 	}
 	tenant := ""
 	for _, item := range profile.Targets {
@@ -95,25 +108,25 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expe
 			continue
 		}
 		if item.RuntimeProvider != runtime || item.TenantID == "" || tenant != "" {
-			return errors.New("remote target is ambiguous or mismatched in connection profile")
+			return nil, errors.New("remote target is ambiguous or mismatched in connection profile")
 		}
 		tenant = item.TenantID
 	}
 	if expectedTenant == "" || tenant != expectedTenant {
-		return errors.New("remote target tenant does not match the configured target authority")
+		return nil, errors.New("remote target tenant does not match the configured target authority")
 	}
 	if tenant == "" {
-		return errors.New("remote target is not declared by the connection profile")
+		return nil, errors.New("remote target is not declared by the connection profile")
 	}
 
 	// The login is intentionally scoped to the requested Target/environment.
 	// No token is substituted from another Target, tenant or local Core.
 	session, err := operatorauth.LoadSession(target, "dev")
 	if err != nil || !session.ValidAt(time.Now()) {
-		return errors.New("remote Core requires a valid operator OIDC session for the selected target")
+		return nil, errors.New("remote Core requires a valid operator OIDC session for the selected target")
 	}
 	if profile.Access != nil && (profile.Access.Issuer != session.Issuer || profile.Access.ClientID != session.ClientID) {
-		return errors.New("remote OIDC issuer/client differs from the pinned connection")
+		return nil, errors.New("remote OIDC issuer/client differs from the pinned connection")
 	}
 	client := &http.Client{
 		Timeout:       15 * time.Second,
@@ -122,16 +135,16 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expe
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(profile.Core.URL, "/")+"/api/v1/management/installation", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	request.Header.Set("Authorization", "Bearer "+session.IDToken)
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("verify live remote Core: %w", err)
+		return nil, fmt.Errorf("verify live remote Core: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("remote Core authentication/identity verification failed (HTTP %d)", response.StatusCode)
+		return nil, fmt.Errorf("remote Core authentication/identity verification failed (HTTP %d)", response.StatusCode)
 	}
 	var identity struct {
 		Version        string `json:"version"`
@@ -147,7 +160,7 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expe
 		identity.InstallationID != profile.Core.InstallationID ||
 		identity.IdentityIssuer == "" || identity.OperatorIssuer != session.Issuer ||
 		identity.TenantID != tenant {
-		return errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
+		return nil, errors.New("remote Core installation, OIDC issuer or tenant does not match pinned connection")
 	}
-	return nil
+	return &verifiedRemoteCore{client: client, origin: strings.TrimRight(profile.Core.URL, "/"), token: session.IDToken, target: target, tenant: tenant}, nil
 }
