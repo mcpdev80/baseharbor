@@ -194,10 +194,13 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	// Mutating execution results must remain scoped to the requested app.
 	// Apply/update return a status object, destroy returns a scoped retirement.
 	var observed struct {
-		Target      string `json:"target"`
-		Application string `json:"application"`
-		Environment string `json:"environment"`
-		Status      *struct {
+		ContractVersion string `json:"contract_version"`
+		Operation       string `json:"operation"`
+		Verified        bool   `json:"verified"`
+		Target          string `json:"target"`
+		Application     string `json:"application"`
+		Environment     string `json:"environment"`
+		Status          *struct {
 			Target      string `json:"target"`
 			Application string `json:"application"`
 			Environment string `json:"environment"`
@@ -206,6 +209,9 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	}
 	if err := json.Unmarshal(result, &observed); err != nil {
 		return errors.New("remote Core lifecycle result cannot be decoded")
+	}
+	if operation != "app.stop" && (observed.ContractVersion != machine.ContractVersion || observed.Operation != operation || !observed.Verified) {
+		return errors.New("remote Core lifecycle receipt is unverified or does not match the requested operation")
 	}
 	if (operation != "app.stop" && observed.Target != target.Name) || observed.Application != name || observed.Environment != environment {
 		return errors.New("remote Core lifecycle result does not match the requested application authority")
