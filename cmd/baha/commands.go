@@ -74,7 +74,7 @@ func rootCommand() *cli.Command {
 		{
 			Name:    "up",
 			Summary: "Converge selected application intent, or explicitly start the management Core",
-			Usage:   "baha up [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
+			Usage:   "baha up [NAME] [-e ENV|--environment ENV] [--yes] [--skip-memory-preflight] [--control-plane-only] [--ha] [--trust-host-ca] [--postgres-port PORT] [--openbao-port PORT] [--recovery-file PATH]",
 			Long:    "Inside an application repository, converges selected capabilities and genuine dependencies through the same current-plan acknowledgement, authorization and verification as app apply. It does not install a management Core merely because an application exists. Unresolved deployment inputs use the existing guided resolver; --yes does not replace provider-consequence or data-deletion consent. In a detected project without baseharbor.yaml, interactive use initializes the application through the existing guided flow; --yes uses unambiguous safe defaults. Directories without application signals retain explicit management setup. --control-plane-only explicitly selects the independent SQL/Secrets/Identity management installation and its HA, port, recovery and host-trust options. --trust-host-ca remains a separate explicit opt-in; --yes never changes host trust. -e/--environment selects resolved deployment state without rewriting authored intent.",
 			Run:     runtimeUpCommandWithInputResolver,
 		},
