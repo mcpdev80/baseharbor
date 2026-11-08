@@ -9,6 +9,7 @@ import (
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -73,6 +74,14 @@ func bindExplicitSelectionToConnection(
 	if err != nil {
 		return err
 	}
+	// The plain target-state root the Core owns (deployment.TargetStateRoot(name));
+	// the Core's Keycloak core issuer lives under providers/keycloak/shared/core
+	// there, never under the runtime/ sub-root. VerifyCoreConnection reads it from
+	// the plain root.
+	plainTargetRoot, err := deployment.TargetStateRoot(target)
+	if err != nil {
+		return err
+	}
 	state, err := coreinstallation.Load(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -90,14 +99,19 @@ func bindExplicitSelectionToConnection(
 			false,
 		)
 	}
-	// 2. Derive the live management-connection issuer from the verified
-	// installation and the Target's own state alone, through the single reading
-	// resolver. This never fabricates an issuer or opens a second trust source;
-	// an unverifiable installation or a foreign target fails closed with a named
-	// sentinel mapped to a typed rejection below.
-	issuer, observed, err := coreinstallation.ResolverForTargetSelection(ctx, state, root)
-	if err != nil {
-		if errors.Is(err, coreinstallation.ErrUnverifiableInstallation) {
+	// 2. Verify the Core's live management connection through the real Core
+	// identity: the verified Core keeps its management-connection identity at
+	// its Keycloak discovery issuer (state.IdentityIssuer, an HTTPS URL such as
+	// https://identity.localhost:<port>/realms/baseharbor), NOT at a local base
+	// CA. VerifyCoreConnection (cmd/baha/verify_core_connection.go) reads the
+	// Core's existing Keycloak public TLS material from disk and proves the
+	// observed identity matches the verified Core — the accepted, read-only
+	// production boundary that never fabricates issuer material or opens a
+	// second trust source. A missing/unreadable Core issuer, a foreign target,
+	// an unverifiable installation or an identity mismatch fails closed with a
+	// named sentinel mapped to a typed rejection below.
+	if err := VerifyCoreConnection(ctx, state, plainTargetRoot); err != nil {
+		if errors.Is(err, ErrKeycloakCoreIssuerUnavailable) {
 			return machine.NewError(
 				machine.ErrorConflict,
 				fmt.Sprintf("target %q has no verified management connection: %v", target, err),
@@ -108,33 +122,29 @@ func bindExplicitSelectionToConnection(
 		if errors.Is(err, coreinstallation.ErrForeignTarget) {
 			return machine.Wrap(machine.ErrorPolicyDenied, err, "The management connection belongs to a different Target; select the correct one.", false)
 		}
+		if errors.Is(err, coreinstallation.ErrUnverifiableInstallation) {
+			return machine.NewError(
+				machine.ErrorConflict,
+				fmt.Sprintf("target %q has no verified management connection: %v", target, err),
+				"Install a BaseHarbor Core for this Target (baha core install) so the management connection is present, then re-run baha use.",
+				false,
+			)
+		}
+		if errors.Is(err, ErrCoreIssuerMismatch) {
+			return machine.Wrap(machine.ErrorPolicyDenied, err, "The management connection identity does not match the selected installation; select the correct one.", false)
+		}
 		return machine.Wrap(machine.ErrorVerificationFailed, err, "The management connection did not verify; the selection persists nothing.", false)
 	}
-	// 3. Verify the selection through the single production boundary: liveness +
-	// identity + foreign/revoked rejection. The authoritative connection is the
-	// observed connection identity, so a connection that does not address the
-	// live identity observed on this verified installation is rejected as
-	// foreign. The three authorities (installation, connection, Target) are
-	// never interchanged.
+	// 3. The management connection is verified. Assert the three distinct
+	// authorities before persisting the selection: the installation, the
+	// management connection and the Target are never interchanged.
 	selection := coreinstallation.ConnectionSelection{
 		InstallationID: state.ID,
 		ConnectionID:   "managed-connection",
 		TargetID:       target,
 	}
-	if err := selection.Resolve(ctx, issuer, observed, observed.Identity); err != nil {
-		if errors.Is(err, coreinstallation.ErrConflatedSelection) {
-			return machine.Wrap(machine.ErrorConflict, err, "The Target, connection and installation are distinct; select a distinct Target.", false)
-		}
-		if errors.Is(err, coreinstallation.ErrMissingAuthority) {
-			return machine.Wrap(machine.ErrorAuthenticationFailed, err, "Establish a live management connection for the selected installation.", false)
-		}
-		if errors.Is(err, coreinstallation.ErrForeignAuthority) {
-			return machine.Wrap(machine.ErrorPolicyDenied, err, "The management connection identity does not match the selected installation; select the correct one.", false)
-		}
-		if errors.Is(err, coreinstallation.ErrNotReady) {
-			return machine.Wrap(machine.ErrorRuntimeUnavailable, err, "The management connection is not verified as ready; reconcile the Core and retry.", false)
-		}
-		return machine.Wrap(machine.ErrorVerificationFailed, err, "The management connection did not verify; the selection persists nothing.", false)
+	if err := selection.AssertDistinct(); err != nil {
+		return machine.Wrap(machine.ErrorConflict, err, "The Target, connection and installation are distinct; select a distinct Target.", false)
 	}
 	return nil
 }
