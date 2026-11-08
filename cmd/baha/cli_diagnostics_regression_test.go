@@ -22,7 +22,7 @@ func TestListHelpExplainsFailClosedTargetSelection(t *testing.T) {
 		if child.Name != "list" {
 			continue
 		}
-		for _, expected := range []string{"selected Target", "fails closed", "baha target list", "baha target activate NAME"} {
+		for _, expected := range []string{"selected Target", "fails closed", "baha list --all-targets", "TARGET column", "baha target list", "baha target activate NAME"} {
 			if !strings.Contains(child.Long, expected) {
 				t.Fatalf("list help missing %q: %s", expected, child.Long)
 			}
