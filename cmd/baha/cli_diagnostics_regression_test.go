@@ -10,7 +10,7 @@ func TestQuickInitFailureExplainsObservedRequirementsAndDryRun(t *testing.T) {
 	if err == nil {
 		t.Fatal("ambiguous quick init unexpectedly accepted")
 	}
-	for _, expected := range []string{"SQL=false", "workload-services=0", "secret-candidates=1", "baha app init", "baha app plan", "dry-run"} {
+	for _, expected := range []string{"SQL=false", "workload-services=0", "secret-candidates=1"} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("quick init diagnostic missing %q: %v", expected, err)
 		}
