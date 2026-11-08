@@ -180,8 +180,8 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 			}
 			var result struct {
 				Operation string `json:"operation"`
-				Target string `json:"target"`
-				State string `json:"state"`
+				Target    string `json:"target"`
+				State     string `json:"state"`
 			}
 			if err := json.Unmarshal(output.Bytes(), &result); err != nil ||
 				(scenario.operation != "app.stop" && (result.Operation != scenario.operation || result.Target != node.Name)) ||
