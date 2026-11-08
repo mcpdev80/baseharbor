@@ -321,6 +321,16 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "target-state", Detail: "invalid target directory name; local BaseHarbor data root will still be removed"})
 				continue
 			}
+			// Unregistered Core-only targets are eligible only with a protected,
+			// BaseHarbor-owned installation identity. Do not guess from foreign state.
+			if owned, ownerErr := deployment.ResolveDataRootTarget(name); ownerErr == nil {
+				byName[name] = owned
+				continue
+			} else if !errors.Is(ownerErr, os.ErrNotExist) {
+				byName[name] = deployment.ResolvedTarget{Name: name}
+				results = append(results, fullDestroyResult{Status: "FAILED", Target: name, Resource: "installation-owner", Detail: ownerErr.Error() + "; foreign or unverifiable owner preserved", Diagnostic: "unverified-data-root-core"})
+				continue
+			}
 			provider := ""
 			if records, listErr := deployment.ListDeployments(name); listErr == nil {
 				for _, record := range records {
