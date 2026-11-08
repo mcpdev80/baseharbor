@@ -129,7 +129,7 @@ func missingCandidateConsentError(submission delivery.CandidateSubmission) error
 	digest := delivery.CandidateConsentDigest(submission)
 	message := "candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"
 	hint := "Re-run with --confirm-candidate " + digest + " to acknowledge this exact submission."
-	return usageError(message, hint)
+	return fmt.Errorf("%w: %w", errConsentRequiredForCandidateSubmission, usageError(message, hint))
 }
 
 func finalizeCandidateConsent(rawDigest, by string, submission delivery.CandidateSubmission) (*delivery.CandidateConsent, error) {
