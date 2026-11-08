@@ -107,6 +107,17 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			NoBackup    bool   `json:"no_backup"`
 		}{environment, true})
 		return name, environment, payload, err
+	case "app.stop":
+		if approval || noBackup || fullReset || skipMemory || candidate != "" {
+			return "", "", nil, usageError("remote stop received unsupported lifecycle flags",
+				"Use baha app down NAME --environment dev [--provider-consent-file PATH].")
+		}
+		payload, err := json.Marshal(struct {
+			Name                  string                             `json:"name"`
+			Environment           string                             `json:"environment"`
+			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
+		}{name, environment, consent})
+		return name, environment, payload, err
 	case "destroy":
 		if !approval || noBackup || skipMemory || candidate != "" {
 			return "", "", nil, usageError("remote destroy requires explicit --yes approval",
@@ -196,11 +207,21 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	if err := json.Unmarshal(result, &observed); err != nil {
 		return errors.New("remote Core lifecycle result cannot be decoded")
 	}
-	if observed.Target != target.Name || observed.Application != name || observed.Environment != environment {
+	if (operation != "app.stop" && observed.Target != target.Name) || observed.Application != name || observed.Environment != environment {
 		return errors.New("remote Core lifecycle result does not match the requested application authority")
 	}
 	if operation == "apply" && (observed.Status == nil || !observed.Status.Ready) {
 		return errors.New("remote Core apply did not prove application readiness")
+	}
+	if operation == "app.stop" {
+		var stopped struct {
+			State         string `json:"state"`
+			DataPreserved bool   `json:"data_preserved"`
+		}
+		if err := json.Unmarshal(result, &stopped); err != nil ||
+			stopped.State != "stopped" || !stopped.DataPreserved {
+			return errors.New("remote Core did not verify application stop and retained recovery ownership")
+		}
 	}
 	if observed.Status != nil && (observed.Status.Target != target.Name ||
 		observed.Status.Application != name || observed.Status.Environment != environment) {
