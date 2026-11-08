@@ -121,7 +121,19 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		shared.Files.Project = coreSQL.Files.Project
 		shared.Files.Compose = coreSQL.Files.Compose
 		shared.Files.Env = coreSQL.Files.Env
-		shared.Services[capability.ProviderPostgreSQL] = coreSQL.SQLServices
+		// Use the canonical Core SQL client service, not the database daemon
+		// (which does not provide the application-authenticated test client).
+		client := ""
+		for _, service := range coreSQL.SQLServices {
+			if service == "postgres-admin" {
+				client = service
+				break
+			}
+		}
+		if client == "" {
+			t.Fatal("canonical Core SQL client service is unavailable")
+		}
+		shared.Services[capability.ProviderPostgreSQL] = []string{client}
 		shared.Resources = coreSQL.Resources
 	}
 	var credentials [32]byte
