@@ -149,3 +149,20 @@ func TestRemoteApplyCarriesExactCandidateDigest(t *testing.T) {
 		t.Fatal("destroy accepted apply-only candidate confirmation")
 	}
 }
+
+func TestRemoteExplicitIdempotencyRecovery(t *testing.T) {
+	args, key, err := extractRemoteIdempotencyKey([]string{"demo", "--yes", "--idempotency-key", "recovery-123"})
+	if err != nil || key != "recovery-123" || len(args) != 2 {
+		t.Fatalf("explicit stable recovery key was not preserved: %q %v %v", key, args, err)
+	}
+	for _, invalid := range [][]string{
+		{"demo", "--idempotency-key="},
+		{"demo", "--idempotency-key", "../foreign"},
+		{"demo", "--idempotency-key", "first", "--idempotency-key", "second"},
+		{"demo", "--idempotency-key"},
+	} {
+		if _, _, err := extractRemoteIdempotencyKey(invalid); err == nil {
+			t.Fatalf("unsafe remote recovery key accepted: %v", invalid)
+		}
+	}
+}
