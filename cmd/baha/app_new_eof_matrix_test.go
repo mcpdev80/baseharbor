@@ -13,7 +13,7 @@ import (
 // interactive input stream ends (for example Ctrl-D in canonical terminal mode).
 func TestAppNewWizardEOFCancelsEarlyPromptsWithoutWriting(t *testing.T) {
 	for _, tc := range []struct {
-		name string
+		name  string
 		input func(string) string
 	}{
 		{name: "application-name", input: func(string) string { return "" }},
