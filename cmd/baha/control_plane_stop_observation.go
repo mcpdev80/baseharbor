@@ -27,6 +27,17 @@ func observeControlPlaneStopRuntime(parent context.Context, target deployment.Re
 	if err != nil {
 		return nil
 	}
+	return observeControlPlaneStopWithProvider(ctx, provider, p)
+}
+
+// observeControlPlaneStopWithProvider exercises the production identity contract
+// against an already-resolved runtime provider. It mirrors the retirement seam's
+// testability: the cross-project pinned native-name contract is verified here so
+// a focused regression can call this seam directly with a pinned provider.
+func observeControlPlaneStopWithProvider(ctx context.Context, provider bhruntime.RuntimeProvider, p *controlPlaneStopPlan) error {
+	p.ObservedProcesses = []coreStopProcessObservation{}
+	p.ObservedResources = []bhruntime.ProjectResource{}
+	p.nativeRevision = "unverified"
 	resources, err := provider.InspectProjectResources(ctx, p.Project, p.Resources)
 	if err != nil {
 		return runtimeMutationOwnerError()
