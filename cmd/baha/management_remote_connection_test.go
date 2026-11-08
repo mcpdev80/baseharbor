@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
@@ -30,13 +32,54 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		OperatorIssuer string `json:"operator_issuer"`
 		TenantID       string `json:"tenant_id"`
 	}{managementInstallationVersion, installation, coreIssuer, operatorIssuer, node.TenantID}
+	var execution machine.Execution
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/management/installation" || r.Header.Get("Authorization") != "Bearer test-id-token" {
+		if r.Header.Get("Authorization") != "Bearer test-id-token" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(identity)
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/management/installation":
+			_ = json.NewEncoder(w).Encode(identity)
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/discovery":
+			discovery := machine.MachineDiscovery()
+			discovery.HTTP = machine.MachineHTTPBindings()
+			_ = json.NewEncoder(w).Encode(discovery)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/machine/executions":
+			var request struct {
+				OperationID string                   `json:"operation_id"`
+				Context     machine.OperationContext `json:"context"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
+				request.OperationID != "status" || request.Context.Target != node.Name ||
+				request.Context.Environment != "dev" || request.Context.Application != "demo" ||
+				r.Header.Get("Idempotency-Key") == "" {
+				http.Error(w, "invalid status request", http.StatusBadRequest)
+				return
+			}
+			execution = machine.Execution{
+				ContractVersion: machine.ExecutionContractVersion,
+				ExecutionID:     "remote-status-one",
+				OperationID:     request.OperationID,
+				Context:         request.Context,
+				State:           machine.ExecutionSucceeded,
+				Result:          json.RawMessage(`{"ready":true}`),
+			}
+			w.Header().Set("Location", "/api/v1/machine/executions/remote-status-one")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(machine.Execution{
+				ContractVersion: machine.ExecutionContractVersion,
+				ExecutionID:     execution.ExecutionID,
+				OperationID:     execution.OperationID,
+				Context:         execution.Context,
+				State:           machine.ExecutionPending,
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/executions/remote-status-one":
+			_ = json.NewEncoder(w).Encode(execution)
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer server.Close()
 	cert := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
@@ -82,6 +125,15 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	}
 	if err := verify(); err != nil {
 		t.Fatalf("valid pinned remote Core rejected: %v", err)
+	}
+
+	var statusOutput bytes.Buffer
+	if err := remoteApplicationStatus(context.Background(), node,
+		[]string{"demo", "--environment", "dev"}, &statusOutput); err != nil {
+		t.Fatalf("verified remote status CLI failed: %v", err)
+	}
+	if !strings.Contains(statusOutput.String(), "\"ready\": true") {
+		t.Fatalf("remote status CLI returned no confirmed READY result: %q", statusOutput.String())
 	}
 
 	for _, foreignTenant := range []string{"", "22222222-2222-4222-8222-222222222222"} {
