@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -57,7 +57,7 @@ func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (mac
 	return discovery, nil
 }
 
- 
+
 // requestMachineExecution dispatches only a discovered operation to the
 // startup-pinned Core. Its idempotency key belongs to the caller, so a
 // transport timeout never silently generates a new mutation on retry.
@@ -66,7 +66,7 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	ctx context.Context, operationID string, selectors machine.OperationContext,
 	input json.RawMessage, idempotencyKey string,
 ) (machine.Execution, error) {
-	if strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
+	if c == nil || c.client == nil || c.origin == "" || c.token == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
 		selectors.Target != c.target || selectors.Environment == "" {
 		return machine.Execution{}, errors.New("remote machine operation requires pinned Target, environment and idempotency key")
 	}
