@@ -142,6 +142,9 @@ jobs:
       - name: Validate Node HTTPS enrollment and remote CLI contract
         shell: bash
         run: bash scripts/ci-node-contract-acceptance.sh
+      - name: Validate real installation destroy and interrupted retry
+        shell: bash
+        run: bash scripts/ci-native-installation-destroy.sh
       - name: Clean up isolated runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh docker
