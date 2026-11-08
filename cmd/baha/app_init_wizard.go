@@ -231,8 +231,8 @@ func manifestFromDetectedProject(d appProjectDetection, quick bool) (application
 	hasWorkload := len(d.WorkloadServices) > 0
 	if quick && !sql && !cache && !objectStorage && !secrets && !hasWorkload && !d.Metrics && !d.OTLP {
 		return application.Manifest{}, usageError(
-			"no unambiguous application requirements were detected",
-			"Run 'baha app init' interactively or use explicit capability flags.",
+			fmt.Sprintf("no unambiguous application requirements were detected (SQL=%t, cache=%t, object-storage=%t, workload-services=%d, metrics=%t, telemetry=%t, secret-candidates=%d unconfirmed)", sql, cache, objectStorage, len(d.WorkloadServices), d.Metrics, d.OTLP, len(d.SecretCandidates)),
+			"Run 'baha app init' interactively or pass explicit capability flags. After init, use 'baha app plan' to preview changes; 'baha up' does not have a dry-run mode.",
 		)
 	}
 	m := detectedApplicationManifest(d.Name, "dev", sql, cache, objectStorage, secrets, hasWorkload)

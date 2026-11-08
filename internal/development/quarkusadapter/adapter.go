@@ -206,7 +206,9 @@ func renderProperties(bindings map[string]struct{}) string {
 func dockerfile() string {
 	return "FROM maven:3.9-eclipse-temurin-21 AS build\nWORKDIR /src\nCOPY pom.xml ./\nCOPY src ./src\nRUN mvn -B package -DskipTests\nFROM eclipse-temurin:21-jre\nWORKDIR /app\nCOPY --from=build /src/target/quarkus-app/ ./\nUSER 65532:65532\nEXPOSE 8080\nCMD [\"java\",\"-jar\",\"quarkus-run.jar\"]\n"
 }
-func compose() string { return "services:\n  app:\n    build: .\n    ports:\n      - \"8080:8080\"\n" }
+func compose() string {
+	return "services:\n  app:\n    build: .\n    ports:\n      - \"8080:8080\"\n    environment:\n      PORT: \"8080\"\n    healthcheck:\n      test: [\"CMD\",\"wget\",\"-q\",\"-O\",\"-\",\"http://127.0.0.1:8080/q/health\"]\n      interval: 5s\n      timeout: 3s\n      retries: 12\n      start_period: 5s\n"
+}
 func envExample(bindings map[string]struct{}) string {
 	names := make([]string, 0, len(bindings))
 	for n := range bindings {

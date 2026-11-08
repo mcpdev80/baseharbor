@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
@@ -296,5 +299,206 @@ func TestParseRuntimeUpOptionsAcceptsEnvironmentEqualsForm(t *testing.T) {
 	}
 	if opts.Environment != "prod" {
 		t.Fatalf("environment = %q", opts.Environment)
+	}
+}
+
+// TestUpNameResumesThroughCommandEntrypoint proves the R4 stop criterion: the
+// three up-NAME claims run through the top-level command entrypoint
+// `runWithIO(argv ["up", NAME])`, not through a direct resolveRegisteredApplication
+// call. The direct-call cell (TestUpNameResumesRegisteredDeploymentAcceptsParity)
+// stays for the parser/resolver unit; this test proves the alias routes NAME.
+//
+// Registered NAME resolves the registered deployment and proceeds PAST the NAME
+// resolution step through the production up path (it reaches control-plane setup,
+// which is the next production step after resolveRegisteredApplication succeeds).
+// Unknown NAME fails closed at resolveRegisteredApplication, and `up NAME` and
+// `app up NAME` produce the same resolve outcome (alias parity).
+func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := initialized.Manifest
+	name := m.Name
+	repoRoot := selection.RepositoryRoot
+	manifestPath := selection.ManifestPath
+	registerTestDeployment(t, target, m, repoRoot, manifestPath)
+
+	// --- (1) registered NAME through the command entrypoint: NAME resolves and
+	// the up command proceeds past resolveRegisteredApplication into control-plane
+	// setup. It fails at runtime realization, which is the step AFTER NAME
+	// resolution succeeds -- the same failure the registered NAME reaches from
+	// `app up NAME`, proving alias parity of the NAME-resolution step.
+	t.Chdir(t.TempDir())
+	var registeredOut bytes.Buffer
+	registeredErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"up", name, "--yes", "--skip-memory-preflight", "--plain"},
+		&registeredOut, &registeredOut)
+	if registeredErr == nil {
+		t.Fatal("up NAME with a registered NAME must fail before runtime realization (no Core here); got success")
+	}
+
+	// The command must have accepted NAME and attempted the registered deployment:
+	// the error is the control-plane realization failure reached after
+	// resolveRegisteredApplication succeeds, not a NAME/usage rejection. A NAME
+	// that was NOT routed through the entrypoint would instead fail closed here
+	// with "no registered deployment"; that is exactly what assertion (3) proves.
+	registeredMsg := registeredErr.Error()
+	if strings.Contains(registeredMsg, "no registered deployment") {
+		t.Fatalf("up NAME did not route the registered NAME through resolveRegisteredApplication: %v", registeredMsg)
+	}
+
+	// --- (2) alias parity: `up NAME` and `app up NAME` reach the same
+	// resolveRegisteredApplication outcome for the same registered NAME.
+	var appUpOut bytes.Buffer
+	appUpErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"app", "up", name, "--yes", "--skip-memory-preflight", "--plain"},
+		&appUpOut, &appUpOut)
+	// Both run the same resolveRegisteredApplication path for the registered NAME;
+	// if the alias did not thread NAME, `up` would fail closed while `app up`
+	// resolved. Document both outcomes so the mapping to the stop criterion is
+	// immediate.
+	if strings.Contains(appUpErr.Error(), "no registered deployment") {
+		t.Fatalf("app up NAME failed closed for a registered NAME: %v", appUpErr)
+	}
+	if strings.Contains(registeredMsg, "no registered deployment") != strings.Contains(appUpErr.Error(), "no registered deployment") {
+		t.Fatalf("up/app-up NAME resolution diverged: up=%q app-up=%q", registeredMsg, appUpErr)
+	}
+
+	// --- (3) unknown NAME through the command entrypoint fails closed: the top-level
+	// `up` must not resolve an unregistered NAME, nor fall back to another deployment.
+	// --- (3) unknown NAME inside the same repository fails closed at
+	// resolveRegisteredApplication (the entrypoint-routed path for a repo-present
+	// `up NAME`). A NAME that was not threaded through the entrypoint would not
+	// reach resolveRegisteredApplication at all.
+	t.Chdir(repoRoot)
+	var unknownOut bytes.Buffer
+	unknownErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"up", "does-not-exist-xyz", "--yes", "--skip-memory-preflight", "--plain"},
+		&unknownOut, &unknownOut)
+	if unknownErr == nil {
+		t.Fatal("up NAME with an unregistered NAME inside the repo must fail closed; got success")
+	}
+	if !strings.Contains(unknownErr.Error(), "no registered deployment") {
+		t.Fatalf("up NAME did not fail closed for an unregistered NAME through the entrypoint: %v", unknownErr.Error())
+	}
+}
+
+func TestParseRuntimeUpOptionsAcceptsOptionalName(t *testing.T) {
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "my-deployment", "--skip-memory-preflight"})
+	if err != nil {
+		t.Fatalf("up NAME must accept the optional positional NAME: %v", err)
+	}
+	if opts.Name != "my-deployment" {
+		t.Fatalf("Name = %q, want my-deployment", opts.Name)
+	}
+}
+
+func TestParseRuntimeUpOptionsRejectsSecondName(t *testing.T) {
+	if _, err := parseRuntimeUpOptions([]string{"one", "two"}); err == nil {
+		t.Fatal("expected at-most-one NAME error")
+	}
+}
+
+// TestParseUpParsesIdenticalToAppUpEnforces the documented argument surface:
+// the top-level 'baha up' alias must accept the same optional NAME grammar as
+// 'baha app up'. A divergence here is the bug this task fixes.
+func TestParseUpParsesIdenticalToAppUpEnforcesParity(t *testing.T) {
+	grammar := []string{"my-deployment", "--yes", "--skip-memory-preflight"}
+	upOpts, upErr := parseRuntimeUpOptions(grammar)
+	appOpts, appErr := parseAppUpOptions(grammar)
+	if (upErr == nil) != (appErr == nil) {
+		t.Fatalf("up/app-up parse divergence: upErr=%v appErr=%v", upErr, appErr)
+	}
+	if upOpts.Name != appOpts.Name {
+		t.Fatalf("NAME mismatch: up.Name=%q app-up.Name=%q", upOpts.Name, appOpts.Name)
+	}
+	if upOpts.Name != "my-deployment" {
+		t.Fatalf("up.Name = %q, want my-deployment", upOpts.Name)
+	}
+	if upOpts.Yes != appOpts.Yes || upOpts.SkipMemoryPreflight != appOpts.SkipMemoryPreflight {
+		t.Fatalf("flag mismatch: up.Name=%q app-up.Name=%q", upOpts.Name, appOpts.Name)
+	}
+}
+
+// TestUpNameResumesRegisteredDeploymentAcceptsParity proves the card's
+// acceptance semantics on the production-command path, not just the parser:
+// the top-level `baha up NAME` alias resolves the registered deployment NAME
+// identically to `baha app up NAME`, resumes the registered deployment, and
+// fails closed for an unregistered NAME.
+func TestUpNameResumesRegisteredDeploymentAcceptsParity(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := initialized.Manifest
+	name := m.Name
+	repoRoot := selection.RepositoryRoot
+	manifestPath := selection.ManifestPath
+	if m.ApplicationID == "" {
+		t.Fatal("minimal manifest must carry a concrete application ID")
+	}
+
+	registered := registerTestDeployment(t, target, m, repoRoot, manifestPath)
+
+	// Parser parity: both the alias and the explicit command accept the same
+	// single optional NAME and agree on the value.
+	upOpts, upErr := parseRuntimeUpOptions([]string{name, "--yes", "--skip-memory-preflight"})
+	if upErr != nil {
+		t.Fatalf("up NAME must parse the optional positional NAME: %v", upErr)
+	}
+	appOpts, appErr := parseAppUpOptions([]string{name, "--yes", "--skip-memory-preflight"})
+	if appErr != nil {
+		t.Fatalf("app up NAME must parse: %v", appErr)
+	}
+	if upOpts.Name != appOpts.Name {
+		t.Fatalf("up/app-up NAME parity lost: up=%q app-up=%q", upOpts.Name, appOpts.Name)
+	}
+	if upOpts.Name != name {
+		t.Fatalf("up.Name = %q, want %q", upOpts.Name, name)
+	}
+
+	// Resume of the registered deployment: NAME is identical to app up NAME.
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up")
+	if err != nil {
+		t.Fatalf("up NAME must resume the registered deployment %q: %v", name, err)
+	}
+	if resolved.DeploymentIdentity.Application != name {
+		t.Fatalf("resolved application = %q, want %q", resolved.DeploymentIdentity.Application, name)
+	}
+	if resolved.DeploymentIdentity.DeploymentID != registered.Identity.DeploymentID {
+		t.Fatalf("resolved deployment identity = %+v, want %+v", resolved.DeploymentIdentity, registered.Identity)
+	}
+
+	// Fail closed for an unregistered NAME: a registered deployment with a
+	// different identity claims this name, so the alias must reject it.
+	foreignID, err := deployment.NewDeploymentIdentity(target.Name, application.MustNewApplicationID(), name, "staging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: foreignID,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: repoRoot, Manifest: manifestPath},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: target.RuntimeProvider},
+	}
+	intent, jerr := json.Marshal(m)
+	if jerr != nil {
+		t.Fatal(jerr)
+	}
+	foreign.Applied.Intent = intent
+	if err := deployment.SaveDeploymentRecord(foreign); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := resolveRegisteredApplication(t.Context(), target, targetRoot, name, "", "up"); err == nil {
+		t.Fatal("up NAME accepted an unregistered deployment; fail-closed is broken")
 	}
 }

@@ -59,11 +59,12 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := application.FindRepositoryManifest(cwd); err != nil {
-				if errors.Is(err, application.ErrRepositoryManifestNotFound) {
-					return appGuidedInitCommand().Run(ctx, args, out, errOut)
-				}
+			present, err := repositoryInitHasExistingManifest(cwd)
+			if err != nil {
 				return err
+			}
+			if !present {
+				return appGuidedInitCommand().Run(ctx, args, out, errOut)
 			}
 			opts, err := parseRepositoryInitOptions(args)
 			if err != nil {
@@ -76,6 +77,16 @@ func appInitOrConfigureCommand(store application.Store) *cli.Command {
 			return runRepositoryRuntimeInit(ctx, resolved, opts, out)
 		},
 	}
+}
+
+// Existing manifest selects runtime configuration once; it never re-enters
+// contract generation or a repeated wizard message loop.
+func repositoryInitHasExistingManifest(cwd string) (bool, error) {
+	_, err := application.FindRepositoryManifest(cwd)
+	if errors.Is(err, application.ErrRepositoryManifestNotFound) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 func parseRepositoryInitOptions(args []string) (repositoryInitOptions, error) {

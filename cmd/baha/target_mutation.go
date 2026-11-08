@@ -35,6 +35,15 @@ type targetMutationResult struct {
 	Deleted              bool                                   `json:"deleted,omitempty"`
 }
 
+// A local access definition is one host-wide management Core identity, not an
+// isolated Core per Target name. The caller keeps existing access untouched.
+func targetAccessConflictError(name string) error {
+	if name == "local" {
+		return fmt.Errorf("access %q already exists with different provider/reference; local access is one shared Core per host, not an isolated Core per Target. Run 'baha target list' and reuse the existing local access without changing its identity, or use 'baha node add' to enroll a separate remote Docker/Podman host", name)
+	}
+	return fmt.Errorf("access %q already exists with different provider/reference", name)
+}
+
 func createTargetDefinition(ctx context.Context, input machineTargetCreateInput) (targetMutationResult, error) {
 	if input.RecoveryFile != "" {
 		if input.RuntimeProvider != "" || input.AccessProvider != "" || input.Access != "" || input.Reference != "" || input.TenantID != "" || input.Scope != "" || input.Default || input.DockerEndpoint != "" || input.DockerContext != "" || input.DockerMode != "" {
@@ -72,7 +81,7 @@ func createTargetDefinition(ctx context.Context, input machineTargetCreateInput)
 	}
 	if existing, exists := cfg.Access[accessName]; exists {
 		if existing.Provider != accessProvider || existing.Reference != reference {
-			return targetMutationResult{}, fmt.Errorf("access %q already exists with different provider/reference", accessName)
+			return targetMutationResult{}, targetAccessConflictError(accessName)
 		}
 	} else {
 		cfg.Access[accessName] = deployment.AccessDefinition{Provider: accessProvider, Reference: reference}

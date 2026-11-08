@@ -50,9 +50,9 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 	if err != nil {
 		return appNewAbortOnEOF(ctx, out, appWizardController{}, err)
 	}
-	name = slugifyAppName(name)
-	if name == "" {
-		return usageError("application name is required", "Enter a lowercase application name such as catalog-api.")
+	name, err = normalizeAppNewWizardName(name, out)
+	if err != nil {
+		return err
 	}
 
 	root, err := guidedNewApplicationRoot(reader, out, name)
@@ -222,6 +222,24 @@ func runAppNewWizard(ctx context.Context, out, errOut io.Writer) error {
 		}
 	}
 	return finishAppNewWizard(ctx, root, result, profile, controller, mode, out, errOut, release)
+}
+
+// normalizeAppNewWizardName makes the chosen repository identity explicit before
+// any filesystem or registry mutation. Navigation words are not app names.
+func normalizeAppNewWizardName(raw string, out io.Writer) (string, error) {
+	original := strings.TrimSpace(raw)
+	name := slugifyAppName(original)
+	if name == "" {
+		return "", usageError("application name is required", "Enter a lowercase application name such as catalog-api.")
+	}
+	switch name {
+	case "cancel", "back", "exit", "quit":
+		return "", usageError("reserved application name "+name, "Choose a project name other than a wizard navigation command.")
+	}
+	if original != name {
+		fmt.Fprintf(out, "Application name normalized: %q -> %q\n", original, name)
+	}
+	return name, nil
 }
 
 func appNewWizardAuthorityContext(ctx context.Context, root string, manifest application.Manifest) (resolvedApplication, application.ResolutionSnapshot, error) {

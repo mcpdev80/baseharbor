@@ -101,14 +101,19 @@ func SetManagedCredentialIfAbsent(ctx context.Context, executor Executor, files 
 	}
 
 	path := "managed/" + reference
-	// Create-only / compare-and-swap write: seed only when the reference does
-	// not already exist. -if-not-exists makes the existence check and the write
-	// atomic on the existing baseharbor KV v2 mount, so a concurrent managed
-	// value can never be clobbered by the stale local candidate. On a
-	// pre-existing reference the write fails closed and the caller returns the
-	// already-managed value.
-	if _, err := execWithTokenInput(ctx, executor, files, token, fmt.Sprintf("exec bao kv put -if-not-exists -mount=baseharbor %s value=-", path), value); err != nil {
-		return ErrManagedCredentialAlreadyExists
+	// KV v2 uses -cas=0 for an atomic create-only write. Never interpret
+	// an arbitrary CLI failure (permissions, unsupported flags, network)
+	// as proof that the secret already exists.
+	if _, writeErr := execWithTokenInput(ctx, executor, files, token, fmt.Sprintf("exec bao kv put -cas=0 -mount=baseharbor %s value=-", path), value); writeErr != nil {
+		if _, readErr := readManagedCredentialWithToken(ctx, executor, files, token, path); readErr == nil {
+			return ErrManagedCredentialAlreadyExists
+		}
+		return errors.New("create-only managed credential write failed; managed authority not confirmed")
+	}
+	// A successful create must be readable from the same authoritative store.
+	stored, err := readManagedCredentialWithToken(ctx, executor, files, token, path)
+	if err != nil || !bytes.Equal(stored, value) {
+		return errors.New("verify create-only managed credential after write failed")
 	}
 	return nil
 }

@@ -523,7 +523,7 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return err
 		}
 		if found {
-			resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+			resolved, err := resolveApplication(ctx, application.DefaultStore(), upNameArgs(opts.Name), "up")
 			if err != nil {
 				return err
 			}

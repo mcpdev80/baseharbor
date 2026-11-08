@@ -22,7 +22,7 @@ import (
 // create-only compare-and-swap adapter (openbao.SetManagedCredentialIfAbsent)
 // end to end against a faithful in-memory model of the baseharbor OpenBao
 // managed mount. A concurrent managed winner is already present; two real
-// seed adapters then race through the production command -if-not-exists. Exactly
+// seed adapters then race through the production command -cas=0. Exactly
 // one production Get reads the winner back, the create-only guard makes every
 // stale seed a no-op, and the existing managed value wins.
 //
@@ -66,9 +66,9 @@ func TestReconcileRealCreateOnlyCASSurvivesConcurrentSeed(t *testing.T) {
 	}()
 	wg.Wait()
 
-	// Exactly one production Get read the existing managed value back.
-	if authority.gets != 1 {
-		t.Fatalf("production Get calls = %d, want exactly 1 (read-back the existing managed value)", authority.gets)
+	// The initial Get and two CAS-failure readbacks observe the existing managed value.
+	if authority.gets != 3 {
+		t.Fatalf("production Get calls = %d, want 3 (initial inspection and two CAS-failure readbacks)", authority.gets)
 	}
 	// Both concurrent create-only seeds were rejected (AlreadyExists) — the
 	// winner was never overwritten.
@@ -112,7 +112,7 @@ func seedViaProductionAdapter(t *testing.T, authority *fakeBao, files bhruntime.
 }
 
 // TestReconcileRealCreateOnlyMutationIsDeterministicallyRed proves the create-only
-// guard is load-bearing: removing -if-not-exists from the production
+// guard is load-bearing: removing -cas=0 from the production
 // SetManagedCredentialIfAbsent command turns the create-only put into an
 // unconditional write, which clobbers the concurrent winner with the stale local
 // candidate. This is the RED cell the mutation must fail in one run — it is not
@@ -174,7 +174,7 @@ func runMutationRaceCell(t *testing.T) {
 
 	got := authority.readObject("race-device")
 	// The red proof: a correct create-only seed must NOT clobber the concurrent
-	// winner. With the -if-not-exists guard removed the unconditional write
+	// winner. With the -cas=0 guard removed the unconditional write
 	// clobbers it, so THIS assertion fails — the deterministic RED outcome that
 	// proves the guard is load-bearing.
 	if string(got) != string(concurrentValue) {
@@ -308,12 +308,12 @@ func (f *fakeBao) ExecProjectInput(_ context.Context, _, _, _ string, input []by
 		// and leaves the existing value untouched; otherwise it creates the
 		// object. This is the only behaviour that decides the race winner.
 		//
-		// The fake honours the production -if-not-exists flag literally: when the
+		// The fake honours the production -cas=0 flag literally: when the
 		// production command drops the flag (the round-3 mutation), the put
 		// becomes an unconditional overwrite and clobbers the concurrent winner.
 		// That is how the single mutant cell goes RED deterministically — the
 		// production command string is the load-bearing behaviour under test.
-		isCreateOnly := strings.Contains(cmd, "-if-not-exists")
+		isCreateOnly := strings.Contains(cmd, "-cas=0")
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		if f.present {
@@ -400,7 +400,7 @@ func copyTree(src, dest string) error {
 }
 
 // runMutationInDisposableCopy proves the mutation in isolation. It copies the
-// whole product module to a temp dir, removes -if-not-exists from the EXACT
+// whole product module to a temp dir, removes -cas=0 from the EXACT
 // production command line the review cited, copies this test package's race
 // files into the copy, and runs `go test` there. With the guard removed the
 // race cell's red assertion fires (the concurrent winner is clobbered), so the
@@ -415,8 +415,8 @@ func runMutationInDisposableCopy(t *testing.T) bool {
 	if err != nil {
 		t.Fatalf("read production adapter: %v", err)
 	}
-	if !bytes.Contains(data, []byte("bao kv put -if-not-exists -mount=baseharbor")) {
-		t.Skip("production adapter already lacks -if-not-exists; nothing to mutate")
+	if !bytes.Contains(data, []byte("bao kv put -cas=0 -mount=baseharbor")) {
+		t.Skip("production adapter already lacks -cas=0; nothing to mutate")
 	}
 
 	dest := t.TempDir()
@@ -424,16 +424,16 @@ func runMutationInDisposableCopy(t *testing.T) bool {
 		t.Fatalf("copy product module: %v", err)
 	}
 
-	mutated := bytes.Replace(data, []byte("bao kv put -if-not-exists -mount=baseharbor"), []byte("bao kv put -mount=baseharbor"), 1)
+	mutated := bytes.Replace(data, []byte("bao kv put -cas=0 -mount=baseharbor"), []byte("bao kv put -mount=baseharbor"), 1)
 	if bytes.Equal(mutated, data) {
-		t.Fatal("mutation did not apply: exact -if-not-exists line not found")
+		t.Fatal("mutation did not apply: exact -cas=0 line not found")
 	}
 	if err := os.WriteFile(filepath.Join(dest, "internal", "openbao", "managed_credentials.go"), mutated, 0o600); err != nil {
 		t.Fatalf("write mutated adapter: %v", err)
 	}
 
 	// Inside the copy, the mutation test takes the BAHA_MUTATION_COPY branch
-	// (runMutationRaceCell). With -if-not-exists removed from the production
+	// (runMutationRaceCell). With -cas=0 removed from the production
 	// adapter the concurrent winner is clobbered and the red assertion fails, so
 	// the mutated run exits non-zero — the deterministic RED outcome.
 	cmd := exec.Command("go", "test", "./cmd/baha/", "-run", "TestReconcileRealCreateOnlyMutationIsDeterministicallyRed", "-count=1")

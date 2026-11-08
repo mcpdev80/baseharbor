@@ -157,7 +157,11 @@ class ConservativeFallbackTests(unittest.TestCase):
         self.assertTrue({'synchronize', 'ready_for_review'} <= set(trigger['pull_request']['types']))
         for name in ('pr_plan', 'pr_validations', 'pr_focused', 'pr_selected_final'):
             self.assertIn('draft == false', ci['jobs'][name]['if'])
-        self.assertNotIn('draft == false', ci['jobs']['source_format']['if'])
+        self.assertIn('draft == false', ci['jobs']['source_format']['if'])
+        self.assertIn('draft == false', ci['jobs']['pr_native_impact']['if'])
+        self.assertIn('draft == false', ci['jobs']['pr_native_destroy']['if'])
+        self.assertIn('pr_native_impact', ci['jobs']['pr_native_destroy']['needs'])
+        self.assertIn('scripts/ci-native-installation-destroy.sh', str(ci['jobs']['pr_native_destroy']['steps']))
         self.assertIn('source_format', ci['jobs']['pr_selected_final']['needs'])
 
 

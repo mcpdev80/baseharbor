@@ -98,7 +98,13 @@ func TestHumanCommandIndexTracksExactCommandMetadata(t *testing.T) {
 		if german {
 			dir = filepath.Join(dir, "de")
 		}
-		checkGeneratedDocumentation(t, filepath.Join(dir, "cli", "command-index.md"), humanCommandIndex(rows, german))
+		docPath := filepath.Join(dir, "cli", "command-index.md")
+		if os.Getenv("BASEHARBOR_UPDATE_MACHINE_DOCS") == "1" {
+			if err := os.WriteFile(docPath, []byte(humanCommandIndex(rows, german)), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		checkGeneratedDocumentation(t, docPath, humanCommandIndex(rows, german))
 	}
 }
 

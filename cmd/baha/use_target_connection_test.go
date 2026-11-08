@@ -36,10 +36,11 @@ func registerTestTargetConfig(t *testing.T, name string) error {
 }
 
 // bootstrapVerifiedTargetForConnectionTest registers a genuine, verified Core
-// installation under the Target runtime root and materializes its base CA on
-// the single authorized lifecycle path, so the reading resolver
-// coreinstallation.ResolverForTargetSelection can observe a genuine existing
-// issuer. It returns the loaded State plus the runtime root.
+// installation under the Target runtime root and materializes its REAL Keycloak
+// core issuer under the plain target-state root (providers/keycloak/shared/core),
+// so the read-only VerifyCoreConnection boundary observes a genuine, already-
+// existing Keycloak-bound discovery identity. It returns the loaded State plus
+// the runtime root.
 func bootstrapVerifiedTargetForConnectionTest(t *testing.T, targetName string) (coreinstallation.State, string) {
 	t.Helper()
 	stateRoot, err := deployment.TargetStateRoot(targetName)
@@ -64,21 +65,7 @@ func bootstrapVerifiedTargetForConnectionTest(t *testing.T, targetName string) (
 	}); err != nil {
 		t.Fatalf("bootstrap verified installation for %s: %v", targetName, err)
 	}
-	issuerDir := filepath.Join(runtimeRoot, "service-access", "issuer")
-	if _, err := serviceaccess.EnsureLocalIssuer(issuerDir); err != nil {
-		t.Fatalf("materialize base CA on the authorized lifecycle path: %v", err)
-	}
-	// Publish a CRL for the base CA. The reading resolver observes the live
-	// connection through a single tri-state revocation call that fails closed on
-	// a missing CRL, so the authorized base-CA materialization must leave a CRL
-	// on disk for the connection to verify as live. Revoke serial "02" publishes
-	// a CRL that does not contain the observed base serial, so revocation checks
-	// observe a genuine, revocation-free base.
-	if iss, err := serviceaccess.EnsureLocalIssuer(issuerDir); err != nil {
-		t.Fatalf("re-open base CA issuer: %v", err)
-	} else if err := iss.Revoke(context.Background(), "02"); err != nil {
-		t.Fatalf("publish base CA CRL: %v", err)
-	}
+	materializeKeycloakCoreIssuerForTarget(t, stateRoot, "https://identity.localhost:8443/realms/baseharbor")
 	state, err := coreinstallation.Load(runtimeRoot)
 	if err != nil {
 		t.Fatalf("load verified installation for %s: %v", targetName, err)
