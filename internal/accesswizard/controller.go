@@ -46,6 +46,9 @@ type Controller struct {
 	scope  map[string]string
 	page   int
 	reader *bufio.Reader
+	// commitErr is set by the CLI decide callback (via NoteCommitError) when a
+	// persistence failure caused the Deny, so Run can report the precise reason.
+	commitErr error
 }
 
 // NewController builds a controller bound to the known target set.
@@ -71,6 +74,14 @@ func (c *Controller) SetIO(in io.Reader, out io.Writer) {
 // SetKnown replaces the known target set (used by tests).
 func (c *Controller) SetKnown(known map[string]string) {
 	c.known = known
+}
+
+// NoteCommitError records a persistence failure the decide callback wants
+// reported. Run consumes it once when the callback returns Deny, so the
+// operator sees which write was refused (for example an owner-collision guard)
+// instead of a generic rejection.
+func (c *Controller) NoteCommitError(err error) {
+	c.commitErr = err
 }
 
 // KnownTargets returns the sorted known target names for the search screen.
@@ -206,7 +217,16 @@ func (c *Controller) Run(decide func(Review) policy.Decision) RunResult {
 	decision := decide(review)
 	if decision == policy.Deny {
 		// The production authority Denied: the wizard reports the reason and
-		// fails closed. The rejected request is never persisted.
+		// fails closed. The rejected request is never persisted. When the
+		// callback recorded a persistence failure (c.CommitErr, e.g. the
+		// owner-collision guard in PersistActive), the reason names the row
+		// that blocked the write.
+		if c.commitErr != nil {
+			fmt.Fprintf(c.Out, "Access change rejected: %v. No changes were made.\n", c.commitErr)
+			err := c.commitErr
+			c.commitErr = nil
+			return RunResult{Decision: policy.Deny, Err: err}
+		}
 		fmt.Fprintln(c.Out, "Access change rejected by the production policy authority. No changes were made.")
 		return RunResult{Decision: policy.Deny, Err: ErrDenied}
 	}

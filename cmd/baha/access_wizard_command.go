@@ -79,7 +79,11 @@ func accessAssignCommand() *cli.Command {
 				}
 				// Every selection validated in memory; commit the whole set
 				// atomically. A write failure fails closed and persists nothing.
+				// A persistence error (e.g. the owner-collision guard refusing to
+				// overwrite a foreign-owner row on the same key) is carried on the
+				// result so the operator sees why the change was not written.
 				if err := accesswizard.CommitActive(authority, resolveActive); err != nil {
+					controller.NoteCommitError(err)
 					return policy.Deny
 				}
 				return policy.Allow
@@ -139,12 +143,17 @@ func accessOffboardCommand() *cli.Command {
 						sel.TargetName,
 						accesswizard.RemoveManagedUser,
 					); err != nil {
+						controller.NoteCommitError(err)
 						return policy.Deny
 					}
 				}
 				// Every selection validated in memory; commit the whole removal
-				// set atomically. A write failure fails closed and persists nothing.
+				// set atomically. A write failure fails closed and persists
+				// nothing. A persistence error (e.g. the owner-collision guard
+				// refusing to delete a foreign-owner row on the same key) is
+				// carried on the result so the operator sees why.
 				if err := accesswizard.CommitActive(authority, resolveActive); err != nil {
+					controller.NoteCommitError(err)
 					return policy.Deny
 				}
 				return policy.Allow

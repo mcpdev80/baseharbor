@@ -63,6 +63,12 @@ var ErrScopeNotFound = fmt.Errorf("%w: profile references an undeclared target o
 // last-write-wins a concurrent change.
 var ErrStaleRevision = fmt.Errorf("%w: update revision is stale", ErrInvalidProfile)
 
+// ErrOwnerCollision fails closed when a persistence fold would overwrite the
+// (name, target) key of a profile owned by a different installation. The key is
+// shared identity across installations, so a same-key write by a non-owner is
+// never a silent last-write-wins; it is refused before anything is saved.
+var ErrOwnerCollision = fmt.Errorf("%w: team access profile key collides with another owner", ErrInvalidProfile)
+
 // Operation is a machine-operation verb a profile may grant. Only the verbs the
 // operator has already declared on the authority are selectable; an unknown
 // operation is rejected so a profile cannot widen the surface.
@@ -626,11 +632,48 @@ func toProfileList(m map[string]Profile) []Profile {
 // and is carried into the saved document byte-for-byte unchanged. Replacing the
 // full map with the manager snapshot would delete another installation's
 // profiles on every successful write.
+//
+// Carrying foreign rows through the merge is not sufficient by itself: the
+// active-state map is keyed by (name, target), so a foreign row and an owned
+// row can address the IDENTICAL key while their owners differ. Keyed merge
+// semantics are key-identity: whichever fold writes last to that key silently
+// overwrites — or, on a revocation fold, deletes — the row that was there.
+// Two installations holding the same (name, target) key therefore have a
+// namespace conflict, not a mergeable state, so PersistActive refuses the whole
+// write before saving anything:
+//
+//   - Assignment fold: if any snapshot key is held in the state by a
+//     different non-empty owner, the fold would overwrite that row — fail
+//     closed with ErrOwnerCollision.
+//   - Revocation fold: if any key the manager no longer holds was in the
+//     namespace the manager was loaded from (an owned or legacy row in the
+//     same load — detectable because the manager's keys and the state's
+//     same-key rows are disjoint sets of one namespace) and that key is
+//     foreign-owned, the fold would delete it — fail closed with
+//     ErrOwnerCollision. The product-level rule from finding #5 applies
+//     unchanged: an offboard batch whose Target set reaches a key held only by
+//     a foreign installation fails earlier, when Revoke reports
+//     ErrProfileNotFound, and persists nothing.
+//
+// A successful assign/offboard must therefore never overwrite or delete
+// another installation's row.
 func PersistActive(manager *Manager, state ActiveState) error {
 	if manager == nil {
 		return ErrDenied
 	}
 	owner := strings.TrimSpace(manager.Owner)
+	// Collision guard: a snapshot (name, target) key held by a foreign owner in
+	// the loaded state means the merge would overwrite that installation's row.
+	for key, foreign := range state.Config.Profiles {
+		foreignOwner := strings.TrimSpace(foreign.Owner)
+		if foreignOwner == "" || foreignOwner == owner {
+			continue
+		}
+		if _, owned := manager.profiles[key]; owned {
+			return fmt.Errorf("%w: profile (%q, %q) key collides with owner %q",
+				ErrOwnerCollision, foreign.Name, foreign.Target, foreignOwner)
+		}
+	}
 	merged := make(map[string]Profile, len(state.Config.Profiles)+len(manager.profiles))
 	for key, profile := range state.Config.Profiles {
 		profileOwner := strings.TrimSpace(profile.Owner)

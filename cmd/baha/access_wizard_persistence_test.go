@@ -452,3 +452,204 @@ func TestAccessOffboardPreservesForeignOwnerProfile(t *testing.T) {
 	}
 	assertForeignIntact(t, foreign)
 }
+
+// foreignSameKeyProfile seeds a profile owned by another installation that
+// occupies the EXACT same (name, target) key as the row the active owner's
+// wizard assigns or revokes. Distinct-key preservation alone is insufficient:
+// the map is keyed by (name, target), so the same key addressed by two owners
+// is precisely where a last-write-wins merge would overwrite the foreign row.
+func foreignSameKeyProfile(name, target string) orgconfig.Profile {
+	return orgconfig.Profile{
+		Name:       name,
+		Target:     target,
+		Operations: []orgconfig.Operation{orgconfig.OpRead, orgconfig.OpLog},
+		Scope:      "legacy",
+		Owner:      "other-installation",
+		Revision:   7,
+	}
+}
+
+// TestAccessAssignSameKeyForeignOwnerFailsClosed proves the r7 finding at the
+// production CLI boundary: when the active owner assigns a profile whose
+// (name, target) key is already occupied by a foreign owner, the persistence
+// fold must fail closed with ErrOwnerCollision — no success report, no write,
+// and the foreign row unchanged.
+func TestAccessAssignSameKeyForeignOwnerFailsClosed(t *testing.T) {
+	foreign := foreignSameKeyProfile("alice", "prod")
+	writeTestActiveConfig(t, []string{"dev", "prod"}, "read", []orgconfig.Profile{
+		{Name: "seed", Target: "dev", Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"},
+		foreign,
+	})
+
+	beforeBytes := activeBytes(t)
+
+	// The foreign installation holds the EXACT same (name, target) key the
+	// active owner's assign writes: alice@prod. LoadProfiles deliberately
+	// skipped that row, so the owner's manager would fold a same-key row over
+	// it — the r6 overwrite. The persistence guard refuses the whole write.
+	// Select prod so the assignment collides on exactly ("alice","prod").
+	out, err := runWizardWithInput(t, []string{"access", "assign", "alice"}, "alice\n2\nyes\n")
+	if err == nil {
+		t.Fatalf("assign on a foreign-owner same key must fail closed\noutput=%q", out)
+	}
+	if !strings.Contains(out, "collides") {
+		t.Fatalf("expected a collision failure report, got %q", out)
+	}
+	afterBytes := activeBytes(t)
+	if !bytes.Equal(beforeBytes, afterBytes) {
+		t.Fatalf("store must be byte-identical after a colliding assign:\nbefore=%s\nafter=%s", beforeBytes, afterBytes)
+	}
+	assertForeignIntact(t, foreign)
+}
+
+// TestAccessOffboardSameKeyForeignOwnerFailsClosed proves the same fail-closed
+// boundary on the offboarding route: when an offboard batch reaches a Target
+// where the person does not exist in the owner's namespace — precisely the
+// Target where a foreign installation holds the SAME (name, target) key — the
+// mutation fails closed before any write: the batch persists nothing, the store
+// stays byte-identical, and the foreign row survives untouched.
+func TestAccessOffboardSameKeyForeignOwnerFailsClosed(t *testing.T) {
+	foreign := foreignSameKeyProfile("bob", "prod")
+	writeTestActiveConfig(t, []string{"dev", "prod"}, "read", []orgconfig.Profile{
+		{Name: "bob", Target: "dev", Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"},
+		foreign,
+	})
+
+	beforeBytes := activeBytes(t)
+
+	// The batch revokes bob on dev and prod. The owner's manager never loaded
+	// the foreign bob@prod row (LoadProfiles skips foreign owners), so prod is
+	// not a revocable owned selection and the whole batch fails validation
+	// before anything is persisted: no write, foreign row and owned row both
+	// intact. On the prod-only key the same fail-closed boundary is carried by
+	// TestAccessAssignSameKeyForeignOwnerFailsClosed and the collision guard's
+	// unit witness below.
+	out, err := runWizardWithInput(t, []string{"access", "offboard", "bob"}, "bob\n1,2\nyes\n")
+	if err == nil {
+		t.Fatalf("offboard batch touching a foreign-owner same key must fail closed\noutput=%q", out)
+	}
+	afterBytes := activeBytes(t)
+	if !bytes.Equal(beforeBytes, afterBytes) {
+		t.Fatalf("store must be byte-identical after a refused offboard:\nbefore=%s\nafter=%s", beforeBytes, afterBytes)
+	}
+	assertForeignIntact(t, foreign)
+	if _, ok := ownedProfileOn(t, "bob", "dev"); !ok {
+		t.Fatal("the active owner's bob@dev row must survive the refused write")
+	}
+}
+
+// TestPersistActiveSameKeyCollisionGuard pins the orgconfig-level guarantee
+// directly: a snapshot row whose (name, target) key a foreign owner occupies
+// in the loaded state fails closed with ErrOwnerCollision before anything is
+// saved, while a distinct-key fold still merges and preserves the foreign row.
+func TestPersistActiveSameKeyCollisionGuard(t *testing.T) {
+	t.Run("assignment over foreign same key refuses write", func(t *testing.T) {
+		foreign := foreignSameKeyProfile("alice", "prod")
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		state := orgconfig.ActiveState{
+			Resolution: orgconfig.Resolution{
+				ResolvedVersion: orgconfig.ContractVersion,
+				Source:          orgconfig.Source{Kind: orgconfig.SourceLocal, Location: root},
+			},
+			Config: orgconfig.Config{
+				Organization: "persist-acme",
+				APIVersion:   orgconfig.ContractVersion,
+				Operation:    "read",
+				Targets:      map[string]orgconfig.Reference{"prod": {Reference: "local://prod"}},
+				Profiles:     orgconfig.ProfileMap([]orgconfig.Profile{foreign}),
+			},
+		}
+		manager := orgconfig.NewManager("persist-acme",
+			orgconfig.Profile{Name: "alice", Target: "prod",
+				Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"})
+		// The collision must surface the guard error, not a document-validation
+		// error, so the state carries a valid Resolution.
+		err := orgconfig.PersistActive(manager, state)
+		if err == nil || !strings.Contains(err.Error(), "collides") {
+			t.Fatalf("same-key fold must fail closed with the collision guard, got %v", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(root, "config", "organization", "active.json")); !os.IsNotExist(statErr) {
+			t.Fatal("a refused fold must write nothing")
+		}
+	})
+	t.Run("distinct key preserves", func(t *testing.T) {
+		foreign := foreignSameKeyProfile("alice", "prod")
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		state := orgconfig.ActiveState{
+			Resolution: orgconfig.Resolution{
+				ResolvedVersion: orgconfig.ContractVersion,
+				Source:          orgconfig.Source{Kind: orgconfig.SourceLocal, Location: root},
+			},
+			Config: orgconfig.Config{
+				Organization: "persist-acme",
+				APIVersion:   orgconfig.ContractVersion,
+				Operation:    "read",
+				Targets:      map[string]orgconfig.Reference{"dev": {Reference: "local://dev"}, "prod": {Reference: "local://prod"}},
+				Profiles:     orgconfig.ProfileMap([]orgconfig.Profile{foreign}),
+			},
+		}
+		manager := orgconfig.NewManager("persist-acme",
+			orgconfig.Profile{Name: "alice", Target: "dev",
+				Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"})
+		if err := orgconfig.PersistActive(manager, state); err != nil {
+			t.Fatalf("distinct-key fold must persist, got %v", err)
+		}
+		// The merged state carries both rows: the foreign prod row unchanged and
+		// the owner's dev row added. PersistActive merges into the state it was
+		// given, so reload the document it saved.
+		saved, err := orgconfig.LoadActive()
+		if err != nil {
+			t.Fatalf("reload after persist: %v", err)
+		}
+		kept, ok := saved.Config.Profiles[orgconfig.ProfileKey("alice", "prod")]
+		if !ok || kept.Owner != "other-installation" || kept.Revision != 7 {
+			t.Fatalf("foreign row must survive the merge untouched, got %+v", kept)
+		}
+		if _, ok := saved.Config.Profiles[orgconfig.ProfileKey("alice", "dev")]; !ok {
+			t.Fatal("the owner's distinct-key row must be merged")
+		}
+	})
+	t.Run("revocation fold preserves foreign row", func(t *testing.T) {
+		// Keyed-merge side of the same guarantee: the owner revokes their own
+		// bob@dev while the state also carries a foreign-owned bob@prod. The
+		// fold must delete exactly the revoked owned row and carry the foreign
+		// row through byte-for-byte.
+		foreign := foreignSameKeyProfile("bob", "prod")
+		ownerRow := orgconfig.Profile{Name: "bob", Target: "dev",
+			Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"}
+		root := t.TempDir()
+		t.Setenv("BASEHARBOR_STATE_DIR", root)
+		state := orgconfig.ActiveState{
+			Resolution: orgconfig.Resolution{
+				ResolvedVersion: orgconfig.ContractVersion,
+				Source:          orgconfig.Source{Kind: orgconfig.SourceLocal, Location: root},
+			},
+			Config: orgconfig.Config{
+				Organization: "persist-acme",
+				APIVersion:   orgconfig.ContractVersion,
+				Operation:    "read",
+				Targets:      map[string]orgconfig.Reference{"dev": {Reference: "local://dev"}, "prod": {Reference: "local://prod"}},
+				Profiles:     orgconfig.ProfileMap([]orgconfig.Profile{ownerRow, foreign}),
+			},
+		}
+		manager := orgconfig.NewManager("persist-acme", ownerRow)
+		if _, err := manager.Revoke("bob", "dev"); err != nil {
+			t.Fatalf("revoke of the owner's own row must succeed: %v", err)
+		}
+		if err := orgconfig.PersistActive(manager, state); err != nil {
+			t.Fatalf("revocation fold of an owned row must persist, got %v", err)
+		}
+		saved, err := orgconfig.LoadActive()
+		if err != nil {
+			t.Fatalf("reload after persist: %v", err)
+		}
+		if _, ok := saved.Config.Profiles[orgconfig.ProfileKey("bob", "dev")]; ok {
+			t.Fatal("the owner's revoked bob@dev row must be removed by the fold")
+		}
+		if kept, ok := saved.Config.Profiles[orgconfig.ProfileKey("bob", "prod")]; !ok || kept.Owner != "other-installation" || kept.Revision != foreign.Revision {
+			t.Fatalf("foreign bob@prod row must survive the fold untouched, got %+v", kept)
+		}
+	})
+}
