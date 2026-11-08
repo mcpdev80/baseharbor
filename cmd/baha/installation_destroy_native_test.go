@@ -7,14 +7,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
+	bhruntime "github.com/mcpdev80/baseharbor/internal/runtime"
 )
 
 func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.T) {
@@ -33,6 +36,17 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err := runWithIO(ctx, []string{"target", "create", "installation-retry-native", "--provider", kind, "--access", "installation-retry-native", "--reference", "local", "--default"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
+	// A native installation destroy acceptance must first create the real
+	// installation owner. A target registration and app init alone no longer
+	// establish this authority; relying on them caused the gate to fail before
+	// reaching the full destroy/retry scenario.
+	core, err := installCore(ctx, strings.NewReader(""), &out, runtimeUpOptions{
+		Yes: true, ControlPlaneOnly: true, MachineRole: coreinstallation.Development,
+		RecoveryFile: filepath.Join(t.TempDir(), "recovery.json"),
+	})
+	if err != nil || !core.Ready {
+		t.Fatalf("real Core bootstrap before installation destroy: ready=%t err=%v\n%s", core.Ready, err, out.String())
+	}
 	t.Chdir(t.TempDir())
 	for name, data := range map[string]string{"compose.yaml": corelessHTTPWorkload, "baseharbor.yaml": "version: 1\napp:\n  name: installation-retry\n  environment: dev\nservices:\n  sql: true\n  identity: true\n"} {
 		if err := os.WriteFile(name, []byte(data), 0600); err != nil {
@@ -42,7 +56,23 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	applySelectiveIdentityIntent(t, ctx)
+	// A repository-owned candidate needs explicit, exact-submission consent.
+	// First obtain its published digest without writing deployment state, then
+	// acknowledge that same digest on the second invocation.
+	applyCtx := coreBootstrapFixtureConsent(t, ctx)
+	out.Reset()
+	firstErr := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
+	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
+		t.Fatalf("expected pre-mutation candidate-consent challenge: %v\\n%s", firstErr, out.String())
+	}
+	match := regexp.MustCompile(`confirm-hash\s+([0-9a-f]{64})`).FindStringSubmatch(out.String())
+	if len(match) != 2 {
+		t.Fatalf("candidate challenge did not publish an exact confirmation digest: %s", out.String())
+	}
+	out.Reset()
+	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out); err != nil {
+		t.Fatalf("consented native fixture apply: %v\\n%s", err, out.String())
+	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
@@ -79,6 +109,33 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A real Core installation owns PostgreSQL directly. The application's
+	// shared inventory then references CoreSQL without duplicating its service.
+	// Probe the canonical Core owner rather than assuming a standalone SQL
+	// container is present in the application's shared Compose project.
+	if shared.CoreSQL != nil {
+		coreSQL, inventoryErr := bhruntime.ExistingControlPlaneRuntimeInventory(filepath.Dir(shared.CoreSQL.Compose), shared.CoreSQL.Project)
+		if inventoryErr != nil || len(coreSQL.SQLServices) == 0 {
+			t.Fatalf("canonical Core-owned SQL service unavailable: %v", inventoryErr)
+		}
+		shared.Files.Project = coreSQL.Files.Project
+		shared.Files.Compose = coreSQL.Files.Compose
+		shared.Files.Env = coreSQL.Files.Env
+		// Use the canonical Core SQL client service, not the database daemon
+		// (which does not provide the application-authenticated test client).
+		client := ""
+		for _, service := range coreSQL.SQLServices {
+			if service == "postgres-admin" {
+				client = service
+				break
+			}
+		}
+		if client == "" {
+			t.Fatal("canonical Core SQL client service is unavailable")
+		}
+		shared.Services[capability.ProviderPostgreSQL] = []string{client}
+		shared.Resources = coreSQL.Resources
+	}
 	var credentials [32]byte
 	qualifySelectedBackendData(t, ctx, provider, r, shared, "sql", 0, &credentials)
 	plan := func() runtimeDestroyImpact {
@@ -91,7 +148,17 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 		if err != nil {
 			t.Fatal(err)
 		}
-		p, err := buildRuntimeDestroyImpact(ctx, inventories, nil, true)
+		preserved := []fullDestroyResult{}
+		for _, target := range targets {
+			item, recoveryErr := preservedTargetRecovery(ctx, target)
+			if recoveryErr != nil {
+				t.Fatal(recoveryErr)
+			}
+			if item.Status != "" {
+				preserved = append(preserved, item)
+			}
+		}
+		p, err := buildRuntimeDestroyImpact(ctx, inventories, preserved, true)
 		if err != nil {
 			t.Fatal(err)
 		}
