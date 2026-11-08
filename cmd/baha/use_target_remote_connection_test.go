@@ -19,7 +19,7 @@ func TestRemoteTargetSelectionDoesNotRequireOrBootstrapLocalCore(t *testing.T) {
 
     err = bindExplicitSelectionToConnection(context.Background(), node.Name)
     var typed *machine.Error
-    if !errors.As(err, &typed) || typed.Code != machine.ErrorCapabilityMissing {
+    if !errors.As(err, &typed) || typed.Code != machine.ErrorAuthenticationFailed {
         t.Fatalf("remote selection without verified binding must fail closed: %v", err)
     }
     if !strings.Contains(err.Error(), "remote Core management connection") {
