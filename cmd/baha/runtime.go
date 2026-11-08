@@ -45,6 +45,15 @@ func runtimeUpCommand(ctx context.Context, args []string, out, errOut io.Writer)
 	defer restoreEnvironment()
 	ctx = withMemoryPreflightOverride(ctx, opts.SkipMemoryPreflight)
 	ctx = withAssumeYes(ctx, opts.Yes)
+	if opts.ControlPlaneOnly {
+		selected, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+			return usageError("remote control-plane bootstrap is not supported by baha up", "Bootstrap Core on its owning host and configure a verified remote management connection; no local Docker fallback is allowed.")
+		}
+	}
 	// `up` is an apply path: the repository-owned candidate submission is bound
 	// only on explicit operator/automation confirmation, exactly like `app apply`.
 	// Route the parsed --confirm-candidate override through the same leaf so a
