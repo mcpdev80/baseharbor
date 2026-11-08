@@ -139,7 +139,7 @@ func VerifySession(ctx context.Context, target, environment string, cfg Config) 
 	if !session.ValidAt(time.Now()) || session.Issuer != strings.TrimRight(cfg.Issuer, "/") || session.ClientID != cfg.ClientID {
 		return nil, ErrAuthenticationRequired
 	}
-	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.Issuer, Audiences: []string{cfg.ClientID}})
+	verifier, err := auth.NewOIDCVerifier(ctx, auth.Config{Issuer: cfg.Issuer, Audiences: []string{cfg.ClientID}, TrustFile: resolveSessionTrustFile()})
 	if err != nil {
 		return nil, err
 	}

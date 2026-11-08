@@ -5,13 +5,52 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/identityprovider"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 )
+
+// writeManagedOperatorCAFile atomically persists the managed operator CA so the
+// operator OIDC discovery path can trust it via the state-dir default file
+// (see operatorauth.DefaultTrustPath). The CA is added to the trust pool
+// additively on top of the system trust pool; it never replaces it.
+func writeManagedOperatorCAFile(ctx context.Context, issuer serviceaccess.Issuer, dataDir string) error {
+	if issuer == nil {
+		return nil
+	}
+	trust, err := issuer.TrustBundle(ctx)
+	if err != nil {
+		return err
+	}
+	if len(trust.PEM) == 0 {
+		return errors.New("managed operator CA trust bundle is empty")
+	}
+	root := strings.TrimSpace(os.Getenv("BASEHARBOR_STATE_DIR"))
+	if root == "" {
+		root = dataDir
+	}
+	dir := filepath.Join(root, operatorauth.DefaultManagedCAFile)
+	dir = filepath.Dir(dir)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(dir, filepath.Base(operatorauth.DefaultManagedCAFile))
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, trust.PEM, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, 0o600); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Rename(tmp, path)
+}
 
 func ensureOperatorAuthForBoundary(ctx context.Context, target, environment string) error {
 	if !operatorauth.ManagedEnvironment(environment) || !operatorauth.EnforcementEnabled(ctx) {
@@ -207,6 +246,11 @@ func bootstrapManagedOperatorKeycloak(ctx context.Context, target, environment s
 	managed, err := identityprovider.EnsureManagedOperatorOIDC(ctx, compose, issuer, dataDir, target, target, environment)
 	if err != nil {
 		return operatorauth.Config{}, err
+	}
+	if err := writeManagedOperatorCAFile(ctx, issuer, dataDir); err != nil {
+		// A failed CA write is non-fatal for the login itself but removes the
+		// headless-completion path; surface it clearly.
+		return operatorauth.Config{}, fmt.Errorf("persist managed operator CA for headless login: %w", err)
 	}
 	cfg := operatorauth.Config{
 		Provider:     "managed-keycloak",
