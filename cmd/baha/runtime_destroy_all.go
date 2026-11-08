@@ -336,26 +336,20 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 					}
 				}
 			}
-	// A missing target registration cannot establish a native runtime
-			// owner. In particular, "compose" is not a registered provider kind;
-			// never invent it (or guess Docker) while orphaned resources may exist.
-			// A Core-only target discovered here has no deployment records and no
-			// config entry; resolve it from its owned installation.json so the
-			// full-destroy flow can still reach and remove this owned Core.
+			// An unregistered Core target discovered from the data root is an owned
+			// BaseHarbor installation without a config entry; resolve it from its
+			// own installation.json so owned-full-destroy can reach and remove it.
 			synthesized := deployment.ResolvedTarget{Name: name}
 			if resolved, synErr := deployment.ResolveDataRootTarget(name); synErr == nil {
 				synthesized = resolved
 			}
 			byName[name] = synthesized
 			if synthesized.RuntimeProvider == "" {
-				detail := "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"
+				result := "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"
 				if name == "local" {
-					// The legacy local fallback used the unregistered provider
-					// "compose". Preserve its real owner state until explicitly
-					// recovered instead of returning a false completed destroy.
-					detail = "preserved because local target configuration and runtime ownership are missing; recover the target binding before retrying destruction"
+					result = "preserved because local target configuration and runtime ownership are missing; recover the target binding before retrying destruction"
 				}
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: detail, Diagnostic: "unregistered-target-runtime"})
+				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: result, Diagnostic: "unregistered-target-runtime"})
 			}
 		}
 	}
