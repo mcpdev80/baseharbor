@@ -67,8 +67,8 @@ func TestHumanOpenFailsClosedBeforeBrowserInvocation(t *testing.T) {
 
 func TestTargetDeleteUnknownFlagIsNotNameError(t *testing.T) {
 	var out bytes.Buffer
-	err := runWithIO(context.Background(), []string{"target", "delete", "example", "--yes"}, &out, &out)
-	if err == nil || !strings.Contains(err.Error(), "unknown target delete option --yes") {
-		t.Fatalf("target delete must reject undeclared --yes: %v", err)
+	err := runWithIO(context.Background(), []string{"target", "delete", "example", "--bogus"}, &out, &out)
+	if err == nil || !strings.Contains(err.Error(), "unknown target delete option --bogus") {
+		t.Fatalf("target delete must reject undeclared options: %v", err)
 	}
 }
