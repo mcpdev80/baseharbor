@@ -166,7 +166,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 
 	for _, scenario := range []struct {
 		operation string
-		args []string
+		args      []string
 	}{
 		{"apply", []string{"demo"}},
 		{"update", []string{"demo", "--no-backup"}},
