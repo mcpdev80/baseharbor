@@ -392,7 +392,7 @@ func promptYesNo(reader *bufio.Reader, out io.Writer, label string, defaultYes b
 	case "n", "no", "nein":
 		return false, nil
 	default:
-		return false, fmt.Errorf("expected yes or no, got %q", line)
+		return false, usageError(fmt.Sprintf("expected yes or no, got %q", line), "Answer yes (y) or no (n), or cancel the wizard before changing anything.")
 	}
 }
 

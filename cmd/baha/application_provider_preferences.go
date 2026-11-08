@@ -261,6 +261,7 @@ func finishAppNewWizard(ctx context.Context, root string, result development.Cre
 	}
 	printCreated()
 	fmt.Fprintln(out, "Lifecycle: VERIFIED")
+	fmt.Fprintln(out, "Next: baha app status")
 	return nil
 }
 
