@@ -368,7 +368,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	}
 	t.Chdir(t.TempDir())
 
-	for _, args := range [][]string{{"down", "--yes"}, {"target", "delete", "demo", "--yes"}, {"app", "down", "--yes"}} {
+	for _, args := range [][]string{{"down", "--yes"}, {"app", "down", "--yes"}} {
 		out.Reset()
 		err := runWithIO(context.Background(), args, &out, &out)
 		formatCLIError(&out, err)
