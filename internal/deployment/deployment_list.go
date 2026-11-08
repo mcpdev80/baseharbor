@@ -11,6 +11,10 @@ import (
 // deployment records for each. bestEffort turns a per-target listing error
 // into a warning instead of aborting the whole walk (used by the display paths
 // that must tolerate one unreadable target).
+//
+// This function lives in its own translation unit (deployment_list.go), not
+// deployment_store.go, so the store file stays under the 800-line readability
+// ceiling enforced by scripts/source-readability-audit.sh in CI.
 func listAllDeployments(bestEffort bool) ([]DeploymentRecord, []error, error) {
 	root, err := DataRoot()
 	if err != nil {
