@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeapi"
 	"github.com/mcpdev80/baseharbor/internal/applicationruntimeauth"
@@ -23,7 +22,6 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/controlplaneapi"
 	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/httpsecurity"
-	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 	metricsprovider "github.com/mcpdev80/baseharbor/internal/metrics"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
@@ -32,6 +30,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/runtimeobservability"
 	"github.com/mcpdev80/baseharbor/internal/runtimeresourceapi"
 	"github.com/mcpdev80/baseharbor/internal/targetenrollment"
+	"github.com/mcpdev80/baseharbor/internal/tenancy"
 	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
