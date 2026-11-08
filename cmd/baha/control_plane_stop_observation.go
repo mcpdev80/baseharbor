@@ -109,7 +109,6 @@ func observeControlPlaneStopWithProvider(ctx context.Context, provider bhruntime
 	return nil
 }
 
-
 // coreStopContainerNameIsPlanned accepts the exact rendered Compose name, or
 // the already-established first-party Podman Quadlet name for a single default
 // service. Both alternatives require exact project/service identity. A pinned
