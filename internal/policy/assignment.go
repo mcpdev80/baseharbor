@@ -51,12 +51,12 @@ func NewAdapter(m *orgconfig.Manager) *Adapter {
 	return &Adapter{manager: m}
 }
 
-// Resolve reports whether the named profile — as seen through the one owning
-// orgconfig.Manager (the single authority) — assigns the given operation, and
-// attributes the call to the caller's installation identity (tenant). It does
-// not grant: it only reports membership in the assigned set. Anything the
-// profile does not assign is denied, never warned, so a missing assignment
-// cannot silently widen access.
+// Resolve reports whether the named profile on the given Target — as seen
+// through the one owning orgconfig.Manager (the single authority) — assigns the
+// given operation, and attributes the call to the caller's installation
+// identity (tenant). It does not grant: it only reports membership in the
+// assigned set. Anything the profile does not assign is denied, never warned,
+// so a missing assignment cannot silently widen access.
 //
 // Resolve is read-only and holds no decision authority of its own. It returns a
 // Finding for the caller to fold into the single production decision path
@@ -68,7 +68,7 @@ func NewAdapter(m *orgconfig.Manager) *Adapter {
 //
 // Resolve must not be used as a second decision surface: the result feeds one
 // authority, never decides alone.
-func (a *Adapter) Resolve(profileName, tenant string, operation orgconfig.Operation) (Finding, error) {
+func (a *Adapter) Resolve(profileName, target, tenant string, operation orgconfig.Operation) (Finding, error) {
 	if a.manager == nil {
 		return Finding{}, errAssignmentUnknown
 	}
@@ -78,7 +78,7 @@ func (a *Adapter) Resolve(profileName, tenant string, operation orgconfig.Operat
 	if tenant != "" && a.manager.Owner != tenant {
 		return Finding{}, errForeignTenant
 	}
-	profile, err := a.manager.Get(profileName)
+	profile, err := a.manager.GetByKey(profileName, target)
 	if err != nil {
 		// Revoked (removed) or unknown profile fails closed through this adapter.
 		return Finding{}, errAssignmentUnknown
@@ -179,7 +179,7 @@ func profileFold(resolveOperation func(Finding) (orgconfig.Operation, error), re
 	// profiles rather than a single hardcoded name.
 	var fold []Finding
 	for _, profile := range manager.List() {
-		finding, rErr := adapter.Resolve(profile.Name, org, operation)
+		finding, rErr := adapter.Resolve(profile.Name, profile.Target, org, operation)
 		if rErr != nil {
 			return []Finding{profileDeny(rErr.Error())}
 		}

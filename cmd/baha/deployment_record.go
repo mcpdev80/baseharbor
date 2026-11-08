@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -547,9 +546,6 @@ func recordDeploymentBeforeMutation(ctx context.Context, resolved resolvedApplic
 			return deployment.DeploymentRecord{}, consErr
 		}
 		if consent == nil {
-			var buf [4096]byte
-			n := runtime.Stack(buf[:], false)
-			fmt.Fprint(os.Stderr, string(buf[:n]))
 			return deployment.DeploymentRecord{}, errConsentRequiredForCandidateSubmission
 		}
 		if err := submission.Validate(consent); err != nil {
