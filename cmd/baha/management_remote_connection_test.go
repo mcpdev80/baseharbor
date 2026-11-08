@@ -64,7 +64,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				OperationID:     request.OperationID,
 				Context:         request.Context,
 				State:           machine.ExecutionSucceeded,
-				Result:          json.RawMessage(`{"ready":true}`),
+				Result: json.RawMessage(`{"contract_version":"v1","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}`),
 			}
 			w.Header().Set("Location", "/api/v1/machine/executions/remote-status-one")
 			w.WriteHeader(http.StatusAccepted)
