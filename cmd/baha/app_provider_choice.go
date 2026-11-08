@@ -3,11 +3,13 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/capability"
+	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
 // appProviderPreference wraps the existing deployment preference with its Target.
@@ -33,7 +35,18 @@ type appProviderChoice struct {
 
 // The authoritative footprint owns automatic resolution and binding precedence.
 // This adapter only displays the eligible registry inventory and collects intent.
+//
+// appProviderChoicesWithPreferences additionally offers the live instances
+// named by the given explicit preferences when the snapshot projection lost
+// them. Registry drift (for example a canonical shared instance only an
+// unapplied sibling record still lists) must not hide the instance the
+// consumer must re-resolve against; arbitrary other instances never enter the
+// choice surface.
 func appProviderChoices(manifest application.Manifest, snapshot application.ResolutionSnapshot, selection appCapabilitySelectionModel) ([]appProviderChoice, error) {
+	return appProviderChoicesWithPreferences(manifest, snapshot, selection, nil)
+}
+
+func appProviderChoicesWithPreferences(manifest application.Manifest, snapshot application.ResolutionSnapshot, selection appCapabilitySelectionModel, preferences []application.ProviderPreference) ([]appProviderChoice, error) {
 	if strings.TrimSpace(snapshot.Target) == "" {
 		return nil, fmt.Errorf("Target is required")
 	}
@@ -41,6 +54,16 @@ func appProviderChoices(manifest application.Manifest, snapshot application.Reso
 		return nil, fmt.Errorf("Target registry: %w", err)
 	}
 	requirements := selection.Requirements()
+	offered, err := liveCanonicalChoiceInstances(preferences)
+	if err != nil {
+		return nil, err
+	}
+	choicePreferences := make([]application.ProviderPreference, 0, len(preferences))
+	for _, preference := range preferences {
+		if len(offered[preference.Requirement]) > 0 {
+			choicePreferences = append(choicePreferences, preference)
+		}
+	}
 	choices := make([]appProviderChoice, 0, len(requirements))
 	for _, req := range requirements {
 		c := appProviderChoice{Target: snapshot.Target, Requirement: req}
@@ -69,6 +92,19 @@ func appProviderChoices(manifest application.Manifest, snapshot application.Reso
 			c.Candidates = append(c.Candidates, appProviderCandidate{
 				Instance: instance,
 				Reason:   fmt.Sprintf("%s supports %s (scope: %s)", instance.Provider.Kind, req.Kind, instance.Scope),
+			})
+		}
+		for _, offer := range offered[req] {
+			duplicate := false
+			for _, candidate := range c.Candidates {
+				duplicate = duplicate || candidate.Instance.ID == offer.ID
+			}
+			if duplicate {
+				continue
+			}
+			c.Candidates = append(c.Candidates, appProviderCandidate{
+				Instance: offer,
+				Reason:   fmt.Sprintf("%s supports %s (scope: %s, re-resolved from the live Target registry)", offer.Provider.Kind, req.Kind, offer.Scope),
 			})
 		}
 		sort.Slice(c.Candidates, func(i, j int) bool { return c.Candidates[i].Instance.ID < c.Candidates[j].Instance.ID })
@@ -241,4 +277,38 @@ func (c appProviderChoice) View() string {
 		fmt.Fprintf(&b, "[%s] %s (%s): %s\n", mark, candidate.Instance.ID, candidate.Instance.Provider.Kind, candidate.Reason)
 	}
 	return b.String()
+}
+
+// liveCanonicalChoiceInstances re-offers, per explicitly preferred
+// requirement, the exact provider instances the live provider registry of the
+// current data root still registers under a BaseHarbor-owned provider that
+// supports the requirement. Registry drift (a projection that lost a live
+// shared instance) must not hide the instance the consumer re-resolves
+// against; an instance that exists nowhere yields nothing and fails closed.
+func liveCanonicalChoiceInstances(preferences []application.ProviderPreference) (map[capability.Requirement][]capability.ProviderInstance, error) {
+	offered := map[capability.Requirement][]capability.ProviderInstance{}
+	if len(preferences) == 0 {
+		return offered, nil
+	}
+	dataRoot, err := deployment.DataRoot()
+	if err != nil {
+		return nil, err
+	}
+	registry, err := (capability.RegistryStore{Path: filepath.Join(dataRoot, "provider-registry.json")}).Load()
+	if err != nil {
+		return offered, nil
+	}
+	for _, preference := range preferences {
+		if preference.InstanceID == "" {
+			continue
+		}
+		for _, instance := range registry.Instances {
+			if instance.ID != preference.InstanceID || instance.Ownership != capability.OwnershipBaseHarbor ||
+				!instance.Provider.Supports(preference.Requirement.Kind) {
+				continue
+			}
+			offered[preference.Requirement] = append(offered[preference.Requirement], instance)
+		}
+	}
+	return offered, nil
 }
