@@ -1047,6 +1047,103 @@ func TestBootstrapInjectedTeardownSubprocess(t *testing.T) {
 	fmt.Println("PACKAGE-TOREDOWN-FAILED injected teardown failure surfaced")
 }
 
+// TestBootstrapAdoptionConsumesOrphanWithNoProvisionedCore proves the fix for
+// the torn teardown/sequence that failed the hosted go-test matrix globally:
+// a dead-owner marker that names a w169-ci-bootstrap-* target but whose Core
+// was never brought up (no compose files, no owned containers) is a phantom
+// claim with nothing to reclaim. Adoption consumes it cleanly (marker removed,
+// nil error) instead of failing the whole package run. Fail-closed against a
+// real residual is preserved by TestBootstrapAdoptionKeepsMarkerWhenCoreExists.
+func TestBootstrapAdoptionConsumesOrphanWithNoProvisionedCore(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+
+	marker := dir + "/" + bootstrapLeftoverMarkerName
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if bootstrapProcessAlive(deadChild.Process.Pid) {
+		t.Skip("pid reused and still live; adoption correctly abstains")
+	}
+	if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+		t.Fatalf("write dead-owner marker: %v", err)
+	}
+	if err := os.MkdirAll(dir+"/baseharbor", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "version: 1\ndefault-target: w169-ci-bootstrap-abcabcabc0\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  w169-ci-bootstrap-abcabcabc0:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n"
+	if err := os.WriteFile(dir+"/baseharbor/config.yaml", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// No runtime project files were written: the orphan's Core was never
+	// provisioned. The adoption must treat this as a clean phantom reclaim.
+	marker, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess()
+	if adoptErr != nil {
+		t.Fatalf("a dead owner whose Core was never provisioned must be consumed cleanly, got: %v", adoptErr)
+	}
+	if marker == "" {
+		t.Fatal("a consumed orphan claim must return the consumed marker path")
+	}
+	if _, statErr := os.Stat(marker); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("a consumed orphan must remove its marker, stat err: %v", statErr)
+	}
+}
+
+// TestBootstrapAdoptionKeepsMarkerWhenCoreExists proves fail-closed is not
+// loosened: a dead-owner marker whose target DID have a provisioned Core (a
+// genuine residual) still fails the adoption closed and keeps the marker.
+func TestBootstrapAdoptionKeepsMarkerWhenCoreExists(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	t.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1")
+	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
+
+	marker := dir + "/" + bootstrapLeftoverMarkerName
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if !bootstrapProcessAlive(deadChild.Process.Pid) {
+		if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(dir+"/baseharbor", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := "version: 1\ndefault-target: w169-ci-bootstrap-abcabcabc0\naccess:\n  local:\n    provider: local\n    reference: local\ntargets:\n  w169-ci-bootstrap-abcabcabc0:\n    runtime:\n      provider: docker\n    access:\n      reference: local\n"
+	if err := os.WriteFile(dir+"/baseharbor/config.yaml", []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The target DID have a provisioned Core: a compose file + .env prove the
+	// footprint check reports owned, so the destroy runs and the marker must
+	// survive (fail closed). The destroy fails on the missing engine here,
+	// which is exactly the "something was provisioned -> fail closed" branch.
+	rt := filepath.Join(dir, "baseharbor", "targets", "w169-ci-bootstrap-abcabcabc0", "runtime")
+	if err := os.MkdirAll(rt, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rt, "compose.yaml"), []byte("version: \"3\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rt, ".env"), []byte("X=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr == nil {
+		t.Fatal("a dead owner with a provisioned Core residual must fail the adoption closed (marker kept)")
+	}
+	if _, statErr := os.Stat(marker); errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("fail-closed adoption must keep the marker for a real residual")
+	}
+}
+
 // TestBootstrapSetupFailureSubprocess is the stage-one fixture of
 
 const (
