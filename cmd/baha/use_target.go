@@ -83,7 +83,7 @@ func bindExplicitSelectionToConnection(
 		return err
 	}
 	if resolved.AccessProvider != "" && resolved.AccessProvider != "local" {
-		if err := verifyRemoteManagementConnection(ctx, resolved.Name, resolved.RuntimeProvider); err != nil {
+		if err := verifyRemoteManagementConnection(ctx, resolved.Name, resolved.RuntimeProvider, resolved.TenantID); err != nil {
 			return machine.Wrap(machine.ErrorAuthenticationFailed, err,
 				"Configure a trusted external Core connection profile and authenticate with baha login; no local fallback is permitted.", false)
 		}
