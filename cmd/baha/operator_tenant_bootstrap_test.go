@@ -154,12 +154,29 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 	}
 	var out, errOut bytes.Buffer
 	loginArgs := []string{"-e", "managed", "--no-browser", "--auth-code-file", authCodePath}
+
+	// (2) Browser isolation is installed BEFORE the command runs so the command's
+	// own browser launch (if the --no-browser flag is not consumed and forwarded)
+	// is observed: BASEHARBOR_NO_BROWSER is cleared and the Linux CI xdg-open is
+	// replaced with a marker script on a temp PATH. This witness sits ahead of the
+	// login/persistence assertions so the command entry — not the later direct
+	// operatorauth.Login call at lines below — is what the marker records.
+	clearInheritedNoBrowser(t)
+	observer := installFakeXdgOpen(t)
+	defer observer.restore()
+
 	err := operatorLoginCommand().Run(ctx, loginArgs, &out, &errOut)
 	if err != nil {
 		t.Fatalf("--no-browser managed login must reach operatorauth.Login without a leftover-check rejection: %v", err)
 	}
 	if strings.Contains(out.String(), "trusted local operator mode") {
 		t.Fatalf("managed login must not take the trusted-local early return, got: %q", out.String())
+	}
+	// Post-command: the documented --no-browser managed login must have launched
+	// no browser. The marker was installed before Run(); a marker invocation now
+	// proves cmd/baha/operator_auth.go:64 failed to forward noBrowser.
+	if marker := observer.anyLaunch(); marker != "" {
+		t.Fatalf("--no-browser managed login must not launch any browser; observed marker invocation: %q", marker)
 	}
 
 	// (1) Prove Login was reached, not merely that the early-return string is
@@ -191,31 +208,14 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 	// exchange nor the persistence, so both assertions failed. They now pass
 	// because the documented invocation reaches operatorauth.Login headlessly.
 
-	// (2) Browser isolation: the --no-browser flag must suppress the browser
-	// launch that operatorauth.Login performs for a non-headless flow. Clear any
-	// inherited BASEHARBOR_NO_BROWSER override, then replace the Linux CI
-	// xdg-open launcher with a temporary marker script on a temp PATH so a real
-	// launch is observable. Without the NoBrowser forward (mutation at
-	// cmd/baha/operator_auth.go:64) the command would exec the marker and this
-	// assertion fails; with the flag it must not.
-	clearInheritedNoBrowser(t)
-	observer := installFakeXdgOpen(t)
-	defer observer.restore()
-
-	// A plain, non-enforced context: Login persists the session directly, so no
-	// interactive confirmation is required. The target uses the same resolved
-	// target name the command path uses so the persisted session matches the
-	// ObserveSession witness above.
-	_, lerr := operatorauth.Login(context.Background(), resolvedTarget.Name, "managed", mustResolveOperatorAuthBoundaryConfig(t, "managed"), &bytes.Buffer{}, operatorauth.TrustOptions{
-		AuthCodeFile: authCodePath,
-		NoBrowser:    true,
-	})
-	if lerr != nil {
-		t.Fatalf("operatorauth.Login with NoBrowser=true must not error: %v", lerr)
-	}
-	if marker := observer.anyLaunch(); marker != "" {
-		t.Fatalf("--no-browser=true must not launch any browser; observed marker invocation: %q", marker)
-	}
+	// (2) Browser suppression is proven at the command entry: the temp-PATH
+	// xdg-open marker installed before Run() records any launch the command makes,
+	// and the post-command observer.anyLaunch() assertion above fails the test if
+	// the command launches a browser. This is the R5 stop-criterion closure that
+	// the R6 direct operatorauth.Login(...NoBrowser:true) call could not provide:
+	// only the CLI entry proves cmd/baha/operator_auth.go:64 forwards noBrowser.
+	// Without the NoBrowser forward (mutation at line 64) the command would exec the
+	// marker and the post-command assertion fails; with the flag it must not.
 
 	// (3) unknown-leftover flag control remains alive after the --no-browser
 	// consumption fix: --no-browser specifically was consumed and forwarded, not
