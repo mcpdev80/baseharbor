@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +55,23 @@ func TestInstallationDestroyCurrentChildrenInterruptedVolumeAndRetry(t *testing.
 	if err := runWithIO(ctx, []string{"app", "init", "--quick", "--json"}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	applySelectiveIdentityIntent(t, ctx)
+	// A repository-owned candidate needs explicit, exact-submission consent.
+	// First obtain its published digest without writing deployment state, then
+	// acknowledge that same digest on the second invocation.
+	applyCtx := coreBootstrapFixtureConsent(t, ctx)
+	out.Reset()
+	firstErr := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight"}, &out, &out)
+	if firstErr == nil || !strings.Contains(firstErr.Error(), "candidate submission requires") {
+		t.Fatalf("expected pre-mutation candidate-consent challenge: %v\\n%s", firstErr, out.String())
+	}
+	match := regexp.MustCompile(`confirm-hash\\s+([0-9a-f]{64})`).FindStringSubmatch(out.String())
+	if len(match) != 2 {
+		t.Fatalf("candidate challenge did not publish an exact confirmation digest: %s", out.String())
+	}
+	out.Reset()
+	if err := runWithIO(applyCtx, []string{"app", "apply", "--skip-memory-preflight", "--confirm-candidate", match[1]}, &out, &out); err != nil {
+		t.Fatalf("consented native fixture apply: %v\\n%s", err, out.String())
+	}
 	r, err := resolveApplication(ctx, application.Store{}, nil, "status")
 	if err != nil {
 		t.Fatal(err)
