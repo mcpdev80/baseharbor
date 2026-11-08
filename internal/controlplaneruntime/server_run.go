@@ -355,8 +355,9 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 				Version string `json:"version"`
 				InstallationID string `json:"installation_id"`
 				IdentityIssuer string `json:"identity_issuer"`
+				OperatorIssuer string `json:"operator_issuer"`
 				TenantID string `json:"tenant_id"`
-			}{Version: "baseharbor.management-installation/v1", InstallationID: installationID, IdentityIssuer: issuer, TenantID: tenant.TenantID})
+			}{Version: "baseharbor.management-installation/v1", InstallationID: installationID, IdentityIssuer: issuer, OperatorIssuer: cfg.OIDCIssuer, TenantID: tenant.TenantID})
 		})
 	}
 	operatorMux.Handle("/api/v1/apps/", secretHandler)
