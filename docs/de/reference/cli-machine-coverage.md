@@ -94,6 +94,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha node disconnect` | semantisch | CLI -o json / typed MCP result | baseharbor.node.disconnect |  |
 | `baha node list` | semantisch | CLI -o json / typed MCP result | baseharbor.node.list |  |
 | `baha node status` | semantisch | CLI -o json / typed MCP result | baseharbor.node.status |  |
+| `baha onboard` | Darstellung |  |  | Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts. |
 | `baha open` | Darstellung |  |  | Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead. |
 | `baha openbao` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha openbao bootstrap` | semantisch | CLI -o json / typed MCP result | baseharbor.openbao.bootstrap |  |

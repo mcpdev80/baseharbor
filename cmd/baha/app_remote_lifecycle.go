@@ -13,7 +13,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/hostresource"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"github.com/mcpdev80/baseharbor/internal/openbao"
+	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
 	"github.com/mcpdev80/baseharbor/internal/targetsession"
 )
 
@@ -115,23 +115,31 @@ func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplica
 		}
 		return recordVerifiedRemoteReactivation(resolved, intent)
 	}
-	if err := applicationCorePrerequisite(withTargetOverride(ctx, resolved.Target.Name), applicationInput(ctx, runtimeInput), out); err != nil {
+	// A pure-client remote Application never bootstraps or binds a local Core.
+	// Only an intent that needs a managed runtime broker (secrets, identity,
+	// object storage or telemetry) requires the startup-bound Core's PKI; for
+	// such an intent the issuer is reached through the connector route of the
+	// bound target (the transport/scope bound at the head gate). A broker-less
+	// workload never enters a local Core, so no issuer is taken and no Core
+	// bootstrap is touched. This is the Dev-Remote pure-client boundary: the
+	// bound target's connector route is the only Core handle this path may use.
+	if err := runApplicationMemoryPreflight(ctx, applicationInput(ctx, runtimeInput), out, resolved, hostresource.EstimateApplication(resolved.Manifest), true); err != nil {
 		return err
 	}
-	if err := runApplicationMemoryPreflight(ctx, runtimeInput, out, resolved, hostresource.EstimateApplication(resolved.Manifest), true); err != nil {
-		return err
-	}
-	coreRuntime, coreFiles, err := resolveApplicationCoreRuntime(ctx, resolved, nil)
-	if err != nil {
-		return err
-	}
-	issuer := openbao.NewServiceIssuer(coreRuntime, coreFiles)
-	status, err := issuer.Status(ctx)
-	if err != nil {
-		return err
-	}
-	if !status.Ready {
-		return errors.New("bound Core service PKI is not ready")
+	var issuer serviceaccess.Issuer
+	if requiresManagedServiceIssuer(resolved.Manifest) {
+		brokerIssuer, err := resolveApplicationServiceIssuer(ctx, resolved, nil)
+		if err != nil {
+			return err
+		}
+		status, err := brokerIssuer.Status(ctx)
+		if err != nil {
+			return err
+		}
+		if !status.Ready {
+			return errors.New("bound Core service PKI is not ready")
+		}
+		issuer = brokerIssuer
 	}
 	// Operator confirmation before any candidate submission is persisted (same
 	// fail-closed choke point as the local apply path).

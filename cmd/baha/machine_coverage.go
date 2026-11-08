@@ -145,6 +145,7 @@ var cliPresentationCommands = map[string]string{
 	"baha version":                   "Executable build identity is provided by agent describe and MCP initialization.",
 	"baha open":                      "Host browser presentation over validated application/TLS state; typed clients inspect app status and TLS instead.",
 	"baha new":                       "Human creation chooser delegating to existing app.new, stack.create, target.create, provider.init and workspace operations.",
+	"baha onboard":                   "Guided workstation onboarding presentation; the underlying installation, target and enrollment operations retain their own authenticated semantic contracts.",
 	"baha tui":                       "Human interactive presentation; its product actions require individual semantic coverage.",
 	"baha app version":               "Repository-bound presentation of the app.versions read model for the current deployment; machine clients invoke app.versions with explicit identity.",
 }
