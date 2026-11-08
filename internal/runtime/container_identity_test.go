@@ -32,29 +32,29 @@ func TestContainerIdentityKeepsNativeNamesAndRequiresExactLabels(t *testing.T) {
 // Compose model is the source of truth, never the default scheme alone.
 func TestParsedExpectedContainerNamesDerivesCanonicalNamesFromRenderedModel(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
+		name     string
 		rendered string
-		want    []string
+		want     []string
 	}{
 		{
-			name:    "pinned container_name",
+			name:     "pinned container_name",
 			rendered: `{"services":{"web":{"container_name":"linkding-web"}}}`,
-			want:    []string{"linkding-web"},
+			want:     []string{"linkding-web"},
 		},
 		{
-			name:    "default single replica",
+			name:     "default single replica",
 			rendered: `{"services":{"db":{"image":"postgres:16"}}}`,
-			want:    []string{"owned-db-1"},
+			want:     []string{"owned-db-1"},
 		},
 		{
-			name:    "default scaled by deploy.replicas",
+			name:     "default scaled by deploy.replicas",
 			rendered: `{"services":{"db":{"image":"postgres:16","deploy":{"replicas":3}}}}`,
-			want:    []string{"owned-db-1", "owned-db-2", "owned-db-3"},
+			want:     []string{"owned-db-1", "owned-db-2", "owned-db-3"},
 		},
 		{
-			name:    "unknown service returns no planned names",
+			name:     "unknown service returns no planned names",
 			rendered: `{"services":{}}`,
-			want:    nil,
+			want:     nil,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -104,4 +104,3 @@ func TestExpectedContainerNameSetFallsBackToCanonicalOrdinal(t *testing.T) {
 		t.Fatalf("expected names = %v, want [owned-missing-1]", got)
 	}
 }
-
