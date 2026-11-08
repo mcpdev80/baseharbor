@@ -4,12 +4,12 @@
   "steps": [
     {"done": true, "text": "1 Host/Rahrendaten belegen (Server-vs-Test-Host, SSH, dev-Binary, Version)"},
     {"done": true, "text": "2 Auth-/Trust-/State-Architektur cartieren (config.yaml, developer-access, PKI, Sessions)"},
-    {"done": true, "text": "3 login/logout-Zyklus: unauth Start OK; managed path braucht OIDC-Issuer -> lokaler Test-Issuer (self-signed CA + RS256) aufgebaut/vertraut; PKCE-Login gegen managed path -> BF-09 login works end-to-end, BF-10 session store location; whoami = managed-identity fail-closed (expected)"},
-    {"done": false, "text": "4 trust-prompts: neue CA hinzufuegen/widerrufen -- Antworten y/n/invalid/EOF + Wirkung auf naechsten login"},
-    {"done": false, "text": "5 Fehlerpfade: falscher issuer, Reachability-Verlust (Port zu), Abbruch mitten im PKCE-Flow -- Zustand in State-Dirs"},
-    {"done": false, "text": "6 mehrere Profile/Targets gemischt -- login gilt wo? (Profil- vs Target- vs Umgebungs-Scope)"},
-    {"done": false, "text": "7 Positive Befunde notieren"},
-    {"done": false, "text": "8 VM-Besanrein (docker compose down, saubere Zeile)"},
-    {"done": false, "text": "9 Evidence committen (origin/main), END posten"}
+    {"done": true, "text": "3 login/logout-Zyklus + token-ablauf: managed PKCE login works end-to-end (BF-09); whoami managed-identity fail-closed (BF-04); session expiry fail-closed (BF-14); logout clean+idempotent; per-target scoped (BF-17); env-fallback needs protected owner dir (BF-18)"},
+    {"done": true, "text": "4 trust-prompts: install/uninstall. Prompt accepts y/yes/ja/j; n/invalid/empty -> unchanged; EOF errors out (BF-26); wrong backend per-anchor PRESERVED (BF-27); valid backends linux-update-ca-* (BF-22); --yes no-prompt (BF-23)"},
+    {"done": true, "text": "5 Fehlerpfade: wrong issuer -> DNS error (BF-11); closed port -> connection refused (BF-12); mid-flow SIGKILL -> no partial session (BF-13); tampered issuer/subject -> fail-closed (BF-15/16)"},
+    {"done": true, "text": "6 multi-target/scope: login per-target scoped (BF-17); whoami config-only no-env-fallback (BF-19)"},
+    {"done": true, "text": "7 Positive Befunde: POS-1..4 (managed PKCE end-to-end, fail-closed everywhere, logout clean, auth-vs-authz separation)"},
+    {"done": true, "text": "8 VM-Besanrein: kein baha up -> keine neuen Container; tooling isoliert (/tmp/hx1-mg, /tmp/hx1-oidc)"},
+    {"done": true, "text": "9 Evidence committen (origin/main: 43855612), END posten"}
   ]
 }
