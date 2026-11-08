@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestRemoteAppStatusRequiresExplicitNameAndVerifiedCore(t *testing.T) {
@@ -26,4 +28,11 @@ func TestRemoteAppStatusRequiresExplicitNameAndVerifiedCore(t *testing.T) {
 	if out.Len() != 0 {
 		t.Fatal("failed remote status produced a success-looking result")
 	}
+	t.Setenv("BASEHARBOR_TARGET", node.Name)
+	if err := appStatusCommandWithTLS(application.DefaultStore()).Run(
+		context.Background(), []string{"demo", "--environment", "dev"}, &out, &out,
+	); err == nil || !strings.Contains(err.Error(), "BASEHARBOR_CONNECTION_PROFILE") {
+		t.Fatalf("CLI status bypassed the remote Core verification boundary: %v", err)
+	}
+
 }
