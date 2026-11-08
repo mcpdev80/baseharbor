@@ -196,7 +196,7 @@ func TestLoginCompletesOIDCAuthorizationCodePKCEFlow(t *testing.T) {
 	}
 	resultCh := make(chan loginResult, 1)
 	go func() {
-		principal, err := Login(ctx, "local", "test", cfg, out)
+		principal, err := Login(ctx, "local", "test", cfg, out, TrustOptions{})
 		result := loginResult{err: err}
 		if principal != nil {
 			result.principalSubject = principal.Subject
