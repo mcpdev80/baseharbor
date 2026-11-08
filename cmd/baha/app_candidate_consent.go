@@ -120,6 +120,18 @@ func candidateSubmissionForResolvedApp(ctx context.Context, resolved resolvedApp
 // can never bind a submission. The prompt (promptConfirmCandidateSubmission)
 // derives the displayed digest from this same helper with this same submission,
 // so the shown digest always equals the bound digest.
+// missingCandidateConsentError builds the clean usage error returned when a
+// repository-owned apply has no explicit --confirm-candidate. The message
+// prints the EXACT confirm-hash the candidate would bind, so automation can
+// parse the value and re-run with that exact digest. It is a *cli.UsageError
+// (exit 2), never a runtime failure, and never a stack trace.
+func missingCandidateConsentError(submission delivery.CandidateSubmission) error {
+	digest := delivery.CandidateConsentDigest(submission)
+	message := "candidate submission requires an explicit operator/automation consent (--confirm-candidate); refusing to record deployment state"
+	hint := "Re-run with --confirm-candidate " + digest + " to acknowledge this exact submission."
+	return usageError(message, hint)
+}
+
 func finalizeCandidateConsent(rawDigest, by string, submission delivery.CandidateSubmission) (*delivery.CandidateConsent, error) {
 	if strings.TrimSpace(rawDigest) == "" {
 		return nil, nil

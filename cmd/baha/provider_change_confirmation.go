@@ -25,9 +25,24 @@ func acknowledgeProviderImpact(ctx context.Context, in io.Reader, out io.Writer,
 	if supplied != nil {
 		return providerImpactConsentError(plan, application.ValidateProviderChangeConsent(plan, *supplied))
 	}
-	// --yes and ordinary apply approval deliberately do not imply either
-	// impact acknowledgement, even when the plan is incomplete.
-	if noInput(ctx) || in == nil || !readerIsTerminal(in) {
+	// Automation honours the two-stage acknowledgement: an explicit --yes run
+	// promotes to BOTH consequence acknowledgements without a terminal, so
+	// CI/scripts/dispatch can converge a plan whose provider impact requires
+	// exactly two stages. --yes never authorises permanent data deletion, so a
+	// destructive plan without an explicit deletion decision still fails
+	// closed. A run without --yes that cannot read a terminal answer still
+	// refuses (fail closed): --yes is the explicit signal that grants the
+	// consequence acknowledgements.
+	if assumeYes(ctx) {
+		acknowledged := application.ProviderChangeConsent{
+			PlanID:     plan.PlanID,
+			First:      true,
+			Second:     true,
+			DeleteData: false,
+		}
+		return providerImpactConsentError(plan, application.ValidateProviderChangeConsent(plan, acknowledged))
+	}
+	if in == nil || !readerIsTerminal(in) {
 		return providerImpactConsentError(plan, application.ValidateProviderChangeConsent(plan, application.ProviderChangeConsent{PlanID: plan.PlanID}))
 	}
 	consent, err := readProviderImpactAcknowledgements(bufio.NewReader(in), out, plan)

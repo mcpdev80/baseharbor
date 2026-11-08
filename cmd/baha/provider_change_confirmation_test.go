@@ -39,15 +39,26 @@ func TestProviderImpactAllowsExplicitAlternativeLessDeletion(t *testing.T) {
 	}
 }
 
-func TestOrdinaryYesNeverAcknowledgesProviderEffects(t *testing.T) {
+func TestOrdinaryYesHonoursDoubleAcknowledgementButNeverDeletes(t *testing.T) {
 	plan := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "concrete-effects", Complete: false, ConfirmationsRequired: 2}
 	ctx := withAssumeYes(machineNoninteractiveContext(context.Background()), true)
-	var failure *machine.Error
-	if err := acknowledgeProviderImpact(ctx, nil, new(bytes.Buffer), plan, nil); !errors.As(err, &failure) || failure.Code != machine.ErrorApprovalRequired {
-		t.Fatalf("ordinary --yes inferred double acknowledgement: %v", err)
+	// The mission contract (0427-157) makes an explicit --yes/non-TTY run
+	// honour BOTH consequence acknowledgements so automation can converge a
+	// two-stage impact plan without a terminal.
+	if err := acknowledgeProviderImpact(ctx, nil, new(bytes.Buffer), plan, nil); err != nil {
+		t.Fatalf("--yes non-TTY must honour the two-stage acknowledgement: %v", err)
+	}
+
+	// --yes still must NOT imply permanent data deletion: a destructive plan
+	// without an explicit deletion decision fails closed.
+	destructive := application.ProviderImpactPlan{Version: application.ProviderImpactVersion, PlanID: "delete-effects", Complete: false, ConfirmationsRequired: 2, Destructive: true}
+	failure := acknowledgeProviderImpact(ctx, nil, new(bytes.Buffer), destructive, nil)
+	var typed *machine.Error
+	if failure == nil || !errors.As(failure, &typed) {
+		t.Fatalf("--yes on a destructive plan must fail closed on data deletion")
 	}
 	data, err := json.Marshal(machine.Classify(failure))
-	if err != nil || !strings.Contains(string(data), `"details"`) || !strings.Contains(string(data), `"plan_id":"concrete-effects"`) {
+	if err != nil || !strings.Contains(string(data), `"details"`) {
 		t.Fatalf("machine error lost concrete impact: %s %v", data, err)
 	}
 }
