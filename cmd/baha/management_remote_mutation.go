@@ -90,10 +90,10 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 				"Use baha app apply NAME --environment dev [--skip-memory-preflight].")
 		}
 		payload, err := json.Marshal(struct {
-			Name                  string `json:"name"`
-			Environment           string `json:"environment"`
-			SkipMemoryPreflight   bool   `json:"skip_memory_preflight,omitempty"`
-			ConfirmCandidate      string `json:"confirm_candidate,omitempty"`
+			Name                  string                             `json:"name"`
+			Environment           string                             `json:"environment"`
+			SkipMemoryPreflight   bool                               `json:"skip_memory_preflight,omitempty"`
+			ConfirmCandidate      string                             `json:"confirm_candidate,omitempty"`
 			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 		}{name, environment, skipMemory, candidate, consent})
 		return name, environment, payload, err
@@ -103,7 +103,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 				"Remote update with a backup requires a password file on the Core host; use baha app update NAME --environment dev --no-backup only if you accept that risk.")
 		}
 		payload, err := json.Marshal(struct {
-			Environment           string `json:"environment"`
+			Environment string `json:"environment"`
 			NoBackup    bool   `json:"no_backup"`
 		}{environment, true})
 		return name, environment, payload, err
@@ -113,10 +113,10 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 				"Use baha app destroy NAME --environment dev --yes [--full-reset]; --yes never replaces provider impact or data-deletion consent.")
 		}
 		payload, err := json.Marshal(struct {
-			Name                  string `json:"name"`
-			Environment           string `json:"environment"`
-			Approval              bool   `json:"approval"`
-			FullReset             bool   `json:"full_reset,omitempty"`
+			Name                  string                             `json:"name"`
+			Environment           string                             `json:"environment"`
+			Approval              bool                               `json:"approval"`
+			FullReset             bool                               `json:"full_reset,omitempty"`
 			ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty"`
 		}{name, environment, true, fullReset, consent})
 		return name, environment, payload, err
