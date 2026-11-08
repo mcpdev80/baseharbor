@@ -178,7 +178,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		if err == nil {
 			break
 		}
-		if !strings.Contains(err.Error(), "not terminal") {
+		if !errors.Is(err, errRemoteExecutionPending) {
 			return err
 		}
 		select {
