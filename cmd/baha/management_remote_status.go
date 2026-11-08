@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
@@ -48,9 +49,26 @@ func remoteApplicationStatus(ctx context.Context, target deployment.ResolvedTarg
 	if err != nil {
 		return err
 	}
-	result, err := core.confirmRemoteExecutionSuccess(ctx, admitted)
-	if err != nil {
-		return err
+	// A 202 may be returned before a read-only status execution finishes.
+	// Observe only its pinned execution resource; never submit status twice.
+	observationCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	var result json.RawMessage
+	for {
+		result, err = core.confirmRemoteExecutionSuccess(observationCtx, admitted)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, errRemoteExecutionPending) {
+			return err
+		}
+		select {
+		case <-observationCtx.Done():
+			return fmt.Errorf("remote Core status execution %s did not finish: %w", admitted.ExecutionID, observationCtx.Err())
+		case <-ticker.C:
+		}
 	}
 	if !json.Valid(result) {
 		return errors.New("remote Core status result is invalid JSON")
