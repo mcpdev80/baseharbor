@@ -341,9 +341,12 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 			if provider == "" {
 				detail := "target config is missing; runtime provider cannot be inferred and only BaseHarbor-owned local state can be removed safely"
 				if name == "local" {
-					// Retained local runtime owner (targets/local/runtime) is genuine orphaned state: stay a blocking "preserved because" SKIPPED; orphan deployment folder alone is not — an unregistered-target recovery SKIPPED so a stale retry is not wedged.
-					if _, statErr := os.Stat(filepath.Join(root, "targets", name, "runtime")); statErr == nil {
+					// A present retained local runtime owner stays blocking (#1448); a missing-or-error owner that is not ENOENT also stays blocking.
+					switch statErr := localRuntimeOwnerStatErr(root, name); {
+					case statErr == nil:
 						detail = "preserved because local target configuration and runtime ownership are missing; recover the target binding before retrying destruction"
+					case !errors.Is(statErr, os.ErrNotExist):
+						detail = "preserved because local runtime ownership could not be verified: " + statErr.Error() + "; recover the target binding before retrying destruction"
 					}
 				}
 				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: detail, Diagnostic: "unregistered-target-runtime"})
