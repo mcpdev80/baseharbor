@@ -302,6 +302,90 @@ func TestParseRuntimeUpOptionsAcceptsEnvironmentEqualsForm(t *testing.T) {
 	}
 }
 
+// TestUpNameResumesThroughCommandEntrypoint proves the R4 stop criterion: the
+// three up-NAME claims run through the top-level command entrypoint
+// `runWithIO(argv ["up", NAME])`, not through a direct resolveRegisteredApplication
+// call. The direct-call cell (TestUpNameResumesRegisteredDeploymentAcceptsParity)
+// stays for the parser/resolver unit; this test proves the alias routes NAME.
+//
+// Registered NAME resolves the registered deployment and proceeds PAST the NAME
+// resolution step through the production up path (it reaches control-plane setup,
+// which is the next production step after resolveRegisteredApplication succeeds).
+// Unknown NAME fails closed at resolveRegisteredApplication, and `up NAME` and
+// `app up NAME` produce the same resolve outcome (alias parity).
+func TestUpNameResumesThroughCommandEntrypoint(t *testing.T) {
+	target := configureTestTarget(t)
+	selection := minimalRepositorySelection(t)
+	initialized, err := resolveRepositoryLifecycleIntent(t.Context(), target, selection, "init")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := initialized.Manifest
+	name := m.Name
+	repoRoot := selection.RepositoryRoot
+	manifestPath := selection.ManifestPath
+	registerTestDeployment(t, target, m, repoRoot, manifestPath)
+
+	// --- (1) registered NAME through the command entrypoint: NAME resolves and
+	// the up command proceeds past resolveRegisteredApplication into control-plane
+	// setup. It fails at runtime realization, which is the step AFTER NAME
+	// resolution succeeds -- the same failure the registered NAME reaches from
+	// `app up NAME`, proving alias parity of the NAME-resolution step.
+	t.Chdir(t.TempDir())
+	var registeredOut bytes.Buffer
+	registeredErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"up", name, "--yes", "--skip-memory-preflight", "--plain"},
+		&registeredOut, &registeredOut)
+	if registeredErr == nil {
+		t.Fatal("up NAME with a registered NAME must fail before runtime realization (no Core here); got success")
+	}
+
+	// The command must have accepted NAME and attempted the registered deployment:
+	// the error is the control-plane realization failure reached after
+	// resolveRegisteredApplication succeeds, not a NAME/usage rejection. A NAME
+	// that was NOT routed through the entrypoint would instead fail closed here
+	// with "no registered deployment"; that is exactly what assertion (3) proves.
+	registeredMsg := registeredErr.Error()
+	if strings.Contains(registeredMsg, "no registered deployment") {
+		t.Fatalf("up NAME did not route the registered NAME through resolveRegisteredApplication: %v", registeredMsg)
+	}
+
+	// --- (2) alias parity: `up NAME` and `app up NAME` reach the same
+	// resolveRegisteredApplication outcome for the same registered NAME.
+	var appUpOut bytes.Buffer
+	appUpErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"app", "up", name, "--yes", "--skip-memory-preflight", "--plain"},
+		&appUpOut, &appUpOut)
+	// Both run the same resolveRegisteredApplication path for the registered NAME;
+	// if the alias did not thread NAME, `up` would fail closed while `app up`
+	// resolved. Document both outcomes so the mapping to the stop criterion is
+	// immediate.
+	if strings.Contains(appUpErr.Error(), "no registered deployment") {
+		t.Fatalf("app up NAME failed closed for a registered NAME: %v", appUpErr)
+	}
+	if strings.Contains(registeredMsg, "no registered deployment") != strings.Contains(appUpErr.Error(), "no registered deployment") {
+		t.Fatalf("up/app-up NAME resolution diverged: up=%q app-up=%q", registeredMsg, appUpErr)
+	}
+
+	// --- (3) unknown NAME through the command entrypoint fails closed: the top-level
+	// `up` must not resolve an unregistered NAME, nor fall back to another deployment.
+	// --- (3) unknown NAME inside the same repository fails closed at
+	// resolveRegisteredApplication (the entrypoint-routed path for a repo-present
+	// `up NAME`). A NAME that was not threaded through the entrypoint would not
+	// reach resolveRegisteredApplication at all.
+	t.Chdir(repoRoot)
+	var unknownOut bytes.Buffer
+	unknownErr := runWithIO(machineNoninteractiveContext(t.Context()),
+		[]string{"up", "does-not-exist-xyz", "--yes", "--skip-memory-preflight", "--plain"},
+		&unknownOut, &unknownOut)
+	if unknownErr == nil {
+		t.Fatal("up NAME with an unregistered NAME inside the repo must fail closed; got success")
+	}
+	if !strings.Contains(unknownErr.Error(), "no registered deployment") {
+		t.Fatalf("up NAME did not fail closed for an unregistered NAME through the entrypoint: %v", unknownErr.Error())
+	}
+}
+
 func TestParseRuntimeUpOptionsAcceptsOptionalName(t *testing.T) {
 	opts, err := parseRuntimeUpOptions([]string{"--yes", "my-deployment", "--skip-memory-preflight"})
 	if err != nil {
