@@ -137,18 +137,18 @@ func TestRemoteProviderConsentIsExplicitAndPlanBound(t *testing.T) {
 }
 
 func TestRemoteApplyCarriesExactCandidateDigest(t *testing.T) {
-	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--confirm-candidate", "digest-approved"})
+	_, _, payload, err := remoteMutationArgs("apply", []string{"demo", "--confirm-candidate", strings.Repeat("a", 64)})
 	if err != nil {
 		t.Fatalf("explicit remote candidate rejected: %v", err)
 	}
 	var input struct {
 		ConfirmCandidate string `json:"confirm_candidate"`
 	}
-	if err := json.Unmarshal(payload, &input); err != nil || input.ConfirmCandidate != "digest-approved" {
+	if err := json.Unmarshal(payload, &input); err != nil || input.ConfirmCandidate != strings.Repeat("a", 64) {
 		t.Fatalf("remote Core lost candidate confirmation: %s (%v)", payload, err)
 	}
 	if _, _, _, err := remoteMutationArgs("destroy",
-		[]string{"demo", "--yes", "--confirm-candidate", "digest-approved"}); err == nil {
+		[]string{"demo", "--yes", "--confirm-candidate", strings.Repeat("a", 64)}); err == nil {
 		t.Fatal("destroy accepted apply-only candidate confirmation")
 	}
 }
