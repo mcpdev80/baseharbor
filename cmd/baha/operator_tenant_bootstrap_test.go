@@ -178,6 +178,13 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 		t.Fatalf("--no-browser managed login must persist a valid authenticated principal after Login; observed=%+v", observed)
 	}
 
+	// (1b) Counterfactual note (kept in the source so the witnesses are not
+	// misread as cosmetic): a silent early return that skipped
+	// operatorauth.Login would complete neither the token exchange nor the
+	// session persistence, so both assertions below would fail. They only pass
+	// when Login actually ran to completion, which is exactly what this
+	// command-level regression is meant to prove.
+
 	// (2) Browser isolation: the --no-browser flag must suppress the browser
 	// launch that operatorauth.Login performs for a non-headless flow. Clear any
 	// inherited BASEHARBOR_NO_BROWSER override, then replace the Linux CI
