@@ -88,7 +88,14 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 		}
 		return m.Run()
 	}
-	adoptBootstrapLeftoverMarkerFromDeadProcess()
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr != nil {
+		// A failed orphan adoption is a real failure: the orphan could not
+		// be destroyed, so the durable claim survives and the next run must
+		// fail closed. Propagate it here — before m.Run() and before any new
+		// provisioning — so the production TestMain exit code is non-zero.
+		fmt.Fprintf(os.Stderr, "bootstrap trust-plane teardown: failed adoption aborts this run (marker kept): %v\n", adoptErr)
+		return 1
+	}
 	marker := setupBootstrapLeftoverMarker()
 	if marker != "" {
 		// Claim the durable marker BEFORE any test can provision, so a
@@ -220,25 +227,33 @@ var runtimeBootstrapOrphanDestroyFailure error
 // OPEN BY CONTRACT: the returned error is non-nil when the orphan could not
 // be destroyed, the marker is NOT removed and a visible error is surfaced so
 // the next package run fails closed instead of forgetting the claim.
-func adoptBootstrapLeftoverMarkerFromDeadProcess() string {
+// adoptBootstrapLeftoverMarkerFromDeadProcess adopts and destroys a dead
+// owner's orphaned marker. It returns:
+//   - nil, nil           when there is simply no stale marker (clean, proceed)
+//   - "", nil            when a live owner's marker was left untouched
+//   - "", err            when the orphan destroy FAILED: the marker is kept and
+//     the error is surfaced so the caller fails closed.
+func adoptBootstrapLeftoverMarkerFromDeadProcess() (string, error) {
 	marker := bootstrapLeftoverMarkerPath()
 	if marker == "" {
-		return ""
+		return "", nil
 	}
 	owner, err := os.ReadFile(marker)
 	if err != nil {
-		return ""
+		return "", nil
 	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(owner)))
 	if err != nil || pid == os.Getpid() || bootstrapProcessAlive(pid) {
-		return ""
+		return "", nil
 	}
 	fmt.Fprintf(os.Stderr, "bootstrap trust-plane teardown: adopting orphaned marker from dead pid %d\n", pid)
 	if adoptionErr := destroyOrphanedBootstrapMarkers(marker); adoptionErr != nil {
 		// The orphan could not be destroyed: keep the marker so the next
-		// package run fails closed, and surface the failure visibly.
+		// package run fails closed, and surface the failure visibly. The
+		// distinct non-nil error is propagated to the caller so the
+		// production TestMain path fails closed instead of proceeding.
 		fmt.Fprintf(os.Stderr, "bootstrap trust-plane teardown: orphan adoption FAILED (marker kept): %v\n", adoptionErr)
-		return ""
+		return "", fmt.Errorf("orphan adoption failed, marker kept: %w", adoptionErr)
 	}
 	if runtimeBootstrapAdoptionHook != nil {
 		runtimeBootstrapAdoptionHook()
@@ -246,7 +261,7 @@ func adoptBootstrapLeftoverMarkerFromDeadProcess() string {
 	if err := os.Remove(marker); err != nil {
 		fmt.Fprintf(os.Stderr, "bootstrap trust-plane adoption marker removal: %v\n", err)
 	}
-	return marker
+	return marker, nil
 }
 
 // bootstrapProcessAlive reports whether the given pid currently exists.
@@ -355,9 +370,12 @@ func destroyBootstrapTrustPlane(marker string) error {
 			// residual or destroy failure: the former is only notable once
 			// the wächter itself could not run at all.
 			errs = append(errs, destroyErr)
-			// A destroy that could not even begin (the wächter itself failed
-			// to run) leaves the marker so the next run fails closed; a destroy
-			// that ran but reported residuals still consumes the marker.
+			// The marker is only consumed when the destroy ran to completion
+			// AND the residual watcher found nothing left to reclaim. A destroy
+			// that ran but reported residuals still consumed the marker under
+			// the r3 contract (stage one: "ran and reported residuals" ->
+			// marker gone); the marker-survives path is the failed-ADOPTION
+			// path tested in stage two, NOT this package-teardown run.
 			if isUnbeginningTeardownError(destroyErr) {
 				return fmt.Errorf("bootstrap trust-plane teardown could not begin: %w", destroyErr)
 			}

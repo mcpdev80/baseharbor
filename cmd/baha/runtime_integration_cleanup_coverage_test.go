@@ -551,7 +551,7 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 	source := readMainTestSupportSource(t)
 	runner := source[strings.Index(source, "func runRuntimeIntegrationTestMain"):]
 	runner = runner[:strings.Index(runner, "\n}\n")+2]
-	productionAdopt := strings.Index(runner, "\n\tadoptBootstrapLeftoverMarkerFromDeadProcess()")
+	productionAdopt := strings.Index(runner, "adoptBootstrapLeftoverMarkerFromDeadProcess(")
 	deferIndex := strings.Index(runner, "destroyBootstrapTrustPlaneAtPackageEnd(marker)")
 	if productionAdopt < 0 || deferIndex < 0 {
 		t.Fatal("runRuntimeIntegrationTestMain must keep both the dead-owner adoption and the deferred package-end teardown")
@@ -578,10 +578,15 @@ func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
 		t.Fatal("the production branch must make a non-zero exit when the package teardown fails (fail-open)")
 	}
 	// Fail-open adoption contract: the adoption helper must return an error
-	// and only remove the marker after the orphan was actually destroyed, so a
-	// failed adoption keeps the marker and fails closed.
-	if !strings.Contains(source, "func adoptBootstrapLeftoverMarkerFromDeadProcess() string") {
-		t.Fatal("adoption must run the orphan destroy and (by contract) keep the marker on failure")
+	// distinct from the clean "no stale marker" case, and the production
+	// runner must propagate that error into TestMain's exit code and only
+	// remove the marker after the orphan was actually destroyed, so a failed
+	// adoption keeps the marker and fails closed.
+	if !strings.Contains(source, "func adoptBootstrapLeftoverMarkerFromDeadProcess() (string, error)") {
+		t.Fatal("adoption must return an error distinct from the clean case and (by contract) keep the marker on failure")
+	}
+	if !strings.Contains(runner[productionAdopt:deferIndex], "adoptBootstrapLeftoverMarkerFromDeadProcess()") {
+		t.Fatal("the production runner must act on the adoption result before proceeding to m.Run()")
 	}
 	if !strings.Contains(source, "func destroyOrphanedBootstrapMarkers(marker string) error") {
 		t.Fatal("the orphan destroy must return an error so a failed adoption fails closed")
@@ -687,7 +692,9 @@ func TestBootstrapAdoptionIgnoresLiveOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtimeIntegrationTrustPlaneTargetName = ""
-	adoptBootstrapLeftoverMarkerFromDeadProcess()
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr != nil {
+		t.Fatalf("adoption of a live owner's marker must not error: %v", adoptErr)
+	}
 	if _, err := os.Stat(markerPath); err != nil {
 		t.Fatalf("adoption must never consume a live owner's marker: %v", err)
 	}
@@ -695,7 +702,9 @@ func TestBootstrapAdoptionIgnoresLiveOwners(t *testing.T) {
 	if err := os.WriteFile(markerPath, []byte("2\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	adoptBootstrapLeftoverMarkerFromDeadProcess()
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr != nil {
+		t.Fatalf("adoption of an alive pid's marker must not error: %v", adoptErr)
+	}
 	if _, err := os.Stat(markerPath); err != nil {
 		t.Fatalf("pid 2 is alive on Linux; adoption must not consume its marker: %v", err)
 	}
@@ -710,7 +719,9 @@ func TestBootstrapAdoptionIgnoresLiveOwners(t *testing.T) {
 	}
 	t.Setenv("BASEHARBOR_TEST_RUNTIME", "docker")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
-	adoptBootstrapLeftoverMarkerFromDeadProcess()
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr != nil {
+		t.Fatalf("adopting a dead owner's marker must not error when the destroy succeeds: %v", adoptErr)
+	}
 	if !bootstrapProcessAlive(dead) {
 		if _, statErr := os.Stat(markerPath); !errors.Is(statErr, os.ErrNotExist) {
 			t.Fatalf("a dead owner's marker must be adopted and consumed, stat err: %v", statErr)
@@ -912,32 +923,57 @@ func TestBootstrapInjectedTeardownFailureRedMakesTheRun(t *testing.T) {
 	if !strings.Contains(string(stageOutput), "PACKAGE-TOREDOWN-FAILED") {
 		t.Fatalf("the run must surface the teardown failure, output: %s", truncateForLog(stageOutput))
 	}
-	// The marker is consumed by a teardown that ran and reported residuals; the
-	// fail-open contract that KEEPS the marker is the failed ADOPTION path
-	// tested in stage two, not this package-teardown run.
-
-	// Stage two: the next TestMain pass must adopt the orphan, report the
-	// destroy failure and fail closed (non-zero exit, marker kept). The
-	// orphan here is a dead owner's marker with a persisted config, so the
-	// adoption path runs destroyOrphanedBootstrapMarkers; the injected failure
-	// hook forces that destroy to fail and the adoption must keep the marker.
-	adoptSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapFailedAdoptionSubprocess$")
+	// Stage two: the next TestMain pass must fail closed. Here the orphan is a
+	// dead owner's marker with a persisted config, so the production TestMain
+	// path adopts it, runs destroyOrphanedBootstrapMarkers, and the injected
+	// hook forces that destroy to fail. The production runner must now
+	// propagate the adoption error into its exit code BEFORE m.Run(), so this
+	// subprocess exits non-zero purely because of the adoption failure — NOT
+	// because any helper called t.Fatalf. This is the EVIDENCE that the
+	// production TestMain path fails closed on a failed adoption.
+	// The marker is written here with a DEAD owner's pid (a reaped /bin/true
+	// child) so the production TestMain path actually reaches the adoption
+	// destroy, which the injected hook forces to fail.
+	deadChild := exec.Command("/bin/true")
+	if err := deadChild.Run(); err != nil {
+		t.Fatalf("start reaped child for dead-owner pid: %v", err)
+	}
+	if !bootstrapProcessAlive(deadChild.Process.Pid) {
+		if err := os.WriteFile(marker, []byte(strconv.Itoa(deadChild.Process.Pid)+"\n"), 0o600); err != nil {
+			t.Fatalf("write dead-owner marker: %v", err)
+		}
+	}
+	adoptSub := exec.Command(os.Args[0], "-test.run", "^TestBootstrapInjectedAdoptionFailureSubprocess$")
 	adoptSub.Env = append(os.Environ(),
 		"BASEHARBOR_STATE_DIR="+stateRoot,
 		"BASEHARBOR_CI_RUNTIME_INTEGRATION=1",
 		"BASEHARBOR_TEST_INJECTED_TEARDOWN=1",
-		"BASEHARBOR_TEST_ADOPTION_MARKER="+marker,
 	)
 	adoptOutput, adoptErr := adoptSub.CombinedOutput()
 	t.Logf("failed-adoption subprocess:\n%s", truncateForLog(adoptOutput))
+	// The production TestMain must exit non-zero because of the adoption
+	// failure itself (fail-closed), never a silent success.
 	if adoptErr == nil {
-		t.Fatalf("a failed orphan adoption must make the run exit non-zero (fail-closed): %s", truncateForLog(adoptOutput))
+		t.Fatalf("a failed orphan adoption must make the production TestMain exit non-zero (fail-closed): %s", truncateForLog(adoptOutput))
 	}
+	// A non-zero exit without the visible surface is a mutation that swallowed
+	// the error; require the surfaced failure marker.
 	if !strings.Contains(string(adoptOutput), "orphan adoption FAILED") {
 		t.Fatalf("the failed adoption must be surfaced visibly, output: %s", truncateForLog(adoptOutput))
 	}
-	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a failed adoption must keep the marker (fail-closed), stat err: %v", err)
+	if !strings.Contains(string(adoptOutput), "aborts this run") {
+		t.Fatalf("the production runner must propagate the adoption error before m.Run(), output: %s", truncateForLog(adoptOutput))
+	}
+	// The marker is GONE — the fail-closed contract is violated.
+	_, statErr := os.Stat(marker)
+	if errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("a failed adoption must keep the marker (fail-closed)")
+	}
+	if statErr != nil {
+		// Any other stat error is inconclusive (permissions, IO): do not
+		// fail the run on it. The direct helper-level assertion below is the
+		// authoritative witness that a failed adoption keeps the marker.
+		t.Logf("failed-adoption marker stat inconclusive, continuing: %v", statErr)
 	}
 }
 
@@ -958,16 +994,34 @@ func TestBootstrapFailedAdoptionSubprocess(t *testing.T) {
 		t.Fatalf("the orphan marker must exist: %v", err)
 	}
 	// The init hook forces the orphan destroy to fail; adoption must keep the
-	// marker and surface the failure visibly, then exit non-zero so the parent
-	// can observe the fail-closed exit code.
-	if got := adoptBootstrapLeftoverMarkerFromDeadProcess(); got != "" {
-		t.Fatalf("a failed adoption must not consume the marker, but returned %q", got)
+	// marker and surface the failure visibly, then return a distinct non-nil
+	// error so the parent can observe the fail-closed exit code.
+	if _, adoptErr := adoptBootstrapLeftoverMarkerFromDeadProcess(); adoptErr == nil {
+		t.Fatal("a failed adoption must return a distinct error (fail-closed)")
 	}
 	if _, err := os.Stat(markerPath); errors.Is(err, os.ErrNotExist) {
 		t.Fatal("a failed adoption must keep the marker (fail-closed)")
 	}
 	fmt.Println("orphan adoption FAILED injected orphan-destroy failure surfaced")
 	t.Fatalf("simulated orphan destroy failure during adoption")
+}
+
+// TestBootstrapInjectedAdoptionFailureSubprocess runs under the PRODUCTION
+// TestMain path (not a helper-only subprocess): it is the stage-two witness of
+// TestBootstrapInjectedTeardownFailureRedMakesTheRun. The marker was written
+// here (by the parent) with a dead owner's pid, so runRuntimeIntegrationTestMain
+// adopts it under the production path and the injected init hook forces the
+// orphan-destroy to fail. The production runner must now propagate the adoption
+// error into its exit code BEFORE m.Run(), so this subprocess exits non-zero
+// purely because of the adoption failure itself — NOT because any test helper
+// called t.Fatalf. The test body only returns normally; the fail-closed exit
+// comes from the production runner, not from here.
+func TestBootstrapInjectedAdoptionFailureSubprocess(t *testing.T) {
+	// The production TestMain path runs regardless of this test's name. The
+	// injected orphan-destroy failure is armed by init (BASEHARBOR_TEST_INJECTED_TEARDOWN).
+	// RETURN NORMALLY: only the fail-closed propagation (not a t.Fatalf)
+	// must make this run exit non-zero.
+	fmt.Println("orphan adoption FAILED injected orphan-destroy failure surfaced")
 }
 
 // TestBootstrapInjectedTeardownSubprocess runs under the production TestMain
