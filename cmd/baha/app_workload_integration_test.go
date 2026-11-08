@@ -330,6 +330,162 @@ networks:
 	}
 }
 
+// TestRepositoryComposePinnedWorkloadLifecycleInCI proves 0427-128 on the native
+// runtime: a repository workload that pins container_name survives the full
+// apply→down→up→destroy lifecycle and the quiesce stop/retirement no longer
+// rejects the pinned native name as an "unplanned service replica". The default
+// <project>-<service>-1 lifecycle stays covered by the sibling CI test.
+func TestRepositoryComposePinnedWorkloadLifecycleInCI(t *testing.T) {
+	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
+		t.Skip("real repository pinned-workload lifecycle requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")
+	}
+	bootstrapCtx, bootstrapCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer bootstrapCancel()
+	if _, err := testruntime.Resolve(bootstrapCtx); err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	ensureRuntimeIntegrationTrustPlane(t, bootstrapCtx)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	compose, err := testruntime.Resolve(ctx)
+	if err != nil {
+		t.Fatalf("detect compose: %v", err)
+	}
+	isolateRuntimeForTest(t, "compose-pinned-workload")
+
+	root := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(old)
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest := `version: 1
+app:
+  name: pinned-workload-ci
+  environment: dev
+services:
+  sql:
+    enabled: false
+  cache:
+    enabled: false
+  secrets:
+    enabled: false
+workload:
+  components:
+    - app
+`
+	if err := os.WriteFile("baseharbor.yaml", []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Pin the workload native container_name outside <project>-<service>-1, the
+	// linkding/JoySafety/Tier0 pattern 0427-128 fixes.
+	composeYAML := `services:
+  app:
+    image: alpine:3.22
+    container_name: linkding-pinned-web
+    command: ["sh", "-ec", "sleep infinity"]
+    environment:
+      APP_OWNED_VALUE: preserved
+    networks:
+      - app-internal
+networks:
+  app-internal:
+`
+	if err := os.WriteFile("compose.yaml", []byte(composeYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "apply"}, &out); err != nil {
+		t.Fatalf("apply pinned-workload application: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "workload") {
+		t.Fatalf("apply did not report workload readiness:\n%s", out.String())
+	}
+
+	resolved, err := resolveApplication(ctx, application.Store{}, nil, "pinned workload integration verification")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := resolved.Manifest
+	files, err := application.ExistingRuntimeFiles(resolved.Store, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workload, found, err := application.MaterializeWorkload(root, m, files)
+	if err != nil || !found {
+		t.Fatalf("materialize pinned workload verification: found=%v err=%v", found, err)
+	}
+	composeFiles := []string{workload.Compose, workload.Override}
+
+	// The pinned native name must exist as a running container after apply: the
+	// quiesce stop accepted it instead of rejecting it as an unplanned replica.
+	pinnedExists := false
+	containers, err := compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect pinned workload containers", err)
+	}
+	for _, c := range containers {
+		if c.Project == workload.Project && c.Name == "linkding-pinned-web" {
+			pinnedExists = true
+		}
+	}
+	if !pinnedExists {
+		t.Fatalf("pinned container_name linkding-pinned-web not present after apply:\n%v", containers)
+	}
+
+	out.Reset()
+	if err := stopSelectiveApplicationWithConsent(ctx, &out); err != nil {
+		t.Fatalf("down pinned-workload application: %v\n%s", err, out.String())
+	}
+	running, err := compose.RunningServicesProjectFiles(ctx, workload.Project, root, composeFiles...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(running) != 0 {
+		t.Fatalf("pinned-workload services remain after down: %v", running)
+	}
+
+	out.Reset()
+	if err := runRepositoryFixtureApply(ctx, []string{"app", "up"}, &out); err != nil {
+		t.Fatalf("up pinned-workload application: %v\n%s", err, out.String())
+	}
+
+	// Acceptance 0427-128: the pinned workload must reach baha app backup
+	// READY→written-archive. backup uses a password-file gate, not an interactive
+	// impact confirmation, but the runtime must already be applied and verified.
+	out.Reset()
+	backupFile := filepath.Join(t.TempDir(), "pinned.bhbackup")
+	backupCmd := []string{"app", "backup", "--output", backupFile}
+	if err := runWithIO(ctx, backupCmd, &out, &out); err != nil {
+		t.Fatalf("backup pinned-workload application: %v\n%s", err, out.String())
+	}
+	if _, statErr := os.Stat(backupFile); statErr != nil {
+		t.Fatalf("pinned workload backup did not write archive: %v\n%s", statErr, out.String())
+	}
+
+	out.Reset()
+	if err := destroySelectiveApplicationWithConsent(ctx); err != nil {
+		t.Fatalf("destroy pinned-workload application: %v\n%s", err, out.String())
+	}
+	containers, err = compose.ListRuntimeContainers(ctx)
+	if err != nil {
+		t.Fatal("inspect pinned workload retirement", err)
+	}
+	for _, container := range containers {
+		if container.Project == workload.Project {
+			t.Fatalf("pinned workload container remains after retirement: state=%s running=%t", container.State, container.Running)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "baseharbor.yaml")); err != nil {
+		t.Fatalf("repository manifest not preserved: %v", err)
+	}
+}
+
 func TestRepositoryBuildWorkloadRebuildsSourceChangesInCI(t *testing.T) {
 	if os.Getenv("BASEHARBOR_CI_RUNTIME_INTEGRATION") != "1" {
 		t.Skip("real repository build convergence requires BASEHARBOR_CI_RUNTIME_INTEGRATION=1")

@@ -25,6 +25,7 @@ permissions:
 jobs:
   workflow_policy:
     name: Workflow policy
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -346,7 +347,33 @@ jobs:
           BASEHARBOR_PROVIDER_POSTGRESQL_SCOPE: application
           BASEHARBOR_PROVIDER_VALKEY_SCOPE: application
           BASEHARBOR_PROVIDER_OPENBAO_SCOPE: application
-        run: go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -v
+        run: |
+          set -euo pipefail
+          go test -p 1 ./cmd/baha ./internal/application -run '^(TestRepositoryWorkflowRealLifecycle|TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI|TestRepositoryComposeWorkloadOnlyLifecycleInCI|TestRepositoryComposePinnedWorkloadLifecycleInCI|TestRepositoryBuildWorkloadRebuildsSourceChangesInCI|TestMultiInstanceComposeLifecycleInCI)$' -count=1 -json | tee "$RUNNER_TEMP/runtime-integration.jsonl"
+          python3 - "$RUNNER_TEMP/runtime-integration.jsonl" <<'PY'
+          import json, pathlib, sys
+          events = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.startswith('{')]
+          required = {
+              'TestRepositoryWorkflowRealLifecycle',
+              'TestRepositoryComposeWorkloadUsesBaseHarborBackendsInCI',
+              'TestRepositoryComposeWorkloadOnlyLifecycleInCI',
+              'TestRepositoryComposePinnedWorkloadLifecycleInCI',
+              'TestRepositoryBuildWorkloadRebuildsSourceChangesInCI',
+              'TestMultiInstanceComposeLifecycleInCI',
+          }
+          if any(e.get('Action') in {'skip', 'fail'} for e in events):
+              raise SystemExit('Required native runtime test skipped or failed')
+          for name in sorted(required):
+              if sum(e.get('Test') == name and e.get('Action') == 'pass' for e in events) != 1:
+                  raise SystemExit(f'Required native runtime test missing exact PASS: {name}')
+          packages = {'github.com/mcpdev80/baseharbor/cmd/baha',
+                      'github.com/mcpdev80/baseharbor/internal/application'}
+          for package in packages:
+              if not any(e.get('Package') == package and 'Test' not in e
+                         and e.get('Action') == 'pass' for e in events):
+                  raise SystemExit(f'Required native runtime package did not PASS: {package}')
+          print('PASS: all six native runtime tests and both package teardowns')
+          PY
 
       - name: Run Go vet
         id: vet
@@ -386,9 +413,80 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
+  pr_native_impact:
+    name: PR · Native impact selection
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.select.outputs.required }}
+    steps:
+      - name: Checkout trusted develop policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select exact PR native impact
+        id: select
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$HEAD_SHA"
+          changed="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")"
+          required="$(printf '%s\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
+          # Conservative fallback: unknown CLI source edits must run rather than silently skip.
+          if [ "$required" != true ] && printf '%s\n' "$changed" | grep -Eq '^cmd/baha/.*\.go$'; then
+            required=true
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "Native runtime acceptance required: $required" >> "$GITHUB_STEP_SUMMARY"
+
+  pr_native_destroy:
+    name: PR · Native destroy retry · ${{ matrix.runtime }}
+    needs: pr_native_impact
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: docker
+            runner: ubuntu-latest
+          - runtime: podman
+            runner: ubuntu-26.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+    steps:
+      - name: Checkout exact PR integration candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify actual native destroy and retry, fail on SKIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash scripts/ci-native-installation-destroy.sh
+      - name: Cleanup native runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   source_format:
     name: PR · Source format
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop'
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -979,7 +1077,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native]
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -995,6 +1093,20 @@ jobs:
         if: needs.pr_plan.result == 'success'
         with:
           name: trusted-pr-plan
+      - name: Require selected native acceptance before merge
+        shell: bash
+        env:
+          NATIVE_SELECTION: ${{ needs.pr_native_impact.result }}
+          NATIVE_REQUIRED: ${{ needs.pr_native_impact.outputs.required }}
+          NATIVE_RESULT: ${{ needs.pr_native_destroy.result }}
+        run: |
+          set -euo pipefail
+          test "$NATIVE_SELECTION" = success
+          case "$NATIVE_REQUIRED" in
+            true) test "$NATIVE_RESULT" = success ;;
+            false) test "$NATIVE_RESULT" = skipped ;;
+            *) echo "REJECT: no authoritative native impact classification" >&2; exit 1 ;;
+          esac
       - name: Require normal selected job results
         env:
           CI_NEEDS: ${{ toJSON(needs) }}

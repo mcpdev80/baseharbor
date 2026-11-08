@@ -109,7 +109,7 @@ jobs:
     needs: select_develop
     if: ${{ github.event_name == 'push' && github.ref_name == 'develop' && needs.select_develop.outputs.required == 'true' }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 45
+    timeout-minutes: 65
     env:
       BASEHARBOR_TEST_RUNTIME: podman
       BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
@@ -149,6 +149,26 @@ jobs:
       - name: Validate real installation destroy and interrupted retry
         shell: bash
         run: bash scripts/ci-native-installation-destroy.sh
+      - name: Validate native pinned workload lifecycle and backup
+        shell: bash
+        timeout-minutes: 20
+        env:
+          BASEHARBOR_CI_RUNTIME_INTEGRATION: "1"
+        run: |
+          set -euo pipefail
+          go test -p 1 ./cmd/baha -run '^TestRepositoryComposePinnedWorkloadLifecycleInCI$' -count=1 -timeout 18m -json | tee "$RUNNER_TEMP/pinned-workload.jsonl"
+          python3 - "$RUNNER_TEMP/pinned-workload.jsonl" <<'PY'
+          import json, pathlib, sys
+          events = [json.loads(line) for line in pathlib.Path(sys.argv[1]).read_text().splitlines() if line.startswith('{')]
+          name = 'TestRepositoryComposePinnedWorkloadLifecycleInCI'
+          if any(event.get('Action') in {'skip', 'fail'} for event in events):
+              raise SystemExit('REJECT: native pinned workload skipped or failed')
+          if sum(event.get('Test') == name and event.get('Action') == 'pass' for event in events) != 1:
+              raise SystemExit('REJECT: native pinned workload test did not PASS exactly once')
+          if not any(event.get('Package') == 'github.com/mcpdev80/baseharbor/cmd/baha' and 'Test' not in event and event.get('Action') == 'pass' for event in events):
+              raise SystemExit('REJECT: native pinned workload package teardown did not PASS')
+          print('PASS: pinned container_name apply/down/up/backup/destroy')
+          PY
       - name: Clean up isolated runtime
         if: always()
         run: bash scripts/ci-runtime-reset.sh podman
