@@ -100,6 +100,9 @@ func (c Compose) EnsureManagedNetwork(ctx context.Context, name string) error {
 		return nil
 	}
 	_, err = c.directOutput(ctx, "network", "create", "--label", "io.baseharbor.managed=connectivity", name)
+	if err != nil && runtimeNetworkPoolExhausted(err) {
+		return fmt.Errorf("create managed network %q with runtime %q: no available network address pool; inspect networks with '%s network ls' and remove only verified unused networks (for Docker, 'docker network prune' removes all unused networks); automatic cleanup is not performed: %w", name, c.command, c.command, err)
+	}
 	return err
 }
 
@@ -158,4 +161,15 @@ func (c Compose) RemoveManagedNetwork(ctx context.Context, name string) error {
 	}
 	_, err = c.directOutput(ctx, "network", "rm", name)
 	return err
+}
+
+// Match the runtime's known address-pool errors, not unrelated network failures.
+func runtimeNetworkPoolExhausted(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "all predefined address pools have been fully subnetted") ||
+		strings.Contains(message, "could not find an available, non-overlapping ipv4 address pool") ||
+		strings.Contains(message, "no available ipv4 address pool")
 }
