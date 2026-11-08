@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -248,5 +251,29 @@ func TestReapplyingIdenticalCandidateReturnsImmutableError(t *testing.T) {
 	_, newErr := recordDeploymentBeforeMutation(ctxNew, r, "applying", newDigest)
 	if newErr != nil && strings.Contains(newErr.Error(), "immutable") {
 		t.Fatalf("a changed candidate refused by the immutability guard; only the identical re-record is immutable: %v", newErr)
+	}
+}
+
+func TestMissingCandidateConsentDoesNotDumpRuntimeStack(t *testing.T) {
+	resolved := repoCandidateFixture(t)
+	original := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = writer
+	_, applyErr := recordDeploymentBeforeMutation(context.Background(), resolved, "applying", "")
+	os.Stderr = original
+	_ = writer.Close()
+	output, readErr := io.ReadAll(reader)
+	_ = reader.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !errors.Is(applyErr, errConsentRequiredForCandidateSubmission) {
+		t.Fatalf("candidate without consent must fail closed: %v", applyErr)
+	}
+	if strings.Contains(string(output), "goroutine") || strings.Contains(string(output), "runtime.Stack") {
+		t.Fatalf("consent refusal emitted runtime stack to stderr: %s", output)
 	}
 }
