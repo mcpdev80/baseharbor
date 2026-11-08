@@ -201,8 +201,8 @@ func trustUninstallCommand() *cli.Command {
 				}
 				fmt.Fprint(errOut, "Remove ONLY these BaseHarbor-owned CA anchors? [y/N]: ")
 				response, err := bufio.NewReader(guidedTrustInput).ReadString('\n')
-				if err != nil {
-					return fmt.Errorf("read host trust removal approval: %w", err)
+				if err != nil && !errors.Is(err, io.EOF) {
+					return err
 				}
 				answer := strings.ToLower(strings.TrimSpace(response))
 				if answer != "y" && answer != "yes" && answer != "ja" && answer != "j" {

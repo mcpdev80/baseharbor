@@ -110,3 +110,32 @@ func TestTrustUninstallWizardDeclinePreservesOwnedState(t *testing.T) {
 		t.Fatalf("declined wizard mutated host trust ownership: %v", err)
 	}
 }
+
+// TestTrustUninstallPromptEOFAbortsCleanly covers BF-26: an EOF/Strg-D at the
+// [y/N]-removal prompt must abort cleanly with "Host trust unchanged." (nil
+// error) rather than surfacing a raw read error. This mirrors the install-path
+// io.EOF guard and the karte-138 unification. The existing decline test drives
+// "no\n"; this one drives an empty reader (immediate EOF) and must have failed
+// before the guard was added.
+func TestTrustUninstallPromptEOFAbortsCleanly(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	configureTestTarget(t)
+	record := `{"version":1,"anchors":[{"fingerprint":"abcdef","backend":"linux-update-ca-certificates","path":"/tmp/nonexistent-ca-test.crt","installed_at":"2026-10-08T12:00:00Z"}]}`
+	if err := os.WriteFile(filepath.Join(root, "host-trust.json"), []byte(record), 0600); err != nil {
+		t.Fatal(err)
+	}
+	saved := guidedTrustInput
+	guidedTrustInput = strings.NewReader("") // immediate EOF / Strg-D
+	defer func() { guidedTrustInput = saved }()
+	var out, errOut bytes.Buffer
+	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
+	}
+	if !strings.Contains(out.String(), "Host trust unchanged.") {
+		t.Fatalf("missing clean EOF abort notice: %s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "host-trust.json")); err != nil {
+		t.Fatalf("EOF abort mutated host trust ownership: %v", err)
+	}
+}
