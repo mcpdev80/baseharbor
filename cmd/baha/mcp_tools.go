@@ -483,6 +483,7 @@ func registerMCPApplicationMutationTools(server *mcp.Server, store application.S
 		ctx = withProviderChangeConsent(ctx, input.ProviderChangeConsent)
 		ctx = withTargetOverride(ctx, input.Target)
 		ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
+		ctx = withCandidateConsentDigest(ctx, input.ConfirmCandidate)
 		args := machineApplicationArgs(input.Name, input.Environment)
 		resolved, err := resolveApplication(ctx, store, args, "apply")
 		if err != nil {
