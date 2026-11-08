@@ -19,7 +19,7 @@ func TestResolveAssignsAllowProvesAssignmentAdapter(t *testing.T) {
 	}
 	a := NewAdapter(m)
 
-	got, err := a.Resolve("readers", "install-acme", orgconfig.OpRead)
+	got, err := a.Resolve("readers", "dev", "install-acme", orgconfig.OpRead)
 	if err != nil {
 		t.Fatalf("assigned operation should not error: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestResolveOutsideAssignmentDeniesProvesNoSilentWiden(t *testing.T) {
 		t.Fatalf("create failed: %v", err)
 	}
 	a := NewAdapter(m)
-	got, err := a.Resolve("readers", "install-acme", orgconfig.OpAdmin)
+	got, err := a.Resolve("readers", "dev", "install-acme", orgconfig.OpAdmin)
 	if err != nil {
 		t.Fatalf("resolve should not error for a known profile: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestResolveOutsideAssignmentDeniesProvesNoSilentWiden(t *testing.T) {
 func TestResolveUnknownProfileFailsClosed(t *testing.T) {
 	m := orgconfig.NewManager("install-acme")
 	a := NewAdapter(m)
-	if _, err := a.Resolve("ghost", "install-acme", orgconfig.OpRead); err == nil {
+	if _, err := a.Resolve("ghost", "", "install-acme", orgconfig.OpRead); err == nil {
 		t.Fatal("unknown profile should fail closed, got nil error")
 	}
 }
@@ -67,7 +67,7 @@ func TestResolveUnknownProfileFailsClosed(t *testing.T) {
 // closed rather than allowing.
 func TestResolveEmptyManagerFailsClosed(t *testing.T) {
 	a := NewAdapter(nil)
-	if _, err := a.Resolve("any", "install-acme", orgconfig.OpRead); err == nil {
+	if _, err := a.Resolve("any", "", "install-acme", orgconfig.OpRead); err == nil {
 		t.Fatal("nil manager must fail closed, got nil error")
 	}
 }
@@ -81,7 +81,7 @@ func TestResolveForeignTenantFailsClosed(t *testing.T) {
 		t.Fatalf("create failed: %v", err)
 	}
 	a := NewAdapter(m)
-	if _, err := a.Resolve("readers", "install-other", orgconfig.OpRead); err == nil {
+	if _, err := a.Resolve("readers", "", "install-other", orgconfig.OpRead); err == nil {
 		t.Fatal("foreign tenant must fail closed, got nil error")
 	}
 }
@@ -96,14 +96,14 @@ func TestResolveRevokedViaAdapterFailsClosed(t *testing.T) {
 	}
 	a := NewAdapter(m)
 	// Assigned before revoke.
-	if got, err := a.Resolve("readers", "install-acme", orgconfig.OpRead); err != nil || got.Decision != Allow {
+	if got, err := a.Resolve("readers", "dev", "install-acme", orgconfig.OpRead); err != nil || got.Decision != Allow {
 		t.Fatalf("pre-revoke assign should allow: got %v err %v", got.Decision, err)
 	}
 	// After revoke, the same adapter resolves the removed name as failed closed.
-	if _, err := m.Revoke("readers"); err != nil {
+	if _, err := m.Revoke("readers", "dev"); err != nil {
 		t.Fatalf("revoke failed: %v", err)
 	}
-	if _, err := a.Resolve("readers", "install-acme", orgconfig.OpRead); err == nil {
+	if _, err := a.Resolve("readers", "dev", "install-acme", orgconfig.OpRead); err == nil {
 		t.Fatal("revoked profile must deny through the same adapter, got nil error")
 	}
 }
@@ -117,7 +117,7 @@ func TestResolveAggregatePreservesMandatoryDeny(t *testing.T) {
 		t.Fatalf("create failed: %v", err)
 	}
 	a := NewAdapter(m)
-	allowFinding, err := a.Resolve("readers", "install-acme", orgconfig.OpRead)
+	allowFinding, err := a.Resolve("readers", "dev", "install-acme", orgconfig.OpRead)
 	if err != nil || allowFinding.Decision != Allow {
 		t.Fatalf("expected Allow finding, got %v err %v", allowFinding.Decision, err)
 	}

@@ -7,6 +7,9 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | Command | Classification | CLI JSON / structured result | Operation / tool | Reason |
 | --- | --- | --- | --- | --- |
 | `baha` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha access` | presentation |  |  | Command group; invoke its supported subcommands. |
+| `baha access assign` | excluded |  |  | Guided, human interactive profile assignment folds every decision into the single production policy authority (policy.Aggregate/policy.ResolveFinding); no typed MCP operation, so excluded from the machine tool boundary by design. |
+| `baha access offboard` | excluded |  |  | Guided, human interactive offboarding re-checks the current configuration at submit time and folds every decision into the single production policy authority; no typed MCP operation, so excluded from the machine tool boundary by design. |
 | `baha agent` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha agent describe` | presentation |  |  | Machine registry/discovery itself, rather than a product mutation. |
 | `baha app` | presentation |  |  | Command group; invoke its supported subcommands. |

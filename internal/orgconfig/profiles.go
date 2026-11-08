@@ -42,6 +42,11 @@ var ErrProfileNameAmbiguous = fmt.Errorf("%w: team access profile name is ambigu
 // not exist in the owner's managed set.
 var ErrProfileNotFound = fmt.Errorf("%w: team access profile not found", ErrInvalidProfile)
 
+// ErrDenied fails closed when a Manager cannot persist the active state (for
+// example a nil Manager asked to persist). The wizard treats any persistence
+// failure as a Deny rather than applying a change that was not durably written.
+var ErrDenied = fmt.Errorf("%w: cannot persist active organization configuration", ErrInvalidProfile)
+
 // ErrDuplicateProfile fails closed when a create/update writes a name that
 // already exists under a different, non-identical definition and the caller did
 // not opt into an explicit replace.
@@ -57,6 +62,12 @@ var ErrScopeNotFound = fmt.Errorf("%w: profile references an undeclared target o
 // is older than the stored definition's revision, so the manager cannot
 // last-write-wins a concurrent change.
 var ErrStaleRevision = fmt.Errorf("%w: update revision is stale", ErrInvalidProfile)
+
+// ErrOwnerCollision fails closed when a persistence fold would overwrite the
+// (name, target) key of a profile owned by a different installation. The key is
+// shared identity across installations, so a same-key write by a non-owner is
+// never a silent last-write-wins; it is refused before anything is saved.
+var ErrOwnerCollision = fmt.Errorf("%w: team access profile key collides with another owner", ErrInvalidProfile)
 
 // Operation is a machine-operation verb a profile may grant. Only the verbs the
 // operator has already declared on the authority are selectable; an unknown
@@ -97,11 +108,16 @@ func validateOperation(op string) error {
 // for a selected set of Targets, operations, scopes and environments. It is
 // immutable once built; mutate through the Manager.
 type Profile struct {
-	// Name is the unique, managed identity of the profile. It must be a single
-	// non-empty name token and is the key the Manager indexes on.
+	// Name is the managed identity of the profile. It must be a single
+	// non-empty name token. A person may hold more than one profile, one per
+	// Target, so Name alone is not a unique key: the managed identity is the
+	// (Name, Target) pair (see ProfileKey).
 	Name string `json:"name" yaml:"name"`
 	// Target selects the managed Target this profile grants access to. It must
-	// be declared by the configuration (see Manager scope resolution).
+	// be declared by the configuration (see Manager scope resolution). It is
+	// part of the profile's managed identity; two profiles that share a Name on
+	// different Targets are distinct profiles, not a single profile overwritten
+	// on each Target.
 	Target string `json:"target" yaml:"target"`
 	// Environment selects the managed environment. It must be declared by the
 	// configuration or empty (defaults apply).
@@ -241,6 +257,15 @@ func canonicalProfileIdentity(p Profile) string {
 	return joinIdentity(parts)
 }
 
+// ProfileKey returns the managed identity of a profile: the (name,target) pair.
+// A person may hold one owned profile per declared Target, so the key is the
+// pair, not the name alone. Two profiles that share a Name on different Targets
+// have distinct keys and both survive in the manager; replacing one Target never
+// drops the other.
+func ProfileKey(name, target string) string {
+	return joinIdentity([]string{"name=" + strings.TrimSpace(name), "target=" + strings.TrimSpace(target)})
+}
+
 func joinIdentity(parts []string) string {
 	out := ""
 	for i, p := range parts {
@@ -270,8 +295,10 @@ func isSubsetOf(need, have []Operation) bool {
 
 // Manager owns the scoped team access profiles for one installation identity.
 // A profile is a named recommendation/assignment; the Manager creates, updates
-// and revokes them without ever conferring a right. The set is keyed by name;
-// a name must be unique within the owner's managed set.
+// and revokes them without ever conferring a right. The set is keyed by the
+// (name, target) pair: a person may hold one owned profile per declared Target,
+// so two profiles that share a Name on different Targets are distinct entries.
+// A create or update on one Target never drops a profile owned on another.
 type Manager struct {
 	// Owner is the installation identity this Manager assigns under. It is the
 	// authority a profile is bound to; a foreign installation's profiles are
@@ -303,7 +330,7 @@ func NewManager(owner string, profiles ...Profile) *Manager {
 		profiles: map[string]Profile{},
 	}
 	for _, p := range profiles {
-		m.profiles[strings.TrimSpace(p.Name)] = p
+		m.profiles[ProfileKey(p.Name, p.Target)] = p
 	}
 	return m
 }
@@ -314,6 +341,10 @@ func NewManager(owner string, profiles ...Profile) *Manager {
 // of Create/Update/Revoke on the load side: a Manager is only as good as the
 // profiles it was built from, so the adapter's production finding is empty
 // unless the caller feeds it the real owned set here.
+//
+// The stored map is keyed by (name, target); this returns the profiles as a
+// slice, so a person's distinct per-Target profiles all load rather than being
+// collapsed to one.
 //
 // An empty owner loads no profiles (an anonymous/unauthenticated caller has no
 // managed set); an active state with no persisted profiles loads an empty set,
@@ -418,7 +449,7 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 	p.Immutable = p.ImmutableIdentity()
 	p.Revision = 1 // freshly created definition starts at revision 1
 
-	existing, ok := m.profiles[p.Name]
+	existing, ok := m.profiles[ProfileKey(p.Name, p.Target)]
 	if ok {
 		if existing.Equal(p) {
 			return existing, nil
@@ -428,7 +459,7 @@ func (m *Manager) Create(p Profile, replace bool) (Profile, error) {
 		}
 	}
 	created := p
-	m.profiles[p.Name] = created
+	m.profiles[ProfileKey(p.Name, p.Target)] = created
 	return created, nil
 }
 
@@ -461,7 +492,7 @@ func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	if strings.TrimSpace(p.Name) == "" {
 		return Profile{}, ErrProfileNameEmpty
 	}
-	existing, ok := m.profiles[p.Name]
+	existing, ok := m.profiles[ProfileKey(p.Name, p.Target)]
 	if !ok {
 		return Profile{}, ErrProfileNotFound
 	}
@@ -493,18 +524,17 @@ func (m *Manager) Update(expectedRevision uint64, p Profile) (Profile, error) {
 	p.Revision = existing.Revision + 1
 	p.Immutable = p.ImmutableIdentity()
 	updated := p
-	m.profiles[p.Name] = updated
+	m.profiles[ProfileKey(p.Name, p.Target)] = updated
 	return updated, nil
 }
 
-// Revoke removes an owned profile by name. It fails closed if the name is
-// unknown. Revoking a name that resolves ambiguously (more than one managed
-// profile with that name) fails closed so the caller disambiguates: the set is
-// keyed by name so this can only happen across a corrupt in-memory state, which
-// must never be silently resolved.
-func (m *Manager) Revoke(name string) (Profile, error) {
-	key := strings.TrimSpace(name)
-	if key == "" {
+// Revoke removes an owned profile by its (name, target) identity. It fails
+// closed if the name is unknown, or no owned profile exists on the given Target
+// for that name. Revoking one (name, target) leaves a profile the same Name
+// holds on another Target untouched.
+func (m *Manager) Revoke(name, target string) (Profile, error) {
+	key := ProfileKey(name, target)
+	if strings.TrimSpace(key) == "" {
 		return Profile{}, ErrProfileNameEmpty
 	}
 	existing, ok := m.profiles[key]
@@ -515,15 +545,29 @@ func (m *Manager) Revoke(name string) (Profile, error) {
 	return existing, nil
 }
 
-// Get returns a profile by exact name. Unknown names fail closed on
-// ErrProfileNotFound.
-func (m *Manager) Get(name string) (Profile, error) {
-	key := strings.TrimSpace(name)
-	p, ok := m.profiles[key]
+// Get returns the profile on the given (name, target). Unknown names or a name
+// with no owned profile on the given Target fail closed on ErrProfileNotFound.
+// GetByKey is the authoritative single-profile lookup on the per-target model:
+// the same Name on a different Target is a distinct profile.
+func (m *Manager) GetByKey(name, target string) (Profile, error) {
+	p, ok := m.profiles[ProfileKey(name, target)]
 	if !ok {
 		return Profile{}, ErrProfileNotFound
 	}
 	return p, nil
+}
+
+// Get returns the profile with the given Name, on whichever declared Target
+// first owns it. Unknown Name, or a Name with no owned profile, fails closed on
+// ErrProfileNotFound. On the per-target model a Name may be held on more than
+// one Target, so callers that must address one Target use GetByKey.
+func (m *Manager) Get(name string) (Profile, error) {
+	for _, p := range m.profiles {
+		if strings.TrimSpace(p.Name) == strings.TrimSpace(name) {
+			return p, nil
+		}
+	}
+	return Profile{}, ErrProfileNotFound
 }
 
 // List returns the managed profiles in canonical order (by name).
@@ -534,6 +578,130 @@ func (m *Manager) List() []Profile {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// SnapshotProfiles returns a copy of the manager's owned profiles for the
+// manager's owner. The caller may persist the set back into an active state;
+// the returned slice is a copy, so editing it never mutates the manager. This
+// is the mirror of LoadProfiles on the write side: an in-memory Manager that
+// was mutated by Create/Update/Revoke can fold its owned set back into the
+// production active-state writer.
+func (m *Manager) SnapshotProfiles() []Profile {
+	out := make([]Profile, 0, len(m.profiles))
+	for _, p := range m.profiles {
+		out = append(out, p)
+	}
+	return out
+}
+
+// ProfileMap converts a slice of profiles into the keyed map the active
+// configuration stores, the inverse of toProfileList. It lets the wizard fold a
+// Manager's owned set back into an ActiveState without coupling the wizard to
+// the map representation. The map is keyed by the (name, target) identity so a
+// person's distinct per-Target profiles survive persistence: keying by name
+// alone would collapse one person's profiles into the last written.
+func ProfileMap(list []Profile) map[string]Profile {
+	m := make(map[string]Profile, len(list))
+	for _, p := range list {
+		m[ProfileKey(p.Name, p.Target)] = p
+	}
+	return m
+}
+
+// toProfileList converts a map of profiles into a slice, the inverse of
+// ProfileMap.
+func toProfileList(m map[string]Profile) []Profile {
+	out := make([]Profile, 0, len(m))
+	for _, p := range m {
+		out = append(out, p)
+	}
+	return out
+}
+
+// PersistActive folds the manager's owned profile set into the loaded active
+// state and writes it through the product's active-state writer. It is a single
+// persistence entry point so the wizard persists assignment/revocation changes
+// through exactly one path. A persistence failure is returned so the caller can
+// fail closed and report no success.
+//
+// The fold is a merge per owner-namespace, not a replacement of the whole map:
+// the manager owns exactly the rows LoadProfiles gave it — its own Owner's rows
+// and supported legacy ownerless rows — so PersistActive rewrites precisely
+// that namespace. Every profile whose non-empty Owner differs from
+// manager.Owner belongs to another installation, was deliberately not loaded,
+// and is carried into the saved document byte-for-byte unchanged. Replacing the
+// full map with the manager snapshot would delete another installation's
+// profiles on every successful write.
+//
+// Carrying foreign rows through the merge is not sufficient by itself: the
+// active-state map is keyed by (name, target), so a foreign row and an owned
+// row can address the IDENTICAL key while their owners differ. Keyed merge
+// semantics are key-identity: whichever fold writes last to that key silently
+// overwrites — or, on a revocation fold, deletes — the row that was there.
+// Two installations holding the same (name, target) key therefore have a
+// namespace conflict, not a mergeable state, so PersistActive refuses the whole
+// write before saving anything:
+//
+//   - Assignment fold: if any snapshot key is held in the state by a
+//     different non-empty owner, the fold would overwrite that row — fail
+//     closed with ErrOwnerCollision.
+//   - Revocation fold: if any key the manager no longer holds was in the
+//     namespace the manager was loaded from (an owned or legacy row in the
+//     same load — detectable because the manager's keys and the state's
+//     same-key rows are disjoint sets of one namespace) and that key is
+//     foreign-owned, the fold would delete it — fail closed with
+//     ErrOwnerCollision. The product-level rule from finding #5 applies
+//     unchanged: an offboard batch whose Target set reaches a key held only by
+//     a foreign installation fails earlier, when Revoke reports
+//     ErrProfileNotFound, and persists nothing.
+//
+// A successful assign/offboard must therefore never overwrite or delete
+// another installation's row.
+func PersistActive(manager *Manager, state ActiveState) error {
+	if manager == nil {
+		return ErrDenied
+	}
+	owner := strings.TrimSpace(manager.Owner)
+	// Collision guard: a snapshot (name, target) key held by a foreign owner in
+	// the loaded state means the merge would overwrite that installation's row.
+	for key, foreign := range state.Config.Profiles {
+		foreignOwner := strings.TrimSpace(foreign.Owner)
+		if foreignOwner == "" || foreignOwner == owner {
+			continue
+		}
+		if _, owned := manager.profiles[key]; owned {
+			return fmt.Errorf("%w: profile (%q, %q) key collides with owner %q",
+				ErrOwnerCollision, foreign.Name, foreign.Target, foreignOwner)
+		}
+	}
+	merged := make(map[string]Profile, len(state.Config.Profiles)+len(manager.profiles))
+	for key, profile := range state.Config.Profiles {
+		profileOwner := strings.TrimSpace(profile.Owner)
+		if profileOwner != "" && profileOwner != owner {
+			// A foreign installation's row: never rewrite, never drop.
+			merged[key] = profile
+		}
+	}
+	for _, profile := range manager.SnapshotProfiles() {
+		merged[ProfileKey(profile.Name, profile.Target)] = profile
+	}
+	state.Config.Profiles = merged
+	return SaveActive(state)
+}
+
+// Store persists an active organization configuration. The wizard injects one
+// so a confirmed assignment or revocation reaches the production store; tests
+// inject a fake so they do not touch the filesystem.
+type Store interface {
+	Save(state ActiveState) error
+}
+
+// FSStore is the production Store backed by the active-state writer.
+type FSStore struct{}
+
+// Save writes the active configuration through the production writer.
+func (FSStore) Save(state ActiveState) error {
+	return SaveActive(state)
 }
 
 // Count returns the number of managed profiles.
