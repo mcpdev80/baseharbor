@@ -5,6 +5,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/mcpdev80/baseharbor/internal/application"
 )
 
 func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
@@ -59,6 +61,35 @@ func TestRemoteMutationRequiresVerifiedCoreWithoutLocalFallback(t *testing.T) {
 			}
 			if output.Len() > 0 {
 				t.Fatalf("unverified remote mutation emitted result: %q", output.String())
+			}
+		})
+	}
+}
+
+func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
+	_, _, node := remoteApplicationCoreFixtureEmpty(t)
+	t.Setenv("BASEHARBOR_TARGET", node.Name)
+	t.Setenv("BASEHARBOR_CONNECTION_PROFILE", "")
+	store := application.DefaultStore()
+	for _, tc := range []struct {
+		name string
+		run  func(context.Context, []string, *bytes.Buffer, *bytes.Buffer) error
+		args []string
+	}{
+		{"app-apply", appApplyCommand(store).Run, []string{"demo", "--environment", "dev"}},
+		{"app-up", appUpCommand(store).Run, []string{"demo"}},
+		{"app-update", appUpdateCommand(store).Run, []string{"demo", "--no-backup"}},
+		{"app-destroy", appDestroyCommand(store).Run, []string{"demo", "--yes"}},
+		{"root-up", runtimeUpCommandWithInputResolver, []string{"demo", "--environment", "dev"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if err := tc.run(context.Background(), tc.args, &out, &errOut); err == nil ||
+				!strings.Contains(err.Error(), "BASEHARBOR_CONNECTION_PROFILE") {
+				t.Fatalf("CLI bypassed remote Core trust boundary: %v", err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("unverified remote operation produced output: %q", out.String())
 			}
 		})
 	}
