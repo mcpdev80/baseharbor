@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/machine"
@@ -122,4 +123,63 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 		return machine.Execution{}, errors.New("remote Core machine execution acknowledgement does not match the requested authority")
 	}
 	return execution, nil
+}
+
+var remoteExecutionIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
+
+// readMachineExecution observes a previously admitted operation over the same
+// pinned Core origin and bearer. Never follow a server-provided URL.
+func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted machine.Execution) (machine.Execution, error) {
+	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target == "" || c.tenant == "" ||
+		!remoteExecutionIDPattern.MatchString(admitted.ExecutionID) || admitted.Context.Target != c.target ||
+		admitted.Context.Environment == "" || admitted.OperationID == "" {
+		return machine.Execution{}, errors.New("remote execution is not bound to the verified Core and Target")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.origin+"/api/v1/machine/executions/"+admitted.ExecutionID, nil)
+	if err != nil {
+		return machine.Execution{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return machine.Execution{}, fmt.Errorf("read pinned Core machine execution: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return machine.Execution{}, fmt.Errorf("remote Core machine execution read rejected (HTTP %d)", resp.StatusCode)
+	}
+	var execution machine.Execution
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&execution); err != nil || decoder.Decode(new(any)) != io.EOF {
+		return machine.Execution{}, errors.New("remote Core machine execution response is invalid")
+	}
+	if err := execution.Validate(); err != nil ||
+		execution.ExecutionID != admitted.ExecutionID ||
+		execution.OperationID != admitted.OperationID ||
+		execution.Context != admitted.Context {
+		return machine.Execution{}, errors.New("remote Core machine execution response changed the accepted identity or scope")
+	}
+	return execution, nil
+}
+
+// confirmRemoteExecutionSuccess never treats HTTP admission or a pending
+// execution as a completed deployment. A caller may retry the read only;
+// mutation retries must keep the original idempotency key.
+func (c *verifiedRemoteCore) confirmRemoteExecutionSuccess(ctx context.Context, admitted machine.Execution) (json.RawMessage, error) {
+	execution, err := c.readMachineExecution(ctx, admitted)
+	if err != nil {
+		return nil, err
+	}
+	switch execution.State {
+	case machine.ExecutionSucceeded:
+		return execution.Result, nil
+	case machine.ExecutionFailed:
+		return nil, execution.Error
+	case machine.ExecutionCancelled:
+		return nil, errors.New("remote Core machine operation was cancelled")
+	default:
+		return nil, errors.New("remote Core machine operation is not terminal; no success may be reported")
+	}
 }
