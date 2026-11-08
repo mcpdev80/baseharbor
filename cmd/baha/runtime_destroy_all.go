@@ -321,46 +321,7 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "target-state", Detail: "invalid target directory name; local BaseHarbor data root will still be removed"})
 				continue
 			}
-			// Unregistered Core-only targets are eligible only with a protected,
-			// BaseHarbor-owned installation identity. Do not guess from foreign state.
-			if owned, ownerErr := deployment.ResolveDataRootTarget(name); ownerErr == nil {
-				byName[name] = owned
-				continue
-			} else if !errors.Is(ownerErr, os.ErrNotExist) {
-				byName[name] = deployment.ResolvedTarget{Name: name}
-				results = append(results, fullDestroyResult{Status: "FAILED", Target: name, Resource: "installation-owner", Detail: ownerErr.Error() + "; foreign or unverifiable owner preserved", Diagnostic: "unverified-data-root-core"})
-				continue
-			}
-			provider := ""
-			if records, listErr := deployment.ListDeployments(name); listErr == nil {
-				for _, record := range records {
-					candidate := strings.TrimSpace(record.Applied.RuntimeProvider)
-					if candidate == "" {
-						continue
-					}
-					if provider == "" {
-						provider = candidate
-					} else if provider != candidate {
-						provider = ""
-						break
-					}
-				}
-			}
-			// "compose" is not a registered provider kind; never invent it (or guess Docker) while orphaned resources may exist.
-			byName[name] = deployment.ResolvedTarget{Name: name, RuntimeProvider: provider}
-			if provider == "" {
-				detail := "target config is missing; runtime provider cannot be inferred and only BaseHarbor-owned local state can be removed safely"
-				if name == "local" {
-					// A present retained local runtime owner stays blocking (#1448); a missing-or-error owner that is not ENOENT also stays blocking.
-					switch statErr := localRuntimeOwnerStatErr(root, name); {
-					case statErr == nil:
-						detail = "preserved because local target configuration and runtime ownership are missing; recover the target binding before retrying destruction"
-					case !errors.Is(statErr, os.ErrNotExist):
-						detail = "preserved because local runtime ownership could not be verified: " + statErr.Error() + "; recover the target binding before retrying destruction"
-					}
-				}
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: detail, Diagnostic: "unregistered-target-runtime"})
-			}
+			populateFullDestroyTargetFromDataRoot(root, name, byName, &results)
 		}
 	}
 
