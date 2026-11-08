@@ -151,3 +151,71 @@ func TestApplicationStopInteractiveTwoStageConsentIsBoundToCurrentPlan(t *testin
 		})
 	}
 }
+
+func TestForeignLegacySQLReferenceDoesNotPoisonUnrelatedStopPlan(t *testing.T) {
+	first := retainedNativeBackendFixture(t)
+	secondRoot := t.TempDir()
+	t.Chdir(secondRoot)
+	if err := os.WriteFile(filepath.Join(secondRoot, "compose.yaml"), []byte("services:\n  api:\n    image: alpine:3.22\n    command: [sleep, infinity]\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	secondManifest := application.WithWorkloadComponents(application.New("second", "dev", true, false, false), "api")
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, secondManifest)
+	second, err := resolveApplication(t.Context(), application.Store{}, nil, "apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := recordAppliedDeployment(t.Context(), second, application.RuntimeFiles{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ReconcileReferenceProviderRegistryAt(second.TargetStateRoot, second.Manifest); err != nil {
+		t.Fatal(err)
+	}
+	record, err := deployment.LoadDeploymentRecord(second.DeploymentIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var intent map[string]json.RawMessage
+	if err := json.Unmarshal(record.Applied.Intent, &intent); err != nil {
+		t.Fatal(err)
+	}
+	var services map[string]json.RawMessage
+	if err := json.Unmarshal(intent["Services"], &services); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := json.Marshal(map[string]any{"/": map[string]string{"providerId": "postgresql/shared/environment-dev"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	services["SQLInstanceReferences"] = legacy
+	intent["Services"], err = json.Marshal(services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Applied.Intent, err = json.Marshal(intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deployment.SaveDeploymentRecord(record); err != nil {
+		t.Fatal(err)
+	}
+	secondPath, err := deployment.DeploymentRoot(second.DeploymentIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(secondPath, "deployment.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildApplicationStopPlan(t.Context(), first)
+	if err != nil {
+		t.Fatalf("foreign configured legacy SQL reference blocked unrelated app stop: %v", err)
+	}
+	if plan.Scope.PlanID == "" {
+		t.Fatal("unrelated app stop lost current impact scope")
+	}
+	after, err := os.ReadFile(filepath.Join(secondPath, "deployment.json"))
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("unrelated app stop planning mutated foreign legacy deployment", err)
+	}
+}
