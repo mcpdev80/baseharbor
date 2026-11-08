@@ -87,6 +87,7 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha list` | List managed applications on the selected Target | `baha list [options]` | [↗](applications.md) |
 | `baha login` | Authenticate the BaseHarbor operator through OIDC | `baha login -e ENV\|--environment ENV [--init-tenant] [--tenant-slug SLUG] [--tenant-name NAME] [--ca FILE] [--auth-code-file FILE] [--no-browser]` | [↗](security-trust.md) |
 | `baha logout` | Remove a local BaseHarbor operator session | `baha logout -e ENV\|--environment ENV` | [↗](security-trust.md) |
+| `baha logs` | Show application logs for the current workload | `baha logs [SERVICE] [--follow] [--app NAME]` | [↗](applications.md) |
 | `baha mcp` | Expose BaseHarbor semantic operations over MCP | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha mcp serve` | Run the local stdio MCP server | `baha mcp serve` | [↗](automation-agents.md) |
 | `baha new` | Create an application, stack, target, provider, or workspace | `baha new [application\|stack\|target\|provider\|workspace] [options]` | [↗](applications.md) |

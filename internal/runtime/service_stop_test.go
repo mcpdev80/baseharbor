@@ -7,12 +7,17 @@ import (
 	"testing"
 )
 
+func (r *selectedStopRuntime) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
+	return r.rendered, nil
+}
+
 type selectedStopRuntime struct {
 	before, after                      []ProjectResource
 	containers, stopped                []RuntimeContainer
 	selected                           []string
 	inspectCalls, listCalls, mutations int
 	inspectErr, stopErr                error
+	rendered                           string
 }
 
 func (r *selectedStopRuntime) Kind() ProviderKind { return ProviderDocker }
@@ -109,6 +114,44 @@ func TestSelectedStopAcceptsNativeProcessRetirementButNeverLosesSiblingOrData(t 
 	result, err = stopFixture(t.Context(), r)
 	if err == nil || result.Verified {
 		t.Fatal("unknown new replica was hidden by original process removal")
+	}
+}
+
+// TestSelectedStopAcceptsPinnedContainerName proves 0427-128 on the production
+// selected-stop path: a workload that pins container_name is verified stopped
+// though its native name lives outside <project>-<service>-1.
+func TestSelectedStopAcceptsPinnedContainerName(t *testing.T) {
+	pinnedContainer := RuntimeContainer{ID: "pinned-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: true, State: "running"}
+	stopped := RuntimeContainer{ID: "pinned-id", Name: "linkding-pinned-web", Project: "linkding", Service: "web", Running: false, State: "exited"}
+	r := &selectedStopRuntime{
+		before:     []ProjectResource{{Kind: "container", Name: "linkding-web-1"}, {Kind: "volume", Name: "linkding-data"}},
+		after:      []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
+		containers: []RuntimeContainer{pinnedContainer},
+		stopped:    []RuntimeContainer{stopped},
+		rendered:   `{"services":{"web":{"container_name":"linkding-pinned-web"}}}`,
+	}
+	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil, r.before, []string{"web"}, "/protected/compose.yaml")
+	if err != nil || !result.Verified || len(result.Stopped) != 1 {
+		t.Fatalf("pinned selected stop: %+v %v", result, err)
+	}
+}
+
+// TestSelectedStopRejectsUnplannedPinnedReplica proves that a container of the
+// selected service carrying a native name outside the rendered planned set is
+// still rejected on the selected-stop path; a matching native name alone never
+// infers ownership.
+func TestSelectedStopRejectsUnplannedPinnedReplica(t *testing.T) {
+	replicaContainer := RuntimeContainer{ID: "replica-id", Name: "linkding-other", Project: "linkding", Service: "web", Running: true, State: "running"}
+	r := &selectedStopRuntime{
+		before:     []ProjectResource{{Kind: "container", Name: "linkding-web-1"}, {Kind: "volume", Name: "linkding-data"}},
+		after:      []ProjectResource{{Kind: "volume", Name: "linkding-data"}},
+		containers: []RuntimeContainer{replicaContainer},
+		stopped:    []RuntimeContainer{replicaContainer},
+		rendered:   `{"services":{"web":{"container_name":"linkding-web"}}}`,
+	}
+	result, err := StopOwnedProjectServices(t.Context(), r, "linkding", "/protected", nil, r.before, []string{"web"}, "/protected/compose.yaml")
+	if err == nil || result.Verified {
+		t.Fatal("unplanned pinned replica accepted on selected stop")
 	}
 }
 func TestSelectedStopDetectsLostDataChangedSiblingAndUnstoppedService(t *testing.T) {

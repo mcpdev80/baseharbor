@@ -654,6 +654,10 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 	for _, service := range workload.Services {
 		expected = append(expected, bhruntime.ProjectResource{Kind: "container", Name: workload.Project + "-" + service + "-1"})
 	}
+	// A pinned container_name (0427-128) lives outside <project>-<service>-1 and
+	// must be carried in the validated inventory so inspection verifies it; the
+	// canonical name still selects/owns the service.
+	expected = bhruntime.AppendPinnedContainerNames(ctx, compose, workload.Project, workload.RepositoryRoot, environment, composeFiles, workload.Services, expected)
 	// Runtime modules share one deployment project. Only the repository's
 	// selected workload services may stop; SQL, broker and other modules stay up.
 	result, err := bhruntime.StopOwnedProjectServices(ctx, compose, workload.Project, workload.RepositoryRoot, environment, expected, workload.Services, composeFiles...)
@@ -663,16 +667,15 @@ func stopRepositoryWorkload(ctx context.Context, compose bhruntime.RuntimeProvid
 	return len(result.Stopped) > 0, nil
 }
 
-// destroyRepositoryWorkloadStop is the destroy/retirement-only stop helper.
-// It deliberately does NOT fail closed on a runtime directory present without
-// an owned runtime.env: a provider-change abort can leave the runtime
-// directory but never materialize runtime.env, and the destroy/retirement path
-// must retire that stuck state with rc=0 (r27, review-1382a). It derives the
-// stop set from ownership evidence, returns (false, nil) when there is no owned
-// materialization, and only when a runtime.env IS owned does it stop the
-// running workload. Callers that must fail closed on the degenerate state use
-// the shared stopRepositoryWorkload instead.
 func destroyRepositoryWorkloadStop(ctx context.Context, compose bhruntime.RuntimeProvider, resolved resolvedApplication, files application.RuntimeFiles) (bool, error) {
+	// It deliberately does NOT fail closed on a runtime directory present without
+	// an owned runtime.env: a provider-change abort can leave the runtime
+	// directory but never materialize runtime.env, and the destroy/retirement path
+	// must retire that stuck state with rc=0 (r27, review-1382a). It derives the
+	// stop set from ownership evidence, returns (false, nil) when there is no owned
+	// materialization, and only when a runtime.env IS owned does it stop the
+	// running workload. Callers that must fail closed on the degenerate state use
+	// the shared stopRepositoryWorkload instead.
 	if _, statErr := os.Stat(files.Dir); statErr != nil {
 		if os.IsNotExist(statErr) {
 			return false, nil
