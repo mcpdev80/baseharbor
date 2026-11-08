@@ -285,6 +285,13 @@ func appStatusCommandWithTLS(store application.Store) *cli.Command {
 		if err != nil {
 			return err
 		}
+		target, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			return remoteApplicationStatus(ctx, target, filtered, out)
+		}
 		result, err := collectApplicationStatusResult(ctx, store, filtered)
 		if err != nil {
 			return err
