@@ -617,11 +617,32 @@ func toProfileList(m map[string]Profile) []Profile {
 // persistence entry point so the wizard persists assignment/revocation changes
 // through exactly one path. A persistence failure is returned so the caller can
 // fail closed and report no success.
+//
+// The fold is a merge per owner-namespace, not a replacement of the whole map:
+// the manager owns exactly the rows LoadProfiles gave it — its own Owner's rows
+// and supported legacy ownerless rows — so PersistActive rewrites precisely
+// that namespace. Every profile whose non-empty Owner differs from
+// manager.Owner belongs to another installation, was deliberately not loaded,
+// and is carried into the saved document byte-for-byte unchanged. Replacing the
+// full map with the manager snapshot would delete another installation's
+// profiles on every successful write.
 func PersistActive(manager *Manager, state ActiveState) error {
 	if manager == nil {
 		return ErrDenied
 	}
-	state.Config.Profiles = ProfileMap(manager.SnapshotProfiles())
+	owner := strings.TrimSpace(manager.Owner)
+	merged := make(map[string]Profile, len(state.Config.Profiles)+len(manager.profiles))
+	for key, profile := range state.Config.Profiles {
+		profileOwner := strings.TrimSpace(profile.Owner)
+		if profileOwner != "" && profileOwner != owner {
+			// A foreign installation's row: never rewrite, never drop.
+			merged[key] = profile
+		}
+	}
+	for _, profile := range manager.SnapshotProfiles() {
+		merged[ProfileKey(profile.Name, profile.Target)] = profile
+	}
+	state.Config.Profiles = merged
 	return SaveActive(state)
 }
 

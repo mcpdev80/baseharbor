@@ -370,3 +370,85 @@ func activeBytes(t *testing.T) []byte {
 	}
 	return data
 }
+
+// foreignProfile seeds a profile owned by a different installation identity.
+// ManagerFromActive deliberately does not load such rows (LoadProfiles skips
+// foreign owners), so PersistActive must carry them through the write untouched
+// rather than replace the whole profile map with the active owner's snapshot.
+func foreignProfile() orgconfig.Profile {
+	return orgconfig.Profile{
+		Name:       "foreign",
+		Target:     "prod",
+		Operations: []orgconfig.Operation{orgconfig.OpRead, orgconfig.OpLog},
+		Scope:      "legacy",
+		Owner:      "other-installation",
+		Revision:   7,
+	}
+}
+
+// assertForeignIntact reloads the active configuration and fails when the
+// foreign-owner profile is missing or differs from the seeded definition, the
+// persisted byte-identity the preservation boundary demands.
+func assertForeignIntact(t *testing.T, want orgconfig.Profile) {
+	t.Helper()
+	got, ok := ownedProfileOn(t, want.Name, want.Target)
+	if !ok {
+		t.Fatalf("foreign-owner profile %q on %q must survive the write", want.Name, want.Target)
+	}
+	if got.Owner != want.Owner || got.Scope != want.Scope || got.Revision != want.Revision ||
+		len(got.Operations) != len(want.Operations) {
+		t.Fatalf("foreign-owner profile definition rewritten: got %+v want %+v", got, want)
+	}
+	for i, op := range want.Operations {
+		if got.Operations[i] != op {
+			t.Fatalf("foreign-owner operations changed: got %v want %v", got.Operations, want.Operations)
+		}
+	}
+}
+
+// TestAccessAssignPreservesForeignOwnerProfile proves the r6 finding at the
+// production CLI boundary: a successful assignment of the active owner must not
+// delete another installation's profile that the loader deliberately skipped.
+func TestAccessAssignPreservesForeignOwnerProfile(t *testing.T) {
+	foreign := foreignProfile()
+	writeTestActiveConfig(t, []string{"dev", "prod"}, "read", []orgconfig.Profile{
+		{Name: "seed", Target: "dev", Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"},
+		foreign,
+	})
+
+	out, err := runWizardWithInput(t, []string{"access", "assign", "alice"}, "alice\n1\nyes\n")
+	if err != nil {
+		t.Fatalf("access assign: %v\noutput=%q", err, out)
+	}
+	if !strings.Contains(out, "assigned") {
+		t.Fatalf("expected assignment confirmation, got %q", out)
+	}
+	if !profileExists(t, "alice") {
+		t.Fatal("alice profile must be persisted")
+	}
+	assertForeignIntact(t, foreign)
+	// The active owner's seed row must also survive alongside the foreign row.
+	if !profileExists(t, "seed") {
+		t.Fatal("the active owner's seed profile must survive")
+	}
+}
+
+// TestAccessOffboardPreservesForeignOwnerProfile proves the same preservation
+// boundary on the offboarding route: a successful revoke of the active owner's
+// rows must leave the foreign installation's profile unchanged.
+func TestAccessOffboardPreservesForeignOwnerProfile(t *testing.T) {
+	foreign := foreignProfile()
+	writeTestActiveConfig(t, []string{"dev", "prod"}, "read", []orgconfig.Profile{
+		{Name: "bob", Target: "dev", Operations: []orgconfig.Operation{orgconfig.OpRead}, Owner: "persist-acme"},
+		foreign,
+	})
+
+	out, err := runWizardWithInput(t, []string{"access", "offboard", "bob"}, "bob\n1\nyes\n")
+	if err != nil {
+		t.Fatalf("access offboard: %v\noutput=%q", err, out)
+	}
+	if profileExists(t, "bob") {
+		t.Fatal("bob's owned profile must be removed")
+	}
+	assertForeignIntact(t, foreign)
+}
