@@ -116,7 +116,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 	}
 	// The Core may still be converging when the admission is received.
 	// Poll only the read endpoint. NEVER issue another mutation on timeout.
-	observationCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	observationCtx, cancel := context.WithTimeout(ctx, 31*time.Minute)
 	defer cancel()
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
