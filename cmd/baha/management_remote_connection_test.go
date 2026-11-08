@@ -99,10 +99,10 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			saved := profile
 			targets := append([]struct {
-				Name string `json:"name"`
-				TenantID string `json:"tenant_id"`
+				Name            string `json:"name"`
+				TenantID        string `json:"tenant_id"`
 				RuntimeProvider string `json:"runtime_provider"`
-				Scope string `json:"scope,omitempty"`
+				Scope           string `json:"scope,omitempty"`
 			}(nil), profile.Targets...)
 			saved.Targets = targets
 			test.mutate()
