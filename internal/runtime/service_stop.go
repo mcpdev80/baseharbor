@@ -76,9 +76,19 @@ func StopOwnedProjectServices(ctx context.Context, provider RuntimeServiceStopPr
 		if !selected[container.Service] {
 			continue
 		}
-		resource := ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}
-		if !ContainerMatchesProjectResource(provider.Kind(), container, project, resource) {
-			return r, errors.New("selected stop has an unplanned service replica")
+		expectedNames := []string{project + "-" + container.Service + "-1"}
+		if cfg, ok := provider.(RuntimeConfigProvider); ok && len(composeFiles) > 0 {
+			if rendered, err := cfg.ConfigJSONProjectFilesEnv(ctx, project, workdir, composeFiles...); err == nil && rendered != "" {
+				if planned, err := parsedExpectedContainerNames(rendered, project, container.Service); err == nil {
+					expectedNames = planned
+				}
+			}
+		} else if provider.Kind() == ProviderPodman {
+			// First-party Quadlet uses the project-service name without an ordinal.
+			expectedNames = []string{project + "-" + container.Service, project + "-" + container.Service + "-1"}
+		}
+		if !containerNameInPlannedSet(provider.Kind(), container, project, expectedNames) {
+			return r, fmt.Errorf("selected stop has an unplanned service replica (%s): %s", container.Service, container.Name)
 		}
 		live[container.Service] = true
 	}
