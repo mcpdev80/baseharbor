@@ -32,6 +32,8 @@ func TestRemoteMutationArgumentsFailClosed(t *testing.T) {
 		{"destroy", []string{"demo", "--yes", "--full-reset"}, true},
 		{"destroy", []string{"demo", "--full-reset"}, false},
 		{"destroy", []string{"demo", "--yes", "--delete-data"}, false},
+		{"app.stop", []string{"demo"}, true},
+		{"app.stop", []string{"demo", "--yes"}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.operation+"/"+strings.Join(tc.args, "-"), func(t *testing.T) {
@@ -84,6 +86,7 @@ func TestRemoteApplicationCLIEntrypointsNeverRunLocalRuntime(t *testing.T) {
 		{"app-up", appUpCommand(store).Run, []string{"demo"}},
 		{"app-update", appUpdateCommand(store).Run, []string{"demo", "--no-backup"}},
 		{"app-destroy", appDestroyCommand(store).Run, []string{"demo", "--yes"}},
+		{"app-down", appDownCommand(store).Run, []string{"demo"}},
 		{"root-up", runtimeUpCommandWithInputResolver, []string{"demo", "--environment", "dev"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
