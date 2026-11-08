@@ -73,7 +73,7 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 			Name                string `json:"name"`
 			Environment         string `json:"environment"`
 			SkipMemoryPreflight bool   `json:"skip_memory_preflight,omitempty"`
-			ConfirmCandidate string `json:"confirm_candidate,omitempty"`
+			ConfirmCandidate    string `json:"confirm_candidate,omitempty"`
 		}{name, environment, skipMemory, candidate})
 		return name, environment, payload, err
 	case "update":
