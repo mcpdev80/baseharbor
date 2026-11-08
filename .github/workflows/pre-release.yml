@@ -1656,6 +1656,17 @@ jobs:
     - name: Stop owned test services and remove generated private keys
       if: always()
       run: bash scripts/browser/stop-fixture.sh
+
+  greenfield_native:
+    name: Greenfield · Docker + Podman · All built-in stacks
+    needs: [source]
+    if: ${{ always() && !cancelled() && needs.source.result == 'success' && needs.source.outputs.tag == 'v0.4.27' && inputs.only_gates == '' }}
+    uses: ./.github/workflows/nextjs-greenfield-e2e.yml
+    permissions:
+      contents: read
+    with:
+      candidate_ref: ${{ needs.source.outputs.candidate_sha }}
+
   checks:
     name: Pre-Release Checks
     needs:
@@ -1683,12 +1694,14 @@ jobs:
     - integration_remote_target_docker
     - integration_remote_target_podman
     - integration_live_console
+    - greenfield_native
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
     - name: Require selected checks to succeed
       env:
         JOB_RESULTS: ${{ toJSON(needs) }}
+        ONLY_GATES: ${{ inputs.only_gates }}
       run: |
         python3 - <<'PYTHON'
         import json, os
@@ -1697,6 +1710,8 @@ jobs:
         assert source['result'] == 'success', 'source checks failed'
         out = source['outputs']
         required = {'source', 'runtime_light_gates', 'runtime_heavy_gates', 'v0421_ha_groups'}
+        if out['tag'] == 'v0.4.27' and not os.environ.get('ONLY_GATES', ''):
+            required.add('greenfield_native')
         for key, count in [('adoption','adoption_count'), ('static_gates','static_count'),
                            ('runtime_light_gates_docker','light_docker_count'), ('runtime_light_gates_podman','light_podman_count'),
                            ('runtime_heavy_gates_docker','heavy_docker_count'), ('runtime_heavy_gates_podman','heavy_podman_count'),

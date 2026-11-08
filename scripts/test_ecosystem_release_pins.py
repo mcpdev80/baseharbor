@@ -147,6 +147,7 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
                    'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
                    'ha_docker_count', 'ha_podman_count', 'journey_count']}
         outputs['light_docker_count'] = '1'
+        outputs['tag'] = 'v0.4.26'
         outputs['integration'] = '[]'
         required = {'source', 'runtime_candidate', 'runtime_light_gates', 'runtime_heavy_gates',
                     'v0421_ha_groups', 'runtime_light_gates_docker'}
@@ -161,6 +162,49 @@ class ReleaseWorkflowPinsTests(unittest.TestCase):
                 candidate['runtime_light_gates_docker']['result'] = result
             completed = subprocess.run(['bash', '-euo', 'pipefail', '-c', finalizer],
                 env={**os.environ, 'JOB_RESULTS':json.dumps(candidate)}, capture_output=True, text=True)
+            self.assertEqual(completed.returncode == 0, result == 'success', completed.stderr)
+
+    def test_v0427_native_greenfield_matrix_has_eight_real_cli_cells(self):
+        workflow = yaml.safe_load((self.source / '.github/workflows/nextjs-greenfield-e2e.yml').read_text())
+        matrix = workflow['jobs']['greenfield-native']['strategy']['matrix']
+        self.assertEqual(set(matrix['runtime']), {'docker', 'podman'})
+        self.assertEqual(set(matrix['stack']), {'go', 'nextjs', 'python', 'quarkus'})
+        self.assertEqual(len(matrix['runtime']) * len(matrix['stack']), 8)
+        commands = '\n'.join(step.get('run', '') for step in workflow['jobs']['greenfield-native']['steps'])
+        for command in ('app new ', 'ci-greenfield-apply.py', ' app status -o json',
+                        ' app doctor', 'test -s baseharbor.yaml',
+                        "status.get('ready') is not True", "check.get('name') == 'workload'"):
+            self.assertIn(command, commands)
+        apply_script = (self.source / 'scripts/ci-greenfield-apply.py').read_text()
+        for guard in ('"impact-confirmation-required"', '"destructive"', '"confirmations_required"',
+                      '"plan_id"', '"--confirm-candidate"', '"up", "--yes"'):
+            self.assertIn(guard, apply_script)
+        pre_release = self.jobs['greenfield_native']
+        self.assertEqual(pre_release['uses'], './.github/workflows/nextjs-greenfield-e2e.yml')
+        self.assertIn('needs.source.outputs.candidate_sha', pre_release['with']['candidate_ref'])
+        self.assertIn('greenfield_native', self.jobs['checks']['needs'])
+
+    def test_v0427_greenfield_is_required_and_never_skip_green(self):
+        finalizer = self.jobs['checks']['steps'][0]['run']
+        outputs = {key: '0' for key in ['adoption_count', 'static_count', 'light_docker_count',
+                   'light_podman_count', 'heavy_docker_count', 'heavy_podman_count',
+                   'ha_docker_count', 'ha_podman_count', 'journey_count']}
+        outputs['integration'] = '[]'
+        outputs['tag'] = 'v0.4.27'
+        required = {'source', 'runtime_light_gates', 'runtime_heavy_gates',
+                    'v0421_ha_groups', 'greenfield_native'}
+        jobs = {key: {'result': 'success' if key in required else 'skipped'}
+                for key in self.jobs['checks']['needs']}
+        jobs['source']['outputs'] = outputs
+        for result in ['success', 'failure', 'cancelled', 'skipped', None]:
+            candidate = copy.deepcopy(jobs)
+            if result is None:
+                candidate.pop('greenfield_native')
+            else:
+                candidate['greenfield_native']['result'] = result
+            completed = subprocess.run(['bash', '-euo', 'pipefail', '-c', finalizer],
+                env={**os.environ, 'JOB_RESULTS': json.dumps(candidate), 'ONLY_GATES': ''},
+                capture_output=True, text=True)
             self.assertEqual(completed.returncode == 0, result == 'success', completed.stderr)
 
     def test_release_executes_checks_on_the_exact_tag_instead_of_reusing_old_runs(self):
