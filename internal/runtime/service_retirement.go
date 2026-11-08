@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -13,6 +14,96 @@ type RuntimeServiceRetirementProvider interface {
 	InspectProjectResources(context.Context, string, []ProjectResource) ([]ProjectResource, error)
 	ListRuntimeContainers(context.Context) ([]RuntimeContainer, error)
 	RetireOwnedProjectContainers(context.Context, string, []ProjectResource) error
+}
+
+// renderConfigProvider is the minimal optional render capability the retirement
+// identity check needs. A provider that cannot render the model keeps the
+// fail-closed canonical-only fallback (0427-128 r5: an unverifiable render path
+// must never run as an empty planned-name set).
+type renderConfigProvider interface {
+	ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error)
+}
+
+// nilCheckedRenderer reports whether the optional render seam is actually
+// callable. It refuses an untyped nil and a bare nil *Compose receiver. The
+// production wrappers (docker/podman Provider) embed Compose BY VALUE and keep
+// their render-capable state in exported pointer fields, so the walk refuses an
+// exported nil pointer whose method set could be promoted (e.g. an embedded
+// *RuntimeProvider that was never initialised): calling through those
+// dereferences nil and panics (0427-128 r5: the hosted retirement panics).
+// Unexported fields are skipped: encoding a private-state policy in a shared
+// identity path would let a zero-value Compose (still callable, failing only
+// with a render error into the canonical fallback) be misread as uncallable.
+func nilCheckedRenderer(configurer renderConfigProvider) bool {
+	if configurer == nil {
+		return false
+	}
+	return valueRendererReady(reflect.ValueOf(configurer))
+}
+
+func valueRendererReady(value reflect.Value) bool {
+	switch value.Kind() {
+	case reflect.Ptr:
+		if value.IsNil() {
+			return false
+		}
+		target := value.Elem()
+		if target.Kind() != reflect.Struct {
+			return true
+		}
+		for field := range target.NumField() {
+			if !target.Type().Field(field).IsExported() {
+				continue
+			}
+			if !valueRendererReady(target.Field(field)) {
+				return false
+			}
+		}
+		return true
+	case reflect.Struct:
+		for field := range value.NumField() {
+			if !value.Type().Field(field).IsExported() {
+				continue
+			}
+			if !valueRendererReady(value.Field(field)) {
+				return false
+			}
+		}
+		return true
+	default:
+		return true
+	}
+}
+
+// plannedNamesForService renders the exact planned native container names for
+// one selected service. A provider without the render capability, a render
+// failure, an empty model and a malformed model all yield no set so the caller
+// falls back to the canonical ordinal name fail-closed. The optional call is
+// panic-safe: a provider that only pretends to render (e.g. an embedded nil
+// promoted through a wrapper) is detected and the canonical fallback applies
+// (0427-128 r5: the hosted retirement panics).
+func plannedNamesForService(ctx context.Context, provider any, project, service string) (names []string) {
+	configurer, ok := provider.(renderConfigProvider)
+	if !ok || !nilCheckedRenderer(configurer) {
+		return nil
+	}
+	defer func() {
+		// Last resort for renderers whose nil path the seam cannot inspect (a
+		// panic inside the implementation): the caller keeps the canonical
+		// fail-closed fallback instead of crashing the retirement.
+		if recover() != nil {
+			names = nil
+		}
+	}()
+	rendered, err := configurer.ConfigJSONProjectFilesEnv(ctx, project, "", nil)
+	if err != nil || rendered == "" {
+		return nil
+	}
+	parsed, perr := parsedExpectedContainerNames(rendered, project, service)
+	if perr != nil {
+		return nil
+	}
+	return parsed
 }
 
 // serviceFromCanonical derives the service a canonical inventory resource name
@@ -75,7 +166,8 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 	// set also carries the rendered planned native names per selected service.
 	// The canonical name still owns the service; a matching native name alone
 	// never infers ownership (0427-128: retirement accepts both identity
-	// classes). The rendered model is the source of truth for the planned names.
+	// classes). The rendered model is the source of truth for the planned
+	// names; an unverifiable render keeps the canonical-only fallback.
 	plannedByService := map[string][]string{}
 	for _, resource := range expected {
 		if resource.Kind != "container" {
@@ -85,11 +177,9 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 			services[service] = true
 		}
 	}
-	if configurer, ok := provider.(RuntimeConfigProvider); ok {
-		for service := range services {
-			if expectedNames, perr := expectedContainerNameSet(ctx, configurer, "", project, service, nil); perr == nil {
-				plannedByService[service] = expectedNames
-			}
+	for service := range services {
+		if expectedNames := plannedNamesForService(ctx, any(provider), project, service); len(expectedNames) > 0 {
+			plannedByService[service] = expectedNames
 		}
 	}
 	for _, container := range containers {

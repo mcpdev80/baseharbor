@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -34,6 +35,9 @@ type RuntimeConfigProvider interface {
 // truth, never the default scheme alone, because a pinned container_name lives
 // outside <project>-<service>-1 and every quiesce identity check must accept it.
 func expectedContainerNameSet(ctx context.Context, provider RuntimeConfigProvider, workdir, project, service string, composeFiles []string) ([]string, error) {
+	if provider == nil {
+		return nil, errors.New("expected container names require a render-capable provider")
+	}
 	rendered, err := provider.ConfigJSONProjectFilesEnv(ctx, project, workdir, nil, composeFiles...)
 	if err != nil {
 		return nil, err

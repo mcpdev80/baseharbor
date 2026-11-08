@@ -50,14 +50,20 @@ func observeControlPlaneStopRuntime(parent context.Context, target deployment.Re
 	plannedByService := map[string][]string{}
 	if configurer, ok := provider.(interface {
 		ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error)
-	}); ok {
-		if rendered, rerr := configurer.ConfigJSONProjectFilesEnv(ctx, p.Project, "", nil); rerr == nil && rendered != "" {
-			for service := range selected {
-				if planned, perr := bhruntime.ParsedExpectedContainerNames(rendered, p.Project, service); perr == nil {
-					plannedByService[service] = planned
+	}); ok && configurer != nil {
+		// The optional capability may be promoted from an embedded nil provider;
+		// such a call panics on first dereference (0427-128 r5). Treat it as
+		// "no rendered model" so the canonical-only fallback stays fail-closed.
+		func() {
+			defer func() { recover() }()
+			if rendered, rerr := configurer.ConfigJSONProjectFilesEnv(ctx, p.Project, "", nil); rerr == nil && rendered != "" {
+				for service := range selected {
+					if planned, perr := bhruntime.ParsedExpectedContainerNames(rendered, p.Project, service); perr == nil {
+						plannedByService[service] = planned
+					}
 				}
 			}
-		}
+		}()
 	}
 	for _, container := range containers {
 		if container.Project != p.Project {

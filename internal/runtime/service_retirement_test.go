@@ -30,6 +30,7 @@ type retirementRenderProvider struct {
 	containers []RuntimeContainer
 	selected   []ProjectResource
 	rendered   string
+	renderErr  error
 }
 
 func (r *retirementRenderProvider) ListRuntimeContainers(context.Context) ([]RuntimeContainer, error) {
@@ -41,7 +42,7 @@ func (r *retirementRenderProvider) RetireOwnedProjectContainers(_ context.Contex
 	return nil
 }
 func (r *retirementRenderProvider) ConfigJSONProjectFilesEnv(context.Context, string, string, map[string]string, ...string) (string, error) {
-	return r.rendered, nil
+	return r.rendered, r.renderErr
 }
 
 func TestRetireOwnedServicesKeepsSiblingAndAllPersistentResources(t *testing.T) {
@@ -126,11 +127,13 @@ func TestRetireOwnedServicesAcceptsPinnedContainerName(t *testing.T) {
 	}
 }
 
-// TestRetireOwnedServicesRejectsForeignPinnedReplica proves that a foreign
-// project carrying the exact same pinned native name is still rejected even
-// though the pinned name now matches the planned set. The projected scope guard
-// (ContainerNameInPlannedSet) returns false outside the owning project, so a
-// foreign replica carrying the same pinned native name never passes retirement.
+// TestRetireOwnedServicesRejectsForeignPinnedReplica proves on the production
+// retirement call (not only the matcher) that a runtime inventory which also
+// carries a FOREIGN-project row with the exact same pinned native name and the
+// same service label never legitimizes that foreign container: the foreign row
+// must not be accepted as an owned replica, must not be selected and must not
+// be mutated, and the same-name foreign row must not make the own pinned
+// replica fail closed either (0427-128 r5, recipe point 2/3).
 func TestRetireOwnedServicesRejectsForeignPinnedReplica(t *testing.T) {
 	pinned := ProjectResource{Kind: "container", Name: "linkding-web"}
 	volume := ProjectResource{Kind: "volume", Name: "linkding-data"}
@@ -147,11 +150,74 @@ func TestRetireOwnedServicesRejectsForeignPinnedReplica(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(result.Removed, []ProjectResource{pinned}) || len(result.Retained) != 1 {
 		t.Fatalf("pinned retirement: %+v %v", result, err)
 	}
-	// The same pinned native name under a foreign project is rejected by the
-	// projected scope guard: it is not an owned replica of the "linkding"
-	// project and must fail retirement rather than be silently ignored.
+	// The matcher contract stays: the same pinned native name under a foreign
+	// project is never an owned replica of the owning project's planned set.
 	rejected := ContainerNameInPlannedSet(ProviderDocker, RuntimeContainer{Name: "linkding-web", Project: "foreign", Service: "web"}, "linkding", []string{"linkding-web"})
 	if rejected {
 		t.Fatal("foreign project pinned name must not match the owning project planned set")
+	}
+	// Production path: the full runtime inventory additionally carries a
+	// foreign-project row with the exact same pinned native name and service.
+	// Retirement must neither accept that row as an owned replica, nor select
+	// or mutate it, nor let it disturb the own pinned retirement.
+	r = &retirementRenderProvider{
+		retirementRuntime: retirementRuntime{before: []ProjectResource{pinned, volume}, after: []ProjectResource{volume}},
+		containers: []RuntimeContainer{
+			{Name: "linkding-web", Project: "linkding", Service: "web"},
+			{Name: "linkding-web", Project: "foreign", Service: "web", Running: true},
+		},
+		rendered: rendered,
+	}
+	result, err = RetireOwnedServices(context.Background(), r, "linkding", []ProjectResource{pinned, volume}, []ProjectResource{pinned})
+	if err != nil || !reflect.DeepEqual(result.Removed, []ProjectResource{pinned}) || len(result.Retained) != 1 {
+		t.Fatalf("cross-project pinned production retirement: %+v %v", result, err)
+	}
+	if !reflect.DeepEqual(r.selected, []ProjectResource{pinned}) {
+		t.Fatalf("cross-project pinned replica changed the mutation selection: %+v", r.selected)
+	}
+	// Foreign-only inventory: only the foreign same-name row is live. The
+	// production call must never treat it as an owned replica: the own pinned
+	// container remains (verification error for the retired target), the
+	// foreign row is never selected, and nothing about it fails the check
+	// open.
+	foreignOnly := &retirementRenderProvider{
+		retirementRuntime: retirementRuntime{before: []ProjectResource{pinned, volume}, after: []ProjectResource{pinned, volume}},
+		containers:        []RuntimeContainer{{Name: "linkding-web", Project: "foreign", Service: "web", Running: true}},
+		rendered:          rendered,
+	}
+	if _, err := RetireOwnedServices(context.Background(), foreignOnly, "linkding", []ProjectResource{pinned, volume}, []ProjectResource{pinned}); err == nil || !reflect.DeepEqual(foreignOnly.selected, []ProjectResource{pinned}) {
+		t.Fatal("foreign-only pinned row changed the retirement contract", err)
+	}
+}
+
+// TestRetireOwnedServicesRenderFallbackStaysFailClosed proves 0427-128 r5: when
+// the optional render capability is present but yields no verifiable model
+// (render error or empty model), the identity check falls back to the canonical
+// ordinal name fail-closed; a pinned replica is not silently accepted on an
+// unverifiable render.
+func TestRetireOwnedServicesRenderFallbackStaysFailClosed(t *testing.T) {
+	pinnedContainer := RuntimeContainer{Name: "linkding-web", Project: "linkding", Service: "web"}
+	resource := ProjectResource{Kind: "container", Name: "linkding-web-1"}
+	volume := ProjectResource{Kind: "volume", Name: "linkding-data"}
+	for _, model := range []struct {
+		name     string
+		rendered string
+		err      error
+	}{
+		{"render-error", ``, errors.New("docker unavailable")},
+		{"empty-model", ``, nil},
+		{"malformed-model", `{"services":`, nil},
+	} {
+		t.Run(model.name, func(t *testing.T) {
+			r := &retirementRenderProvider{
+				retirementRuntime: retirementRuntime{before: []ProjectResource{resource, volume}, after: []ProjectResource{volume}},
+				containers:        []RuntimeContainer{pinnedContainer},
+				rendered:          model.rendered,
+				renderErr:         model.err,
+			}
+			if _, err := RetireOwnedServices(context.Background(), r, "linkding", []ProjectResource{resource, volume}, []ProjectResource{resource}); err == nil || r.mutations != 0 {
+				t.Fatalf("unverifiable render (%s) admitted a pinned replica fail-open: %v", model.name, err)
+			}
+		})
 	}
 }
