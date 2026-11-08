@@ -53,7 +53,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				Context     machine.OperationContext `json:"context"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
-				(request.OperationID != "status" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy") || request.Context.Target != node.Name ||
+				(request.OperationID != "status" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy" && request.OperationID != "app.stop") || request.Context.Target != node.Name ||
 				request.Context.Environment != "dev" || request.Context.Application != "demo" ||
 				r.Header.Get("Idempotency-Key") == "" {
 				http.Error(w, "invalid status request", http.StatusBadRequest)
@@ -71,6 +71,9 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"` + request.OperationID + `","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","verified":true,"status":{"contract_version":"v1","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}}`)
 				if request.OperationID == "destroy" {
 					execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"destroy","target":"` + node.Name + `","application":"demo","environment":"dev","state":"destroyed","verified":true}`)
+				}
+				if request.OperationID == "app.stop" {
+					execution.Result = json.RawMessage(`{"application":"demo","environment":"dev","state":"stopped","data_preserved":true}`)
 				}
 			}
 			w.Header().Set("Location", "/api/v1/machine/executions/remote-status-one")
@@ -168,6 +171,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		{"apply", []string{"demo"}},
 		{"update", []string{"demo", "--no-backup"}},
 		{"destroy", []string{"demo", "--yes"}},
+		{"app.stop", []string{"demo"}},
 	} {
 		t.Run("verified-remote-"+scenario.operation, func(t *testing.T) {
 			var output bytes.Buffer
@@ -177,9 +181,11 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 			var result struct {
 				Operation string `json:"operation"`
 				Target string `json:"target"`
+				State string `json:"state"`
 			}
 			if err := json.Unmarshal(output.Bytes(), &result); err != nil ||
-				result.Operation != scenario.operation || result.Target != node.Name {
+				(scenario.operation != "app.stop" && (result.Operation != scenario.operation || result.Target != node.Name)) ||
+				(scenario.operation == "app.stop" && result.State != "stopped") {
 				t.Fatalf("remote %s returned incorrect completion: %q (%v)", scenario.operation, output.String(), err)
 			}
 		})
