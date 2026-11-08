@@ -6,6 +6,7 @@ Targets wählen Deployment-Ziel, Runtime und Zugriffsweg. Sie sind keine Capabil
 
 Die Auflösung verwendet zuerst globales `--target NAME`, dann das aktivierte Shell-Target, Organisations-/Plattform-Defaults und das konfigurierte Standardtarget. Vor Mutation zeigt `baha target show` Ziel und Herkunft.
 
+
 ## Lokaler Docker-Zugriff
 
 ```text
@@ -17,6 +18,17 @@ baha target delete
 baha target activate
 baha target deactivate
 ```
+
+## Grenze der lokalen Core-Isolation
+
+Ein Host besitzt derzeit **eine lokale Core-Management-Instanz**. Mehrere Targets mit demselben Access `local` teilen dessen Core-Laufzeit und Provider-/Deployment-Registry. Ein zweiter lokaler Target-Name erzeugt **keinen** isolierten Core. Eine widersprüchliche Access-Definition wird ohne Änderung abgelehnt:
+
+```text
+access "local" already exists with different provider/reference
+```
+
+Zuerst die registrierten Targets mit `baha target list` prüfen. Den bestehenden lokalen Access nur wiederverwenden, wenn der gemeinsame Core gewollt ist. Für eine isolierte Docker-/Podman-Installation einen **separaten Host** mit dem vorhandenen `baha node add` / `baha node connect`-Enrollment anbinden. Die lokale Access-Registry nicht überschreiben oder löschen, um Isolation zu erzwingen.
+
 
 Im Application-Repository mit funktionierender Runtime:
 

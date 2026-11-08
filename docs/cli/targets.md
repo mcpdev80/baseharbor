@@ -12,6 +12,17 @@ baha target activate
 baha target deactivate
 ```
 
+
+## Local Core isolation boundary
+
+A single host currently has **one local Core management authority**. Multiple Target names using the same `local` access share its Core runtime and provider/deployment registry; creating a second local Target does **not** create an isolated Core. A conflicting definition fails without mutation:
+
+```text
+access "local" already exists with different provider/reference
+```
+
+First inspect the registered Targets with `baha target list`. Reuse the existing local access only when sharing that Core is intended. For an isolated Docker/Podman installation, use a **separate host** and the existing `baha node add` / `baha node connect` enrollment workflow. Do not remove or overwrite the existing local access registry to force isolation.
+
 ## Target resolution
 
 A Target can be selected through:
@@ -155,4 +166,4 @@ These read results include `docker_engine.endpoint`, `mode`, `daemon_id`, `selec
 
 The first owned lifecycle operation records a protected `runtime/docker-engine.json` binding under the Target state directory. Subsequent CLI and MCP operations use that binding even when their ambient Docker contexts differ. A changed endpoint, mode or daemon identity refuses mutation, duplicate bootstrap and cleanup. Existing Core state without a binding must have provable owned resources on the selected engine. When System Docker is reachable, an existing same-Target project there also blocks a fresh duplicate bootstrap on Rootless Docker.
 
-Existing rootful installations remain intact. Maintaining one requires explicit Target configuration with `docker-endpoint: unix:///var/run/docker.sock` and `docker-mode: rootful`; these values also have `--docker-endpoint` and `--docker-mode` Target-create options and `docker_endpoint`/`docker_mode` machine/MCP fields. This is explicit maintenance intent, not a migration. Do not remove protected state or switch a recorded Target's socket to move existing data. Use a separate Target for a genuinely separate installation.
+Existing rootful installations remain intact. Maintaining one requires explicit Target configuration with `docker-endpoint: unix:///var/run/docker.sock` and `docker-mode: rootful`; these values also have `--docker-endpoint` and `--docker-mode` Target-create options and `docker_endpoint`/`docker_mode` machine/MCP fields. This is explicit maintenance intent, not a migration. Do not remove protected state or switch a recorded Target's socket to move existing data. For an independent Core installation, use a separate host with its own Target and authenticated Connector access; another local Target name shares this host's Core.
