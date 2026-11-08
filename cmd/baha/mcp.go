@@ -99,6 +99,7 @@ type machineApplicationStopInput struct {
 
 type machineApplyInput struct {
 	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
+	ConfirmCandidate      string                             `json:"confirm_candidate,omitempty" jsonschema:"operator-confirmed exact repository candidate content digest"`
 	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
 	Name                  string                             `json:"name,omitempty" jsonschema:"optional stored application name; omit inside an application repository"`
 	Environment           string                             `json:"environment,omitempty" jsonschema:"optional deployment environment selected from repository intent"`
