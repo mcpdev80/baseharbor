@@ -18,7 +18,11 @@ func TestLifecycleLockContentionExplainsPIDStateAndSafeRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { if unlock != nil { unlock() } }()
+	defer func() {
+		if unlock != nil {
+			unlock()
+		}
+	}()
 	holder, err := os.ReadFile(root + "/" + lifecycleLockFile)
 	if err != nil {
 		t.Fatal(err)
