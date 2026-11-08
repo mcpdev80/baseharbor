@@ -85,6 +85,14 @@ func remoteMutationArgs(operation string, args []string) (string, string, json.R
 	}
 	switch operation {
 	case "apply":
+		if candidate != "" {
+			if len(candidate) != 64 || strings.ToLower(candidate) != candidate {
+				return "", "", nil, usageError("invalid candidate confirmation digest", "Provide the exact 64-character lowercase SHA-256 digest displayed by the candidate validation.")
+			}
+			if _, err := hex.DecodeString(candidate); err != nil {
+				return "", "", nil, usageError("invalid candidate confirmation digest", "Provide the exact lowercase SHA-256 digest displayed by the candidate validation.")
+			}
+		}
 		if approval || noBackup || fullReset {
 			return "", "", nil, usageError("remote apply received unsupported lifecycle flags",
 				"Use baha app apply NAME --environment dev [--skip-memory-preflight].")
