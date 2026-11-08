@@ -180,6 +180,15 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 	if opts.PostgresPort != 0 && opts.OpenBaoPort != 0 && opts.PostgresPort == opts.OpenBaoPort {
 		return errors.New("PostgreSQL and OpenBao cannot use the same host port")
 	}
+	// Fail-closed second-target conflict gate (0427-163 / BF-05): two same-host
+	// Targets that bind one local engine share exactly one Core. If a Core
+	// belonging to a different owning target is already running on this engine,
+	// refuse instead of silently joining it.
+	if conflict, err := detectSharedCoreOwnerConflict(parent); err != nil {
+		return err
+	} else if conflict != nil {
+		return conflict
+	}
 	if existing, err := existingTargetRuntimeFiles(parent); err == nil {
 		if opts.HA && !existing.HA {
 			return fmt.Errorf("control-plane topology conflict: existing ha=%t, requested ha=%t", existing.HA, opts.HA)
@@ -254,6 +263,26 @@ func materializeControlPlaneProviders(parent context.Context, in io.Reader, out 
 	}
 
 	return runtimeUpWithPortsSelection(parent, out, bhruntime.Ports{Postgres: postgresPort, OpenBao: openBaoPort}, opts.HA, opts.ControlPlaneOnly)
+}
+
+// detectSharedCoreOwnerConflict runs the fail-closed second-target conflict gate
+// (0427-163 / BF-05): it resolves the effective target and its local engine,
+// then inspects the running containers. When a Core belonging to a *different*
+// owning target is already running on that engine, it returns a
+// *bhruntime.SharedCoreOwnerConflict so the caller fails closed instead of
+// silently joining the first target's Core.
+func detectSharedCoreOwnerConflict(parent context.Context) (*bhruntime.SharedCoreOwnerConflict, error) {
+	target, err := effectiveTarget(parent)
+	if err != nil {
+		return nil, err
+	}
+	provider, err := detectRuntimeForTarget(parent, target)
+	if err != nil {
+		// An unreadable engine is not proof of absence. Refuse fail-closed.
+		return nil, err
+	}
+	ownProject := bhruntime.SharedProjectName(target.Name)
+	return bhruntime.SharedCoreOwnerConflictForEngine(parent, provider, ownProject)
 }
 
 func repositoryApplicationDetectedForUp() bool {
