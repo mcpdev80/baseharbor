@@ -90,3 +90,5 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 	sortDeploymentRecords(records)
 	return records, warnings, nil
 }
+
+// ci-checkout-forcing-bumper
