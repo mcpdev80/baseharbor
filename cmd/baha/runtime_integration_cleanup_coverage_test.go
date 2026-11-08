@@ -522,56 +522,42 @@ func TestBootstrapEnsureGuardRejectsMissingOrForeignMarker(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestBootstrapTestMainStructureGuaranteesTeardown(t *testing.T) {
-	// Structural proof of the package lifecycle: runRuntimeIntegrationTestMain
-	// arranges the deferred package-end teardown BEFORE it reaches m.Run, so
-	// both a normal return and a panic that unwinds through runtime.Goexit
-	// still destroy the claimed bootstrap resources. A source mutation that
-	// drops the defer, moves it after m.Run, or drops os.Exit(code) fails here.
+	// Structural proof of the package lifecycle: every test run of the
+	// package is preceded, in the same process, by its teardown arrangement —
+	// the production branch adopts dead owners' durable claims and defers the
+	// package-end teardown before m.Run(); the fixture branch writes its
+	// durable claim before its own m.Run(). Go escalates a test panic to
+	// os.Exit where no defer can run, so the durable marker (claimed BEFORE
+	// m.Run and adopted by the next run) is what covers that boundary. A
+	// mutation that drops the defer, drops the adoption, drops the fixture
+	// claim, or moves any of them after m.Run() fails here.
 	source := readMainTestSupportSource(t)
 	runner := source[strings.Index(source, "func runRuntimeIntegrationTestMain"):]
 	runner = runner[:strings.Index(runner, "\n}\n")+2]
-	firstRun := strings.Index(runner, "return m.Run()")
+	productionAdopt := strings.Index(runner, "\n\tadoptBootstrapLeftoverMarkerFromDeadProcess()")
 	deferIndex := strings.Index(runner, "defer destroyBootstrapTrustPlaneAtPackageEnd(marker)")
-	adoptIndex := strings.Index(runner, "adoptBootstrapLeftoverMarkerFromDeadProcess()")
-	if deferIndex < 0 || firstRun < 0 {
-		t.Fatal("runRuntimeIntegrationTestMain must arrange the package-end teardown and invoke m.Run()")
+	if productionAdopt < 0 || deferIndex < 0 {
+		t.Fatal("runRuntimeIntegrationTestMain must keep both the dead-owner adoption and the deferred package-end teardown")
 	}
-	if adoptIndex < 0 || adoptIndex > firstRun {
-		t.Fatal("runRuntimeIntegrationTestMain must adopt a dead process's durable claim before m.Run() — the panic path has no defer")
+	fixtureBranch := runner[:productionAdopt]
+	if !strings.Contains(fixtureBranch, "writeBootstrapFixtureMarker()") {
+		t.Fatal("the stage-one fixture branch must arrange its durable claim")
 	}
-	if deferIndex > firstRun {
-		t.Fatal("the package-end teardown must be arranged BEFORE the package test run")
+	if run := strings.Index(fixtureBranch, "return m.Run()"); run < 0 ||
+		strings.Index(fixtureBranch, "writeBootstrapFixtureMarker()") > run {
+		t.Fatal("the fixture branch must claim its durable marker BEFORE its m.Run()")
+	}
+	if run := strings.Index(runner[deferIndex:], "return m.Run()"); run < 0 ||
+		deferIndex+run < productionAdopt {
+		t.Fatal("the production branch must defer the package-end teardown before its m.Run()")
+	}
+	if !strings.Contains(runner[productionAdopt:deferIndex], "setupBootstrapLeftoverMarker()") {
+		t.Fatal("the production branch must create its provisioning marker before deferring the package-end teardown")
 	}
 	if !strings.Contains(source, "func TestMain(m *testing.M)") || !strings.Contains(source, "os.Exit(code)") {
 		t.Fatal("TestMain must delegate to the package-level runner and preserve its exit code")
 	}
 }
-
-// packageTeardownWitness records what the two-stage subprocess proved: the
-// panicking process kept its durable claim, and the next package invocation
-// adopted and destroyed the orphan.
-type packageTeardownWitness struct {
-	OrphanAdopted   bool `json:"orphan_adopted"`
-	ClaimSurvived   bool `json:"claim_survived"`
-	DaemonReachable bool `json:"daemon_reachable"`
-}
-
-// TestBootstrapPackageTeardownSurvivesPanickingTest proves the package
-// lifecycle across the only boundary Go leaves open: a test panic escalates
-// to os.Exit inside tRunner, so no Go-level defer of the dying process can
-// run. Stage one panics a subprocess after it claimed the bootstrap target;
-// the durable marker must survive the process death. Stage two runs the same
-// binary again: TestMain's adoption path must recognize the dead owner,
-// destroy the orphaned namespaces through the persisted target configuration
-// and consume the marker — fail-closed, before provisioning anything new.
-// TestBootstrapAdoptionConsumesMarker is the stage-two subprocess of
-// TestBootstrapPackageTeardownSurvivesPanickingTest: its TestMain adoption
-// path must recognize the dead stage-one owner, destroy the orphaned
-// namespaces from the persisted configuration and consume the marker. The
-// subprocess prints the verdict because the adoption happens before m.Run
-// (an alive subprocess PID would make any in-test check racy). It provisions
-// NO new marker itself: BASEHARBOR_CI_RUNTIME_INTEGRATION is unset and the
-// cell guard in setupBootstrapLeftoverMarker keeps it inert.
 func TestBootstrapAdoptionConsumesMarker(t *testing.T) {
 	markerPath := os.Getenv("BASEHARBOR_TEST_ADOPTION_MARKER")
 	if markerPath == "" {
