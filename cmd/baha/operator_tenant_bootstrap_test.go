@@ -185,6 +185,12 @@ func TestOperatorLoginCommandNoBrowserReachesHeadlessPath(t *testing.T) {
 	// when Login actually ran to completion, which is exactly what this
 	// command-level regression is meant to prove.
 
+	// (1c) The two witnesses above are the whole point of the command-level
+	// regression: before the R4/R5 --no-browser consumption fix the command
+	// returned through the trusted-local early return and reached neither the
+	// exchange nor the persistence, so both assertions failed. They now pass
+	// because the documented invocation reaches operatorauth.Login headlessly.
+
 	// (2) Browser isolation: the --no-browser flag must suppress the browser
 	// launch that operatorauth.Login performs for a non-headless flow. Clear any
 	// inherited BASEHARBOR_NO_BROWSER override, then replace the Linux CI
