@@ -1,6 +1,7 @@
 package openbao
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -1572,6 +1573,88 @@ func TestUnsealRejectsUnknownBAOAddrDestination(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown unseal destination") {
 		t.Fatalf("error = %v, want explicit unknown-destination error", err)
+	}
+}
+
+// TestBootstrapReinitOnStaleCredForUninitializedServer is the H-D5 BF-1
+// regression: a stale openbao-admin.env on an uninitialized server must NOT
+// block re-bootstrap. Bootstrap treats the stale credential file as a recovery
+// artifact, clears it, and re-initializes instead of returning a permanent
+// "already exists" error.
+func TestBootstrapReinitOnStaleCredForUninitializedServer(t *testing.T) {
+	dir := t.TempDir()
+	runtimeDir := filepath.Join(dir, ".baseharbor", "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := bhruntime.Files{
+		Compose: filepath.Join(runtimeDir, "compose.yaml"),
+		Env:     filepath.Join(runtimeDir, "runtime.env"),
+	}
+	recovery := filepath.Join(dir, "openbao-recovery.json")
+	executor := &fakeExecutor{} // Initialized==false => uninitialized, re-initable
+
+	adminPath := AdminCredentialsPath(files)
+	stale := []byte("OPENBAO_ROLE_ID=role\nOPENBAO_SECRET_ID=stale-secret\n")
+	if err := os.WriteFile(adminPath, stale, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(adminPath); err != nil {
+		t.Fatalf("stale credential setup failed: %v", err)
+	}
+
+	err := Bootstrap(context.Background(), executor, files, recovery)
+	if err != nil {
+		t.Fatalf("bootstrap must re-initialize a stale uninitialized server, got %v", err)
+	}
+	if !executor.initialized {
+		t.Fatal("bootstrap did not re-initialize OpenBao after clearing stale credential")
+	}
+	// The stale credential must not block the run: a fresh credential file is
+	// written by bootstrap and must differ from the stale seed.
+	adminData, err := os.ReadFile(adminPath)
+	if err != nil {
+		t.Fatalf("fresh manager credential written by bootstrap: %v", err)
+	}
+	if bytes.Equal(adminData, stale) {
+		t.Fatal("bootstrap did not overwrite the stale manager credential")
+	}
+	if !strings.Contains(string(adminData), "OPENBAO_SECRET_ID=") {
+		t.Fatal("fresh manager credential missing the AppRole SecretID")
+	}
+}
+
+// TestBootstrapStillRejectsInitializedServerWithStaleCred is the fail-closed
+// control: an initialized server keeps refusing bootstrap even when a stale
+// credential file lingers, preserving the ErrAlreadyInitialized invariant.
+func TestBootstrapStillRejectsInitializedServerWithStaleCred(t *testing.T) {
+	dir := t.TempDir()
+	runtimeDir := filepath.Join(dir, ".baseharbor", "runtime")
+	if err := os.MkdirAll(runtimeDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files := bhruntime.Files{
+		Compose: filepath.Join(runtimeDir, "compose.yaml"),
+		Env:     filepath.Join(runtimeDir, "runtime.env"),
+	}
+	recovery := filepath.Join(dir, "openbao-recovery.json")
+	executor := &fakeExecutor{initialized: true} // Initialized==true => fail-closed
+
+	adminPath := AdminCredentialsPath(files)
+	if err := os.WriteFile(adminPath, []byte("OPENBAO_ROLE_ID=role\nOPENBAO_SECRET_ID=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Bootstrap(context.Background(), executor, files, recovery)
+	if err != ErrAlreadyInitialized {
+		t.Fatalf("bootstrap must still reject an initialized server with ErrAlreadyInitialized, got %v", err)
+	}
+	if executor.initialized != true {
+		t.Fatal("server was already initialized; bootstrap must not proceed")
+	}
+	// A fresh recovery file must never be written for a rejected re-bootstrap.
+	if _, statErr := os.Stat(recovery); statErr == nil {
+		t.Fatal("recovery file written despite rejected re-bootstrap on initialized server")
 	}
 }
 

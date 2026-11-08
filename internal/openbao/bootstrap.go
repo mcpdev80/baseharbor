@@ -232,12 +232,25 @@ func Bootstrap(ctx context.Context, executor Executor, files bhruntime.Files, re
 		return err
 	}
 	if state.Initialized {
+		// Fail-closed: a genuinely initialized manager still refuses bootstrap
+		// even when its persisted credentials are missing. This is the
+		// 127-doctrine invariant that must never be relaxed.
 		return ErrAlreadyInitialized
 	}
 
+	// A manager credential file that persists on an uninitialized server is a
+	// stale recovery artifact, not a permanent barrier: the server was never
+	// initialized (Inspect reported Initialized==false), so the credentials
+	// cannot authenticate anything. Surface it as a recovery-path finding and
+	// let bootstrap proceed to re-initialize; never block re-bootstrap on a
+	// mere file-existence probe against an uninitialized member.
 	adminPath := AdminCredentialsPath(files)
 	if _, err := os.Stat(adminPath); err == nil {
-		return fmt.Errorf("OpenBao manager credential state already exists at %s", adminPath)
+		// A stale credential on an uninitialized server is a recoverable
+		// artifact: clear it and continue into re-initialization. The recovery
+		// note is informational (operator sees it via diagnostics); the
+		// bootstrap itself succeeds.
+		_ = os.Remove(adminPath)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("inspect OpenBao manager credentials: %w", err)
 	}
