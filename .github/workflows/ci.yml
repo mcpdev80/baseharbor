@@ -412,6 +412,77 @@ jobs:
         timeout-minutes: 3
         run: bash scripts/ci-runtime-reset.sh docker
 
+  pr_native_impact:
+    name: PR · Native impact selection
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.select.outputs.required }}
+    steps:
+      - name: Checkout trusted develop policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select exact PR native impact
+        id: select
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$HEAD_SHA"
+          changed="$(git diff --name-only --diff-filter=ACDMRT "$BASE_SHA" "$HEAD_SHA")"
+          required="$(printf '%s\\n' "$changed" | bash scripts/ci-single-default-impact.sh)"
+          # Conservative fallback: unknown CLI source edits must run rather than silently skip.
+          if [ "$required" != true ] && printf '%s\\n' "$changed" | grep -Eq '^cmd/baha/.*\\.go$'; then
+            required=true
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "Native runtime acceptance required: $required" >> "$GITHUB_STEP_SUMMARY"
+
+  pr_native_destroy:
+    name: PR · Native destroy retry · ${{ matrix.runtime }}
+    needs: pr_native_impact
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false && needs.pr_native_impact.outputs.required == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: docker
+            runner: ubuntu-latest
+          - runtime: podman
+            runner: ubuntu-26.04
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    env:
+      BASEHARBOR_TEST_RUNTIME: ${{ matrix.runtime }}
+      BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE: "1"
+    steps:
+      - name: Checkout exact PR integration candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Prepare isolated rootless runtime
+        run: bash scripts/ci-core-rootless-runtime.sh
+      - name: Verify actual native destroy and retry, fail on SKIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          bash scripts/ci-native-installation-destroy.sh
+      - name: Cleanup native runtime
+        if: always()
+        run: bash scripts/ci-runtime-reset.sh "${{ matrix.runtime }}"
+
   source_format:
     name: PR · Source format
     if: github.event_name == 'pull_request' && github.base_ref == 'develop'
