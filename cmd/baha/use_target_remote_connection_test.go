@@ -14,6 +14,7 @@ import (
 
 func TestRemoteTargetSelectionDoesNotRequireOrBootstrapLocalCore(t *testing.T) {
 	_, _, node := remoteApplicationCoreFixtureEmpty(t)
+	t.Setenv("BASEHARBOR_CONNECTION_PROFILE", "")
 	root, err := targetRuntimeStateRoot(node)
 	if err != nil {
 		t.Fatal(err)
@@ -24,7 +25,7 @@ func TestRemoteTargetSelectionDoesNotRequireOrBootstrapLocalCore(t *testing.T) {
 	if !errors.As(err, &typed) || typed.Code != machine.ErrorAuthenticationFailed {
 		t.Fatalf("remote selection without verified binding must fail closed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "remote Core management connection") {
+	if !strings.Contains(err.Error(), "remote management connection profile not configured (BASEHARBOR_CONNECTION_PROFILE)") {
 		t.Fatalf("incorrect remote connection diagnostic: %v", err)
 	}
 	if strings.Contains(err.Error(), "Install a BaseHarbor Core") {
