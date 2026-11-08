@@ -1077,7 +1077,7 @@ jobs:
 
   pr_selected_final:
     name: PR Selected Checks
-    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native]
+    needs: [workflow_policy, source_format, pr_plan, pr_focused, pr_validations, pr_candidate, pr_consumer_pins, pr_demo_pin, pr_runner_interface, pr_runtime_selected, pr_public_contracts, pr_owner_node_native, pr_native_impact, pr_native_destroy]
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1093,6 +1093,20 @@ jobs:
         if: needs.pr_plan.result == 'success'
         with:
           name: trusted-pr-plan
+      - name: Require selected native acceptance before merge
+        shell: bash
+        env:
+          NATIVE_SELECTION: ${{ needs.pr_native_impact.result }}
+          NATIVE_REQUIRED: ${{ needs.pr_native_impact.outputs.required }}
+          NATIVE_RESULT: ${{ needs.pr_native_destroy.result }}
+        run: |
+          set -euo pipefail
+          test "$NATIVE_SELECTION" = success
+          case "$NATIVE_REQUIRED" in
+            true) test "$NATIVE_RESULT" = success ;;
+            false) test "$NATIVE_RESULT" = skipped ;;
+            *) echo "REJECT: no authoritative native impact classification" >&2; exit 1 ;;
+          esac
       - name: Require normal selected job results
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
