@@ -15,6 +15,22 @@ type RuntimeServiceRetirementProvider interface {
 	RetireOwnedProjectContainers(context.Context, string, []ProjectResource) error
 }
 
+// serviceFromCanonical derives the service a canonical inventory resource name
+// targets. The canonical owner name is <project>-<service>-1; a pinned
+// container_name (0427-128) lives outside that scheme as <project>-<service>,
+// so the remainder after the project prefix is the service identifier in both
+// cases. A name without the owning project prefix is not an owner name.
+func serviceFromCanonical(resourceName, project string) string {
+	if !strings.HasPrefix(resourceName, project+"-") {
+		return ""
+	}
+	service := strings.TrimSuffix(strings.TrimPrefix(resourceName, project+"-"), "-1")
+	if service == "" {
+		return ""
+	}
+	return service
+}
+
 // RetireOwnedServices accepts the canonical old resource set and exactly the
 // containers released by the consumer plan. Volumes and networks are never
 // deletion targets. Failed mutations still return observed partial disposition.
@@ -33,14 +49,10 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 	services := map[string]bool{}
 	removed := map[ProjectResource]bool{}
 	for _, resource := range remove {
-		if resource.Kind != "container" || !planned[resource] || removed[resource] || !strings.HasPrefix(resource.Name, project+"-") || !strings.HasSuffix(resource.Name, "-1") {
-			return result, errors.New("service retirement requires exact canonical container names")
+		if resource.Kind != "container" || !planned[resource] || removed[resource] || !strings.HasPrefix(resource.Name, project+"-") || strings.TrimSpace(resource.Name) == project+"-" {
+			return result, errors.New("service retirement requires an owned canonical container name")
 		}
-		service := strings.TrimSuffix(strings.TrimPrefix(resource.Name, project+"-"), "-1")
-		if service == "" {
-			return result, errors.New("service retirement requires a canonical service")
-		}
-		services[service], removed[resource] = true, true
+		removed[resource] = true
 	}
 	before, err := provider.InspectProjectResources(ctx, project, expected)
 	if err != nil {
@@ -60,12 +72,37 @@ func RetireOwnedServices(ctx context.Context, provider RuntimeServiceRetirementP
 		kind = native.Kind()
 	}
 	// Pinned container_name lives outside <project>-<service>-1, so the retired
-	// set also carries the rendered planned native names. The canonical name
-	// still owns the service; a matching native name alone never infers
-	// ownership (0427-128: retirement accepts both identity classes).
+	// set also carries the rendered planned native names per selected service.
+	// The canonical name still owns the service; a matching native name alone
+	// never infers ownership (0427-128: retirement accepts both identity
+	// classes). The rendered model is the source of truth for the planned names.
+	plannedByService := map[string][]string{}
+	for _, resource := range expected {
+		if resource.Kind != "container" {
+			continue
+		}
+		if service := serviceFromCanonical(resource.Name, project); service != "" {
+			services[service] = true
+		}
+	}
+	if configurer, ok := provider.(RuntimeConfigProvider); ok {
+		for service := range services {
+			if expectedNames, perr := expectedContainerNameSet(ctx, configurer, "", project, service, nil); perr == nil {
+				plannedByService[service] = expectedNames
+			}
+		}
+	}
 	for _, container := range containers {
-		if container.Project == project && services[container.Service] && !ContainerMatchesProjectResource(kind, container, project, ProjectResource{Kind: "container", Name: project + "-" + container.Service + "-1"}) {
-			return result, fmt.Errorf("unplanned replica of selected service %s; preserve ownership state", container.Service)
+		if container.Project == project && services[container.Service] {
+			plannedNames := plannedByService[container.Service]
+			if len(plannedNames) == 0 {
+				// No rendered model: fall back to the single canonical ordinal so
+				// the pre-existing canonical-owner contract is preserved.
+				plannedNames = []string{project + "-" + container.Service + "-1"}
+			}
+			if !ContainerNameInPlannedSet(kind, container, project, plannedNames) {
+				return result, fmt.Errorf("unplanned replica of selected service %s; preserve ownership state", container.Service)
+			}
 		}
 	}
 	var mutationErr error
