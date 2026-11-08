@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -181,5 +182,49 @@ func TestFullDestroyJSONReportsPreservedRecoveryWithoutReadingContents(t *testin
 	}
 	if raw, err := os.ReadFile(recovery); err != nil || string(raw) != "private-recovery-material" {
 		t.Fatal("external recovery file was changed")
+	}
+}
+
+func TestDestroyInventoryIncludesOwnedCoreIdentityWithoutRunningContainers(t *testing.T) {
+	identityProject := bhruntime.SharedProjectName("local-core")
+	coreProject := bhruntime.SharedProjectName("local")
+	foreignProject := bhruntime.SharedProjectName("other-core")
+	runtime := &inventoryTestRuntime{resources: map[string][]bhruntime.ProjectResource{
+		identityProject: {{Kind: "container", Name: "keycloak"}, {Kind: "container", Name: "keycloak-access"}},
+		coreProject:     {{Kind: "container", Name: "postgres"}},
+		foreignProject:  {{Kind: "container", Name: "other-keycloak"}},
+	}}
+	for _, sharedOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("sharedOnly=%t", sharedOnly), func(t *testing.T) {
+			plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+				deployment.ResolvedTarget{Name: "local"}, runtime, sharedOnly)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(plan.Projects[identityProject]) != 2 {
+				t.Fatalf("stopped Keycloak project missing from destroy inventory: %+v", plan.Projects)
+			}
+			if _, foreign := plan.Projects[foreignProject]; foreign {
+				t.Fatal("destroy inventory included foreign target identity")
+			}
+			var output bytes.Buffer
+			plan.render(&output)
+			if !strings.Contains(output.String(), "keycloak-access") || strings.Contains(output.String(), "other-keycloak") {
+				t.Fatalf("destroy preview lacks Core identity or includes foreign identity: %s", output.String())
+			}
+		})
+	}
+	plan, err := collectTargetDestroyInventoryWithRuntime(context.Background(),
+		deployment.ResolvedTarget{Name: "local"}, runtime, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var results []fullDestroyResult
+	plan.cleanup(context.Background(), &results)
+	if countFullDestroyBlockers(results) != 0 || len(runtime.resources[identityProject]) != 0 {
+		t.Fatalf("owned stopped Keycloak not destroyed safely: results=%+v remaining=%+v", results, runtime.resources[identityProject])
+	}
+	if len(runtime.resources[foreignProject]) != 1 {
+		t.Fatal("cleanup affected foreign target identity resources")
 	}
 }
