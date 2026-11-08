@@ -93,7 +93,7 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 	// the shared bootstrap helper must not move that root after TestMain starts.
 	if os.Getenv("BASEHARBOR_SINGLE_DEFAULT_NATIVE_ACCEPTANCE") == "1" {
 		if err := os.Setenv("BASEHARBOR_CI_RUNTIME_INTEGRATION", "1"); err != nil {
-			fmt.Fprintf(os.Stderr, "native integration environment: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "native integration environment: %v\n", err)
 			return 1
 		}
 	}
@@ -102,11 +102,11 @@ func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
 		strings.TrimSpace(os.Getenv("XDG_DATA_HOME")) == "" {
 		root, err := os.MkdirTemp("", "baseharbor-ci-data-")
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "native integration data root: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "native integration data root: %v\n", err)
 			return 1
 		}
 		if err := os.Setenv("XDG_DATA_HOME", root); err != nil {
-			fmt.Fprintf(os.Stderr, "native integration data root: %v\\n", err)
+			fmt.Fprintf(os.Stderr, "native integration data root: %v\n", err)
 			return 1
 		}
 	}
