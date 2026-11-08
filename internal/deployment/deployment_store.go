@@ -526,58 +526,6 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	return nil
 }
 
-// ErrDuplicateApplicationName is returned when a brand-new deployment tries to
-// register the same (target, application name, environment) triple as a
-// DIFFERENT deployment directory. A record update of the SAME identity
-// (its target directory already exists) is not a duplicate and never trips this.
-var ErrDuplicateApplicationName = errors.New("duplicate application name")
-
-// refuseDuplicateApplicationName closes the silent duplicate-registration gap
-// (0427-149): before writing a deployment record for the first time, it scans
-// the target's deployment registry for any OTHER directory (different uuid)
-// that already claims the identical (target, application name, environment)
-// triple. A match fails closed with a message that names the existing
-// deployment so the operator has an actionable uuid/-e disambiguation instead
-// of a later opaque "application machine: denied" on edit. Updates to an
-// already-persisted record of the SAME identity are not collisions: the
-// deployment directory already exists, so a scan is unnecessary and an
-// idempotent retry of a failed apply must not re-refuse.
-func refuseDuplicateApplicationName(record DeploymentRecord) error {
-	existingDir, dirErr := DeploymentRoot(record.Identity)
-	if dirErr == nil {
-		if _, statErr := os.Stat(existingDir); statErr == nil {
-			// The deployment directory already exists: this is an update/re-save
-			// of the SAME identity, not a first registration. Never a collision.
-			return nil
-		} else if !errors.Is(statErr, os.ErrNotExist) {
-			return fmt.Errorf("inspect deployment directory for duplicate name check: %w", statErr)
-		}
-	}
-	matches, err := ListDeployments(record.Identity.Target)
-	if err != nil {
-		return fmt.Errorf("check duplicate application name: %w", err)
-	}
-	for _, existing := range matches {
-		if existing.Identity.Application != record.Identity.Application ||
-			existing.Identity.Environment != record.Identity.Environment {
-			continue
-		}
-		// Same target/name/environment but a different deployment uuid: a true
-		// name duplicate that must never coexist in the registry.
-		if existing.Identity.DeploymentID != record.Identity.DeploymentID {
-			return &DeploymentRecordStateError{
-				Identity: record.Identity,
-				Kind:     "duplicate",
-				Err: fmt.Errorf("%w: %s/%s/%s already registered as deployment %s; reconcile the two identities (edit by uuid or -e/--environment) before registering another",
-					ErrDuplicateApplicationName,
-					existing.Identity.Target, existing.Identity.Application, existing.Identity.Environment,
-					existing.Identity.DeploymentID),
-			}
-		}
-	}
-	return nil
-}
-
 func LoadDeploymentRecord(id DeploymentIdentity) (DeploymentRecord, error) {
 	if err := verifyDeploymentOwnerAtSeam(id.Target, id.DeploymentID); err != nil {
 		return DeploymentRecord{}, &DeploymentRecordStateError{Identity: id, Kind: "missing", Err: err}
@@ -672,29 +620,42 @@ func DeleteDeploymentRecord(id DeploymentIdentity) error {
 }
 
 func FindDeployment(target, applicationID, environment string) (DeploymentRecord, bool, error) {
-	records, err := ListDeployments(target)
+	matches, err := findDeploymentMatches(target, applicationID, environment)
 	if err != nil {
 		return DeploymentRecord{}, false, err
 	}
-	var match *DeploymentRecord
+	if len(matches) == 0 {
+		return DeploymentRecord{}, false, nil
+	}
+	return matches[0], true, nil
+}
+
+// findDeploymentMatches lists the deployment registry for target and returns a
+// copy of every record whose (application_id, environment) equals the request.
+// A registry that already holds more than one such record is a pre-existing
+// conflict; the caller reports it instead of silently picking one. The loop is
+// extracted here so the name-identity uniqueness guard can reuse the exact same
+// identity scan without duplicating the filter or the ambiguity report.
+func findDeploymentMatches(target, applicationID, environment string) ([]DeploymentRecord, error) {
+	records, err := ListDeployments(target)
+	if err != nil {
+		return nil, err
+	}
+	var matches []DeploymentRecord
 	for i := range records {
 		record := records[i]
 		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
 			continue
 		}
-		if match != nil {
-			return DeploymentRecord{}, false, fmt.Errorf(
-				"multiple deployments claim application_id %s environment %s on target %s",
-				applicationID, environment, target,
-			)
-		}
-		copy := record
-		match = &copy
+		matches = append(matches, record)
 	}
-	if match == nil {
-		return DeploymentRecord{}, false, nil
+	if len(matches) > 1 {
+		return nil, fmt.Errorf(
+			"multiple deployments claim application_id %s environment %s on target %s",
+			applicationID, environment, target,
+		)
 	}
-	return *match, true, nil
+	return matches, nil
 }
 
 func ListDeployments(target string) ([]DeploymentRecord, error) {
