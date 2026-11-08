@@ -511,6 +511,30 @@ func runtimeUpCommandWithInputResolver(ctx context.Context, args []string, out, 
 			return usageError("remote control-plane bootstrap is not supported by baha up", "Run the Core bootstrap on its owning Docker/Podman host and configure a verified remote management connection; the selected remote Target will not fall back to the local Docker daemon.")
 		}
 	}
+	if !opts.ControlPlaneOnly {
+		target, err := effectiveTarget(ctx)
+		if err != nil {
+			return err
+		}
+		if target.AccessProvider != "" && target.AccessProvider != "local" {
+			if opts.Name == "" {
+				return usageError("remote up needs an explicit application NAME",
+					"Run baha up NAME --environment dev for an application already registered on the remote Core.")
+			}
+			if opts.Yes {
+				return usageError("remote up does not accept --yes",
+					"Use baha up NAME --environment dev; --yes never approves provider consequences.")
+			}
+			remoteArgs := []string{opts.Name}
+			if opts.Environment != "" {
+				remoteArgs = append(remoteArgs, "--environment", opts.Environment)
+			}
+			if opts.SkipMemoryPreflight {
+				remoteArgs = append(remoteArgs, "--skip-memory-preflight")
+			}
+			return remoteApplicationMutation(ctx, target, "apply", remoteArgs, destination)
+		}
+	}
 	if handled, err := routeRepositoryRuntimeUp(ctx, applicationInput(ctx, runtimeInput), out, errOut, opts); handled {
 		if err != nil {
 			return err
