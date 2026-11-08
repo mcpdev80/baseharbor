@@ -61,7 +61,7 @@ type verifiedRemoteCore struct {
 
 func verifyRemoteManagementConnection(ctx context.Context, target, runtime, expectedTenant string) error {
 	_, err := dialVerifiedRemoteCore(ctx, target, runtime, expectedTenant)
-	return nil, err
+	return err
 }
 
 func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant string) (*verifiedRemoteCore, error) {
