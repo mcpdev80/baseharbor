@@ -113,8 +113,8 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime strin
 		return errors.New("remote OIDC issuer/client differs from the pinned connection")
 	}
 	client := &http.Client{
-		Timeout: 15 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}},
+		Timeout:       15 * time.Second,
+		Transport:     &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(profile.Core.URL, "/")+"/api/v1/management/installation", nil)
