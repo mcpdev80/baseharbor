@@ -145,4 +145,3 @@ Exakte Optionen stehen in `baha COMMAND --help`. [Globale Optionen](global-optio
 | `baha workspace show` | Show canonical source identities and local workspace mappings | `baha workspace show [--manifest PATH] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace status` | Inspect Git state for all mapped repository sources | `baha workspace status [--manifest PATH] [--fetch] [-o json\|--output json]` | [↗](development.md) |
 | `baha workspace update` | Safely fast-forward mapped Git repositories | `baha workspace update [--manifest PATH] [--check] [-o json\|--output json]` | [↗](development.md) |
-
