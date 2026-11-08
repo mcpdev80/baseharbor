@@ -33,6 +33,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		TenantID       string `json:"tenant_id"`
 	}{managementInstallationVersion, installation, coreIssuer, operatorIssuer, node.TenantID}
 	var execution machine.Execution
+	foreignResult := false
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-id-token" {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -76,7 +77,11 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				State:           machine.ExecutionPending,
 			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/v1/machine/executions/remote-status-one":
-			_ = json.NewEncoder(w).Encode(execution)
+			result := execution
+			if foreignResult {
+				result.Result = json.RawMessage(`{"contract_version":"v1","target":"foreign","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}`)
+			}
+			_ = json.NewEncoder(w).Encode(result)
 		default:
 			http.NotFound(w, r)
 		}
@@ -138,6 +143,17 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	if err := json.Unmarshal(statusOutput.Bytes(), &verifiedStatus); err != nil || !verifiedStatus.Ready {
 		t.Fatalf("remote status CLI returned no confirmed READY result: %q (%v)", statusOutput.String(), err)
 	}
+
+	foreignResult = true
+	statusOutput.Reset()
+	if err := remoteApplicationStatus(context.Background(), node,
+		[]string{"demo", "--environment", "dev"}, &statusOutput); err == nil {
+		t.Fatal("foreign application status was accepted under the pinned execution identity")
+	}
+	if statusOutput.Len() != 0 {
+		t.Fatalf("foreign application status leaked into CLI output: %q", statusOutput.String())
+	}
+	foreignResult = false
 
 	for _, foreignTenant := range []string{"", "22222222-2222-4222-8222-222222222222"} {
 		if err := verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider, foreignTenant); err == nil {
