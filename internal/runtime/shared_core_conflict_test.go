@@ -49,6 +49,20 @@ func TestSharedCoreOwnerConflictIgnoresApplicationProjects(t *testing.T) {
 	}
 }
 
+func TestSharedCoreOwnerConflictIgnoresOwningIdentityCore(t *testing.T) {
+	provider := &conflictProbeFake{containers: []probeContainer{
+		{Project: "bh-local-shared", Running: true},
+		{Project: "bh-local-core-shared", Running: true},
+	}}
+	conflict, err := SharedCoreOwnerConflictForEngine(context.Background(), provider, "bh-local-shared")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conflict != nil {
+		t.Fatalf("owning Target's managed Identity Core must not self-conflict: %+v", conflict)
+	}
+}
+
 func TestSharedCoreOwnerConflictIgnoresStoppedCore(t *testing.T) {
 	provider := &conflictProbeFake{containers: []probeContainer{
 		{Project: "bh-first-shared", Running: false},
