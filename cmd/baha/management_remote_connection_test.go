@@ -78,7 +78,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	saveProfile()
 	t.Setenv("BASEHARBOR_CONNECTION_PROFILE", path)
 	verify := func() error {
-		return verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider)
+		return verifyRemoteManagementConnection(context.Background(), node.Name, node.RuntimeProvider, node.TenantID)
 	}
 	if err := verify(); err != nil {
 		t.Fatalf("valid pinned remote Core rejected: %v", err)
