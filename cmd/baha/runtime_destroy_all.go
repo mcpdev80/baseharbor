@@ -336,12 +336,19 @@ func discoverFullDestroyTargets() ([]deployment.ResolvedTarget, []fullDestroyRes
 					}
 				}
 			}
-			if provider == "" && name == "local" {
-				provider = "compose"
-			}
+			// A missing target registration cannot establish a native runtime
+			// owner. In particular, "compose" is not a registered provider kind;
+			// never invent it (or guess Docker) while orphaned resources may exist.
 			byName[name] = deployment.ResolvedTarget{Name: name, RuntimeProvider: provider}
 			if provider == "" {
-				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely", Diagnostic: "unregistered-target-runtime"})
+				detail := "target config is missing and runtime provider cannot be inferred; only BaseHarbor-owned local state can be removed safely"
+				if name == "local" {
+					// The legacy local fallback used the unregistered provider
+					// "compose". Preserve its real owner state until explicitly
+					// recovered instead of returning a false completed destroy.
+					detail = "preserved because local target configuration and runtime ownership are missing; recover the target binding before retrying destruction"
+				}
+				results = append(results, fullDestroyResult{Status: "SKIPPED", Target: name, Resource: "runtime-provider", Detail: detail, Diagnostic: "unregistered-target-runtime"})
 			}
 		}
 	}
