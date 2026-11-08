@@ -33,20 +33,31 @@ type appProviderChoice struct {
 	BoundInstanceID     string                 `json:"bound_instance_id,omitempty"`
 }
 
-// The authoritative footprint owns automatic resolution and binding precedence.
-// This adapter only displays the eligible registry inventory and collects intent.
-//
-// appProviderChoicesWithPreferences additionally offers the live instances
-// named by the given explicit preferences when the snapshot projection lost
-// them. Registry drift (for example a canonical shared instance only an
-// unapplied sibling record still lists) must not hide the instance the
-// consumer must re-resolve against; arbitrary other instances never enter the
-// choice surface.
+// appProviderChoices builds the authoritative choice surface for one
+// application. The authoritative footprint owns automatic resolution and
+// binding precedence; this adapter only displays the eligible registry
+// inventory and collects intent.
 func appProviderChoices(manifest application.Manifest, snapshot application.ResolutionSnapshot, selection appCapabilitySelectionModel) ([]appProviderChoice, error) {
-	return appProviderChoicesWithPreferences(manifest, snapshot, selection, nil)
+	return appProviderChoicesWithView(manifest, snapshot, selection, nil, false)
 }
 
+// appProviderChoicesWithPreferences is the wizard/edit choice surface over the
+// same authority. It additionally offers the live instances named by the given
+// explicit preferences when the snapshot projection lost them, so registry
+// drift never hides the instance the consumer must re-resolve against.
 func appProviderChoicesWithPreferences(manifest application.Manifest, snapshot application.ResolutionSnapshot, selection appCapabilitySelectionModel, preferences []application.ProviderPreference) ([]appProviderChoice, error) {
+	return appProviderChoicesWithView(manifest, snapshot, selection, preferences, false)
+}
+
+// appProviderChoicesWithView is the wizard/edit choice surface over the same
+// authority. In the selection view a requirement whose resolution fails on
+// THIS requirement's kind or its bound instance (an unmaterialized explicit
+// provider kind, an ambiguous or conflicting binding) stays unresolved with
+// the concrete reason visible on its own line instead of aborting the whole
+// selection; a failure anywhere else, especially a dependency edge of any
+// record on the Target, keeps aborting with the typed error, as the
+// plan/apply authorities do.
+func appProviderChoicesWithView(manifest application.Manifest, snapshot application.ResolutionSnapshot, selection appCapabilitySelectionModel, preferences []application.ProviderPreference, selectionView bool) ([]appProviderChoice, error) {
 	if strings.TrimSpace(snapshot.Target) == "" {
 		return nil, fmt.Errorf("Target is required")
 	}
@@ -123,18 +134,35 @@ func appProviderChoicesWithPreferences(manifest application.Manifest, snapshot a
 	// Resolve each currently selected requirement independently through the
 	// existing authority, so one ambiguity cannot suppress other proposals.
 	resolved := make(map[capability.Requirement]string)
+	unresolved := make(map[capability.Requirement]error)
 	for _, req := range requirements {
 		projected, err := appProviderChoiceProjection(manifest, req)
 		if err != nil {
 			return nil, err
 		}
-		footprint, err := application.ResolveFootprint(projected, snapshot, nil)
-		if err != nil {
+		// The choice surface resolves requirements independently through the
+		// existing authority, so one ambiguity cannot suppress other
+		// proposals. In the selection view an unmaterialized explicit provider
+		// kind of THIS requirement additionally remains an unresolved choice
+		// line instead of aborting the whole selection; every other failure —
+		// a dependency edge, a foreign or wrong-Target instance — keeps
+		// aborting with the concrete typed error, exactly as the
+		// authoritative plan/apply surfaces do.
+		footprint, footprintErr := application.ResolveFootprint(projected, snapshot, nil)
+		if footprintErr != nil {
 			var resolution *application.ResolutionError
-			if errors.As(err, &resolution) && resolution.Code == "ambiguous" && resolution.Requirement == req {
-				continue
+			if errors.As(footprintErr, &resolution) && resolution.Requirement == req {
+				switch resolution.Code {
+				case "ambiguous":
+					continue
+				case "missing":
+					if selectionView {
+						unresolved[req] = footprintErr
+					}
+					continue
+				}
 			}
-			return nil, fmt.Errorf("resolve %s/%s: %w", req.Kind, req.Name, err)
+			return nil, fmt.Errorf("resolve %s/%s: %w", req.Kind, req.Name, footprintErr)
 		}
 		for _, item := range footprint.Requirements {
 			if item.Requirement == req {
@@ -150,6 +178,15 @@ func appProviderChoicesWithPreferences(manifest application.Manifest, snapshot a
 			c.ProposedInstanceID = c.BoundInstanceID
 		}
 		switch {
+		case unresolved[c.Requirement] != nil:
+			var resolution *application.ResolutionError
+			if errors.As(unresolved[c.Requirement], &resolution) && resolution.Requirement == c.Requirement && len(c.Candidates) == 0 {
+				// A requirement nothing on this Target can satisfy: name the
+				// provider kind and the concrete way out.
+				c.Reason = fmt.Sprintf("Automatic: no %s provider instance is registered on this Target; choose a compatible instance explicitly", c.Requirement.Kind)
+			} else {
+				c.Reason = fmt.Sprintf("Unresolved: %v; choose an explicit compatible instance or confirm this need to see the full Target conflict", unresolved[c.Requirement])
+			}
 		case c.ProposedInstanceID != "" && c.BoundInstanceID != "":
 			c.Reason = "Automatic: preserved existing application/environment binding"
 		case c.ProposedInstanceID != "":

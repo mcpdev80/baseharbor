@@ -121,6 +121,10 @@ type Footprint struct {
 }
 
 type ResolutionError struct {
+	// Consumer is the authoritative consumer key that references the failed
+	// edge. The union resolver fills it after the pure footprint resolver
+	// returns, so an unqualified resolver error keeps it empty.
+	Consumer    string
 	Code        string
 	InstanceID  string
 	Requirement capability.Requirement

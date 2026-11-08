@@ -191,7 +191,10 @@ func (w appWizardController) choicesForSelection() ([]appProviderChoice, error) 
 		}
 		explicit = append(explicit, application.ProviderPreference{Requirement: requirement, InstanceID: id})
 	}
-	choices, err := appProviderChoicesWithPreferences(w.manifest, w.snapshot, w.selection, explicit)
+	// The wizard selection collects intent only; provider realization gaps of
+	// this or other applications never abort it. The plan/preview authorities
+	// below fail closed with the concrete conflict.
+	choices, err := appProviderChoicesWithView(w.manifest, w.snapshot, w.selection, explicit, true)
 	if err != nil {
 		return nil, err
 	}

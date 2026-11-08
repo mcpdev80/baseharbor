@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -159,9 +160,30 @@ func classifyApplicationResolutionError(err error) error {
 		return err
 	}
 	code := machine.ErrorInternal
+	resource := resolution.InstanceID
+	next := "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated."
+	causeCode := "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_")
+	if resolution.Consumer != "" {
+		// The union resolver attributes a failed edge to the authoritative
+		// consumer that references it. A stale reference left by another
+		// application's record is therefore reported as the concrete conflict
+		// it is, naming that consumer and its recovery owner.
+		causeCode = "provider_stale_consumer_dependency"
+		resource = resolution.Consumer
+		next = fmt.Sprintf("Consumer %q references provider realization %q, which no longer exists on the Target. Restore that realization or release the named consumer through its own lifecycle owner, then rerun the last command; no provider was mutated.",
+			resolution.Consumer, resolution.InstanceID)
+	}
 	switch resolution.Code {
 	case "missing", "missing-dependency":
 		code = machine.ErrorNotFound
+		if resolution.Consumer == "" {
+			if resolution.InstanceID == "" {
+				// An unmaterialized requirement names no instance; the
+				// requirement itself is the resource the operator can act on.
+				resource = string(resolution.Requirement.Kind) + "/" + resolution.Requirement.Name
+			}
+			next = fmt.Sprintf("Materialize or reconcile the provider realization %q, then rerun the last command; no provider was mutated.", resource)
+		}
 	case "incompatible", "dependency-cycle":
 		code = machine.ErrorValidationFailed
 	case "ambiguous", "binding-conflict":
@@ -169,7 +191,7 @@ func classifyApplicationResolutionError(err error) error {
 	case "foreign", "foreign-target":
 		code = machine.ErrorOwnershipAmbiguous
 	}
-	return &machine.Error{Code: code, CauseCode: "provider_resolution_" + strings.ReplaceAll(resolution.Code, "-", "_"), Message: err.Error(), Resource: resolution.InstanceID, Next: "Reconcile the existing Target provider binding and dependency inventory before retrying; no provider was mutated.", Cause: err}
+	return &machine.Error{Code: code, CauseCode: causeCode, Message: err.Error(), Resource: resource, Next: next, Cause: err}
 }
 
 func requireResolvedApplicationCore(ctx context.Context, resolved resolvedApplication, in io.Reader, out io.Writer) error {

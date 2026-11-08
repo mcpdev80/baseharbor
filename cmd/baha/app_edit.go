@@ -73,14 +73,30 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 	// used for a new choice. Automatic preferences remain automatic. A stored
 	// instance that the current projection lost must never block the whole
 	// edit: it is re-resolved against the live Target provider inventory and
-	// kept; an instance that exists nowhere anymore reverts to automatic with
-	// a visible line naming it and the re-resolution step.
+	// kept; an instance the surface does not offer at all stays unselected —
+	// the authoritative plan/apply surfaces report its concrete conflict
+	// instead of the session blocking. The candidate lists come from the same
+	// selection-view authority the wizard renders.
+	surface, surfaceErr := controller.choicesForSelection()
+	if surfaceErr != nil {
+		surface = nil
+	}
+	offeredInstances := map[capability.Requirement]map[string]bool{}
+	for _, choice := range surface {
+		offers := map[string]bool{}
+		for _, candidate := range choice.Candidates {
+			offers[candidate.Instance.ID] = true
+		}
+		offeredInstances[choice.Requirement] = offers
+	}
 	for _, preference := range loaded.Preferences {
 		if preference.InstanceID == "" {
 			continue
 		}
-		if controller, err = selectStoredProviderPreference(ctx, controller, preference); err != nil {
-			if !errors.Is(err, errAppEditPreferenceUnresolvable) {
+		if !offeredInstances[preference.Requirement][preference.InstanceID] {
+			if controller, err = selectStoredProviderPreference(ctx, controller, preference); err == nil {
+				continue
+			} else if !errors.Is(err, errAppEditPreferenceUnresolvable) {
 				return appEditSession{}, fmt.Errorf("restore provider preference for %s/%s: %w", preference.Requirement.Kind, preference.Requirement.Name, err)
 			}
 			fmt.Fprintf(out, "provider preference %s/%s instance %s is unavailable on Target %s; the choice reverted to automatic — re-resolve it with 'provider %s/%s <id>' or keep automatic to select from the current Target inventory\n",
@@ -89,6 +105,11 @@ func appEditStart(ctx context.Context, target string, source []byte, snapshot ap
 			if controller, err = controller.SelectProvider(ctx, preference.Requirement, ""); err != nil {
 				return appEditSession{}, fmt.Errorf("reset unavailable provider preference for %s/%s: %w", preference.Requirement.Kind, preference.Requirement.Name, err)
 			}
+			continue
+		}
+		controller, err = controller.SelectProvider(ctx, preference.Requirement, preference.InstanceID)
+		if err != nil {
+			return appEditSession{}, fmt.Errorf("restore provider preference for %s/%s: %w", preference.Requirement.Kind, preference.Requirement.Name, err)
 		}
 	}
 
