@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -114,6 +115,14 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		if bootState, bootErr := bootstrapCoreInstallation(ctx, bootstrapTarget); bootErr == nil {
 			registerBootInstallation(bootRuntimeRootFor(bootstrapTarget), bootState)
 		}
+		// TEST-FIXTURE CLEANUP (card 0427-117): the bootstrap selector owns its own
+		// `<bootstrap>-default`/`-internal` native Docker networks on the shared
+		// daemon, and previously never removed them. Repeated `count=N` runs on one
+		// daemon then exhaust the bridge address pool (`all predefined address pools
+		// have been fully subnetted`). The loaned Core material is read from the boot
+		// runtime root, never from these networks, so removal is safe after the trust
+		// plane is established and keeps a shared daemon's address pool fresh.
+		removeBootstrapNetworks(t, bootstrapTarget)
 
 		compose, files, err := openBaoRuntime(ctx)
 		if err != nil {
@@ -238,6 +247,55 @@ func bootstrapCoreInstallation(ctx context.Context, targetName string) (coreinst
 	}
 	state, err := coreinstallation.Load(root)
 	return state, err
+}
+
+// removeBootstrapNetworks deletes the bootstrap Target's own native Docker
+// networks (`<bootstrapTarget>-default`/`-internal`) after the trust plane is
+// established. The loaned Core reads its material from the boot runtime root,
+// never from these networks, so removal is safe and keeps a shared daemon's
+// bridge address pool from being exhausted by repeated count=N runs. It is
+// best-effort: a network already gone is not an error.
+func removeBootstrapNetworks(t *testing.T, bootstrapTarget string) {
+	t.Helper()
+	networks := dockerNetworkNamesForTarget(bootstrapTarget)
+	for _, name := range networks {
+		cmd := exec.Command("docker", "network", "rm", name)
+		if out, err := cmd.CombinedOutput(); err != nil && !strings.Contains(string(out), "No such network") {
+			t.Logf("remove bootstrap network %q: %v", name, err)
+		}
+	}
+}
+
+// dockerNetworkNamesForTarget lists the operator-visible native networks owned
+// by a bootstrap Target on the shared daemon, matching the
+// `<target>-default`/`<target>-internal` naming BaseHarbor uses for a configured
+// Target's runtime.
+func dockerNetworkNamesForTarget(bootstrapTarget string) []string {
+	cmd := exec.Command("docker", "network", "ls", "--quiet")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, line := range strings.Split(string(out), "\n") {
+		id := strings.TrimSpace(line)
+		if id == "" {
+			continue
+		}
+		inspect := exec.Command("docker", "network", "inspect", id,
+			"--format", "{{range .Containers}}{{index .name }} {{end}}")
+		io, ierr := inspect.Output()
+		if ierr != nil {
+			continue
+		}
+		for _, tok := range strings.Fields(string(io)) {
+			if strings.HasPrefix(tok, bootstrapTarget+"-") {
+				names = append(names, id)
+				break
+			}
+		}
+	}
+	return names
 }
 
 // bootstrapTargetSuffix returns a short random hex suffix so the shared trust
