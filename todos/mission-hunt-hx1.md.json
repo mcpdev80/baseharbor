@@ -1,0 +1,15 @@
+{
+  "id": "hx1",
+  "title": "Bug-Hunt H-X1 operator-auth-oberflaeche baha-docker",
+  "steps": [
+    {"done": true, "text": "1 Host/Rahrendaten belegen (Server-vs-Test-Host, SSH, dev-Binary, Version)"},
+    {"done": true, "text": "2 Auth-/Trust-/State-Architektur cartieren (config.yaml, developer-access, PKI, Sessions)"},
+    {"done": true, "text": "3 login/logout-Zyklus: unauth Start OK; managed path braucht OIDC-Issuer -> lokaler Test-Issuer (self-signed CA + RS256) aufgebaut/vertraut; PKCE-Login gegen managed path -> BF-09 login works end-to-end, BF-10 session store location; whoami = managed-identity fail-closed (expected)"},
+    {"done": false, "text": "4 trust-prompts: neue CA hinzufuegen/widerrufen -- Antworten y/n/invalid/EOF + Wirkung auf naechsten login"},
+    {"done": false, "text": "5 Fehlerpfade: falscher issuer, Reachability-Verlust (Port zu), Abbruch mitten im PKCE-Flow -- Zustand in State-Dirs"},
+    {"done": false, "text": "6 mehrere Profile/Targets gemischt -- login gilt wo? (Profil- vs Target- vs Umgebungs-Scope)"},
+    {"done": false, "text": "7 Positive Befunde notieren"},
+    {"done": false, "text": "8 VM-Besanrein (docker compose down, saubere Zeile)"},
+    {"done": false, "text": "9 Evidence committen (origin/main), END posten"}
+  ]
+}
