@@ -163,3 +163,46 @@ func TestBindExplicitSelectionMutantSkipsResolver(t *testing.T) {
 		t.Fatalf("expected boundary rejection, got %v", err)
 	}
 }
+
+// TestBindExplicitSelectionBindsWithoutLocalIssuerDir is the BF-02 regression
+// guard: a genuinely installed, verified Core whose local base-CA directory
+// (<runtimeRoot>/service-access/issuer) is absent must still select — the
+// production path verifies the Core through its real Keycloak-bound discovery
+// identity (VerifyCoreConnection), never through a local base CA. An absent
+// local base CA is therefore recoverable, not a dead-end rejection.
+func TestBindExplicitSelectionBindsWithoutLocalIssuerDir(t *testing.T) {
+	targetName := "noissuer-conn"
+	if err := registerTestTargetConfig(t, targetName); err != nil {
+		t.Fatal(err)
+	}
+	_, runtimeRoot := bootstrapVerifiedTargetForConnectionTest(t, targetName)
+	// Remove ONLY the absent local base CA directory; the verified Core and its
+	// Keycloak core issuer remain on disk.
+	issuerDir := filepath.Join(runtimeRoot, "service-access", "issuer")
+	if err := os.RemoveAll(issuerDir); err != nil {
+		t.Fatalf("remove local issuer dir: %v", err)
+	}
+	if _, err := os.Stat(issuerDir); !os.IsNotExist(err) {
+		t.Fatalf("precondition: local issuer dir must be absent: %v", err)
+	}
+	if err := bindExplicitSelectionToConnection(context.Background(), targetName); err != nil {
+		t.Fatalf("verified Core without local issuer dir must still select (BF-02 regression): %v", err)
+	}
+}
+
+// TestBindExplicitSelectionFailsClosedOnAbsentCore keeps the separation: a
+// Target that holds no genuine, verified Core installation still fails closed
+// with a typed conflict and persists no selection.
+func TestBindExplicitSelectionFailsClosedOnAbsentCore(t *testing.T) {
+	targetName := "coreless-conn2"
+	if err := registerTestTargetConfig(t, targetName); err != nil {
+		t.Fatal(err)
+	}
+	err := bindExplicitSelectionToConnection(context.Background(), targetName)
+	if err == nil {
+		t.Fatal("target without a verified Core must fail closed")
+	}
+	if machine.Classify(err).Code != machine.ErrorConflict {
+		t.Fatalf("expected typed conflict rejection, got %v", err)
+	}
+}
