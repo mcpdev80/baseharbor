@@ -132,8 +132,11 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 		[]string{"demo", "--environment", "dev"}, &statusOutput); err != nil {
 		t.Fatalf("verified remote status CLI failed: %v", err)
 	}
-	if !strings.Contains(statusOutput.String(), "\"ready\": true") {
-		t.Fatalf("remote status CLI returned no confirmed READY result: %q", statusOutput.String())
+	var verifiedStatus struct {
+		Ready bool `json:"ready"`
+	}
+	if err := json.Unmarshal(statusOutput.Bytes(), &verifiedStatus); err != nil || !verifiedStatus.Ready {
+		t.Fatalf("remote status CLI returned no confirmed READY result: %q (%v)", statusOutput.String(), err)
 	}
 
 	for _, foreignTenant := range []string{"", "22222222-2222-4222-8222-222222222222"} {
