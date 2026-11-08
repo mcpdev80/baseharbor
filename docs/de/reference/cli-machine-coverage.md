@@ -34,6 +34,7 @@ Aktuelle Daten liefert `baha agent describe -o json` (`cli_coverage`). Nach Code
 | `baha app new` | semantisch | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantisch | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantisch | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
+| `baha app prune` | semantisch | CLI -o json / typed MCP result | baseharbor.app.prune |  |
 | `baha app restore` | semantisch | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | Darstellung |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantisch | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |

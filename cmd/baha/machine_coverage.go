@@ -109,7 +109,7 @@ var cliMachineOperations = map[string]string{
 	"baha app create": "app.create", "baha app init": "app.adopt", "baha init": "app.adopt",
 	"baha app runtime-identity rotate": "runtime-identity.rotate", "baha app runtime-identity revoke": "runtime-identity.revoke", "baha app tls update": "tls.update",
 	"baha trust status": "trust.status", "baha trust export": "trust.export", "baha trust install": "trust.install", "baha trust uninstall": "trust.uninstall",
-	"baha app down": "app.stop", "baha app preflight": "app.preflight",
+	"baha app down": "app.stop", "baha app prune": "app.prune", "baha app preflight": "app.preflight",
 	"baha app secret list": "secret.list", "baha app secret set": "secret.set", "baha app secret delete": "secret.delete", "baha app secret tls-set": "secret.tls-set",
 	"baha node add": "node.add", "baha node connect": "node.connect", "baha node list": "node.list", "baha node status": "node.status", "baha node disconnect": "node.disconnect",
 	"baha target create": "target.create", "baha target delete": "target.delete",
@@ -177,5 +177,6 @@ var cliSemanticModes = map[string]string{
 	"baha app init":        "New repository intent uses app.adopt; an existing repository uses app.configure. Interactive suggestions are presentation only.",
 	"baha app env":         "MCP exposes masked values only. --reveal and loading the protected local dotenv file are execution-host credential access and are explicitly excluded modes.",
 	"baha app creds":       "MCP exposes connection metadata without passwords or credential-bearing URIs; CLI credential reveal is operator-local and excluded from MCP.",
+	"baha app prune":       "Registry-only removal of a dangling deployment record whose source repository is gone; never loads source or runtime, and refuses when source is present or multiple records match.",
 	"baha dev credentials": "Ensure/reset/configuration use the shared authority. MCP returns username and protected file reference; CLI password display is an excluded operator-local mode.",
 }

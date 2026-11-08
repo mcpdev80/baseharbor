@@ -85,6 +85,7 @@ Die aktuelle vollständige Registry wird durch Quelltests mit der tatsächlichen
 | `baseharbor.runtime.stop` | `mutating` | true | true |
 | `baseharbor.runtime.restart` | `mutating` | true | true |
 | `baseharbor.app.list` | `read_only` | false | false |
+| `baseharbor.app.prune` | `destructive` | false | true |
 | `baseharbor.inspect` | `read_only` | false | false |
 | `baseharbor.workspace.list` | `read_only` | false | false |
 | `baseharbor.workspace.resolve` | `read_only` | false | false |
