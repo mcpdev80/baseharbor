@@ -26,25 +26,25 @@ const managementInstallationVersion = "baseharbor.management-installation/v1"
 // The server proves the configured installation and tenant after OIDC.
 type remoteConnectionProfile struct {
 	Version string `json:"version"`
-	Name string `json:"name"`
-	Core struct {
+	Name    string `json:"name"`
+	Core    struct {
 		InstallationID string `json:"installation_id"`
-		URL string `json:"url"`
+		URL            string `json:"url"`
 	} `json:"core"`
 	Trust struct {
-		CAPEM string `json:"ca_pem"`
+		CAPEM  string `json:"ca_pem"`
 		SHA256 string `json:"sha256"`
 	} `json:"trust"`
 	Targets []struct {
-		Name string `json:"name"`
-		TenantID string `json:"tenant_id"`
+		Name            string `json:"name"`
+		TenantID        string `json:"tenant_id"`
 		RuntimeProvider string `json:"runtime_provider"`
-		Scope string `json:"scope,omitempty"`
+		Scope           string `json:"scope,omitempty"`
 	} `json:"targets"`
 	Access *struct {
-		Issuer string `json:"issuer"`
-		ClientID string `json:"client_id"`
-		Scopes []string `json:"scopes"`
+		Issuer   string   `json:"issuer"`
+		ClientID string   `json:"client_id"`
+		Scopes   []string `json:"scopes"`
 	} `json:"access,omitempty"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
@@ -131,11 +131,11 @@ func verifyRemoteManagementConnection(ctx context.Context, target, runtime strin
 		return fmt.Errorf("remote Core authentication/identity verification failed (HTTP %d)", response.StatusCode)
 	}
 	var identity struct {
-		Version string `json:"version"`
+		Version        string `json:"version"`
 		InstallationID string `json:"installation_id"`
 		IdentityIssuer string `json:"identity_issuer"`
 		OperatorIssuer string `json:"operator_issuer"`
-		TenantID string `json:"tenant_id"`
+		TenantID       string `json:"tenant_id"`
 	}
 	decoded := json.NewDecoder(io.LimitReader(response.Body, 16*1024))
 	decoded.DisallowUnknownFields()
