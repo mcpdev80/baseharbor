@@ -200,7 +200,7 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		Status      *struct {
 			Target      string `json:"target"`
 			Application string `json:"application"`
-			Environment           string `json:"environment"`
+			Environment string `json:"environment"`
 			Ready       bool   `json:"ready"`
 		} `json:"status,omitempty"`
 	}
