@@ -402,7 +402,9 @@ func readPrompt(reader *bufio.Reader, out io.Writer, prompt string) (string, err
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	if errors.Is(err, io.EOF) && line == "" {
+	// EOF is cancellation even with buffered partial input. Otherwise Ctrl-D
+	// after a partial "yes" could inadvertently authorize a mutation.
+	if errors.Is(err, io.EOF) {
 		return "", io.EOF
 	}
 	return strings.TrimRight(line, "\r\n"), nil
