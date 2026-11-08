@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
@@ -54,9 +55,15 @@ func remoteApplicationStatus(ctx context.Context, target deployment.ResolvedTarg
 	if !json.Valid(result) {
 		return errors.New("remote Core status result is invalid JSON")
 	}
-	var formatted json.RawMessage
-	if err := json.Unmarshal(result, &formatted); err != nil {
-		return errors.New("remote Core status result cannot be decoded")
+	var observed application.StatusResult
+	if err := json.Unmarshal(result, &observed); err != nil ||
+		observed.ContractVersion != "v1" ||
+		observed.Target != target.Name || observed.Application != filtered[0] ||
+		observed.Environment != environment {
+		return errors.New("remote Core status response does not match the requested application authority")
 	}
-	return writeJSON(out, formatted)
+	if err := writeJSON(out, json.RawMessage(result)); err != nil {
+		return err
+	}
+	return applicationStatusCommandError(observed)
 }
