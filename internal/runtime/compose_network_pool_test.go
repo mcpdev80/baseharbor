@@ -10,8 +10,8 @@ import (
 
 func TestManagedNetworkPoolExhaustionReportsSafeRecovery(t *testing.T) {
 	for _, tc := range []struct {
-		name string
-		stderr string
+		name     string
+		stderr   string
 		recovery bool
 	}{
 		{
