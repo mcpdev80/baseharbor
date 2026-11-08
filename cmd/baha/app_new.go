@@ -34,7 +34,7 @@ func appNewCommand() *cli.Command {
 		Name:    "new",
 		Summary: "Create a new ecosystem-native application from a BaseHarbor contract",
 		Usage:   "baha app new [NAME] [--directory PARENT] [--stack go|nextjs|python|quarkus | --stack-profile NAME] [--emit-backstage --backstage-owner OWNER [--backstage-lifecycle LIFECYCLE]] [-e ENV|--environment ENV] [--http] [--sql] [--cache] [--key-value] [--document-db] [--queue] [--pubsub] [--stream] [--s3] [--secrets] [--require-secret NAME]... [--telemetry] [--all] [-o json|--output json]",
-		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
+		Long:    "Creates a normal ecosystem-native source repository plus baseharbor.yaml. Without arguments, guided setup requires an interactive terminal. Explicit NAME, --directory PARENT and deterministic flags work non-interactively, including with --no-input; piped input is not interpreted as wizard consent. The parent directory must already exist. Development integration is authoring-time only: generated applications use standard ecosystem libraries and do not depend on a BaseHarbor application framework.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 			if len(args) == 0 {
 				if noInput(ctx) || !readerIsTerminal(appNewInput) {
