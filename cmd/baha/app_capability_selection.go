@@ -103,7 +103,7 @@ func (m appCapabilitySelectionModel) Update(key string) (appCapabilitySelectionM
 		return m, true
 	}
 	switch strings.ToLower(key) {
-	case "up", "k":
+	case "up", "k", "b", "left":
 		if m.cursor > 0 {
 			m.cursor--
 		}
@@ -163,7 +163,7 @@ func (m appCapabilitySelectionModel) Requirements() []capability.Requirement {
 func (m appCapabilitySelectionModel) View() string {
 	var b strings.Builder
 	b.WriteString("What does your application need?\n")
-	b.WriteString("↑/↓ move · Space toggle · Enter confirm · no selection is OK\n\n")
+	b.WriteString("↑/↓ move · b/← previous row · Space toggle · Enter confirm · Esc cancel · no selection is OK\n\n")
 	needs := m.visibleNeeds()
 	for i, need := range needs {
 		pointer := " "
