@@ -318,19 +318,21 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 		// identity for edit/show/plan/destroy. This is the actionable
 		// alternative to the former opaque "environment selection required".
 		environments := make([]string, 0, len(matches))
+		byEnv := make(map[string][]string)
 		for _, record := range matches {
 			environments = append(environments, record.Identity.Environment)
+			byEnv[record.Identity.Environment] = append(byEnv[record.Identity.Environment], record.Identity.DeploymentID)
 		}
-		dupes := make([]string, 0, len(matches))
-		for _, record := range matches {
-			dupes = append(dupes, record.Identity.DeploymentID)
+		perEnvironment := make([]string, 0, len(byEnv))
+		for env, ids := range byEnv {
+			perEnvironment = append(perEnvironment, env+": "+strings.Join(ids, ", "))
 		}
 		return resolvedApplication{}, &machine.Error{
-			Code:      machine.ErrorOwnershipAmbiguous,
-			CauseCode: "application_name_ambiguous",
-			Message:   fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", name, target.Name, strings.Join(environments, ", ")),
-			Resource:  target.Name + "/" + name,
-			Next:      "Select one deployment by uuid: baha app " + command + " --uuid <deployment-id>, or by a distinct environment with -e/--environment.",
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "application_name_ambiguous",
+			Message:     fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", name, target.Name, strings.Join(perEnvironment, "; ")),
+			Resource:    target.Name + "/" + name,
+			Next:        "Select one deployment by uuid: baha app " + command + " --uuid <deployment-id>, or by a distinct environment with -e/--environment.",
 			Remediation: "operator_review",
 		}
 	}
