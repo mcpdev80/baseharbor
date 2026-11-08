@@ -111,6 +111,88 @@ func TestTrustUninstallWizardDeclinePreservesOwnedState(t *testing.T) {
 	}
 }
 
+// TestTrustUninstallPromptUnterminatedAffirmativeEOFRejects covers the BF-26
+// restbefund: an aborted affirmative such as "y" WITHOUT a trailing newline
+// yields bufio Reader.ReadString '\n' as ("y", io.EOF). The reader must treat
+// that EOF as a clean cancel, never as an approval, so only complete lines
+// count (karte-138). It must not remove the owned anchor.
+func TestTrustUninstallPromptUnterminatedAffirmativeEOFRejects(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	configureTestTarget(t)
+	record := `{"version":1,"anchors":[{"fingerprint":"abcdef","backend":"linux-update-ca-certificates","path":"/tmp/nonexistent-ca-test.crt","installed_at":"2026-10-08T12:00:00Z"}]}`
+	if err := os.WriteFile(filepath.Join(root, "host-trust.json"), []byte(record), 0600); err != nil {
+		t.Fatal(err)
+	}
+	saved := guidedTrustInput
+	guidedTrustInput = strings.NewReader("y") // no newline -> EOF with partial "y"
+	defer func() { guidedTrustInput = saved }()
+	var out, errOut bytes.Buffer
+	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
+	}
+	if !strings.Contains(out.String(), "Host trust unchanged.") {
+		t.Fatalf("missing clean EOF abort notice: %s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "host-trust.json")); err != nil {
+		t.Fatalf("aborted affirmative removed host trust ownership: %v", err)
+	}
+}
+
+// TestTrustUninstallPromptEOFRejects covers reines EOF / Strg-D at the prompt:
+// the reader must cancel cleanly and keep the owned anchor.
+func TestTrustUninstallPromptEOFRejects(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	configureTestTarget(t)
+	record := `{"version":1,"anchors":[{"fingerprint":"abcdef","backend":"linux-update-ca-certificates","path":"/tmp/nonexistent-ca-test.crt","installed_at":"2026-10-08T12:00:00Z"}]}`
+	if err := os.WriteFile(filepath.Join(root, "host-trust.json"), []byte(record), 0600); err != nil {
+		t.Fatal(err)
+	}
+	saved := guidedTrustInput
+	guidedTrustInput = strings.NewReader("") // immediate EOF
+	defer func() { guidedTrustInput = saved }()
+	var out, errOut bytes.Buffer
+	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+		t.Fatalf("EOF surfaced raw read error instead of clean abort: %v", err)
+	}
+	if !strings.Contains(out.String(), "Host trust unchanged.") {
+		t.Fatalf("missing clean EOF abort notice: %s", out.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "host-trust.json")); err != nil {
+		t.Fatalf("EOF abort mutated host trust ownership: %v", err)
+	}
+}
+
+// TestTrustUninstallPromptCompleteAffirmativeApproves covers the happy path:
+// a complete "y\n" line authorizes the uninstall and removes the owned anchor.
+func TestTrustUninstallPromptCompleteAffirmativeApproves(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("BASEHARBOR_STATE_DIR", root)
+	configureTestTarget(t)
+	// A complete "y\n" line authorizes the uninstall and removes the owned anchor.
+	// The fingerprint must be a valid 64-char hex string so the anchor survives
+	// the ownership/fingerprint validation and actually gets removed.
+	// The fingerprint must be a valid 64-char hex string so the anchor survives
+	// the ownership/fingerprint validation and actually gets removed. The
+	// recorded path must equal baseharbor-<first 16 of fingerprint>.crt under the
+	// system anchor dir, else RemoveOwnedDetailed retains it (PRESERVED).
+	record := `{"version":1,"anchors":[{"fingerprint":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","backend":"linux-update-ca-certificates","path":"/usr/local/share/ca-certificates/baseharbor-0123456789abcdef.crt","installed_at":"2026-10-08T12:00:00Z"}]}`
+	if err := os.WriteFile(filepath.Join(root, "host-trust.json"), []byte(record), 0600); err != nil {
+		t.Fatal(err)
+	}
+	saved := guidedTrustInput
+	guidedTrustInput = strings.NewReader("y\n") // complete line -> approved
+	defer func() { guidedTrustInput = saved }()
+	var out, errOut bytes.Buffer
+	if err := trustUninstallCommand().Run(context.Background(), nil, &out, &errOut); err != nil {
+		t.Fatalf("complete affirmative should approve: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "host-trust.json")); !os.IsNotExist(err) {
+		t.Fatalf("complete affirmative should have removed host trust ownership: %v", err)
+	}
+}
+
 // TestTrustUninstallPromptEOFAbortsCleanly covers BF-26: an EOF/Strg-D at the
 // [y/N]-removal prompt must abort cleanly with "Host trust unchanged." (nil
 // error) rather than surfacing a raw read error. This mirrors the install-path
