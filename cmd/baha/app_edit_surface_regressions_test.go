@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 )
 
@@ -30,5 +33,21 @@ func TestAppNewDocumentsNonInteractiveExplicitArguments(t *testing.T) {
 	if !strings.Contains(cmd.Long, "non-interactive") ||
 		!strings.Contains(cmd.Long, "no-input") {
 		t.Fatalf("help must distinguish guided TTY from explicit non-interactive creation: %s", cmd.Long)
+	}
+}
+
+func TestExistingManifestRoutesInitToSingleRuntimeConfigurationPass(t *testing.T) {
+	root := t.TempDir()
+	present, err := repositoryInitHasExistingManifest(root)
+	if err != nil || present {
+		t.Fatalf("empty repository incorrectly contains a manifest: %v, %v", present, err)
+	}
+	manifest := filepath.Join(root, application.RepositoryManifestName)
+	if err := os.WriteFile(manifest, []byte("schema: baseharbor/v1\\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	present, err = repositoryInitHasExistingManifest(root)
+	if err != nil || !present {
+		t.Fatalf("existing manifest must bypass contract re-generation: %v, %v", present, err)
 	}
 }
