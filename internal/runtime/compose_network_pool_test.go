@@ -15,18 +15,18 @@ func TestManagedNetworkPoolExhaustionReportsSafeRecovery(t *testing.T) {
 		recovery bool
 	}{
 		{
-			name: "docker-pool-exhausted",
-			stderr: "all predefined address pools have been fully subnetted",
+			name:     "docker-pool-exhausted",
+			stderr:   "all predefined address pools have been fully subnetted",
 			recovery: true,
 		},
 		{
-			name: "docker-overlap",
-			stderr: "could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network",
+			name:     "docker-overlap",
+			stderr:   "could not find an available, non-overlapping IPv4 address pool among the defaults to assign to the network",
 			recovery: true,
 		},
 		{
-			name: "unrelated-permission-denied",
-			stderr: "permission denied",
+			name:     "unrelated-permission-denied",
+			stderr:   "permission denied",
 			recovery: false,
 		},
 	} {
