@@ -26,9 +26,12 @@ func publishBaseCARevocations(t *testing.T, issuerDir string) error {
 	return iss.Revoke(context.Background(), "02")
 }
 
-// verifiedCoreForTarget registers a genuine verified Core with a published
-// base-CA CRL at its target runtime root, returning the loaded State and the
-// runtime root.
+// verifiedCoreForTarget registers a genuine verified Core with a materialized
+// Keycloak core issuer under the plain target-state root (providers/keycloak/
+// shared/core), returning the loaded State and the runtime root. The real Core
+// keeps its management-connection identity at its Keycloak discovery issuer, so
+// use/activate verifies the genuine Core identity from disk — NOT a local base
+// CA (which the real Core never materializes).
 func verifiedCoreForTarget(t *testing.T, name string) (coreinstallation.State, string) {
 	t.Helper()
 	stateRoot, err := deployment.TargetStateRoot(name)
@@ -52,13 +55,7 @@ func verifiedCoreForTarget(t *testing.T, name string) (coreinstallation.State, s
 			t.Fatal(err)
 		}
 	}
-	issuerDir := filepath.Join(runtimeRoot, "service-access", "issuer")
-	if _, err := serviceaccess.EnsureLocalIssuer(issuerDir); err != nil {
-		t.Fatal(err)
-	}
-	if err := publishBaseCARevocations(t, issuerDir); err != nil {
-		t.Fatal(err)
-	}
+	materializeKeycloakCoreIssuerForTarget(t, stateRoot, "https://identity.localhost:8443/realms/baseharbor")
 	state, err := coreinstallation.Load(runtimeRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -85,18 +82,16 @@ func TestUseTargetCommandRegistered(t *testing.T) {
 
 func TestUseTargetPersistsSelectionAndRejectsUnknownTarget(t *testing.T) {
 	target := configureTestTarget(t)
-	// The shared fixture installs a genuine verified Core; publish its base-CA
-	// CRL so the management connection verifies as live on the use/target path.
-	runtimeRoot, err := installationRuntimeRoot(t, target.Name)
+	// The shared fixture installs a genuine verified Core; materialize its
+	// Keycloak core issuer so the management connection verifies as live on the
+	// use/target path from the Core's real discovery issuer (disk), not a local
+	// base CA. materializeKeycloakCoreIssuerForTarget takes the plain target
+	// state root (deployment.TargetStateRoot).
+	stateRoot, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
-	issuerDir := filepath.Join(runtimeRoot, "service-access", "issuer")
-	if _, err := serviceaccess.EnsureLocalIssuer(issuerDir); err != nil {
-		t.Fatal(err)
-	} else if err := publishBaseCARevocations(t, issuerDir); err != nil {
-		t.Fatal(err)
-	}
+	materializeKeycloakCoreIssuerForTarget(t, stateRoot, "https://identity.localhost:8443/realms/baseharbor")
 	var out, errOut bytes.Buffer
 	command := useTargetCommand()
 	if err := command.Run(context.Background(), []string{target.Name}, &out, &errOut); err != nil {
