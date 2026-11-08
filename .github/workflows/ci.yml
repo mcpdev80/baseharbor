@@ -23,71 +23,6 @@ permissions:
   contents: read
 
 jobs:
-  pr_draft_focused:
-    name: PR · Draft focused checks
-    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Test only changed Go packages and CI routing
-        shell: bash
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
-          mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA")
-          go_files=()
-          packages=()
-          module_changed=false
-          ci_changed=false
-          for file in "${changed[@]}"; do
-            case "$file" in
-              go.mod|go.sum) module_changed=true ;;
-              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
-                ci_changed=true ;;
-            esac
-            case "$file" in
-              *.go)
-                go_files+=("$file")
-                directory="${file%/*}"
-                if [ "$directory" = "$file" ]; then
-                  directory="."
-                fi
-                packages+=("./$directory")
-                ;;
-            esac
-          done
-          if [ "${#go_files[@]}" -gt 0 ]; then
-            unformatted="$(gofmt -l "${go_files[@]}")"
-            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
-          fi
-          if [ "$module_changed" = true ]; then
-            go build ./...
-          elif [ "${#packages[@]}" -gt 0 ]; then
-            mapfile -t selected < <(printf '%s\n' "${packages[@]}" | sort -u)
-            go test "${selected[@]}" -count=1
-          fi
-          if [ "$ci_changed" = true ]; then
-            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
-            python3 scripts/test_pr_incremental_reuse.py
-            python3 scripts/test_pr_required_final.py
-            python3 scripts/test_ci_check_routes.py
-            python3 scripts/test_pr_gate_plan.py
-          fi
-          echo "Draft checks completed for changed sources." >> "$GITHUB_STEP_SUMMARY"
-
   workflow_policy:
     name: Workflow policy
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
@@ -1223,3 +1158,68 @@ jobs:
               for name, job in json.loads(os.environ["CI_NEEDS"]).items():
                   out.write(f"| {name} | {job['result']} |\n")
           PYTHON
+
+  pr_draft_focused:
+    name: PR · Draft focused checks
+    if: github.event_name == 'pull_request' && github.base_ref == 'develop' && github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test only changed Go packages and CI routing
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA"
+          mapfile -d '' -t changed < <(git diff --name-only -z --diff-filter=ACMRT "$BASE_SHA" "$HEAD_SHA")
+          go_files=()
+          packages=()
+          module_changed=false
+          ci_changed=false
+          for file in "${changed[@]}"; do
+            case "$file" in
+              go.mod|go.sum) module_changed=true ;;
+              .github/workflows/*|scripts/pr-*.py|scripts/test_pr_*.py|scripts/ci-*.sh|scripts/test_ci_*.py)
+                ci_changed=true ;;
+            esac
+            case "$file" in
+              *.go)
+                go_files+=("$file")
+                directory="${file%/*}"
+                if [ "$directory" = "$file" ]; then
+                  directory="."
+                fi
+                packages+=("./$directory")
+                ;;
+            esac
+          done
+          if [ "${#go_files[@]}" -gt 0 ]; then
+            unformatted="$(gofmt -l "${go_files[@]}")"
+            test -z "$unformatted" || { printf 'Unformatted Go source: %s\n' "$unformatted" >&2; exit 1; }
+          fi
+          if [ "$module_changed" = true ]; then
+            go build ./...
+          elif [ "${#packages[@]}" -gt 0 ]; then
+            mapfile -t selected < <(printf '%s\n' "${packages[@]}" | sort -u)
+            go test "${selected[@]}" -count=1
+          fi
+          if [ "$ci_changed" = true ]; then
+            go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+            python3 scripts/test_pr_incremental_reuse.py
+            python3 scripts/test_pr_required_final.py
+            python3 scripts/test_ci_check_routes.py
+            python3 scripts/test_pr_gate_plan.py
+          fi
+          echo "Draft checks completed for changed sources." >> "$GITHUB_STEP_SUMMARY"
