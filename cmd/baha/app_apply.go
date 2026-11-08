@@ -39,6 +39,13 @@ func appApplyCommand(store application.Store) *cli.Command {
 		Usage:   "baha app apply [NAME] [--skip-memory-preflight] [--confirm-candidate <digest>]",
 		Long:    "Runs plan, preflight, apply and verification. Without NAME it resolves the nearest baseharbor.yaml in the current repository, synchronizes a protected internal copy for runtime services, and treats the repository manifest as the source of truth. When an unambiguous application Compose workload exists, BaseHarbor generates a protected override, attaches it to the application backend network when managed backend services exist and injects container-routable native service URLs. Workload-only applications remain valid without inventing a managed database or cache. Declared secrets.required entries are readiness gates. Explicit secrets.required[].generate entries are created only when missing and are stored directly in OpenBao without printing their values. Managed-secret workloads start only after the per-application mTLS broker has proven app-scoped OpenBao readiness. A repository-owned candidate submission is bound only on explicit operator/automation confirmation: the apply prints the candidate's canonical content hash and requires --confirm-candidate with that exact hash before writing any deployment state; without the flag the apply fails closed.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				return remoteApplicationMutation(ctx, target, "apply", args, out)
+			}
 			filtered, skip := stripMemoryPreflightOverride(args)
 			ctx = withMemoryPreflightOverride(ctx, skip)
 			confirm, rest := stripConfirmCandidateOverride(filtered)
