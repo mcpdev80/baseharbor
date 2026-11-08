@@ -43,7 +43,7 @@ func routeRepositoryRuntimeUp(ctx context.Context, in io.Reader, out, errOut io.
 			return true, err
 		}
 	}
-	resolved, err := resolveApplication(ctx, application.DefaultStore(), nil, "up")
+	resolved, err := resolveApplication(ctx, application.DefaultStore(), upNameArgs(opts.Name), "up")
 	if err != nil {
 		return true, err
 	}

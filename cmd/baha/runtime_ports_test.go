@@ -298,3 +298,40 @@ func TestParseRuntimeUpOptionsAcceptsEnvironmentEqualsForm(t *testing.T) {
 		t.Fatalf("environment = %q", opts.Environment)
 	}
 }
+
+func TestParseRuntimeUpOptionsAcceptsOptionalName(t *testing.T) {
+	opts, err := parseRuntimeUpOptions([]string{"--yes", "my-deployment", "--skip-memory-preflight"})
+	if err != nil {
+		t.Fatalf("up NAME must accept the optional positional NAME: %v", err)
+	}
+	if opts.Name != "my-deployment" {
+		t.Fatalf("Name = %q, want my-deployment", opts.Name)
+	}
+}
+
+func TestParseRuntimeUpOptionsRejectsSecondName(t *testing.T) {
+	if _, err := parseRuntimeUpOptions([]string{"one", "two"}); err == nil {
+		t.Fatal("expected at-most-one NAME error")
+	}
+}
+
+// TestParseUpParsesIdenticalToAppUpEnforces the documented argument surface:
+// the top-level 'baha up' alias must accept the same optional NAME grammar as
+// 'baha app up'. A divergence here is the bug this task fixes.
+func TestParseUpParsesIdenticalToAppUpEnforcesParity(t *testing.T) {
+	grammar := []string{"my-deployment", "--yes", "--skip-memory-preflight"}
+	upOpts, upErr := parseRuntimeUpOptions(grammar)
+	appOpts, appErr := parseAppUpOptions(grammar)
+	if (upErr == nil) != (appErr == nil) {
+		t.Fatalf("up/app-up parse divergence: upErr=%v appErr=%v", upErr, appErr)
+	}
+	if upOpts.Name != appOpts.Name {
+		t.Fatalf("NAME mismatch: up.Name=%q app-up.Name=%q", upOpts.Name, appOpts.Name)
+	}
+	if upOpts.Name != "my-deployment" {
+		t.Fatalf("up.Name = %q, want my-deployment", upOpts.Name)
+	}
+	if upOpts.Yes != appOpts.Yes || upOpts.SkipMemoryPreflight != appOpts.SkipMemoryPreflight {
+		t.Fatalf("flag mismatch: up.Name=%q app-up.Name=%q", upOpts.Name, appOpts.Name)
+	}
+}
