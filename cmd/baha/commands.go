@@ -44,6 +44,7 @@ func rootCommand() *cli.Command {
 			Name:    "list",
 			Summary: "List managed applications on the selected Target",
 			Usage:   "baha list [options]",
+			Long:    "Lists applications on the selected Target only. With multiple configured Targets and no effective selection, listing deliberately fails closed rather than mixing tenants or deployments. Run 'baha target list', then 'baha target activate NAME' (or set BASEHARBOR_TARGET) and retry.",
 			Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
 				for _, child := range appCmd.Children {
 					if child.Name == "list" && child.Run != nil {
