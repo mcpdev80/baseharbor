@@ -1,6 +1,4 @@
-// Package onboardingbundle describes a short-lived, recipient-bound invitation
-// exported by an already authorized Core operator. It never carries an admin
-// password, TLS private key, or persistent Core credential.
+// Package onboardingbundle defines a strict portable one-use workstation invitation.
 package onboardingbundle
 
 import (
@@ -23,31 +21,9 @@ import (
 )
 
 const Contract = "baseharbor.workstation-onboard/v1"
-var coreInstallationUUID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}// Package onboardingbundle describes a short-lived, recipient-bound invitation
-// exported by an already authorized Core operator. It never carries an admin
-// password, TLS private key, or persistent Core credential.
-package onboardingbundle
 
-import (
-	"bytes"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
-	"errors"
-	"fmt"
-	"io"
-	"net"
-	"net/url"
-	"os"
-	"path/filepath"
-	"regexp"
-	"strings"
-	"time"
+var coreInstallationUUID = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
-	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
-)
-
-)
 const MaxBytes int64 = 64 << 10
 
 var ErrInvalid = errors.New("invalid or expired workstation onboarding bundle")
