@@ -246,7 +246,7 @@ func targetCommand() *cli.Command {
 			{
 				Name:    "create",
 				Summary: "Create a deployment target",
-				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
+				Usage:   "baha target create NAME --runtime-provider PROVIDER --access ACCESS --access-provider PROVIDER --reference REFERENCE [--scope SCOPE] [--tenant-id UUID] [--default] [--docker-endpoint SOCKET | --docker-context CONTEXT] [--docker-mode rootless|rootful]; baha target create NAME --from-recovery PATH",
 				Run:     createTarget,
 			},
 			{
@@ -486,11 +486,11 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		fmt.Fprintf(out, "Target %s definition restored; live access and authentication remain to be verified. Activate it explicitly when selection is blocked.\n", name)
 		return nil
 	}
-	var runtimeProvider, accessProvider, accessName, reference, scope, dockerEndpoint, dockerContext, dockerMode string
+	var runtimeProvider, accessProvider, accessName, reference, scope, tenantID, dockerEndpoint, dockerContext, dockerMode string
 	makeDefault := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
-		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--docker-endpoint", "--docker-context", "--docker-mode":
+		case "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--docker-endpoint", "--docker-context", "--docker-mode":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
 				return usageError(args[i]+" requires a value", "Run 'baha target create --help' for usage.")
 			}
@@ -507,6 +507,8 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 				reference = value
 			case "--scope":
 				scope = value
+			case "--tenant-id":
+				tenantID = value
 			case "--docker-endpoint":
 				dockerEndpoint = value
 			case "--docker-context":
@@ -517,7 +519,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		case "--default":
 			makeDefault = true
 		default:
-			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
+			return unknownOptionUsage("baha target create", args[i], "--provider", "--runtime-provider", "--access-provider", "--access", "--reference", "--scope", "--tenant-id", "--default", "--docker-endpoint", "--docker-context", "--docker-mode")
 		}
 	}
 	if runtimeProvider == "" || accessName == "" || reference == "" {
@@ -530,7 +532,7 @@ func createTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 			return usageError("non-local target access requires --access-provider", "Example: baha target create docker-remote --runtime-provider docker --access node-a --access-provider baseharbor-node-connector --reference node-a")
 		}
 	}
-	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
+	result, err := createTargetDefinition(ctx, machineTargetCreateInput{Name: name, RuntimeProvider: runtimeProvider, AccessProvider: accessProvider, Access: accessName, Reference: reference, Scope: scope, TenantID: tenantID, Default: makeDefault, DockerEndpoint: dockerEndpoint, DockerContext: dockerContext, DockerMode: dockerMode})
 	if err != nil {
 		return err
 	}
