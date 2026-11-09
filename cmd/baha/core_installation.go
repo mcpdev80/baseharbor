@@ -66,7 +66,7 @@ func installCore(ctx context.Context, in io.Reader, out io.Writer, opts runtimeU
 	if err != nil {
 		return coreinstallation.State{}, err
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: dataRoot})
+	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: dataRoot}, false)
 	if err != nil {
 		return coreinstallation.State{}, err
 	}

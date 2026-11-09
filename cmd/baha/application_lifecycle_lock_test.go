@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -188,11 +188,13 @@ func TestTargetSelectionMutationRejectsSecondProcess(t *testing.T) {
 	}
 }
 
-// TestSharedConsumersSerializeOnTargetOwner is the shared-consumer conflict
-// cell: two consumers entering the real production lifecycle lock on one
-// Target concurrently cannot both pass; the second observes the active-owner
-// error instead of running in parallel, and is admitted once the first done.
-func TestSharedConsumersSerializeOnTargetOwner(t *testing.T) {
+// TestSharedConsumersSerializeOnAppOwner is the per-app critical-section cell:
+// two writers to the SAME application on one Target never hold the lock at the
+// same instant (the critical section is mutually exclusive), and the second is
+// admitted once the first releases. The CLI retries on contention (bounded,
+// destroy-priority), so the assertion is mutual exclusion of the critical
+// section, not an immediate fail-fast: two overlapping holders must not coexist.
+func TestSharedConsumersSerializeOnAppOwner(t *testing.T) {
 	target := configureTestTarget(t)
 	root, err := deployment.TargetStateRoot(target.Name)
 	if err != nil {
@@ -201,36 +203,313 @@ func TestSharedConsumersSerializeOnTargetOwner(t *testing.T) {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	hold := func() error {
-		unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root})
-		if err != nil {
-			return err
+	scope := "shared-app"
+
+	var held int32
+	var maxConcurrent int32
+	count := func() {
+		n := atomic.AddInt32(&held, 1)
+		for {
+			old := atomic.LoadInt32(&maxConcurrent)
+			if n <= old || atomic.CompareAndSwapInt32(&maxConcurrent, old, n) {
+				break
+			}
 		}
-		defer unlock()
-		time.Sleep(150 * time.Millisecond)
-		return nil
+	}
+	release := func() { _ = atomic.AddInt32(&held, -1) }
+
+	const iters = 25
+	done := make(chan error, iters)
+	for i := 0; i < iters; i++ {
+		go func() {
+			unlock, herr := lockApplicationTargetLifecycle(resolvedApplication{
+				Target:             target,
+				TargetStateRoot:    root,
+				DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: scope},
+				Manifest:           application.New(scope, "dev", false, false, false),
+			}, false)
+			if herr != nil {
+				done <- herr
+				return
+			}
+			count()
+			time.Sleep(5 * time.Millisecond)
+			release()
+			unlock()
+			done <- nil
+		}()
+	}
+	for i := 0; i < iters; i++ {
+		if err := <-done; err != nil {
+			t.Fatalf("same-app writer failed to acquire (retry loop): %v", err)
+		}
+	}
+	if maxConcurrent > 1 {
+		t.Fatalf("same-app critical section not mutually exclusive: maxConcurrent=%d", maxConcurrent)
+	}
+}
+
+// TestProductionTargetWideMutationCannotOverlapLocalAppLifecycle is the F3
+// production regression in direction 1: a local app holds its per-app lock and a
+// REAL target-wide lifecycle mutation through the production seam
+// (lockApplicationTargetLifecycle, the remote/destroy/stop else-branch that now
+// routes through coreinstallation.AcquireTargetWideLifecycleLock) must fail
+// closed — it must not begin while the app lifecycle is held.
+func TestProductionTargetWideMutationCannotOverlapLocalAppLifecycle(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
 	}
 
-	var wg sync.WaitGroup
-	firstDone := make(chan error, 1)
-	wg.Add(1)
+	// A local app holds its per-app lock through the production per-app path.
+	appUnlock, aerr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-lived"},
+		Manifest:           application.New("app-lived", "dev", false, false, false),
+	}, false)
+	if aerr != nil {
+		t.Fatalf("local app acquire: %v", aerr)
+	}
+	t.Cleanup(appUnlock)
+
+	// A real target-wide mutation through the production seam (destroy/remote
+	// else-branch) must fail closed while the app lifecycle is held.
+	wideUnlock, werr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{}, // no app id => target-wide
+		Manifest:           application.New("ghost", "dev", false, false, false),
+	}, true)
+	if werr == nil {
+		wideUnlock()
+		t.Fatal("target-wide mutation began while a local app lifecycle was held")
+	}
+}
+
+// TestProductionAppCannotBeginDuringTargetWideScan is the F3 production
+// regression in the opposite direction: while the production target-wide path
+// holds .installation.lock to run its scan, a concurrent local app must not be
+// able to create its per-app dotfile (it fails on the held target-wide lock).
+func TestProductionAppCannotBeginDuringTargetWideScan(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// The target-wide mutation holds .installation.lock (its scan window).
+	wideUnlock, werr := coreinstallation.AcquireTargetWideLifecycleLock(root)
+	if werr != nil {
+		t.Fatalf("target-wide acquire: %v", werr)
+	}
+	// While the scan holds the lock, a local app cannot begin its lifecycle.
+	// The per-app primitive AcquireAppLifecycleLock takes the same
+	// .installation.lock critical section and must fail fast on flock contention
+	// (not begin during the held scan).
+	appUnlock, aerr := coreinstallation.AcquireAppLifecycleLock(root, "app-late")
+	if aerr == nil {
+		appUnlock()
+		t.Fatal("a local app began its lifecycle during a held target-wide scan")
+	}
+
+	// Once the scan releases, the app can begin normally (the critical section
+	// is open again and no dotfile is held).
+	wideUnlock()
+	appUnlock, aerr = coreinstallation.AcquireAppLifecycleLock(root, "app-late")
+	if aerr != nil {
+		t.Fatalf("local app could not begin after the target-wide scan released: %v", aerr)
+	}
+	appUnlock()
+}
+
+// TestProductionTargetWideScanFailsClosedOnScanError is the F3 fail-closed
+// requirement: a target-wide scan over a corrupt/unreadable deployments namespace
+// must fail closed, never treat the error as an empty scan. This verifies the
+// production AcquireTargetWideLifecycleLock path directly.
+func TestProductionTargetWideScanFailsClosedOnScanError(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Create a deployments dir we can make unreadable (non-root only). If the
+	// process is root, skip: root bypasses permission checks and the failure
+	// cannot be reproduced.
+	deploymentsDir := filepath.Join(root, "deployments")
+	if err := os.MkdirAll(deploymentsDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses directory permission checks; cannot reproduce a scan error")
+	}
+	if err := os.Chmod(deploymentsDir, 0000); err != nil {
+		t.Skipf("cannot chmod deployments dir: %v", err)
+	}
+	defer os.Chmod(deploymentsDir, 0700)
+
+	if _, serr := coreinstallation.AcquireTargetWideLifecycleLock(root); serr == nil {
+		t.Fatal("target-wide scan did not fail closed over an unreadable deployments namespace")
+	}
+}
+
+// TestIndependentAppsDoNotSerializeOnSharedTarget is the per-app scope cell:
+// two INDEPENDENT service-less applications that merely share one Target run in
+// parallel. This PROVES the serialization wall is per-app, not per-target:
+// beta's acquisition signal must fire while alpha is still CONFIRMED holding its
+// own per-app lock, under a deadline shorter than alpha's hold. If both IDs were
+// routed through one target-wide lock, beta would block until alpha released and
+// this assertion would fail.
+func TestIndependentAppsDoNotSerializeOnSharedTarget(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// alpha holds its own per-app lock until cleanup releases it explicitly.
+	alphaUnlock, aerr := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "alpha"},
+		Manifest:           application.New("alpha", "dev", false, false, false),
+	}, false)
+	if aerr != nil {
+		t.Fatalf("alpha holder failed to acquire: %v", aerr)
+	}
+	t.Cleanup(alphaUnlock)
+
+	// beta acquires in a goroutine; its acquisition must complete while alpha is
+	// still held (alpha is released only by cleanup after this test body).
+	betaAcquired := make(chan struct{})
 	go func() {
-		defer wg.Done()
-		firstDone <- hold()
+		betaUnlock, berr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "beta"},
+			Manifest:           application.New("beta", "dev", false, false, false),
+		}, false)
+		if berr != nil {
+			t.Errorf("independent app beta was blocked by a DIFFERENT app on the same target (err=%v); independent apps must not serialize", berr)
+			close(betaAcquired)
+			return
+		}
+		betaUnlock()
+		close(betaAcquired)
 	}()
-	time.Sleep(40 * time.Millisecond)
-	concurrent := hold()
-	if concurrent == nil || !strings.Contains(concurrent.Error(), "Target application lifecycle is active") {
-		wg.Wait()
-		t.Fatalf("second consumer entered the Target owner concurrently (err=%v); shared changes are not serialized", concurrent)
+
+	// beta must be admitted WHILE alpha is still held: the acquire signal fires
+	// under a short deadline that is far shorter than any serial hand-off would
+	// allow. If beta had blocked on a target-wide lock until alpha released,
+	// this would time out and fail.
+	select {
+	case <-betaAcquired:
+	case <-time.After(3 * time.Second):
+		t.Fatal("beta did not acquire while alpha still held its per-app lock; independent apps serialized by a target-wide lock")
 	}
-	if err := <-firstDone; err != nil {
-		t.Fatalf("first production consumer failed: %v", err)
+}
+
+// TestDestroyNotStarvedByBoundedRetry proves fairness under the SAME per-app
+// key: a long-lived up-holder on deployment ID "app" and a destroy on the SAME
+// ID contend for one per-app lock file. The destroy (allowPriority) must receive
+// a real contention result (a held lock, not an immediate grant) BEFORE the
+// holder releases, then win within the documented finite bound. This proves the
+// bounded, destroy-priority policy, not merely that destroy and up use different
+// keys.
+func TestDestroyNotStarvedByBoundedRetry(t *testing.T) {
+	target := configureTestTarget(t)
+	root, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
 	}
-	wg.Wait()
-	// Once the first consumer completed, the same production entry admits it.
-	if err := waitWhileBlocked(hold, "Target application lifecycle is active", 2*time.Second); err != nil {
-		t.Fatalf("Target owner unavailable after the first consumer completed: %v", err)
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Long-lived up-holder on the SAME deployment ID the destroy will target.
+	holderDone := make(chan struct{})
+	go func() {
+		unlock, herr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app"},
+			Manifest:           application.New("app", "dev", false, false, false),
+		}, false)
+		if herr != nil {
+			t.Errorf("up holder failed: %v", herr)
+			close(holderDone)
+			return
+		}
+		time.Sleep(300 * time.Millisecond)
+		unlock()
+		close(holderDone)
+	}()
+
+	// Let the holder establish the lock before the destroy contends.
+	select {
+	case <-holderDone:
+		t.Fatal("holder exited before destroy started")
+	case <-time.After(120 * time.Millisecond):
+	}
+
+	// The destroy contends on the SAME per-app key in a goroutine and reports
+	// whether it observed a held lock (contention) before the holder released.
+	destroyContended := make(chan bool, 1)
+	destroyAcquired := make(chan struct{})
+	go func() {
+		// Probe the per-app lock directly: while the holder still owns it, the
+		// non-blocking acquisition returns a contention error. This proves the
+		// destroy contends for the SAME per-app key and observes the held lock.
+		contented := false
+		if _, perr := coreinstallation.AcquireAppLifecycleLock(root, "app"); perr != nil {
+			contented = true
+		}
+		destroyContended <- contented
+
+		start := time.Now()
+		destroyUnlock, derr := lockApplicationTargetLifecycle(resolvedApplication{
+			Target:             target,
+			TargetStateRoot:    root,
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app"},
+			Manifest:           application.New("app", "dev", false, false, false),
+		}, true) // destroy takes priority under the bounded policy
+		elapsed := time.Since(start)
+		if derr != nil {
+			t.Errorf("destroy failed to acquire within the bounded window (err=%v, elapsed=%v)", derr, elapsed)
+			close(destroyAcquired)
+			return
+		}
+		if elapsed > 5*time.Second {
+			t.Errorf("destroy took too long (%v) after holder release; fairness bound violated", elapsed)
+		}
+		destroyUnlock()
+		close(destroyAcquired)
+	}()
+
+	// While the destroy contends, the holder is still running (releases at ~300ms,
+	// we are at ~120ms). The destroy must observe a held lock: it cannot acquire
+	// the same per-app lock the holder still owns. Wait past the holder release so
+	// the destroy can win within the finite bound, and confirm it was contented.
+	select {
+	case contented := <-destroyContended:
+		if !contented {
+			t.Fatal("destroy did not observe contention on the same per-app key")
+		}
+	case <-time.After(600 * time.Millisecond):
+	}
+	select {
+	case <-destroyAcquired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("destroy never acquired within the bounded window")
 	}
 }
 
@@ -251,15 +530,17 @@ func TestTargetLifecycleLockRejectsSecondProcess(t *testing.T) {
 			os.Exit(4)
 		}
 		unlock, err := lockApplicationTargetLifecycle(resolvedApplication{
-			Target:          deployment.ResolvedTarget{Name: "docker-dev", RuntimeProvider: "docker", AccessProvider: "local", AccessReference: "local", Scope: "local"},
-			TargetStateRoot: root,
-		})
+			Target:             deployment.ResolvedTarget{Name: "docker-dev", RuntimeProvider: "docker", AccessProvider: "local", AccessReference: "local", Scope: "local"},
+			DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-one"},
+			Manifest:           application.New("app-one", "dev", false, false, false),
+			TargetStateRoot:    root,
+		}, true)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "child rejected: %v\n", err)
 			os.Exit(3)
 		}
 		unlock()
-		fmt.Fprintln(os.Stderr, "child entered the Target owner while another process held it")
+		fmt.Fprintln(os.Stderr, "child entered the app owner while another process held it")
 		os.Exit(1)
 	}
 	target := configureTestTarget(t)
@@ -267,7 +548,12 @@ func TestTargetLifecycleLockRejectsSecondProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{Target: target, TargetStateRoot: root})
+	unlock, err := lockApplicationTargetLifecycle(resolvedApplication{
+		Target:             target,
+		TargetStateRoot:    root,
+		DeploymentIdentity: deployment.DeploymentIdentity{DeploymentID: "app-one"},
+		Manifest:           application.New("app-one", "dev", false, false, false),
+	}, false)
 	if err != nil {
 		t.Fatalf("parent production entry: %v", err)
 	}

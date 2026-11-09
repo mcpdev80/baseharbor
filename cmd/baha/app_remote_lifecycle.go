@@ -81,7 +81,7 @@ func restoreRemoteApplication(ctx context.Context, resolved resolvedApplication)
 }
 
 func executeRemoteApplicationApply(ctx context.Context, resolved resolvedApplication, out io.Writer) error {
-	unlock, err := lockApplicationTargetLifecycle(resolved)
+	unlock, err := lockApplicationTargetLifecycle(resolved, false)
 	if err != nil {
 		return err
 	}

@@ -173,5 +173,9 @@ func lockExistingTargetDefinitionLifecycle(name string) (func(), error) {
 	if _, err := runtimeMutationOwnerBytes(filepath.Join(root, ".installation.lock"), true); err != nil {
 		return nil, err
 	}
-	return coreinstallation.AcquireLifecycleLock(root)
+	// Target-definition change is a whole-Target lifecycle mutation: route
+	// through the target-wide scan path so the shared .installation.lock is held
+	// for the whole mutation and a running local app lifecycle blocks it (fail
+	// closed). A Target-definition change must never overlap a local app.
+	return coreinstallation.AcquireTargetWideLifecycleLock(root)
 }
