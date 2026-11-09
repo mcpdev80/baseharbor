@@ -185,23 +185,10 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
 	if operation == "apply" {
-		root, rootErr := remoteLocalSourceRoot(name, environment)
-		if rootErr != nil {
-			return rootErr
-		}
-		if root != "" {
-			digest, transferErr := core.uploadLocalSource(ctx, target.Name, name, environment, root)
-			if transferErr != nil {
-				return transferErr
-			}
-			payload, err = remotePayloadWithSnapshot(payload, digest)
-		} else {
-			sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
-			if sourceErr != nil {
-				return sourceErr
-			}
-			payload, err = remoteApplyPayloadWithSource(payload, sourceModel)
-		}
+		// Remote deployments carry only immutable Git/OCI identities.
+		// Never snapshot or upload local workspace files, including dirty
+		// or untracked changes, even when a repository manifest is present.
+		payload, err = remoteApplyImmutableSourcePayload(name, environment, payload)
 		if err != nil {
 			return err
 		}
