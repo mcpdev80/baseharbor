@@ -43,6 +43,17 @@ func changeTargetDefinition(ctx context.Context, name, recovery string, out io.W
 		}
 		consent = &value
 	}
+	// --yes honours the two non-destructive consequence acknowledgements on the
+	// local path without a TTY, mirroring the up-path shared helper (the same
+	// fail-closed contract #1486 established for the apply/up path). Detaching a
+	// Target definition is config-only (no runtime or data is published,
+	// scope.destructive=false), so the two-stage scope consent resolves. --yes
+	// never invents a data-decision for a destructive change, and a run without
+	// --yes that cannot read a terminal still refuses (fails closed).
+	if consent == nil && assumeYes(ctx) && !plan.Scope.Destructive {
+		value := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID, First: true, Second: true}
+		consent = &value
+	}
 	ack := application.ProviderChangeConsent{PlanID: plan.Scope.PlanID}
 	if consent != nil {
 		ack = *consent

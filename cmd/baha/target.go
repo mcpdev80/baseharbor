@@ -551,13 +551,27 @@ func deleteTarget(ctx context.Context, args []string, out, errOut io.Writer) err
 		return err
 	}
 	args = filtered
+	yes := false
+	kept := make([]string, 0, len(args))
 	for _, arg := range args {
-		if strings.HasPrefix(arg, "-") {
-			return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME; target deletion does not accept --yes.", NoSuggestions: arg == "--yes" || arg == "-y"}
+		switch arg {
+		case "--yes", "-y":
+			yes = true
+		case "-o", "--output", "--json":
+			// already consumed by parseReadOutputArgs; ignore if still present
+		default:
+			if strings.HasPrefix(arg, "-") {
+				return &cli.UsageError{Message: "unknown target delete option " + arg, Hint: "Use baha target delete NAME. --yes honours the two non-destructive consequence acknowledgements for config-only detachment on the local path.", NoSuggestions: arg == "--yes" || arg == "-y"}
+			}
+			kept = append(kept, arg)
 		}
 	}
+	args = kept
 	if len(args) != 1 {
 		return usageError("baha target delete requires NAME", "Example: baha target delete docker-dev")
+	}
+	if yes {
+		ctx = withAssumeYes(ctx, true)
 	}
 	name := args[0]
 	var presentation io.Writer = out

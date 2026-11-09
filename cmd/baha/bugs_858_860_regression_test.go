@@ -368,7 +368,7 @@ func TestContextualCLIErrorHintsAndContracts(t *testing.T) {
 	}
 	t.Chdir(t.TempDir())
 
-	for _, args := range [][]string{{"down", "--yes"}, {"target", "delete", "demo", "--yes"}, {"app", "down", "--yes"}} {
+	for _, args := range [][]string{{"down", "--yes"}, {"app", "down", "--yes"}} {
 		out.Reset()
 		err := runWithIO(context.Background(), args, &out, &out)
 		formatCLIError(&out, err)
@@ -384,4 +384,55 @@ func createDuplicateTargetForBugTest(t *testing.T) error {
 		t.Fatal("duplicate accepted")
 	}
 	return err
+}
+
+// TestTargetDeleteNonTTYYesReachesArgParser (0427-164 r2, BF-03 follow-up) proves
+// the exact parser-stage regression: `baha target delete NAME --yes` on a
+// non-TTY must detach through runWithIO/dispatcher, while the same call without
+// --yes must still fail closed. The --yes flag has to leave the positional slice
+// so the NAME survives the arg-parser; a fix that only records --yes but keeps it
+// in the slice fails "requires NAME" at the parser stage, exactly the bug the card
+// heals.
+func TestTargetDeleteNonTTYYesReachesArgParser(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Chdir(t.TempDir())
+
+	// Without --yes: non-TTY must fail closed (impact confirmation required).
+	// --no-input pins the non-interactive path so the assertion is deterministic
+	// regardless of the test harness stdin.
+	var noYes bytes.Buffer
+	err := runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name}, &noYes, &noYes)
+	if err == nil || machine.Classify(err).CauseCode != "impact-confirmation-required" {
+		t.Fatalf("delete without --yes must fail closed: %v", err)
+	}
+	cfg, err := deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Targets[target.Name]; !exists {
+		t.Fatal("fail-closed refusal must not remove the configuration entry")
+	}
+
+	// With --yes: the documented non-TTY call must detach through the dispatcher.
+	var withYes bytes.Buffer
+	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "--yes"}, &withYes, &withYes)
+	if err != nil {
+		t.Fatalf("--yes detach must succeed on non-TTY via dispatcher: %v", err)
+	}
+	cfg, err = deployment.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := cfg.Targets[target.Name]; exists {
+		t.Fatal("--yes detach did not remove the configuration entry (arg-parser dropped the NAME)")
+	}
+
+	// The -y alias must behave identically.
+	configureTestTarget(t)
+	t.Chdir(t.TempDir())
+	var aliasOut bytes.Buffer
+	err = runWithIO(context.Background(), []string{"--no-input", "target", "delete", target.Name, "-y"}, &aliasOut, &aliasOut)
+	if err != nil {
+		t.Fatalf("-y alias must detach on non-TTY: %v", err)
+	}
 }
