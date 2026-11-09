@@ -1,12 +1,19 @@
 package onboardingbundle
 
 import (
+	"bytes"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	ws "github.com/mcpdev80/baseharbor/internal/workstationenrollment"
 )
 
 // PersistIdentity stages the verified workstation-owned leaf and key as
@@ -17,11 +24,8 @@ func PersistIdentity(root string, b Bundle, identity EnrolledIdentity, now time.
 	if err := b.Validate(now); err != nil {
 		return "", err
 	}
-	if identity.InstallationID != b.InstallationID || identity.Station != b.Station ||
-		identity.Serial == "" || !identity.ExpiresAt.After(now) ||
-		len(identity.PrivateKeyPEM) == 0 || len(identity.CertificatePEM) == 0 ||
-		len(identity.TrustPEM) == 0 {
-		return "", fmt.Errorf("%w: unbound or incomplete workstation identity", ErrInvalid)
+	if err := validateEnrolledMaterial(b, identity, now); err != nil {
+		return "", err
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", err
@@ -107,4 +111,51 @@ func PersistIdentity(root string, b Bundle, identity EnrolledIdentity, now time.
 		return "", err
 	}
 	return final, nil
+}
+
+func validateEnrolledMaterial(b Bundle, identity EnrolledIdentity, now time.Time) error {
+	if identity.InstallationID != b.InstallationID || identity.Station != b.Station ||
+		identity.Serial == "" || !identity.ExpiresAt.After(now) ||
+		len(identity.PrivateKeyPEM) == 0 || len(identity.CertificatePEM) == 0 ||
+		!bytes.Equal(identity.TrustPEM, []byte(b.CAPEM)) {
+		return fmt.Errorf("%w: unbound or incomplete workstation identity", ErrInvalid)
+	}
+	keyBlock, rest := pem.Decode(identity.PrivateKeyPEM)
+	if keyBlock == nil || keyBlock.Type != "EC PRIVATE KEY" || len(bytes.TrimSpace(rest)) != 0 {
+		return fmt.Errorf("%w: invalid private workstation key", ErrInvalid)
+	}
+	key, err := x509.ParseECPrivateKey(keyBlock.Bytes)
+	if err != nil { return fmt.Errorf("%w: invalid private workstation key", ErrInvalid) }
+	leafBlock, rest := pem.Decode(identity.CertificatePEM)
+	if leafBlock == nil || leafBlock.Type != "CERTIFICATE" || len(bytes.TrimSpace(rest)) != 0 {
+		return fmt.Errorf("%w: invalid workstation leaf", ErrInvalid)
+	}
+	leaf, err := x509.ParseCertificate(leafBlock.Bytes)
+	if err != nil { return fmt.Errorf("%w: invalid workstation leaf", ErrInvalid) }
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(b.CAPEM)) {
+		return fmt.Errorf("%w: missing workstation trust", ErrInvalid)
+	}
+	if _, err := leaf.Verify(x509.VerifyOptions{
+		Roots: roots, CurrentTime: now, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}); err != nil {
+		return fmt.Errorf("%w: invalid workstation trust chain", ErrInvalid)
+	}
+	scope := ws.Scope{TenantID: b.InstallationID, Station: b.Station}
+	if len(leaf.URIs) != 1 || leaf.URIs[0].String() != scope.Identity() || leaf.IsCA {
+		return fmt.Errorf("%w: foreign workstation identity", ErrInvalid)
+	}
+	keyPub, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil { return err }
+	certPub, err := x509.MarshalPKIXPublicKey(leaf.PublicKey)
+	if err != nil || !bytes.Equal(keyPub, certPub) {
+		return fmt.Errorf("%w: workstation private key does not match certificate", ErrInvalid)
+	}
+	serial, ok := new(big.Int).SetString(strings.ReplaceAll(strings.ToLower(identity.Serial), ":", ""), 16)
+	if !ok || serial.Cmp(leaf.SerialNumber) != 0 ||
+		leaf.NotAfter.Sub(identity.ExpiresAt) > time.Second ||
+		identity.ExpiresAt.Sub(leaf.NotAfter) > time.Second {
+		return fmt.Errorf("%w: workstation serial or expiry mismatch", ErrInvalid)
+	}
+	return nil
 }
