@@ -76,3 +76,41 @@ func TestExtractPinnedGitArchiveRefusesUnsafeEntries(t *testing.T) {
 		})
 	}
 }
+
+
+func TestExtractPinnedGitArchiveAllowsGitCommitGlobalPAXOnly(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		records map[string]string
+		wantErr bool
+	}{
+		{"commit-comment", map[string]string{"comment": strings.Repeat("a", 40)}, false},
+		{"unsafe-path-override", map[string]string{"path": "../escape"}, true},
+		{"unsafe-link-override", map[string]string{"linkpath": "../escape"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buffer bytes.Buffer
+			writer := tar.NewWriter(&buffer)
+			err := writer.WriteHeader(&tar.Header{
+				Name: "pax_global_header", Typeflag: tar.TypeXGlobalHeader,
+				PAXRecords: tc.records,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.WriteHeader(&tar.Header{Name: "app.yaml", Mode: 0600, Typeflag: tar.TypeReg, Size: 2}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := writer.Write([]byte("ok")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Close(); err != nil {
+				t.Fatal(err)
+			}
+			err = extractPinnedGitArchive(&buffer, t.TempDir())
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("global PAX records %v: got error %v, want error %t", tc.records, err, tc.wantErr)
+			}
+		})
+	}
+}
