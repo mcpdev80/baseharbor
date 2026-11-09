@@ -84,9 +84,17 @@ intentional LAN setup, the owner must:
    consumes the resulting verified `node-authority-profile.json`.
 
 The gateway's service certificate is issued by the existing OpenBao-backed
-service PKI for the configured DNS route. The control-plane API and connector
-server use separately prepared keypairs and continue to require the normal
-certificate-management boundary. A DNS name and a gateway bind setting do
+service PKI for the configured DNS route. The control-plane API and connector server normally use separately prepared
+keypairs. For an explicitly managed LAN setup, setting
+`BASEHARBOR_MANAGED_CORE_TLS=true`, `BASEHARBOR_API_PUBLIC_URL` and
+`BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS`, together with concrete matching
+`BASEHARBOR_API_LISTEN_ADDR` and `BASEHARBOR_CONNECTOR_LISTEN_ADDR`, enables
+`baha serve` to issue both serving certificates from the **existing READY**
+OpenBao service issuer. This is a dev-only opt-in, not a new CA, implicit
+exposure, ACME, generic PKI management or certificate renewal daemon.
+The private serving material stays under the owned Core target's
+`managed-serving/` state directory; certificate SANs match advertised hosts.
+Any explicit BYOC serving certificate configuration remains authoritative. A DNS name and a gateway bind setting do
 not automatically publish `baha serve` or authorize tenant/connector access.
 
 ## TLS scope

@@ -40,6 +40,12 @@ func serveCommand(store application.Store) *cli.Command {
 			if err := bindServeToOwnedOperatorOIDC(&cfg); err != nil {
 				return err
 			}
+			// Opt-in LAN setup uses the Core's existing authenticated service
+			// issuer. Prepare both trusted serving leaves before publishing
+			// an enrollment authority profile; a missing SAN fails closed.
+			if err := prepareManagedCoreServingTLS(ctx, &cfg); err != nil {
+				return err
+			}
 			if err := publishNodeAuthorityProfile(ctx, cfg); err != nil {
 				return err
 			}

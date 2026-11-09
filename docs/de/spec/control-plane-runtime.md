@@ -85,8 +85,17 @@ Für einen ausdrücklich freigegebenen LAN-Zugriff:
    `node-authority-profile.json`.
 
 Das Gateway-Zertifikat stammt aus der bereits vorhandenen verwalteten
-OpenBao-Service-PKI. Die API- und Connector-Zertifikate werden getrennt
-bereitgestellt. Domainkonfiguration und Listener eröffnen keine zusätzlichen
+OpenBao-Service-PKI. Die API- und Connector-Zertifikate werden normalerweise getrennt
+bereitgestellt. Für eine ausdrücklich verwaltete LAN-Einrichtung kann
+`baha serve` mit `BASEHARBOR_MANAGED_CORE_TLS=true` sowie
+`BASEHARBOR_API_PUBLIC_URL`, `BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS` und
+passenden `BASEHARBOR_API_LISTEN_ADDR`- und
+`BASEHARBOR_CONNECTOR_LISTEN_ADDR`-Werten beide Zertifikate aus der
+**bereits READY gemeldeten** OpenBao-Service-PKI ausstellen. Das ist eine
+explizite Dev-Option: keine neue CA, keine automatische Netzfreigabe,
+kein ACME und kein allgemeiner PKI-Dienst. Die privaten Schlüssel verbleiben
+im geschützten Core-Target unter `managed-serving/`. Extern bereitgestellte
+Zertifikate werden niemals überschrieben. Domainkonfiguration und Listener eröffnen keine zusätzlichen
 Operator-, Tenant- oder Node-Rechte.
 
 ## Anwendungsbereich des TLS
