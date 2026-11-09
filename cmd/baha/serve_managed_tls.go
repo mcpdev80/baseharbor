@@ -76,7 +76,7 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if cfg == nil || cfg.RuntimeAppName != "" ||
 		(!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) ||
 		cfg.ConnectorAuthorityTarget == "" {
-		return errors.New("managed Core LAN TLS requires a locally owned Core with connector enrollment enabled")
+		return errors.New("managed Core LAN TLS requires an owned Core and connector or workstation enrollment")
 	}
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.ConnectorTLSCertFile != "" || cfg.ConnectorTLSKeyFile != "" || cfg.ConnectorTLSCAFile != "" {
 		return errors.New("managed Core LAN TLS cannot override externally configured API/connector certificate material")
