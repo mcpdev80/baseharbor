@@ -44,6 +44,12 @@ func TestManagedCoreRegistrationPinsSourceOnLaterApply(t *testing.T) {
 	if _, err := bindRegisteredCoreSource(resolved, &model); err != nil {
 		t.Fatalf("matching client source was refused: %v", err)
 	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "updated"); err == nil {
+		t.Fatal("source-pinned managed app was updated without binding its immutable candidate")
+	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "repaired"); err == nil {
+		t.Fatal("source-pinned managed app was repaired without binding its immutable candidate")
+	}
 	foreign := model
 	foreign.Sources = append([]development.SourceDefinition(nil), model.Sources...)
 	foreign.Sources[0].Ref = strings.Repeat("b", 40)
@@ -55,6 +61,9 @@ func TestManagedCoreRegistrationPinsSourceOnLaterApply(t *testing.T) {
 	}
 	if bound, err := bindRegisteredCoreSource(resolved, nil); err != nil || bound != nil {
 		t.Fatalf("legacy managed app with no SourceModel was changed: %+v, %v", bound, err)
+	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "updated"); err != nil {
+		t.Fatalf("legacy managed update was unexpectedly denied: %v", err)
 	}
 	if _, err := bindRegisteredCoreSource(resolved, &model); err == nil {
 		t.Fatal("unregistered client-supplied source bypassed Core authority")

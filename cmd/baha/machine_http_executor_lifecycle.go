@@ -157,6 +157,10 @@ func (e *bahaMachineExecutor) executeHTTPUpdate(
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
 	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "updated"); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Use the Core-owned immutable source/candidate workflow before attempting an update.", false)
+	}
 	if applicationUpdateHasDurableState(resolved.Manifest) && strings.TrimSpace(input.BackupPasswordFile) == "" && !input.NoBackup {
 		return nil, &machine.Error{
 			Code:        machine.ErrorApprovalRequired,
@@ -211,6 +215,10 @@ func (e *bahaMachineExecutor) executeHTTPRepair(
 	}
 	if err := ensureResolvedHTTPContext(operationContext, resolved); err != nil {
 		return nil, err
+	}
+	if err := rejectUnboundRegisteredSourceMutation(resolved, "repaired"); err != nil {
+		return nil, machine.Wrap(machine.ErrorUnsupported, err,
+			"Use the Core-owned immutable source/candidate workflow before attempting repair.", false)
 	}
 	reportHTTPProgress(report, "repair", "Repairing safely reconcilable drift.", 40)
 	if err := executeApplicationRepairLifecycle(ctx, e.store, append(args, "--fix", "--yes"), io.Discard, io.Discard); err != nil {

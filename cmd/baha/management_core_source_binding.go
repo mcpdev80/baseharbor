@@ -41,3 +41,17 @@ func bindRegisteredCoreSource(resolved resolvedApplication, supplied *developmen
 	}
 	return &stored, nil
 }
+
+// rejectUnboundRegisteredSourceMutation prevents update/repair from bypassing
+// the immutable source's approval and transport transaction by reconstructing
+// a legacy managed runtime. Destructive cleanup remains a separate operation.
+func rejectUnboundRegisteredSourceMutation(resolved resolvedApplication, operation string) error {
+	source, err := bindRegisteredCoreSource(resolved, nil)
+	if err != nil {
+		return err
+	}
+	if source == nil {
+		return nil
+	}
+	return fmt.Errorf("Core-managed immutable Git/OCI source cannot be %s until its confirmed candidate is bound to connector delivery", operation)
+}
