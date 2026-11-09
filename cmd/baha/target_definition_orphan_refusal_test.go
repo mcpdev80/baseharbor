@@ -180,7 +180,17 @@ func seedMismatchedUuidOrphan(t *testing.T, target string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	depDir := filepath.Join(root, "deployments", "orphan-folder")
+	// Folder name is a valid UUIDv4 on purpose: on develop 8a2912c62 the
+	// listDeploymentRecords gate (230221700 / BF-03 "damaged before budget")
+	// skips any directory whose name is not a valid UUID. A non-UUID folder
+	// would be discarded by that gate BEFORE the mismatch can surface, so the
+	// owner-missing guard never fires and the detach is accepted — the very
+	// behaviour F2 must guard against. The only differing detail here is the
+	// embedded DeploymentID (which must NOT equal the folder name); the record
+	// itself is consistent and carries a present deployment.json, so this is a
+	// genuine tolerance case, never a damaged-deployment state (DamagedState
+	// is false whenever deployment.json exists).
+	depDir := filepath.Join(root, "deployments", "77777777-7777-4777-8777-777777777777")
 	if err := os.MkdirAll(depDir, 0700); err != nil {
 		t.Fatal(err)
 	}
