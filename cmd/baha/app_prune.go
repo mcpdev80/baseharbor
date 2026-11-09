@@ -229,8 +229,18 @@ func requirePruneName(args []string, command string) (string, error) {
 // deliberately skips the authored-manifest load and the applied-backend-selection
 // resolution that every other app command performs: the dangling record's
 // source is gone, so that indirection would fail before prune could remove it.
+//
+// It preserves any target the caller selected on the path to this resolver
+// (the MCP handler pins `input.Target`, the CLI entry pins the invocation
+// target). Only when the caller carried no explicit target does it fall back to
+// the ambient BASEHARBOR_TARGET/default resolution. Silently clearing the
+// override here would let the MCP prune resolve the ambient target instead of
+// the one the caller authorized, so authorization and the deletion could act on
+// different deployments.
 func resolvePruneByName(ctx context.Context, name string) (resolvedApplication, error) {
-	ctx = withTargetOverride(ctx, "")
+	if targetOverrideFromContext(ctx) == "" {
+		ctx = withTargetOverride(ctx, "")
+	}
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return resolvedApplication{}, err

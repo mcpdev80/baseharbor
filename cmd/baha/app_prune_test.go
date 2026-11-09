@@ -16,6 +16,7 @@ import (
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/stableid"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // danglingRecordFixture writes a single dangling deployment record whose source
@@ -420,6 +421,214 @@ func TestAppPruneLiveSourceUnchangedOnRefusal(t *testing.T) {
 	sibAfter, _ := os.ReadFile(sibPath)
 	if sha256Hex(sibBefore) != sha256Hex(sibAfter) {
 		t.Fatalf("sibling record changed by refused live prune")
+	}
+}
+
+// TestAppPruneRefusesDanglingRecordWithAppliedIntent proves the applied-intent
+// guard at a real CLI entry in the missing-source configuration that the
+// existing suite did not cover: a record whose source repository path points at
+// a NON-existent directory (so SourceAvailable is false) but that still carries
+// an applied intent snapshot. prune must refuse with a RECORD_NOT_DANGLING cause
+// and leave the record bytes untouched. This is the proof gap the r2 review
+// flagged: the guard was present but only exercised after a SOURCE_PRESENT
+// refusal never returned first.
+func TestAppPruneRefusesDanglingRecordWithAppliedIntent(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	// A source path that does not exist on disk: SourceAvailable is false, so the
+	// SOURCE_PRESENT branch cannot return first and the applied-intent guard runs.
+	id := writeDanglingRecordWithMissingSource(t, effectiveTargetName(t), "ghost", "dev", "90909090-9090-4090-8090-909090909090", `{"version":1,"name":"ghost","environment":"dev"}`)
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deployDir := filepath.Join(targetRoot, "deployments", id.DeploymentID)
+	if _, err := os.Stat(deployDir); err != nil {
+		t.Fatalf("fixture missing: %v", err)
+	}
+	var out, errOut strings.Builder
+	pErr := runWithIO(context.Background(), []string{"app", "prune", "ghost"}, &out, &errOut)
+	if pErr == nil {
+		t.Fatal("prune must refuse a dangling record that still carries an applied intent snapshot")
+	}
+	msg := strings.ToLower(out.String()) + strings.ToLower(errOut.String()) + strings.ToLower(pErr.Error())
+	if !strings.Contains(msg, "applied intent snapshot") {
+		t.Fatalf("expected an applied-intent refusal, got: out=%q errOut=%q err=%v", out.String(), errOut.String(), pErr)
+	}
+	// The refusal must be the applied-intent guard: a machine.Error with the
+	// RECORD_NOT_DANGLING cause code, not a SOURCE_PRESENT or any other cause.
+	var typed *machine.Error
+	if !errors.As(pErr, &typed) || typed.CauseCode != "RECORD_NOT_DANGLING" {
+		t.Fatalf("expected a RECORD_NOT_DANGLING cause, got %#v", pErr)
+	}
+	// The record must still exist, byte-identical: a refused prune changes nothing.
+	if _, err := os.Stat(deployDir); err != nil {
+		t.Fatalf("refused prune removed the record: %v", err)
+	}
+	before, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if readErr != nil {
+		t.Fatalf("fixture unreadable: %v", readErr)
+	}
+	after, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if readErr != nil {
+		t.Fatalf("record unreadable after refusal: %v", readErr)
+	}
+	if sha256Hex(before) != sha256Hex(after) {
+		t.Fatal("refused prune changed the record bytes")
+	}
+}
+
+// effectiveTargetName returns the effective test target name the ambient
+// BASEHARBOR_TARGET/default resolves to, so fixtures are written to the exact
+// target a CLI invocation of the same ambient context would select.
+func effectiveTargetName(t *testing.T) string {
+	t.Helper()
+	effective, err := effectiveTarget(context.Background())
+	if err != nil {
+		t.Fatalf("resolve effective test target: %v", err)
+	}
+	return effective.Name
+}
+
+// writeDanglingRecordWithMissingSource writes a dangling record whose source
+// repository path points at a non-existent directory (so SourceAvailable is
+// false) but that carries an applied intent snapshot, exactly the state a
+// SIGKILL-style loss of a source repository leaves behind, on the given target.
+func writeDanglingRecordWithMissingSource(t *testing.T, target, name, environment, deploymentID string, intent string) deployment.DeploymentIdentity {
+	t.Helper()
+	appID, appIDErr := stableid.NewUUIDv4("application")
+	if appIDErr != nil {
+		t.Fatalf("fixture application id: %v", appIDErr)
+	}
+	id := deployment.DeploymentIdentity{
+		DeploymentID:  deploymentID,
+		ApplicationID: appID,
+		Target:        target,
+		Application:   name,
+		Environment:   environment,
+	}
+	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
+		Version: deployment.DeploymentRecordVersion,
+		Identity: id,
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: filepath.Join(t.TempDir(), "gone")},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct(), Intent: json.RawMessage(intent)},
+		Observed: deployment.ObservedDeployment{State: "not_applied"},
+	})
+	return id
+}
+
+// TestAppPruneMCPPreservesTargetOverride proves the r3 blocker fix: when the MCP
+// handler pins a target via input.Target, resolvePruneByName must NOT silently
+// fall back to the ambient BASEHARBOR_TARGET/default target. A dangling record
+// that exists only on the pinned target is found on that target; on any other
+// target it is absent. The r2 code cleared the override with
+// withTargetOverride(ctx, "") and would have resolved the wrong (or the
+// ambient) target, so authorization and deletion could act on different
+// deployments.
+func TestAppPruneMCPPreservesTargetOverride(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	access := map[string]deployment.AccessDefinition{
+		"local": {Provider: "local", Reference: "local"},
+	}
+	bootDef := deployment.TargetDefinition{
+		Runtime: deployment.RuntimeDefinition{Provider: "local"},
+		Access:  deployment.TargetAccess{Reference: "local"},
+		Scope:   "local",
+	}
+	secondDef := deployment.TargetDefinition{
+		Runtime: deployment.RuntimeDefinition{Provider: "local"},
+		Access:  deployment.TargetAccess{Reference: "local"},
+		Scope:   "local",
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: "boot",
+		Access:        access,
+		Targets: map[string]deployment.TargetDefinition{
+			"boot":   bootDef,
+			"second": secondDef,
+		},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("persist two-target config: %v", err)
+	}
+	// Both Targets need an installation so the deployment-owner binding passes.
+	if err := registerInstallationForTarget(t, "boot"); err != nil {
+		t.Fatal(err)
+	}
+	if err := registerInstallationForTarget(t, "second"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BASEHARBOR_TARGET", "boot")
+
+	// The dangling record lives ONLY on the pinned "second" target. Write it
+	// directly to that target's registry (pinning the env so writeDangling...
+	// uses the right target), then restore the ambient boot target so the MCP
+	// handler's input.Target is what selects it. The record has NO applied
+	// intent (a truly dangling record), so prune removes it; the target override
+	// is what this test proves (a record present only on the pinned target must
+	// be found there, not silently dropped to the ambient target).
+	t.Setenv("BASEHARBOR_TARGET", "second")
+	writeDanglingRecordWithMissingSource(t, "second", "onlypinned", "dev", "a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1", "")
+	t.Setenv("BASEHARBOR_TARGET", "boot")
+
+	// Build a real MCP in-memory transport with only the prune tool registered.
+	store := application.DefaultStore()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
+	registerMCPAppPruneTool(server, store)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(context.Background(), serverTransport, nil)
+	if err != nil {
+		t.Fatalf("connect MCP server: %v", err)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v1"}, nil)
+	clientSession, err := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if err != nil {
+		t.Fatalf("connect MCP client: %v", err)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	// A negative control: with the ambient "boot" target (no explicit override),
+	// the record that lives only on "second" must be refused as not found. This
+	// is exactly what the r2 code did: it dropped input.Target to the ambient
+	// target. Pinning a target that is NOT the ambient one must change the
+	// outcome to a successful resolution.
+	negativeResult, negativeErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "baseharbor.app.prune",
+		Arguments: map[string]any{
+			"name": "onlypinned",
+			// No explicit target: resolves to ambient "boot", where the record
+			// does not exist.
+		},
+	})
+	if negativeErr != nil {
+		t.Fatalf("MCP prune transport call failed: %v", negativeErr)
+	}
+	if !negativeResult.IsError {
+		t.Fatal("MCP prune on ambient boot target must refuse a record that lives only on second")
+	}
+	negativeBody := formatMCPAcceptanceContent(negativeResult)
+	if !strings.Contains(strings.ToLower(negativeBody), "no registered deployment") {
+		t.Fatalf("expected a not-found refusal on the ambient target, got: %s", negativeBody)
+	}
+
+	// Pin the SECOND target via input.Target. The record is not on the ambient
+	// "boot" target, so a correctly preserved override must find it here.
+	result, callErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "baseharbor.app.prune",
+		Arguments: map[string]any{
+			"name":   "onlypinned",
+			"target": "second",
+		},
+	})
+	if callErr != nil {
+		t.Fatalf("MCP prune transport call failed: %v", callErr)
+	}
+	if result.IsError {
+		t.Fatalf("MCP prune with pinned second target must resolve the record on that target, got error: %s", formatMCPAcceptanceContent(result))
 	}
 }
 
