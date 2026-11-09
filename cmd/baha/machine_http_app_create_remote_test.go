@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 )
 
@@ -65,4 +66,29 @@ func TestHTTPAppCreateIsDiscoverable(t *testing.T) {
 		}
 	}
 	t.Fatal("authorized app.create missing from Machine HTTP discovery")
+}
+
+func TestHTTPAppCreateValidatesSourceModelBeforeRegistration(t *testing.T) {
+	input, err := json.Marshal(machineApplicationCreateInput{
+		Target: "remote-docker",
+		Intent: application.Manifest{Name: "demo", Environment: "dev"},
+		SourceModel: &development.SourceModel{
+			SchemaVersion: development.SourceModelVersion,
+			Application: "demo",
+			Sources: []development.SourceDefinition{{
+				ID: "app", Type: development.SourceRepository,
+				Repository: "https://git.example/demo.git", Ref: "main",
+			}},
+			Components: []development.ComponentSource{{Component: "app", Source: "app"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = executeHTTPAppCreate(context.Background(), machine.OperationContext{
+		Target: "remote-docker", Application: "demo", Environment: "dev",
+	}, input)
+	if err == nil || machine.Classify(err).Code != machine.ErrorValidationFailed {
+		t.Fatalf("mutable remote source reached registration instead of being rejected: %v", err)
+	}
 }
