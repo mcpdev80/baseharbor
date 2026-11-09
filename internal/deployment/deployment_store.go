@@ -660,14 +660,6 @@ func loadPersistedOwnerForGuard(target, deploymentID, path string) (owner string
 	return string(record.Observed.Owner), record.Observed.Conflict, true, nil
 }
 
-func DeleteDeploymentRecord(id DeploymentIdentity) error {
-	root, err := DeploymentRoot(id)
-	if err != nil {
-		return err
-	}
-	return os.RemoveAll(root)
-}
-
 func FindDeployment(target, applicationID, environment string) (DeploymentRecord, bool, error) {
 	matches, err := findDeploymentMatches(target, applicationID, environment)
 	if err != nil {

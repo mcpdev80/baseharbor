@@ -34,6 +34,7 @@ Inspect current data with `baha agent describe -o json` (`cli_coverage`). Update
 | `baha app new` | semantic | CLI -o json / typed MCP result | baseharbor.app.new |  |
 | `baha app plan` | semantic | CLI -o json / typed MCP result | baseharbor.plan |  |
 | `baha app preflight` | semantic | CLI -o json / typed MCP result | baseharbor.app.preflight |  |
+| `baha app prune` | semantic | CLI -o json / typed MCP result | baseharbor.app.prune | Registry-only removal of a dangling deployment record whose source repository is gone; never loads source or runtime, and refuses when source is present or multiple records match. |
 | `baha app restore` | semantic | CLI -o json / typed MCP result | baseharbor.restore |  |
 | `baha app runtime-identity` | presentation |  |  | Command group; invoke its supported subcommands. |
 | `baha app runtime-identity revoke` | semantic | CLI -o json / typed MCP result | baseharbor.runtime-identity.revoke |  |

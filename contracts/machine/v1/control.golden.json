@@ -622,6 +622,15 @@
             "mcp_tool": "baseharbor.app.list"
           },
           {
+            "id": "app.prune",
+            "description": "Remove a single dangling deployment record whose source repository is gone (refuses when source is present or multiple records match).",
+            "safety": "destructive",
+            "confirmation_required": true,
+            "policy_required": false,
+            "contract_version": "v1",
+            "mcp_tool": "baseharbor.app.prune"
+          },
+          {
             "id": "inspect",
             "description": "Inspect repository evidence without mutation.",
             "safety": "read_only",

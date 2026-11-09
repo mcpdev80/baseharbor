@@ -125,6 +125,9 @@ func appListCommand() *cli.Command {
 					source = "OK"
 				}
 				fmt.Fprintf(out, "%-20s %-12s %-10s %s\n", item.Identity.Application, item.Identity.Environment, item.Observed.State, source)
+				if source == "MISSING" {
+					fmt.Fprintf(errOut, "  %s/%s: source repository gone (MISSING) - remove the dangling record with `baha app prune %s`, or re-run 'baha up' once the repo is restored\n", item.Identity.Target, item.Identity.Application, item.Identity.Application)
+				}
 			}
 			return nil
 		},
