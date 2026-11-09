@@ -165,6 +165,7 @@ func fingerprintStagedCandidate(root string) (string, error) {
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
+
 // confirmStagedCoreGitCandidate checks consent against the exact immutable
 // repository+commit identity that the owning Core staged. This is read-only;
 // deployment records are changed only by the existing lifecycle authority.
