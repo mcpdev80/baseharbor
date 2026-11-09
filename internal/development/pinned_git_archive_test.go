@@ -77,7 +77,6 @@ func TestExtractPinnedGitArchiveRefusesUnsafeEntries(t *testing.T) {
 	}
 }
 
-
 func TestExtractPinnedGitArchiveAllowsGitCommitGlobalPAXOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
