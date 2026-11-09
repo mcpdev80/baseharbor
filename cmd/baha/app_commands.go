@@ -33,6 +33,21 @@ func appCreateCommand() *cli.Command {
 			if err != nil {
 				return err
 			}
+			target, err := effectiveTarget(ctx)
+			if err != nil {
+				return err
+			}
+			if target.AccessProvider != "" && target.AccessProvider != "local" {
+				result, err := remoteCreateTargetManagedApplication(ctx, target, m)
+				if err != nil {
+					return err
+				}
+				if format == outputJSON {
+					return writeJSON(out, result)
+				}
+				fmt.Fprintf(out, "created %s (%s) on verified remote Core Target %s (app.id %s)\n", result.Application, result.Environment, target.Name, result.ApplicationID)
+				return nil
+			}
 			path, err := createTargetManagedApplication(ctx, m)
 			if err != nil {
 				return err
