@@ -24,42 +24,38 @@ import (
 func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, error) {
 	apiRaw := strings.TrimSpace(os.Getenv("BASEHARBOR_API_PUBLIC_URL"))
 	connectorRaw := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS"))
-	if apiRaw == "" || connectorRaw == "" {
-		return "", "", errors.New("managed Core LAN TLS requires explicit BASEHARBOR_API_PUBLIC_URL and BASEHARBOR_CONNECTOR_PUBLIC_ADDRESS")
+	if apiRaw == "" || (cfg.ConnectorEnrollmentEnabled && connectorRaw == "") {
+		return "", "", errors.New("managed Core LAN TLS requires the advertised API URL and, only when enabled, the Connector address")
 	}
 	if err := validateCoreURL(apiRaw); err != nil {
 		return "", "", fmt.Errorf("invalid public Core URL: %w", err)
 	}
 	apiURL, err := url.Parse(apiRaw)
-	if err != nil {
-		return "", "", err
-	}
+	if err != nil { return "", "", err }
 	apiHost := apiURL.Hostname()
-	connectorHost, connectorPort, err := net.SplitHostPort(connectorRaw)
-	if err != nil {
-		return "", "", fmt.Errorf("invalid public connector address: %w", err)
-	}
-	if !usableNodeHost(apiHost) || !usableNodeHost(connectorHost) ||
-		strings.HasSuffix(strings.ToLower(apiHost), ".localhost") ||
-		strings.HasSuffix(strings.ToLower(connectorHost), ".localhost") {
-		return "", "", errors.New("Core LAN TLS requires public non-loopback API and connector names/IPs; *.localhost is not routable from a workstation")
+	if !usableNodeHost(apiHost) || strings.HasSuffix(strings.ToLower(apiHost), ".localhost") {
+		return "", "", errors.New("managed Core API requires a concrete reachable LAN name/IP")
 	}
 	apiPort := apiURL.Port()
-	if apiPort == "" {
-		apiPort = "443"
-	}
-	for _, endpoint := range []struct {
-		label  string
-		listen string
-		port   string
-	}{{"API", cfg.ListenAddr, apiPort}, {"connector", cfg.ConnectorListenAddr, connectorPort}} {
-		listenHost, listenPort, err := net.SplitHostPort(endpoint.listen)
-		if err != nil {
-			return "", "", fmt.Errorf("managed Core %s listener requires an explicit address: %w", endpoint.label, err)
+	if apiPort == "" { apiPort = "443" }
+	type listener struct { label, address, port string }
+	listeners := []listener{{"API", cfg.ListenAddr, apiPort}}
+	var connectorHost string
+	if cfg.ConnectorEnrollmentEnabled {
+		var connectorPort string
+		connectorHost, connectorPort, err = net.SplitHostPort(connectorRaw)
+		if err != nil { return "", "", fmt.Errorf("invalid public connector address: %w", err) }
+		if !usableNodeHost(connectorHost) || strings.HasSuffix(strings.ToLower(connectorHost), ".localhost") {
+			return "", "", errors.New("managed Connector requires a reachable LAN name/IP")
 		}
+		listeners = append(listeners, listener{"connector", cfg.ConnectorListenAddr, connectorPort})
+	}
+	for _, endpoint := range listeners {
+		listenHost, listenPort, err := net.SplitHostPort(endpoint.address)
+		if err != nil { return "", "", fmt.Errorf("managed Core %s listener requires an explicit address: %w", endpoint.label, err) }
 		ip := net.ParseIP(listenHost)
 		if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
-			return "", "", fmt.Errorf("managed Core %s listener requires a concrete non-loopback IP, not a hostname or wildcard", endpoint.label)
+			return "", "", fmt.Errorf("managed Core %s listener must use a concrete LAN IP", endpoint.label)
 		}
 		advertised, err := strconv.Atoi(endpoint.port)
 		if err != nil || advertised < 1 || advertised > 65535 || strconv.Itoa(advertised) != listenPort {
@@ -77,7 +73,9 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if !strings.EqualFold(strings.TrimSpace(os.Getenv("BASEHARBOR_MANAGED_CORE_TLS")), "true") {
 		return nil
 	}
-	if cfg == nil || cfg.RuntimeAppName != "" || !cfg.ConnectorEnrollmentEnabled || cfg.ConnectorAuthorityTarget == "" {
+	if cfg == nil || cfg.RuntimeAppName != "" ||
+		(!cfg.ConnectorEnrollmentEnabled && !cfg.WorkstationEnrollmentEnabled) ||
+		cfg.ConnectorAuthorityTarget == "" {
 		return errors.New("managed Core LAN TLS requires a locally owned Core with connector enrollment enabled")
 	}
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" || cfg.ConnectorTLSCertFile != "" || cfg.ConnectorTLSKeyFile != "" || cfg.ConnectorTLSCAFile != "" {
@@ -134,23 +132,25 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if err != nil {
 		return fmt.Errorf("issue Core API serving TLS: %w", err)
 	}
-	// The Connector transport requires exactly one installation-owned
-	// SPIFFE URI and serverAuth-only EKU. Generic service TLS material cannot
-	// satisfy this contract; sign via the existing dedicated Core CSR role.
-	installationRoot, err := targetRuntimeStateRoot(target)
-	if err != nil {
-		return err
-	}
-	installation, err := coreinstallation.Load(installationRoot)
-	if err != nil || !installation.Ready {
-		return errors.New("managed Connector TLS requires the current READY Core installation identity")
-	}
-	connector, err := issueManagedCoreConnectorTLS(ownedCtx, issuer, root, installation.ID, connectorHost)
-	if err != nil {
-		return fmt.Errorf("issue Core connector serving TLS: %w", err)
-	}
 	cfg.TLSCertFile, cfg.TLSKeyFile = api.ServerCertificate, api.ServerKey
-	cfg.ConnectorTLSCertFile, cfg.ConnectorTLSKeyFile, cfg.ConnectorTLSCAFile =
-		connector.Certificate, connector.Key, connector.CA
+	if cfg.WorkstationEnrollmentEnabled {
+		// This CA is the same managed trust anchor as the issued workstation
+		// leaf; requesting a device certificate never bypasses OIDC on other routes.
+		cfg.TLSClientCAFile = api.CA
+	}
+	if cfg.ConnectorEnrollmentEnabled {
+		// Connector enrollment is a separate optional product. Core + Docker
+		// on the same VM needs no Node Connector or connector TLS leaf.
+		installationRoot, err := targetRuntimeStateRoot(target)
+		if err != nil { return err }
+		installation, err := coreinstallation.Load(installationRoot)
+		if err != nil || !installation.Ready {
+			return errors.New("managed Connector TLS requires current READY Core identity")
+		}
+		connector, err := issueManagedCoreConnectorTLS(ownedCtx, issuer, root, installation.ID, connectorHost)
+		if err != nil { return fmt.Errorf("issue managed Connector TLS: %w", err) }
+		cfg.ConnectorTLSCertFile, cfg.ConnectorTLSKeyFile, cfg.ConnectorTLSCAFile =
+			connector.Certificate, connector.Key, connector.CA
+	}
 	return nil
 }
