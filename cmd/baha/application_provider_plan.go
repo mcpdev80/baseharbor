@@ -124,6 +124,58 @@ func resolveApplicationProviderPlanFromSnapshot(resolved resolvedApplication, sn
 	return plan, classifyApplicationResolutionError(err)
 }
 
+// invalidProviderConsumerInventory classifies one inventory damage.
 func invalidProviderConsumerInventory(err error) error {
-	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved.", Details: map[string]string{"inventory_stage": providerConsumerInventoryStage(err)}, Cause: err}
+	next := "Recover the existing deployment/installation state before retrying; ownership records and runtime are preserved."
+	details := map[string]string{"inventory_stage": providerConsumerInventoryStage(err)}
+	if conflict, isConflict := registryConflictOf(err); isConflict {
+		// A poisoned registry (two records claiming one application_id) is
+		// the one inventory damage with a VERIFIED repair (0427-175, lesson
+		// 162): the generic "recover the state" hint led operators into a
+		// dead end. The refusal names both colliding deployment uuids and
+		// the exact uuid-addressed destroy that works on a poisoned Target,
+		// in the Message and Next — not only in the Cause, which the public
+		// error boundary deliberately does not print.
+		return &machine.Error{
+			Code:        machine.ErrorOwnershipAmbiguous,
+			CauseCode:   "provider_consumer_inventory_invalid",
+			Message:     conflict.Error(),
+			Remediation: "retire the duplicate application_id registrations on the Target",
+			Next:        "Retire every colliding deployment by uuid, then verify the Target with 'baha app list': " + conflict.Error(),
+			Details:     details,
+			Cause:       err,
+		}
+	}
+	return &machine.Error{Code: machine.ErrorOwnershipAmbiguous, CauseCode: "provider_consumer_inventory_invalid", Message: "Provider consumer inventory is incomplete or damaged.", Next: next, Details: details, Cause: err}
+}
+
+// registryConflictOf finds the structured registry-conflict error anywhere in
+// the cause chain, tolerating plain wraps of its sentinel message.
+func registryConflictOf(err error) (*deployment.RegistryConflictError, bool) {
+	var conflict *deployment.RegistryConflictError
+	if errors.As(err, &conflict) {
+		return conflict, true
+	}
+	if deployment.IsRegistryConflict(err) {
+		return &deployment.RegistryConflictError{DeploymentIDs: deployment.RegistryConflictIDs(err)}, true
+	}
+	return nil, false
+}
+
+// classifyInventoryConflict gives a registry-conflict error its structured
+// machine shape wherever a bare wrap (e.g. the "multiple deployments claim
+// application_id ..." text from findDeploymentMatches) reaches a planning
+// surface. Everything else passes through unchanged (0427-175).
+func classifyInventoryConflict(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing *machine.Error
+	if errors.As(err, &existing) {
+		return err
+	}
+	if conflict, isConflict := registryConflictOf(err); isConflict {
+		return invalidProviderConsumerInventory(conflict)
+	}
+	return err
 }

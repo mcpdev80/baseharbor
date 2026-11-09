@@ -30,13 +30,18 @@ func resolveApplicationLifecycleFootprintWithFacts(resolved resolvedApplication,
 }
 
 func applicationLifecycleSnapshot(resolved resolvedApplication, observations map[string]application.ProviderFact) (application.ResolutionSnapshot, []application.ProviderPreference, error) {
+	// A poisoned registry (two records claiming one application_id) breaks the
+	// projection reads below with a bare sentinel wrap; classify it once here
+	// into the structured inventory error so EVERY planning surface — this
+	// snapshot, the union plan and the footprint — fails closed with the same
+	// repair text (0427-175).
 	registry, err := (capability.RegistryStore{Path: filepath.Join(resolved.TargetStateRoot, "provider-registry.json")}).Load()
 	if err != nil {
-		return application.ResolutionSnapshot{}, nil, err
+		return application.ResolutionSnapshot{}, nil, classifyInventoryConflict(err)
 	}
 	planned, err := application.PreviewReferenceProviderRegistryAt(resolved.TargetStateRoot, resolved.Manifest)
 	if err != nil {
-		return application.ResolutionSnapshot{}, nil, err
+		return application.ResolutionSnapshot{}, nil, classifyInventoryConflict(err)
 	}
 	// Adapter availability is execution admission, not a veto on read-only
 	// consequence planning. Preserve the actual selected offers and bindings.

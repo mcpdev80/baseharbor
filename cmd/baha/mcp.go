@@ -345,6 +345,11 @@ func authorizeCurrentMCPContext(ctx context.Context, operationID, targetName, en
 	return authorizeMCPOperation(ctx, operationID, target.Name, environment, "", workspace)
 }
 
+// machineApplicationArgs builds the CLI argument shape of one application
+// command. A --uuid selector travels as a trailing option pair so it never
+// counts toward the one-NAME limit of resolveApplicationEnvironment — the
+// poisoned-registry uuid repair must stay addressable through the MCP shape
+// exactly like the CLI (0427-175, hp4 BF-10).
 func machineApplicationArgs(name, environment string) []string {
 	args := make([]string, 0, 3)
 	if name = strings.TrimSpace(name); name != "" {
@@ -352,6 +357,15 @@ func machineApplicationArgs(name, environment string) []string {
 	}
 	if environment = strings.TrimSpace(environment); environment != "" {
 		args = append(args, "--environment", environment)
+	}
+	return args
+}
+
+// machineApplicationArgsWithUUID appends a --uuid selector option pair to the
+// base argument shape built by machineApplicationArgs.
+func machineApplicationArgsWithUUID(args []string, uuid string) []string {
+	if uuid = strings.TrimSpace(uuid); uuid != "" {
+		args = append(args, "--uuid", uuid)
 	}
 	return args
 }

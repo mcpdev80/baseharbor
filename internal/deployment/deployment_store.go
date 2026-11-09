@@ -395,6 +395,46 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := record.Identity.Validate(); err != nil {
 		return err
 	}
+	// Registration serialization (0427-175, bug hunt hp4 BF-01): a brand-new
+	// identity (no claim on its deployment path yet) takes the Target's
+	// deployment-registry write lock for the whole save, so the duplicate
+	// scans and the record creation below form ONE atomic claim and two
+	// concurrent first registrations can never both succeed. An update to an
+	// already-claimed identity never enters the lock, so the lock graph of
+	// every running lifecycle command (which holds the lifecycle lock and
+	// re-saves existing records) stays exactly as it was.
+	claimed, _, claimErr := DeploymentClaimExists(record.Identity)
+	if claimErr != nil {
+		return claimErr
+	}
+	if claimed {
+		// An idempotent re-save of an already-claimed identity: no registry
+		// lock (0427-149 keeps apply retries lock-free), and the duplicate
+		// guards short-circuit on the existing directory exactly like before.
+		// A foreign claim (a record file that names a DIFFERENT deployment
+		// uuid) is refused at the final rename inside saveDeploymentRecord.
+		return saveDeploymentRecord(record)
+	}
+	// Inside the registry write lock the duplicate scans run atomically with
+	// the directory creation — that combination is what makes a double claim
+	// structurally impossible rather than merely unlikely (0427-175).
+	return WithDeploymentRegistryWriteLock(record.Identity.Target, func() error {
+		if TestHookAfterRegistryClaimEnter != nil {
+			TestHookAfterRegistryClaimEnter()
+		}
+		return saveDeploymentRecord(record)
+	})
+}
+
+// TestHookAfterRegistryClaimEnter is a package-internal test seam (production
+// path keeps it nil, so no behaviour changes): it fires inside
+// SaveDeploymentRecord while the Target registry write lock is held and
+// before the duplicate scans run, so a two-process regression can park the
+// critical section and prove the other process is refused or converges
+// (0427-175). Style follows testHookAfterGuardRead.
+var TestHookAfterRegistryClaimEnter func()
+
+func saveDeploymentRecord(record DeploymentRecord) error {
 	if record.Version == 0 {
 		record.Version = DeploymentRecordVersion
 	}
@@ -421,6 +461,18 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// target directory already exists, so the guard below only scans for a
 	// foreign record when this identity is being written for the first time.
 	if err := refuseDuplicateApplicationName(record); err != nil {
+		return err
+	}
+	// Technical-identity uniqueness (0427-175): the application_id is the
+	// system identity (ADR 0017) and exactly one deployment per Target and
+	// environment may claim it. The name guard above deliberately never keys
+	// on the application_id; this guard closes that second door. Two records
+	// sharing one (application_id, environment) poison the Target permanently:
+	// every consumer-inventory path fails closed for EVERY app on it, and no
+	// name- or uuid-addressed command can reach the duplicate (hp4 BF-01/BF-10).
+	// For a first registration this scan runs inside the registry write lock
+	// held by SaveDeploymentRecord, so claim and write are atomic.
+	if err := refuseDuplicateApplicationIDGuard(record); err != nil {
 		return err
 	}
 	// Authoritative ownership is enforced on the production write seam before any
@@ -545,11 +597,22 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 		return fmt.Errorf("encode deployment record: %w", err)
 	}
 	path := filepath.Join(root, "deployment.json")
-	tmp := path + ".tmp"
+	// The rename below is the last word on the persisted bytes, and it is
+	// identity-checked (0427-175): a deployment.json that belongs to another
+	// deployment uuid is never replaced. The registry write lock keeps every
+	// other locking writer out across claim → scan → create → rename; this
+	// check additionally refuses a foreign claim that predates the lock. A
+	// process killed between the temp write and the rename can leave at most a
+	// stale temp file, never a torn or clobbered record.
+	if err := refuseForeignDeploymentClaim(record.Identity, path); err != nil {
+		return err
+	}
+	tmp := filepath.Join(root, fmt.Sprintf("deployment.json.%d.tmp", os.Getpid()))
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write deployment record: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("replace deployment record: %w", err)
 	}
 	// The retained ownership band is the production writer for the durable
@@ -684,41 +747,24 @@ func FindDeployment(target, applicationID, environment string) (DeploymentRecord
 	return matches[0], true, nil
 }
 
-// findDeploymentMatches lists the deployment registry for target and returns a
-// copy of every record whose (application_id, environment) equals the request.
-// A registry that already holds more than one such record is a pre-existing
-// conflict; the caller reports it instead of silently picking one. The loop is
-// extracted here so the name-identity uniqueness guard can reuse the exact same
-// identity scan without duplicating the filter or the ambiguity report.
-func findDeploymentMatches(target, applicationID, environment string) ([]DeploymentRecord, error) {
-	records, err := ListDeployments(target)
-	if err != nil {
-		return nil, err
-	}
-	var matches []DeploymentRecord
-	for i := range records {
-		record := records[i]
-		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
-			continue
-		}
-		matches = append(matches, record)
-	}
-	if len(matches) > 1 {
-		return nil, fmt.Errorf(
-			"multiple deployments claim application_id %s environment %s on target %s",
-			applicationID, environment, target,
-		)
-	}
-	return matches, nil
-}
-
 func ListDeployments(target string) ([]DeploymentRecord, error) {
 	root, err := TargetStateRoot(target)
 	if err != nil {
 		return nil, err
 	}
 	records, _, err := listDeploymentRecords(filepath.Join(root, "deployments"), target, false)
-	return records, err
+	if err != nil {
+		return nil, err
+	}
+	// application_id uniqueness (0427-175, bug hunt hp4 BF-01): the
+	// (application_id, environment) pair is the system identity (ADR 0017)
+	// and exactly one deployment per Target and environment may claim it. A
+	// registry that already holds a duplicate poisons EVERY planning path
+	// (plan/up/destroy of every app on the Target); surfacing it once here —
+	// at the single inventory seam those paths share — turns permanent,
+	// silent damage into one clear, repairable error. New duplicates cannot
+	// be created: the write seam refuses them under the registry lock.
+	return records, refuseApplicationIDCollisions(target, records)
 }
 
 func ListDeploymentsForDisplay(target string) ([]DeploymentRecord, []error, error) {

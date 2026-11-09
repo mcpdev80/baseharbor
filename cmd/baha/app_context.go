@@ -107,26 +107,56 @@ func resolveApplication(ctx context.Context, store application.Store, args []str
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
+// refuseRegistryApplicationIDConflict checks the Target's deployment
+// registry for the application_id poison and reports it with the canonical
+// inventory classification (a structured machine error, so the CLI, MCP and
+// JSON surfaces render the same repair text). A healthy registry is a
+// no-op read; the tolerant display listing makes detection survive the very
+// damage it looks for (0427-175).
+func refuseRegistryApplicationIDConflict(targetName string) error {
+	records, _, err := deployment.ListDeploymentsForDisplay(targetName)
+	if err != nil {
+		return invalidProviderConsumerInventory(err)
+	}
+	if err := deployment.RefuseApplicationIDConflictOnDisplay(targetName, records); err != nil {
+		return invalidProviderConsumerInventory(err)
+	}
+	return nil
+}
+
 func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
 	defer func() {
 		if err == nil {
 			resolved.Manifest, err = resolveAppliedBackendSelection(resolved, command)
 		}
 	}()
-	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
-	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
-	if err != nil {
-		return resolvedApplication{}, err
+	// A --uuid selector is an option pair, not a NAME: strip it BEFORE the
+	// one-NAME limit. It routes directly at the registry seam below and
+	// bypasses the CWD/name resolution; it is also the repair door on a
+	// poisoned registry (0427-175), so the registry-conflict gate must not
+	// pre-empt an explicitly targeted uuid command.
+	selectionUUID, uuidErr := extractApplicationUUID(args)
+	if uuidErr != nil {
+		return resolvedApplication{}, uuidErr
 	}
-	if argumentEnvironment != "" {
-		if environment != "" && environment != argumentEnvironment {
-			return resolvedApplication{}, usageError("conflicting environment selections", "Specify the environment only once.")
-		}
-		environment = argumentEnvironment
-	}
-	args = filtered
-	if len(args) > 1 {
+	nameArgs := withoutUUIDSelector(args)
+	nameArgs = withoutEnvironmentSelector(nameArgs)
+	if len(nameArgs) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
+	}
+	if strings.TrimSpace(selectionUUID) == "" {
+		// A poisoned registry (two deployment records claiming one
+		// application_id) must never route a command at an ARBITRARY one of
+		// the twins: every resolution path first proves the registry healthy
+		// (0427-175, hp4 BF-01). The conflict names both uuids and the
+		// working uuid-addressed repair; CWD discovery and the name filter
+		// below keep their own guards on top of this one. A failure to
+		// resolve the probe Target is not the registry's problem.
+		if probeTarget, probeErr := effectiveTarget(ctx); probeErr == nil {
+			if conflictErr := refuseRegistryApplicationIDConflict(probeTarget.Name); conflictErr != nil {
+				return resolvedApplication{}, conflictErr
+			}
+		}
 	}
 
 	target, err := effectiveTarget(ctx)
@@ -138,7 +168,10 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		return resolvedApplication{}, err
 	}
 
-	if len(args) == 0 {
+	// Repository discovery runs only for a selector-less invocation: no NAME,
+	// no --uuid, exactly the documented "run it inside an application
+	// repository" shape. Anything else routes at the registry seam below.
+	if len(nameArgs) == 0 && strings.TrimSpace(selectionUUID) == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return resolvedApplication{}, fmt.Errorf("resolve current directory: %w", err)
@@ -154,6 +187,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			}
 			resolved, resolveErr := resolvedRepositoryApplication(ctx, target, targetRoot, selection, command)
 			if resolveErr != nil {
+				// A manifest-discovered deployment may itself collide with a
+				// second registration of the same application_id on the
+				// Target: classify that registry conflict (0427-175) before
+				// falling back to name resolution, whose own guard would
+				// never see it.
+				if errors.Is(resolveErr, deployment.ErrRegistryConflict) {
+					return resolvedApplication{}, invalidProviderConsumerInventory(resolveErr)
+				}
 				return resolvedApplication{}, resolveErr
 			}
 			if authErr := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); authErr != nil {
@@ -172,12 +213,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 
 	// A --uuid selector routes directly at the registry seam, bypassing the
 	// name filter entirely. It is the unambiguous identity for name-colliding
-	// deployments (0427-149) that no -e value can disambiguate.
-	deploymentUUID, uuidErr := extractApplicationUUID(args)
-	if uuidErr != nil {
-		return resolvedApplication{}, uuidErr
+	// deployments (0427-149) that no -e value can disambiguate, and it is the
+	// repair shape on a poisoned Target — 'baha app status --uuid <id>' takes
+	// exactly this path (0427-175).
+	var positionalName string
+	if len(nameArgs) == 1 {
+		positionalName = nameArgs[0]
 	}
-	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command, deploymentUUID)
+	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, positionalName, environment, command, selectionUUID)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -745,6 +788,43 @@ func extractApplicationUUID(args []string) (string, error) {
 		}
 	}
 	return uuid, nil
+}
+
+// withoutUUIDSelector returns args with any --uuid option pair removed, so the
+// positional-NAME limit counts only real NAME arguments (0427-175: MCP and CLI
+// callers pass NAME plus an explicit uuid selector together).
+func withoutUUIDSelector(args []string) []string {
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--uuid":
+			i++
+		case strings.HasPrefix(arg, "--uuid="):
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return rest
+}
+
+// withoutEnvironmentSelector returns args with any -e/--environment option
+// pair removed, mirroring extractApplicationEnvironment: the pair is an
+// option, never a positional NAME, so it must not count toward the one-NAME
+// limit on the resolution paths that do not run the full command-line parse.
+func withoutEnvironmentSelector(args []string) []string {
+	var rest []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "-e" || arg == "--environment":
+			i++
+		case strings.HasPrefix(arg, "--environment="):
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return rest
 }
 
 func configureRepositoryComposeEnvironment(repoRoot, stateRoot string) error {

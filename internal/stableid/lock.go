@@ -31,6 +31,26 @@ const (
 	AppLifecycleLockFileName = "app_installation.lock"
 )
 
+// AcquireRegistryLock takes the named non-blocking kernel lock inside an
+// existing, private state root. It is the primitive behind the deployment
+// registry write lock (0427-175): a dedicated lock file keeps the registry
+// writer out of the .installation.lock ownership contract while still using
+// the same kernel discipline — LOCK_EX|LOCK_NB, the holder PID inside, and
+// automatic release when any holder exits.
+func AcquireRegistryLock(root, name string) (func(), error) {
+	if root == "" || name == "" {
+		return nil, errors.New("lock root and name are required")
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return nil, errors.New("registry lock requires a private state directory")
+	}
+	return lockNamed(root, name)
+}
+
 // AcquireLifecycleLock serializes bootstrap and provider upgrades of one
 // installation, across releases. The kernel releases the lock on process exit;
 // durable update receipts still govern recovery after an interrupted mutation.
