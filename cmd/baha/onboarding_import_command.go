@@ -55,8 +55,15 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 		return err
 	}
 	identityRoot := filepath.Join(dataRoot, "remote-workstations")
-	for _, dir := range []string{profileDir, identityRoot} {
-		if err := checkPrivateOnboardingDirectory(dir); err != nil {
+	// Prepare owned local storage before spending the remote one-use grant.
+	// Refuse symlinked/public ancestors rather than letting MkdirAll follow
+	// a pre-existing path into an attacker-controlled location.
+	for _, dir := range []string{
+		filepath.Join(dataRoot, "remote-connections"),
+		profileDir,
+		identityRoot,
+	} {
+		if err := ensurePrivateOnboardingDirectory(dir); err != nil {
 			return err
 		}
 	}
@@ -84,11 +91,8 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 			_ = os.RemoveAll(identityPath)
 		}
 	}()
-	if err := os.MkdirAll(profileDir, 0o700); err != nil {
-		return err
-	}
-	// A second collision check handles another CLI process that raced the
-	// preflight. The profile writer below must also use O_EXCL.
+	// A concurrent importer cannot replace an existing profile: the writer
+	// below uses an exclusive create after the preflight.
 	digest := sha256.Sum256([]byte(bundle.CAPEM))
 	profile := map[string]any{
 		"version": remoteConnectionProfileVersion,
@@ -247,4 +251,11 @@ func checkPrivateOnboardingDirectory(path string) error {
 		return fmt.Errorf("onboarding directory must be a private real directory (0700): %s", path)
 	}
 	return nil
+}
+
+func ensurePrivateOnboardingDirectory(path string) error {
+	if err := os.Mkdir(path, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+		return fmt.Errorf("create private onboarding directory %s: %w", path, err)
+	}
+	return checkPrivateOnboardingDirectory(path)
 }
