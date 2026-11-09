@@ -31,16 +31,16 @@ var ErrInvalid = errors.New("invalid or expired workstation onboarding bundle")
 // persist their digests durably and consume the grant exactly once on enroll.
 // The Workstation produces its own CSR and private key.
 type Bundle struct {
-	ContractVersion string    `json:"contract_version"`
-	CoreURL         string    `json:"core_url"`
-	CAPEM           string    `json:"ca_pem"`
-	InstallationID  string    `json:"installation_id"`
-	CoreInstallationID string `json:"core_installation_id"`
-	RuntimeProvider string    `json:"runtime_provider"`
-	Station         string    `json:"station"`
-	Token           string    `json:"token"`
-	Nonce           string    `json:"nonce"`
-	ExpiresAt       time.Time `json:"expires_at"`
+	ContractVersion    string    `json:"contract_version"`
+	CoreURL            string    `json:"core_url"`
+	CAPEM              string    `json:"ca_pem"`
+	InstallationID     string    `json:"installation_id"`
+	CoreInstallationID string    `json:"core_installation_id"`
+	RuntimeProvider    string    `json:"runtime_provider"`
+	Station            string    `json:"station"`
+	Token              string    `json:"token"`
+	Nonce              string    `json:"nonce"`
+	ExpiresAt          time.Time `json:"expires_at"`
 }
 
 func (b Bundle) Validate(now time.Time) error {

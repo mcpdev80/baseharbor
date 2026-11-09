@@ -29,27 +29,43 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 		return usageError("baha onboard --import needs exactly one private invitation file", "Run baha onboard --import PATH.")
 	}
 	bundle, err := onboardingbundle.Read(args[0], time.Now())
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	device, err := onboardingbundle.Redeem(ctx, bundle, time.Now())
-	if err != nil { return err }
-	if err := verifyWorkstationCore(ctx, bundle, device); err != nil { return err }
+	if err != nil {
+		return err
+	}
+	if err := verifyWorkstationCore(ctx, bundle, device); err != nil {
+		return err
+	}
 	targetName := "core-" + strings.ReplaceAll(bundle.CoreInstallationID, "-", "")[:12]
 	cfg, _, err := deployment.LoadConfigForMutation()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	if _, exists := cfg.Targets[targetName]; exists {
 		return errors.New("remote Core Target already exists; never replace it with an invitation")
 	}
 	dataRoot, err := deployment.DataRoot()
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	identityRoot := filepath.Join(dataRoot, "remote-workstations")
 	identityPath, err := onboardingbundle.PersistIdentity(identityRoot, bundle, device, time.Now())
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	saved := false
 	defer func() {
-		if !saved { _ = os.RemoveAll(identityPath) }
+		if !saved {
+			_ = os.RemoveAll(identityPath)
+		}
 	}()
 	profileDir := filepath.Join(dataRoot, "remote-connections", targetName)
-	if err := os.MkdirAll(profileDir, 0o700); err != nil { return err }
+	if err := os.MkdirAll(profileDir, 0o700); err != nil {
+		return err
+	}
 	profilePath := filepath.Join(profileDir, "profile.json")
 	if _, err := os.Lstat(profilePath); err == nil {
 		return errors.New("remote connection profile already exists; refusing replacement")
@@ -59,38 +75,48 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	digest := sha256.Sum256([]byte(bundle.CAPEM))
 	profile := map[string]any{
 		"version": remoteConnectionProfileVersion,
-		"name": targetName,
+		"name":    targetName,
 		"core": map[string]string{
-			"installation_id":bundle.CoreInstallationID,
-			"url":bundle.CoreURL,
+			"installation_id": bundle.CoreInstallationID,
+			"url":             bundle.CoreURL,
 		},
 		"trust": map[string]string{
-			"ca_pem":bundle.CAPEM,
-			"sha256":hex.EncodeToString(digest[:]),
+			"ca_pem": bundle.CAPEM,
+			"sha256": hex.EncodeToString(digest[:]),
 		},
 		"targets": []map[string]string{{
-			"name":targetName,
-			"tenant_id":bundle.InstallationID,
-			"runtime_provider":bundle.RuntimeProvider,
+			"name":             targetName,
+			"tenant_id":        bundle.InstallationID,
+			"runtime_provider": bundle.RuntimeProvider,
 		}},
-		"device":map[string]string{"identity_dir":identityPath},
+		"device": map[string]string{"identity_dir": identityPath},
 	}
 	payload, err := json.MarshalIndent(profile, "", "  ")
-	if err != nil { return err }
-	if err := writePrivateJSON0600(profilePath, append(payload,'\n')); err != nil { return err }
-	defer func(){ if !saved { _ = os.Remove(profilePath) } }()
+	if err != nil {
+		return err
+	}
+	if err := writePrivateJSON0600(profilePath, append(payload, '\n')); err != nil {
+		return err
+	}
+	defer func() {
+		if !saved {
+			_ = os.Remove(profilePath)
+		}
+	}()
 	accessName := "remote-" + strings.ReplaceAll(bundle.CoreInstallationID, "-", "")[:12]
 	_, err = createTargetDefinition(ctx, machineTargetCreateInput{
-		Name:targetName,
-		TenantID:bundle.InstallationID,
-		RuntimeProvider:bundle.RuntimeProvider,
-		AccessProvider:string(targetaccess.ProviderCoreRemote),
-		Access:accessName,
-		Reference:bundle.CoreURL,
-		Scope:"dev",
-		Default: cfg.DefaultTarget == "",
+		Name:            targetName,
+		TenantID:        bundle.InstallationID,
+		RuntimeProvider: bundle.RuntimeProvider,
+		AccessProvider:  string(targetaccess.ProviderCoreRemote),
+		Access:          accessName,
+		Reference:       bundle.CoreURL,
+		Scope:           "dev",
+		Default:         cfg.DefaultTarget == "",
 	})
-	if err != nil { return fmt.Errorf("register verified remote Core Target: %w", err) }
+	if err != nil {
+		return fmt.Errorf("register verified remote Core Target: %w", err)
+	}
 	saved = true
 	if cfg.DefaultTarget == "" {
 		// Selection is a convenience, never a replacement for authorization:
@@ -109,47 +135,62 @@ func verifyWorkstationCore(ctx context.Context, bundle onboardingbundle.Bundle, 
 		return errors.New("Core trust is missing")
 	}
 	pair, err := tls.X509KeyPair(identity.CertificatePEM, identity.PrivateKeyPEM)
-	if err != nil { return errors.New("verified workstation certificate and private key do not match") }
-	transport := &http.Transport{TLSClientConfig:&tls.Config{
-		MinVersion:tls.VersionTLS12, RootCAs:roots, Certificates:[]tls.Certificate{pair},
+	if err != nil {
+		return errors.New("verified workstation certificate and private key do not match")
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS12, RootCAs: roots, Certificates: []tls.Certificate{pair},
 	}}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{
-		Timeout:15*time.Second, Transport:transport,
-		CheckRedirect:func(*http.Request,[]*http.Request)error{return http.ErrUseLastResponse},
+		Timeout: 15 * time.Second, Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
-	req, err := http.NewRequestWithContext(ctx,http.MethodGet,bundle.CoreURL+"/api/v1/management/installation",nil)
-	if err != nil { return err }
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, bundle.CoreURL+"/api/v1/management/installation", nil)
+	if err != nil {
+		return err
+	}
 	resp, err := client.Do(req)
-	if err != nil { return fmt.Errorf("verify newly enrolled Core workstation identity: %w",err) }
+	if err != nil {
+		return fmt.Errorf("verify newly enrolled Core workstation identity: %w", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Core refused enrolled device (HTTP %d); Target was not created", resp.StatusCode)
 	}
-	var got struct{
-		Version string `json:"version"`
+	var got struct {
+		Version        string `json:"version"`
 		InstallationID string `json:"installation_id"`
-		TenantID string `json:"tenant_id"`
+		TenantID       string `json:"tenant_id"`
 		IdentityIssuer string `json:"identity_issuer"`
 	}
-	dec := json.NewDecoder(io.LimitReader(resp.Body,16<<10))
+	dec := json.NewDecoder(io.LimitReader(resp.Body, 16<<10))
 	dec.DisallowUnknownFields()
 	// The shared installation endpoint also returns operator_issuer, which
 	// is intentionally irrelevant to certificate-based device authentication.
 	var payload map[string]json.RawMessage
-	if err := dec.Decode(&payload); err != nil { return errors.New("invalid Core installation response") }
+	if err := dec.Decode(&payload); err != nil {
+		return errors.New("invalid Core installation response")
+	}
 	for key := range payload {
-		switch key {case "version","installation_id","tenant_id","identity_issuer","operator_issuer":
-		default: return errors.New("Core installation response uses unknown fields")}
+		switch key {
+		case "version", "installation_id", "tenant_id", "identity_issuer", "operator_issuer":
+		default:
+			return errors.New("Core installation response uses unknown fields")
+		}
 	}
 	raw, err := json.Marshal(payload)
-	if err != nil{return err}
-	if json.Unmarshal(raw,&got)!=nil || got.Version!=managementInstallationVersion ||
-		got.InstallationID!=bundle.CoreInstallationID ||
-		got.TenantID!=bundle.InstallationID || got.IdentityIssuer=="" {
+	if err != nil {
+		return err
+	}
+	if json.Unmarshal(raw, &got) != nil || got.Version != managementInstallationVersion ||
+		got.InstallationID != bundle.CoreInstallationID ||
+		got.TenantID != bundle.InstallationID || got.IdentityIssuer == "" {
 		return errors.New("remote Core installation, tenant or issuer differs from enrollment bundle")
 	}
 	var rest any
-	if err := dec.Decode(&rest); err != io.EOF { return errors.New("Core returned trailing installation data") }
+	if err := dec.Decode(&rest); err != io.EOF {
+		return errors.New("Core returned trailing installation data")
+	}
 	return nil
 }

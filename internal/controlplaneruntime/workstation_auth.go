@@ -35,7 +35,9 @@ func workstationDeviceMiddleware(pool *pgxpool.Pool, caFile string, revocation w
 		return nil, errors.New("workstation device admission requires Core DB, managed CA, revocation authority and API")
 	}
 	caPEM, err := os.ReadFile(caFile)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	roots := x509.NewCertPool()
 	if !roots.AppendCertsFromPEM(caPEM) {
 		return nil, errors.New("workstation CA file is not a usable certificate trust anchor")
@@ -104,19 +106,19 @@ func workstationDeviceMiddleware(pool *pgxpool.Pool, caFile string, revocation w
 			return
 		}
 		principal := &identity.Principal{
-			Issuer: prefix + scope.TenantID,
-			Subject: scope.Station,
+			Issuer:    prefix + scope.TenantID,
+			Subject:   scope.Station,
 			Assurance: "verified-mutual-tls",
-			Methods: []string{"workstation-mtls"},
+			Methods:   []string{"workstation-mtls"},
 			ExpiresAt: &exp,
 			// This is deliberately not OIDC. The certificate/registry/CRL
 			// checks above, not an unverified claim, authorize this device.
 			IssuerVerified: false,
 		}
 		tenant := &tenancy.Context{
-			TenantID: scope.TenantID,
+			TenantID:           scope.TenantID,
 			ExternalIdentityID: "workstation/" + scope.Station,
-			Roles: []string{"editor"},
+			Roles:              []string{"editor"},
 		}
 		ctx := identity.WithPrincipal(r.Context(), principal)
 		ctx = tenancy.WithContext(ctx, tenant)
@@ -124,9 +126,9 @@ func workstationDeviceMiddleware(pool *pgxpool.Pool, caFile string, revocation w
 	}), nil
 }
 
-func equalHexSerial(a,b string) bool {
+func equalHexSerial(a, b string) bool {
 	normalize := func(s string) string {
-		return strings.TrimLeft(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)),":",""),"0")
+		return strings.TrimLeft(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), ":", ""), "0")
 	}
 	return normalize(a) != "" && normalize(a) == normalize(b)
 }

@@ -43,17 +43,23 @@ func BootstrapLocalInstallationTenant(ctx context.Context, bootstrapDB *pgxpool.
 		if count != 1 || existingSlug != slug {
 			return "", false, ErrInitialTenantExists
 		}
-		if err := tx.Commit(ctx); err != nil { return "", false, err }
+		if err := tx.Commit(ctx); err != nil {
+			return "", false, err
+		}
 		return id, false, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return "", false, err
 	}
 	id, err = stableid.NewUUIDv4("initial local Core tenant")
-	if err != nil { return "", false, err }
+	if err != nil {
+		return "", false, err
+	}
 	if _, err := tx.Exec(ctx, "INSERT INTO tenants(id, slug, name) VALUES ($1,$2,$3)", id, slug, name); err != nil {
 		return "", false, fmt.Errorf("create locally owned tenant: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil { return "", false, err }
+	if err := tx.Commit(ctx); err != nil {
+		return "", false, err
+	}
 	return id, true, nil
 }

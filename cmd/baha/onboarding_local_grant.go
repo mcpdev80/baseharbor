@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
+	"github.com/mcpdev80/baseharbor/internal/database"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/onboardingbundle"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -52,7 +52,9 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 		return errors.New("managed Core CA trust is not available")
 	}
 	installationRoot, err := targetRuntimeStateRoot(target)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	installation, err := coreinstallation.Load(installationRoot)
 	if err != nil || !installation.Ready || installation.ID == "" {
 		return errors.New("managed Core installation identity is not READY")
@@ -60,16 +62,16 @@ func issueLocalWorkstationInvitation(ctx context.Context, target deployment.Reso
 	// Dummy but correctly shaped grant values validate the public transport
 	// before the protected real grant is durably created.
 	bundle := onboardingbundle.Bundle{
-		ContractVersion: onboardingbundle.Contract,
-		CoreURL:         coreOrigin,
-		CAPEM:           string(trust.PEM),
-		InstallationID:  scope.TenantID,
+		ContractVersion:    onboardingbundle.Contract,
+		CoreURL:            coreOrigin,
+		CAPEM:              string(trust.PEM),
+		InstallationID:     scope.TenantID,
 		CoreInstallationID: installation.ID,
-		RuntimeProvider: target.RuntimeProvider,
-		Station:         scope.Station,
-		Token:           strings.Repeat("A", 48),
-		Nonce:           strings.Repeat("B", 48),
-		ExpiresAt:       time.Now().Add(5 * time.Minute),
+		RuntimeProvider:    target.RuntimeProvider,
+		Station:            scope.Station,
+		Token:              strings.Repeat("A", 48),
+		Nonce:              strings.Repeat("B", 48),
+		ExpiresAt:          time.Now().Add(5 * time.Minute),
 	}
 	if err := bundle.Validate(time.Now()); err != nil {
 		return fmt.Errorf("invalid managed Core invitation authority: %w", err)
