@@ -97,7 +97,7 @@ func TestStaleAppLockStillBlocksLiveHolder(t *testing.T) {
 	live.Env = append(os.Environ(),
 		reclaimChildEnv+"=1",
 		"BAHA_TEST_RECLAIM_ROOT="+root,
-		"BAHA_TEST_RECLAIM_SCOPE=" + "live-app",
+		"BAHA_TEST_RECLAIM_SCOPE="+"live-app",
 		"BAHA_TEST_RECLAIM_RELEASE="+releaseMarker,
 	)
 	if err := live.Start(); err != nil {
