@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/controlplaneruntime"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	"github.com/mcpdev80/baseharbor/internal/serviceaccess"
@@ -133,12 +134,23 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 	if err != nil {
 		return fmt.Errorf("issue Core API serving TLS: %w", err)
 	}
-	connector, err := issue("core-connector", connectorHost, serviceaccess.AuthenticationMTLS)
+	// The Connector transport requires exactly one installation-owned
+	// SPIFFE URI and serverAuth-only EKU. Generic service TLS material cannot
+	// satisfy this contract; sign via the existing dedicated Core CSR role.
+	installationRoot, err := targetRuntimeStateRoot(target)
+	if err != nil {
+		return err
+	}
+	installation, err := coreinstallation.Load(installationRoot)
+	if err != nil || !installation.Ready {
+		return errors.New("managed Connector TLS requires the current READY Core installation identity")
+	}
+	connector, err := issueManagedCoreConnectorTLS(ownedCtx, issuer, root, installation.ID, connectorHost)
 	if err != nil {
 		return fmt.Errorf("issue Core connector serving TLS: %w", err)
 	}
 	cfg.TLSCertFile, cfg.TLSKeyFile = api.ServerCertificate, api.ServerKey
 	cfg.ConnectorTLSCertFile, cfg.ConnectorTLSKeyFile, cfg.ConnectorTLSCAFile =
-		connector.ServerCertificate, connector.ServerKey, connector.CA
+		connector.Certificate, connector.Key, connector.CA
 	return nil
 }
