@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func testCoreServer(t *testing.T, tamper bool) (*httptest.Server, Bundle) {
+func testCoreServer(t *testing.T, tamper bool, mode ...string) (*httptest.Server, Bundle) {
 	t.Helper()
 	now := time.Now().UTC()
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -73,6 +73,11 @@ func testCoreServer(t *testing.T, tamper bool) (*httptest.Server, Bundle) {
 	var lock sync.Mutex
 	used := false
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(mode) > 0 && len(mode[0]) > len("redirect:") && mode[0][:len("redirect:")] == "redirect:" {
+			w.Header().Set("Location", mode[0][len("redirect:"):])
+			w.WriteHeader(http.StatusTemporaryRedirect)
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/workstations/enroll" {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
@@ -131,7 +136,10 @@ func testCoreServer(t *testing.T, tamper bool) (*httptest.Server, Bundle) {
 		_ = json.NewEncoder(w).Encode(enrollReply{
 			InstallationID: b.InstallationID, Station: b.Station, Serial: serial.Text(16),
 			LeafPEM:  string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})),
-			TrustPEM: string(caPEM), ExpiresAt: exp,
+			TrustPEM: func() string {
+				if len(mode) > 0 && mode[0] == "foreign-trust" { return "not the invitation CA" }
+				return string(caPEM)
+			}(), ExpiresAt: exp,
 		})
 	})
 	server := httptest.NewUnstartedServer(handler)
@@ -169,5 +177,28 @@ func TestRedeemRejectsIncorrectCA(t *testing.T) {
 	b.CAPEM = other.CAPEM
 	if _, err := Redeem(context.Background(), b, time.Now()); err == nil {
 		t.Fatal("incorrect CA was accepted")
+	}
+}
+
+func TestRedeemRejectsForeignReturnedTrust(t *testing.T) {
+	_, bundle := testCoreServer(t, false, "foreign-trust")
+	if _, err := Redeem(context.Background(), bundle, time.Now()); err == nil {
+		t.Fatal("enrollment accepted Core trust different from pinned invitation")
+	}
+}
+
+func TestRedeemNeverForwardsGrantOnRedirect(t *testing.T) {
+	var forwarded bool
+	sink := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwarded = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer sink.Close()
+	_, bundle := testCoreServer(t, false, "redirect:"+sink.URL)
+	if _, err := Redeem(context.Background(), bundle, time.Now()); err == nil {
+		t.Fatal("redirected enrollment was accepted")
+	}
+	if forwarded {
+		t.Fatal("one-use enrollment grant was forwarded to redirect destination")
 	}
 }
