@@ -57,6 +57,38 @@ TLS
 
 Die aktuelle geschützte API-Oberfläche enthält die anwendungsgeheimen Endpunkte. Geheimwerte werden niemals durch einen enthüllen Endpunkt freigelegt.
 
+## Entwicklungsgateway im LAN (explizite Freigabe)
+
+Eine reine Core-Installation kann den verwalteten Operator-Keycloak vor dem
+ersten App-Deployment einrichten. Dazu wird die gemeinsam genutzte Gateway-
+Route vor dem Abruf der OIDC-Discovery erzeugt.
+
+Standardmäßig lauscht das Gateway nur auf `127.0.0.1`. Namen unter
+`*.baha.localhost` oder `*.localhost` eignen sich nicht als Adresse für
+andere Rechner.
+
+Für einen ausdrücklich freigegebenen LAN-Zugriff:
+
+1. Mit `baha dev domain DOMAIN` einen auf beiden Rechnern auflösbaren
+   Ziel-Domainnamen konfigurieren. Insbesondere muss `auth.DOMAIN` von
+   beiden Rechnern auf den Core-Host zeigen.
+2. `BASEHARBOR_DEV_GATEWAY_BIND_ADDRESS` beim Aufruf
+   `baha login --init-tenant` und bei späteren Gateway-Reconciles auf die
+   konkrete, nicht lokale IPv4-Adresse des Core-Hosts setzen. Ein leerer
+   Wert behält den bisherigen Loopback-Standard. Wildcard-Binds sind
+   verboten.
+3. Die echte verwaltete Core-CA über die vorgesehenen Operator- und
+   Verbindungsprofile verifizieren. Keine TLS-Prüfung abschalten.
+4. `baha serve` mit vorbereiteten, CA-signierten API- und Connector-
+   Zertifikaten und korrekten SAN-Einträgen starten. Erst danach erstellt
+   `node add` das Enrollment auf Basis der verifizierten
+   `node-authority-profile.json`.
+
+Das Gateway-Zertifikat stammt aus der bereits vorhandenen verwalteten
+OpenBao-Service-PKI. Die API- und Connector-Zertifikate werden getrennt
+bereitgestellt. Domainkonfiguration und Listener eröffnen keine zusätzlichen
+Operator-, Tenant- oder Node-Rechte.
+
 ## Anwendungsbereich des TLS
 
 Diese Laufzeit verbraucht ein bereits vorbereitetes Zertifikat/Schlüsselpaar. Zertifikatsausgabe, ACME, interne PKI, BYOC Entdeckung, Kettenbau und Erneuerung gehören zum dedizierten Zertifikatsmanagement-Meilenstein und werden hier absichtlich nicht umgesetzt.
