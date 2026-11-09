@@ -96,7 +96,44 @@ WHERE e.issuer = $1 AND e.subject = $2
   AND m.tenant_id = $3::uuid AND m.role = 'editor'
 `, principal.Issuer, principal.Subject, tenantID).Scan(&externalID)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return InitialOperatorTenant{}, ErrInitialTenantOwnerMismatch
+			// A locally owned Core may have provisioned its tenant identity
+			// without an OIDC operator so that CLI-only workstation pairing
+			// works first. The first real *verified* OIDC owner may claim it,
+			// but only when no existing membership exists anywhere inside
+			// the initial tenant. Never transfer an established tenant.
+			var count int
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM memberships WHERE tenant_id=$1::uuid", tenantID).Scan(&count); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			var tenants int
+			if err := tx.QueryRow(ctx, "SELECT count(*) FROM tenants").Scan(&tenants); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			if count != 0 || tenants != 1 {
+				return InitialOperatorTenant{}, ErrInitialTenantOwnerMismatch
+			}
+			externalID, err = stableid.NewUUIDv4("initial operator")
+			if err != nil { return InitialOperatorTenant{}, err }
+			memberID, err := stableid.NewUUIDv4("initial membership")
+			if err != nil { return InitialOperatorTenant{}, err }
+			if _, err := tx.Exec(ctx, `
+INSERT INTO external_identities(id, issuer, subject) VALUES ($1,$2,$3)
+ON CONFLICT (issuer,subject) DO NOTHING
+`, externalID, principal.Issuer, principal.Subject); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			if err := tx.QueryRow(ctx,
+				"SELECT id::text FROM external_identities WHERE issuer=$1 AND subject=$2",
+				principal.Issuer, principal.Subject).Scan(&externalID); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			if _, err := tx.Exec(ctx,
+				"INSERT INTO memberships(id,tenant_id,external_identity_id,role) VALUES ($1,$2,$3,'editor')",
+				memberID, tenantID, externalID); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			if err := tx.Commit(ctx); err != nil { return InitialOperatorTenant{}, err }
+			return InitialOperatorTenant{TenantID:tenantID, ExternalIdentityID:externalID,Created:false}, nil
 		}
 		if err != nil {
 			return InitialOperatorTenant{}, fmt.Errorf("verify initial tenant owner: %w", err)
