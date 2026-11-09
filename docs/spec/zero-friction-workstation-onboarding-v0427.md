@@ -74,26 +74,39 @@ server port. The actual command names may be adjusted to retain the existing
 - No new CI jobs or PR while the integrated branch is incomplete. After
   implementation, push a single coherent PR and qualify its exact HEAD.
 
-## Current implementation boundary
+## Current implementation boundary (2026-11-10)
 
-The existing production `baha onboard --init-tenant` delegates to verified
-OIDC/PKCE, and `onboardingEnrollmentBaseURL()` returns empty string.
-Likewise the current `redeemOnboardingBundle` generates a CSR but discards
-the associated private key. These gaps must not be hidden by treating a
-parser-only test as a complete onboarding PASS.
+Implemented in this feature branch:
 
-The branch now includes the strict portable invitation contract, bounded
-owner-only file transfer, a TLS-pinned redemption client that generates its
-own CSR and verifies the issued leaf against its invitation scope, and
-atomic private workstation identity staging. The Core's workstation handler
-also exposes a narrowly scoped TLS-only delegated grant-consumption route
-outside OIDC, while operator-authorized grant creation remains inside OIDC.
-Unit-level negative, foreign-scope, one-use/replay and import tests are
-committed; neither native compilation nor physical E2E has passed yet.
+- Locally owned Core tenant initialization and protected short-lived grant issuance
+  through baha onboard --invite, without fabricating an OIDC principal.
+- Strict invitation validation, pinned Core CA, one-use enrollment, local CSR
+  and private key, and verified mTLS workstation identity.
+- Explicit device admission through the Core durable registry and revocation
+  authority; only development machine operations are delegated.
+- baha onboard --import FILE preflights local collisions, creates the remote
+  connection profile exclusively and configures an mTLS-backed target.
+- Remote machine discovery, execution and source transfer permit verified
+  device sessions without a bearer token.
+- Negative tests cover replay, foreign identity/CA, redirected enrollment,
+  duplicate profiles and mTLS-only remote requests.
 
-**NOT YET COMPLETE:** the owner-authorized local Core grant issuer and
-first-tenant bootstrap, the local-host grant issuer and the authenticated workstation request context,
-the protected Target/connection transaction and Core API authentication
-for the enrolled workstation are still missing. No CLI end-to-end success
-may be claimed from these isolated tests; do not open the PR or run the
-expensive full PR CI until those integration boundaries are implemented.
+Still requiring evidence before opening a PR:
+
+- Focused GitHub workflow green at the exact final HEAD, including formatting
+  and targeted CLI/device tests. A push is not an end-to-end runtime test.
+- Fresh Docker and Podman Core VM: READY, reachable managed LAN TLS endpoint,
+  local invitation export and import on a clean separate workstation.
+- Real remote source upload and app plan/apply/status/change/destroy.
+  Confirm target-name translation and tenant authorization.
+- Reissue/renewal after the one-hour device certificate expires. Reimporting
+  an expired one-use invitation is not a durable workflow.
+- Recovery after a grant is consumed but device verification or local
+  configuration fails. Preflight avoids known conflicts but cannot make
+  remote grant consumption and local configuration a distributed transaction.
+- Managed Core LAN URL configuration must support genuine zero-touch defaults
+  instead of hidden manual environment setup.
+
+Same-VM Core plus runtime does not require the separate Node Connector.
+Do not claim PR readiness or end-to-end success until these acceptance
+checks are recorded at the final HEAD.
