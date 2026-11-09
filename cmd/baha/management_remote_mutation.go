@@ -188,7 +188,11 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 		// Remote deployments carry only immutable Git/OCI identities.
 		// Never snapshot or upload local workspace files, including dirty
 		// or untracked changes, even when a repository manifest is present.
-		payload, err = remoteApplyImmutableSourcePayload(name, environment, payload)
+		sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
+		if sourceErr != nil {
+			return sourceErr
+		}
+		payload, err = remoteApplyPayloadWithSource(payload, sourceModel)
 		if err != nil {
 			return err
 		}
