@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -56,4 +57,15 @@ func selectedRemoteSourceModel(applicationName, environment string) (*developmen
 func validateRemoteSelectedSources(applicationName, environment string) error {
 	_, err := selectedRemoteSourceModel(applicationName, environment)
 	return err
+}
+
+// remoteImmutableApplyPayload is the only source selector for a remote apply.
+// It deliberately cannot capture or upload local repository bytes: the Core
+// admits only an immutable Git/OCI source registered in its own authority.
+func remoteImmutableApplyPayload(name, environment string, payload json.RawMessage) (json.RawMessage, error) {
+	model, err := selectedRemoteSourceModel(name, environment)
+	if err != nil {
+		return nil, err
+	}
+	return remoteApplyPayloadWithSource(payload, model)
 }

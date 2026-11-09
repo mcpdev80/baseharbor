@@ -185,23 +185,11 @@ func remoteApplicationMutation(ctx context.Context, target deployment.ResolvedTa
 			"Configure and authenticate the pinned remote Core connection for this Target.", false)
 	}
 	if operation == "apply" {
-		root, rootErr := remoteLocalSourceRoot(name, environment)
-		if rootErr != nil {
-			return rootErr
-		}
-		if root != "" {
-			digest, transferErr := core.uploadLocalSource(ctx, target.Name, name, environment, root)
-			if transferErr != nil {
-				return transferErr
-			}
-			payload, err = remotePayloadWithSnapshot(payload, digest)
-		} else {
-			sourceModel, sourceErr := selectedRemoteSourceModel(name, environment)
-			if sourceErr != nil {
-				return sourceErr
-			}
-			payload, err = remoteApplyPayloadWithSource(payload, sourceModel)
-		}
+		// Remote delivery is immutable Git/OCI only. A developer checkout may
+		// select the application and its pinned source declaration, but its
+		// working-tree bytes (including dirty/untracked files) never cross
+		// the Core management boundary.
+		payload, err = remoteImmutableApplyPayload(name, environment, payload)
 		if err != nil {
 			return err
 		}
