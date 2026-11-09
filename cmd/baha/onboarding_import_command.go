@@ -107,7 +107,7 @@ func runOnboardImport(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := writePrivateJSON0600(profilePath, append(payload, '\n')); err != nil {
+	if err := writeExclusiveOnboardingProfile(profilePath, append(payload, '\n')); err != nil {
 		return err
 	}
 	defer func() {
@@ -205,4 +205,27 @@ func verifyWorkstationCore(ctx context.Context, bundle onboardingbundle.Bundle, 
 		return errors.New("Core returned trailing installation data")
 	}
 	return nil
+}
+
+func writeExclusiveOnboardingProfile(path string, payload []byte) (err error) {
+	// O_EXCL makes a concurrent import and any pre-existing profile fail
+	// closed. Unlike rename, it cannot silently replace a valid profile.
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err = file.Write(payload); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
