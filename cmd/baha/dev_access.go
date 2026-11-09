@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/cli"
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 	"github.com/mcpdev80/baseharbor/internal/devaccess"
 	"github.com/mcpdev80/baseharbor/internal/openbao"
 	platformopenbao "github.com/mcpdev80/baseharbor/internal/openbao"
@@ -137,13 +139,41 @@ func readDevAccessPasswordFile(path string) (string, error) {
 	return password, nil
 }
 
+// A bootstrap fallback is permitted only for an explicitly local Target with
+// neither a persisted Core installation nor existing runtime files. A remote
+// selection or any ambiguous/malformed state must fail closed.
+func localCredentialBootstrapAllowed(ctx context.Context) (bool, error) {
+    selected, err := effectiveTarget(ctx)
+    if err != nil { return false, err }
+    if selected.AccessProvider != "" && selected.AccessProvider != "local" {
+        return false, nil
+    }
+    root, err := targetRuntimeStateRoot(selected)
+    if err != nil { return false, err }
+    if _, err = coreinstallation.Load(root); err == nil {
+        return false, nil
+    } else if !errors.Is(err, os.ErrNotExist) {
+        return false, err
+    }
+    if _, err = existingTargetRuntimeFiles(ctx); err == nil {
+        return false, nil
+    } else if !errors.Is(err, os.ErrNotExist) {
+        return false, err
+    }
+    return true, nil
+}
+
 func reconcileDeveloperCredentialAuthority(ctx context.Context, target, environment string, candidate devaccess.Credentials, replace bool) (devaccess.Credentials, error) {
 	compose, files, err := openBaoRuntime(ctx)
 	if err != nil {
-		// Before the managed secret provider exists, the owner-only bootstrap
-		// projection is the temporary authority. Once OpenBao is initialized,
-		// this path is imported and OpenBao becomes authoritative.
-		return candidate, nil
+		// Runtime resolution can fail for reasons other than initial bootstrap
+		// (missing target, inaccessible runtime, failed provider discovery).
+		// None of these errors proves that there is no managed authority.
+		// Never silently promote a local candidate to authoritative material.
+		if allowed, bootstrapErr := localCredentialBootstrapAllowed(ctx); bootstrapErr == nil && allowed {
+			return candidate, nil
+		}
+		return devaccess.Credentials{}, fmt.Errorf("resolve managed credential authority: %w", err)
 	}
 	state, err := openBaoInspect(ctx, compose, files)
 	if err != nil {
@@ -363,7 +393,41 @@ func (openBaoManagedCredentialStore) Persist(ctx context.Context, target, userna
 	return nil
 }
 
+// recoverMissingLocalDeveloperCredential consults the managed authority BEFORE
+// creating a new workstation projection. A missing local projection does not
+// imply that a previously enrolled target needs new credentials.
+func recoverMissingLocalDeveloperCredential(ctx context.Context, target, environment string) (devaccess.Credentials, bool, error) {
+    _, err := devaccess.Load(target, environment)
+    if err == nil {
+        return devaccess.Credentials{}, false, nil
+    }
+    if !errors.Is(err, os.ErrNotExist) {
+        return devaccess.Credentials{}, false, err
+    }
+    authoritative, err := reconcileDeveloperCredentialAuthority(ctx, target, environment, devaccess.Credentials{}, false)
+    if err != nil {
+        return devaccess.Credentials{}, false, err
+    }
+    if authoritative.Username == "" && authoritative.Password == "" {
+        // Explicitly uninitialized OpenBao: normal local bootstrap can proceed.
+        return devaccess.Credentials{}, false, nil
+    }
+    if authoritative.Username == "" || authoritative.Password == "" {
+        return devaccess.Credentials{}, false, errors.New("managed developer credential is incomplete")
+    }
+    projected, err := devaccess.Configure(target, environment, authoritative.Username, authoritative.Password)
+    if err != nil {
+        return devaccess.Credentials{}, false, fmt.Errorf("project recovered developer credential: %w", err)
+    }
+    return projected, true, nil
+}
+
 func ensureAuthoritativeDeveloperCredentials(ctx context.Context, target, environment string) (devaccess.Credentials, error) {
+	if recovered, ok, err := recoverMissingLocalDeveloperCredential(ctx, target, environment); err != nil {
+		return devaccess.Credentials{}, err
+	} else if ok {
+		return recovered, nil
+	}
 	candidate, err := devaccess.Ensure(target, environment)
 	if err != nil {
 		return devaccess.Credentials{}, err
