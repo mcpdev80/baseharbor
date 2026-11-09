@@ -15,7 +15,7 @@ import (
 func TestRemoteCoreTargetCreateBindsTenantAndNeverFallsBackToLocalDocker(t *testing.T) {
 	t.Setenv("BASEHARBOR_STATE_DIR", t.TempDir())
 	t.Setenv("BASEHARBOR_CONNECTION_PROFILE", "")
-	const tenant = "6a185ba5-003b-4708-8c91-aafa7d369e53"
+	const tenant = "11111111-1111-4111-8111-111111111111"
 	args := []string{
 		"vm-core", "--runtime-provider", "docker",
 		"--access", "vm-core-management", "--access-provider", "baseharbor-core",

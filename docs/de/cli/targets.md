@@ -148,7 +148,7 @@ Technische Bezeichner: `runtime_provider`.
 Wenn Docker/Podman auf demselben Host wie Core laeuft, benoetigt der Entwicklungsrechner keinen Node Connector. Er verwendet ein Target mit Access-Provider `baseharbor-core`, dem Namen und der Runtime der Core-Installation. Die `--tenant-id` muss der echten Operator-Mitgliedschaft entsprechen und wird gegen das angeheftete HTTPS/OIDC-Profil sowie den aktiven Core verifiziert. Die lokale Runtime des Entwicklungsrechners wird nicht verwendet.
 
 ```bash
-baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 6a185ba5-003b-4708-8c91-aafa7d369e53
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
 baha use vm-core
 ```
 

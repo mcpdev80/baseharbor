@@ -154,7 +154,7 @@ Run the last two commands inside an application repository. Confirm `runtime_pro
 When the Docker/Podman runtime belongs to the same host as the Core installation, the developer workstation does not need a Node Connector. Configure a remote `baseharbor-core` access Target with the same name and runtime as the Core installation. Its `--tenant-id` must match the operator's actual Core membership; the pinned HTTPS/OIDC profile verifies it again against the live Core. No local runtime is used.
 
 ```bash
-baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 6a185ba5-003b-4708-8c91-aafa7d369e53
+baha target create vm-core --runtime-provider docker --access vm-core-management --access-provider baseharbor-core --reference vm-core --tenant-id 11111111-1111-4111-8111-111111111111
 baha use vm-core
 ```
 
