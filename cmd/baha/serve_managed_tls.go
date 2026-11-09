@@ -31,20 +31,26 @@ func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, er
 		return "", "", fmt.Errorf("invalid public Core URL: %w", err)
 	}
 	apiURL, err := url.Parse(apiRaw)
-	if err != nil { return "", "", err }
+	if err != nil {
+		return "", "", err
+	}
 	apiHost := apiURL.Hostname()
 	if !usableNodeHost(apiHost) || strings.HasSuffix(strings.ToLower(apiHost), ".localhost") {
 		return "", "", errors.New("managed Core API requires a concrete reachable LAN name/IP")
 	}
 	apiPort := apiURL.Port()
-	if apiPort == "" { apiPort = "443" }
-	type listener struct { label, address, port string }
+	if apiPort == "" {
+		apiPort = "443"
+	}
+	type listener struct{ label, address, port string }
 	listeners := []listener{{"API", cfg.ListenAddr, apiPort}}
 	var connectorHost string
 	if cfg.ConnectorEnrollmentEnabled {
 		var connectorPort string
 		connectorHost, connectorPort, err = net.SplitHostPort(connectorRaw)
-		if err != nil { return "", "", fmt.Errorf("invalid public connector address: %w", err) }
+		if err != nil {
+			return "", "", fmt.Errorf("invalid public connector address: %w", err)
+		}
 		if !usableNodeHost(connectorHost) || strings.HasSuffix(strings.ToLower(connectorHost), ".localhost") {
 			return "", "", errors.New("managed Connector requires a reachable LAN name/IP")
 		}
@@ -52,7 +58,9 @@ func managedCoreTLSEndpoints(cfg controlplaneruntime.Config) (string, string, er
 	}
 	for _, endpoint := range listeners {
 		listenHost, listenPort, err := net.SplitHostPort(endpoint.address)
-		if err != nil { return "", "", fmt.Errorf("managed Core %s listener requires an explicit address: %w", endpoint.label, err) }
+		if err != nil {
+			return "", "", fmt.Errorf("managed Core %s listener requires an explicit address: %w", endpoint.label, err)
+		}
 		ip := net.ParseIP(listenHost)
 		if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsMulticast() {
 			return "", "", fmt.Errorf("managed Core %s listener must use a concrete LAN IP", endpoint.label)
@@ -142,13 +150,17 @@ func prepareManagedCoreServingTLS(ctx context.Context, cfg *controlplaneruntime.
 		// Connector enrollment is a separate optional product. Core + Docker
 		// on the same VM needs no Node Connector or connector TLS leaf.
 		installationRoot, err := targetRuntimeStateRoot(target)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		installation, err := coreinstallation.Load(installationRoot)
 		if err != nil || !installation.Ready {
 			return errors.New("managed Connector TLS requires current READY Core identity")
 		}
 		connector, err := issueManagedCoreConnectorTLS(ownedCtx, issuer, root, installation.ID, connectorHost)
-		if err != nil { return fmt.Errorf("issue managed Connector TLS: %w", err) }
+		if err != nil {
+			return fmt.Errorf("issue managed Connector TLS: %w", err)
+		}
 		cfg.ConnectorTLSCertFile, cfg.ConnectorTLSKeyFile, cfg.ConnectorTLSCAFile =
 			connector.Certificate, connector.Key, connector.CA
 	}

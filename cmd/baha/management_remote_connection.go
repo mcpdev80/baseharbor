@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"path/filepath"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -14,11 +13,12 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
+	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
 
 const remoteConnectionProfileVersion = "baseharbor.connection-profile/v1"
@@ -73,7 +73,9 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 	path := strings.TrimSpace(os.Getenv("BASEHARBOR_CONNECTION_PROFILE"))
 	if path == "" {
 		root, err := deployment.DataRoot()
-		if err != nil { return nil, err }
+		if err != nil {
+			return nil, err
+		}
 		path = filepath.Join(root, "remote-connections", target, "profile.json")
 	}
 	file, err := os.Open(path)
@@ -136,7 +138,9 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		keyFile := filepath.Join(profile.Device.IdentityDir, "private-key.pem")
 		leafFile := filepath.Join(profile.Device.IdentityDir, "certificate.pem")
 		pair, err := tls.LoadX509KeyPair(leafFile, keyFile)
-		if err != nil { return nil, errors.New("verified workstation certificate is unavailable") }
+		if err != nil {
+			return nil, errors.New("verified workstation certificate is unavailable")
+		}
 		deviceCert = &pair
 	} else {
 		session, err := operatorauth.LoadSession(target, "dev")
@@ -150,15 +154,22 @@ func dialVerifiedRemoteCore(ctx context.Context, target, runtime, expectedTenant
 		expectedOperatorIssuer = session.Issuer
 	}
 	client := &http.Client{
-		Timeout:       15 * time.Second,
-		Transport:     &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: func() []tls.Certificate { if deviceCert != nil { return []tls.Certificate{*deviceCert} }; return nil }()}},
+		Timeout: 15 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots, Certificates: func() []tls.Certificate {
+			if deviceCert != nil {
+				return []tls.Certificate{*deviceCert}
+			}
+			return nil
+		}()}},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(profile.Core.URL, "/")+"/api/v1/management/installation", nil)
 	if err != nil {
 		return nil, err
 	}
-	if bearerToken != "" { request.Header.Set("Authorization", "Bearer "+bearerToken) }
+	if bearerToken != "" {
+		request.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("verify live remote Core: %w", err)

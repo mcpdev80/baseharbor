@@ -65,19 +65,19 @@ func TestBundleValidationFailsClosed(t *testing.T) {
 		t.Fatalf("valid bundle rejected: %v", err)
 	}
 	cases := map[string]func(*Bundle){
-		"expired":            func(b *Bundle) { b.ExpiresAt = now.Add(-time.Second) },
-		"excessive lifetime": func(b *Bundle) { b.ExpiresAt = now.Add(30 * time.Minute) },
-		"http":               func(b *Bundle) { b.CoreURL = "http://192.0.2.8:18443" },
-		"userinfo":           func(b *Bundle) { b.CoreURL = "https://user:password@192.0.2.8:18443" },
-		"fragment":           func(b *Bundle) { b.CoreURL += "#secret" },
-		"foreign tenant":     func(b *Bundle) { b.InstallationID = "tenant-other" },
-		"invalid station":    func(b *Bundle) { b.Station = "../foreign" },
-		"missing CA":         func(b *Bundle) { b.CAPEM = "" },
-		"private key":        func(b *Bundle) { b.CAPEM += "\nPRIVATE KEY" },
-		"missing grant":      func(b *Bundle) { b.Token = "" },
-		"malformed Core ID": func(b *Bundle) { b.CoreInstallationID = "evil" },
+		"expired":              func(b *Bundle) { b.ExpiresAt = now.Add(-time.Second) },
+		"excessive lifetime":   func(b *Bundle) { b.ExpiresAt = now.Add(30 * time.Minute) },
+		"http":                 func(b *Bundle) { b.CoreURL = "http://192.0.2.8:18443" },
+		"userinfo":             func(b *Bundle) { b.CoreURL = "https://user:password@192.0.2.8:18443" },
+		"fragment":             func(b *Bundle) { b.CoreURL += "#secret" },
+		"foreign tenant":       func(b *Bundle) { b.InstallationID = "tenant-other" },
+		"invalid station":      func(b *Bundle) { b.Station = "../foreign" },
+		"missing CA":           func(b *Bundle) { b.CAPEM = "" },
+		"private key":          func(b *Bundle) { b.CAPEM += "\nPRIVATE KEY" },
+		"missing grant":        func(b *Bundle) { b.Token = "" },
+		"malformed Core ID":    func(b *Bundle) { b.CoreInstallationID = "evil" },
 		"same Core and tenant": func(b *Bundle) { b.CoreInstallationID = b.InstallationID },
-		"wrong version":      func(b *Bundle) { b.ContractVersion = "unknown" },
+		"wrong version":        func(b *Bundle) { b.ContractVersion = "unknown" },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

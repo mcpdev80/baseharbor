@@ -402,7 +402,9 @@ func registerOperatorAPI(ctx context.Context, mux *http.ServeMux, cfg Config, de
 			return errors.New("Core requires workstation OpenBao CRL authority for device access")
 		}
 		device, err := workstationDeviceMiddleware(deps.pool, cfg.TLSClientCAFile, revoker, operatorMux)
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only a client that deliberately presented an enrolled leaf and
 			// did not supply a human OIDC Bearer token selects device auth.

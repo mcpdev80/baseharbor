@@ -113,9 +113,13 @@ WHERE e.issuer = $1 AND e.subject = $2
 				return InitialOperatorTenant{}, ErrInitialTenantOwnerMismatch
 			}
 			externalID, err = stableid.NewUUIDv4("initial operator")
-			if err != nil { return InitialOperatorTenant{}, err }
+			if err != nil {
+				return InitialOperatorTenant{}, err
+			}
 			memberID, err := stableid.NewUUIDv4("initial membership")
-			if err != nil { return InitialOperatorTenant{}, err }
+			if err != nil {
+				return InitialOperatorTenant{}, err
+			}
 			if _, err := tx.Exec(ctx, `
 INSERT INTO external_identities(id, issuer, subject) VALUES ($1,$2,$3)
 ON CONFLICT (issuer,subject) DO NOTHING
@@ -132,8 +136,10 @@ ON CONFLICT (issuer,subject) DO NOTHING
 				memberID, tenantID, externalID); err != nil {
 				return InitialOperatorTenant{}, err
 			}
-			if err := tx.Commit(ctx); err != nil { return InitialOperatorTenant{}, err }
-			return InitialOperatorTenant{TenantID:tenantID, ExternalIdentityID:externalID,Created:false}, nil
+			if err := tx.Commit(ctx); err != nil {
+				return InitialOperatorTenant{}, err
+			}
+			return InitialOperatorTenant{TenantID: tenantID, ExternalIdentityID: externalID, Created: false}, nil
 		}
 		if err != nil {
 			return InitialOperatorTenant{}, fmt.Errorf("verify initial tenant owner: %w", err)

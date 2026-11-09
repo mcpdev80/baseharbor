@@ -274,8 +274,10 @@ func askIntent(ctx context.Context, reader *bufio.Reader, out io.Writer, state I
 	switch choice {
 	case "invite":
 		target, err := askTarget(ctx, reader, out, state, preselected)
-		if err != nil { return Decision{}, err }
-		return Decision{Mode:ModeInvite,Target:target}, nil
+		if err != nil {
+			return Decision{}, err
+		}
+		return Decision{Mode: ModeInvite, Target: target}, nil
 	case "owner":
 		return askOwnerTenant(ctx, reader, out)
 	case "new":
