@@ -1,0 +1,32 @@
+package main
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+func TestDeviceOnlyRemoteMachineDiscoveryMakesRequest(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/machine/discovery" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Error("device-only remote machine request must not send an OIDC bearer")
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	core := &verifiedRemoteCore{
+		client: server.Client(), origin: server.URL,
+		target: "core-test", tenant: "11111111-1111-4111-8111-111111111111",
+	}
+	_, err := core.discoverMachineOperations(context.Background())
+	if !called || err == nil || !strings.Contains(err.Error(), "HTTP 401") {
+		t.Fatalf("device-only machine request was rejected before reaching Core: called=%v err=%v", called, err)
+	}
+}
