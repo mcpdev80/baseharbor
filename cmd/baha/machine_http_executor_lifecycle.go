@@ -81,13 +81,24 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 		if len(input.SourceModel.Sources) != 1 || resolved.DeploymentRecord == nil {
 			return nil, machine.NewError(machine.ErrorUnsupported, "Remote source requires one registered Core-owned immutable Git checkout.", "Register the exact Git source with the owning Core before apply.", false)
 		}
-		if err := verifyCoreGitCheckout(ctx, input.SourceModel.Sources[0], resolved.DeploymentRecord.Source); err != nil {
-			return nil, machine.Wrap(machine.ErrorSourceMissing, err, "Ensure the Core-registered Git checkout matches the selected remote and commit and contains no local changes.", false)
+		candidate, err := prepareStagedCoreGitCandidate(ctx,
+			input.SourceModel.Sources[0], resolved.DeploymentRecord.Source,
+			resolved.DeploymentIdentity, resolved.Manifest)
+		if err != nil {
+			return nil, machine.Wrap(machine.ErrorSourceMissing, err, "Ensure the Core-registered Git checkout matches the selected remote, commit and application identity.", false)
 		}
-		// The checkout may change after this read-only inspection. Do not
-		// mutate the runtime until an immutable Core-owned candidate snapshot
-		// is bound under the existing application lifecycle lock.
-		return nil, machine.NewError(machine.ErrorUnsupported, "Pinned Core Git checkout verified, but immutable candidate staging is not yet supported.", "Stage and bind an immutable Core-owned Git candidate before applying this revision.", false)
+		defer candidate.Close()
+		if err := confirmStagedCoreGitCandidate(candidate, input.ConfirmCandidate); err != nil {
+			return nil, machine.Wrap(machine.ErrorApprovalRequired, err,
+				"Confirm the exact staged Git candidate returned by the owning Core before deployment.", false)
+		}
+		// The staged bytes and operator consent are now verified together.
+		// The existing apply lifecycle still reads its registered source
+		// directly, not this staged tree: do not allow a TOCTOU bypass or
+		// falsely imply that the runtime consumed the approved artifact.
+		return nil, machine.NewError(machine.ErrorUnsupported,
+			"Pinned Git candidate and consent verified, but immutable Connector delivery is not yet bound to this artifact.",
+			"Bind this exact staged tree to the existing Core-owned deployment transaction before applying.", false)
 	}
 
 	reportHTTPProgress(report, "apply", "Converging desired application state.", 35)
