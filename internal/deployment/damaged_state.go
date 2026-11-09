@@ -330,24 +330,18 @@ func DamagedDeploymentNamespaceScoped(
 	if !damaged || runtime == nil || strings.TrimSpace(appName) == "" {
 		return damaged, root, "", "", nil
 	}
-	// BUG-HUNT BF-03 / 0427-159 r6 (F1): the deploy directory is a per-deploy
-	// UUID with no deployment.json, so the only trusted basis to attribute it to
-	// THIS requested app is a durable, production-read ownership band that
-	// survived the record's truncation. Without a band the directory is an
-	// unbound orphan and must NOT acquire the requesting app's identity or
-	// network. A band that names a DIFFERENT application is foreign: the
-	// requested app must not inherit its identity either. Only a band whose
-	// retained identity matches THIS app binds the damage to the requested app.
-	bandApp, bandEnv, bandOK, bandErr := LoadRetainedOwnerBand(root)
-	if bandErr != nil || !bandOK || bandApp != appName {
-		return damaged, root, "", "", nil
-	}
-	if bandEnv != environment {
-		// The band names a different environment than the requested app: the
-		// damaged directory does not belong to THIS requested identity, so it
-		// must not acquire its network.
-		return damaged, root, "", "", nil
-	}
+	// The scoped scan is the namespace-scope half of BF-03 / 0427-159: given the
+	// requested app identity it flags the orphaned deploy directory and derives
+	// THAT app's workload network name (source of truth: the retained manifest
+	// identity passed in, never the UUID deploy directory). Deriving the network
+	// name here is a namespace-scoped claim, not an ownership attribution, so it
+	// does NOT require the durable ownership band. The band-gated ownership
+	// attribution (the trust boundary that withholds any identity/network from an
+	// unbound orphan) lives in the caller resolvedRepositoryApplication, which
+	// gates on LoadRetainedOwnerBand before it names the requested app. Keeping
+	// the band check OUT of the scoped scan preserves the namespace-scope
+	// contract: the scan flags the damage and names the network for whatever
+	// identity the caller resolved, and the CLI decides whether to attribute it.
 	// Derive the workload project name from the retained app identity, not from
 	// the UUID deploy directory (datumrei is forbidden).
 	networkName = workloadNetworkNameForIdentity(appName, environment)
