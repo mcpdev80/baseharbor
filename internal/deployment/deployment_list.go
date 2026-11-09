@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // listAllDeployments walks every target under the data root and returns the
@@ -63,10 +64,17 @@ func listDeploymentRecords(root, target string, bestEffort bool) ([]DeploymentRe
 	if err != nil {
 		return nil, nil, err
 	}
+	// Deployment directories are the only registry entries; in-progress
+	// registrations build their record at "deployment.json.<pid>.tmp" and
+	// rename it atomically, so those temp siblings are skipped (0427-175).
+	// A directory whose record file is not durable yet is reported as an
+	// incomplete-state warning, never silently skipped: it is either a
+	// half-finished registration or an unregistered state directory, and
+	// discovery must disclose both (0427-144/160 precedent).
 	var records []DeploymentRecord
 	var warnings []error
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() || strings.HasSuffix(entry.Name(), ".tmp") {
 			continue
 		}
 		deploymentID := entry.Name()
@@ -229,3 +237,11 @@ func CollectableOrphans(target string) ([]DeploymentRecord, error) {
 }
 
 // ci-checkout-forcing-bumper
+
+// TestOnlyRefuseApplicationIDCollisions exposes the shared conflict detector
+// to consumer-package regressions (0427-175). It is the exact function the
+// inventory seam runs, so the order-independence of detection is pinned
+// against the production rule, not a copy.
+func TestOnlyRefuseApplicationIDCollisions(target string, records []DeploymentRecord) error {
+	return refuseApplicationIDCollisions(target, records)
+}

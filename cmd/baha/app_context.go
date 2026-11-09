@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -108,10 +107,18 @@ func resolveApplication(ctx context.Context, store application.Store, args []str
 	return resolveApplicationEnvironment(ctx, store, args, command, applicationEnvironmentOverride)
 }
 
-func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string) (resolved resolvedApplication, err error) {
+func resolveApplicationEnvironment(ctx context.Context, _ application.Store, args []string, command, environment string, selectedDeploymentID ...string) (resolved resolvedApplication, err error) {
+	// The optional last argument is the deployment id the operator selected
+	// explicitly (the uuid-addressed repair). Omitting it — every other caller
+	// — keeps the behaviour below identical to the shared path.
+	selected := ""
+	if len(selectedDeploymentID) > 0 {
+		selected = strings.TrimSpace(selectedDeploymentID[0])
+	}
+
 	defer func() {
 		if err == nil {
-			resolved.Manifest, err = resolveAppliedBackendSelection(resolved, command)
+			resolved.Manifest, err = appliedBackendSelection(resolved, selected, command)
 		}
 	}()
 	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
@@ -125,9 +132,40 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		}
 		environment = argumentEnvironment
 	}
-	args = filtered
-	if len(args) > 1 {
+	// A --uuid selector is an option pair, not a NAME: strip it BEFORE the
+	// one-NAME limit. It routes directly at the registry seam below and
+	// bypasses the CWD/name resolution; it is also the repair door on a
+	// poisoned registry (0427-175), so the registry-conflict gate must not
+	// pre-empt an explicitly targeted uuid command. The split list produces the
+	// selector value and every selector usage error, so a malformed or
+	// value-less selector still fails closed here. The command seam's explicit
+	// selection only has to win where the split list cannot see it: the
+	// environment splitter consumes the --uuid FLAG and leaves the bare VALUE
+	// behind, so the pair can read as NO selector at all.
+	selectionUUID, uuidErr := extractApplicationUUID(filtered)
+	if uuidErr != nil {
+		return resolvedApplication{}, uuidErr
+	}
+	if selected != "" {
+		selectionUUID = selected
+	}
+	nameArgs := withoutUUIDSelector(filtered)
+	if len(nameArgs) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
+	}
+	if strings.TrimSpace(selectionUUID) == "" {
+		// A poisoned registry (two deployment records claiming one
+		// application_id) must never route a command at an ARBITRARY one of
+		// the twins: every resolution path first proves the registry healthy
+		// (0427-175, hp4 BF-01). The conflict names both uuids and the
+		// working uuid-addressed repair; CWD discovery and the name filter
+		// below keep their own guards on top of this one. A failure to
+		// resolve the probe Target is not the registry's problem.
+		if probeTarget, probeErr := effectiveTarget(ctx); probeErr == nil {
+			if conflictErr := refuseRegistryApplicationIDConflict(probeTarget.Name); conflictErr != nil {
+				return resolvedApplication{}, conflictErr
+			}
+		}
 	}
 
 	target, err := effectiveTarget(ctx)
@@ -139,7 +177,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		return resolvedApplication{}, err
 	}
 
-	if len(args) == 0 {
+	if len(nameArgs) == 0 && strings.TrimSpace(selectionUUID) == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return resolvedApplication{}, fmt.Errorf("resolve current directory: %w", err)
@@ -155,6 +193,13 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			}
 			resolved, resolveErr := resolvedRepositoryApplication(ctx, target, targetRoot, selection, command)
 			if resolveErr != nil {
+				// A manifest-discovered deployment may itself collide with a
+				// second registration of the same application_id on the
+				// Target: classify that registry conflict (0427-175) before
+				// any other handling.
+				if errors.Is(resolveErr, deployment.ErrRegistryConflict) {
+					return resolvedApplication{}, invalidProviderConsumerInventory(resolveErr)
+				}
 				return resolvedApplication{}, resolveErr
 			}
 			if authErr := ensureOperatorAuthForBoundary(ctx, resolved.Target.Name, resolved.Manifest.Environment); authErr != nil {
@@ -173,12 +218,14 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 
 	// A --uuid selector routes directly at the registry seam, bypassing the
 	// name filter entirely. It is the unambiguous identity for name-colliding
-	// deployments (0427-149) that no -e value can disambiguate.
-	deploymentUUID, uuidErr := extractApplicationUUID(args)
-	if uuidErr != nil {
-		return resolvedApplication{}, uuidErr
+	// deployments (0427-149) that no -e value can disambiguate, and it is the
+	// repair door on a poisoned Target — 'baha app status --uuid <id>' with no
+	// repository context takes exactly this path (0427-175).
+	var positionalName string
+	if len(nameArgs) == 1 {
+		positionalName = nameArgs[0]
 	}
-	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, args[0], environment, command, deploymentUUID)
+	resolved, err = resolveRegisteredApplication(ctx, target, targetRoot, positionalName, environment, command, selectionUUID)
 	if err != nil {
 		return resolvedApplication{}, err
 	}
@@ -188,64 +235,9 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	return resolved, nil
 }
 
-// eligibleNeverDeliveredLocalDestroy recognizes only an independently
-// initialized, never-persisted local repository application. It is NOT a Core
-// owner grant: no LoadDeploymentRecord or SaveDeploymentRecord check is bypassed.
-// A foreign/corrupt Core installation and any existing deployment namespace
-// remain fail-closed. A valid one-shot proof is required before discovery.
-func eligibleNeverDeliveredLocalDestroy(target deployment.ResolvedTarget, targetRoot string, m application.Manifest, command string, ownerErr error) bool {
-	if command != "destroy" || !errors.Is(ownerErr, deployment.ErrDeploymentOwnerMissing) ||
-		target.TenantID != "" || target.AccessProvider != "local" || target.AccessReference != "local" ||
-		(target.Scope != "local" && !(target.Name == "local" && target.Scope == "default")) {
-		return false
-	}
-	deployments := filepath.Join(targetRoot, "deployments")
-	if info, err := os.Lstat(deployments); err == nil {
-		// Initialization may leave an empty namespace; a symlink or a
-		// populated namespace is never a never-delivered proof. The per-app
-		// lifecycle lock lives at <root>/deployments/.<id>.app_installation.lock
-		// (a hidden dotfile, not a deployment directory); dotfiles are ignored
-		// here so a lock file is never read as a persisted deployment (card
-		// 0427-176).
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return false
-		}
-		entries, err := os.ReadDir(deployments)
-		if err != nil {
-			return false
-		}
-		nonDot := 0
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), ".") {
-				continue
-			}
-			nonDot++
-		}
-		if nonDot != 0 {
-			return false
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	return deployment.VerifyNeverDeliveredProof(deployment.DeploymentIdentity{
-		ApplicationID: m.ApplicationID,
-		Target:        target.Name,
-		Application:   m.Name,
-		Environment:   m.Environment,
-	}) == nil
-}
-
 func resolvedRepositoryApplication(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, selection application.RepositoryEnvironmentSelection, command ...string) (resolvedApplication, error) {
 	m := selection.Manifest
-	existing, found, err := deployment.FindDeployment(target.Name, m.ApplicationID, m.Environment)
-	// A locally initialized application may be destroyed before its first
-	// deployment record exists. The one-shot initialization proof is consumed
-	// BEFORE the first persistence, so it cannot authorize deletion of an
-	// existing deployment. This exception changes only discovery for destroy:
-	// storage read/write ownership checks still fail closed.
-	if err != nil && len(command) > 0 && eligibleNeverDeliveredLocalDestroy(target, targetRoot, m, command[0], err) {
-		found, err = false, nil
-	}
+	existing, found, err := registeredRepositoryDeployment(context.Background(), target, targetRoot, m, command)
 	if err != nil {
 		// A registry-path damaged-state error (found in the deployment listing
 		// for THIS target) is a target-level damaged-state conflict, not the
@@ -376,7 +368,9 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 	if strings.TrimSpace(deploymentUUID) != "" {
 		for _, record := range records {
 			if record.Identity.DeploymentID == deploymentUUID {
-				return resolveRecordByIdentity(ctx, target, targetRoot, record, command)
+				// The uuid selector IS the selection: pass it through so the
+				// record stays authoritative for its identity (0427-175).
+				return resolveRecordByIdentity(ctx, target, targetRoot, record, command, deploymentUUID)
 			}
 		}
 		return resolvedApplication{}, &machine.Error{
@@ -508,79 +502,6 @@ func resolveRegisteredApplication(ctx context.Context, target deployment.Resolve
 
 // resolveRecordByIdentity reconstructs a resolved application from a single
 // authoritative deployment record. It is shared by the name filter (exact
-// match) and the --uuid selector so both paths hydrate identical state and
-// behave identically for a name-colliding deployment.
-func resolveRecordByIdentity(ctx context.Context, target deployment.ResolvedTarget, targetRoot string, record deployment.DeploymentRecord, command string) (resolvedApplication, error) {
-	deploymentRoot, err := deployment.DeploymentRoot(record.Identity)
-	if err != nil {
-		return resolvedApplication{}, err
-	}
-
-	resolved := resolvedApplication{
-		Target:              target,
-		DeploymentIdentity:  record.Identity,
-		DeploymentRecord:    &record,
-		TargetStateRoot:     targetRoot,
-		DeploymentStateRoot: deploymentRoot,
-		Store:               application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name},
-		RepositoryRoot:      record.Source.Repository,
-		ManifestPath:        record.Source.Manifest,
-		SourceAvailable:     deployment.SourceAvailable(record.Source),
-	}
-
-	if resolved.SourceAvailable {
-		selection, sourceErr := application.ResolveRepositoryEnvironment(record.Source.Repository, record.Identity.Environment)
-		if sourceErr == nil {
-			if selection.Manifest.Name != record.Identity.Application || selection.Manifest.Environment != record.Identity.Environment {
-				return resolvedApplication{}, fmt.Errorf("registered source does not match authoritative deployment name/environment")
-			}
-			// Authored intent never supplies identity. This read projects the ID
-			// from the existing authoritative deployment; it allocates no state.
-			if selection.Manifest.ApplicationID == "" {
-				selection.Manifest.ApplicationID = record.Identity.ApplicationID
-			}
-			if selection.Manifest.ApplicationID != record.Identity.ApplicationID {
-				return resolvedApplication{}, fmt.Errorf(
-					"registered source resolves application_id %q, expected %q",
-					selection.Manifest.ApplicationID,
-					record.Identity.ApplicationID,
-				)
-			}
-			selection, sourceErr = resolveRepositoryLifecycleIntent(ctx, target, selection, command)
-			if sourceErr != nil {
-				return resolvedApplication{}, sourceErr
-			}
-			resolved.DeploymentIdentity.Application = selection.Manifest.Name
-			resolved.Manifest = selection.Manifest
-			resolved.ManifestPath = selection.ManifestPath
-			resolved.RepositoryRoot = selection.RepositoryRoot
-			resolved.FromRepository = true
-			return resolved, nil
-		}
-		resolved.SourceAvailable = false
-	}
-
-	if commandRequiresLiveSource(command) {
-		return resolvedApplication{}, &machine.Error{
-			Code:      machine.ErrorSourceMissing,
-			CauseCode: "SOURCE_MISSING",
-			Message:   fmt.Sprintf("source repository for %s/%s/%s is unavailable", record.Identity.Target, record.Identity.Application, record.Identity.Environment),
-			Resource:  record.Identity.Target + "/" + record.Identity.Application + "/" + record.Identity.Environment,
-			Next:      "Restore the registered repository path or run the operation from an available repository source.",
-		}
-	}
-	if len(record.Applied.Intent) == 0 {
-		return resolvedApplication{}, fmt.Errorf("deployment %s/%s/%s has no applied intent snapshot", record.Identity.Target, record.Identity.Application, record.Identity.Environment)
-	}
-	if err := json.Unmarshal(record.Applied.Intent, &resolved.Manifest); err != nil {
-		return resolvedApplication{}, fmt.Errorf("decode applied intent for %s/%s/%s: %w", record.Identity.Target, record.Identity.Application, record.Identity.Environment, err)
-	}
-	if err := resolved.Manifest.Validate(); err != nil {
-		return resolvedApplication{}, fmt.Errorf("validate applied intent for %s/%s/%s: %w", record.Identity.Target, record.Identity.Application, record.Identity.Environment, err)
-	}
-	return resolved, nil
-}
-
 func resolveIncompleteRegisteredApplication(
 	target deployment.ResolvedTarget,
 	targetRoot string,

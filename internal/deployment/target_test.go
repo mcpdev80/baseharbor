@@ -1,6 +1,7 @@
 package deployment
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -255,21 +256,46 @@ func TestFindDeploymentUsesApplicationIDAcrossReadableRename(t *testing.T) {
 func TestFindDeploymentRejectsAmbiguousStableApplicationOwnership(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	provisionOwnerForTarget(t, "docker-dev")
+	// The registry poison itself is reproduced by writing the two colliding
+	// records directly (SaveDeploymentRecord now refuses a duplicate
+	// application_id registration — that refusal is 0427-175 and has its own
+	// regression). What this cell proves is the READ-side consequence: a
+	// registry that already holds two records claiming one
+	// (application_id, environment) must never silently pick one.
 	first := testDeploymentIdentity(t, "docker-dev", "alpha", "dev")
 	second := testDeploymentIdentity(t, "docker-dev", "renamed-alpha", "dev")
 	if first.DeploymentID == second.DeploymentID {
 		t.Fatal("expected unique deployment IDs")
 	}
-	for _, id := range []DeploymentIdentity{first, second} {
-		if err := SaveDeploymentRecord(DeploymentRecord{
-			Identity: id,
-			Applied:  AppliedDeployment{RuntimeProvider: "docker"},
-		}); err != nil {
-			t.Fatal(err)
-		}
-	}
+	writeCollisionRecord(t, first)
+	writeCollisionRecord(t, second)
 	if _, _, err := FindDeployment("docker-dev", testApplicationID, "dev"); err == nil {
 		t.Fatal("ambiguous stable application ownership was accepted")
+	}
+}
+
+// writeCollisionRecord persists a minimal record by direct file write so a
+// read-side poison cell can seed a state the write seam itself now refuses.
+func writeCollisionRecord(t *testing.T, id DeploymentIdentity) {
+	t.Helper()
+	root, err := DeploymentRoot(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	record := DeploymentRecord{
+		Version:  DeploymentRecordVersion,
+		Identity: id,
+		Applied:  AppliedDeployment{RuntimeProvider: "docker"},
+	}
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "deployment.json"), append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

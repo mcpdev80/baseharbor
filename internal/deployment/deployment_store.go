@@ -30,24 +30,6 @@ var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative inst
 // identity is preserved and the mismatch is rejected, never adopted.
 var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
 
-// ErrDeploymentOwnerAccessDenied is returned when the Core installation under a
-// Target cannot be READ at all — a permission-denied or other OS-level access
-// failure on the installation.json — rather than being present but foreign. A
-// missing or unreadable installation is a host-state access problem, not a
-// foreign-owner condition: the rule never reads a file it cannot open, so it
-// fails closed on this specific error and never masquerades a missing file as
-// "foreign installation". The wrapped fs error carries the path and cause.
-var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for its Target is not readable; the Core installation.json is not accessible to this user — check owner and permissions before its state is loadable")
-
-// ErrDeploymentOwnerMalformedState is returned when the Core installation under
-// a Target LOADS but is itself malformed or unclassifiable (invalid JSON, a
-// missing mandatory capability, inconsistent readiness, or a bad selection).
-// The one-installation-owner rule only proves foreignness from a POSITIVE
-// loaded identity whose Target diverges; it never proves foreignness from a
-// state it cannot even validate. A malformed state is therefore its own
-// fail-closed named error, never masqueraded as a foreign installation.
-var ErrDeploymentOwnerMalformedState = errors.New("deployment state directory for its Target holds a Core installation that could not be validated; the installation.json is present but malformed or incompatible — restore a genuine Core installation before its state is loadable")
-
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
 // production read/write path. It derives the Target's runtime root
 // (targets/<target>/runtime) from the canonical data layout and delegates to the
@@ -395,6 +377,46 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := record.Identity.Validate(); err != nil {
 		return err
 	}
+	// Registration serialization (0427-175, bug hunt hp4 BF-01): a brand-new
+	// identity (no claim on its deployment path yet) takes the Target's
+	// deployment-registry write lock for the whole save, so the duplicate
+	// scans and the record creation below form ONE atomic claim and two
+	// concurrent first registrations can never both succeed. An update to an
+	// already-claimed identity never enters the lock, so the lock graph of
+	// every running lifecycle command (which holds the lifecycle lock and
+	// re-saves existing records) stays exactly as it was.
+	claimed, _, claimErr := DeploymentClaimExists(record.Identity)
+	if claimErr != nil {
+		return claimErr
+	}
+	if claimed {
+		// An idempotent re-save of an already-claimed identity: no registry
+		// lock (0427-149 keeps apply retries lock-free), and the duplicate
+		// guards short-circuit on the existing directory exactly like before.
+		// A foreign claim (a record file that names a DIFFERENT deployment
+		// uuid) is refused at the final rename inside saveDeploymentRecord.
+		return saveDeploymentRecord(record)
+	}
+	// Inside the registry write lock the duplicate scans run atomically with
+	// the directory creation — that combination is what makes a double claim
+	// structurally impossible rather than merely unlikely (0427-175).
+	return WithDeploymentRegistryWriteLock(record.Identity.Target, func() error {
+		if TestHookAfterRegistryClaimEnter != nil {
+			TestHookAfterRegistryClaimEnter()
+		}
+		return saveDeploymentRecord(record)
+	})
+}
+
+// TestHookAfterRegistryClaimEnter is a package-internal test seam (production
+// path keeps it nil, so no behaviour changes): it fires inside
+// SaveDeploymentRecord while the Target registry write lock is held and
+// before the duplicate scans run, so a two-process regression can park the
+// critical section and prove the other process is refused or converges
+// (0427-175). Style follows testHookAfterGuardRead.
+var TestHookAfterRegistryClaimEnter func()
+
+func saveDeploymentRecord(record DeploymentRecord) error {
 	if record.Version == 0 {
 		record.Version = DeploymentRecordVersion
 	}
@@ -421,6 +443,18 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	// target directory already exists, so the guard below only scans for a
 	// foreign record when this identity is being written for the first time.
 	if err := refuseDuplicateApplicationName(record); err != nil {
+		return err
+	}
+	// Technical-identity uniqueness (0427-175): the application_id is the
+	// system identity (ADR 0017) and exactly one deployment per Target and
+	// environment may claim it. The name guard above deliberately never keys
+	// on the application_id; this guard closes that second door. Two records
+	// sharing one (application_id, environment) poison the Target permanently:
+	// every consumer-inventory path fails closed for EVERY app on it, and no
+	// name- or uuid-addressed command can reach the duplicate (hp4 BF-01/BF-10).
+	// For a first registration this scan runs inside the registry write lock
+	// held by SaveDeploymentRecord, so claim and write are atomic.
+	if err := refuseDuplicateApplicationIDGuard(record); err != nil {
 		return err
 	}
 	// Authoritative ownership is enforced on the production write seam before any
@@ -531,25 +565,35 @@ func SaveDeploymentRecord(record DeploymentRecord) error {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return fmt.Errorf("create deployment state: %w", err)
 	}
-	// Persist the GUARDED record, not the caller-supplied one. The guard above
-	// resolved the authoritative owner into guardRecord (and carried any prior
-	// Conflict flag); the retention above restored owned preferences into
-	// guardRecord too. Serialising `record` here would persist the
-	// caller-supplied Observed.Owner (which a delegated update can forge) and,
-	// worse, the caller-supplied preferences (dropping retained ones); serialise
-	// guardRecord so the persisted owner and retained preferences are canonical.
-	// When the guard refuses a mutation the file is never written (store bytes
-	// unchanged).
+	// Persist the GUARDED record (atomic write + retained ownership band).
+	return persistDeploymentRecord(guardRecord, record, root)
+}
+
+// persistDeploymentRecord serialises the guarded record and atomically replaces
+// the deployment.json, then writes the retained ownership band. It is the only
+// place a deploy directory's record is persisted (SaveDeploymentRecord).
+//
+// The rename is the last word on the persisted bytes, and it is identity-checked
+// (0427-175): a deployment.json that belongs to another deployment uuid is never
+// replaced. The registry write lock keeps every other locking writer out across
+// claim → scan → create → rename; this check additionally refuses a foreign
+// claim that predates the lock. A process killed between the temp write and the
+// rename can leave at most a stale temp file, never a torn or clobbered record.
+func persistDeploymentRecord(guardRecord DeploymentRecord, record DeploymentRecord, root string) error {
 	data, err := json.MarshalIndent(guardRecord, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode deployment record: %w", err)
 	}
 	path := filepath.Join(root, "deployment.json")
-	tmp := path + ".tmp"
+	if err := refuseForeignDeploymentClaim(record.Identity, path); err != nil {
+		return err
+	}
+	tmp := filepath.Join(root, fmt.Sprintf("deployment.json.%d.tmp", os.Getpid()))
 	if err := os.WriteFile(tmp, append(data, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write deployment record: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
 		return fmt.Errorf("replace deployment record: %w", err)
 	}
 	// The retained ownership band is the production writer for the durable
@@ -684,41 +728,24 @@ func FindDeployment(target, applicationID, environment string) (DeploymentRecord
 	return matches[0], true, nil
 }
 
-// findDeploymentMatches lists the deployment registry for target and returns a
-// copy of every record whose (application_id, environment) equals the request.
-// A registry that already holds more than one such record is a pre-existing
-// conflict; the caller reports it instead of silently picking one. The loop is
-// extracted here so the name-identity uniqueness guard can reuse the exact same
-// identity scan without duplicating the filter or the ambiguity report.
-func findDeploymentMatches(target, applicationID, environment string) ([]DeploymentRecord, error) {
-	records, err := ListDeployments(target)
-	if err != nil {
-		return nil, err
-	}
-	var matches []DeploymentRecord
-	for i := range records {
-		record := records[i]
-		if record.Identity.ApplicationID != applicationID || record.Identity.Environment != environment {
-			continue
-		}
-		matches = append(matches, record)
-	}
-	if len(matches) > 1 {
-		return nil, fmt.Errorf(
-			"multiple deployments claim application_id %s environment %s on target %s",
-			applicationID, environment, target,
-		)
-	}
-	return matches, nil
-}
-
 func ListDeployments(target string) ([]DeploymentRecord, error) {
 	root, err := TargetStateRoot(target)
 	if err != nil {
 		return nil, err
 	}
 	records, _, err := listDeploymentRecords(filepath.Join(root, "deployments"), target, false)
-	return records, err
+	if err != nil {
+		return nil, err
+	}
+	// application_id uniqueness (0427-175, bug hunt hp4 BF-01): the
+	// (application_id, environment) pair is the system identity (ADR 0017)
+	// and exactly one deployment per Target and environment may claim it. A
+	// registry that already holds a duplicate poisons EVERY planning path
+	// (plan/up/destroy of every app on the Target); surfacing it once here —
+	// at the single inventory seam those paths share — turns permanent,
+	// silent damage into one clear, repairable error. New duplicates cannot
+	// be created: the write seam refuses them under the registry lock.
+	return records, refuseApplicationIDCollisions(target, records)
 }
 
 func ListDeploymentsForDisplay(target string) ([]DeploymentRecord, []error, error) {
@@ -760,40 +787,4 @@ func SourceAvailable(source DeploymentSource) bool {
 	}
 	info, err := os.Stat(source.Repository)
 	return err == nil && info.IsDir()
-}
-
-// refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
-// active reconciliation owner per managed resource set. It observes the
-// deployment's own observed state: a recorded conflict fails closed, a direct
-// (BaseHarbor-owned) mutation is refused while an external reconciler already
-// owns the resource; an absent observed state (direct mode, no external owner)
-// is the normal happy path and passes.
-func refuseOneWriterMutation(record DeploymentRecord) error {
-	applied := record.Applied.Delivery
-	observed := record.Observed
-
-	// Conflict observation wins closed: two active owners for one resource set.
-	if observed.Conflict {
-		return ErrConflictingOneWriter
-	}
-	// Direct mutation while an external reconciler already owns the resource.
-	if applied.Mode == delivery.ModeDirect && observed.Owner == delivery.OwnerExternal {
-		return ErrUnauthorizedMutation
-	}
-	return nil
-}
-
-// normalisePersistedOwner mirrors Selection.Normalize for a persisted
-// reconciliation owner read from a previous deployment record: it trims and
-// lower-cases the value, and collapses any value that is neither "" nor a
-// recognised owner (baseharbor|external) to "" (unset). This keeps the one-writer
-// guard from silently blocking an unknown owner or silently attesting an owner
-// the validate() switch would reject, so the absent/corrupt value defers to the
-// applied selection's mode.
-func normalisePersistedOwner(owner string) string {
-	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
-	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {
-		return ""
-	}
-	return string(normalised)
 }

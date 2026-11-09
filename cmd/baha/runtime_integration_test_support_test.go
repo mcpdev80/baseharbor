@@ -83,6 +83,13 @@ func TestMain(m *testing.M) {
 }
 
 func runRuntimeIntegrationTestMain(m *testing.M) (code int) {
+	// Two-process registration-race child dispatch (0427-175): a re-exec
+	// enters the real storage seam directly, before any package fixture
+	// touches state, and exits with the seam's verdict.
+	if os.Getenv("BAHA_175_REG_CHILD") == "1" {
+		concurrentInitChildDispatch()
+		return 0
+	}
 	// Both branches below arrange their teardown claim BEFORE m.Run(): the
 	// fixture branch writes the stage-one marker first, the production
 	// branch adopts dead owners' claims and creates its own.

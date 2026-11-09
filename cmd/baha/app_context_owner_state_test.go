@@ -39,6 +39,20 @@ func TestResolveRegisteredApplicationPropagatesOwnerStateNotNotFound(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Create the registration through the PRODUCTION seam so a real
+	// deployment.json exists — the owner warning the listing must tag is only
+	// reachable for a durably registered deployment (an absent record is the
+	// "incomplete" kind, which intentionally keeps name resolution working).
+	if err := deployment.SaveDeploymentRecord(deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: id,
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(deploymentRoot, "state"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	store := application.Store{Root: filepath.Join(deploymentRoot, "state"), Namespace: target.Name}
 	if _, err := store.Create(m); err != nil {
 		t.Fatal(err)

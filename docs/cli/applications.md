@@ -159,3 +159,26 @@ data-deletion consent. Actual authority, ownership and post-mutation verificatio
 remain required. Failed or interrupted execution stays partial and retryable.
 Release readiness requires the applicable provider, mutation-path and native
 ecosystem acceptance; individual green fixtures do not establish readiness.
+
+
+### Deployment identity and recovery
+
+Each application environment is registered exactly once per Target: the
+`application_id` and environment identify one deployment, and a first
+registration is serialized against concurrent registrations, so racing
+`baha app init` runs cannot create a duplicate. Deployment names may repeat;
+the identity is the UUID pair, not the name.
+
+If a Target registered before this serialization already holds two deployments
+for one application identity, every planning command on that Target fails
+closed and names both colliding deployment UUIDs. The tolerant
+`baha app list` still shows the twins; retire each one by UUID:
+
+```bash
+baha app destroy --uuid <deployment-uuid> --full-reset
+```
+
+Then verify the Target again with `baha app list`. Commands addressed by
+`--uuid` keep working on such a Target; name-addressed commands do not, until
+the duplicate is retired. The `(application_id, environment)` pair is the
+system identity per ADR 0017.
