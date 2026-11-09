@@ -640,6 +640,16 @@ func ensureRuntimeIntegrationTrustPlane(t *testing.T, ctx context.Context) {
 		// Record the data root the trust plane now owns so ensureBootstrapLeftoverMarker
 		// re-reads the marker under exactly this root.
 		runtimeIntegrationTrustPlaneDataRoot = dataHome
+		// Guarantee the durable marker exists under the NEW data home claimed by
+		// this process. On a runner where neither BASEHARBOR_STATE_DIR nor
+		// XDG_DATA_HOME is set, TestMain's marker lives under the DataRoot
+		// (HOME) fallback; after switching XDG_DATA_HOME to dataHome the teardown
+		// would otherwise find nothing and fail with "bootstrap leftover marker
+		// missing". Writing THIS process's PID here makes the marker-owned-by-us
+		// assertion pass regardless of where TestMain created its original claim.
+		if _, statErr := os.Stat(filepath.Join(dataHome, bootstrapLeftoverMarkerName)); statErr != nil {
+			claimBootstrapLeftoverMarker(filepath.Join(dataHome, bootstrapLeftoverMarkerName))
+		}
 		// Isolation is a CODE-GARANTIE, not an environmental precondition: the
 		// bootstrap target below is a *fresh* configured target with its own
 		// `<name>-default` native network and its own management Core, so this
