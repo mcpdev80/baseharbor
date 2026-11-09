@@ -25,26 +25,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Validate and run only changed onboarding packages
+      - name: Verify touched Go packages and compile CLI
         shell: bash
         run: |
           set -euo pipefail
-          go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http
-          go test -p 1 ./cmd/baha -run '^
-      - name: Emit canonical gofmt sources for branch-only reconciliation
+          go test -p 1 ./internal/onboardingbundle ./internal/workstationenrollment/http ./internal/database
+          go test -p 1 ./cmd/baha -run '^$' -count=1
+      - name: Emit canonical gofmt source for branch integration
         shell: bash
         run: |
           set -euo pipefail
-          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go cmd/baha/onboarding_local_grant.go cmd/baha/onboarding_invite_command.go cmd/baha/onboarding_command.go; do
-            gofmt -w "$file"
-            printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
-          done
- -count=1
-      - name: Emit canonical gofmt sources for branch-only reconciliation
-        shell: bash
-        run: |
-          set -euo pipefail
-          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go cmd/baha/onboarding_local_grant.go; do
+          for file in internal/onboardingbundle/*.go internal/workstationenrollment/http/delegated_enroll*.go internal/database/local_tenant_bootstrap.go cmd/baha/onboarding_local_grant.go cmd/baha/onboarding_initial_tenant.go cmd/baha/onboarding_invite_command.go cmd/baha/onboarding_command.go; do
             gofmt -w "$file"
             printf 'FMTFILE|%s|%s\n' "$file" "$(base64 -w0 "$file")"
           done
