@@ -83,12 +83,13 @@ func (c Config) Validate() error {
 			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
 			return errors.New("Connector enrollment requires the operator API, database and an explicit local authority Target")
 		}
-	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" {
-		return errors.New("Connector authority Target requires enrollment to be enabled")
+	} else if strings.TrimSpace(c.ConnectorAuthorityTarget) != "" && !c.WorkstationEnrollmentEnabled {
+		return errors.New("local enrollment authority Target requires connector or workstation enrollment")
 	}
 	if c.WorkstationEnrollmentEnabled {
-		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" {
-			return errors.New("Workstation enrollment requires the operator API and a database")
+		if c.boundRuntimeEnabled() || !c.operatorAPIEnabled() || strings.TrimSpace(c.DatabaseURL) == "" ||
+			strings.TrimSpace(c.ConnectorAuthorityTarget) == "" {
+			return errors.New("Workstation enrollment requires the operator API, database and a locally owned authority Target")
 		}
 	}
 	if strings.TrimSpace(c.TLSCertFile) == "" || strings.TrimSpace(c.TLSKeyFile) == "" {
