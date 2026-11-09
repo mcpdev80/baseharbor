@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/mcpdev80/baseharbor/internal/applicationlifecycle"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/machinehttp"
 )
@@ -50,6 +51,18 @@ func (e *bahaMachineExecutor) executeHTTPApply(
 	}
 	if err := bindHTTPApplicationSelectors(operationContext, &input.Target, &input.Environment, &input.Name); err != nil {
 		return nil, err
+	}
+	if input.SourceModel != nil {
+		if input.SourceModel.Application != input.Name {
+			return nil, machine.NewError(machine.ErrorValidationFailed, "Remote source selection does not belong to the selected application.", "Use the matching source model for this registered application.", false)
+		}
+		if err := development.ValidateImmutableRemoteSources(*input.SourceModel); err != nil {
+			return nil, machine.Wrap(machine.ErrorValidationFailed, err, "Use immutable Git commit SHAs or OCI image digests.", false)
+		}
+		// Existing Core-side apply resolves the pre-registered source only.
+		// Until authenticated artifact acquisition and exact candidate binding
+		// are implemented, applying it would risk deploying a different image.
+		return nil, machine.NewError(machine.ErrorUnsupported, "Core cannot yet acquire and verify the requested Git/OCI source before mutation.", "Configure a server-authorized immutable source candidate; direct source-selection apply is not yet supported.", false)
 	}
 	ctx = withTargetOverride(ctx, input.Target)
 	ctx = withMemoryPreflightOverride(ctx, input.SkipMemoryPreflight)
