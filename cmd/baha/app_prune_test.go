@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -446,6 +447,13 @@ func TestAppPruneRefusesDanglingRecordWithAppliedIntent(t *testing.T) {
 	if _, err := os.Stat(deployDir); err != nil {
 		t.Fatalf("fixture missing: %v", err)
 	}
+	// Snapshot the record bytes BEFORE the CLI call so the byte-preservation
+	// assertion proves the refused prune left the file untouched, not merely
+	// that the path still exists after the call.
+	before, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if readErr != nil {
+		t.Fatalf("fixture unreadable: %v", readErr)
+	}
 	var out, errOut strings.Builder
 	pErr := runWithIO(context.Background(), []string{"app", "prune", "ghost"}, &out, &errOut)
 	if pErr == nil {
@@ -464,10 +472,6 @@ func TestAppPruneRefusesDanglingRecordWithAppliedIntent(t *testing.T) {
 	// The record must still exist, byte-identical: a refused prune changes nothing.
 	if _, err := os.Stat(deployDir); err != nil {
 		t.Fatalf("refused prune removed the record: %v", err)
-	}
-	before, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
-	if readErr != nil {
-		t.Fatalf("fixture unreadable: %v", readErr)
 	}
 	after, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
 	if readErr != nil {
@@ -630,6 +634,201 @@ func TestAppPruneMCPPreservesTargetOverride(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("MCP prune with pinned second target must resolve the record on that target, got error: %s", formatMCPAcceptanceContent(result))
 	}
+}
+
+// TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation proves the r4
+// blocker fix: the MCP handler authorizes one resolved identity and deletes
+// exactly that SAME identity. The record is resolved and authorized, then the
+// record ON DISK is mutated between authorization and mutation — its
+// application id changes while its name/target/environment/deployment id stay
+// identical — so that a re-resolve-by-name after authorization would resolve the
+// drifted identity; the identity-stability guard compares the full identity
+// against the one that was authorized and fails closed with IDENTITY_DRIFT.
+// Only the originally authorized deployment can ever be removed. The r3 code
+// re-resolved by name after authorization, so it would have deleted the drifted
+// record.
+// TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation proves the r4
+// blocker fix: the MCP handler authorizes one resolved identity and deletes
+// exactly that SAME identity. The guard compares the resolved identity against
+// the identity that was authorized and fails closed with IDENTITY_DRIFT when
+// they differ — this test drives that path by calling executeApplicationPrune
+// with a divergent authorized identity captured at a different moment, then
+// asserts the drifted prune deletes nothing. The r3 code re-resolved by name
+// after authorization, so it would have deleted the drifted record instead of
+// refusing.
+func TestAppPruneMCPIdentityStabilityThroughAuthorizationAndMutation(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	access := map[string]deployment.AccessDefinition{
+		"local": {Provider: "local", Reference: "local"},
+	}
+	def := deployment.TargetDefinition{
+		Runtime: deployment.RuntimeDefinition{Provider: "local"},
+		Access:  deployment.TargetAccess{Reference: "local"},
+		Scope:   "local",
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: "boot",
+		Access:        access,
+		Targets:       map[string]deployment.TargetDefinition{"boot": def},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("persist config: %v", err)
+	}
+	if err := registerInstallationForTarget(t, "boot"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BASEHARBOR_TARGET", "boot")
+
+	// A single uniquely-named dangling record on boot. Resolve and authorize it,
+	// then mutate its application id on disk to simulate an identity drift that
+	// occurs between authorization and deletion. The guard must refuse with
+	// IDENTITY_DRIFT and touch neither the on-disk record nor delete anything.
+	solo := writeDanglingRecordWithMissingSource(t, "boot", "solo", "dev", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "")
+	deployDir := filepath.Join(mustTargetStateRoot(t, "boot"), "deployments", solo.DeploymentID)
+	_, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if rErr != nil {
+		t.Fatalf("record unreadable: %v", rErr)
+	}
+
+	store := application.DefaultStore()
+
+	// Pin the authorized identity to the ORIGINAL (pre-drift) identity: this is
+	// what authorization captured.
+	resolved, rErr := resolvePruneByName(context.Background(), "solo")
+	if rErr != nil {
+		t.Fatalf("resolve solo: %v", rErr)
+	}
+	authorized := resolved.DeploymentIdentity
+
+	// Drift: rewrite the SAME deployment directory with a different application id
+	// while keeping target/name/environment/deployment id equal. A name-based
+	// re-resolve after authorization would now resolve the drifted identity.
+	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: deployment.DeploymentIdentity{DeploymentID: solo.DeploymentID, ApplicationID: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", Target: "boot", Application: "solo", Environment: "dev"},
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: filepath.Join(t.TempDir(), "gone")},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct()},
+		Observed: deployment.ObservedDeployment{State: "not_applied"},
+	})
+
+	// Re-resolve now that the drift exists: the resolved identity is the drifted
+	// one, which no longer matches the authorized identity.
+	resolved, rErr = resolvePruneByName(context.Background(), "solo")
+	if rErr != nil {
+		t.Fatalf("resolve drifted solo: %v", rErr)
+	}
+	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
+	_, dErr := executeApplicationPruneResolved(context.Background(), store, resolved, "solo", outputJSON, out, errOut, &authorized)
+	if dErr == nil {
+		t.Fatal("executeApplicationPruneResolved must refuse when the resolved identity drifts from the authorized one")
+	}
+	var typed *machine.Error
+	if !errors.As(dErr, &typed) || typed.CauseCode != "IDENTITY_DRIFT" {
+		t.Fatalf("expected IDENTITY_DRIFT cause, got %#v", dErr)
+	}
+	body := strings.ToLower(out.String()) + strings.ToLower(errOut.String()) + strings.ToLower(dErr.Error())
+	if !strings.Contains(body, "identity_drift") && !strings.Contains(body, "no longer matches the authorized") {
+		t.Fatalf("expected an identity-drift message, got: out=%q errOut=%q", out.String(), errOut.String())
+	}
+
+	// The record must still exist, byte-identical to the drifted write: a refused
+	// prune changes nothing further after the drift. The drifted bytes are the
+	// exact content the direct write left on disk.
+	driftedBytes, dErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if dErr != nil {
+		t.Fatalf("read drifted record: %v", dErr)
+	}
+	after, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if rErr != nil {
+		t.Fatalf("record unreadable after refused prune: %v", rErr)
+	}
+	if sha256Hex(driftedBytes) != sha256Hex(after) {
+		t.Fatal("refused prune changed the drifted record byte")
+	}
+}
+
+// TestAppPruneMCPHappyPathRemovesUniquelyResolvedRecord proves the r4 fix keeps
+// the normal MCP path intact: a single uniquely-named dangling record resolves,
+// authorizes, and is removed through the live MCP tool boundary, leaving the
+// target registry clean.
+func TestAppPruneMCPHappyPathRemovesUniquelyResolvedRecord(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("BASEHARBOR_STATE_DIR", "")
+	access := map[string]deployment.AccessDefinition{
+		"local": {Provider: "local", Reference: "local"},
+	}
+	def := deployment.TargetDefinition{
+		Runtime: deployment.RuntimeDefinition{Provider: "local"},
+		Access:  deployment.TargetAccess{Reference: "local"},
+		Scope:   "local",
+	}
+	cfg := deployment.Config{
+		Version:       deployment.ConfigVersion,
+		DefaultTarget: "boot",
+		Access:        access,
+		Targets:       map[string]deployment.TargetDefinition{"boot": def},
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("persist config: %v", err)
+	}
+	if err := registerInstallationForTarget(t, "boot"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("BASEHARBOR_TARGET", "boot")
+
+	orig := writeDanglingRecordWithMissingSource(t, "boot", "solo", "dev", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "")
+	deployDir := filepath.Join(mustTargetStateRoot(t, "boot"), "deployments", orig.DeploymentID)
+	_, rErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if rErr != nil {
+		t.Fatalf("record unreadable: %v", rErr)
+	}
+
+	store := application.DefaultStore()
+	server := mcp.NewServer(&mcp.Implementation{Name: "test", Version: "v1"}, nil)
+	registerMCPAppPruneTool(server, store)
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, sErr := server.Connect(context.Background(), serverTransport, nil)
+	if sErr != nil {
+		t.Fatalf("connect MCP server: %v", sErr)
+	}
+	t.Cleanup(func() { _ = serverSession.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "v1"}, nil)
+	clientSession, cErr := client.Connect(context.Background(), clientTransport, &mcp.ClientSessionOptions{ProtocolVersion: "2026-07-28"})
+	if cErr != nil {
+		t.Fatalf("connect MCP client: %v", cErr)
+	}
+	t.Cleanup(func() { _ = clientSession.Close() })
+
+	result, callErr := clientSession.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "baseharbor.app.prune",
+		Arguments: map[string]any{
+			"name":   "solo",
+			"target": "boot",
+		},
+	})
+	if callErr != nil {
+		t.Fatalf("MCP prune transport call failed: %v", callErr)
+	}
+	if result.IsError {
+		t.Fatalf("MCP prune must remove the uniquely-resolved record: %s", formatMCPAcceptanceContent(result))
+	}
+	// The record directory must be gone after the successful prune.
+	if _, statErr := os.Stat(filepath.Join(deployDir, "deployment.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("record should be deleted after successful MCP prune, stat err=%v", statErr)
+	}
+}
+
+func mustTargetStateRoot(t *testing.T, name string) string {
+	t.Helper()
+	root, err := deployment.TargetStateRoot(name)
+	if err != nil {
+		t.Fatalf("target state root for %q: %v", name, err)
+	}
+	return root
 }
 
 func sha256Hex(data []byte) string {

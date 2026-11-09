@@ -27,8 +27,9 @@ import (
 // bindings or any other deployment record. It is deliberately narrow:
 //
 //   - It refuses when MORE than one record matches the given name, naming each.
-//     A plain NAME cannot disambiguate a name duplicate (0427-149), so the
-//     operator must pin one with --uuid or a distinct -e/--environment.
+//     A plain NAME cannot disambiguate a name duplicate (0427-149), so a
+//     matching name is refused until the operator picks a distinct environment
+//     or deployment id.
 //   - It refuses when the record's source repository is still present. A present
 //     source means the deployment is recoverable and the lifecycle commands must
 //     handle it; prune exists only for the unrecoverable case.
@@ -77,16 +78,30 @@ func executeApplicationPrune(ctx context.Context, store application.Store, name 
 	result := applicationPruneResult{}
 
 	// prune is a registry-identity command: it removes the dangling deployment
-	// record whose source is gone. It resolves the record by exact name (or
-	// --uuid) through a dedicated resolver that reads only the deployment
-	// identity, its source path and its applied-intent presence, WITHOUT loading
-	// the authored manifest or resolving the applied backend selection (the
-	// source is gone, so that indirection would fail). --uuid and -e are honored
-	// here so the name-duplicate guard (0427-149) stays in force.
+	// record whose source is gone. It resolves the record by exact name through
+	// a dedicated resolver that reads only the deployment identity, its source
+	// path and its applied-intent presence, WITHOUT loading the authored manifest
+	// or resolving the applied backend selection (the source is gone, so that
+	// indirection would fail). The one-name guard (0427-149) stays in force.
 	resolved, err := resolvePruneCandidate(ctx, store, name)
 	if err != nil {
 		return result, err
 	}
+	return executeApplicationPruneResolved(ctx, store, resolved, name, format, out, errOut, nil)
+}
+
+// executeApplicationPruneResolved performs the guard chain and deletion on an
+// ALREADY resolved record. The caller resolves once; this routine never
+// resolves by name again. The CLI entry point resolves internally and delegates
+// here with its own result; the MCP entry point resolves, authorizes that exact
+// result, and then delegates here so authorization AND deletion operate on the
+// same full deployment identity. An optional `authorizedIdentity` (only ever
+// set by the MCP path) pins the identity that was authorized: the deletion
+// removes exactly that record and the resolved record is validated against it
+// before deletion so a same-name record replacement between authorization and
+// mutation cannot redirect the deletion to a different deployment.
+func executeApplicationPruneResolved(ctx context.Context, store application.Store, resolved resolvedApplication, name string, format cliOutputFormat, out, errOut io.Writer, authorizedIdentity *deployment.DeploymentIdentity) (applicationPruneResult, error) {
+	result := applicationPruneResult{}
 	if resolved.SourceAvailable {
 		return result, &machine.Error{
 			Code:        machine.ErrorSourceMissing,
@@ -126,8 +141,30 @@ func executeApplicationPrune(ctx context.Context, store application.Store, name 
 		return result, err
 	}
 
-	if err := deployment.DeleteDeploymentRecord(resolved.DeploymentIdentity); err != nil {
-		return result, fmt.Errorf("remove dangling deployment record %s: %w", resolved.ResourceLabel(), err)
+	// Identity stability: the MCP path authorized a specific deployment and must
+	// delete exactly that one. Pin the deletion to the authorized identity and
+	// validate the freshly resolved identity against it before mutation, so a
+	// same-name record replacement between authorization and deletion cannot
+	// redirect the deletion to a different deployment. The CLI path leaves the
+	// authorized identity nil and deletes the record it just resolved.
+	if authorizedIdentity != nil {
+		if !identitiesMatch(resolved, *authorizedIdentity) {
+			return result, &machine.Error{
+				Code:        machine.ErrorOwnershipAmbiguous,
+				CauseCode:   "IDENTITY_DRIFT",
+				Message:     "resolved identity no longer matches the authorized deployment for " + resolved.ResourceLabel(),
+				Resource:    resolved.ResourceLabel(),
+				Next:        "The deployment record changed between authorization and deletion; re-run to authorize the current record.",
+				Remediation: "operator_review",
+			}
+		}
+		if err := deployment.DeleteDeploymentRecord(*authorizedIdentity); err != nil {
+			return result, fmt.Errorf("remove dangling deployment record %s: %w", resolved.ResourceLabel(), err)
+		}
+	} else {
+		if err := deployment.DeleteDeploymentRecord(resolved.DeploymentIdentity); err != nil {
+			return result, fmt.Errorf("remove dangling deployment record %s: %w", resolved.ResourceLabel(), err)
+		}
 	}
 
 	result.Target = resolved.Target.Name
@@ -154,11 +191,28 @@ func executeApplicationPrune(ctx context.Context, store application.Store, name 
 	return result, nil
 }
 
+// identitiesMatch reports whether the resolved record's full deployment identity
+// equals the identity that was authorized. prune authorizes one deployment and
+// must delete exactly that one, so any difference — a same-name record replaced
+// on the target between authorization and mutation — is a drift that fails
+// closed rather than redirecting the deletion.
+func identitiesMatch(resolved resolvedApplication, authorized deployment.DeploymentIdentity) bool {
+	if resolved.DeploymentRecord == nil {
+		return false
+	}
+	a := resolved.DeploymentRecord.Identity
+	return a.Target == authorized.Target &&
+		a.DeploymentID == authorized.DeploymentID &&
+		a.ApplicationID == authorized.ApplicationID &&
+		a.Application == authorized.Application &&
+		a.Environment == authorized.Environment
+}
+
 // deletionGuard is the narrow fail-closed gate that protects every foreign or
 // recoverable deployment. It runs AFTER resolveApplication has pinned exactly
-// one record (name match or --uuid), so it only has to reject a present source
-// or an applied-intent snapshot. It mutates nothing and reads nothing it does
-// not already hold through the resolved record.
+// one record by name, so it only has to reject a present source or an
+// applied-intent snapshot. It mutates nothing and reads nothing it does not
+// already hold through the resolved record.
 func deletionGuard(resolved resolvedApplication) error {
 	// A present source means the deployment is recoverable and the owner must
 	// handle it through the lifecycle command. prune exists only for the
@@ -288,7 +342,7 @@ func resolvePruneByName(ctx context.Context, name string) (resolvedApplication, 
 			CauseCode:   "application_name_ambiguous",
 			Message:     fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", name, target.Name, strings.Join(perEnvironment, "; ")),
 			Resource:    target.Name + "/" + name,
-			Next:        "Select one deployment by uuid: baha app prune --uuid <deployment-id>.",
+			Next:        "baha app prune refuses an ambiguous name until it selects exactly one deployment; inspect 'baha app list --all-targets' to see the matches.",
 			Remediation: "operator_review",
 		}
 	}
@@ -324,11 +378,18 @@ func registerMCPAppPruneTool(server *mcp.Server, store application.Store) {
 			if err != nil {
 				return machineMCPFailure(err)
 			}
+			// Authorize the exact resolved identity, then carry that SAME identity
+			// into the mutation. executeApplicationPruneResolved validates the
+			// resolved identity against this pinned value before deleting, so the
+			// authorization and the deletion operate on the same deployment and a
+			// same-name record replacement between the two cannot redirect the
+			// deletion.
+			authorizedIdentity := resolved.DeploymentIdentity
 			if err := authorizeResolvedMCPOperation(ctx, "app.prune", resolved, ""); err != nil {
 				return machineMCPFailure(err)
 			}
 			outBuf, errOutBuf := &bytes.Buffer{}, &bytes.Buffer{}
-			_, rErr := executeApplicationPrune(ctx, store, strings.TrimSpace(input.Name), outputJSON, outBuf, errOutBuf)
+			_, rErr := executeApplicationPruneResolved(ctx, store, resolved, strings.TrimSpace(input.Name), outputJSON, outBuf, errOutBuf, &authorizedIdentity)
 			if rErr != nil {
 				return machineMCPFailure(rErr)
 			}
