@@ -205,6 +205,19 @@ func Run(ctx context.Context, cfg Config, store application.Store, machineExecut
 func runtimeTLSConfig(cfg Config) (*tls.Config, error) {
 	config := &tls.Config{MinVersion: tls.VersionTLS12}
 	if !cfg.boundRuntimeEnabled() {
+		if cfg.WorkstationEnrollmentEnabled {
+			// Optional workstation certificates are requested without
+			// rejecting human browser connections that authenticate by OIDC.
+			// Their chain/tenant/registry/CRL are checked on every machine
+			// request by workstationDeviceMiddleware. A missing managed CA
+			// cannot silently enable an unauthenticated machine API.
+			pool, err := loadClientCAPool(cfg.TLSClientCAFile)
+			if err != nil {
+				return nil, fmt.Errorf("workstation client CA is required: %w", err)
+			}
+			config.ClientAuth = tls.RequestClientCert
+			config.ClientCAs = pool
+		}
 		return config, nil
 	}
 	pool, err := loadClientCAPool(cfg.TLSClientCAFile)
