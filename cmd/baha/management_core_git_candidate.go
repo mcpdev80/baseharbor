@@ -129,7 +129,25 @@ func fingerprintStagedCandidate(root string) (string, error) {
 		if _, err := io.WriteString(sum, name+"\x00"); err != nil {
 			return "", err
 		}
-		file, err := os.Open(filepath.Join(root, filepath.FromSlash(name)))
+		filePath := filepath.Join(root, filepath.FromSlash(name))
+		info, err := os.Lstat(filePath)
+		if err != nil {
+			return "", err
+		}
+		if !info.Mode().IsRegular() {
+			return "", fmt.Errorf("candidate file changed into non-regular entry")
+		}
+		// Executability is a Git-tracked file attribute. Two candidate trees
+		// with identical bytes but different executable bits are not the same
+		// release and must never share a content fingerprint.
+		executable := byte(0)
+		if info.Mode().Perm()&0111 != 0 {
+			executable = 1
+		}
+		if _, err := sum.Write([]byte{executable, 0}); err != nil {
+			return "", err
+		}
+		file, err := os.Open(filePath)
 		if err != nil {
 			return "", err
 		}
