@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -120,12 +122,12 @@ func TestAppPruneIsRegisteredAndRefusesLiveSource(t *testing.T) {
 		Observed: deployment.ObservedDeployment{State: "created"},
 	})
 
-	// resolvePruneCandidate hydrates the source-present record without loading
+	// resolvePruneByName hydrates the source-present record without loading
 	// the manifest or resolved backend selection (the source is present but the
 	// record still has an applied intent snapshot that must not be validated),
 	// so it resolves cleanly; deletionGuard must then refuse it because the
 	// source is recoverable.
-	resolved, rErr := resolvePruneCandidate(context.Background(), store, []string{"live"})
+	resolved, rErr := resolvePruneCandidate(context.Background(), store, "live")
 	if rErr != nil {
 		t.Fatalf("prune must resolve a source-present registered record, got %v", rErr)
 	}
@@ -258,4 +260,170 @@ func TestAppPruneRefusesRecordWithAppliedIntent(t *testing.T) {
 	if _, err := os.Stat(deployDir); err != nil {
 		t.Fatalf("refused prune removed the record: %v", err)
 	}
+}
+
+// TestAppPruneRefusesNoName proves the exact round-2 contract: `baha app prune`
+// with no name selects NOTHING. A single dangling record on the target must
+// remain byte-identical. This is the command-entry regression for the
+// round-1 blocker where an omitted name matched every record on the target.
+func TestAppPruneRefusesNoName(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	id := writeDanglingRecord(t, "gone", "dev", "12121212-1212-4212-8212-121212121212")
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("target state root: %v", err)
+	}
+	deployDir := filepath.Join(targetRoot, "deployments", id.DeploymentID)
+	before, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if readErr != nil {
+		t.Fatalf("fixture dangling record missing: %v", readErr)
+	}
+	beforeHash := sha256Hex(before)
+
+	var out, errOut strings.Builder
+	pErr := runWithIO(context.Background(), []string{"app", "prune"}, &out, &errOut)
+	if pErr == nil {
+		t.Fatalf("baha app prune with no name must refuse, got output:\n%s", out.String())
+	}
+	msg := strings.ToLower(out.String()) + strings.ToLower(errOut.String()) + strings.ToLower(pErr.Error())
+	if strings.Contains(msg, "removed") {
+		t.Fatalf("no-name prune must not report a removal, got:\n%s", out.String())
+	}
+	// The dangling record must remain byte-identical: a bare prune deletes nothing.
+	if _, err := os.Stat(deployDir); err != nil {
+		t.Fatalf("no-name prune removed the dangling record: %v", err)
+	}
+	after, readErr := os.ReadFile(filepath.Join(deployDir, "deployment.json"))
+	if readErr != nil {
+		t.Fatalf("record unreadable after no-name prune: %v", readErr)
+	}
+	if sha256Hex(after) != beforeHash {
+		t.Fatalf("no-name prune changed the dangling record bytes")
+	}
+}
+
+// TestAppPruneRefusesMultipleNames proves `baha app prune` with more than one
+// positional argument refuses (the CLI accepts exactly one name).
+func TestAppPruneRefusesMultipleNames(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	writeDanglingRecord(t, "gone", "dev", "13131313-1313-4131-8131-131313131313")
+	writeDanglingRecord(t, "gone2", "dev", "14141414-1414-4141-8141-141414141414")
+	targetRoot, err := deployment.TargetStateRoot(target.Name)
+	if err != nil {
+		t.Fatalf("target state root: %v", err)
+	}
+	var out, errOut strings.Builder
+	pErr := runWithIO(context.Background(), []string{"app", "prune", "gone", "gone2"}, &out, &errOut)
+	if pErr == nil {
+		t.Fatalf("baha app prune with two names must refuse")
+	}
+	// Neither record may be removed.
+	for _, id := range []string{"13131313-1313-4131-8131-131313131313", "14141414-1414-4141-8141-141414141414"} {
+		if _, err := os.Stat(filepath.Join(targetRoot, "deployments", id, "deployment.json")); err != nil {
+			t.Fatalf("refused multi-name prune removed record %s: %v", id, err)
+		}
+	}
+}
+
+// TestAppPruneJSONOnlyValid proves the round-2 contract on output form: with
+// --json the CLI emits a single valid JSON document with no human trailer, and
+// the machine result confirms the dangling (source-missing) removal.
+func TestAppPruneJSONOnlyValid(t *testing.T) {
+	// Use the fixture which stamps a valid UUIDv4 application_id (the record
+	// validator rejects the fixed placeholder UUIDs used elsewhere).
+	id := danglingRecordFixture(t, "gonejson", "dev", "15151515-1515-4151-8151-151515151515")
+	_ = id
+
+	var out, errOut strings.Builder
+	if pErr := runWithIO(context.Background(), []string{"app", "prune", "gonejson", "--json"}, &out, &errOut); pErr != nil {
+		t.Fatalf("prune --json of dangling record failed: %v", pErr)
+	}
+	log := strings.TrimSpace(out.String())
+	if strings.Count(log, "\n") > 1 {
+		t.Fatalf("--json output must be a single JSON document, got:\n%s", log)
+	}
+	var result applicationPruneResult
+	if jErr := json.Unmarshal([]byte(log), &result); jErr != nil {
+		t.Fatalf("--json output is not valid single-document JSON (%v):\n%s", jErr, log)
+	}
+	if !result.RecordRemoved || result.SourcePresent {
+		t.Fatalf("--json result must report a dangling removal: %#v", result)
+	}
+	if result.Application != "gonejson" {
+		t.Fatalf("--json result missing identity fields: %#v", result)
+	}
+}
+
+func TestAppPruneHumanHasNoJSONTrailer(t *testing.T) {
+	id := danglingRecordFixture(t, "gonehuman", "dev", "16161616-1616-4161-8161-161616161616")
+	_ = id
+	var out, errOut strings.Builder
+	if pErr := runWithIO(context.Background(), []string{"app", "prune", "gonehuman"}, &out, &errOut); pErr != nil {
+		t.Fatalf("human prune failed: %v", pErr)
+	}
+	log := out.String()
+	if strings.Contains(log, "record_removed") {
+		t.Fatalf("human-mode output must not contain a JSON trailer:\n%s", log)
+	}
+	if !strings.Contains(log, "Removed dangling deployment record") {
+		t.Fatalf("human-mode output missing removal confirmation:\n%s", log)
+	}
+}
+
+// TestAppPruneLiveSourceUnchangedOnRefusal proves the full non-destructive
+// contract at the CLI entry: a source-present, live application is refused
+// WITHOUT changing its bytes, and a sibling dangling record is untouched too.
+func TestAppPruneLiveSourceUnchangedOnRefusal(t *testing.T) {
+	target := configureTestTarget(t)
+	t.Setenv("BASEHARBOR_TARGET", target.Name)
+	repo := t.TempDir() // a present source repository
+	root, rootErr := deployment.TargetStateRoot(target.Name)
+	if rootErr != nil {
+		t.Fatalf("target state root: %v", rootErr)
+	}
+	liveDir := filepath.Join(root, "deployments", "17171717-1717-4171-8171-171717171717")
+	writeDeploymentRecordDirect(t, deployment.DeploymentRecord{
+		Version: deployment.DeploymentRecordVersion,
+		Identity: deployment.DeploymentIdentity{
+			DeploymentID:  "17171717-1717-4171-8171-171717171717",
+			ApplicationID: "28282828-2828-4282-8282-282828282828",
+			Target:        target.Name,
+			Application:   "liveapp",
+			Environment:   "dev",
+		},
+		Source:   deployment.DeploymentSource{Kind: "repository", Repository: repo, Manifest: "baseharbor.yaml"},
+		Applied:  deployment.AppliedDeployment{RuntimeProvider: "docker", Delivery: delivery.Direct(), Intent: json.RawMessage(`{"version":1,"name":"liveapp","environment":"dev"}`)},
+		Observed: deployment.ObservedDeployment{State: "created"},
+	})
+	liveBefore, _ := os.ReadFile(filepath.Join(liveDir, "deployment.json"))
+
+	// A sibling dangling record must be untouched by the refused live prune.
+	sib := writeDanglingRecord(t, "sib", "dev", "29292929-2929-4292-8292-292929292929")
+	sibPath := filepath.Join(root, "deployments", sib.DeploymentID, "deployment.json")
+	sibBefore, _ := os.ReadFile(sibPath)
+
+	var out, errOut strings.Builder
+	if pErr := runWithIO(context.Background(), []string{"app", "prune", "liveapp"}, &out, &errOut); pErr == nil {
+		t.Fatalf("prune must refuse a source-present live application")
+	}
+	// The live record must still exist, byte-identical.
+	if _, err := os.Stat(filepath.Join(liveDir, "deployment.json")); err != nil {
+		t.Fatalf("live record gone after refused prune: %v", err)
+	}
+	liveAfter, _ := os.ReadFile(filepath.Join(liveDir, "deployment.json"))
+	if sha256Hex(liveBefore) != sha256Hex(liveAfter) {
+		t.Fatalf("live record changed after refused prune")
+	}
+	// The sibling dangling record must be untouched by the refusal.
+	sibAfter, _ := os.ReadFile(sibPath)
+	if sha256Hex(sibBefore) != sha256Hex(sibAfter) {
+		t.Fatalf("sibling record changed by refused live prune")
+	}
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

@@ -38,25 +38,28 @@ func appPruneCommand(store application.Store) *cli.Command {
 	return &cli.Command{
 		Name:    "prune",
 		Summary: "Remove a dangling deployment record whose source repository is gone",
-		Usage:   "baha app prune [NAME] [--uuid <deployment-id>]",
-		Long:    "Removes a SINGLE dangling deployment record whose source repository is no longer available. The record can no longer be resolved by the source-required lifecycle commands (apply/update/plan/preflight/init) and cannot be destroyed or downed, so it stays permanently uncollectable and `baha app list` keeps showing MISSING. prune removes ONLY that registry record: it never touches runtime, containers, volumes, identities, secrets, provider bindings or any other deployment record. It refuses when the source repository is still present (the deployment is recoverable) and when more than one record matches the given name (naming each); use --uuid or a distinct -e/--environment to pin one.",
+		Usage:   "baha app prune <name>",
+		Long:    "Removes a SINGLE dangling deployment record whose source repository is no longer available. The record can no longer be resolved by the source-required lifecycle commands (apply/update/plan/preflight/init) and cannot be destroyed or downed, so it stays permanently uncollectable and `baha app list` keeps showing MISSING. prune removes ONLY that registry record: it never touches runtime, containers, volumes, identities, secrets, provider bindings or any other deployment record. It refuses when the source repository is still present (the deployment is recoverable) and when the given name matches more than one record (naming each). Exactly one name is required.",
 		Run: func(ctx context.Context, args []string, out, errOut io.Writer) error {
-			if _, _, err := parseReadOutputArgs(args, "app prune"); err != nil {
+			// Exactly ONE output form: the CLI selects human or structured JSON
+			// from the parsed options. The operation returns a structured result
+			// and never writes presentation text; this method renders exactly one
+			// form so the buffer is either valid JSON or plain text, never both.
+			filtered, format, err := parseReadOutputArgs(args, "app prune")
+			if err != nil {
 				return err
 			}
-			for _, arg := range args {
-				if strings.HasPrefix(arg, "-") {
-					return &cli.UsageError{Message: "unknown option " + arg, Hint: "Use baha app prune [NAME] [--uuid <deployment-id>]; prune removes a single dangling record and requires an exact name (or --uuid)."}
-				}
+			name, err := requirePruneName(filtered, "app prune")
+			if err != nil {
+				return err
 			}
 			if err := authorizeCurrentMCPContext(ctx, "app.prune", "", "", ""); err != nil {
 				return err
 			}
-			result, err := executeApplicationPrune(ctx, store, args, out, errOut)
-			if err != nil {
+			if _, err := executeApplicationPrune(ctx, store, name, format, out, errOut); err != nil {
 				return err
 			}
-			return writeJSON(out, result)
+			return nil
 		},
 	}
 }
@@ -70,7 +73,7 @@ type applicationPruneResult struct {
 	SourcePresent bool   `json:"source_present"`
 }
 
-func executeApplicationPrune(ctx context.Context, store application.Store, args []string, out, errOut io.Writer) (applicationPruneResult, error) {
+func executeApplicationPrune(ctx context.Context, store application.Store, name string, format cliOutputFormat, out, errOut io.Writer) (applicationPruneResult, error) {
 	result := applicationPruneResult{}
 
 	// prune is a registry-identity command: it removes the dangling deployment
@@ -80,7 +83,7 @@ func executeApplicationPrune(ctx context.Context, store application.Store, args 
 	// the authored manifest or resolving the applied backend selection (the
 	// source is gone, so that indirection would fail). --uuid and -e are honored
 	// here so the name-duplicate guard (0427-149) stays in force.
-	resolved, err := resolvePruneCandidate(ctx, store, args)
+	resolved, err := resolvePruneCandidate(ctx, store, name)
 	if err != nil {
 		return result, err
 	}
@@ -133,6 +136,14 @@ func executeApplicationPrune(ctx context.Context, store application.Store, args 
 	result.DeploymentID = resolved.DeploymentRecord.Identity.DeploymentID
 	result.RecordRemoved = true
 	result.SourcePresent = false
+
+	// Emit exactly one output form selected from the parsed options: JSON when
+	// requested, plain human text otherwise. The operation writes no presentation
+	// text itself, so a JSON request never carries a human trailer and a human
+	// request never carries a JSON trailer.
+	if format == outputJSON {
+		return result, writeJSON(out, result)
+	}
 	fmt.Fprintf(out, "Removed dangling deployment record %s\n", resolved.ResourceLabel())
 	fmt.Fprintf(out, "  target:       %s\n", resolved.Target.Name)
 	fmt.Fprintf(out, "  application:  %s\n", resolved.DeploymentRecord.Identity.Application)
@@ -177,15 +188,49 @@ func deletionGuard(resolved resolvedApplication) error {
 	return nil
 }
 
-// resolvePruneCandidate pins exactly one deployment record by exact NAME (with
-// optional -e/--environment) or --uuid, returning a resolvedApplication that
-// carries only the identity, source path, source availability and applied-intent
-// presence prune needs. It deliberately skips the authored-manifest load and the
-// applied-backend-selection resolution that every other app command performs:
-// the dangling record's source is gone, so that indirection would fail before
-// prune could remove it. The name-duplicate guard lives here, mirroring
-// resolveRegisteredApplication's name filter.
-func resolvePruneCandidate(ctx context.Context, store application.Store, args []string) (resolvedApplication, error) {
+// resolvePruneCandidate pins exactly one deployment record by exact NAME,
+// returning a resolvedApplication that carries only the identity, source path,
+// source availability and applied-intent presence prune needs. Name resolution
+// is delegated to a single resolver shared with the CLI and MCP entry points so
+// both refuse zero and multiple names identically. It deliberately skips the
+// authored-manifest load and the applied-backend-selection resolution that
+// every other app command performs: the dangling record's source is gone, so
+// that indirection would fail before prune could remove it.
+func resolvePruneCandidate(ctx context.Context, store application.Store, name string) (resolvedApplication, error) {
+	switch len(name) {
+	case 0:
+		return resolvedApplication{}, usageError("app prune requires exactly one deployment name", "Use 'baha app prune <name>' to remove one dangling record. A bare 'baha app prune' with no name selects nothing by design.")
+	default:
+		return resolvePruneByName(ctx, name)
+	}
+}
+
+// requirePruneName enforces the one-name contract at the CLI entry: exactly one
+// positional argument, no stray flags or extra names. It returns the single
+// name the rest of the command operates on.
+func requirePruneName(args []string, command string) (string, error) {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			return "", usageError("unknown option "+arg, "Use 'baha app prune <name> [--json]'; prune requires exactly one deployment name.")
+		}
+	}
+	switch len(args) {
+	case 0:
+		return "", usageError("missing deployment name", "Use 'baha app prune <name>' to remove one dangling record. A bare 'baha app prune' with no name selects nothing by design.")
+	case 1:
+		return args[0], nil
+	default:
+		return "", usageError(fmt.Sprintf("app prune accepts exactly one name, got %d", len(args)), "Use 'baha app prune <name>' to remove one dangling record.")
+	}
+}
+
+// resolvePruneByName pins exactly one deployment record by exact NAME, naming
+// every match when a name is ambiguous (0427-149 name-duplicate guard). It
+// deliberately skips the authored-manifest load and the applied-backend-selection
+// resolution that every other app command performs: the dangling record's
+// source is gone, so that indirection would fail before prune could remove it.
+func resolvePruneByName(ctx context.Context, name string) (resolvedApplication, error) {
+	ctx = withTargetOverride(ctx, "")
 	target, err := effectiveTarget(ctx)
 	if err != nil {
 		return resolvedApplication{}, err
@@ -199,39 +244,11 @@ func resolvePruneCandidate(ctx context.Context, store application.Store, args []
 		return resolvedApplication{}, listErr
 	}
 
-	// --uuid routes directly at the registry seam, bypassing the name filter
-	// entirely: it is the unambiguous identity for a name-colliding deployment
-	// that no -e value can disambiguate (0427-149).
-	deploymentUUID, uuidErr := extractApplicationUUID(args)
-	if uuidErr != nil {
-		return resolvedApplication{}, uuidErr
-	}
-	if strings.TrimSpace(deploymentUUID) != "" {
-		for i := range records {
-			if records[i].Identity.DeploymentID == deploymentUUID {
-				record := records[i]
-				return prunedResolved(target, targetRoot, record), nil
-			}
-		}
-		return resolvedApplication{}, &machine.Error{
-			Code:      machine.ErrorNotFound,
-			CauseCode: "deployment_uuid_not_found",
-			Message:   fmt.Sprintf("deployment %q has no registered deployment on target %q", deploymentUUID, target.Name),
-			Resource:  target.Name + "/" + deploymentUUID,
-			Next:      "Run 'baha app list --all-targets' to inspect registered deployments and their deployment ids.",
-		}
-	}
-
-	// Exact NAME match (optionally filtered by environment). A name that matches
-	// more than one record is refused, naming each, because prune must remove a
-	// single record and cannot safely disambiguate a name duplicate.
-	environment := ""
-	if len(args) > 0 {
-		environment = args[0]
-	}
+	// Exact NAME match. The name is the single unambiguous selector prune acts
+	// on: it must match exactly one record, or be refused naming each.
 	var matches []deployment.DeploymentRecord
 	for i := range records {
-		if environment != "" && records[i].Identity.Application != environment {
+		if records[i].Identity.Application != name {
 			continue
 		}
 		matches = append(matches, records[i])
@@ -240,8 +257,8 @@ func resolvePruneCandidate(ctx context.Context, store application.Store, args []
 		return resolvedApplication{}, &machine.Error{
 			Code:      machine.ErrorNotFound,
 			CauseCode: "application_deployment_not_found",
-			Message:   fmt.Sprintf("application %q has no registered deployment on target %q", environment, target.Name),
-			Resource:  target.Name + "/" + environment,
+			Message:   fmt.Sprintf("application %q has no registered deployment on target %q", name, target.Name),
+			Resource:  target.Name + "/" + name,
 			Next:      "Run 'baha app list' to inspect registered applications.",
 		}
 	}
@@ -259,9 +276,9 @@ func resolvePruneCandidate(ctx context.Context, store application.Store, args []
 		return resolvedApplication{}, &machine.Error{
 			Code:        machine.ErrorOwnershipAmbiguous,
 			CauseCode:   "application_name_ambiguous",
-			Message:     fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", environment, target.Name, strings.Join(perEnvironment, "; ")),
-			Resource:    target.Name + "/" + environment,
-			Next:        "Select one deployment by uuid: baha app prune --uuid <deployment-id>, or by a distinct environment with -e/--environment.",
+			Message:     fmt.Sprintf("application %q has multiple registered deployments on target %q: %v", name, target.Name, strings.Join(perEnvironment, "; ")),
+			Resource:    target.Name + "/" + name,
+			Next:        "Select one deployment by uuid: baha app prune --uuid <deployment-id>.",
 			Remediation: "operator_review",
 		}
 	}
@@ -293,8 +310,7 @@ func registerMCPAppPruneTool(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineMCPTool("app.prune", "Remove a single dangling deployment record whose source repository is gone (refuses when source is present or multiple records match).", true),
 		func(ctx context.Context, _ *mcp.CallToolRequest, input machineApplicationInput) (*mcp.CallToolResult, any, error) {
 			ctx = withTargetOverride(ctx, input.Target)
-			args := machineApplicationArgs(input.Name, input.Environment)
-			resolved, err := resolvePruneCandidate(ctx, store, args)
+			resolved, err := resolvePruneCandidate(ctx, store, strings.TrimSpace(input.Name))
 			if err != nil {
 				return machineMCPFailure(err)
 			}
@@ -302,7 +318,7 @@ func registerMCPAppPruneTool(server *mcp.Server, store application.Store) {
 				return machineMCPFailure(err)
 			}
 			outBuf, errOutBuf := &bytes.Buffer{}, &bytes.Buffer{}
-			_, rErr := executeApplicationPrune(ctx, store, args, outBuf, errOutBuf)
+			_, rErr := executeApplicationPrune(ctx, store, strings.TrimSpace(input.Name), outputJSON, outBuf, errOutBuf)
 			if rErr != nil {
 				return machineMCPFailure(rErr)
 			}
