@@ -6,6 +6,7 @@ package onboardingbundle
 import (
 	"crypto/x509"
 	"encoding/json"
+	"bytes"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -76,6 +78,48 @@ func (b Bundle) Validate(now time.Time) error {
 		return fmt.Errorf("%w: private key is forbidden", ErrInvalid)
 	}
 	return nil
+}
+
+// Write securely creates an invitation only once. Refusing overwrite prevents
+// accidental replacement of an existing grant or following a symlink.
+func Write(path string, b Bundle, now time.Time) (err error) {
+	if err := b.Validate(now); err != nil {
+		return err
+	}
+	payload, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return err
+	}
+	payload = append(payload, '\n')
+	if len(payload) > int(MaxBytes) {
+		return fmt.Errorf("%w: bundle exceeds maximum size", ErrInvalid)
+	}
+	// The destination directory must already be private to its owner.
+	parent, err := os.Stat(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	if !parent.IsDir() || parent.Mode().Perm()&0o077 != 0 {
+		return fmt.Errorf("%w: output directory must be private", ErrInvalid)
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(path)
+		}
+	}()
+	if _, err = io.Copy(file, bytes.NewReader(payload)); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 // Read refuses symlinks, world-readable bundles, trailing data, and files over
