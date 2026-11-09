@@ -30,24 +30,6 @@ var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative inst
 // identity is preserved and the mismatch is rejected, never adopted.
 var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
 
-// ErrDeploymentOwnerAccessDenied is returned when the Core installation under a
-// Target cannot be READ at all — a permission-denied or other OS-level access
-// failure on the installation.json — rather than being present but foreign. A
-// missing or unreadable installation is a host-state access problem, not a
-// foreign-owner condition: the rule never reads a file it cannot open, so it
-// fails closed on this specific error and never masquerades a missing file as
-// "foreign installation". The wrapped fs error carries the path and cause.
-var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for its Target is not readable; the Core installation.json is not accessible to this user — check owner and permissions before its state is loadable")
-
-// ErrDeploymentOwnerMalformedState is returned when the Core installation under
-// a Target LOADS but is itself malformed or unclassifiable (invalid JSON, a
-// missing mandatory capability, inconsistent readiness, or a bad selection).
-// The one-installation-owner rule only proves foreignness from a POSITIVE
-// loaded identity whose Target diverges; it never proves foreignness from a
-// state it cannot even validate. A malformed state is therefore its own
-// fail-closed named error, never masqueraded as a foreign installation.
-var ErrDeploymentOwnerMalformedState = errors.New("deployment state directory for its Target holds a Core installation that could not be validated; the installation.json is present but malformed or incompatible — restore a genuine Core installation before its state is loadable")
-
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
 // production read/write path. It derives the Target's runtime root
 // (targets/<target>/runtime) from the canonical data layout and delegates to the
@@ -806,40 +788,4 @@ func SourceAvailable(source DeploymentSource) bool {
 	}
 	info, err := os.Stat(source.Repository)
 	return err == nil && info.IsDir()
-}
-
-// refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
-// active reconciliation owner per managed resource set. It observes the
-// deployment's own observed state: a recorded conflict fails closed, a direct
-// (BaseHarbor-owned) mutation is refused while an external reconciler already
-// owns the resource; an absent observed state (direct mode, no external owner)
-// is the normal happy path and passes.
-func refuseOneWriterMutation(record DeploymentRecord) error {
-	applied := record.Applied.Delivery
-	observed := record.Observed
-
-	// Conflict observation wins closed: two active owners for one resource set.
-	if observed.Conflict {
-		return ErrConflictingOneWriter
-	}
-	// Direct mutation while an external reconciler already owns the resource.
-	if applied.Mode == delivery.ModeDirect && observed.Owner == delivery.OwnerExternal {
-		return ErrUnauthorizedMutation
-	}
-	return nil
-}
-
-// normalisePersistedOwner mirrors Selection.Normalize for a persisted
-// reconciliation owner read from a previous deployment record: it trims and
-// lower-cases the value, and collapses any value that is neither "" nor a
-// recognised owner (baseharbor|external) to "" (unset). This keeps the one-writer
-// guard from silently blocking an unknown owner or silently attesting an owner
-// the validate() switch would reject, so the absent/corrupt value defers to the
-// applied selection's mode.
-func normalisePersistedOwner(owner string) string {
-	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
-	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {
-		return ""
-	}
-	return string(normalised)
 }

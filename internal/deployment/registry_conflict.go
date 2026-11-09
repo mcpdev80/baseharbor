@@ -7,6 +7,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/delivery"
 )
 
 // RegistryConflictError names the poisoned (application_id, environment)
@@ -106,6 +108,24 @@ func RegistryConflictKey(err error) (applicationID, environment string, ok bool)
 	}
 	return "", "", false
 }
+
+// ErrDeploymentOwnerAccessDenied is returned when the Core installation under a
+// Target cannot be READ at all — a permission-denied or other OS-level access
+// failure on the installation.json — rather than being present but foreign. A
+// missing or unreadable installation is a host-state access problem, not a
+// foreign-owner condition: the rule never reads a file it cannot open, so it
+// fails closed on this specific error and never masquerades a missing file as
+// "foreign installation". The wrapped fs error carries the path and cause.
+var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for its Target is not readable; the Core installation.json is not accessible to this user — check owner and permissions before its state is loadable")
+
+// ErrDeploymentOwnerMalformedState is returned when the Core installation under
+// a Target LOADS but is itself malformed or unclassifiable (invalid JSON, a
+// missing mandatory capability, inconsistent readiness, or a bad selection).
+// The one-installation-owner rule only proves foreignness from a POSITIVE
+// loaded identity whose Target diverges; it never proves foreignness from a
+// state it cannot even validate. A malformed state is therefore its own
+// fail-closed named error, never masqueraded as a foreign installation.
+var ErrDeploymentOwnerMalformedState = errors.New("deployment state directory for its Target holds a Core installation that could not be validated; the installation.json is present but malformed or incompatible — restore a genuine Core installation before its state is loadable")
 
 // RefuseApplicationIDConflictOnDisplay is the exported detector the command
 // planning guards run over the tolerant display listing (0427-175): the exact
@@ -223,4 +243,44 @@ func findDeploymentMatches(target, applicationID, environment string) ([]Deploym
 		)
 	}
 	return matches, nil
+}
+
+// normalisePersistedOwner mirrors Selection.Normalize for a persisted
+// reconciliation owner read from a previous deployment record: it trims and
+// lower-cases the value, and collapses any value that is neither "" nor a
+// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner
+// — to "" (unset). This keeps the one-writer guard from either silently blocking
+// (an unknown owner that is neither direct- nor delegated-legal) or silently
+// attesting an owner that the validate() switch would otherwise reject, so the
+// absent/corrupt value defers to the applied selection's mode.
+func normalisePersistedOwner(owner string) string {
+	normalised := delivery.ReconciliationOwner(strings.ToLower(strings.TrimSpace(owner)))
+	if normalised != delivery.OwnerBaseHarbor && normalised != delivery.OwnerExternal {
+		return ""
+	}
+	return string(normalised)
+}
+
+// refuseOneWriterMutation enforces ADR 0022 §2 at the apply path: exactly one
+// active reconciliation owner per managed resource set. It runs after the
+// applied selection's single-record validation and before any state is written.
+//
+// It observes the deployment's own observed state: a recorded conflict (two
+// active owners for the same resource set) fails closed, and a direct
+// (BaseHarbor-owned) mutation is refused while an external reconciler already
+// owns the resource. An absent observed state (direct mode, no external owner)
+// is the normal happy path and passes.
+func refuseOneWriterMutation(record DeploymentRecord) error {
+	applied := record.Applied.Delivery
+	observed := record.Observed
+
+	// Conflict observation wins closed: two active owners for one resource set.
+	if observed.Conflict {
+		return ErrConflictingOneWriter
+	}
+	// Direct mutation while an external reconciler already owns the resource.
+	if applied.Mode == delivery.ModeDirect && observed.Owner == delivery.OwnerExternal {
+		return ErrUnauthorizedMutation
+	}
+	return nil
 }

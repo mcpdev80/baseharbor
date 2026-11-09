@@ -130,17 +130,27 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 			resolved.Manifest, err = resolveAppliedBackendSelection(resolved, command)
 		}
 	}()
+	ctx = localWorkloadScope(ctx, applicationBoundaryOperation(command))
+	filtered, argumentEnvironment, err := extractApplicationEnvironment(args, command)
+	if err != nil {
+		return resolvedApplication{}, err
+	}
+	if argumentEnvironment != "" {
+		if environment != "" && environment != argumentEnvironment {
+			return resolvedApplication{}, usageError("conflicting environment selections", "Specify the environment only once.")
+		}
+		environment = argumentEnvironment
+	}
 	// A --uuid selector is an option pair, not a NAME: strip it BEFORE the
 	// one-NAME limit. It routes directly at the registry seam below and
 	// bypasses the CWD/name resolution; it is also the repair door on a
 	// poisoned registry (0427-175), so the registry-conflict gate must not
 	// pre-empt an explicitly targeted uuid command.
-	selectionUUID, uuidErr := extractApplicationUUID(args)
+	selectionUUID, uuidErr := extractApplicationUUID(filtered)
 	if uuidErr != nil {
 		return resolvedApplication{}, uuidErr
 	}
-	nameArgs := withoutUUIDSelector(args)
-	nameArgs = withoutEnvironmentSelector(nameArgs)
+	nameArgs := withoutUUIDSelector(filtered)
 	if len(nameArgs) > 1 {
 		return resolvedApplication{}, usageError("baha app "+command+" accepts at most one NAME", "Run it without NAME inside an application repository, or pass NAME explicitly.")
 	}
@@ -168,9 +178,6 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 		return resolvedApplication{}, err
 	}
 
-	// Repository discovery runs only for a selector-less invocation: no NAME,
-	// no --uuid, exactly the documented "run it inside an application
-	// repository" shape. Anything else routes at the registry seam below.
 	if len(nameArgs) == 0 && strings.TrimSpace(selectionUUID) == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
@@ -190,8 +197,7 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 				// A manifest-discovered deployment may itself collide with a
 				// second registration of the same application_id on the
 				// Target: classify that registry conflict (0427-175) before
-				// falling back to name resolution, whose own guard would
-				// never see it.
+				// any other handling.
 				if errors.Is(resolveErr, deployment.ErrRegistryConflict) {
 					return resolvedApplication{}, invalidProviderConsumerInventory(resolveErr)
 				}
@@ -214,8 +220,8 @@ func resolveApplicationEnvironment(ctx context.Context, _ application.Store, arg
 	// A --uuid selector routes directly at the registry seam, bypassing the
 	// name filter entirely. It is the unambiguous identity for name-colliding
 	// deployments (0427-149) that no -e value can disambiguate, and it is the
-	// repair shape on a poisoned Target — 'baha app status --uuid <id>' takes
-	// exactly this path (0427-175).
+	// repair door on a poisoned Target — 'baha app status --uuid <id>' with no
+	// repository context takes exactly this path (0427-175).
 	var positionalName string
 	if len(nameArgs) == 1 {
 		positionalName = nameArgs[0]
