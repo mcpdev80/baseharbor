@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
@@ -204,5 +205,89 @@ func TestBindExplicitSelectionFailsClosedOnAbsentCore(t *testing.T) {
 	}
 	if machine.Classify(err).Code != machine.ErrorConflict {
 		t.Fatalf("expected typed conflict rejection, got %v", err)
+	}
+}
+
+// TestRecoveryHintNamesCoreSetupPath covers the round-4 block on PR #1510: a
+// missing or unreachable Core must not promise a plain, cwd-dependent `baha up`
+// (which, inside an Application repository, runs application-lifecycle handling
+// and does NOT set up the Management-Core). The emitted repair hint must name
+// the actual Core-setup path `baha up --control-plane-only`. This runs in the
+// normal go-unit-tests job and guards both the absent-Core and the unreadable
+// (unverifiable) boundary.
+func TestRecoveryHintNamesCoreSetupPath(t *testing.T) {
+	// Missing Core: a registered Target with no installation fails closed at the
+	// load seam with the recovery hint.
+	assertRecoveryHintNamesCoreSetup(t, "coreless-conn3")
+	// Unreachable/unverifiable Core: a genuine installation whose runtime root is
+	// unreadable fails closed at the same recovery hint.
+	targetName := "unreadable-conn3"
+	if err := registerTestTargetConfig(t, targetName); err != nil {
+		t.Fatal(err)
+	}
+	_, runtimeRoot := bootstrapVerifiedTargetForConnectionTest(t, targetName)
+	if runtimeRoot == "" {
+		t.Fatal("bootstrap produced no runtime root")
+	}
+	if err := os.Chmod(runtimeRoot, 0000); err != nil {
+		t.Fatalf("corrupt runtime root: %v", err)
+	}
+	defer os.Chmod(runtimeRoot, 0700)
+	assertRecoveryHintNamesCoreSetup(t, targetName)
+	// Production `baha use` seam: the missing-Core recovery hint must likewise
+	// name `--control-plane-only` (use_target.go bindExplicitSelectionToConnection).
+	// A separate, coreless Target so the load seam is hit deterministically and
+	// independent of the verified Target bootstrapped above.
+	if err := registerTestTargetConfig(t, "coreless-conn3-prod"); err != nil {
+		t.Fatal(err)
+	}
+	assertRecoveryHintNamesCoreSetupProduction(t, "coreless-conn3-prod")
+}
+
+// assertRecoveryHintNamesCoreSetup runs the onboarding recovery seam for a
+// Target whose Core is missing or unreachable and asserts that the typed
+// conflict's `Next` hint names `--control-plane-only` (the actual Core-setup
+// path) and does not leave a bare, cwd-dependent `baha up` as the only recovery.
+func assertRecoveryHintNamesCoreSetup(t *testing.T, targetName string) {
+	t.Helper()
+	_, err := boundManagementConnectionIdentity(context.Background(), targetName)
+	if err == nil {
+		t.Fatalf("target %q without an reachable Core must fail closed", targetName)
+	}
+	assertRecoveryHintNamesCoreSetupTyped(t, targetName, err)
+}
+
+// assertRecoveryHintNamesCoreSetupProduction covers the `baha use` production
+// seam (use_target.go bindExplicitSelectionToConnection), whose missing/unreachable
+// Core recovery hint must likewise name `--control-plane-only` rather than a
+// bare, cwd-dependent `baha up` that, inside an Application repository, runs
+// application-lifecycle handling and does NOT set up the Management-Core.
+func assertRecoveryHintNamesCoreSetupProduction(t *testing.T, targetName string) {
+	t.Helper()
+	err := bindExplicitSelectionToConnection(context.Background(), targetName)
+	if err == nil {
+		t.Fatalf("target %q without an reachable Core must fail closed", targetName)
+	}
+	assertRecoveryHintNamesCoreSetupTyped(t, targetName, err)
+}
+
+// assertRecoveryHintNamesCoreSetupTyped asserts that a typed conflict's `Next`
+// recovery hint names the actual Core-setup path `--control-plane-only` and does
+// not leave a bare, cwd-dependent `baha up` as the only recovery.
+func assertRecoveryHintNamesCoreSetupTyped(t *testing.T, targetName string, err error) {
+	t.Helper()
+	typed := machine.Classify(err)
+	if typed == nil || typed.Code != machine.ErrorConflict {
+		t.Fatalf("expected typed conflict for target %q, got %v", targetName, err)
+	}
+	hint := typed.Next
+	if hint == "" {
+		t.Fatalf("recovery hint must name the Core-setup path, got empty Next for %q", targetName)
+	}
+	if !strings.Contains(hint, "--control-plane-only") {
+		t.Fatalf("recovery hint for %q must name `baha up --control-plane-only`, got: %q", targetName, hint)
+	}
+	if strings.Contains(hint, "with `baha up --control-plane-only`") == false {
+		t.Fatalf("recovery hint for %q must name the Core-setup path as `baha up --control-plane-only`, got: %q", targetName, hint)
 	}
 }
