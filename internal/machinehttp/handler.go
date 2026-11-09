@@ -77,13 +77,13 @@ func New(executor Executor, stateRoot string) (*Handler, error) {
 		}
 	}
 	h := &Handler{
-		operations:    make([]machine.Operation, 0),
-		operationByID: make(map[string]machine.Operation),
-		executor:      executor,
-		executions:    executions,
+		operations:      make([]machine.Operation, 0),
+		operationByID:   make(map[string]machine.Operation),
+		executor:        executor,
+		executions:      executions,
 		sourceTransfers: transfers,
-		mux:           http.NewServeMux(),
-		terminals:     newTerminalStore(),
+		mux:             http.NewServeMux(),
+		terminals:       newTerminalStore(),
 	}
 	for _, id := range executor.SupportedOperationIDs() {
 		operation, exists := machine.OperationByID(id)

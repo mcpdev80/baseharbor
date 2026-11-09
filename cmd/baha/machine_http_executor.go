@@ -21,7 +21,7 @@ import (
 type bahaMachineExecutor struct {
 	store             application.Store
 	connectorSessions *targetsession.Pool
-	sourceTransfers *sourcetransfer.Store
+	sourceTransfers   *sourcetransfer.Store
 	coreAuthority     *deployment.ResolvedTarget
 	// ownedStateRoot is the durable installation state root this management-host
 	// serve process owns: the server holds the kernel lifecycle lock on it for
