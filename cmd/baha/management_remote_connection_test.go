@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/machine"
 	"github.com/mcpdev80/baseharbor/internal/operatorauth"
 )
@@ -53,7 +54,7 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 				Context     machine.OperationContext `json:"context"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&request); err != nil ||
-				(request.OperationID != "status" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy" && request.OperationID != "app.stop") || request.Context.Target != node.Name ||
+				(request.OperationID != "status" && request.OperationID != "apply" && request.OperationID != "update" && request.OperationID != "destroy" && request.OperationID != "app.stop" && request.OperationID != "app.create") || request.Context.Target != node.Name ||
 				request.Context.Environment != "dev" || request.Context.Application != "demo" ||
 				r.Header.Get("Idempotency-Key") == "" {
 				http.Error(w, "invalid status request", http.StatusBadRequest)
@@ -69,6 +70,9 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 			}
 			if request.OperationID != "status" {
 				execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"` + request.OperationID + `","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","verified":true,"status":{"contract_version":"v1","target":"` + node.Name + `","application":"demo","environment":"dev","state":"running","ready":true,"checks":[]}}`)
+				if request.OperationID == "app.create" {
+					execution.Result = json.RawMessage(`{"application":"demo","application_id":"33333333-3333-4333-8333-333333333333","environment":"dev","manifest":"/srv/baseharbor/demo/baseharbor.yaml"}`)
+				}
 				if request.OperationID == "destroy" {
 					execution.Result = json.RawMessage(`{"contract_version":"v1","operation":"destroy","target":"` + node.Name + `","application":"demo","environment":"dev","state":"destroyed","verified":true}`)
 				}
@@ -151,6 +155,12 @@ func TestRemoteCoreHandshakePinsInstallationIssuerTenantAndCA(t *testing.T) {
 	}
 	if err := json.Unmarshal(statusOutput.Bytes(), &verifiedStatus); err != nil || !verifiedStatus.Ready {
 		t.Fatalf("remote status CLI returned no confirmed READY result: %q (%v)", statusOutput.String(), err)
+	}
+
+	created, createErr := remoteCreateTargetManagedApplication(context.Background(), node,
+		application.Manifest{Name: "demo", Environment: "dev"})
+	if createErr != nil || created.Application != "demo" || created.ApplicationID == "" {
+		t.Fatalf("remote app create did not verify authoritative Core receipt: %#v %v", created, createErr)
 	}
 
 	foreignResult = true
