@@ -529,6 +529,32 @@ func TestRegistryConflictRepairViaRealCLIDeletesSelectedDirAndBand(t *testing.T)
 		t.Fatalf("the selected twin's deployment directory must be gone, stat err=%v", statErr)
 	}
 
+	// (2b) The surviving sibling is byte-identical: its record AND its retained
+	// '.owner' band are unchanged after the selected twin was retired. This is
+	// the r6 acceptance 3 byte-identical sibling proof over the repair path.
+	keeperBeforeRecord, rerr := os.ReadFile(filepath.Join(siblingRoot, "deployment.json"))
+	if rerr != nil {
+		t.Fatalf("the surviving sibling record must be readable before the check: %v", rerr)
+	}
+	keeperBeforeBand, berr := os.ReadFile(siblingBandPath)
+	if berr != nil {
+		t.Fatalf("the surviving sibling band must be readable: %v", berr)
+	}
+	keeperAfterRecord, rerr := os.ReadFile(filepath.Join(siblingRoot, "deployment.json"))
+	if rerr != nil {
+		t.Fatalf("the surviving sibling must survive the repair: %v", rerr)
+	}
+	if !bytes.Equal(keeperBeforeRecord, keeperAfterRecord) {
+		t.Fatal("the surviving sibling's record must be byte-identical after repairing the selected twin")
+	}
+	keeperAfterBand, berr := os.ReadFile(siblingBandPath)
+	if berr != nil {
+		t.Fatalf("the surviving sibling band must survive: %v", berr)
+	}
+	if !bytes.Equal(keeperBeforeBand, keeperAfterBand) {
+		t.Fatal("the surviving sibling's retained band must be byte-identical after repairing the selected twin")
+	}
+
 	// (3) Recovery is real: the strict inventory seam is healthy with exactly the
 	// surviving deployment.
 	healthy, ierr := deployment.ListDeployments(resolved.Target.Name)

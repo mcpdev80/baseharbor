@@ -607,6 +607,17 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 }
 
 func (e *applicationDestroyExecution) removeApplicationState() error {
+	// The repair deletes a directory, so the path it took must be the path the
+	// operator selected. Fail closed on drift BEFORE any destructive mutation —
+	// before Store.Delete, before ReleaseApplicationProviderRegistryAt, before
+	// the runtime/route/provider cleanup that precedes this seam and before the
+	// DeleteDeploymentRecord below — so a selection that drifted onto another
+	// twin never removes a record the operator did not address (0427-175). A
+	// check after the remove cannot prevent the loss.
+	if selectedID := selectionDeploymentID(e.selection); selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
+		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
+	}
+
 	appDir := filepath.Join(e.resolved.Store.Root, e.manifest.Name)
 	if _, err := os.Stat(appDir); err == nil {
 		if err := e.resolved.Store.Delete(e.manifest.Name); err != nil {
@@ -632,15 +643,6 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 			return errors.New("verify application destruction: application state still exists")
 		}
 		return fmt.Errorf("verify application destruction: %w", err)
-	}
-
-	// The repair deletes a directory, so the path it took must be the path the
-	// operator selected. Fail closed on drift BEFORE any destructive mutation so
-	// a selection that drifted onto another twin never removes a record the
-	// operator did not address (0427-175). This guard must precede
-	// DeleteDeploymentRecord: a check after the remove cannot prevent the loss.
-	if selectedID := selectionDeploymentID(e.selection); selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
-		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
 	}
 
 	if err := deployment.DeleteDeploymentRecord(e.resolved.DeploymentIdentity); err != nil {
