@@ -20,7 +20,7 @@ import (
 // The Core origin and bearer were verified together at dial time. No endpoint
 // URL from discovery is ever trusted as an independent remote authority.
 func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (machine.Discovery, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target == "" || c.tenant == "" {
+	if c == nil || c.client == nil || c.origin == "" || c.target == "" || c.tenant == "" {
 		return machine.Discovery{}, errors.New("remote Core connection is not verified")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+"/api/v1/machine/discovery", nil)
@@ -67,7 +67,7 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	ctx context.Context, operationID string, selectors machine.OperationContext,
 	input json.RawMessage, idempotencyKey string,
 ) (machine.Execution, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
+	if c == nil || c.client == nil || c.origin == "" || strings.TrimSpace(operationID) == "" || strings.TrimSpace(idempotencyKey) == "" ||
 		selectors.Target != c.target || selectors.Environment == "" {
 		return machine.Execution{}, errors.New("remote machine operation requires pinned Target, environment and idempotency key")
 	}
@@ -139,7 +139,7 @@ var errRemoteExecutionPending = errors.New("remote Core machine operation is not
 // readMachineExecution observes a previously admitted operation over the same
 // pinned Core origin and bearer. Never follow a server-provided URL.
 func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted machine.Execution) (machine.Execution, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target == "" || c.tenant == "" ||
+	if c == nil || c.client == nil || c.origin == "" || c.target == "" || c.tenant == "" ||
 		!remoteExecutionIDPattern.MatchString(admitted.ExecutionID) || admitted.Context.Target != c.target ||
 		admitted.Context.Environment == "" || admitted.OperationID == "" {
 		return machine.Execution{}, errors.New("remote execution is not bound to the verified Core and Target")
