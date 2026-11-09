@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 )
 
 // VerifyDeploymentOwnerAgainstOwner is the production one-installation-owner
@@ -95,15 +93,29 @@ func verifyLoanOwnerGuarantees(targetName, targetRoot string) error {
 	// The test Target must remain genuinely ownerless: AT MOST ONE of the two
 	// roots (this test Target + the boot installation) carries an
 	// installation.json. A second concurrent owner is a foreign owner.
-	if _, ownErr := coreinstallation.Load(targetRoot); ownErr == nil {
+	if ownState, ownErr := resolveInstallationLoad(targetRoot); ownErr == nil {
 		// The test Target's OWN runtime root loaded a genuine installation
 		// between the precondition Load and here: the local owner governs, so
 		// resolve WITHOUT the loan — but only when we did not just grant it
 		// (a granted loan keeps the test Target ownerless by design, so a
 		// genuine load now is a real new owner, never a re-entrance).
+		_ = ownState
 		return VerifyDeploymentOwnerAgainstOwner(targetName, targetRoot, "")
-	} else if !errors.Is(ownErr, os.ErrNotExist) {
-		return ErrDeploymentOwnerForeign
+	} else if errors.Is(ownErr, os.ErrNotExist) {
+		// Still genuinely ownerless: the loan governs.
+		return nil
+	} else {
+		// A read/engine failure here is a host-state access problem, NOT a
+		// proven foreign installation: the rule never positively observed a
+		// foreign owner, only that it could not read the target's own
+		// installation. Propagate the true verdict (access-denied via the
+		// classified loader, or the concrete unchanging error) instead of
+		// folding it into ErrDeploymentOwnerForeign. Foreign stays reserved
+		// for the positive hash/target mismatch ResolveDeploymentOwnerAgainstOwner
+		// establishes once a state actually loads.
+		if isAccessDeniedLoadError(ownErr) {
+			return fmt.Errorf("%w: %w", ErrDeploymentOwnerAccessDenied, ownErr)
+		}
+		return ownErr
 	}
-	return nil
 }

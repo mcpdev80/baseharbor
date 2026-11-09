@@ -304,8 +304,9 @@ func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
 
 	// Corrupt the saved OWNER: overwrite the Core installation.json (which lives
 	// under the target's runtime root) with invalid content so
-	// coreinstallation.Load fails and the seam treats the owner as
-	// foreign/incompatible (not missing).
+	// coreinstallation.Load fails and the seam treats the owner as a malformed
+	// (unvalidatable) state, NOT as a foreign installation — a malformed state
+	// is its own fail-closed named error, never a proven foreign owner.
 	ownerRoot, rerr := TargetStateRoot(target)
 	if rerr != nil {
 		t.Fatalf("resolve owner root: %v", rerr)
@@ -314,11 +315,16 @@ func TestDeploymentOwnerSeamRejectsCorruptStateThroughList(t *testing.T) {
 		t.Fatalf("corrupt the saved owner installation: %v", err)
 	}
 
-	// Non-best-effort public list fails closed with the specific owner error.
+	// Non-best-effort public list fails closed with the specific owner error:
+	// a malformed (unvalidatable) installation is ErrDeploymentOwnerMalformedState,
+	// never ErrDeploymentOwnerForeign (the rule never positively observed a
+	// foreign identity) and never ErrDeploymentOwnerMissing.
 	if _, listErr := ListDeployments(target); listErr == nil {
 		t.Fatal("non-best-effort ListDeployments did not fail closed on corrupt owner")
-	} else if !errors.Is(listErr, ErrDeploymentOwnerForeign) {
-		t.Fatalf("non-best-effort list must be ErrDeploymentOwnerForeign, got: %v", listErr)
+	} else if errors.Is(listErr, ErrDeploymentOwnerForeign) {
+		t.Fatalf("non-best-effort list must NOT be ErrDeploymentOwnerForeign for a malformed owner, got: %v", listErr)
+	} else if !errors.Is(listErr, ErrDeploymentOwnerMalformedState) {
+		t.Fatalf("non-best-effort list must be ErrDeploymentOwnerMalformedState, got: %v", listErr)
 	}
 
 	// Best-effort public list surfaces a concrete warning rather than hard-failing.

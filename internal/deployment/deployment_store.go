@@ -34,13 +34,19 @@ var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not ow
 // Target cannot be READ at all — a permission-denied or other OS-level access
 // failure on the installation.json — rather than being present but foreign. A
 // missing or unreadable installation is a host-state access problem, not a
-// foreign-owner condition: the one-installation-owner rule never reads a file it
-// cannot open, so it must fail closed on this specific error and never surface a
-// misleading "foreign installation" message for a file that is simply not
-// accessible to this user. The wrapped fs error carries the path and the
-// underlying cause so the CLI can name the file and point at ownership and
-// permissions as the repair.
+// foreign-owner condition: the rule never reads a file it cannot open, so it
+// fails closed on this specific error and never masquerades a missing file as
+// "foreign installation". The wrapped fs error carries the path and cause.
 var ErrDeploymentOwnerAccessDenied = errors.New("deployment state directory for its Target is not readable; the Core installation.json is not accessible to this user — check owner and permissions before its state is loadable")
+
+// ErrDeploymentOwnerMalformedState is returned when the Core installation under
+// a Target LOADS but is itself malformed or unclassifiable (invalid JSON, a
+// missing mandatory capability, inconsistent readiness, or a bad selection).
+// The one-installation-owner rule only proves foreignness from a POSITIVE
+// loaded identity whose Target diverges; it never proves foreignness from a
+// state it cannot even validate. A malformed state is therefore its own
+// fail-closed named error, never masqueraded as a foreign installation.
+var ErrDeploymentOwnerMalformedState = errors.New("deployment state directory for its Target holds a Core installation that could not be validated; the installation.json is present but malformed or incompatible — restore a genuine Core installation before its state is loadable")
 
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
 // production read/write path in this package. It derives the Target's runtime
@@ -154,12 +160,23 @@ func VerifyDeploymentOwner(targetName, targetRoot, deploymentID string) error {
 		// stat failure) is a host-state access problem, not an owner condition.
 		// It is neither missing nor foreign: the rule never reaches content it
 		// cannot even open, so classify it distinctly and never masquerade it as
-		// a foreign installation. A file that loads but is itself invalid or
-		// foreign stays ErrDeploymentOwnerForeign below.
+		// a foreign installation.
 		if isAccessDeniedLoadError(err) {
 			return fmt.Errorf("%w: %w", ErrDeploymentOwnerAccessDenied, err)
 		}
-		// An invalid/foreign installation.json is not an owner either.
+		// A Core installation that LOADS but is itself malformed or
+		// unclassifiable (invalid JSON, missing mandatory capability,
+		// inconsistent readiness, bad selection) is a broken state, not a
+		// proven foreign owner. The one-installation-owner rule only proves
+		// foreignness from a POSITIVE loaded identity whose Target diverges;
+		// it never proves foreignness from a state it cannot even validate.
+		// Fail closed on its own named error instead of masquerading it as a
+		// foreign installation.
+		if isMalformedInstallationLoadError(err) {
+			return fmt.Errorf("%w: %w", ErrDeploymentOwnerMalformedState, err)
+		}
+		// Only a positively-loaded installation whose identity/target diverges
+		// is foreign; anything left here is the genuine foreign verdict.
 		return ErrDeploymentOwnerForeign
 	}
 	_ = installation
@@ -348,6 +365,17 @@ func DeploymentRecordState(err error) (*DeploymentRecordStateError, bool) {
 		return stateErr, true
 	}
 	return nil, false
+}
+
+// IsDeploymentOwnerAccessDenied reports whether err (or any error in its chain)
+// is the authoritative unreadable-owner verdict ErrDeploymentOwnerAccessDenied:
+// a Core installation that cannot be READ at all (permission denied, fs read
+// failure), as opposed to a missing or a genuinely foreign installation. The CLI
+// display path uses this to propagate the true access-denied verdict instead of
+// folding it into a generic "no registered deployment" or a foreign-installation
+// lie.
+func IsDeploymentOwnerAccessDenied(err error) bool {
+	return errors.Is(err, ErrDeploymentOwnerAccessDenied)
 }
 
 func (id DeploymentIdentity) Validate() error {
@@ -756,8 +784,8 @@ func refuseOneWriterMutation(record DeploymentRecord) error {
 // normalisePersistedOwner mirrors Selection.Normalize for a persisted
 // reconciliation owner read from a previous deployment record: it trims and
 // lower-cases the value, and collapses any value that is neither "" nor a
-// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner —
-// to "" (unset). This keeps the one-writer guard from either silently blocking
+// recognised owner (baseharbor|external) — a corrupt or unknown persisted owner
+// — to "" (unset). This keeps the one-writer guard from either silently blocking
 // (an unknown owner that is neither direct- nor delegated-legal) or silently
 // attesting an owner that the validate() switch would otherwise reject, so the
 // absent/corrupt value defers to the applied selection's mode.
@@ -767,34 +795,4 @@ func normalisePersistedOwner(owner string) string {
 		return ""
 	}
 	return string(normalised)
-}
-
-// isAccessDeniedLoadError reports whether a coreinstallation.Load failure is a
-// host-state access/read problem rather than a foreign-owner condition. A
-// permission denied, or any OS-level stat/open failure that is neither a
-// "does not exist" nor an "already exists" signal, means the installation.json
-// could not be read — an access-denied, not a foreign installation. Only the
-// file loaded but was itself invalid stays foreign (ErrDeploymentOwnerForeign).
-func isAccessDeniedLoadError(err error) bool {
-	if err == nil {
-		return false
-	}
-	if errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	// A genuine permission-denied is unambiguous.
-	if errors.Is(err, os.ErrPermission) {
-		return true
-	}
-	// A stat/open failure on the installation file that is not a "missing" or
-	// "already exists" signal is an access/read problem, never a content one.
-	// A file that loaded but failed content validation is NOT access-denied;
-	// that path does not reach here because coreinstallation.Load returns a
-	// domain error (foreign/incompatible), not an fs error, in that case.
-	var fsErr interface{ Is(error) bool }
-	if errors.As(err, &fsErr) {
-		// Preserve the original fs error for the caller-facing message.
-		return !errors.Is(err, os.ErrNotExist)
-	}
-	return false
 }
