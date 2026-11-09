@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/mcpdev80/baseharbor/internal/coreinstallation"
 )
 
 // VerifyDeploymentOwnerAgainstOwner is the production one-installation-owner
@@ -30,6 +32,16 @@ func VerifyDeploymentOwnerAgainstOwner(targetName, targetRoot, deploymentID stri
 		// An invalid/foreign installation.json is not an owner either.
 		return ErrDeploymentOwnerForeign
 	}
+	return verifyDeploymentOwnerAgainstInstallation(targetName, &installation, deploymentID)
+}
+
+// verifyDeploymentOwnerAgainstInstallation runs the per-deployment directory
+// conclusion against an already-verified installation: the deployment namespace
+// must belong to the installation's Target and must be a real protected
+// directory. The deploymentID argument is accepted for call-site symmetry and
+// future binding but does not affect this namespace-only check, so a cached
+// installation never encodes a per-deployment ownership verdict.
+func verifyDeploymentOwnerAgainstInstallation(targetName string, installation *coreinstallation.State, deploymentID string) error {
 	// The deployment namespace is targets/<target>/deployments. The deployment
 	// directory's Target (the segment under targets/) must match the
 	// installation's own Target; a distinct Target is a foreign owner and is
