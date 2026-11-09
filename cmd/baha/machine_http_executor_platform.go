@@ -119,7 +119,7 @@ func executeHTTPAppCreate(ctx context.Context, operationContext machine.Operatio
 	if err != nil {
 		return nil, err
 	}
-	return createMachineApplication(withTargetOverride(ctx, target), input.Intent)
+	return createMachineApplicationWithSource(withTargetOverride(ctx, target), input.Intent, input.SourceModel)
 }
 
 func executeHTTPAppNew(
