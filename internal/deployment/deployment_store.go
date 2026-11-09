@@ -30,6 +30,22 @@ var ErrDeploymentOwnerMissing = errors.New("deployment has no authoritative inst
 // identity is preserved and the mismatch is rejected, never adopted.
 var ErrDeploymentOwnerForeign = errors.New("deployment state directory is not owned by the installation under its Target; foreign installation cannot own this deployment")
 
+// ErrTargetDetachedWithOrphans is returned when a Target definition is detached
+// while one or more deployment records remain under its (now ownerless)
+// deployments namespace. Detach is config-only by contract, but the orphaned
+// records are otherwise uncollectable: the one-installation-owner seam
+// (VerifyDeploymentOwner) fails closed on an ownerless Target, so neither
+// `app destroy --uuid --full-reset` nor `destroy --all` can resolve them and no
+// later operation reaches them. The detach is refused instead, naming the
+// records and the collect path, so the operator restores the Target and runs the
+// existing destroy contract (which lists the same records as SKIPPED with their
+// collect reason) before detaching. This is a visible, actionable refusal —
+// never a silent removal — and it keeps the ErrDeploymentOwnerMissing boundary
+// intact.
+var ErrTargetDetachedWithOrphans = errors.New(
+	"Target has deployment records that would become uncollectable on detach; restore the Target and collect them first",
+)
+
 // verifyDeploymentOwnerAtSeam enforces the one-installation-owner rule on every
 // production read/write path in this package. It derives the Target's runtime
 // root (targets/<target>/runtime) from the canonical data layout and delegates
