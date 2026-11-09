@@ -21,7 +21,7 @@ import (
 // machine. It carries neither repository credentials nor an unverified branch
 // claim. A verified Core TLS/OIDC session is mandatory for every HTTP request.
 func (c *verifiedRemoteCore) uploadLocalSource(ctx context.Context, target, name, environment, root string) (string, error) {
-	if c == nil || c.client == nil || c.origin == "" || c.token == "" || c.target != target || c.tenant == "" {
+	if c == nil || c.client == nil || c.origin == "" || c.target != target || c.tenant == "" {
 		return "", errors.New("source transfer requires a verified management Core connection")
 	}
 	endpoint := c.origin + "/api/v1/machine/source-transfers"
