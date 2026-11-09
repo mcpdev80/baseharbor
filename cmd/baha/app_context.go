@@ -29,6 +29,19 @@ var damagedScanRuntimeForTarget = func(ctx context.Context, t deployment.Resolve
 	return provider, nil
 }
 
+// inspectDamagedNetworkForTarget resolves the runtime inspector for a registry
+// damaged-scan enrichment, returning a nil inspector when the runtime cannot be
+// resolved so the damaged error stays record-only (never fabricating an absent
+// network from an unverifiable inspect). It mirrors damagedScanRuntimeForTarget
+// but treats a resolution failure as a nil inspector rather than an error.
+func inspectDamagedNetworkForTarget(ctx context.Context, t deployment.ResolvedTarget) deployment.NetworkInspector {
+	inspector, err := damagedScanRuntimeForTarget(ctx, t)
+	if err != nil {
+		return nil
+	}
+	return inspector
+}
+
 func pushApplicationEnvironmentOverride(environment string) func() {
 	previous := applicationEnvironmentOverride
 	applicationEnvironmentOverride = strings.TrimSpace(environment)
@@ -233,6 +246,30 @@ func resolvedRepositoryApplication(ctx context.Context, target deployment.Resolv
 		found, err = false, nil
 	}
 	if err != nil {
+		// A registry-path damaged-state error (found in the deployment listing
+		// for THIS target/app) carries only the record half AND is missing the
+		// retained Application/Environment identity — the deploy directory is a
+		// per-deploy UUID with no record to read them from. Reconstruct the
+		// retained identity from the request parameters (the caller already knows
+		// the requested application_id, manifest name and environment) and verify
+		// THIS deployment's retained-identity workload network via the runtime
+		// seam, enriching the error with the network half only when it is
+		// genuinely ABSENT for that exact identity — an ownership check on a
+		// missing network, never a fabricated absent from an unrelated or
+		// failed inspect.
+		if damaged, ok := deployment.DamagedDeploymentState(err, inspectDamagedNetworkForTarget(ctx, target)); ok && damaged != nil {
+			if damaged.Identity.ApplicationID == "" {
+				damaged.Identity.ApplicationID = m.ApplicationID
+			}
+			if damaged.Identity.Application == "" {
+				damaged.Identity.Application = m.Name
+			}
+			if damaged.Identity.Environment == "" {
+				damaged.Identity.Environment = m.Environment
+			}
+			damaged.EnrichNetworkForOwnIdentity(inspectDamagedNetworkForTarget(ctx, target))
+			return resolvedApplication{}, damaged
+		}
 		return resolvedApplication{}, err
 	}
 

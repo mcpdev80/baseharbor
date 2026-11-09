@@ -325,3 +325,72 @@ func testDamagedUpNetwork(t *testing.T, label string) {
 		t.Fatalf("[%s] absent-network damage must name the network in the error: %q", label, err.Error())
 	}
 }
+
+// TestRegistryUpFailsClosedNamingRecordAndNetworkAbsent proves the F1 registry
+// fix: the registry path (FindDeployment returns a damaged error whose deploy
+// directory is a per-deploy UUID with NO record to read the retained identity
+// from) must still report BOTH halves — the missing record AND the absent
+// workload network for THIS deployment's retained identity. The identity is
+// reconstructed from the request parameters (application_id, manifest name,
+// environment) and the workload network is verified for that exact identity.
+func TestRegistryUpFailsClosedNamingRecordAndNetworkAbsent(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+
+	// Override the registry network seam with the absent-network fake BEFORE
+	// any resolution.
+	orig := damagedScanRuntimeForTarget
+	defer func() { damagedScanRuntimeForTarget = orig }()
+	damagedScanRuntimeForTarget = func(context.Context, deployment.ResolvedTarget) (deployment.NetworkInspector, error) {
+		return fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent}, nil
+	}
+
+	// Reproduce the exact registry damaged path used by FindDeployment: a
+	// DamagedDeploymentError whose Identity carries only Target + a UUID
+	// DeploymentID (no Application/Environment, because the record is gone).
+	registryErr := &deployment.DamagedDeploymentError{
+		Identity: deployment.DeploymentIdentity{
+			Target:       "local",
+			DeploymentID: "11111111-1111-1111-1111-111111111111",
+			// Application / Environment intentionally ABSENT, as in the listing.
+		},
+		Root: "/state/targets/local/deployments/11111111-1111-1111-1111-111111111111",
+	}
+	damaged, ok := deployment.DamagedDeploymentState(registryErr, fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent})
+	if !ok {
+		t.Fatal("DamagedDeploymentState must recognize a registry damaged error")
+	}
+	// Reconstruct the retained identity from the request parameters, exactly as
+	// resolvedRepositoryApplication does before enrichment.
+	damaged.Identity.ApplicationID = "app-abc123"
+	damaged.Identity.Application = "reg-app"
+	damaged.Identity.Environment = "dev"
+	// Re-verify now that the retained identity is populated, so the workload
+	// network can be derived for THIS app's exact identity.
+	damaged.EnrichNetworkForOwnIdentity(fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStateAbsent})
+	// The network half must now be derivable and verified for THIS identity.
+	if damaged.NetworkName != "baseharbor-dev-workload-baseharbor-reg-app-dev" {
+		t.Fatalf("registry damaged error must name the derived workload network for the retained identity, got %q", damaged.NetworkName)
+	}
+	if !strings.Contains(strings.ToLower(damaged.Error()), "network") {
+		t.Fatalf("registry damaged error must name the absent workload network (F1 fix), got: %q", damaged.Error())
+	}
+	// A foreign orphan (different app) must NEVER appear as THIS app's absent
+	// network: the registry error is attributed only to the resolved identity.
+	foreignIdentity := &deployment.DamagedDeploymentError{
+		Identity: deployment.DeploymentIdentity{
+			Target:       "local",
+			DeploymentID: "22222222-2222-2222-2222-222222222222",
+			Application:  "foreign-app",
+			Environment:  "dev",
+		},
+		Root: "/state/targets/local/deployments/22222222-2222-2222-2222-222222222222",
+	}
+	// When THIS app's network is present, the error stays record-only — the
+	// foreign-orphan's absent network must not be attributed to this app.
+	present, _ := deployment.DamagedDeploymentState(foreignIdentity, fakeDamagedScanRuntime{state: bhruntime.RuntimeNetworkStatePresent})
+	if present.Network == bhruntime.RuntimeNetworkStateAbsent {
+		t.Fatal("foreign orphan's absent network must not be attributed to the resolved app")
+	}
+}

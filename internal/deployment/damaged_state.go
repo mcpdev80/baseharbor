@@ -77,16 +77,71 @@ func (e *DamagedDeploymentError) NextAction() string {
 func (e *DamagedDeploymentError) Unwrap() error { return nil }
 
 // DamagedDeploymentState reports whether err is a damaged deployment record,
-// unwrapping the signal returned by the deployment listing.
-func DamagedDeploymentState(err error) (*DamagedDeploymentError, bool) {
+// unwrapping the signal returned by the deployment listing. When an inspector
+// is supplied it additionally verifies THIS deployment's retained-identity
+// workload network and enriches the error with the network half only when that
+// network is genuinely absent for this app (never fabricated from an unrelated
+// or failed inspect). A nil inspector leaves the error record-only, matching
+// the pre-registry-fix behaviour of the listing path.
+func DamagedDeploymentState(err error, inspector NetworkInspector) (*DamagedDeploymentError, bool) {
 	if err == nil {
 		return nil, false
 	}
 	var damaged *DamagedDeploymentError
 	if errors.As(err, &damaged) {
+		damaged.enrichNetworkForOwnIdentity(inspector)
 		return damaged, true
 	}
 	return nil, false
+}
+
+// EnrichNetworkForOwnIdentity re-derives and, when genuinely absent for THIS
+// deployment's retained identity, attaches the workload network half. The
+// registry path returns a damaged error whose Identity is missing the retained
+// Application/Environment (the deploy directory is a UUID with no record), so
+// the caller populates those from the request parameters before calling this.
+// Any non-absent or unverifiable outcome leaves the error record-only.
+func (e *DamagedDeploymentError) EnrichNetworkForOwnIdentity(inspector NetworkInspector) {
+	e.enrichNetworkForOwnIdentity(inspector)
+}
+
+// enrichNetworkForOwnIdentity verifies THIS deployment's retained-identity
+// workload network and, when it is genuinely ABSENT for this app alone, records
+// the network half. It is the registry/listing-path counterpart of
+// DamagedDeploymentNamespaceScoped's app-scoped inspect: the deploy directory is
+// a per-deploy UUID with no name, so the network name is derived from the
+// identity's retained app/env (never from the directory), and the absent state
+// is attributed to THIS app only when the inspector confirms it for that exact
+// network. Any other outcome — present, not-managed, inspect error, missing
+// identity, or a nil inspector — leaves the error record-only so a missing
+// network is never inferred from an unverified or foreign inspect.
+func (e *DamagedDeploymentError) enrichNetworkForOwnIdentity(inspector NetworkInspector) {
+	if e == nil || inspector == nil {
+		return
+	}
+	if strings.TrimSpace(e.Identity.Application) == "" || strings.TrimSpace(e.Identity.Environment) == "" {
+		return
+	}
+	networkName := workloadNetworkNameForIdentity(e.Identity.Application, e.Identity.Environment)
+	if networkName == "" {
+		return
+	}
+	state, netErr := inspector.InspectNetwork(context.Background(), networkName)
+	if netErr != nil {
+		// An inspect failure is not proof of absence: surface it so the CLI can
+		// fail closed, but never attribute a fabricated absent network to this
+		// app. The record half is preserved.
+		e.Network = bhruntime.RuntimeNetworkStateInspectError
+		e.NetworkName = networkName
+		return
+	}
+	if state != bhruntime.RuntimeNetworkStateAbsent {
+		// Present (or not-managed): this app's network is not missing, so only
+		// the record half is damage. Leave the network omitted.
+		return
+	}
+	e.Network = state
+	e.NetworkName = networkName
 }
 
 // DamagedDirectoryState is the directory-level primitive behind
