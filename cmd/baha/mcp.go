@@ -99,7 +99,7 @@ type machineApplicationStopInput struct {
 }
 
 type machineApplyInput struct {
-	SourceModel            *development.SourceModel           `json:"source_model,omitempty" jsonschema:"optional immutable Git/OCI source declarations; Core must verify exact artifact binding before apply"`
+	SourceModel           *development.SourceModel           `json:"source_model,omitempty" jsonschema:"optional immutable Git/OCI source declarations; Core must verify exact artifact binding before apply"`
 	ProviderChangeConsent *application.ProviderChangeConsent `json:"provider_change_consent,omitempty" jsonschema:"explicit plan-bound acknowledgement stages and separate data deletion consent from the displayed provider impact plan"`
 	ConfirmCandidate      string                             `json:"confirm_candidate,omitempty" jsonschema:"operator-confirmed exact repository candidate content digest"`
 	Target                string                             `json:"target,omitempty" jsonschema:"optional BaseHarbor deployment target; otherwise uses BASEHARBOR_TARGET or configured default-target"`
