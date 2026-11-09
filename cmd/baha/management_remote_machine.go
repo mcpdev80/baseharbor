@@ -27,7 +27,7 @@ func (c *verifiedRemoteCore) discoverMachineOperations(ctx context.Context) (mac
 	if err != nil {
 		return machine.Discovery{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { req.Header.Set("Authorization", "Bearer "+c.token) }
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return machine.Discovery{}, fmt.Errorf("query pinned Core machine discovery: %w", err)
@@ -98,7 +98,7 @@ func (c *verifiedRemoteCore) requestMachineExecution(
 	if err != nil {
 		return machine.Execution{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { req.Header.Set("Authorization", "Bearer "+c.token) }
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Idempotency-Key", idempotencyKey)
 	// Machine HTTP may synchronously commit a long-running lifecycle before
@@ -149,7 +149,7 @@ func (c *verifiedRemoteCore) readMachineExecution(ctx context.Context, admitted 
 	if err != nil {
 		return machine.Execution{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" { req.Header.Set("Authorization", "Bearer "+c.token) }
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return machine.Execution{}, fmt.Errorf("read pinned Core machine execution: %w", err)
