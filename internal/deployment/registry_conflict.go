@@ -163,14 +163,6 @@ func refuseApplicationIDCollisions(target string, records []DeploymentRecord) er
 	return nil
 }
 
-func DeleteDeploymentRecord(id DeploymentIdentity) error {
-	root, err := DeploymentRoot(id)
-	if err != nil {
-		return err
-	}
-	return os.RemoveAll(root)
-}
-
 // refuseForeignDeploymentClaim protects the persisted bytes at path against an
 // identity-mismatched overwrite. A readable deployment.json that belongs to a
 // DIFFERENT deployment uuid is a foreign claim and the write fails closed
