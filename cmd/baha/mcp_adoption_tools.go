@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"github.com/mcpdev80/baseharbor/internal/application"
+	"github.com/mcpdev80/baseharbor/internal/development"
 	"github.com/mcpdev80/baseharbor/internal/repositoryinspect"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"io"
 )
 
 type machineApplicationCreateInput struct {
-	Target string               `json:"target,omitempty"`
-	Intent application.Manifest `json:"intent" jsonschema:"portable Application Intent; BaseHarbor assigns the system-owned application identity"`
+	Target      string                   `json:"target,omitempty"`
+	Intent      application.Manifest     `json:"intent" jsonschema:"portable Application Intent; BaseHarbor assigns the system-owned application identity"`
+	SourceModel *development.SourceModel `json:"source_model,omitempty" jsonschema:"optional portable immutable Git/OCI source selection, no workstation paths"`
 }
 type machineApplicationAdoptInput struct {
 	Target         string                                     `json:"target,omitempty"`
@@ -29,7 +31,7 @@ type machineApplicationConfigureInput struct {
 
 func registerMCPAdoptionTools(server *mcp.Server, store application.Store) {
 	mcp.AddTool(server, machineApplicationAuthoringTool[machineApplicationCreateInput]("app.create", "Create validated target-managed Application Intent and assign its system-owned identity without starting runtime resources."), func(ctx context.Context, req *mcp.CallToolRequest, input machineApplicationCreateInput) (*mcp.CallToolResult, any, error) {
-		result, err := createMachineApplication(withTargetOverride(ctx, input.Target), input.Intent)
+		result, err := createMachineApplicationWithSource(withTargetOverride(ctx, input.Target), input.Intent, input.SourceModel)
 		if err != nil {
 			return machineMCPFailure(err)
 		}
