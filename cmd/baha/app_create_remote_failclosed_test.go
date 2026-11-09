@@ -24,7 +24,11 @@ func TestRemoteAppCreateWithoutVerifiedCoreLeavesNoLocalDeployment(t *testing.T)
 	if err == nil {
 		t.Fatal("remote app create succeeded without authenticated Core")
 	}
-	if !strings.Contains(err.Error(), "remote management connection profile not configured") {
+	// Core connection and deployment ownership are independent guards.
+	// Either may reject first depending on whether this test fixture has a
+	// startup-bound installation owner. Neither may create local state.
+	if !strings.Contains(err.Error(), "remote management connection profile not configured") &&
+		!strings.Contains(err.Error(), "no authoritative installation owner") {
 		t.Fatalf("unexpected remote Core failure: %v", err)
 	}
 	after, err := deployment.ListDeployments(node.Name)
