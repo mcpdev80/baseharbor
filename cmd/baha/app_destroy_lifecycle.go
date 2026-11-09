@@ -633,16 +633,18 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 		}
 		return fmt.Errorf("verify application destruction: %w", err)
 	}
+
+	// The repair deletes a directory, so the path it took must be the path the
+	// operator selected. Fail closed on drift BEFORE any destructive mutation so
+	// a selection that drifted onto another twin never removes a record the
+	// operator did not address (0427-175). This guard must precede
+	// DeleteDeploymentRecord: a check after the remove cannot prevent the loss.
+	if selectedID := selectionDeploymentID(e.selection); selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
+		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
+	}
+
 	if err := deployment.DeleteDeploymentRecord(e.resolved.DeploymentIdentity); err != nil {
 		return fmt.Errorf("remove target deployment record after verified destruction: %w", err)
-	}
-	// The repair deletes a directory, so the path it took must be the path the
-	// operator selected. A selection that drifted onto another twin would leave
-	// the requested record in place and silently retire a different application
-	// (0427-175); fail closed instead of pretending the poison is repaired.
-	if selectedID, ok := selectedDeploymentIDFromArguments(e.selection); ok &&
-		selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
-		return fmt.Errorf("deployment selection %s did not route the removal: %s was removed", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
 	}
 
 	e.term.Section("Application")
@@ -652,6 +654,22 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
 	}
 	return nil
+}
+
+// selectionDeploymentID reads the explicit deployment-id selector out of a
+// destroy command's raw arguments (`--uuid <id>`), the form the CLI entry
+// forwards to the resolver. It complements selectedDeploymentIDFromArguments,
+// which only recognizes the internal `deployment-id:` routing slot: the guard
+// in removeApplicationState must see the operator-visible selector so it can
+// compare it against the resolved identity and fail closed on drift. An absent
+// selector returns "" so the guard stays inert for ordinary NAME/destroys.
+func selectionDeploymentID(command []string) string {
+	for i := 0; i < len(command)-1; i++ {
+		if command[i] == "--uuid" {
+			return strings.TrimSpace(command[i+1])
+		}
+	}
+	return ""
 }
 
 type repositoryVolumeInventory interface {

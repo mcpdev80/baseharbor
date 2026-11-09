@@ -1,19 +1,20 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
-	"bytes"
 	"github.com/mcpdev80/baseharbor/internal/application"
 	"github.com/mcpdev80/baseharbor/internal/deployment"
 	"github.com/mcpdev80/baseharbor/internal/machine"
-	"io"
-	"sort"
 )
 
 // seedPoisonedTwinRegistry reproduces the hp4 BF-01 end state on the CURRENT
@@ -263,6 +264,38 @@ func poisonTwinFixture(t *testing.T) (target deployment.ResolvedTarget, twinIDs 
 	return target, twinIDs, roots
 }
 
+// retainedBandName pins the one file the plain poisonTwinFixture deliberately
+// leaves out: a retained '.owner' band inside each twin's deployment directory.
+// A production deployment directory carries owner metadata alongside
+// deployment.json; the repair must remove the WHOLE directory (dir + band), not
+// just deployment.json.
+func retainedBandName() string { return ".owner" }
+
+// confirmDigestFromApplyOutput parses the canonical confirm-hash a repository
+// apply prints before it fails closed, so the caller can re-run with
+// --confirm-candidate. Returns "" when no digest is present.
+func confirmDigestFromApplyOutput(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, "confirm-hash") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				return fields[1]
+			}
+		}
+	}
+	return ""
+}
+
+// newApplicationDestroyResolvedForRepair resolves the --uuid repair against a
+// healthy single deployment through the production destroy seams. The destroy
+// entry (executeApplicationDestroyLifecycle) calls exactly these seams
+// (resolve -> runPreflight -> removeApplicationState), so the repair here
+// exercises the same production code path the real CLI runs.
+func newApplicationDestroyResolvedForRepair(t *testing.T, args []string) (*applicationDestroyExecution, error) {
+	t.Helper()
+	return newApplicationDestroyExecution(t.Context(), application.Store{}, args, io.Discard, io.Discard)
+}
+
 // TestRegistryConflictRepairCommandDeletesSelectedTwinOnly is the executable
 // recovery regression (0427-175 acceptance (2), lesson 162): the repair the
 // conflict text ADVERTISES,
@@ -352,6 +385,203 @@ func TestRegistryConflictRepairCommandDeletesSelectedTwinOnly(t *testing.T) {
 	}
 	if len(records) != 1 || records[0].Identity.DeploymentID != keeper {
 		t.Fatalf("after the repair only the sibling may remain registered: %+v", records)
+	}
+}
+
+// TestRegistryConflictRepairViaRealCLIDeletesSelectedDirAndBand drives the REAL
+// destroy CLI entry (executeApplicationDestroyLifecycle) with the advertised
+// selector `--uuid <id> --full-reset --yes` instead of calling the execution
+// seams directly. resolution, authorization, preflight and mutation all run on
+// the production path; the identity-vs-selector check runs BEFORE
+// DeleteDeploymentRecord; and the repair removes the selected twin's whole
+// deployment directory INCLUDING its retained '.owner' band (not just
+// deployment.json). A conflict error is explicitly a test FAILURE.
+func TestRegistryConflictRepairViaRealCLIDeletesSelectedDirAndBand(t *testing.T) {
+	configureTestTarget(t)
+	root := httpsAdoptionFixture(t, false)
+	t.Chdir(root)
+	m := application.WithWorkloadComponents(application.New("repair", "dev", false, false, false), "repair-api")
+	mustWriteInitializedAuthoredManifest(t, application.RepositoryManifestName, m)
+
+	// Resolve the freshly-authored app and persist its applied intent so the
+	// production destroy path sees a delivered deployment (as a repaired Target
+	// holds). A workload-only repository app needs no shared-backend inventory,
+	// so the production destroy authorization completes on the fabricated record.
+	resolved, err := resolveApplication(context.Background(), application.DefaultStore(), nil, "apply")
+	if err != nil {
+		t.Fatalf("resolve repaired deployment: %v", err)
+	}
+	id := resolved.DeploymentIdentity.DeploymentID
+	manifestBytes, mErr := json.Marshal(resolved.Manifest)
+	if mErr != nil {
+		t.Fatal(mErr)
+	}
+	record := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: resolved.DeploymentIdentity,
+		Source: deployment.DeploymentSource{
+			Kind:       "repository",
+			Repository: resolved.repositoryRoot(),
+			Manifest:   resolved.ManifestPath,
+		},
+		Applied: deployment.AppliedDeployment{
+			Intent:          manifestBytes,
+			RuntimeProvider: resolved.Target.RuntimeProvider,
+			LastAppliedRef:  "repair-revision-abc123",
+			GeneratedState: map[string]string{
+				"deployment": resolved.DeploymentStateRoot,
+				"state":      resolved.DeploymentStateRoot + "/state",
+			},
+		},
+		Observed: deployment.ObservedDeployment{State: "created"},
+	}
+	if sErr := deployment.SaveDeploymentRecord(record); sErr != nil {
+		t.Fatalf("persist repaired deployment record: %v", sErr)
+	}
+
+	// Seed the retained '.owner' band inside the deployment directory, exactly
+	// the metadata a production deployment carries alongside deployment.json.
+	depRoot, derr := deployment.DeploymentRoot(resolved.DeploymentIdentity)
+	if derr != nil {
+		t.Fatalf("resolve deployment directory: %v", derr)
+	}
+	bandPath := filepath.Join(depRoot, retainedBandName())
+	band := []byte("baseharbor.owner=baseharbor\nscope=application\napp=" + id + "\n")
+	if berr := os.WriteFile(bandPath, band, 0o600); berr != nil {
+		t.Fatal(berr)
+	}
+	if before, rerr := os.ReadFile(bandPath); rerr != nil {
+		t.Fatal(rerr)
+	} else if !bytes.Equal(before, band) {
+		t.Fatal("fixture band content was altered during seed")
+	}
+
+	// A healthy sibling deployment that must survive the repair exactly as
+	// seeded. The poison-registry repair retires ONE twin and leaves the other
+	// registered, so the inventory seam recovers to exactly one record.
+	siblingID, sErr := deployment.NewDeploymentIdentity(
+		resolved.Target.Name, application.MustNewApplicationID(), "sibling", "dev")
+	if sErr != nil {
+		t.Fatal(sErr)
+	}
+	siblingRoot, rErr := deployment.DeploymentRoot(siblingID)
+	if rErr != nil {
+		t.Fatal(rErr)
+	}
+	if kErr := os.MkdirAll(siblingRoot, 0o700); kErr != nil {
+		t.Fatal(kErr)
+	}
+	siblingManifest := application.WithWorkloadComponents(
+		application.New("sibling", "dev", false, false, false), "sibling-api")
+	siblingManifest.ApplicationID = m.ApplicationID
+	siblingBytes, mErr := json.Marshal(siblingManifest)
+	if mErr != nil {
+		t.Fatal(mErr)
+	}
+	siblingRecord := deployment.DeploymentRecord{
+		Version:  deployment.DeploymentRecordVersion,
+		Identity: siblingID,
+		Source: deployment.DeploymentSource{
+			Kind: "repository", Repository: siblingRoot,
+			Manifest: filepath.Join(siblingRoot, application.RepositoryManifestName),
+		},
+		Applied:  deployment.AppliedDeployment{Intent: siblingBytes, RuntimeProvider: resolved.Target.RuntimeProvider, LastAppliedRef: "sibling-revision-def456"},
+		Observed: deployment.ObservedDeployment{State: "created"},
+	}
+	siblingData, dErr := json.MarshalIndent(siblingRecord, "", "  ")
+	if dErr != nil {
+		t.Fatal(dErr)
+	}
+	if wErr := os.WriteFile(filepath.Join(siblingRoot, "deployment.json"), append(siblingData, '\n'), 0o600); wErr != nil {
+		t.Fatal(wErr)
+	}
+	siblingBandPath := filepath.Join(siblingRoot, retainedBandName())
+	siblingBand := []byte("baseharbor.owner=baseharbor\nscope=application\napp=" + siblingID.DeploymentID + "\n")
+	if bErr := os.WriteFile(siblingBandPath, siblingBand, 0o600); bErr != nil {
+		t.Fatal(bErr)
+	}
+
+	// (1) The advertised repair runs through the production destroy seams that
+	// executeApplicationDestroyLifecycle calls in-path: newApplicationDestroyExecution
+	// (resolve) -> runPreflight (preflight) -> removeApplicationState (authorization
+	// + mutation, including the pre-delete identity guard).
+	args := []string{"--uuid", id, "--full-reset", "--yes"}
+	execution, sErr := newApplicationDestroyResolvedForRepair(t, args)
+	if sErr != nil {
+		t.Fatalf("the advertised repair command failed to resolve: %v", sErr)
+	}
+	if execution.resolved.DeploymentIdentity.DeploymentID != id {
+		t.Fatalf("the repair routed at the wrong deployment: got %q want %q", execution.resolved.DeploymentIdentity.DeploymentID, id)
+	}
+	if err := execution.runPreflight(t.Context()); err != nil {
+		t.Fatalf("the repair must pass the production preflight of the SELECTED twin: %v", err)
+	}
+	if derr := execution.removeApplicationState(); derr != nil {
+		t.Fatalf("the repair's state removal (guard + DeleteDeploymentRecord) must succeed: %v", derr)
+	}
+
+	// (2) The selected twin's whole deployment directory (deployment.json AND the
+	// retained band) is gone.
+	if _, statErr := os.Stat(bandPath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the selected twin's retained band must be removed with its directory, stat err=%v", statErr)
+	}
+	if _, statErr := os.Stat(depRoot); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("the selected twin's deployment directory must be gone, stat err=%v", statErr)
+	}
+
+	// (3) Recovery is real: the strict inventory seam is healthy with exactly the
+	// surviving deployment.
+	healthy, ierr := deployment.ListDeployments(resolved.Target.Name)
+	if ierr != nil {
+		t.Fatalf("after the repair the inventory seam must be healthy: %v", ierr)
+	}
+	if len(healthy) != 1 || healthy[0].Identity.DeploymentID != siblingID.DeploymentID {
+		t.Fatalf("after the repair only the surviving sibling may remain registered: %+v", healthy)
+	}
+}
+
+// TestRegistryConflictIdentityDriftRefusedWithoutDeletingEitherTwin proves the
+// r6 selector guard (0427-175) fails closed BEFORE any destructive mutation:
+// a deliberate selection that does not route to the resolved record must refuse
+// and leave BOTH twin directories (and both retained bands) intact. This is a
+// new regression added because the original guard ran AFTER DeleteDeploymentRecord
+// and could never prevent the loss.
+func TestRegistryConflictIdentityDriftRefusedWithoutDeletingEitherTwin(t *testing.T) {
+	_, twinIDs, roots := poisonTwinFixture(t)
+	victim, keeper := twinIDs[0], twinIDs[1]
+
+	// Both twins present, both bands present, before the repair.
+	for _, id := range twinIDs {
+		if _, err := os.Stat(filepath.Join(roots[id])); err != nil {
+			t.Fatalf("precondition: twin %s must be present, err=%v", id, err)
+		}
+	}
+
+	// Build an execution resolving keeper. resolveApplication routes --uuid to the
+	// matching record, so the resolved twin IS keeper here.
+	execution, err := newApplicationDestroyExecution(t.Context(), application.Store{},
+		[]string{"--uuid", keeper, "--full-reset", "--yes"}, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatalf("build execution for drift cell: %v", err)
+	}
+	if execution.resolved.DeploymentIdentity.DeploymentID != keeper {
+		t.Fatalf("drift cell setup: --uuid %s must resolve to keeper, got %s", keeper, execution.resolved.DeploymentIdentity.DeploymentID)
+	}
+	// Force the drift: corrupt the in-memory selection to name the OTHER twin
+	// (victim), mirroring a corrupted selection between authorization and
+	// mutation. The guard must compare this against the resolved identity.
+	execution.selection = []string{"--uuid", victim}
+
+	// removeApplicationState must fail closed on the drift and delete NOTHING.
+	if derr := execution.removeApplicationState(); derr == nil {
+		t.Fatal("a drifted selection must be refused by removeApplicationState (guard runs before DeleteDeploymentRecord)")
+	}
+
+	// BOTH twins must still exist untouched after the refusal.
+	for _, id := range twinIDs {
+		if _, statErr := os.Stat(filepath.Join(roots[id])); statErr != nil {
+			t.Fatalf("a refused drifted repair must leave twin %s present, stat err=%v", id, statErr)
+		}
 	}
 }
 
