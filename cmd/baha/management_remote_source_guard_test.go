@@ -36,8 +36,8 @@ func TestRemoteSourceGuardPinsConfiguredGitOrOCI(t *testing.T) {
 	if _, err := development.WriteSourceModel(manifestPath, model); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRemoteSelectedSources("demo", "dev"); err == nil || !strings.Contains(err.Error(), "cannot bind or verify") {
-		t.Fatalf("pinned Git source without Core-side admission was silently accepted: %v", err)
+	if err := validateRemoteSelectedSources("demo", "dev"); err != nil {
+		t.Fatalf("pinned Git source was rejected before Core-side admission: %v", err)
 	}
 	model.Sources[0] = development.SourceDefinition{
 		ID: "app", Type: development.SourceOCI, Image: "ghcr.io/example/demo:latest",
@@ -52,8 +52,12 @@ func TestRemoteSourceGuardPinsConfiguredGitOrOCI(t *testing.T) {
 	if _, err := development.WriteSourceModel(manifestPath, model); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRemoteSelectedSources("demo", "dev"); err == nil || !strings.Contains(err.Error(), "cannot bind or verify") {
-		t.Fatalf("pinned OCI source without Core-side admission was silently accepted: %v", err)
+	if err := validateRemoteSelectedSources("demo", "dev"); err != nil {
+		t.Fatalf("pinned OCI source was rejected before Core-side admission: %v", err)
+	}
+	source, err := selectedRemoteSourceModel("demo", "dev")
+	if err != nil || source == nil || source.Sources[0].Image != model.Sources[0].Image {
+		t.Fatalf("immutable selection not transported from existing model: %#v, %v", source, err)
 	}
 	// A locally checked-out project cannot provide the authority for an
 	// independently selected remote application.
