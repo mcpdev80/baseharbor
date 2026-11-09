@@ -64,8 +64,8 @@ func validateRemoteGitLocation(location string) error {
 		return fmt.Errorf("remote Git repository must use HTTPS or SSH, never a local path, file URL or insecure protocol")
 	}
 	if parsed.User != nil {
-		if parsed.Scheme != "ssh" || parsed.User.Username() != "git" {
-			return fmt.Errorf("Git credentials must be provided by the native credential helper, not the repository URL")
+		if parsed.Scheme != "ssh" || parsed.User.Username() == "" {
+			return fmt.Errorf("Git HTTPS credentials must be provided by the native credential helper, not the repository URL")
 		}
 		if _, hasPassword := parsed.User.Password(); hasPassword {
 			return fmt.Errorf("Git repository URL must not contain embedded passwords")
