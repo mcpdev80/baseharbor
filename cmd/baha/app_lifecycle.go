@@ -315,6 +315,17 @@ func executeApplicationDestroyLifecycle(ctx context.Context, store application.S
 	if _, err := authorizeApplicationDestruction(ctx, execution.resolved, true, out); err != nil {
 		return err
 	}
+	// Selector-vs-resolved identity guard. The repair deletes a directory, so
+	// the path it took must be the path the operator selected. Fail closed on
+	// drift HERE, in the resolve-and-authorize phase, BEFORE the runtime/route/
+	// provider cleanup that follows (cleanupDevelopmentCanonicalRoutes,
+	// destroyRuntimeResources, cleanupProviderState) and before the
+	// DeploymentRecord removal in removeApplicationState — so a selection that
+	// drifted onto another twin never removes a record the operator did not
+	// address (0427-175). A check after the remove cannot prevent the loss.
+	if err := execution.assertSelectionResolvedIdentity(); err != nil {
+		return err
+	}
 	if err := execution.cleanupDevelopmentCanonicalRoutes(ctx); err != nil {
 		return err
 	}

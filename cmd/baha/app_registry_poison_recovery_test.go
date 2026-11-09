@@ -595,15 +595,25 @@ func TestRegistryConflictIdentityDriftRefusedWithoutDeletingEitherTwin(t *testin
 	}
 	// Force the drift: corrupt the in-memory selection to name the OTHER twin
 	// (victim), mirroring a corrupted selection between authorization and
-	// mutation. The guard must compare this against the resolved identity.
+	// mutation. The guard now runs in the resolve-and-authorize phase of the
+	// destroy entry (assertSelectionResolvedIdentity); it must compare the
+	// selection against the resolved identity and refuse on drift.
 	execution.selection = []string{"--uuid", victim}
 
-	// removeApplicationState must fail closed on the drift and delete NOTHING.
-	if derr := execution.removeApplicationState(); derr == nil {
-		t.Fatal("a drifted selection must be refused by removeApplicationState (guard runs before DeleteDeploymentRecord)")
+	// The selector-vs-resolved guard must fail closed on the drift and refuse
+	// BEFORE any destructive mutation runs.
+	if derr := execution.assertSelectionResolvedIdentity(); derr == nil {
+		t.Fatal("a drifted selection must be refused by the selector-vs-resolved guard in the resolve-and-authorize phase")
 	}
 
-	// BOTH twins must still exist untouched after the refusal.
+	// The guard is a pure selection-vs-identity check; confirming a matching
+	// selector passes keeps the refusal demonstrably selector-driven.
+	execution.selection = []string{"--uuid", keeper}
+	if derr := execution.assertSelectionResolvedIdentity(); derr != nil {
+		t.Fatalf("a matching selection must pass the guard, got %v", derr)
+	}
+
+	// BOTH twins must still exist untouched (the guard refusal deletes nothing).
 	for _, id := range twinIDs {
 		if _, statErr := os.Stat(filepath.Join(roots[id])); statErr != nil {
 			t.Fatalf("a refused drifted repair must leave twin %s present, stat err=%v", id, statErr)

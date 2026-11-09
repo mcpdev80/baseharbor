@@ -607,17 +607,11 @@ func (e *applicationDestroyExecution) cleanupDevelopmentCanonicalRoutes(ctx cont
 }
 
 func (e *applicationDestroyExecution) removeApplicationState() error {
-	// The repair deletes a directory, so the path it took must be the path the
-	// operator selected. Fail closed on drift BEFORE any destructive mutation —
-	// before Store.Delete, before ReleaseApplicationProviderRegistryAt, before
-	// the runtime/route/provider cleanup that precedes this seam and before the
-	// DeleteDeploymentRecord below — so a selection that drifted onto another
-	// twin never removes a record the operator did not address (0427-175). A
-	// check after the remove cannot prevent the loss.
-	if selectedID := selectionDeploymentID(e.selection); selectedID != "" && e.resolved.DeploymentIdentity.DeploymentID != selectedID {
-		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
-	}
-
+	// The selector-vs-resolved drift guard now runs earlier, in the
+	// resolve-and-authorize phase of executeApplicationDestroyLifecycle, before
+	// ANY cleanup (routes, runtime, provider) and before this seam — see
+	// app_lifecycle.go. A check that only sits here would be after the very
+	// mutations it must prevent, so it is intentionally absent from this seam.
 	appDir := filepath.Join(e.resolved.Store.Root, e.manifest.Name)
 	if _, err := os.Stat(appDir); err == nil {
 		if err := e.resolved.Store.Delete(e.manifest.Name); err != nil {
@@ -654,6 +648,26 @@ func (e *applicationDestroyExecution) removeApplicationState() error {
 	renderRepositoryVolumePreservation(e.out, e.repositoryVolumes, e.resolved.Target.RuntimeProvider)
 	if e.resolved.FromRepository {
 		e.term.Info("repository", "baseharbor.yaml and application-owned Compose data preserved; use 'baha app apply' to recreate")
+	}
+	return nil
+}
+
+// assertSelectionResolvedIdentity fails closed when the operator-visible
+// --uuid selector does not match the resolved deployment identity. It is the
+// selector-vs-resolved guard (0427-175), now executed in the resolve-and-
+// authorize phase of executeApplicationDestroyLifecycle — BEFORE the
+// cleanupDevelopmentCanonicalRoutes / destroyRuntimeResources /
+// cleanupProviderState cleanup and before the DeploymentRecord removal in
+// removeApplicationState — so a selection that drifted onto another twin can
+// never remove a record the operator did not address. An absent selector
+// (ordinary NAME/destroy) keeps the guard inert.
+func (e *applicationDestroyExecution) assertSelectionResolvedIdentity() error {
+	selectedID := selectionDeploymentID(e.selection)
+	if selectedID == "" {
+		return nil
+	}
+	if e.resolved.DeploymentIdentity.DeploymentID != selectedID {
+		return fmt.Errorf("deployment selection %s did not route to the resolved record %s; refusing to delete either twin", selectedID, e.resolved.DeploymentIdentity.DeploymentID)
 	}
 	return nil
 }
